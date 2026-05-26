@@ -106,19 +106,19 @@ export default function JucoTracker() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-2">JUCO Tracker</h1>
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         NWAC players available for transfer to 4-year programs.
       </p>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm border p-3 mb-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 mb-4">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Season</label>
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Season</label>
             <select
               value={season}
               onChange={(e) => setSeason(parseInt(e.target.value))}
-              className="rounded border border-gray-300 px-2.5 py-1 text-sm"
+              className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm"
             >
               {[2026, 2025, 2024].map(y => (
                 <option key={y} value={y}>{y}</option>
@@ -127,11 +127,11 @@ export default function JucoTracker() {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Class</label>
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Class</label>
             <select
               value={classYear}
               onChange={(e) => setClassYear(e.target.value)}
-              className="rounded border border-gray-300 px-2.5 py-1 text-sm"
+              className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm"
             >
               <option value="So">Sophomores</option>
               <option value="Fr">Freshmen</option>
@@ -140,11 +140,11 @@ export default function JucoTracker() {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Position</label>
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Position</label>
             <select
               value={position}
               onChange={(e) => setPosition(e.target.value)}
-              className="rounded border border-gray-300 px-2.5 py-1 text-sm"
+              className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm"
             >
               <option value="">All</option>
               {positions.map(p => (
@@ -154,33 +154,33 @@ export default function JucoTracker() {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Min AB</label>
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Min AB</label>
             <input
               type="number"
               value={minAb}
               onChange={(e) => setMinAb(parseInt(e.target.value) || 0)}
               min={0} max={300} step={10}
-              className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+              className="w-16 rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-sm"
             />
           </div>
 
           <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Min IP</label>
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Min IP</label>
             <input
               type="number"
               value={minIp}
               onChange={(e) => setMinIp(parseInt(e.target.value) || 0)}
               min={0} max={150} step={5}
-              className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+              className="w-16 rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-sm"
             />
           </div>
 
           <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Bats</label>
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Bats</label>
             <select
               value={bats}
               onChange={(e) => setBats(e.target.value)}
-              className="rounded border border-gray-300 px-2.5 py-1 text-sm"
+              className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm"
             >
               <option value="">All</option>
               <option value="L">LHH</option>
@@ -190,11 +190,11 @@ export default function JucoTracker() {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Throws</label>
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Throws</label>
             <select
               value={throws_}
               onChange={(e) => setThrows(e.target.value)}
-              className="rounded border border-gray-300 px-2.5 py-1 text-sm"
+              className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm"
             >
               <option value="">All</option>
               <option value="L">LHP</option>
@@ -206,11 +206,11 @@ export default function JucoTracker() {
 
       {/* Results */}
       {loading ? (
-        <div className="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400 animate-pulse">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-8 text-center text-gray-400 dark:text-gray-500 animate-pulse">
           Loading JUCO players...
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border overflow-x-auto relative">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border overflow-x-auto relative">
           <table className="w-full text-[11px] leading-tight border-collapse">
             <thead>
               {/* Category header row */}
@@ -231,21 +231,21 @@ export default function JucoTracker() {
                 </th>
               </tr>
               {/* Column header row */}
-              <tr className="sticky top-[25px] z-20 bg-gray-50 border-b border-gray-200">
+              <tr className="sticky top-[25px] z-20 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
                 {/* Frozen: #, Player, Team, Pos, Yr, Committed */}
-                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-right border-r border-gray-100">#</th>
-                <th style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left">Player</th>
-                <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left">Team</th>
-                <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">Pos</th>
-                <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">B/T</th>
-                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-30 bg-gray-50 px-1 py-1.5 text-gray-500 font-semibold text-left">Yr</th>
-                <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-30 bg-gray-50 px-1.5 py-1.5 text-gray-500 font-semibold text-left border-r border-gray-200">Committed</th>
+                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-right border-r border-gray-100 dark:border-gray-700">#</th>
+                <th style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Player</th>
+                <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Team</th>
+                <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Pos</th>
+                <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">B/T</th>
+                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Yr</th>
+                <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left border-r border-gray-200 dark:border-gray-700">Committed</th>
                 {/* Stat columns */}
                 {STAT_COLS.map(col => (
                   <th
                     key={col.key}
                     onClick={() => handleSort(col.key)}
-                    className={`px-1.5 py-1.5 text-gray-500 font-semibold text-right whitespace-nowrap ${
+                    className={`px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-right whitespace-nowrap ${
                       SORTABLE.has(col.key) ? 'cursor-pointer select-none hover:text-nw-teal' : ''
                     } ${sortBy === col.key ? 'text-nw-teal bg-teal-50/50' : ''}`}
                   >
@@ -256,9 +256,9 @@ export default function JucoTracker() {
             </thead>
             <tbody>
               {(data || []).map((row, i) => (
-                <tr key={row.id} className={`border-b border-gray-50 hover:bg-teal-50/30 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                <tr key={row.id} className={`border-b border-gray-50 hover:bg-teal-50/30 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/40'}`}>
                   {/* Frozen columns */}
-                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-10 bg-inherit px-1 py-1 text-gray-400 text-right text-[10px] border-r border-gray-100">{i + 1}</td>
+                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-10 bg-inherit px-1 py-1 text-gray-400 dark:text-gray-500 text-right text-[10px] border-r border-gray-100 dark:border-gray-700">{i + 1}</td>
                   <td style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-10 bg-inherit px-1.5 py-1 font-medium overflow-hidden">
                     <Link to={`/player/${row.id}`} className="text-nw-teal hover:underline whitespace-nowrap block truncate">
                       {row.first_name} {row.last_name}
@@ -270,17 +270,17 @@ export default function JucoTracker() {
                         <img src={row.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
                           onError={(e) => { e.target.style.display = 'none' }} />
                       )}
-                      <span className="text-gray-600 truncate">{row.team_short || row.team_name}</span>
+                      <span className="text-gray-600 dark:text-gray-400 truncate">{row.team_short || row.team_name}</span>
                     </div>
                   </td>
-                  <td style={{width:60,minWidth:60,maxWidth:60}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.position || '-'}</td>
-                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[288px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
-                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[320px] z-10 bg-inherit px-1 py-1 text-gray-500 truncate overflow-hidden">{row.year_in_school || '-'}</td>
-                  <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 overflow-hidden">
+                  <td style={{width:60,minWidth:60,maxWidth:60}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
+                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[288px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
+                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[320px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+                  <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
                     {row.committed_to ? (
                       <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
                     ) : (
-                      <span className="text-gray-400">-</span>
+                      <span className="text-gray-400 dark:text-gray-500">-</span>
                     )}
                   </td>
                   {/* Stat columns */}
@@ -289,7 +289,7 @@ export default function JucoTracker() {
                       key={col.key}
                       className={`px-1.5 py-1 text-right whitespace-nowrap ${
                         col.mono ? 'font-mono' : ''
-                      } ${sortBy === col.key ? 'bg-teal-50/50 font-semibold' : 'text-gray-600'}`}
+                      } ${sortBy === col.key ? 'bg-teal-50/50 font-semibold' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                       {fmtCell(row, col)}
                     </td>
@@ -299,7 +299,7 @@ export default function JucoTracker() {
             </tbody>
           </table>
           {data && (
-            <div className="px-3 py-1.5 text-[11px] text-gray-400 border-t">
+            <div className="px-3 py-1.5 text-[11px] text-gray-400 dark:text-gray-500 border-t">
               Showing {data.length} players
             </div>
           )}

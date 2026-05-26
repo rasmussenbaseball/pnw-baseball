@@ -13,12 +13,12 @@ const SCOPES = [
 
 function RecordTable({ stat, scope }) {
   const leaders = stat.leaders || []
-  if (!leaders.length) return <p className="text-xs text-gray-400 italic px-2 py-1">No qualifying records</p>
+  if (!leaders.length) return <p className="text-xs text-gray-400 dark:text-gray-500 italic px-2 py-1">No qualifying records</p>
 
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-gray-400 text-[10px] uppercase tracking-wide">
+        <tr className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide">
           <th className="text-left pb-1 pl-1 w-6">#</th>
           <th className="text-left pb-1">Player</th>
           <th className="text-left pb-1">Team</th>
@@ -28,8 +28,8 @@ function RecordTable({ stat, scope }) {
       </thead>
       <tbody>
         {leaders.map((r, i) => (
-          <tr key={`${r.player_id}-${r.season}-${i}`} className={i % 2 === 0 ? 'bg-gray-50/50' : ''}>
-            <td className="py-1 pl-1 text-gray-400 font-medium">{i + 1}</td>
+          <tr key={`${r.player_id}-${r.season}-${i}`} className={i % 2 === 0 ? 'bg-gray-50 dark:bg-gray-900/40/50' : ''}>
+            <td className="py-1 pl-1 text-gray-400 dark:text-gray-500 font-medium">{i + 1}</td>
             <td className="py-1">
               <Link to={`/player/${r.player_id}`} className="text-teal-700 hover:underline font-medium">
                 {r.first_name} {r.last_name}
@@ -41,11 +41,11 @@ function RecordTable({ stat, scope }) {
                   <img src={r.logo_url} alt="" className="w-3.5 h-3.5 object-contain"
                        onError={(e) => { e.target.style.display = 'none' }} />
                 )}
-                <span className="text-gray-600">{r.team_short}</span>
+                <span className="text-gray-600 dark:text-gray-400">{r.team_short}</span>
               </div>
             </td>
             {scope === 'single_season' && (
-              <td className="py-1 text-center text-gray-500">{r.season}</td>
+              <td className="py-1 text-center text-gray-500 dark:text-gray-400">{r.season}</td>
             )}
             <td className="py-1 pr-1 text-right font-bold text-pnw-slate">
               {formatStat(r.value, stat.format)}
@@ -59,12 +59,12 @@ function RecordTable({ stat, scope }) {
 
 function TeamRecordTable({ stat }) {
   const leaders = stat.leaders || []
-  if (!leaders.length) return <p className="text-xs text-gray-400 italic px-2 py-1">No qualifying records</p>
+  if (!leaders.length) return <p className="text-xs text-gray-400 dark:text-gray-500 italic px-2 py-1">No qualifying records</p>
 
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-gray-400 text-[10px] uppercase tracking-wide">
+        <tr className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide">
           <th className="text-left pb-1 pl-1 w-6">#</th>
           <th className="text-left pb-1">Team</th>
           <th className="text-center pb-1">Year</th>
@@ -73,8 +73,8 @@ function TeamRecordTable({ stat }) {
       </thead>
       <tbody>
         {leaders.map((r, i) => (
-          <tr key={`${r.team_id}-${r.season}-${i}`} className={i % 2 === 0 ? 'bg-gray-50/50' : ''}>
-            <td className="py-1 pl-1 text-gray-400 font-medium">{i + 1}</td>
+          <tr key={`${r.team_id}-${r.season}-${i}`} className={i % 2 === 0 ? 'bg-gray-50 dark:bg-gray-900/40/50' : ''}>
+            <td className="py-1 pl-1 text-gray-400 dark:text-gray-500 font-medium">{i + 1}</td>
             <td className="py-1">
               <Link to={`/team/${r.team_id}`} className="flex items-center gap-1.5 text-teal-700 hover:underline font-medium">
                 {r.logo_url && (
@@ -84,7 +84,7 @@ function TeamRecordTable({ stat }) {
                 {r.team_short}
               </Link>
             </td>
-            <td className="py-1 text-center text-gray-500">{r.season}</td>
+            <td className="py-1 text-center text-gray-500 dark:text-gray-400">{r.season}</td>
             <td className="py-1 pr-1 text-right font-bold text-pnw-slate">
               {formatStat(r.value, stat.format)}
             </td>
@@ -106,9 +106,9 @@ function StatSection({ title, data, scope, isTeam = false }) {
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {entries.map(([key, stat]) => (
-          <div key={key} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-              <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">{stat.label}</span>
+          <div key={key} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+              <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">{stat.label}</span>
             </div>
             <div className="p-2">
               {isTeam
@@ -148,25 +148,25 @@ export default function RecordsPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-pnw-slate">PNW Records</h1>
-        <p className="text-sm text-gray-400 mt-1">
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
           Single-season and career record holders across all PNW divisions
         </p>
       </div>
 
       {/* Controls */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6 space-y-3">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6 space-y-3">
         {/* Division level tabs */}
         <div>
-          <span className="text-xs font-bold text-gray-400 uppercase tracking-wide mr-3">Division</span>
-          <div className="inline-flex gap-1 bg-gray-100 rounded-lg p-1">
+          <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-3">Division</span>
+          <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             {LEVELS.map(l => (
               <button
                 key={l}
                 onClick={() => setLevel(l)}
                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                   level === l
-                    ? 'bg-white text-pnw-slate shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                 }`}
               >
                 {l === 'JUCO' ? 'NWAC' : l}
@@ -178,8 +178,8 @@ export default function RecordsPage() {
         {/* Category + scope tabs */}
         <div className="flex flex-wrap gap-4">
           <div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wide mr-3">Category</span>
-            <div className="inline-flex gap-1 bg-gray-100 rounded-lg p-1">
+            <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-3">Category</span>
+            <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
               {[
                 { key: 'batting', label: 'Batting' },
                 { key: 'pitching', label: 'Pitching' },
@@ -190,8 +190,8 @@ export default function RecordsPage() {
                   onClick={() => setCategory(c.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                     category === c.key
-                      ? 'bg-white text-pnw-slate shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                   }`}
                 >
                   {c.label}
@@ -202,16 +202,16 @@ export default function RecordsPage() {
 
           {category !== 'team' && (
             <div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide mr-3">Scope</span>
-              <div className="inline-flex gap-1 bg-gray-100 rounded-lg p-1">
+              <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-3">Scope</span>
+              <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
                 {SCOPES.map(s => (
                   <button
                     key={s.key}
                     onClick={() => setScope(s.key)}
                     className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                       scope === s.key
-                        ? 'bg-white text-pnw-slate shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
+                        ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                     }`}
                   >
                     {s.label}
@@ -232,7 +232,7 @@ export default function RecordsPage() {
       {!loading && data && (
         <div className="space-y-8">
           {/* Qualification note */}
-          <p className="text-xs text-gray-400 italic">
+          <p className="text-xs text-gray-400 dark:text-gray-500 italic">
             {category === 'batting' && scope === 'single_season' && 'Minimum 100 PA for single-season batting records.'}
             {category === 'batting' && scope === 'career' && 'Minimum 250 career PA for career batting records.'}
             {category === 'pitching' && scope === 'single_season' && 'Minimum 40 IP for single-season pitching records.'}

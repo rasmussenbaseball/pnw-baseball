@@ -286,11 +286,11 @@ export default function ScatterPlot() {
   // Select component
   const Select = ({ label, value, onChange, children }) => (
     <div>
-      <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">{label}</label>
+      <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">{label}</label>
       <select
         value={value}
         onChange={onChange}
-        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-pnw-sky/40 focus:border-pnw-sky transition-all"
+        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-pnw-sky/40 focus:border-pnw-sky transition-all"
       >
         {children}
       </select>
@@ -302,11 +302,11 @@ export default function ScatterPlot() {
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-pnw-slate">Team Scatter Plot</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Compare team performance across any two stats · 2026 Season</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">Compare team performance across any two stats · 2026 Season</p>
       </div>
 
       {/* Controls bar */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-5">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm px-5 py-4 mb-5">
         <div className="flex flex-wrap gap-4 items-end">
           <Select label="X-Axis" value={xStat} onChange={(e) => setXStat(e.target.value)}>
             {['Record', 'Batting', 'Pitching', 'Overall'].map(group => (
@@ -349,7 +349,7 @@ export default function ScatterPlot() {
         </div>
 
         {(xOpt?.lowerBetter || yOpt?.lowerBetter) && (
-          <div className="text-[11px] text-gray-400 mt-3 italic">
+          <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-3 italic">
             {xOpt?.lowerBetter && `${xOpt.label} axis is flipped (lower = better → right). `}
             {yOpt?.lowerBetter && `${yOpt.label} axis is flipped (lower = better → top).`}
           </div>
@@ -359,12 +359,12 @@ export default function ScatterPlot() {
       {loading && (
         <div className="flex items-center justify-center py-20">
           <div className="w-6 h-6 border-2 border-pnw-green border-t-transparent rounded-full animate-spin" />
-          <span className="ml-3 text-gray-400 text-sm">Loading data...</span>
+          <span className="ml-3 text-gray-400 dark:text-gray-500 text-sm">Loading data...</span>
         </div>
       )}
 
       {!loading && points.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-5 overflow-x-auto">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 sm:p-5 overflow-x-auto">
           <svg ref={svgRef} width={WIDTH} height={HEIGHT} className="mx-auto block" xmlns="http://www.w3.org/2000/svg"
                style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
             <defs>
@@ -604,7 +604,7 @@ export default function ScatterPlot() {
           </svg>
 
           {/* Legend below the chart */}
-          <div className="flex flex-wrap justify-center gap-5 mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500">
+          <div className="flex flex-wrap justify-center gap-5 mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#059669', border: '1.5px solid #059669' }} />
               <span>Top 25th pctl (both axes)</span>
@@ -617,7 +617,7 @@ export default function ScatterPlot() {
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#dc2626', border: '1.5px solid #dc2626' }} />
               <span>Bottom 25th pctl (both axes)</span>
             </div>
-            <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-gray-200">
+            <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-gray-200 dark:border-gray-700">
               <div className="w-4 h-3 border border-dashed rounded" style={{ borderColor: '#059669' }} />
               <span>Top 50% zone</span>
             </div>
@@ -625,7 +625,7 @@ export default function ScatterPlot() {
               <div className="w-4 h-3 border-2 border-dashed rounded" style={{ borderColor: '#059669', backgroundColor: 'rgba(5,150,105,0.05)' }} />
               <span>Top 10% zone</span>
             </div>
-            <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-gray-200">
+            <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-gray-200 dark:border-gray-700">
               <div className="w-5 h-0 border-t-2 border-dashed" style={{ borderColor: BRAND.teal }} />
               <span>Trend line</span>
             </div>
@@ -636,7 +636,7 @@ export default function ScatterPlot() {
       {!loading && points.length === 0 && (
         <div className="text-center py-16">
           <div className="text-gray-300 text-4xl mb-2">&#9898;</div>
-          <div className="text-gray-400 text-sm">No data available for the selected options.</div>
+          <div className="text-gray-400 dark:text-gray-500 text-sm">No data available for the selected options.</div>
         </div>
       )}
 
@@ -672,7 +672,7 @@ function CorrelationTable({ season, divisionId }) {
   const strengthLabel = (absR) => {
     if (absR >= 0.7) return { text: 'Strong', color: 'text-emerald-600' }
     if (absR >= 0.4) return { text: 'Moderate', color: 'text-amber-600' }
-    if (absR >= 0.2) return { text: 'Weak', color: 'text-gray-400' }
+    if (absR >= 0.2) return { text: 'Weak', color: 'text-gray-400 dark:text-gray-500' }
     return { text: 'None', color: 'text-gray-300' }
   }
 
@@ -685,17 +685,17 @@ function CorrelationTable({ season, divisionId }) {
   }
 
   return (
-    <div className="mt-8 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100">
-        <h3 className="text-base font-bold text-gray-800">Correlation to Win %</h3>
-        <p className="text-xs text-gray-400 mt-0.5">
+    <div className="mt-8 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+        <h3 className="text-base font-bold text-gray-800 dark:text-gray-200">Correlation to Win %</h3>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
           Pearson r for each team stat vs. overall win percentage ({rows[0]?.n || ''} teams)
         </p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <tr className="bg-gray-50 dark:bg-gray-900/40 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               <th className="px-5 py-2.5">Stat</th>
               <th className="px-3 py-2.5">Group</th>
               <th className="px-3 py-2.5 text-right">r</th>
@@ -708,13 +708,13 @@ function CorrelationTable({ season, divisionId }) {
               const s = strengthLabel(row.abs_r)
               const barW = Math.round(row.abs_r * 100)
               return (
-                <tr key={row.stat} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-5 py-2 font-medium text-gray-800">{row.label}</td>
+                <tr key={row.stat} className="hover:bg-gray-50 dark:hover:bg-gray-700/50/50 transition-colors">
+                  <td className="px-5 py-2 font-medium text-gray-800 dark:text-gray-200">{row.label}</td>
                   <td className="px-3 py-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
                       row.group === 'Batting' ? 'bg-blue-50 text-blue-600' :
                       row.group === 'Pitching' ? 'bg-orange-50 text-orange-600' :
-                      'bg-gray-100 text-gray-600'
+                      'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                     }`}>
                       {row.group}
                     </span>

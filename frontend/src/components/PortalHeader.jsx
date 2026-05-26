@@ -231,7 +231,7 @@ function NavDropdown({ section }) {
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 min-w-[260px] z-50
-                        bg-white text-gray-900 rounded-lg shadow-lg border
+                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-lg border
                         border-gray-200 py-1.5">
           {section.items.map(item => (
             <Link

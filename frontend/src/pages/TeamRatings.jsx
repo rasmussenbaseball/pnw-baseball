@@ -15,7 +15,7 @@ const BADGE_COLORS = {
 function ppiColor(ppi) {
   if (ppi >= 65) return 'text-emerald-700'
   if (ppi >= 55) return 'text-emerald-600'
-  if (ppi >= 45) return 'text-gray-700'
+  if (ppi >= 45) return 'text-gray-700 dark:text-gray-300'
   if (ppi >= 35) return 'text-orange-600'
   return 'text-red-600'
 }
@@ -32,7 +32,7 @@ function ppiBg(ppi) {
 function ScoreBar({ value, color = 'bg-nw-teal' }) {
   const width = Math.max(2, Math.min(100, value))
   return (
-    <div className="w-full bg-gray-100 rounded-full h-1.5">
+    <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5">
       <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${width}%` }} />
     </div>
   )
@@ -48,24 +48,24 @@ function scoreBarColor(val) {
 
 // ─── Division PPI table ───
 function DivisionTable({ division }) {
-  const badgeClass = BADGE_COLORS[division.division_level] || 'bg-gray-500 text-white'
+  const badgeClass = BADGE_COLORS[division.division_level] || 'bg-gray-50 dark:bg-gray-900/400 text-white'
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-5">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-5">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
         <span className={`text-xs font-bold px-2 py-0.5 rounded ${badgeClass}`}>
           {division.division_level}
         </span>
-        <h3 className="text-base font-bold text-gray-800">{division.division_name}</h3>
-        <span className="text-xs text-gray-400 ml-auto">{division.teams.length} teams</span>
+        <h3 className="text-base font-bold text-gray-800 dark:text-gray-200">{division.division_name}</h3>
+        <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{division.teams.length} teams</span>
       </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-[10px] text-gray-500 uppercase tracking-wider bg-gray-50">
+            <tr className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-900/40">
               <th className="text-center px-2 py-2 font-semibold w-8">#</th>
               <th className="text-left pl-3 pr-1 py-2 font-semibold">Team</th>
               <th className="text-center px-2 py-2 font-semibold w-14">PPI</th>
@@ -100,7 +100,7 @@ function DivisionTable({ division }) {
                 className={`border-t border-gray-50 hover:bg-teal-50/40 transition-colors ${ppiBg(team.ppi)}`}
               >
                 {/* Rank */}
-                <td className="text-center px-2 py-2 font-mono text-gray-400">{team.ppi_rank}</td>
+                <td className="text-center px-2 py-2 font-mono text-gray-400 dark:text-gray-500">{team.ppi_rank}</td>
 
                 {/* Team */}
                 <td className="pl-3 pr-1 py-2">
@@ -116,7 +116,7 @@ function DivisionTable({ division }) {
                         onError={(e) => { e.target.style.display = 'none' }}
                       />
                     )}
-                    <span className="font-medium text-gray-800 truncate">{team.short_name}</span>
+                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{team.short_name}</span>
                   </Link>
                 </td>
 
@@ -126,7 +126,7 @@ function DivisionTable({ division }) {
                 </td>
 
                 {/* Record */}
-                <td className="text-center px-2 py-2 text-gray-600">
+                <td className="text-center px-2 py-2 text-gray-600 dark:text-gray-400">
                   {team.wins}-{team.losses}
                 </td>
 
@@ -154,42 +154,42 @@ function DivisionTable({ division }) {
 function InfoCard() {
   const [open, setOpen] = useState(false)
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-5">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-5">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-gray-50 dark:bg-gray-900/40 transition-colors"
       >
-        <span className="text-xs font-semibold text-gray-600">How PPI Works</span>
-        <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">How PPI Works</span>
+        <svg className={`w-4 h-4 text-gray-400 dark:text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
       {open && (
-        <div className="px-4 pb-3 text-xs text-gray-600 space-y-2 border-t border-gray-100 pt-2.5">
+        <div className="px-4 pb-3 text-xs text-gray-600 dark:text-gray-400 space-y-2 border-t border-gray-100 dark:border-gray-700 pt-2.5">
           <p>
             The <strong>PNW Power Index (PPI)</strong> rates each team on a 0–100 scale relative to their division peers. A score of 50 is exactly average for the division; 65+ is elite, 35 or below is struggling.
           </p>
-          <p className="font-semibold text-gray-700">Components:</p>
+          <p className="font-semibold text-gray-700 dark:text-gray-300">Components:</p>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="bg-gray-50 dark:bg-gray-900/40 rounded p-2 text-center">
               <p className="font-bold text-nw-teal">35%</p>
-              <p className="text-[10px] text-gray-500">Team WAR</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Team WAR</p>
             </div>
-            <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="bg-gray-50 dark:bg-gray-900/40 rounded p-2 text-center">
               <p className="font-bold text-nw-teal">20%</p>
-              <p className="text-[10px] text-gray-500">Offense (wRC+)</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Offense (wRC+)</p>
             </div>
-            <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="bg-gray-50 dark:bg-gray-900/40 rounded p-2 text-center">
               <p className="font-bold text-nw-teal">20%</p>
-              <p className="text-[10px] text-gray-500">Pitching (FIP)</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Pitching (FIP)</p>
             </div>
-            <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="bg-gray-50 dark:bg-gray-900/40 rounded p-2 text-center">
               <p className="font-bold text-nw-teal">15%</p>
-              <p className="text-[10px] text-gray-500">Win %</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Win %</p>
             </div>
-            <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="bg-gray-50 dark:bg-gray-900/40 rounded p-2 text-center">
               <p className="font-bold text-nw-teal">10%</p>
-              <p className="text-[10px] text-gray-500">Conf Win %</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Conf Win %</p>
             </div>
           </div>
           <p>
@@ -222,7 +222,7 @@ export default function TeamRatings() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">Team Ratings</h1>
-      <p className="text-sm text-gray-500 mb-4">PNW Power Index | within-division talent rankings · 2026</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">PNW Power Index | within-division talent rankings · 2026</p>
 
       <InfoCard />
 

@@ -44,18 +44,18 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
 
   if (loading) {
     return (
-      <div className="px-4 py-3 text-xs text-gray-400">Loading stats...</div>
+      <div className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500">Loading stats...</div>
     )
   }
 
   if (!playerId) {
     return (
       <div className="px-4 py-3">
-        <p className="text-xs text-gray-400 italic">High school prospect -- no college stats available yet.</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 italic">High school prospect -- no college stats available yet.</p>
         {report ? (
           <div className="mt-2">
-            <p className="text-xs text-gray-600 leading-relaxed">{report}</p>
-            {reportDate && <p className="text-[10px] text-gray-400 mt-1 italic">Updated {formatDate(reportDate)}</p>}
+            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{report}</p>
+            {reportDate && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 italic">Updated {formatDate(reportDate)}</p>}
           </div>
         ) : (
           <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
@@ -65,7 +65,7 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
   }
 
   if (!data) {
-    return <div className="px-4 py-3 text-xs text-gray-400">Unable to load stats.</div>
+    return <div className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500">Unable to load stats.</div>
   }
 
   const player = data.player || {}
@@ -79,10 +79,10 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
       {/* Player info row */}
       <div className="flex items-center gap-2">
         {player.headshot_url && (
-          <img src={player.headshot_url} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+          <img src={player.headshot_url} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-gray-700" />
         )}
         <div>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500 dark:text-gray-400">
             {[player.position, player.year_in_school, player.bats && player.throws ? `${player.bats}/${player.throws}` : null].filter(Boolean).join(' · ')}
           </div>
           <Link to={`/player/${playerId}`} className="text-xs text-nw-teal hover:underline font-medium">
@@ -94,7 +94,7 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
       {/* Batting stats */}
       {latestBat && (
         <div>
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+          <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
             {latestBat.season} Batting
           </div>
           <div className="grid grid-cols-6 gap-1">
@@ -106,9 +106,9 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
               { label: 'RBI', value: latestBat.rbi ?? '-' },
               { label: 'oWAR', value: formatStat(latestBat.offensive_war, 'war') },
             ].map(s => (
-              <div key={s.label} className="text-center bg-gray-50 rounded px-1 py-1">
-                <div className="text-[9px] text-gray-400 font-medium">{s.label}</div>
-                <div className="text-xs font-bold text-gray-800">{s.value}</div>
+              <div key={s.label} className="text-center bg-gray-50 dark:bg-gray-900/40 rounded px-1 py-1">
+                <div className="text-[9px] text-gray-400 dark:text-gray-500 font-medium">{s.label}</div>
+                <div className="text-xs font-bold text-gray-800 dark:text-gray-200">{s.value}</div>
               </div>
             ))}
           </div>
@@ -118,7 +118,7 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
       {/* Pitching stats */}
       {latestPitch && (
         <div>
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+          <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
             {latestPitch.season} Pitching
           </div>
           <div className="grid grid-cols-6 gap-1">
@@ -130,9 +130,9 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
               { label: 'FIP', value: formatStat(latestPitch.fip, 'era') },
               { label: 'pWAR', value: formatStat(latestPitch.pitching_war, 'war') },
             ].map(s => (
-              <div key={s.label} className="text-center bg-gray-50 rounded px-1 py-1">
-                <div className="text-[9px] text-gray-400 font-medium">{s.label}</div>
-                <div className="text-xs font-bold text-gray-800">{s.value}</div>
+              <div key={s.label} className="text-center bg-gray-50 dark:bg-gray-900/40 rounded px-1 py-1">
+                <div className="text-[9px] text-gray-400 dark:text-gray-500 font-medium">{s.label}</div>
+                <div className="text-xs font-bold text-gray-800 dark:text-gray-200">{s.value}</div>
               </div>
             ))}
           </div>
@@ -140,13 +140,13 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
       )}
 
       {!latestBat && !latestPitch && (
-        <p className="text-xs text-gray-400 italic">No stats available yet this season.</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 italic">No stats available yet this season.</p>
       )}
 
       {report ? (
-        <div className="mt-2 border-t border-gray-100 pt-2">
-          <p className="text-xs text-gray-600 leading-relaxed">{report}</p>
-          {reportDate && <p className="text-[10px] text-gray-400 mt-1 italic">Updated {formatDate(reportDate)}</p>}
+        <div className="mt-2 border-t border-gray-100 dark:border-gray-700 pt-2">
+          <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{report}</p>
+          {reportDate && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 italic">Updated {formatDate(reportDate)}</p>}
         </div>
       ) : (
         <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
@@ -174,7 +174,7 @@ export default function DraftBoard({ year }) {
       {/* Header + Year Tabs */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-pnw-slate mb-1">PNW MLB Draft Board</h1>
-        <p className="text-sm text-gray-500 mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Top PNW prospects for the MLB Draft
         </p>
         <div className="inline-flex bg-gray-200 rounded-lg p-1 gap-1">
@@ -185,7 +185,7 @@ export default function DraftBoard({ year }) {
               className={`px-5 py-2 rounded-md text-sm font-bold transition-all ${
                 activeYear === yr
                   ? 'bg-pnw-teal text-white shadow-md'
-                  : 'bg-white text-gray-700 hover:bg-gray-50 shadow-sm'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-gray-900/40 shadow-sm'
               }`}
             >
               20{yr}
@@ -196,31 +196,31 @@ export default function DraftBoard({ year }) {
 
       {/* Subtitle + Last Updated */}
       <div className="flex items-baseline justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-700">
+        <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300">
           {board.year} Draft - {board.prospects.length} Prospects
         </h2>
         {board.lastUpdated && (
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-400 dark:text-gray-500">
             Last updated {formatDate(board.lastUpdated)}
           </span>
         )}
       </div>
 
       {/* Desktop table */}
-      <div className="hidden sm:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="hidden sm:block bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-12">Rank</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Player</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-20">Pos</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">School</th>
+            <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12">Rank</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Player</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Pos</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">School</th>
               <th className="w-8"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {board.prospects.map((p) => {
-              const posClass = POS_COLORS[p.pos] || 'bg-gray-100 text-gray-800'
+              const posClass = POS_COLORS[p.pos] || 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
               const isExpanded = expandedRank === p.rank
               const logo = getSchoolLogo(p.school)
               return (
@@ -231,7 +231,7 @@ export default function DraftBoard({ year }) {
                       className={`flex items-center px-4 py-3 cursor-pointer transition-colors ${isExpanded ? 'bg-teal-50/60' : 'hover:bg-teal-50/40'}`}
                     >
                       <div className="w-12 shrink-0">
-                        <span className={`text-sm font-bold ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400'}`}>
+                        <span className={`text-sm font-bold ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400 dark:text-gray-500'}`}>
                           {p.rank}
                         </span>
                       </div>
@@ -247,12 +247,12 @@ export default function DraftBoard({ year }) {
                             <Link
                               to={`/player/${p.playerId}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="text-sm font-semibold text-gray-900 hover:text-nw-teal transition-colors"
+                              className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-nw-teal transition-colors"
                             >
                               {p.name}
                             </Link>
                           ) : (
-                            <span className="text-sm font-semibold text-gray-900">{p.name}</span>
+                            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{p.name}</span>
                           )}
                         </div>
                       </div>
@@ -261,10 +261,10 @@ export default function DraftBoard({ year }) {
                           {p.pos}
                         </span>
                       </div>
-                      <div className="flex-1 text-sm text-gray-600">{p.school}</div>
+                      <div className="flex-1 text-sm text-gray-600 dark:text-gray-400">{p.school}</div>
                       <div className="w-8 flex items-center justify-center shrink-0">
                         <svg
-                          className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          className={`w-4 h-4 text-gray-400 dark:text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                           fill="none" stroke="currentColor" viewBox="0 0 24 24"
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -272,7 +272,7 @@ export default function DraftBoard({ year }) {
                       </div>
                     </div>
                     {isExpanded && (
-                      <div className="bg-gray-50/80 border-t border-gray-100">
+                      <div className="bg-gray-50/80 border-t border-gray-100 dark:border-gray-700">
                         <PlayerStatsDropdown playerId={p.playerId} report={p.report} reportDate={p.reportDate} />
                       </div>
                     )}
@@ -287,16 +287,16 @@ export default function DraftBoard({ year }) {
       {/* Mobile cards */}
       <div className="sm:hidden space-y-2">
         {board.prospects.map((p) => {
-          const posClass = POS_COLORS[p.pos] || 'bg-gray-100 text-gray-800'
+          const posClass = POS_COLORS[p.pos] || 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
           const isExpanded = expandedRank === p.rank
           const logo = getSchoolLogo(p.school)
           return (
-            <div key={p.rank} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div key={p.rank} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div
                 onClick={() => toggleExpand(p.rank)}
                 className={`px-4 py-3 flex items-center gap-3 cursor-pointer ${isExpanded ? 'bg-teal-50/60' : ''}`}
               >
-                <span className={`text-lg font-bold w-8 text-center shrink-0 ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400'}`}>
+                <span className={`text-lg font-bold w-8 text-center shrink-0 ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400 dark:text-gray-500'}`}>
                   {p.rank}
                 </span>
                 <img
@@ -310,27 +310,27 @@ export default function DraftBoard({ year }) {
                     <Link
                       to={`/player/${p.playerId}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="text-sm font-semibold text-gray-900 hover:text-nw-teal transition-colors block truncate"
+                      className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-nw-teal transition-colors block truncate"
                     >
                       {p.name}
                     </Link>
                   ) : (
-                    <span className="text-sm font-semibold text-gray-900 block truncate">{p.name}</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 block truncate">{p.name}</span>
                   )}
-                  <span className="text-xs text-gray-500">{p.school}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{p.school}</span>
                 </div>
                 <span className={`inline-block px-2 py-0.5 text-xs font-bold rounded shrink-0 ${posClass}`}>
                   {p.pos}
                 </span>
                 <svg
-                  className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                  className={`w-4 h-4 text-gray-400 dark:text-gray-500 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
                   fill="none" stroke="currentColor" viewBox="0 0 24 24"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
               {isExpanded && (
-                <div className="bg-gray-50/80 border-t border-gray-100">
+                <div className="bg-gray-50/80 border-t border-gray-100 dark:border-gray-700">
                   <PlayerStatsDropdown playerId={p.playerId} report={p.report} reportDate={p.reportDate} />
                 </div>
               )}

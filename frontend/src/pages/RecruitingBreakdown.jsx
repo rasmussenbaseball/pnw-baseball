@@ -35,8 +35,8 @@ function TrendArrow({ trend, prev1, prev2 }) {
     bg = 'bg-emerald-50'
     arrow = '▲'
   } else if (trend > -0.02) {
-    color = 'text-gray-400'
-    bg = 'bg-gray-50'
+    color = 'text-gray-400 dark:text-gray-500'
+    bg = 'bg-gray-50 dark:bg-gray-900/40'
     arrow = '▸'
   } else if (trend > -0.05) {
     color = 'text-red-400'
@@ -107,13 +107,13 @@ export default function RecruitingBreakdown() {
     return rows
   }, [data, level, sortKey, sortDir])
 
-  if (loading) return <div className="text-center py-12 text-gray-400">Loading breakdown...</div>
+  if (loading) return <div className="text-center py-12 text-gray-400 dark:text-gray-500">Loading breakdown...</div>
   if (error) return <div className="text-center py-12 text-red-400">Error: {error}</div>
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-pnw-slate mb-1">Recruiting Breakdown</h1>
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Team-level recruiting metrics for the 2026 season. Compare programs side-by-side - who's trending up, who plays freshmen, and where the talent is.
       </p>
 
@@ -126,7 +126,7 @@ export default function RecruitingBreakdown() {
             className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
               level === l
                 ? 'bg-nw-teal text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
             }`}
           >
             {l}
@@ -135,20 +135,20 @@ export default function RecruitingBreakdown() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
+            <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
               {COLUMNS.map(col => (
                 <th
                   key={col.key}
                   onClick={() => col.sortable && handleSort(col.key)}
                   className={`px-3 py-2 text-[10px] uppercase tracking-wider font-semibold whitespace-nowrap ${
-                    col.sortable ? 'cursor-pointer hover:bg-gray-100 select-none' : ''
-                  } ${col.key === 'short_name' ? 'text-left sticky left-0 bg-gray-50 z-10' : 'text-center'}`}
+                    col.sortable ? 'cursor-pointer hover:bg-gray-100 dark:bg-gray-700 select-none' : ''
+                  } ${col.key === 'short_name' ? 'text-left sticky left-0 bg-gray-50 dark:bg-gray-900/40 z-10' : 'text-center'}`}
                   title={col.tooltip || ''}
                 >
-                  <span className={sortKey === col.key ? 'text-nw-teal' : 'text-gray-500'}>
+                  <span className={sortKey === col.key ? 'text-nw-teal' : 'text-gray-500 dark:text-gray-400'}>
                     {col.label}
                     {sortKey === col.key && (
                       <span className="ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>
@@ -162,7 +162,7 @@ export default function RecruitingBreakdown() {
             {filtered.map((team, i) => (
               <tr
                 key={team.team_id}
-                className={`border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                className={`border-b border-gray-100 dark:border-gray-700 hover:bg-blue-50/40 transition-colors ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50'}`}
               >
                 {/* Team */}
                 <td className="px-3 py-2 sticky left-0 bg-inherit z-10">
@@ -180,7 +180,7 @@ export default function RecruitingBreakdown() {
                     ) : (
                       <div className="w-5 h-5 shrink-0" />
                     )}
-                    <span className="text-xs font-semibold text-gray-800 whitespace-nowrap">
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
                       {team.short_name}
                     </span>
                   </Link>
@@ -188,11 +188,11 @@ export default function RecruitingBreakdown() {
 
                 {/* Division */}
                 <td className="px-3 py-2 text-center">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">{team.division}</span>
+                  <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">{team.division}</span>
                 </td>
 
                 {/* Ranking */}
-                <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">
+                <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
                   {team.division === 'JUCO'
                     ? (team.ppi_rank != null ? <span title="PPI rank (NWAC internal)">PPI #{team.ppi_rank}</span> : '-')
                     : (team.national_rank != null ? <span title="National composite rank">#{team.national_rank}</span> : '-')
@@ -200,12 +200,12 @@ export default function RecruitingBreakdown() {
                 </td>
 
                 {/* Record */}
-                <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">
+                <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
                   {team.wins}-{team.losses}
                 </td>
 
                 {/* W-L% */}
-                <td className="px-3 py-2 text-center text-xs font-semibold text-gray-800">
+                <td className="px-3 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-200">
                   {team.win_pct.toFixed(3)}
                 </td>
 
@@ -215,27 +215,27 @@ export default function RecruitingBreakdown() {
                 </td>
 
                 {/* Fr PA% */}
-                <td className="px-3 py-2 text-center text-xs text-gray-600">
+                <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
                   {team.fr_pa_pct.toFixed(1)}%
                 </td>
 
                 {/* Fr IP% */}
-                <td className="px-3 py-2 text-center text-xs text-gray-600">
+                <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
                   {team.fr_ip_pct.toFixed(1)}%
                 </td>
 
                 {/* WAR/G */}
-                <td className="px-3 py-2 text-center text-xs font-semibold text-gray-800">
+                <td className="px-3 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-200">
                   {team.war_per_game.toFixed(2)}
                 </td>
 
                 {/* wRC+ */}
-                <td className="px-3 py-2 text-center text-xs text-gray-600">
+                <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
                   {team.team_wrc_plus != null ? team.team_wrc_plus.toFixed(0) : '-'}
                 </td>
 
                 {/* FIP */}
-                <td className="px-3 py-2 text-center text-xs text-gray-600">
+                <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
                   {team.team_fip != null ? team.team_fip.toFixed(2) : '-'}
                 </td>
               </tr>
@@ -245,9 +245,9 @@ export default function RecruitingBreakdown() {
       </div>
 
       {/* Legend */}
-      <div className="mt-4 px-1 text-[10px] text-gray-400 space-y-1">
+      <div className="mt-4 px-1 text-[10px] text-gray-400 dark:text-gray-500 space-y-1">
         <p><strong>Rank</strong> - National composite ranking for D1/D2/D3/NAIA teams. NWAC teams show PPI rank (internal power index based on WAR/G and W-L%).</p>
-        <p><strong>Trend</strong> - Change in W-L% compared to the average of the prior two seasons (2024-2025). <span className="text-emerald-500">▲ Green = improving</span>, <span className="text-red-400">▼ Red = declining</span>, <span className="text-gray-400">▸ Gray = steady</span>. Hover for year-by-year W-L%.</p>
+        <p><strong>Trend</strong> - Change in W-L% compared to the average of the prior two seasons (2024-2025). <span className="text-emerald-500">▲ Green = improving</span>, <span className="text-red-400">▼ Red = declining</span>, <span className="text-gray-400 dark:text-gray-500">▸ Gray = steady</span>. Hover for year-by-year W-L%.</p>
         <p><strong>Fr PA% / Fr IP%</strong> - Freshman (Fr + R-Fr) plate appearances or innings pitched as a percentage of the team total. Higher = more freshman playing time.</p>
         <p><strong>WAR/G</strong> - Total team WAR (offensive + pitching) divided by games played. Measures overall roster talent density.</p>
         <p><strong>wRC+</strong> - PA-weighted team average wRC+. 100 = league average. <strong>FIP</strong> - IP-weighted team average FIP. Lower is better.</p>

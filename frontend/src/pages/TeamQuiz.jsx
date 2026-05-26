@@ -221,7 +221,7 @@ function SetupScreen({
   return (
     <div className="max-w-3xl mx-auto">
       <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mb-2">Team Quiz</h1>
-      <p className="text-sm text-gray-500 mb-6">
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
         Test your knowledge of a Pacific Northwest college baseball team. Pick a team, choose one
         or more seasons, and get a 10 question quiz drawn at random from leaders, statlines, match
         formats, and head-to-head comparisons.
@@ -229,7 +229,7 @@ function SetupScreen({
 
       {/* Team picker */}
       <section className="mb-6">
-        <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-2">
+        <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
           1. Pick a team
         </h2>
         <input
@@ -239,9 +239,9 @@ function SetupScreen({
           onChange={(e) => setTeamSearch(e.target.value)}
           className="w-full max-w-md px-3 py-2 border rounded-lg text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
         />
-        {teamsLoading && <div className="text-gray-400 animate-pulse">Loading teams...</div>}
+        {teamsLoading && <div className="text-gray-400 dark:text-gray-500 animate-pulse">Loading teams...</div>}
 
-        <div className="max-h-80 overflow-y-auto border rounded-lg bg-white p-2">
+        <div className="max-h-80 overflow-y-auto border rounded-lg bg-white dark:bg-gray-800 p-2">
           {DIV_ORDER.map(div => {
             const list = groupedTeams[div]
             if (!list || list.length === 0) return null
@@ -261,7 +261,7 @@ function SetupScreen({
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-left text-sm transition-colors ${
                         selectedTeamId === t.id
                           ? 'bg-nw-teal/10 border-nw-teal'
-                          : 'bg-white border-gray-200 hover:border-nw-teal/50 hover:bg-gray-50'
+                          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-nw-teal/50 hover:bg-gray-50 dark:bg-gray-900/40'
                       }`}
                     >
                       {t.logo_url && (
@@ -280,7 +280,7 @@ function SetupScreen({
 
       {/* Year picker */}
       <section className="mb-6">
-        <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-2">
+        <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
           2. Pick one or more seasons
         </h2>
         <div className="flex flex-wrap gap-2">
@@ -294,7 +294,7 @@ function SetupScreen({
                 className={`px-4 py-2 rounded-lg border-2 text-sm font-semibold transition-colors ${
                   on
                     ? 'bg-pnw-forest text-white border-pnw-forest shadow-md ring-2 ring-pnw-forest/30'
-                    : 'bg-white border-gray-300 text-gray-700 hover:border-nw-teal hover:bg-gray-50'
+                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-nw-teal hover:bg-gray-50 dark:bg-gray-900/40'
                 }`}
               >
                 {y}
@@ -302,7 +302,7 @@ function SetupScreen({
             )
           })}
         </div>
-        <p className="text-xs text-gray-400 mt-2">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
           Questions will be pulled across any seasons you select.
         </p>
       </section>
@@ -318,9 +318,9 @@ function SetupScreen({
           {quizLoading ? 'Building quiz...' : 'Start Quiz'}
         </button>
         {selectedTeam && (
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-gray-600 dark:text-gray-400">
             <span className="font-semibold">{selectedTeam.short_name || selectedTeam.name}</span>
-            {selectedYears.length > 0 && <span className="text-gray-400"> · {selectedYears.join(', ')}</span>}
+            {selectedYears.length > 0 && <span className="text-gray-400 dark:text-gray-500"> · {selectedYears.join(', ')}</span>}
           </div>
         )}
       </div>
@@ -358,19 +358,19 @@ function QuestionScreen({
     <div className="max-w-3xl mx-auto">
       {/* Header: progress + score + quit */}
       <div className="flex items-center justify-between mb-4">
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-gray-500 dark:text-gray-400">
           <span className="font-semibold text-pnw-slate">{team?.short_name || 'Team'}</span>
           <span className="mx-2">·</span>
           <span>Question {index + 1} of {total}</span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-gray-500 dark:text-gray-400">
             Score: <span className="font-semibold text-pnw-slate">{score} / {index + (revealed ? 1 : 0)}</span>
           </div>
           <button
             type="button"
             onClick={onQuit}
-            className="text-xs text-gray-400 hover:text-gray-600 underline"
+            className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 underline"
           >
             Quit
           </button>
@@ -386,13 +386,13 @@ function QuestionScreen({
       </div>
 
       {/* Prompt */}
-      <div className="bg-white border rounded-xl p-5 mb-4 shadow-sm">
+      <div className="bg-white dark:bg-gray-800 border rounded-xl p-5 mb-4 shadow-sm">
         <div className="text-base sm:text-lg font-semibold text-pnw-slate">{question.prompt}</div>
         {question.subtitle && (
-          <div className="text-xs text-gray-400 mt-1">{question.subtitle}</div>
+          <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{question.subtitle}</div>
         )}
         {question.statline && (
-          <div className="mt-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg font-mono text-sm sm:text-base text-pnw-slate">
+          <div className="mt-3 px-4 py-3 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg font-mono text-sm sm:text-base text-pnw-slate">
             {question.statline}
           </div>
         )}
@@ -476,11 +476,11 @@ function McOptions({ question, userAnswer, setUserAnswer, revealed }) {
       {question.options.map(opt => {
         const picked = userAnswer === opt.id
         const isAnswer = opt.id === question.answer
-        let tone = 'bg-white border-gray-200 hover:border-nw-teal/50 hover:bg-gray-50'
+        let tone = 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-nw-teal/50 hover:bg-gray-50 dark:bg-gray-900/40'
         if (revealed) {
           if (isAnswer) tone = 'bg-green-50 border-green-400'
           else if (picked && !isAnswer) tone = 'bg-red-50 border-red-400'
-          else tone = 'bg-white border-gray-200 opacity-70'
+          else tone = 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 opacity-70'
         } else if (picked) {
           tone = 'bg-nw-teal/10 border-nw-teal'
         }
@@ -492,7 +492,7 @@ function McOptions({ question, userAnswer, setUserAnswer, revealed }) {
             disabled={revealed}
             className={`text-left px-4 py-3 rounded-lg border text-sm sm:text-base transition-colors ${tone}`}
           >
-            <span className="font-bold text-gray-400 mr-2">{opt.id.toUpperCase()}.</span>
+            <span className="font-bold text-gray-400 dark:text-gray-500 mr-2">{opt.id.toUpperCase()}.</span>
             {opt.label}
           </button>
         )
@@ -509,12 +509,12 @@ function MatchBoard({ question, userAnswer, setMatchValue, revealed }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
-        <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Players</div>
+        <div className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Players</div>
         <div className="space-y-2">
           {question.players.map(p => {
             const chosen = ans[p.id]
             const correct = question.answer[p.id]
-            let tone = 'bg-white border-gray-200'
+            let tone = 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
             if (revealed) {
               if (chosen === correct) tone = 'bg-green-50 border-green-400'
               else if (chosen && chosen !== correct) tone = 'bg-red-50 border-red-400'
@@ -527,7 +527,7 @@ function MatchBoard({ question, userAnswer, setMatchValue, revealed }) {
                   value={chosen || ''}
                   onChange={(e) => setMatchValue(p.id, e.target.value)}
                   disabled={revealed}
-                  className="text-sm border rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
+                  className="text-sm border rounded-md px-2 py-1 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
                 >
                   <option value="">Select...</option>
                   {question.values.map(v => (
@@ -540,10 +540,10 @@ function MatchBoard({ question, userAnswer, setMatchValue, revealed }) {
         </div>
       </div>
       <div>
-        <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Values (each used once)</div>
+        <div className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Values (each used once)</div>
         <div className="space-y-2">
           {question.values.map(v => (
-            <div key={v.id} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono text-pnw-slate">
+            <div key={v.id} className="bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-pnw-slate">
               {v.label}
             </div>
           ))}
@@ -567,14 +567,14 @@ function ResultsScreen({ team, seasons, score, total, onRetake }) {
   return (
     <div className="max-w-xl mx-auto text-center">
       <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mb-1">{headline}</h1>
-      <p className="text-sm text-gray-500 mb-6">
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
         {team?.short_name || 'Team'} · {Array.isArray(seasons) ? seasons.join(', ') : seasons}
       </p>
       <div className="inline-flex items-baseline gap-2 mb-8">
         <div className="text-6xl font-bold text-pnw-green">{score}</div>
-        <div className="text-2xl text-gray-400">/ {total}</div>
+        <div className="text-2xl text-gray-400 dark:text-gray-500">/ {total}</div>
       </div>
-      <div className="text-sm text-gray-500 mb-8">{pct}% correct</div>
+      <div className="text-sm text-gray-500 dark:text-gray-400 mb-8">{pct}% correct</div>
       <div className="flex gap-3 justify-center">
         <button
           type="button"

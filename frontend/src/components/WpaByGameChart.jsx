@@ -83,13 +83,13 @@ function SeriesCard({ label, series, unit, color }) {
   const total = last.cumulative
   const sign = total >= 0 ? '+' : ''
   const totalColor = total >= 0.5 ? 'text-emerald-700' :
-                      total <= -0.5 ? 'text-rose-700' : 'text-gray-700'
+                      total <= -0.5 ? 'text-rose-700 dark:text-rose-300' : 'text-gray-700 dark:text-gray-300'
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-baseline justify-between">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
         <div>
-          <div className="text-xs font-bold text-gray-900 uppercase">{label}</div>
+          <div className="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase">{label}</div>
           <div className="text-[10px] text-gray-500">
             {data.length} games · {first.date?.slice(5)} → {last.date?.slice(5)}
           </div>
@@ -163,15 +163,15 @@ function WpaTooltip({ active, payload, unit }) {
   const wpaSign = p.wpa >= 0 ? '+' : ''
   const cumSign = p.cumulative >= 0 ? '+' : ''
   const wpaColor = p.wpa >= 0.05 ? 'text-emerald-700' :
-                   p.wpa <= -0.05 ? 'text-rose-700' : 'text-gray-700'
+                   p.wpa <= -0.05 ? 'text-rose-700 dark:text-rose-300' : 'text-gray-700 dark:text-gray-300'
   return (
-    <div className="bg-white border border-gray-200 rounded shadow-md p-2 text-[11px]">
-      <div className="text-gray-900 font-semibold mb-0.5">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-md p-2 text-[11px]">
+      <div className="text-gray-900 dark:text-gray-100 font-semibold mb-0.5">
         {p.is_home ? 'vs' : '@'} {p.opp}
       </div>
       <div className="text-gray-500 mb-1">
         {p.dateShort}
-        {p.result && <span className="ml-2 font-medium text-gray-700">{p.result}</span>}
+        {p.result && <span className="ml-2 font-medium text-gray-700 dark:text-gray-300">{p.result}</span>}
       </div>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-gray-500">This game:</span>
@@ -181,7 +181,7 @@ function WpaTooltip({ active, payload, unit }) {
       </div>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-gray-500">Cumulative:</span>
-        <span className="font-bold tabular-nums text-gray-900">
+        <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100">
           {cumSign}{p.cumulative.toFixed(2)}
         </span>
       </div>

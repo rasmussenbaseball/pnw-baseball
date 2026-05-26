@@ -87,17 +87,17 @@ export default function NewsCommitments() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Commitments</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Commitments</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           NWAC players committing to 4-year programs. (HS commitments to PNW schools coming soon.)
         </p>
       </div>
 
-      {loading && <div className="text-gray-500 animate-pulse">Loading commitments…</div>}
+      {loading && <div className="text-gray-500 dark:text-gray-400 animate-pulse">Loading commitments…</div>}
       {error && <div className="text-rose-600">Could not load commitments: {error}</div>}
 
       {!loading && !error && rows.length === 0 && (
-        <div className="text-gray-500 italic">No commitments yet.</div>
+        <div className="text-gray-500 dark:text-gray-400 italic">No commitments yet.</div>
       )}
 
       {!loading && rows.length > 0 && (
@@ -106,7 +106,7 @@ export default function NewsCommitments() {
             <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-pnw-teal">
               NWAC commitments
             </h2>
-            <span className="text-xs text-gray-500">{rows.length} player{rows.length === 1 ? '' : 's'}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{rows.length} player{rows.length === 1 ? '' : 's'}</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -125,7 +125,7 @@ function CommitmentCard({ c }) {
   return (
     <a
       href={`/player/${c.player_id}`}
-      className="group flex items-start gap-3 bg-white border border-gray-200 rounded-lg p-3
+      className="group flex items-start gap-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3
                  hover:border-nw-teal hover:shadow-md transition-all"
     >
       {/* Headshot / initials */}
@@ -133,7 +133,7 @@ function CommitmentCard({ c }) {
         <img
           src={c.headshot_url}
           alt=""
-          className="w-14 h-14 rounded-full object-cover bg-gray-100 shrink-0"
+          className="w-14 h-14 rounded-full object-cover bg-gray-100 dark:bg-gray-700 shrink-0"
           onError={(e) => { e.currentTarget.style.display = 'none' }}
         />
       ) : (
@@ -142,7 +142,7 @@ function CommitmentCard({ c }) {
 
       {/* Player bio + stats */}
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-bold text-gray-900 truncate group-hover:text-nw-teal">
+        <div className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate group-hover:text-nw-teal">
           {c.first_name} {c.last_name}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -150,7 +150,7 @@ function CommitmentCard({ c }) {
             <img src={c.team_logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
                  onError={(e) => { e.currentTarget.style.display = 'none' }} />
           )}
-          <span className="text-[11px] text-gray-600 truncate">
+          <span className="text-[11px] text-gray-600 dark:text-gray-400 truncate">
             {c.team_short}
             {c.position ? ` · ${c.position}` : ''}
             {c.year_in_school ? ` · ${c.year_in_school}` : ''}
@@ -174,17 +174,17 @@ function CommitmentCard({ c }) {
               className="w-5 h-5 object-contain"
               onError={(e) => { e.currentTarget.style.display = 'none' }}
             />
-            <span className="text-sm font-bold text-gray-900 truncate" title={c.committed_to}>
+            <span className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate" title={c.committed_to}>
               {c.committed_to}
             </span>
           </div>
         ) : (
-          <div className="text-sm font-bold text-gray-900 truncate mb-0.5"
+          <div className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate mb-0.5"
                title={c.committed_to}>
             {c.committed_to}
           </div>
         )}
-        <div className="text-[10px] text-gray-400">
+        <div className="text-[10px] text-gray-400 dark:text-gray-500">
           {fmtDate(c.commitment_date)}
         </div>
       </div>

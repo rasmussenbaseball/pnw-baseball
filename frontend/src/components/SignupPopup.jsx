@@ -27,11 +27,11 @@ export default function SignupPopup() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 animate-fade-in">
+      <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 animate-fade-in">
         {/* Close button */}
         <button
           onClick={dismiss}
-          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-200"
           aria-label="Close"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -46,8 +46,8 @@ export default function SignupPopup() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-pnw-slate">Create Your Free Account</h2>
-          <p className="text-sm text-gray-500 mt-1">
+          <h2 className="text-xl font-bold text-pnw-slate dark:text-gray-100">Create Your Free Account</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Unlock everything NW Baseball Stats has to offer, for free.
           </p>
         </div>
@@ -62,8 +62,8 @@ export default function SignupPopup() {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-800">{f.title}</p>
-                <p className="text-xs text-gray-500">{f.desc}</p>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{f.title}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{f.desc}</p>
               </div>
             </div>
           ))}

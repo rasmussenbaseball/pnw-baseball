@@ -35,23 +35,23 @@ function LeaderCard({ category }) {
   const { label, format, leaders } = category
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       {/* Stat header */}
-      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
-        <h3 className="text-sm font-bold text-gray-800">{label}</h3>
+      <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">{label}</h3>
       </div>
 
       {/* Leader rows */}
       <div className="divide-y divide-gray-50">
         {leaders.map((player, i) => {
-          const badgeClass = BADGE_COLORS[player.division_level] || 'bg-gray-500 text-white'
+          const badgeClass = BADGE_COLORS[player.division_level] || 'bg-gray-50 dark:bg-gray-900/400 text-white'
           return (
             <div
               key={player.player_id}
-              className={`flex items-center gap-2 px-3 py-2 hover:bg-teal-50/50 transition-colors ${i === 0 ? 'bg-amber-50/40' : ''} ${player.is_qualified === false ? 'italic text-gray-500' : ''}`}
+              className={`flex items-center gap-2 px-3 py-2 hover:bg-teal-50/50 transition-colors ${i === 0 ? 'bg-amber-50/40' : ''} ${player.is_qualified === false ? 'italic text-gray-500 dark:text-gray-400' : ''}`}
             >
               {/* Rank */}
-              <span className={`text-xs font-bold w-5 text-center shrink-0 ${i === 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+              <span className={`text-xs font-bold w-5 text-center shrink-0 ${i === 0 ? 'text-amber-600' : 'text-gray-400 dark:text-gray-500'}`}>
                 {i + 1}
               </span>
 
@@ -69,7 +69,7 @@ function LeaderCard({ category }) {
               <div className="flex-1 min-w-0">
                 <Link
                   to={`/player/${player.player_id}`}
-                  className="text-xs font-semibold text-gray-800 hover:text-nw-teal transition-colors truncate block"
+                  className="text-xs font-semibold text-gray-800 dark:text-gray-200 hover:text-nw-teal transition-colors truncate block"
                 >
                   {player.first_name} {player.last_name}
                 </Link>
@@ -77,15 +77,15 @@ function LeaderCard({ category }) {
                   <span className={`text-[8px] font-bold px-1 py-0 rounded ${badgeClass}`}>
                     {player.division_level}
                   </span>
-                  <span className="text-[10px] text-gray-400 truncate">{player.short_name}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{player.short_name}</span>
                   {player.position && (
-                    <span className="text-[10px] text-gray-400">· {player.position}</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">· {player.position}</span>
                   )}
                 </div>
               </div>
 
               {/* Stat value */}
-              <span className={`text-sm font-bold tabular-nums shrink-0 ${i === 0 ? 'text-nw-teal' : 'text-gray-700'}`}>
+              <span className={`text-sm font-bold tabular-nums shrink-0 ${i === 0 ? 'text-nw-teal' : 'text-gray-700 dark:text-gray-300'}`}>
                 {formatValue(player.value, format)}
               </span>
             </div>
@@ -126,7 +126,7 @@ export default function StatLeaders() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-pnw-slate mb-1">Stat Leaders</h1>
-          <p className="text-sm text-gray-500">Top 10 in key categories · 2026 season{split !== 'All' ? ` · ${split} games` : ''}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Top 10 in key categories · 2026 season{split !== 'All' ? ` · ${split} games` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
@@ -137,7 +137,7 @@ export default function StatLeaders() {
                 className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
                   level === l
                     ? 'bg-nw-teal text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
                 }`}
               >
                 {l}
@@ -152,7 +152,7 @@ export default function StatLeaders() {
                 className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
                   split === s
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
                 }`}
               >
                 {s}
@@ -164,9 +164,9 @@ export default function StatLeaders() {
               type="checkbox"
               checked={qualified}
               onChange={(e) => setQualified(e.target.checked)}
-              className="rounded border-gray-300 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
+              className="rounded border-gray-300 dark:border-gray-600 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
             />
-            <span className="text-sm font-medium text-gray-700">Qualified</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Qualified</span>
           </label>
         </div>
       </div>
@@ -174,7 +174,7 @@ export default function StatLeaders() {
       <StatsLastUpdated className="mb-3" />
 
       {/* Batting Leaders */}
-      <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Hitting</h2>
+      <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Hitting</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         {batting.map(cat => (
           <LeaderCard key={cat.key} category={cat} />
@@ -182,7 +182,7 @@ export default function StatLeaders() {
       </div>
 
       {/* Pitching Leaders */}
-      <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Pitching</h2>
+      <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Pitching</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {pitching.map(cat => (
           <LeaderCard key={cat.key} category={cat} />

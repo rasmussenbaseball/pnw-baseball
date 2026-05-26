@@ -17,15 +17,15 @@ function RequireAuth({ children }) {
         {children}
       </div>
       {/* Overlay prompt */}
-      <div className="absolute inset-0 flex items-start justify-center pt-24 bg-white/40">
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sm:p-8 max-w-sm w-full text-center mx-4">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-pnw-green/10 rounded-full mb-3">
+      <div className="absolute inset-0 flex items-start justify-center pt-24 bg-white/40 dark:bg-gray-900/40">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 sm:p-8 max-w-sm w-full text-center mx-4">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-pnw-green/10 dark:bg-pnw-green/20 rounded-full mb-3">
             <svg className="w-6 h-6 text-pnw-green" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-pnw-slate mb-1">Free Account Required</h2>
-          <p className="text-sm text-gray-500 mb-5">
+          <h2 className="text-lg font-bold text-pnw-slate dark:text-gray-100 mb-1">Free Account Required</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
             Sign up for a free account to access this feature. It only takes a few seconds.
           </p>
           <div className="space-y-2">

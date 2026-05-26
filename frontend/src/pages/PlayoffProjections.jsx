@@ -43,7 +43,7 @@ function oddsTextColor(pct) {
   if (pct >= 0.8) return 'text-teal-700'
   if (pct >= 0.5) return 'text-teal-600'
   if (pct >= 0.2) return 'text-amber-700'
-  return 'text-gray-400'
+  return 'text-gray-400 dark:text-gray-500'
 }
 
 // Map a conference object from the API to the conf_key used by the backend
@@ -93,7 +93,7 @@ function OddsBar({ pct, label, small, clinched }) {
   const width = Math.max(effectivePct * 100, 1)
   return (
     <div className={`flex items-center gap-1.5 ${small ? '' : 'min-w-[80px]'}`}>
-      <div className={`flex-1 bg-gray-100 rounded-full overflow-hidden ${small ? 'h-1.5' : 'h-2'}`}>
+      <div className={`flex-1 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden ${small ? 'h-1.5' : 'h-2'}`}>
         <div
           className={`h-full rounded-full transition-all ${oddsColor(effectivePct)}`}
           style={{ width: `${width}%` }}
@@ -111,25 +111,25 @@ function OddsBar({ pct, label, small, clinched }) {
 
 // ─── Projected Conference Standings Table with Odds ───
 function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
-  const badgeClass = BADGE_COLORS[conference.division_level] || 'bg-gray-500 text-white'
+  const badgeClass = BADGE_COLORS[conference.division_level] || 'bg-gray-50 dark:bg-gray-900/400 text-white'
   const teams = conference.teams || []
 
   // Get max seed to show
   const maxSeed = playoffTeamCount || 0
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+      <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 flex-wrap">
         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>
           {conference.division_level === 'JUCO' ? 'NWAC' : conference.division_level}
         </span>
-        <h3 className="text-sm font-bold text-gray-800 truncate">
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 truncate">
           {conference.conference_name}
         </h3>
         <FrozenBadge frozenInfo={frozenInfo} />
         {maxSeed > 0 && (
-          <span className="text-[9px] text-gray-400 ml-auto">
+          <span className="text-[9px] text-gray-400 dark:text-gray-500 ml-auto">
             Top {maxSeed} make playoffs
           </span>
         )}
@@ -139,7 +139,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
       <div className="overflow-x-auto">
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-[9px] text-gray-400 uppercase tracking-wider">
+            <tr className="text-[9px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
               <th className="text-left pl-3 pr-1 py-1.5 font-semibold">Team</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Current overall record">Record</th>
               <th className="text-center px-1 py-1.5 font-semibold" title="Current conference record">Conf</th>
@@ -195,16 +195,16 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
                       )}
                       <Link
                         to={`/team/${team.team_id}`}
-                        className="font-semibold text-gray-800 hover:text-teal-700 truncate"
+                        className="font-semibold text-gray-800 dark:text-gray-200 hover:text-teal-700 truncate"
                       >
                         {team.short_name}
                       </Link>
                     </div>
                   </td>
-                  <td className="text-center px-1 py-1.5 text-gray-500">
+                  <td className="text-center px-1 py-1.5 text-gray-500 dark:text-gray-400">
                     {team.current_wins}-{team.current_losses}
                   </td>
-                  <td className="text-center px-1 py-1.5 text-gray-500">
+                  <td className="text-center px-1 py-1.5 text-gray-500 dark:text-gray-400">
                     {team.current_conf_wins}-{team.current_conf_losses}
                   </td>
                   <td className="text-center px-1 py-1.5 font-medium">
@@ -217,7 +217,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
                     {formatRecord(team.projected_wins, team.projected_losses)}
                   </td>
                   {!frozenInfo && (
-                    <td className="text-center px-1 py-1.5 text-gray-400">
+                    <td className="text-center px-1 py-1.5 text-gray-400 dark:text-gray-500">
                       {team.conf_games_remaining}
                     </td>
                   )}
@@ -231,7 +231,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
                   {!frozenInfo && (
                     <td className="text-center px-1 py-1.5">
                       {team.sos_remaining_rank ? (
-                        <span className="text-[10px] font-bold text-gray-600">#{team.sos_remaining_rank}</span>
+                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">#{team.sos_remaining_rank}</span>
                       ) : (
                         <span className="text-gray-300">-</span>
                       )}
@@ -247,7 +247,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
                         <span className={`text-[10px] font-bold ${
                           twp >= 0.2 ? 'text-purple-700' :
                           twp >= 0.05 ? 'text-purple-500' :
-                          twp > 0 ? 'text-gray-400' : 'text-gray-200'
+                          twp > 0 ? 'text-gray-400 dark:text-gray-500' : 'text-gray-200'
                         }`}>
                           {formatOdds(twp)}
                         </span>
@@ -258,7 +258,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
                     <span className={`text-[10px] font-bold ${
                       (1 - playoffPct) >= 0.5 ? 'text-red-500' :
                       (1 - playoffPct) >= 0.2 ? 'text-amber-500' :
-                      (1 - playoffPct) > 0.05 ? 'text-gray-400' : 'text-gray-200'
+                      (1 - playoffPct) > 0.05 ? 'text-gray-400 dark:text-gray-500' : 'text-gray-200'
                     }`}>
                       {formatOdds(1 - playoffPct)}
                     </span>
@@ -271,7 +271,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
                         <span className={`text-[9px] font-bold ${
                           seedPct >= 0.3 ? 'text-teal-700' :
                           seedPct >= 0.1 ? 'text-teal-500' :
-                          seedPct > 0 ? 'text-gray-400' : 'text-gray-200'
+                          seedPct > 0 ? 'text-gray-400 dark:text-gray-500' : 'text-gray-200'
                         }`}>
                           {seedPct > 0 ? formatOdds(seedPct) : '-'}
                         </span>
@@ -292,21 +292,21 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
 // ─── Bracket Matchup Line ───
 function BracketMatchup({ teamA, teamB, label, description }) {
   return (
-    <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+    <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-2.5 border border-gray-100 dark:border-gray-700">
       {label && (
-        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{label}</p>
+        <p className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5">{label}</p>
       )}
       <div className="space-y-1">
         <BracketTeamRow team={teamA} isTop />
         <div className="flex items-center gap-2 px-2">
-          <div className="flex-1 border-t border-gray-200" />
+          <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
           <span className="text-[8px] font-bold text-gray-300 uppercase">vs</span>
-          <div className="flex-1 border-t border-gray-200" />
+          <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
         </div>
         <BracketTeamRow team={teamB} />
       </div>
       {description && (
-        <p className="text-[9px] text-gray-400 mt-1.5 italic">{description}</p>
+        <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1.5 italic">{description}</p>
       )}
     </div>
   )
@@ -315,7 +315,7 @@ function BracketMatchup({ teamA, teamB, label, description }) {
 function BracketTeamRow({ team, isTop }) {
   if (!team) return <div className="px-2 py-1.5 text-[10px] text-gray-300 italic">TBD</div>
   return (
-    <div className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white/80 transition-colors">
+    <div className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white dark:bg-gray-800/80 transition-colors">
       <span className="text-[10px] font-bold text-teal-600 w-4 text-right shrink-0">
         #{team.seed}
       </span>
@@ -329,11 +329,11 @@ function BracketTeamRow({ team, isTop }) {
       )}
       <Link
         to={`/team/${team.team_id}`}
-        className="text-[11px] font-semibold text-gray-800 hover:text-teal-700 truncate"
+        className="text-[11px] font-semibold text-gray-800 dark:text-gray-200 hover:text-teal-700 truncate"
       >
         {team.short_name}
       </Link>
-      <span className="text-[9px] text-gray-400 ml-auto whitespace-nowrap">
+      <span className="text-[9px] text-gray-400 dark:text-gray-500 ml-auto whitespace-nowrap">
         {team.projected_conf_record}
       </span>
       {team.power_rating && (
@@ -352,10 +352,10 @@ function GNACBracket({ bracket }) {
   const getTeam = (seed) => teams.find(t => t.seed === seed)
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       <BracketHeader bracket={bracket} />
       <div className="p-3 space-y-3">
-        <p className="text-[10px] text-gray-400 italic">{bracket.description}</p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">{bracket.description}</p>
 
         {/* Seeded Teams */}
         <div className="space-y-1">
@@ -366,7 +366,7 @@ function GNACBracket({ bracket }) {
 
         {/* Round-Robin Day 1 */}
         <div className="space-y-2 mt-3">
-          <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide">Day 1 - Round Robin</p>
+          <p className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Day 1 - Round Robin</p>
           <div className="grid grid-cols-3 gap-2">
             <BracketMatchup teamA={getTeam(2)} teamB={getTeam(3)} label="Game 1" />
             <BracketMatchup teamA={getTeam(1)} teamB={getTeam(3)} label="Game 2" />
@@ -392,10 +392,10 @@ function NWCBracket({ bracket }) {
   const getTeam = (seed) => teams.find(t => t.seed === seed)
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       <BracketHeader bracket={bracket} />
       <div className="p-3 space-y-3">
-        <p className="text-[10px] text-gray-400 italic">{bracket.description}</p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">{bracket.description}</p>
 
         {/* Seeded Teams */}
         <div className="space-y-1">
@@ -406,7 +406,7 @@ function NWCBracket({ bracket }) {
 
         {/* Bracket */}
         <div className="space-y-2 mt-3">
-          <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide">Opening Round</p>
+          <p className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Opening Round</p>
           <div className="grid grid-cols-2 gap-2">
             <BracketMatchup teamA={getTeam(1)} teamB={getTeam(4)} label="Game 1" />
             <BracketMatchup teamA={getTeam(2)} teamB={getTeam(3)} label="Game 2" />
@@ -428,10 +428,10 @@ function CCCBracket({ bracket }) {
   const getTeam = (seed) => teams.find(t => t.seed === seed)
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       <BracketHeader bracket={bracket} />
       <div className="p-3 space-y-3">
-        <p className="text-[10px] text-gray-400 italic">{bracket.description}</p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">{bracket.description}</p>
 
         {/* Seeded Teams */}
         <div className="space-y-1">
@@ -454,7 +454,7 @@ function CCCBracket({ bracket }) {
             </div>
           </div>
 
-          <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide">Opening Round</p>
+          <p className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Opening Round</p>
           <div className="grid grid-cols-2 gap-2">
             <BracketMatchup teamA={getTeam(2)} teamB={getTeam(3)} label="#2 vs #3" />
             <BracketMatchup teamA={getTeam(4)} teamB={getTeam(5)} label="#4 vs #5" />
@@ -478,10 +478,10 @@ function NWACSuperRegionalBracket({ bracket }) {
   const playInB = bracket.play_in_b
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
       <BracketHeader bracket={bracket} />
       <div className="p-3 space-y-3">
-        <p className="text-[10px] text-gray-400 italic">{bracket.description}</p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">{bracket.description}</p>
 
         {/* Teams in this super regional */}
         <div className="space-y-1">
@@ -519,10 +519,10 @@ function NWACChampionshipBracket({ bracket }) {
   const srWinners = bracket.sr_winners || []
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden lg:col-span-2">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden lg:col-span-2">
       <BracketHeader bracket={bracket} />
       <div className="p-3 space-y-3">
-        <p className="text-[10px] text-gray-400 italic">{bracket.description}</p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">{bracket.description}</p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Auto-qualifiers (#1 seeds) */}
@@ -544,8 +544,8 @@ function NWACChampionshipBracket({ bracket }) {
             </p>
             <div className="space-y-1">
               {srWinners.map(sr => (
-                <div key={sr.region} className="px-2 py-1.5 bg-gray-50 rounded border border-gray-100">
-                  <span className="text-[10px] text-gray-400 italic">{sr.label}</span>
+                <div key={sr.region} className="px-2 py-1.5 bg-gray-50 dark:bg-gray-900/40 rounded border border-gray-100 dark:border-gray-700">
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">{sr.label}</span>
                 </div>
               ))}
             </div>
@@ -560,7 +560,7 @@ function NWACChampionshipBracket({ bracket }) {
 function BracketTeamWithDivision({ team, label }) {
   if (!team) return null
   return (
-    <div className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 transition-colors">
+    <div className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 dark:bg-gray-900/40 transition-colors">
       <span className="text-[9px] font-bold text-amber-600 w-12 shrink-0">
         {label || `${team.division} #${team.seed}`}
       </span>
@@ -574,11 +574,11 @@ function BracketTeamWithDivision({ team, label }) {
       )}
       <Link
         to={`/team/${team.team_id}`}
-        className="text-[11px] font-semibold text-gray-800 hover:text-teal-700 truncate"
+        className="text-[11px] font-semibold text-gray-800 dark:text-gray-200 hover:text-teal-700 truncate"
       >
         {team.short_name}
       </Link>
-      <span className="text-[9px] text-gray-400 ml-auto whitespace-nowrap">
+      <span className="text-[9px] text-gray-400 dark:text-gray-500 ml-auto whitespace-nowrap">
         {team.projected_conf_record}
       </span>
       {team.power_rating && (
@@ -593,15 +593,15 @@ function BracketTeamWithDivision({ team, label }) {
 
 // ─── Shared Bracket Components ───
 function BracketHeader({ bracket }) {
-  const badgeClass = BADGE_COLORS[bracket.division_level] || 'bg-gray-500 text-white'
+  const badgeClass = BADGE_COLORS[bracket.division_level] || 'bg-gray-50 dark:bg-gray-900/400 text-white'
   const divLabel = bracket.division_level === 'JUCO' ? 'NWAC' : bracket.division_level
 
   return (
-    <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+    <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeClass}`}>
         {divLabel}
       </span>
-      <h3 className="text-sm font-bold text-gray-800">{bracket.format_name}</h3>
+      <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">{bracket.format_name}</h3>
     </div>
   )
 }
@@ -609,7 +609,7 @@ function BracketHeader({ bracket }) {
 function BracketTeamCompact({ team }) {
   const playoffPct = team.playoff_pct || 0
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-gray-50 hover:bg-teal-50/50 transition-colors">
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-gray-50 dark:bg-gray-900/40 hover:bg-teal-50/50 transition-colors">
       <span className="text-xs font-bold text-teal-600 w-4 text-right shrink-0">
         #{team.seed}
       </span>
@@ -623,11 +623,11 @@ function BracketTeamCompact({ team }) {
       )}
       <Link
         to={`/team/${team.team_id}`}
-        className="text-xs font-semibold text-gray-800 hover:text-teal-700"
+        className="text-xs font-semibold text-gray-800 dark:text-gray-200 hover:text-teal-700"
       >
         {team.short_name}
       </Link>
-      <span className="text-[10px] text-gray-400 ml-auto">
+      <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-auto">
         {team.projected_conf_record} conf
       </span>
       {team.power_rating && (
@@ -654,12 +654,12 @@ function PlayoffOddsTable({ conferences, playoffCountByConf, frozenByKey }) {
         const frozenInfo = frozenByKey ? frozenByKey[getConfKey(conf)] : null
 
         return (
-          <div key={conf.conference_name} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 flex-wrap">
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${BADGE_COLORS[conf.division_level] || 'bg-gray-500 text-white'}`}>
+          <div key={conf.conference_name} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 flex-wrap">
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${BADGE_COLORS[conf.division_level] || 'bg-gray-50 dark:bg-gray-900/400 text-white'}`}>
                 {conf.division_level === 'JUCO' ? 'NWAC' : conf.division_level}
               </span>
-              <h3 className="text-sm font-bold text-gray-800">{conf.conference_name}</h3>
+              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">{conf.conference_name}</h3>
               <FrozenBadge frozenInfo={frozenInfo} />
             </div>
 
@@ -674,10 +674,10 @@ function PlayoffOddsTable({ conferences, playoffCountByConf, frozenByKey }) {
                     <div
                       key={team.team_id}
                       className={`flex items-center gap-2 px-2 py-2 rounded-md transition-colors ${
-                        isIn ? 'bg-teal-50/50 hover:bg-teal-50' : 'bg-gray-50/50 hover:bg-gray-50 opacity-60'
+                        isIn ? 'bg-teal-50/50 hover:bg-teal-50' : 'bg-gray-50 dark:bg-gray-900/40/50 hover:bg-gray-50 dark:bg-gray-900/40 opacity-60'
                       }`}
                     >
-                      <span className="text-[10px] font-bold text-gray-400 w-4 text-right">{i + 1}</span>
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 w-4 text-right">{i + 1}</span>
                       {team.logo_url && (
                         <img
                           src={team.logo_url}
@@ -688,7 +688,7 @@ function PlayoffOddsTable({ conferences, playoffCountByConf, frozenByKey }) {
                       )}
                       <Link
                         to={`/team/${team.team_id}`}
-                        className="text-xs font-semibold text-gray-800 hover:text-teal-700 min-w-[80px] truncate"
+                        className="text-xs font-semibold text-gray-800 dark:text-gray-200 hover:text-teal-700 min-w-[80px] truncate"
                       >
                         {team.short_name}
                       </Link>
@@ -702,7 +702,7 @@ function PlayoffOddsTable({ conferences, playoffCountByConf, frozenByKey }) {
                       <span className={`text-[10px] font-bold w-10 text-right ${
                         (1 - playoffPct) >= 0.5 ? 'text-red-500' :
                         (1 - playoffPct) >= 0.2 ? 'text-amber-500' :
-                        (1 - playoffPct) > 0.05 ? 'text-gray-400' : 'text-gray-200'
+                        (1 - playoffPct) > 0.05 ? 'text-gray-400 dark:text-gray-500' : 'text-gray-200'
                       }`}>
                         {formatOdds(1 - playoffPct)}
                       </span>
@@ -715,10 +715,10 @@ function PlayoffOddsTable({ conferences, playoffCountByConf, frozenByKey }) {
                           return (
                             <div key={si} className="flex flex-col items-center" title={`#${si + 1} seed: ${formatOdds(sp)}`}>
                               <div
-                                className={`w-3 rounded-t-sm transition-all ${sp > 0 ? oddsColor(sp) : 'bg-gray-100'}`}
+                                className={`w-3 rounded-t-sm transition-all ${sp > 0 ? oddsColor(sp) : 'bg-gray-100 dark:bg-gray-700'}`}
                                 style={{ height: `${barH}px` }}
                               />
-                              <span className="text-[7px] text-gray-400 mt-0.5">
+                              <span className="text-[7px] text-gray-400 dark:text-gray-500 mt-0.5">
                                 {si + 1}
                               </span>
                             </div>
@@ -813,7 +813,7 @@ export default function PlayoffProjections() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-pnw-slate">Playoff Projections</h1>
-        <p className="text-sm text-gray-400 mt-1">
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
           Projected end-of-season standings, playoff fields, and tournament odds based on remaining schedules and power ratings
         </p>
         {data?.schedule_last_updated && (
@@ -826,12 +826,12 @@ export default function PlayoffProjections() {
       </div>
 
       {/* Controls */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6 space-y-3">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6 space-y-3">
         <div className="flex flex-wrap gap-4">
           {/* View toggle */}
           <div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wide mr-3">View</span>
-            <div className="inline-flex gap-1 bg-gray-100 rounded-lg p-1">
+            <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-3">View</span>
+            <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
               {[
                 { key: 'standings', label: 'Projected Standings' },
                 { key: 'brackets', label: 'Playoff Brackets' },
@@ -842,8 +842,8 @@ export default function PlayoffProjections() {
                   onClick={() => setView(v.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                     view === v.key
-                      ? 'bg-white text-pnw-slate shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                   }`}
                 >
                   {v.label}
@@ -854,16 +854,16 @@ export default function PlayoffProjections() {
 
           {/* Division filter */}
           <div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wide mr-3">Division</span>
-            <div className="inline-flex gap-1 bg-gray-100 rounded-lg p-1">
+            <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-3">Division</span>
+            <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
               {DIVISIONS.map(d => (
                 <button
                   key={d}
                   onClick={() => setDivFilter(d)}
                   className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                     divFilter === d
-                      ? 'bg-white text-pnw-slate shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                   }`}
                 >
                   {d === 'all' ? 'All' : d === 'JUCO' ? 'NWAC' : d}
@@ -883,7 +883,7 @@ export default function PlayoffProjections() {
       {/* Standings View */}
       {!loading && data && view === 'standings' && (
         <div className="space-y-4">
-          <p className="text-xs text-gray-400 italic">
+          <p className="text-xs text-gray-400 dark:text-gray-500 italic">
             Projected records use power ratings and Elo win probability for each remaining game.
             Playoff odds come from 1,000 Monte Carlo simulations of the remaining schedule.
             Seed columns show the probability of finishing in that exact position.
@@ -897,7 +897,7 @@ export default function PlayoffProjections() {
             />
           ))}
           {filteredConferences.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
               No schedule data available yet. Run the future schedule scraper to generate projections.
             </p>
           )}
@@ -907,7 +907,7 @@ export default function PlayoffProjections() {
       {/* Brackets View */}
       {!loading && data && view === 'brackets' && (
         <div className="space-y-4">
-          <p className="text-xs text-gray-400 italic">
+          <p className="text-xs text-gray-400 dark:text-gray-500 italic">
             Projected playoff fields based on each conference's tournament format and projected conference standings.
             Brackets show matchup structure with seeded teams.
           </p>
@@ -915,7 +915,7 @@ export default function PlayoffProjections() {
             {filteredPlayoffs.map(bracket => renderBracket(bracket))}
           </div>
           {filteredPlayoffs.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
               No playoff projection data available yet.
             </p>
           )}
@@ -925,7 +925,7 @@ export default function PlayoffProjections() {
       {/* Odds View */}
       {!loading && data && view === 'odds' && (
         <div className="space-y-4">
-          <p className="text-xs text-gray-400 italic">
+          <p className="text-xs text-gray-400 dark:text-gray-500 italic">
             Playoff probability and seed distribution for every team, based on 1,000 Monte Carlo simulations.
             The bar chart shows how likely each team is to finish in each seed position.
           </p>
@@ -935,7 +935,7 @@ export default function PlayoffProjections() {
             frozenByKey={frozenByKey}
           />
           {filteredConferences.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
               No projection data available yet.
             </p>
           )}

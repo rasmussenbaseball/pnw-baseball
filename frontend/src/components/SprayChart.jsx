@@ -177,9 +177,9 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
   }
 
   return (
-    <div className="bg-white rounded-md border border-gray-200 p-3">
+    <div className="bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 p-3">
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-        <h3 className="text-sm font-semibold text-gray-800">Spray Chart</h3>
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Spray Chart</h3>
         <div className="flex items-center flex-wrap gap-1 text-[10px]">
           {FILTERS.map(([k, label]) => (
             <button
@@ -361,7 +361,7 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
           {mode === 'pitcher' ? (
             <>Mixed batters · pull-side varies</>
           ) : (
-            <>Pull side: <strong className="text-gray-700">
+            <>Pull side: <strong className="text-gray-700 dark:text-gray-300">
               {bats === 'L' ? 'right' : bats === 'R' ? 'left' : '(switch)'}
             </strong></>
           )}

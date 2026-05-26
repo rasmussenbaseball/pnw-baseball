@@ -31,7 +31,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 mb-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-4 mb-4">
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 items-end">
 
         {/* Season */}
@@ -168,7 +168,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
               onChange={(e) => handleChange('qualified', e.target.checked)}
               className="rounded border-gray-300 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
             />
-            <span className="text-sm font-medium text-gray-700">Qualified</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Qualified</span>
           </label>
         </div>
 
@@ -181,14 +181,14 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
               onChange={(e) => handleChange('conference_only', e.target.checked)}
               className="rounded border-gray-300 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
             />
-            <span className="text-sm font-medium text-gray-700">Conf. Only</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Conf. Only</span>
           </label>
         </div>
 
         {/* Reset */}
         <button
           onClick={() => onChange({ season: filters.season, _type: filters._type })}
-          className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 border border-gray-300 rounded hover:bg-gray-100"
+          className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           Reset Filters
         </button>
