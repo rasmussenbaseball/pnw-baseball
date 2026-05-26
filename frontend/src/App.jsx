@@ -304,13 +304,13 @@ export default function App() {
           <Route path="/hitting" element={<BattingLeaderboard />} />
           <Route path="/pitching" element={<PitchingLeaderboard />} />
           <Route path="/war" element={<WarLeaderboard />} />
-          <Route path="/team-stats" element={<TeamStatsPage />} />
+          <Route path="/team-stats" element={<RequireTier minTier="free"><TeamStatsPage /></RequireTier>} />
           <Route path="/scatter" element={<ScatterPlot />} />
-          <Route path="/summerball" element={<SummerballData />} />
+          <Route path="/summerball" element={<RequireTier minTier="free"><SummerballData /></RequireTier>} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
-          <Route path="/percentiles" element={<Percentiles />} />
-          <Route path="/records" element={<RecordsPage />} />
-          <Route path="/playoff-projections" element={<PlayoffProjections />} />
+          <Route path="/percentiles" element={<RequireTier minTier="free"><Percentiles /></RequireTier>} />
+          <Route path="/records" element={<RequireTier minTier="free"><RecordsPage /></RequireTier>} />
+          <Route path="/playoff-projections" element={<RequireTier minTier="free"><PlayoffProjections /></RequireTier>} />
 
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />
@@ -321,7 +321,7 @@ export default function App() {
           <Route path="/team/:teamId" element={<TeamDetail />} />
           <Route path="/team-ratings" element={<TeamRatings />} />
           <Route path="/national-rankings" element={<NationalRankings />} />
-          <Route path="/team-history" element={<TeamHistory />} />
+          <Route path="/team-history" element={<RequireTier minTier="free"><TeamHistory /></RequireTier>} />
           <Route path="/recruiting-classes" element={<RequireTier minTier="premium"><RecruitingClasses /></RequireTier>} />
           <Route path="/recruiting/breakdown" element={<RequireTier minTier="premium"><RecruitingBreakdown /></RequireTier>} />
           <Route path="/recruiting/hometown" element={<RequireTier minTier="premium"><HometownSearch /></RequireTier>} />
@@ -394,7 +394,7 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><JucoTracker /></PortalLayout></RequirePortalAccess>} />
           {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
-          <Route path="/news/commitments" element={<NewsCommitments />} />
+          <Route path="/news/commitments" element={<RequireTier minTier="free"><NewsCommitments /></RequireTier>} />
           <Route path="/news/:slug" element={<NewsArticle />} />
           <Route path="/articles" element={<RequireArticleAuthor><ArticlesList /></RequireArticleAuthor>} />
           <Route path="/articles/new" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />
@@ -421,13 +421,13 @@ export default function App() {
           <Route path="/team-quiz" element={<RequireAuth><TeamQuiz /></RequireAuth>} />
           <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
-          <Route path="/graphics-hub" element={<GraphicsHub />} />
+          <Route path="/graphics-hub" element={<RequireTier minTier="free"><GraphicsHub /></RequireTier>} />
           <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />
           <Route path="/key-matchup" element={<RequireAuth><KeyMatchupGraphic /></RequireAuth>} />
           <Route path="/series-recap" element={<RequireAuth><SeriesRecapGraphic /></RequireAuth>} />
           <Route path="/tournament-bracket" element={<RequireAuth><TournamentBracketGraphic /></RequireAuth>} />
           <Route path="/daily-recap" element={<RequireAuth><DailyRecapGraphic /></RequireAuth>} />
-          <Route path="/feature-request" element={<RequireAuth><FeatureRequest /></RequireAuth>} />
+          <Route path="/feature-request" element={<FeatureRequest />} />
           <Route path="/player-pages" element={<RequireAuth><PlayerGraphic /></RequireAuth>} />
           <Route path="/conference-standings" element={<RequireAuth><ConferenceStandingsGraphic /></RequireAuth>} />
           <Route path="/all-conference-graphic" element={<RequireAuth><AllConferenceGraphic /></RequireAuth>} />

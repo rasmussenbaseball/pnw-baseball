@@ -6,17 +6,21 @@ import { useAuth } from '../context/AuthContext'
 // ─── Navigation structure ───
 const NAV = [
   {
+    // Visibility model: main tabs are always open so anonymous visitors
+    // can SEE what's available. Individual items carry `needsAuth: true`
+    // to show a lock icon for anonymous users and route-level gates
+    // (RequireTier minTier="free") handle the actual block.
     label: 'Stats',
     items: [
       { to: '/stat-leaders', label: 'Stat Leaders', desc: 'Top 10 in key categories' },
       { to: '/hitting', label: 'Hitting', desc: 'Batting leaderboards & stats' },
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
-      { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats' },
+      { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats', needsAuth: true },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
-      { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings' },
-      { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)' },
-      { to: '/records', label: 'Records', desc: 'Single-season & career record holders' },
-      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards" },
+      { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings', needsAuth: true },
+      { to: '/summerball', label: 'Summerball Data', desc: 'Summer league stats (WCL, PIL)', needsAuth: true },
+      { to: '/records', label: 'Records', desc: 'Single-season & career record holders', needsAuth: true },
+      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards", needsAuth: true },
     ],
   },
   {
@@ -27,19 +31,19 @@ const NAV = [
       { to: '/standings', label: 'Standings', desc: 'Conference & overall rankings' },
       { to: '/team-ratings', label: 'Team Ratings (PPI)', desc: 'Within-division power rankings' },
       { to: '/national-rankings', label: 'National Rankings', desc: 'Where PNW teams rank nationally' },
-      { to: '/team-history', label: 'History', desc: 'Historical team performance' },
+      { to: '/team-history', label: 'History', desc: 'Historical team performance', needsAuth: true },
     ],
   },
   {
+    // Tab itself is open so anonymous visitors can see what recruiting
+    // tools exist. Each item is needsAuth so the lock icon shows and
+    // clicking sends them to the upsell card.
     label: 'Recruiting',
-    // Anonymous gate: recruiting tools (guides, hometown search, map,
-    // breakdowns) require at minimum a free account.
-    authRequired: true,
     items: [
-      { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends' },
-      { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city' },
-      { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis' },
-      { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations' },
+      { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends', needsAuth: true },
+      { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city', needsAuth: true },
+      { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis', needsAuth: true },
+      { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations', needsAuth: true },
       { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
     ],
   },
@@ -51,33 +55,40 @@ const NAV = [
       { to: '/news', label: 'Articles',
         desc: 'Stories, recaps, and notes from around PNW college baseball' },
       { to: '/news/commitments', label: 'Commitments',
-        desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)' },
+        desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)',
+        needsAuth: true },
     ],
   },
-  // Games is auth-gated for anonymous users — PNW Grid and Team Quiz
-  // need a free account to play. Coaching Sim has its own premium gate
-  // on top of that.
+  // Tab is open so anonymous can browse; each item enforces its own
+  // gate (free account minimum for Grid/Quiz, premium for the Sim).
   {
     label: 'Games',
-    authRequired: true,
     items: [
       { to: '/gm', label: 'NW Coaching Simulator',
-        desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)' },
+        desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)',
+        needsAuth: true },
       { to: '/pnw-grid', label: 'PNW Grid',
-        desc: 'Immaculate Grid for PNW baseball' },
+        desc: 'Immaculate Grid for PNW baseball',
+        needsAuth: true },
       { to: '/team-quiz', label: 'Team Quiz',
-        desc: 'Test your knowledge of a PNW team across one or more seasons' },
+        desc: 'Test your knowledge of a PNW team across one or more seasons',
+        needsAuth: true },
     ],
   },
   {
+    // Tab is open. Every item inside is premium-gated at the route
+    // level; the lock icon here signals that for anonymous browsers.
     label: 'Coaching',
-    authRequired: true,
     items: [
       { to: '/portal', label: 'Coach & Scouting Portal',
-        desc: 'Trends, opponent scouting, and PDFs in one workspace' },
-      { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons' },
-      { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats' },
-      { to: '/draft', label: 'Draft', desc: 'PNW college baseball MLB draft board' },
+        desc: 'Trends, opponent scouting, and PDFs in one workspace',
+        needsAuth: true },
+      { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons',
+        needsAuth: true },
+      { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats',
+        needsAuth: true },
+      { to: '/draft', label: 'Draft', desc: 'PNW college baseball MLB draft board',
+        needsAuth: true },
     ],
   },
   {
@@ -92,7 +103,8 @@ const NAV = [
       { to: '/pricing', label: 'Subscriptions',
         desc: 'Compare Free, Premium, and Coach & Scout tiers' },
       { to: '/graphics-hub', label: 'Graphics',
-        desc: 'Pick from every social-media graphic generator on the site' },
+        desc: 'Pick from every social-media graphic generator on the site',
+        needsAuth: true },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
       // Author-only — hidden from the dropdown unless the current user's
@@ -107,9 +119,11 @@ const NAV = [
       // are no longer the active tools used regularly.
       { heading: 'Archived' },
       { to: '/all-conference', label: 'All-Conference Generator',
-        desc: 'Build mock first, second, and HM teams from season stats' },
+        desc: 'Build mock first, second, and HM teams from season stats',
+        needsAuth: true },
       { to: '/playoff-projections', label: 'Playoff Projections',
-        desc: 'Projected standings & playoff fields' },
+        desc: 'Projected standings & playoff fields',
+        needsAuth: true },
     ],
   },
 ]
@@ -475,22 +489,33 @@ function filterItemsForUser(items, userEmail) {
 }
 
 // ─── Dropdown panel component ───
+// Three states a sub-item can be in:
+//   - locked: true       → "Coming soon", always opaque + locked icon
+//   - needsAuth: true    → lock icon shown ONLY for anonymous users so
+//                          they can see what they're missing. Signed-in
+//                          users see it as a normal item.
+//   - (default)          → fully open
 function DropdownPanel({ items, onClose }) {
   const { user } = useAuth()
   const visible = filterItemsForUser(items, user?.email)
+  const isAnon = !user
   return (
     <div className="grid gap-0.5 p-2" style={{ minWidth: 240 }}>
-      {visible.map((item, i) => (
-        // Items with a `heading` render as a labeled divider instead of a
-        // clickable link — used to group "Archived" tools at the bottom
-        // of the Misc dropdown.
-        item.heading ? (
-          <div key={`h-${i}`} className="px-2.5 pt-3 pb-1 mt-1 border-t border-white/10">
-            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-teal-300/60">
-              {item.heading}
-            </span>
-          </div>
-        ) : (
+      {visible.map((item, i) => {
+        if (item.heading) {
+          return (
+            <div key={`h-${i}`} className="px-2.5 pt-3 pb-1 mt-1 border-t border-white/10">
+              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-teal-300/60">
+                {item.heading}
+              </span>
+            </div>
+          )
+        }
+        const showLock = item.locked || (item.needsAuth && isAnon)
+        const subtext = item.locked
+          ? 'Coming soon'
+          : (item.needsAuth && isAnon ? 'Free account required' : item.desc)
+        return (
           <Link
             key={item.to}
             to={item.to}
@@ -501,7 +526,7 @@ function DropdownPanel({ items, onClose }) {
           >
             <span className="text-[13px] font-semibold text-white group-hover:text-teal-200 transition-colors flex items-center gap-1.5 leading-tight">
               {item.label}
-              {item.locked && (
+              {showLock && (
                 <svg className="w-3 h-3 text-teal-300/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                   <path d="M7 11V7a5 5 0 0110 0v4" />
@@ -509,11 +534,11 @@ function DropdownPanel({ items, onClose }) {
               )}
             </span>
             <span className="text-[11px] text-teal-300/60 mt-0 leading-tight">
-              {item.locked ? 'Coming soon' : item.desc}
+              {subtext}
             </span>
           </Link>
         )
-      ))}
+      })}
     </div>
   )
 }
@@ -821,25 +846,30 @@ export default function Header() {
                             </span>
                           </div>
                         ) : (
-                          <Link
-                            key={item.to}
-                            to={item.to}
-                            onClick={() => { setMobileOpen(false); setMobileExpanded(null) }}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors
-                              ${item.locked ? 'opacity-50' : ''}
-                              ${location.pathname === item.to
-                                ? 'bg-white/15 text-white font-medium'
-                                : 'text-teal-200/70 hover:text-white hover:bg-white/10'
-                              }`}
-                          >
-                            {item.label}
-                            {item.locked && (
-                              <svg className="w-3 h-3 text-teal-300/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                                <path d="M7 11V7a5 5 0 0110 0v4" />
-                              </svg>
-                            )}
-                          </Link>
+                          (() => {
+                            const showLock = item.locked || (item.needsAuth && !user)
+                            return (
+                              <Link
+                                key={item.to}
+                                to={item.to}
+                                onClick={() => { setMobileOpen(false); setMobileExpanded(null) }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors
+                                  ${item.locked ? 'opacity-50' : ''}
+                                  ${location.pathname === item.to
+                                    ? 'bg-white/15 text-white font-medium'
+                                    : 'text-teal-200/70 hover:text-white hover:bg-white/10'
+                                  }`}
+                              >
+                                {item.label}
+                                {showLock && (
+                                  <svg className="w-3 h-3 text-teal-300/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                                  </svg>
+                                )}
+                              </Link>
+                            )
+                          })()
                         )
                       ))}
                     </div>
