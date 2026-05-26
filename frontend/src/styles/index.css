@@ -75,6 +75,37 @@ tr:hover td.sticky-col {
   @apply bg-teal-50;
 }
 
+/* ── Stat-table dark mode overrides ─────────────────────────────
+   Light theme styling lives above. When the <html> element gets
+   the .dark class (from ThemeContext), every stat-table on the
+   site flips its row backgrounds, borders, and hover state to
+   match. This is the single highest-leverage dark-mode change —
+   covers leaderboards, team stat tables, player pages, scouting
+   sheets, and anywhere else .stat-table is rendered. */
+html.dark .stat-table tbody td {
+  border-color: #374151;            /* gray-700 */
+}
+html.dark .stat-table tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+html.dark .stat-table tbody tr:hover {
+  background-color: rgba(13, 148, 136, 0.18);  /* teal-700 alpha */
+}
+html.dark .stat-table tbody td.sticky-col {
+  background-color: #1f2937;        /* gray-800 */
+}
+html.dark .stat-table tbody tr:nth-child(even) td.sticky-col {
+  background-color: #1a2430;        /* slightly darker for stripe */
+}
+html.dark .stat-table tbody tr:hover td.sticky-col,
+html.dark tr:hover td.sticky-col {
+  background-color: rgba(13, 148, 136, 0.25);
+}
+html.dark .stat-table tbody td,
+html.dark .stat-table tbody td.sticky-col {
+  color: #e5e7eb;                   /* gray-200 — body text */
+}
+
 /* Player name link style */
 .player-link {
   @apply text-nw-teal hover:text-nw-teal-dark font-medium hover:underline;
