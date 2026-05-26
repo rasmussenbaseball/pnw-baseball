@@ -54,20 +54,10 @@ export function useTier() {
   })
   const [loading, setLoading] = useState(true)
 
-  // Preview override: when the author has picked a preview tier, return
-  // it instead of the real tier. 'anonymous' maps to 'none'. Note: when
-  // preview === 'anonymous', AuthContext already hides the user object,
-  // so this path is only hit for free/premium/coach previews.
-  if (isAuthor && previewTier) {
-    const mapped =
-      previewTier === 'anonymous' ? 'none'
-        : previewTier === 'free'     ? 'free'
-        : previewTier === 'premium'  ? 'premium'
-        : previewTier === 'coach'    ? 'coach'
-        : tier
-    return { tier: mapped, loading: false, user, isPreview: true }
-  }
-
+  // IMPORTANT: every hook (useState, useEffect, etc.) must be called on
+  // every render in the same order. The preview override is applied
+  // AFTER all hooks so React's hook count stays stable across renders
+  // (including the click that flips previewTier on and off).
   useEffect(() => {
     if (authLoading) return
     if (!user || !session) {
@@ -95,6 +85,20 @@ export function useTier() {
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [user, session, authLoading])
+
+  // Preview override: when the author has picked a preview tier, return
+  // it instead of the real tier. 'anonymous' maps to 'none'. Note: when
+  // preview === 'anonymous', AuthContext already hides the user object,
+  // so this path is only hit for free/premium/coach previews.
+  if (isAuthor && previewTier) {
+    const mapped =
+      previewTier === 'anonymous' ? 'none'
+        : previewTier === 'free'     ? 'free'
+        : previewTier === 'premium'  ? 'premium'
+        : previewTier === 'coach'    ? 'coach'
+        : tier
+    return { tier: mapped, loading: false, user, isPreview: true }
+  }
 
   return { tier, loading: loading || authLoading, user }
 }

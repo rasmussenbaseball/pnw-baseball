@@ -16,7 +16,11 @@ function CrashFallback() {
         <h1 className="text-2xl font-bold text-pnw-slate mb-2">Something went wrong</h1>
         <p className="text-gray-600 mb-6">
           We hit an unexpected error and have been notified. Try reloading the page.
-          If it keeps happening, email nate.rasmussen26@gmail.com so we can take a look.
+          If it keeps happening,{' '}
+          <a href="/feature-request" className="text-pnw-green underline hover:text-pnw-forest">
+            let us know
+          </a>{' '}
+          so we can take a look.
         </p>
         <button
           onClick={() => window.location.reload()}

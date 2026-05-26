@@ -38,7 +38,7 @@ const NAV = [
   },
   {
     // Tab itself is open so anonymous visitors can see what recruiting
-    // tools exist. Each item is needsAuth so the lock icon shows and
+    // tools exist. Each item carries requires:'premium' so the lock
     // clicking sends them to the upsell card.
     label: 'Recruiting',
     items: [
