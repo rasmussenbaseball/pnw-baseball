@@ -1,16 +1,18 @@
 name: NWAC Box Score Scraper
 
 on:
-  schedule:
-    # First pass: 10 PM Pacific (5 AM UTC next day).
-    # Captures games for the first time, right after they're final.
-    - cron: '0 5 * * *'
-    # Second pass: 6 AM Pacific (13 UTC). Re-scrapes games from the
-    # last 2 days to catch scorer corrections that land between the
-    # 10 PM initial scrape and morning recap-graphic generation.
-    # NWAC scorers frequently update earned-runs, hits, and pitcher
-    # splits for several hours after a game ends.
-    - cron: '0 13 * * *'
+  # PAUSED for 2026 offseason — NWAC season ended May 25, 2026.
+  # Re-enable the `schedule:` block when 2027 season starts.
+  # schedule:
+  #   # First pass: 10 PM Pacific (5 AM UTC next day).
+  #   # Captures games for the first time, right after they're final.
+  #   - cron: '0 5 * * *'
+  #   # Second pass: 6 AM Pacific (13 UTC). Re-scrapes games from the
+  #   # last 2 days to catch scorer corrections that land between the
+  #   # 10 PM initial scrape and morning recap-graphic generation.
+  #   # NWAC scorers frequently update earned-runs, hits, and pitcher
+  #   # splits for several hours after a game ends.
+  #   - cron: '0 13 * * *'
   workflow_dispatch:  # Allow manual runs
     inputs:
       mode:

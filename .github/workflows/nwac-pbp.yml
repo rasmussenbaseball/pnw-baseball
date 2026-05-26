@@ -1,11 +1,13 @@
 name: NWAC PBP Scraper
 
 on:
-  schedule:
-    # 11 PM Pacific (6 AM UTC) — runs after the 10 PM Pacific NWAC
-    # box-score scrape (5 AM UTC) so player IDs from the box are
-    # already in place before we try to match PBP narrative names.
-    - cron: '0 6 * * *'
+  # PAUSED for 2026 offseason — NWAC season ended May 25, 2026.
+  # Re-enable the `schedule:` block when 2027 season starts.
+  # schedule:
+  #   # 11 PM Pacific (6 AM UTC) — runs after the 10 PM Pacific NWAC
+  #   # box-score scrape (5 AM UTC) so player IDs from the box are
+  #   # already in place before we try to match PBP narrative names.
+  #   - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       mode:

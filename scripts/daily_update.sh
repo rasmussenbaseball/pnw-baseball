@@ -73,34 +73,38 @@ echo ""
 run_step "D1 stats (Pac-12 / WCC PNW teams)" \
     python3 scripts/scrape_d1.py --season "$SEASON"
 
-# ── D2 / D3 paused: their 2026 regular seasons are over (May 2026) and
-# both leagues froze on conference-freeze day. Re-enable when the next
-# season opens (typically late January / early February). To turn back
-# on, just uncomment the two run_step blocks below AND change the
-# box-score line further down from D1+NAIA back to default ("all").
+# ── D2 / D3 / NAIA / NWAC all paused: their 2026 seasons ended in May
+# 2026 (and the NWAC championships wrapped May 25). Only D1 keeps
+# scraping through June for the College World Series and selection.
+# Re-enable when each league's next season opens (typically late
+# January / early February). To turn back on:
+#   1. Uncomment the run_step block for the league(s) you want here
+#   2. Uncomment its matching --division line in the box scores section
+#   3. For NWAC, also re-enable the GitHub Actions workflows
+#      (uncomment the `schedule:` blocks in .github/workflows/nwac-*.yml)
 # ──
 # run_step "D2 stats (GNAC)" \
 #     python3 scripts/scrape_d2.py --season "$SEASON"
 #
 # run_step "D3 stats (NWC)" \
 #     python3 scripts/scrape_d3.py --season "$SEASON"
+#
+# run_step "NAIA stats (CCC)" \
+#     python3 scripts/scrape_naia.py --season "$SEASON"
 
-run_step "NAIA stats (CCC)" \
-    python3 scripts/scrape_naia.py --season "$SEASON"
-
-# NWAC/Willamette/Seattle U — automated via GitHub Actions (nwac-stats.yml)
-# Runs daily at 7 PM Pacific. No manual Mac runs needed.
+# NWAC/Willamette/Seattle U — paused until 2027 season (GH Actions
+# workflows have their `schedule:` blocks commented out).
 
 # ── Step 2: Scrape box scores (game-by-game stats) ─────────
 # Fetches individual game batting/pitching lines from schedule pages.
-# Scoped to D1 + NAIA while D2/D3 seasons are over — flip back to the
-# default (no --division) when D2/D3 stats scrapes are re-enabled above.
+# D1 only while D2/D3/NAIA seasons are over — uncomment matching
+# --division lines as their season scrapes are re-enabled above.
 
 run_step "Box scores (D1)" \
     python3 scripts/scrape_boxscores.py --season "$SEASON" --division D1
 
-run_step "Box scores (NAIA)" \
-    python3 scripts/scrape_boxscores.py --season "$SEASON" --division NAIA
+# run_step "Box scores (NAIA)" \
+#     python3 scripts/scrape_boxscores.py --season "$SEASON" --division NAIA
 
 # ── Step 2b: Update player positions from game logs ────────
 # Uses most-played position from box scores instead of generic roster data.

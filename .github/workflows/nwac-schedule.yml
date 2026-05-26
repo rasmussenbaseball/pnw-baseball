@@ -1,15 +1,19 @@
 name: NWAC Schedule Scraper
 
 on:
-  schedule:
-    # Run every 2 hours from 11 AM to 9 PM Pacific, plus two late-night runs.
-    # The composite scoreboard only shows the CURRENT day's games, so a late
-    # game (e.g. a 7:35 PM start ending ~10:30 PM) must be scraped before the
-    # composite rolls over to the next day or its result is stranded. The 10 PM
-    # and 11 PM PT runs catch those late finals during tournament week.
-    # PT->UTC (PDT, UTC-7): 11am=18, 1pm=20, 3pm=22, 5pm=0, 7pm=2, 9pm=4,
-    #                        10pm=5, 11pm=6 UTC
-    - cron: '0 18,20,22,0,2,4,5,6 * * *'
+  # PAUSED for 2026 offseason — NWAC season ended May 25, 2026.
+  # Re-enable by uncommenting the `schedule:` block below when the 2027
+  # season opens (typically late Jan / early Feb). workflow_dispatch
+  # stays active so we can manually trigger a run if needed in between.
+  # schedule:
+  #   # Run every 2 hours from 11 AM to 9 PM Pacific, plus two late-night runs.
+  #   # The composite scoreboard only shows the CURRENT day's games, so a late
+  #   # game (e.g. a 7:35 PM start ending ~10:30 PM) must be scraped before the
+  #   # composite rolls over to the next day or its result is stranded. The 10 PM
+  #   # and 11 PM PT runs catch those late finals during tournament week.
+  #   # PT->UTC (PDT, UTC-7): 11am=18, 1pm=20, 3pm=22, 5pm=0, 7pm=2, 9pm=4,
+  #   #                        10pm=5, 11pm=6 UTC
+  #   - cron: '0 18,20,22,0,2,4,5,6 * * *'
   workflow_dispatch:  # Allow manual runs
 
 jobs:
