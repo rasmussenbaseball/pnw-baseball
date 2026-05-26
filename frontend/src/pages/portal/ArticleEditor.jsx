@@ -21,6 +21,12 @@ import { useMyArticle, useArticleMutations } from '../../hooks/useArticles'
 
 const API_BASE = '/api/v1'
 
+// HTML comment used as the free-preview break marker. Mirrors
+// PAYWALL_MARKER in backend articles.py. Invisible in any markdown
+// renderer; we use a custom <ReactMarkdown> component to swap it for
+// a visible divider in our own preview pane.
+const PAYWALL_MARKER = '<!-- nwbb:paywall -->'
+
 export default function ArticleEditor() {
   const { id } = useParams()
   const editId = id ? parseInt(id, 10) : null
@@ -137,6 +143,21 @@ export default function ArticleEditor() {
     if (!url) return
     const text = sel || window.prompt('Link text', '') || 'link'
     insertAtCursor(`[${text}](${url})`)
+  }
+
+  // Insert the paywall break at the current cursor position. Everything
+  // ABOVE this point in the body is shown to free / anonymous readers
+  // as a preview; everything BELOW is hidden behind the paywall card.
+  // Free-tier articles ignore the marker entirely — the backend strips
+  // it before serving.
+  function insertPaywallBreak() {
+    // Refuse to insert more than one — having two would confuse the
+    // split logic backend-side. Quietly bail.
+    if (bodyMd.includes(PAYWALL_MARKER)) {
+      window.alert('This article already has a free-preview break. Delete the existing one before inserting another.')
+      return
+    }
+    insertAtCursor(`\n\n${PAYWALL_MARKER}\n\n`)
   }
 
   async function uploadImage(file) {
@@ -281,6 +302,13 @@ export default function ArticleEditor() {
             <ToolBtn label="•"     title="Bullet list"      onClick={() => prefixLine('- ')} disabled={isPreview} />
             <ToolBtn label="1."    title="Numbered list"    onClick={() => prefixLine('1. ')} disabled={isPreview} />
             <ToolBtn label="</>"   title="Inline code"      onClick={() => wrapSelection('`')} disabled={isPreview} mono />
+            <ToolDivider />
+            <ToolBtn
+              label="🔒"
+              title="Insert free-preview break — content above is free, below is paywalled"
+              onClick={insertPaywallBreak}
+              disabled={isPreview || requiresTier === 'free'}
+            />
           </div>
 
           {/* Right cluster */}
@@ -478,6 +506,16 @@ function PreviewView({ title, subtitle, authorName, publishedAt, bodyMd }) {
   const date = publishedAt
     ? new Date(publishedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+
+  // Split the body on the paywall marker so we can render a visible
+  // divider between the free preview and the paywalled portion. The
+  // marker itself is an invisible HTML comment in markdown — we'd
+  // never see it without this split.
+  const hasMarker = (bodyMd || '').includes(PAYWALL_MARKER)
+  const [preview, paywalled] = hasMarker
+    ? bodyMd.split(PAYWALL_MARKER, 2)
+    : [bodyMd || '', '']
+
   return (
     <article>
       <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 leading-tight">
@@ -491,10 +529,33 @@ function PreviewView({ title, subtitle, authorName, publishedAt, bodyMd }) {
       </p>
       <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {bodyMd || '_Nothing written yet._'}
+          {preview || '_Nothing written yet._'}
         </ReactMarkdown>
       </div>
+
+      {hasMarker && (
+        <>
+          <PreviewBreakDivider />
+          <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{paywalled.trimStart()}</ReactMarkdown>
+          </div>
+        </>
+      )}
     </article>
+  )
+}
+
+function PreviewBreakDivider() {
+  return (
+    <div className="my-6 flex items-center gap-3" aria-label="Paywall break">
+      <span className="h-px flex-1 bg-amber-300/60"></span>
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
+                       bg-amber-100 text-amber-800 text-[10px] font-bold uppercase
+                       tracking-wider border border-amber-200">
+        🔒 Paywall break — preview ends here
+      </span>
+      <span className="h-px flex-1 bg-amber-300/60"></span>
+    </div>
   )
 }
 

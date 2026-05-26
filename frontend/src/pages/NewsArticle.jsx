@@ -88,18 +88,36 @@ export default function NewsArticle() {
         </p>
       </header>
 
-      {isLocked && data.excerpt && (
-        <p className="text-base sm:text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-6 italic">
-          {data.excerpt}
-        </p>
-      )}
-
+      {/* Body rendering for both states. When locked, body_md is the
+          free-preview portion (everything before the author's paywall
+          break, served by the backend). If no break was set, body_md
+          is empty and we fall back to the excerpt. */}
       {isLocked ? (
-        <PaywallCard
-          requiredTier={requiredTier}
-          signedIn={!!user}
-          from={location.pathname}
-        />
+        <>
+          {data.body_md ? (
+            <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800 dark:text-gray-200 dark:prose-invert">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {data.body_md}
+              </ReactMarkdown>
+            </div>
+          ) : data.excerpt ? (
+            <p className="text-base sm:text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-6 italic">
+              {data.excerpt}
+            </p>
+          ) : null}
+
+          {/* Decorative fade above the paywall so the preview text doesn't
+              feel like it was abruptly chopped off. Only render when there's
+              actual preview content above. */}
+          {data.body_md && <PreviewFade />}
+
+          <PaywallCard
+            requiredTier={requiredTier}
+            signedIn={!!user}
+            hasPreview={!!data.body_md}
+            from={location.pathname}
+          />
+        </>
       ) : (
         <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800 dark:text-gray-200 dark:prose-invert">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -112,7 +130,24 @@ export default function NewsArticle() {
 }
 
 
-function PaywallCard({ requiredTier, signedIn, from }) {
+// Tiny fade between the free preview text and the paywall card. Sells
+// the "there's more below" feeling without being a hard hit.
+function PreviewFade() {
+  return (
+    <div className="relative h-12 -mt-8 pointer-events-none"
+         style={{
+           background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, var(--paywall-fade) 100%)',
+         }}>
+      <style>{`
+        :root { --paywall-fade: #ffffff; }
+        html.dark { --paywall-fade: #111827; }
+      `}</style>
+    </div>
+  )
+}
+
+
+function PaywallCard({ requiredTier, signedIn, hasPreview, from }) {
   const label = TIER_LABELS[requiredTier] || requiredTier
   return (
     <div className="bg-gradient-to-br from-nw-teal/5 to-nw-teal/10
@@ -126,12 +161,16 @@ function PaywallCard({ requiredTier, signedIn, from }) {
         </svg>
       </div>
       <h3 className="text-xl font-extrabold text-gray-900 dark:text-gray-100 mb-1">
-        This article is for {label} subscribers
+        {hasPreview ? `Keep reading with ${label}` : `This article is for ${label} subscribers`}
       </h3>
       <p className="text-sm text-gray-600 dark:text-gray-300 mb-5 max-w-sm mx-auto">
-        {signedIn
-          ? `Upgrade to ${label} to read this article and unlock every paywalled story.`
-          : 'Sign in or subscribe to read this article and unlock every paywalled story.'}
+        {hasPreview
+          ? signedIn
+            ? `You've read the free preview. ${label} subscribers see the full story plus every other paywalled article.`
+            : `You've read the free preview. Sign in or subscribe to ${label} to read the rest and unlock every paywalled article.`
+          : signedIn
+            ? `Upgrade to ${label} to read this article and unlock every paywalled story.`
+            : 'Sign in or subscribe to read this article and unlock every paywalled story.'}
       </p>
       <div className="flex flex-col sm:flex-row gap-2 justify-center">
         {!signedIn && (

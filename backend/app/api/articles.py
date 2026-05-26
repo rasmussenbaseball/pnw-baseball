@@ -114,6 +114,16 @@ class ArticlePublishToggle(BaseModel):
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
+# Paywall break marker. Authors insert this via a toolbar button in
+# /articles/edit. It's an HTML comment so it never renders in any
+# markdown processor — invisible to readers regardless of locked state.
+#
+# When a tier-locked viewer fetches the article, everything BEFORE the
+# marker is sent as a free preview; everything AFTER is stripped. When
+# an unlocked viewer fetches, the marker itself is stripped so the body
+# reads continuously.
+PAYWALL_MARKER = "<!-- nwbb:paywall -->"
+
 
 def _slugify(text: str) -> str:
     """Turn a title into a URL-safe slug. Trims to 80 chars to keep URLs sane."""
@@ -304,13 +314,30 @@ def get_published_article(slug: str, request: Request):
         viewer_user_id = ctx["user_id"]
         is_author = bool(viewer_user_id) and str(r.get("author_id")) == str(viewer_user_id)
         full = _row_to_full(r)
+        raw_body = full.get("body_md") or ""
+        has_marker = PAYWALL_MARKER in raw_body
+
         # Authors always see their own articles unlocked — even paywalled
         # ones — so they can preview the rendered output. The published
         # version still locks for everyone else.
         if is_author or _tier_meets(actual, required):
+            # Unlocked viewer: strip the marker so the body reads
+            # continuously without the invisible HTML comment.
+            full["body_md"] = raw_body.replace(PAYWALL_MARKER, "").strip()
             full["locked"] = False
+            full["has_preview_break"] = has_marker  # informational for the editor
         else:
-            full["body_md"] = ""
+            # Locked viewer: send everything before the marker as a
+            # free preview. If there's no marker, the body is fully
+            # hidden (existing behavior — frontend will show the
+            # excerpt + paywall card).
+            if has_marker:
+                preview_md = raw_body.split(PAYWALL_MARKER, 1)[0].rstrip()
+                full["body_md"] = preview_md
+                full["has_preview_break"] = True
+            else:
+                full["body_md"] = ""
+                full["has_preview_break"] = False
             full["locked"] = True
             full["viewer_tier"] = actual
         return full
