@@ -118,6 +118,17 @@ function DefaultUpsell({ userTier, minTier, signedIn, from }) {
             Compare plans
           </Link>
         </div>
+        {/* Escape hatch back to public content — keeps people from
+            feeling trapped on the upsell card. */}
+        <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-700">
+          <Link
+            to="/"
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-nw-teal
+                       dark:hover:text-nw-teal transition-colors inline-flex items-center gap-1"
+          >
+            ← Back to homepage
+          </Link>
+        </div>
       </div>
     </div>
   )
