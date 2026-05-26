@@ -5,6 +5,7 @@ import { divisionBadgeClass, formatGameTime } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import PreviewTierWidget from '../components/PreviewTierWidget'
 import MaintenanceBanner from '../components/MaintenanceBanner'
+import UpgradePromoWidget from '../components/UpgradePromoWidget'
 
 const SEASON = 2026
 
@@ -66,6 +67,9 @@ export default function Homepage() {
         {/* Left column - wider (2/3) */}
         <div className="lg:col-span-2 flex flex-col gap-5">
           <NationalRankingsWidget rankings={rankings} />
+          {/* Conversion nudge: renders only for anonymous + free users.
+              Premium / Coach / Dev viewers see nothing in this slot. */}
+          <UpgradePromoWidget />
           <TopPerformersWidget data={perfData} date={perfDate} />
           <StatLeadersWidget leaders={leaders} />
           <ByTheNumbersWidget />
