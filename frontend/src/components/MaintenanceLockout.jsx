@@ -26,8 +26,14 @@ import { supabase } from '../lib/supabase'
  * (the GH Actions NWAC scrape, cron jobs, etc. all continue). Only
  * the SPA shell renders the overlay.
  */
+// To toggle the lockout: flip this constant and push. Vercel
+// auto-deploys in ~60s. Setting via Vercel env var (the old path)
+// also still works — env var wins if it's set to 'true'.
+const LOCKOUT_FORCE_ON = true
+
 export default function MaintenanceLockout({ children }) {
-  const enabled = import.meta.env.VITE_MAINTENANCE_LOCKOUT === 'true'
+  const envFlag = import.meta.env.VITE_MAINTENANCE_LOCKOUT === 'true'
+  const enabled = LOCKOUT_FORCE_ON || envFlag
   const { tier, loading } = useTier()
   const { user } = useAuth()
   const location = useLocation()
