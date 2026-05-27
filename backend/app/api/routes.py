@@ -5387,23 +5387,23 @@ def batting_pbp_leaderboard(
                 SELECT
                     pbp.*,
                     (pbp.k_pitches + pbp.f_pitches + pbp.in_play) AS swings,
-                    -- swing% = swings / pitches
+                    -- swing rate = swings / pitches
                     CASE WHEN pbp.pitches > 0
                         THEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches
                     END AS swing_pct,
-                    -- whiff% = whiffs / swings
+                    -- whiff rate = whiffs / swings
                     CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0
                         THEN pbp.k_pitches::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play)
                     END AS whiff_pct,
-                    -- contact% = contact / swings (contact = foul + in_play)
+                    -- contact rate = contact / swings (contact = foul + in_play)
                     CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0
                         THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play)
                     END AS contact_pct,
-                    -- first-pitch swing% / strike% / P/PA
+                    -- first-pitch swing rate, first-pitch strike rate, pitches per PA
                     CASE WHEN pbp.tracked_pa > 0 THEN pbp.f1_swings::numeric / pbp.tracked_pa END AS first_pitch_swing_pct,
                     CASE WHEN pbp.tracked_pa > 0 THEN pbp.f1_strikes::numeric / pbp.tracked_pa END AS first_pitch_strike_pct,
                     CASE WHEN pbp.tracked_pa > 0 THEN pbp.pitches::numeric / pbp.tracked_pa END AS pitches_per_pa,
-                    -- putaway% (lower is better for hitter)
+                    -- putaway rate (lower is better for hitter)
                     CASE WHEN pbp.two_strike_pa > 0
                         THEN pbp.two_strike_k::numeric / pbp.two_strike_pa
                     END AS putaway_pct
@@ -5552,7 +5552,7 @@ def pitching_pbp_leaderboard(
                 SELECT
                     pbp.*,
                     (pbp.k_pitches + pbp.f_pitches + pbp.in_play) AS swings,
-                    -- strike% = (called + swing + foul + in_play) / pitches
+                    -- strike rate = (called + swing + foul + in_play) / pitches
                     CASE WHEN pbp.pitches > 0
                         THEN (pbp.k_pitches + pbp.s_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches
                     END AS strike_pct,
