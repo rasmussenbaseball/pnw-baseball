@@ -6,6 +6,7 @@ import { ThemeProvider } from './context/ThemeContext'
 import { PreviewProvider } from './context/PreviewContext'
 import PreviewBanner from './components/PreviewBanner'
 import MaintenanceLockout from './components/MaintenanceLockout'
+import GlobalRouteLoader from './components/GlobalRouteLoader'
 import { isDeveloper } from './lib/tiers'
 import Header from './components/Header'
 import SignupPopup from './components/SignupPopup'
@@ -299,6 +300,7 @@ export default function App() {
     <AffiliationProvider>
     <MaintenanceLockout>
     <PreviewBanner />
+    <GlobalRouteLoader />
     <div className={`min-h-screen transition-colors ${
       isPortal ? 'bg-portal-cream'
       : isGm ? 'bg-gray-50'

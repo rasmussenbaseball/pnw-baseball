@@ -60,8 +60,18 @@ export default function TeamDetail() {
     return pitSortDir === 'asc' ? av - bv : bv - av
   })
 
-  if (loading && !team) {
-    return <div className="text-gray-400 animate-pulse py-8">Loading team data...</div>
+  // Treat data as "stale" while the just-clicked team is still
+  // loading but `team` still holds the previously loaded team. Without
+  // this check the user sees the OLD team's roster + stats during the
+  // fetch instead of a clear loading state.
+  const teamIsCurrent = team?.id != null && String(team.id) === String(teamId)
+  if (loading && !teamIsCurrent) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <div className="animate-spin h-8 w-8 border-4 border-nw-teal border-t-transparent rounded-full" />
+        <div className="text-xs text-gray-500 dark:text-gray-400">Loading team...</div>
+      </div>
+    )
   }
 
   if (!team) {

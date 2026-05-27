@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CURRENT_SEASON } from '../utils/constants'
 import { supabase } from '../lib/supabase'
+import { bumpPending, decrementPending } from '../lib/pendingRequests'
 
 const API_BASE = '/api/v1'
 
@@ -38,6 +39,10 @@ export function useApi(endpoint, params = {}, deps = []) {
       return
     }
 
+    // Bump the global pending-request counter so the GlobalRouteLoader
+    // knows at least one fetch is in flight. Always paired with a
+    // decrement in `finally` (success or error).
+    bumpPending()
     try {
       const searchParams = new URLSearchParams()
       Object.entries(params).forEach(([key, value]) => {
@@ -59,6 +64,7 @@ export function useApi(endpoint, params = {}, deps = []) {
       setError(err.message)
     } finally {
       setLoading(false)
+      decrementPending()
     }
   }, [endpoint, JSON.stringify(params)])
 

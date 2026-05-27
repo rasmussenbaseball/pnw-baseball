@@ -1479,10 +1479,19 @@ export default function PlayerDetail() {
     return () => ro.disconnect()
   }, [data, percentileSeason])
 
-  if (loading && !data) {
+  // Show the spinner not only on first load but also when navigating
+  // from one player to another — the URL playerId changed but useApi's
+  // `data` still holds the previous player's payload until the new
+  // fetch resolves. Detecting that mismatch keeps the user from
+  // staring at the WRONG player's stats for 5-10 seconds during a
+  // slow API call.
+  const dataIsForCurrentPlayer =
+    data?.player?.id != null && String(data.player.id) === String(playerId)
+  if (loading && !dataIsForCurrentPlayer) {
     return (
-      <div className="flex justify-center py-20">
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
         <div className="animate-spin h-8 w-8 border-4 border-nw-teal border-t-transparent rounded-full" />
+        <div className="text-xs text-gray-500 dark:text-gray-400">Loading player...</div>
       </div>
     )
   }
