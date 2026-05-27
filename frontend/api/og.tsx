@@ -186,6 +186,59 @@ function fmtInt(n) {
   return String(Math.round(Number(n)));
 }
 
+// Pre-fetch an image URL and convert to a base64 data URL.
+//
+// Satori (under @vercel/og) doesn't reliably follow HTTP redirects on
+// image fetches. Many of our headshots come from Sidearm-style URLs
+// that 302 to a CDN converter (sidearmdev.com), so the inline <img>
+// silently fails and the card renders an empty box.
+//
+// This helper resolves redirects, validates the response is actually
+// an image, and returns an inline data URL that Satori can render
+// without further network IO.
+//
+// Returns null on any failure (timeout, non-image content-type,
+// network error). Callers should fall through to a different image
+// or to text initials.
+async function resolveImageDataUrl(rawUrl, timeoutMs = 3000) {
+  if (!rawUrl) return null;
+  // Strip known thumbnail query params so we pull a real-resolution
+  // image, not an 80px sidearm preview.
+  const cleanUrl = String(rawUrl)
+    .replace(/([?&])(width|w|quality|q|height|h|size)=[^&]*/g, '$1')
+    .replace(/[?&]+$/, '')
+    .replace(/\?&/, '?');
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    const r = await fetch(cleanUrl, {
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent':
+          'NWBaseballStatsOG/1.0 (+https://nwbaseballstats.com)',
+        Accept: 'image/*',
+      },
+    });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    if (!ct.startsWith('image/')) return null;
+    const buf = await r.arrayBuffer();
+    // Cap embedded image size to ~3MB to keep PNG generation fast.
+    if (buf.byteLength > 3_000_000) return null;
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      bin += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(bin);
+    return `data:${ct};base64,${base64}`;
+  } catch (_) {
+    return null;
+  }
+}
+
 // ───────────────────────────────────────────────────────────────
 // Card: default (homepage, leaderboards, misc)
 // ───────────────────────────────────────────────────────────────
@@ -252,13 +305,15 @@ function DefaultCard({ title, subtitle, kicker }) {
 // Card: player
 // ───────────────────────────────────────────────────────────────
 
-function PlayerCard({ player, latest, isPitcher }) {
+function PlayerCard({ player, latest, isPitcher, headshotSrc, logoSrc }) {
   const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
   const team = player.team_name || player.team_short || '';
   const position = player.position || '';
   const klass = player.year_in_school ? `${player.year_in_school}.` : '';
-  const headshot = fixUrl(player.headshot_url);
-  const logo = fixUrl(player.logo_url);
+  // headshotSrc / logoSrc are pre-resolved data URLs from the handler.
+  // Falling through to initials is fine if both are null.
+  const headshot = headshotSrc;
+  const logo = logoSrc;
 
   // Stat line varies by player type
   const stats = [];
@@ -439,8 +494,11 @@ function PlayerCard({ player, latest, isPitcher }) {
 // Card: article
 // ───────────────────────────────────────────────────────────────
 
-function ArticleCard({ article }) {
-  const cover = fixUrl(article.hero_image_url);
+function ArticleCard({ article, coverSrc }) {
+  // coverSrc is a pre-resolved data URL from the handler; fall
+  // through to the raw URL only if the pre-fetch failed (Satori
+  // might be able to render it for simple cases).
+  const cover = coverSrc || fixUrl(article.hero_image_url);
   const title = article.title || 'NW Baseball Stats Article';
   const subtitle = article.subtitle || '';
   const author = article.author_name || 'NWBB';
@@ -586,7 +644,7 @@ function ArticleCard({ article }) {
 // Card: team page
 // ───────────────────────────────────────────────────────────────
 
-function TeamCard({ team }) {
+function TeamCard({ team, logoSrc }) {
   const name = team.short_name || team.school_name || 'Team';
   const conf = team.conference_abbrev || team.conference || '';
   const div = team.division_level || team.division_name || '';
@@ -594,7 +652,7 @@ function TeamCard({ team }) {
     team.wins != null && team.losses != null
       ? `${team.wins}-${team.losses}`
       : '';
-  const logo = fixUrl(team.logo_url);
+  const logo = logoSrc;
 
   return (
     <Background variant="team">
@@ -977,19 +1035,37 @@ export default async function handler(req) {
                 (a, b) => Number(b.season || 0) - Number(a.season || 0)
               )[0]
             : null;
+        // Pre-fetch headshot + logo as inline data URLs so Satori
+        // doesn't try to follow redirects on the Sidearm CDN.
+        const headshotData = await resolveImageDataUrl(
+          fixUrl(player.headshot_url)
+        );
+        const logoData = headshotData
+          ? null
+          : await resolveImageDataUrl(fixUrl(player.logo_url));
         element = (
-          <PlayerCard player={player} latest={latest} isPitcher={isPitcher} />
+          <PlayerCard
+            player={player}
+            latest={latest}
+            isPitcher={isPitcher}
+            headshotSrc={headshotData}
+            logoSrc={logoData}
+          />
         );
       }
     } else if (type === 'article' && slug) {
       const data = await safeFetch(`${API_BASE}/articles/${slug}`);
       if (data) {
-        element = <ArticleCard article={data} />;
+        const coverData = await resolveImageDataUrl(
+          fixUrl(data.hero_image_url)
+        );
+        element = <ArticleCard article={data} coverSrc={coverData} />;
       }
     } else if (type === 'team' && id) {
       const data = await safeFetch(`${API_BASE}/teams/${id}`);
       if (data) {
-        element = <TeamCard team={data} />;
+        const logoData = await resolveImageDataUrl(fixUrl(data.logo_url));
+        element = <TeamCard team={data} logoSrc={logoData} />;
       }
     } else if (type === 'gm') {
       element = <GmCard />;
