@@ -1,7 +1,8 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTier } from '../hooks/useTier'
-import { tierMeets } from '../lib/tiers'
+import { tierMeets, DEVELOPER_EMAILS } from '../lib/tiers'
 import { useAuth } from '../context/AuthContext'
+import { usePreview } from '../context/PreviewContext'
 import { supabase } from '../lib/supabase'
 
 /**
@@ -35,7 +36,8 @@ export default function MaintenanceLockout({ children }) {
   const envFlag = import.meta.env.VITE_MAINTENANCE_LOCKOUT === 'true'
   const enabled = LOCKOUT_FORCE_ON || envFlag
   const { tier, loading } = useTier()
-  const { user } = useAuth()
+  const { user, realUser } = useAuth()
+  const { previewTier, exitPreview } = usePreview()
   const location = useLocation()
 
   // Lockout flag off → no-op
@@ -49,6 +51,24 @@ export default function MaintenanceLockout({ children }) {
     return children
   }
 
+  // Developer-tier bypass — check the REAL underlying user, not the
+  // previewed tier. Without this, a developer who flipped their view
+  // to "anonymous" with the preview widget would lock themselves out
+  // of their own site with no way back in (the preview toggle lives
+  // inside the regular UI that the lockout hides).
+  const realEmail = realUser?.email
+  if (realEmail && DEVELOPER_EMAILS.includes(realEmail)) {
+    // If a preview is active and it's the thing causing the apparent
+    // lockout, show a small banner-style exit button instead of the
+    // full lockout. Anything else, just pass through.
+    if (previewTier && !tierMeets(tier, 'coach')) {
+      return <PreviewLockoutBanner exitPreview={exitPreview} previewTier={previewTier}>
+        {children}
+      </PreviewLockoutBanner>
+    }
+    return children
+  }
+
   // While we're resolving the tier, render nothing so we don't briefly
   // flash the site to someone who's about to get locked out.
   if (loading) return null
@@ -57,6 +77,38 @@ export default function MaintenanceLockout({ children }) {
   if (tierMeets(tier, 'coach')) return children
 
   return <LockoutScreen user={user} />
+}
+
+
+function PreviewLockoutBanner({ children, exitPreview, previewTier }) {
+  // Devs previewing as a lower tier still see the lockout overlay
+  // from the previewed-tier's perspective — but with a sticky bar at
+  // the top that exits the preview in one click. This way the site
+  // owner can verify "what an anonymous user sees" without trapping
+  // themselves.
+  return (
+    <>
+      <div className="fixed top-0 inset-x-0 z-[10000] bg-amber-400 text-[#003845] text-xs sm:text-sm font-semibold px-3 py-1.5 flex items-center justify-center gap-3 shadow">
+        <span>
+          Previewing as <span className="font-mono">{previewTier}</span> — the lockout
+          is hiding the site for this tier.
+        </span>
+        <button
+          type="button"
+          onClick={exitPreview}
+          className="px-2 py-0.5 rounded bg-[#003845] text-amber-300 hover:bg-[#005266] transition-colors"
+        >
+          Exit preview
+        </button>
+      </div>
+      <div className="pt-8">
+        <LockoutScreen />
+      </div>
+      {/* keep children mounted (off-screen) so context state stays
+          stable; the LockoutScreen above visually covers them */}
+      <div className="hidden">{children}</div>
+    </>
+  )
 }
 
 
