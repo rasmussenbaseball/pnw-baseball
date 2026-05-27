@@ -60,7 +60,7 @@ const INTERNS = [
     name: 'Connor Broschard',
     role: 'Intern',
     playerId: 3336,
-    headshot: null,
+    headshot: '/team-photos/connor-broschard.jpg',
     blurb: 'Connor is an outfielder and pitcher at Lewis & Clark College, originally from Fairfield, California. He is studying Rhetoric and Media Studies with a minor in Entrepreneurial Leadership and Innovation. He has been fascinated by baseball stats and baseball media for as long as he can remember, and hopes to work professionally in the baseball world someday, whether in the media landscape or in a front office or scouting role. He is also a diehard Boston Red Sox fan.',
   },
   {
@@ -266,6 +266,13 @@ function TeamSection() {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
         <div className="px-5 py-5">
           <div className="flex flex-col sm:flex-row gap-5">
+            <div className="shrink-0">
+              <img
+                src="/team-photos/nate-rasmussen.jpg"
+                alt="Nate Rasmussen"
+                className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-gray-700"
+              />
+            </div>
             <div className="flex-1">
               <div className="flex items-baseline gap-2 flex-wrap mb-1">
                 <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Nate Rasmussen</h3>
@@ -274,21 +281,24 @@ function TeamSection() {
                 </span>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider font-semibold mb-3">
-                Creator, Developer, Pitching Coach
+                Pitching Coach · Scout · Analyst
               </p>
               <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
-                Pitching coach at{' '}
-                <Link to="/team/bushnell-beacons" className="text-nw-teal hover:underline">Bushnell University</Link>.
-                Former pitcher at{' '}
-                <Link to="/player/5882" className="text-nw-teal hover:underline">Bellevue College</Link> and{' '}
-                <Link to="/player/3925" className="text-nw-teal hover:underline">Bushnell University</Link>.
-                Amateur scout with Over-Slot Baseball.
+                Born and raised in West Seattle, WA. Pitched two years out of the bullpen at{' '}
+                <Link to="/player/5882" className="text-nw-teal hover:underline">Bellevue College</Link>{' '}
+                before transferring to{' '}
+                <Link to="/player/3925" className="text-nw-teal hover:underline">Bushnell University</Link>{' '}
+                as a starter, where he started the program's first playoff game in school history. He is now the pitching coach at{' '}
+                <Link to="/team/bushnell-beacons" className="text-nw-teal hover:underline">Bushnell</Link>, and previously coached at Washington Baseball Academy.
               </p>
               <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
-                Nate built NW Baseball Stats from scratch in early 2026 to close the analytics gap between MLB-level data and PNW college baseball. The same advanced metrics that FanGraphs, Baseball Reference, and Baseball Savant make trivial at the big-league level were essentially nonexistent for D2, D3, NAIA, and JUCO programs in this region. This site fills that gap.
+                On the scouting side, he is currently an analyst and scout for Over-Slot Baseball and Just Baseball Media, and was previously the Director of Amateur Scouting at Prospects Live.
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
+                He built NW Baseball Stats from scratch in early 2026 to close the analytics gap between MLB-level data and PNW college baseball. The same advanced metrics that FanGraphs, Baseball Reference, and Baseball Savant make trivial at the big-league level were essentially nonexistent for D2, D3, NAIA, and JUCO programs in this region. This site fills that gap.
               </p>
               <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-                As a coach, his focus is pitching development and game planning. As a scout and content creator, his focus is player evaluation across levels. NW Baseball Stats sits at the intersection of both, giving coaches actionable scouting intelligence and giving players a fair, modern measurement of what they actually did on the field.
+                NW Baseball Stats sits at the intersection of coaching and scouting, giving coaches actionable game-planning intelligence and giving players a fair, modern measurement of what they actually did on the field.
               </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <a
