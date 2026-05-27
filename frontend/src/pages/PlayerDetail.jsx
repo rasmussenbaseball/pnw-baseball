@@ -959,10 +959,29 @@ function FieldingTable({ fieldingStats, playerId }) {
 
   // Group by season, position rows ordered by games desc (already
   // sorted server-side that way).
+  //
+  // Within each season, for every team_id that has at least one
+  // per-position row, drop any 'ALL' row for the same team. The
+  // 'ALL' row is the season-scraper's combined total; once we have
+  // per-position rows (either from D1 box-score JSON or PBP
+  // derivation) the table renders its own season-total row that
+  // sums the per-position lines — keeping 'ALL' alongside that
+  // would double the totals visually.
   const bySeason = {}
   for (const r of fieldingStats) {
     if (!bySeason[r.season]) bySeason[r.season] = []
     bySeason[r.season].push(r)
+  }
+  for (const season of Object.keys(bySeason)) {
+    const teamsWithPerPosition = new Set(
+      bySeason[season]
+        .filter((r) => r.position !== 'ALL')
+        .map((r) => r.team_id)
+    )
+    bySeason[season] = bySeason[season].filter(
+      (r) => r.position !== 'ALL' || !teamsWithPerPosition.has(r.team_id)
+    )
+    if (bySeason[season].length === 0) delete bySeason[season]
   }
   const seasons = Object.keys(bySeason).sort((a, b) => Number(b) - Number(a))
 

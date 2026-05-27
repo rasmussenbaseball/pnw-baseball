@@ -146,6 +146,15 @@ run_step "Backfill player IDs in game logs" \
 # (Step 2) and player ID backfill (above) so Pass 5 stat signatures are
 # stable.
 
+# Derive per-position fielding for non-D1 leagues from PBP narratives.
+# Non-D1 box scores don't ship a structured fielding object the way D1
+# does, so we reconstruct per-(player,position) counts by parsing
+# game_events.result_text and mapping positions to the player who
+# started at that position in that game's batting lineup. Idempotent
+# UPSERT into game_fielding. Default --divisions skips D1.
+run_step "Derive non-D1 fielding from PBP" \
+    python3 scripts/derive_fielding_from_pbp.py --season "$SEASON"
+
 run_step "Aggregate fielding stats" \
     python3 scripts/aggregate_fielding.py --season "$SEASON"
 
