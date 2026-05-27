@@ -330,7 +330,7 @@ function TeamSection() {
         <P>
           The internship is geared toward giving young people in the Pacific Northwest real work experience inside the baseball world, building on the skills they already have in player development, scouting, writing, and analysis.
         </P>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-3">
           {INTERNS.map((intern, i) => (
             <div
               key={i}
@@ -1234,7 +1234,7 @@ export default function About() {
         ))}
       </div>
 
-      <div className="max-w-3xl">
+      <div className="max-w-5xl">
         <SectionHeading id="team">The Team</SectionHeading>
         <TeamSection />
 
