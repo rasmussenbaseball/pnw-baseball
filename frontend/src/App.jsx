@@ -193,6 +193,7 @@ import DailyRecapGraphic from './pages/DailyRecapGraphic'
 
 // ─── New pages ───
 import Homepage from './pages/Homepage'
+import AnonymousHomepage from './pages/AnonymousHomepage'
 import SummerballData from './pages/SummerballData'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
@@ -313,7 +314,7 @@ export default function App() {
       <RouteContainer isPortal={isPortal} isGm={isGm}>
         <Routes>
           {/* Homepage */}
-          <Route path="/" element={<Homepage />} />
+          <Route path="/" element={<HomepageRouter />} />
 
           {/* Stats */}
           <Route path="/hitting" element={<BattingLeaderboard />} />
@@ -562,6 +563,22 @@ export default function App() {
 // <main> wrapper. The portal pages use the full viewport (their own
 // PortalLayout handles padding internally), so this helper picks the
 // right wrapper based on the current route.
+// HomepageRouter — picks between the anonymous-tier homepage and the
+// signed-in dashboard Homepage. As future per-tier homepages land
+// (Free / Premium / Coach), branch here on `useTier()`.
+function HomepageRouter() {
+  const { user, loading } = useAuth()
+  if (loading) {
+    return (
+      <div className="flex justify-center py-20">
+        <div className="animate-spin h-8 w-8 border-4 border-nw-teal border-t-transparent rounded-full" />
+      </div>
+    )
+  }
+  return user ? <Homepage /> : <AnonymousHomepage />
+}
+
+
 function RouteContainer({ isPortal, isGm, children }) {
   if (isPortal || isGm) {
     return <>{children}</>
