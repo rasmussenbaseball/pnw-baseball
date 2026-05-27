@@ -1295,6 +1295,43 @@ def _safe_int(val, default=0):
         return default
 
 
+# Map of raw position strings (lowercased) to the normalized 2-3 char
+# code we store in game_fielding.position. Anything not in this map
+# OR not a defensive position (DH/PH/PR/etc.) returns None and the
+# fielding row is skipped.
+_FIELDING_POS_MAP = {
+    "p": "P", "pitcher": "P",
+    "c": "C", "catcher": "C",
+    "1b": "1B", "first base": "1B", "first baseman": "1B",
+    "2b": "2B", "second base": "2B", "second baseman": "2B",
+    "3b": "3B", "third base": "3B", "third baseman": "3B",
+    "ss": "SS", "shortstop": "SS",
+    "lf": "LF", "left field": "LF", "leftfielder": "LF",
+    "cf": "CF", "center field": "CF", "centerfielder": "CF",
+    "rf": "RF", "right field": "RF", "rightfielder": "RF",
+    "of": "OF", "outfield": "OF", "outfielder": "OF",
+    "if": "IF", "infielder": "IF",
+    "util": "OF",  # rare; treat as outfielder fallback
+}
+
+
+def _normalize_fielding_position(raw):
+    """Normalize a position string to a defensive code.
+
+    Returns None for DH/PH/PR (no defensive component) or unrecognized
+    inputs. For multi-position strings like 'ss/2b' or '2B-RF' takes
+    the first listed.
+    """
+    if not raw:
+        return None
+    s = raw.strip().lower()
+    if not s:
+        return None
+    # Take the first listed position if scorer used a / or -
+    first = re.split(r"[/\-,]", s)[0].strip()
+    return _FIELDING_POS_MAP.get(first)
+
+
 # ============================================================
 # Box Score Page Parsers
 # ============================================================
@@ -1675,6 +1712,13 @@ def _parse_sidearm_api_response(data):
         "line_score": {"home": [], "away": []},
         "batting": {"home": [], "away": []},
         "pitching": {"home": [], "away": []},
+        # Per-game-per-position fielding lines. The position recorded
+        # here is the player's primary position for that game (from
+        # p.position on the Sidearm payload). Multi-position appearances
+        # in a single game collapse to one row at the primary position;
+        # that's fine for the season per-position rollup since multi-
+        # position single-game scenarios are rare in college baseball.
+        "fielding": {"home": [], "away": []},
     }
 
     # ── Scores and line scores ──
@@ -1697,6 +1741,7 @@ def _parse_sidearm_api_response(data):
 
         batting_lines = []
         pitching_lines = []
+        fielding_lines = []
         pitch_order = 0
 
         for p in players:
@@ -1724,10 +1769,49 @@ def _parse_sidearm_api_response(data):
                     "hbp": _safe_int(h.get("hitByPitch", 0)) or 0,
                 })
 
-            # ── Fielding errors ──
+            # ── Fielding ──
+            # Roll up errors into the team line score (legacy behavior)
+            # AND capture per-player fielding rows for game_fielding.
             f = p.get("fielding")
             if f:
                 total_errors += _safe_int(f.get("errors", 0)) or 0
+                fld_pos = _normalize_fielding_position(p.get("position") or "")
+                if fld_pos:
+                    # Only store rows that have non-zero counts — pure
+                    # zeros are uninformative and bloat the table.
+                    po = _safe_int(f.get("putouts", 0)) or 0
+                    a = _safe_int(f.get("assists", 0)) or 0
+                    e = _safe_int(f.get("errors", 0)) or 0
+                    dp = _safe_int(f.get("involvedInDoublePlays", 0)) or 0
+                    tp = _safe_int(f.get("involvedInTriplePlays", 0)) or 0
+                    pb = _safe_int(f.get("passedBalls", 0)) or 0
+                    sba = _safe_int(f.get("stolenBasesAgainst", 0)) or 0
+                    cs = _safe_int(f.get("caughtStealingBy", 0)) or 0
+                    ci = _safe_int(f.get("catchersInterference", 0)) or 0
+                    if (po or a or e or dp or tp or pb or sba or cs or ci):
+                        # `gamesStarted` from the player's batting/pitching
+                        # sub-objects covers starter status. Fall back to
+                        # the position-table presence as a proxy.
+                        gs_b = _safe_int((p.get("hitting") or {}).get("gamesStarted", 0)) or 0
+                        gs_p = _safe_int((p.get("pitching") or {}).get("gamesStarted", 0)) or 0
+                        games_started = 1 if (gs_b or gs_p) else 0
+                        fielding_lines.append({
+                            "player_name": p.get("checkName") or p.get("name", "Unknown"),
+                            "position": fld_pos,
+                            "games_started": games_started,
+                            "innings": None,  # Sidearm API doesn't ship
+                                              # per-position innings here.
+                            "po": po,
+                            "a": a,
+                            "e": e,
+                            "dp": dp,
+                            "tp": tp,
+                            "pb": pb,
+                            "sba": sba,
+                            "cs": cs,
+                            "pickoffs": _safe_int(f.get("pickoffs", 0)) or 0,
+                            "ci": ci,
+                        })
 
             # ── Pitching ──
             pit = p.get("pitching")
@@ -1782,6 +1866,7 @@ def _parse_sidearm_api_response(data):
 
         result["batting"][side] = batting_lines
         result["pitching"][side] = pitching_lines
+        result["fielding"][side] = fielding_lines
         result[f"{side}_hits"] = total_hits
         result[f"{side}_errors"] = total_errors
 
@@ -2796,6 +2881,104 @@ def insert_game_pitching(cur, game_id, team_id, pitcher_lines, season):
             cur.execute("RELEASE SAVEPOINT sp_insert_pitching")
 
 
+def insert_game_fielding(cur, game_id, team_id, fielding_lines, season):
+    """Write per-game per-position fielding rows to game_fielding.
+
+    Same ghost-row guard as insert_game_batting / insert_game_pitching:
+    refuses to write rows whose team_id isn't one of the game's two
+    teams.
+
+    Idempotent via UNIQUE (game_id, player_id, position): re-scraping
+    overwrites the existing rows instead of duplicating.
+    """
+    if not fielding_lines:
+        return
+
+    if game_id and team_id:
+        cur.execute(
+            "SELECT home_team_id, away_team_id FROM games WHERE id = %s",
+            (game_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            valid_ids = {row["home_team_id"], row["away_team_id"]}
+            if team_id not in valid_ids:
+                logger.warning(
+                    f"  GHOST-ROW GUARD: refusing to insert "
+                    f"{len(fielding_lines)} fielding rows for "
+                    f"game_id={game_id} with team_id={team_id} "
+                    f"(game teams are home={row['home_team_id']}, "
+                    f"away={row['away_team_id']})"
+                )
+                return
+
+    for fld in fielding_lines:
+        player_id = find_player_id(cur, team_id, fld.get("player_name"), season) if team_id else None
+        if not player_id:
+            # Without a resolved player_id we can't write game_fielding
+            # (the table requires NOT NULL). Skip; downstream backfill
+            # / cleanup tools will recover via name matching later.
+            continue
+
+        cur.execute("SAVEPOINT sp_insert_fielding")
+        try:
+            cur.execute(
+                """
+                INSERT INTO game_fielding (
+                    game_id, team_id, player_id, position,
+                    innings, games_started,
+                    putouts, assists, errors,
+                    double_plays, triple_plays,
+                    passed_balls, stolen_bases_against,
+                    caught_stealing_by, pickoffs,
+                    catchers_interference
+                ) VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s,
+                    %s, %s,
+                    %s
+                )
+                ON CONFLICT (game_id, player_id, position) DO UPDATE SET
+                    team_id = EXCLUDED.team_id,
+                    innings = COALESCE(EXCLUDED.innings, game_fielding.innings),
+                    games_started = EXCLUDED.games_started,
+                    putouts = EXCLUDED.putouts,
+                    assists = EXCLUDED.assists,
+                    errors = EXCLUDED.errors,
+                    double_plays = EXCLUDED.double_plays,
+                    triple_plays = EXCLUDED.triple_plays,
+                    passed_balls = EXCLUDED.passed_balls,
+                    stolen_bases_against = EXCLUDED.stolen_bases_against,
+                    caught_stealing_by = EXCLUDED.caught_stealing_by,
+                    pickoffs = EXCLUDED.pickoffs,
+                    catchers_interference = EXCLUDED.catchers_interference,
+                    updated_at = now()
+                """,
+                (
+                    game_id, team_id, player_id, fld.get("position"),
+                    fld.get("innings"), fld.get("games_started", 0) or 0,
+                    fld.get("po", 0) or 0,
+                    fld.get("a", 0) or 0,
+                    fld.get("e", 0) or 0,
+                    fld.get("dp", 0) or 0,
+                    fld.get("tp", 0) or 0,
+                    fld.get("pb", 0) or 0,
+                    fld.get("sba", 0) or 0,
+                    fld.get("cs", 0) or 0,
+                    fld.get("pickoffs", 0) or 0,
+                    fld.get("ci", 0) or 0,
+                ),
+            )
+        except Exception as e:
+            logger.warning(f"  fielding insert failed for {fld.get('player_name')} @{fld.get('position')}: {e}")
+            cur.execute("ROLLBACK TO SAVEPOINT sp_insert_fielding")
+        else:
+            cur.execute("RELEASE SAVEPOINT sp_insert_fielding")
+
+
 # ============================================================
 # Main Scraping Logic — Per Team
 # ============================================================
@@ -2968,6 +3151,7 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
             # ─── Fetch and parse box score (if a real URL is available) ───
             box_batting = {"home": [], "away": []}
             box_pitching = {"home": [], "away": []}
+            box_fielding = {"home": [], "away": []}
 
             real_box_url = sched_game.get("box_score_url")
             if real_box_url:
@@ -3052,6 +3236,7 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                     # Apply batting/pitching with same flip correction
                     raw_batting = box.get("batting", box_batting)
                     raw_pitching = box.get("pitching", box_pitching)
+                    raw_fielding = box.get("fielding", box_fielding)
                     box_batting = {
                         "home": raw_batting.get(bh, []),
                         "away": raw_batting.get(ba, []),
@@ -3059,6 +3244,10 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                     box_pitching = {
                         "home": raw_pitching.get(bh, []),
                         "away": raw_pitching.get(ba, []),
+                    }
+                    box_fielding = {
+                        "home": raw_fielding.get(bh, []),
+                        "away": raw_fielding.get(ba, []),
                     }
 
                     logger.info(f"    Box score: {len(box_batting.get('away', []))} away batters, "
@@ -3099,6 +3288,12 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                     insert_game_pitching(cur, game_id, home_team, box_pitching["home"], season_year)
                 if box_pitching.get("away"):
                     insert_game_pitching(cur, game_id, away_team, box_pitching["away"], season_year)
+
+                # Insert fielding lines (per-position per-player)
+                if box_fielding.get("home"):
+                    insert_game_fielding(cur, game_id, home_team, box_fielding["home"], season_year)
+                if box_fielding.get("away"):
+                    insert_game_fielding(cur, game_id, away_team, box_fielding["away"], season_year)
 
                 conn.commit()
 

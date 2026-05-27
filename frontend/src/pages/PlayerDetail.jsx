@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useLayoutEffect, cloneElement } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect, cloneElement, Fragment } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
@@ -949,6 +949,168 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+// FieldingTable — per-position fielding lines, grouped by season.
+// A player who logged time at SS and RF in the same season gets two
+// rows under that season (no roll-up across positions). The "season
+// total" row at the bottom of each season group sums across the
+// positions to give a quick FLD% for the year overall.
+function FieldingTable({ fieldingStats, playerId }) {
+  if (!fieldingStats || fieldingStats.length === 0) return null
+
+  // Group by season, position rows ordered by games desc (already
+  // sorted server-side that way).
+  const bySeason = {}
+  for (const r of fieldingStats) {
+    if (!bySeason[r.season]) bySeason[r.season] = []
+    bySeason[r.season].push(r)
+  }
+  const seasons = Object.keys(bySeason).sort((a, b) => Number(b) - Number(a))
+
+  const fmtPct = (v) => {
+    if (v === null || v === undefined) return '-'
+    const n = Number(v)
+    return n >= 1 ? n.toFixed(3) : n.toFixed(3).replace(/^0/, '')
+  }
+  const fmtInt = (v) =>
+    v === null || v === undefined ? '0' : String(Math.round(Number(v)))
+  const fmtNum = (v, places = 1) => {
+    if (v === null || v === undefined) return '-'
+    return Number(v).toFixed(places)
+  }
+
+  const sumRow = (rows) => {
+    const sum = {
+      games: 0, games_started: 0, putouts: 0, assists: 0, errors: 0,
+      double_plays: 0, total_chances: 0,
+    }
+    let innSum = 0
+    let innHas = false
+    for (const r of rows) {
+      sum.games += r.games || 0
+      sum.games_started += r.games_started || 0
+      sum.putouts += r.putouts || 0
+      sum.assists += r.assists || 0
+      sum.errors += r.errors || 0
+      sum.double_plays += r.double_plays || 0
+      sum.total_chances += r.total_chances || 0
+      if (r.innings != null) {
+        innSum += Number(r.innings)
+        innHas = true
+      }
+    }
+    const chances = sum.putouts + sum.assists + sum.errors
+    const fpct = chances > 0 ? (sum.putouts + sum.assists) / chances : null
+    return {
+      ...sum,
+      innings: innHas ? innSum : null,
+      fielding_pct: fpct,
+    }
+  }
+
+  // CSV columns for export
+  const csvCols = [
+    { key: 'season', label: 'Season' },
+    { key: 'position', label: 'Pos' },
+    { key: 'team_short', label: 'Team' },
+    { key: 'games', label: 'G' },
+    { key: 'games_started', label: 'GS' },
+    { key: 'innings', label: 'INN' },
+    { key: 'putouts', label: 'PO' },
+    { key: 'assists', label: 'A' },
+    { key: 'errors', label: 'E' },
+    { key: 'double_plays', label: 'DP' },
+    { key: 'total_chances', label: 'TC' },
+    { key: 'fielding_pct', label: 'FLD%' },
+    { key: 'range_factor', label: 'RF/9' },
+    { key: 'passed_balls', label: 'PB' },
+    { key: 'stolen_bases_against', label: 'SBA' },
+    { key: 'caught_stealing_by', label: 'CS' },
+    { key: 'cs_pct', label: 'CS%' },
+  ]
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-4 sm:mb-6">
+      <div className="mb-2 sm:mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+          Fielding
+        </h3>
+        <ExportCSVButton
+          data={fieldingStats}
+          columns={csvCols}
+          filename={`nwbb_player_${playerId}_fielding`}
+          label="Export"
+        />
+      </div>
+
+      <div className="overflow-x-auto -mx-3 sm:mx-0">
+        <table className="w-full text-sm min-w-[640px]">
+          <thead>
+            <tr className="border-b-2 border-nw-teal/30">
+              {['Season', 'Pos', 'Team', 'G', 'GS', 'INN', 'PO', 'A', 'E', 'DP', 'FLD%', 'RF/9'].map((h) => (
+                <th key={h} className="px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right first:text-left">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {seasons.map((season) => {
+              const rows = bySeason[season]
+              const total = rows.length > 1 ? sumRow(rows) : null
+              return (
+                <Fragment key={season}>
+                  {rows.map((r, i) => (
+                    <tr
+                      key={`${season}-${r.position}-${r.team_id}-${i}`}
+                      className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    >
+                      <td className="px-2 py-2 text-left">{i === 0 ? season : ''}</td>
+                      <td className="px-2 py-2 font-semibold text-right">{r.position}</td>
+                      <td className="px-2 py-2 text-right text-xs text-gray-500 dark:text-gray-400">
+                        {r.team_short || ''}
+                      </td>
+                      <td className="px-2 py-2 text-right font-mono">{fmtInt(r.games)}</td>
+                      <td className="px-2 py-2 text-right font-mono">{fmtInt(r.games_started)}</td>
+                      <td className="px-2 py-2 text-right font-mono">{r.innings != null ? fmtNum(r.innings, 1) : '-'}</td>
+                      <td className="px-2 py-2 text-right font-mono">{fmtInt(r.putouts)}</td>
+                      <td className="px-2 py-2 text-right font-mono">{fmtInt(r.assists)}</td>
+                      <td className={`px-2 py-2 text-right font-mono ${(r.errors || 0) > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                        {fmtInt(r.errors)}
+                      </td>
+                      <td className="px-2 py-2 text-right font-mono">{fmtInt(r.double_plays)}</td>
+                      <td className="px-2 py-2 text-right font-mono font-semibold">{fmtPct(r.fielding_pct)}</td>
+                      <td className="px-2 py-2 text-right font-mono">{r.range_factor != null ? fmtNum(r.range_factor, 2) : '-'}</td>
+                    </tr>
+                  ))}
+                  {total && (
+                    <tr className="border-b-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 text-xs">
+                      <td className="px-2 py-1.5 text-left text-gray-500 dark:text-gray-400">{season} total</td>
+                      <td className="px-2 py-1.5 text-right text-gray-500 dark:text-gray-400">All</td>
+                      <td className="px-2 py-1.5 text-right"></td>
+                      <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.games)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.games_started)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono">{total.innings != null ? fmtNum(total.innings, 1) : '-'}</td>
+                      <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.putouts)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.assists)}</td>
+                      <td className={`px-2 py-1.5 text-right font-mono ${total.errors > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                        {fmtInt(total.errors)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.double_plays)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono font-semibold">{fmtPct(total.fielding_pct)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono">-</td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+
 function GameLogTable({ title, logs, columns, filename }) {
   if (!logs || logs.length === 0) return null
 
@@ -1289,7 +1451,7 @@ export default function PlayerDetail() {
     )
   }
 
-  const { player, batting_stats, pitching_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, position_breakdown, linked_players, summer_batting, summer_pitching } = data
+  const { player, batting_stats, pitching_stats, fielding_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, position_breakdown, linked_players, summer_batting, summer_pitching } = data
   const isTransfer = linked_players && linked_players.length > 1
   const hasBatting = batting_stats && batting_stats.length > 0
   const hasPitching = pitching_stats && pitching_stats.length > 0
@@ -1774,6 +1936,9 @@ export default function PlayerDetail() {
           filename={`nwbb_player_${playerId}_pitching_gamelog`}
         />
       )}
+
+      {/* ── Fielding (per-position per-season) ── */}
+      <FieldingTable fieldingStats={fielding_stats} playerId={playerId} />
 
       {/* ── Empty state ── */}
       {!hasBatting && !hasPitching && (

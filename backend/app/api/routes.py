@@ -7687,10 +7687,43 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             )
             summer_pitching = [dict(r) for r in cur.fetchall()]
 
+        # ── Fielding (per-position per-season) ──
+        # One row per (season, position) at each team the player has
+        # been on. Frontend groups by season and renders each position
+        # as a separate line so a SS/RF utility player shows two
+        # distinct fielding pcts.
+        cur.execute(
+            """
+            SELECT fs.season, fs.position, fs.team_id,
+                   t.short_name AS team_short, t.school_name AS team_name,
+                   t.logo_url, d.level AS division_level,
+                   fs.games, fs.games_started, fs.innings,
+                   fs.putouts, fs.assists, fs.errors,
+                   fs.total_chances, fs.double_plays, fs.triple_plays,
+                   fs.passed_balls, fs.stolen_bases_against,
+                   fs.caught_stealing_by, fs.pickoffs,
+                   fs.fielding_pct, fs.range_factor, fs.cs_pct
+            FROM fielding_stats fs
+            JOIN teams t ON t.id = fs.team_id
+            LEFT JOIN conferences c ON c.id = t.conference_id
+            LEFT JOIN divisions d ON d.id = c.division_id
+            WHERE fs.player_id = ANY(%s)
+            ORDER BY fs.season DESC,
+                     -- Order positions by typical defensive spectrum
+                     -- so the most-played position usually renders
+                     -- first. Within a season, secondary positions
+                     -- follow primary.
+                     fs.games DESC, fs.position
+            """,
+            (all_player_ids,),
+        )
+        fielding_list = [dict(r) for r in cur.fetchall()]
+
         return {
             "player": player_dict,
             "batting_stats": batting_list,
             "pitching_stats": [_add_era_plus(r) for r in pitching_list],
+            "fielding_stats": fielding_list,
             "team_history": [dict(r) for r in history],
             "batting_percentiles": batting_percentiles,
             "pitching_percentiles": pitching_percentiles,

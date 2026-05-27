@@ -146,6 +146,9 @@ run_step "Backfill player IDs in game logs" \
 # (Step 2) and player ID backfill (above) so Pass 5 stat signatures are
 # stable.
 
+run_step "Aggregate fielding stats" \
+    python3 scripts/aggregate_fielding.py --season "$SEASON"
+
 run_step "Deduplicate games" \
     python3 scripts/dedup_games.py --season "$SEASON"
 
