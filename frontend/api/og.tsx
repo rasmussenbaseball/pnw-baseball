@@ -452,60 +452,86 @@ function ArticleCard({ article }) {
       })
     : '';
 
+  // Satori (the renderer under @vercel/og) does NOT reliably handle
+  // `position: absolute` with `inset: 0` for full-bleed images.
+  // So this layout is a pure flex column: cover on top, dark text
+  // block on bottom.
+  const COVER_H = 360;
+  const TEXT_H = HEIGHT - COVER_H; // 270
+
   return (
     <div
       style={{
         width: WIDTH,
         height: HEIGHT,
         display: 'flex',
-        position: 'relative',
+        flexDirection: 'column',
         background: TEAL_DARK,
         color: WHITE,
         fontFamily:
           '"Inter", "Helvetica Neue", system-ui, -apple-system, sans-serif',
       }}
     >
-      {cover ? (
-        <img
-          src={cover}
-          width={WIDTH}
-          height={HEIGHT}
-          style={{
-            objectFit: 'cover',
-            width: WIDTH,
-            height: HEIGHT,
-            position: 'absolute',
-            top: 0,
-            left: 0,
-          }}
-        />
-      ) : null}
-      {/* Dark gradient overlay for readability */}
+      {/* Cover image strip on top */}
       <div
         style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 50%, rgba(0,0,0,0.92) 100%)',
           display: 'flex',
+          width: WIDTH,
+          height: COVER_H,
+          position: 'relative',
+          overflow: 'hidden',
+          background: TEAL_DARK,
         }}
-      />
+      >
+        {cover ? (
+          <img
+            src={cover}
+            width={WIDTH}
+            height={COVER_H}
+            style={{
+              width: WIDTH,
+              height: COVER_H,
+              objectFit: 'cover',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              width: WIDTH,
+              height: COVER_H,
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: `linear-gradient(135deg, ${TEAL_DARK} 0%, ${TEAL} 100%)`,
+              fontSize: 32,
+              color: DIM,
+              fontWeight: 600,
+            }}
+          >
+            NW Baseball Stats
+          </div>
+        )}
+      </div>
+
+      {/* Dark text block below */}
       <div
         style={{
-          position: 'relative',
           display: 'flex',
           flexDirection: 'column',
-          width: '100%',
-          height: '100%',
-          padding: 60,
+          width: WIDTH,
+          height: TEXT_H,
+          background:
+            'linear-gradient(180deg, #001a25 0%, #000 100%)',
+          padding: '32px 60px',
+          gap: 12,
         }}
       >
         <div
           style={{
             display: 'flex',
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: 700,
-            letterSpacing: 2,
+            letterSpacing: 2.5,
             color: AMBER,
             textTransform: 'uppercase',
           }}
@@ -515,50 +541,41 @@ function ArticleCard({ article }) {
         <div
           style={{
             display: 'flex',
-            flexDirection: 'column',
-            marginTop: 'auto',
-            gap: 16,
+            fontSize: title.length > 60 ? 42 : 52,
+            fontWeight: 800,
+            lineHeight: 1.05,
+            letterSpacing: -1.5,
+            maxWidth: 1080,
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              fontSize: title.length > 60 ? 56 : 68,
-              fontWeight: 800,
-              lineHeight: 1.05,
-              letterSpacing: -1.5,
-              maxWidth: 1100,
-            }}
-          >
-            {title}
-          </div>
-          {subtitle ? (
-            <div
-              style={{
-                display: 'flex',
-                fontSize: 26,
-                color: 'rgba(255,255,255,0.85)',
-                fontWeight: 400,
-                lineHeight: 1.3,
-                maxWidth: 1100,
-              }}
-            >
-              {subtitle.length > 130 ? subtitle.slice(0, 127) + '…' : subtitle}
-            </div>
-          ) : null}
+          {title.length > 110 ? title.slice(0, 107) + '…' : title}
+        </div>
+        {subtitle ? (
           <div
             style={{
               display: 'flex',
               fontSize: 22,
-              color: DIM,
-              marginTop: 12,
-              gap: 14,
+              color: 'rgba(255,255,255,0.78)',
+              fontWeight: 400,
+              lineHeight: 1.3,
+              maxWidth: 1080,
             }}
+          >
+            {subtitle.length > 110 ? subtitle.slice(0, 107) + '…' : subtitle}
+          </div>
+        ) : null}
+        <div
+          style={{
+            display: 'flex',
+            fontSize: 20,
+            color: DIM,
+            marginTop: 'auto',
+            gap: 14,
+          }}
           >
             <span>By {author}</span>
             {date ? <span>•</span> : null}
             {date ? <span>{date}</span> : null}
-          </div>
         </div>
       </div>
     </div>
