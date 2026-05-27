@@ -62,6 +62,8 @@ export default function Play() {
 
   const [save, setSave] = useState(() => loadDynasty(userId, slot))
   const [view, setView] = useState({ kind: 'LIST' })   // LIST | LINEUP | LIVE
+  // Busy flag for the Auto-sim button (heavy simWeek pass).
+  const [busy, setBusy] = useState(false)
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -203,20 +205,42 @@ export default function Play() {
     <GameList
       save={save}
       slot={slot}
+      busy={busy}
       onSetLineup={(game) => setView({ kind: 'LINEUP', game })}
       onEnterGame={(game) => setView({ kind: 'LIVE', game })}
       onAutoSim={() => {
-        // Use existing simWeek + advanceWeek so the rest of the system sees it
-        const ratings = seedFromPear(save.schools, save.conferences)
-        simWeek(save, save.schedule, ratings)
-        advanceWeek(save, save.schedule)
-        saveDynasty(save); refresh()
+        if (busy) return
+        setBusy(true)
+        // Defer so the disabled/busy button paints before simWeek blocks
+        // the main thread (full league sim of every team for this week).
+        setTimeout(() => {
+          try {
+            const ratings = seedFromPear(save.schools, save.conferences)
+            simWeek(save, save.schedule, ratings)
+            advanceWeek(save, save.schedule)
+            saveDynasty(save); refresh()
+          } catch (err) {
+            console.error('auto-sim week failed:', err)
+          } finally {
+            setBusy(false)
+          }
+        }, 30)
       }}
       onAdvanceEmptyWeek={() => {
-        // No games this week — just bump the calendar one week forward and
-        // re-render. Use the same advanceWeek so AP refreshes etc.
-        advanceWeek(save, save.schedule)
-        saveDynasty(save); refresh()
+        if (busy) return
+        setBusy(true)
+        setTimeout(() => {
+          try {
+            // No games this week — just bump the calendar one week forward and
+            // re-render. Use the same advanceWeek so AP refreshes etc.
+            advanceWeek(save, save.schedule)
+            saveDynasty(save); refresh()
+          } catch (err) {
+            console.error('advance empty week failed:', err)
+          } finally {
+            setBusy(false)
+          }
+        }, 30)
       }}
     />
   )
@@ -226,7 +250,7 @@ export default function Play() {
 // LIST view
 // ────────────────────────────────────────────────────────────────────────────
 
-function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEmptyWeek }) {
+function GameList({ save, slot, busy, onSetLineup, onEnterGame, onAutoSim, onAdvanceEmptyWeek }) {
   const cal = save.calendar
   const userSchoolId = save.userSchoolId
   // Determine "this week's user games" — ONLY games actually scheduled
@@ -339,9 +363,10 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEm
           <div className="text-gray-600">Skip the live experience and auto-sim the rest of this week.</div>
           <button
             onClick={onAutoSim}
-            className="px-4 py-2 bg-pnw-slate text-white rounded text-sm font-semibold hover:opacity-90"
+            disabled={busy}
+            className="px-4 py-2 bg-pnw-slate text-white rounded text-sm font-semibold hover:opacity-90 disabled:opacity-60 disabled:cursor-wait"
           >
-            Auto-sim week 
+            {busy ? 'Simming…' : 'Auto-sim week '}
           </button>
         </div>
       )}
@@ -351,9 +376,10 @@ function GameList({ save, slot, onSetLineup, onEnterGame, onAutoSim, onAdvanceEm
           <div className="text-gray-700">All week-{cal.seasonWeek} games complete. Advance to the next week.</div>
           <button
             onClick={onAdvanceEmptyWeek}
-            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90"
+            disabled={busy}
+            className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 disabled:opacity-60 disabled:cursor-wait"
           >
-            Advance week 
+            {busy ? 'Advancing…' : 'Advance week '}
           </button>
         </div>
       )}

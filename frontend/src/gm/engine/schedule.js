@@ -579,7 +579,7 @@ export function tryAddNonConfGame(userSchoolId, opponentSchoolId, opponentDivisi
     return { ok: false, error: 'Use the scrimmage scheduler for NWAC/JUCO opponents (fall or spring pre-season).' }
   }
 
-  // D1 midweek path
+  // D1 midweek path (NAIA-vs-D1 only — separate hard cap)
   if (elig.mustBeMidweek) {
     if (d1MidweeksRemaining(userSchoolId, schedule) === 0) {
       return { ok: false, error: `D1 midweek cap reached (${NAIA_D1_MIDWEEK_CAP}/year).` }
@@ -587,7 +587,20 @@ export function tryAddNonConfGame(userSchoolId, opponentSchoolId, opponentDivisi
     return addD1Midweek(userSchoolId, opponentSchoolId, week, year, opts.userIsHome ?? true)
   }
 
-  // Standard non-conf series — ALWAYS 3 games (FRI_SAT_SUN). Real NAIA
+  // Non-D1 midweek path — fired by the "+ Add midweek" picker on the
+  // Schedule page. Without this branch the call falls through to the
+  // 3-game series builder below, which is why D3 midweeks were
+  // accidentally scheduling as 3-game weekend sets.
+  if (opts.isMidweek) {
+    if (countRecordGames(userSchoolId, schedule) + 1 > NAIA_GAME_CAP) {
+      return { ok: false, error: `Cannot add — would exceed the ${NAIA_GAME_CAP}-game cap.` }
+    }
+    const userIsHome = opts.userIsHome ?? true
+    const game = buildMidweekSingle(userSchoolId, opponentSchoolId, week, year, userIsHome)
+    return { ok: true, games: [game], info: 'Midweek game scheduled (Tue/Wed). Counts as 1 toward the game cap.' }
+  }
+
+  // Standard non-conf series — ALWAYS 3 games (FRI_SAT_SUN). Real
   // non-conference series are almost always 3-game sets; 4-game series are
   // reserved for conference weekends.
   const seriesLength = 3

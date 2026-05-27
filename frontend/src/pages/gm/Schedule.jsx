@@ -41,6 +41,10 @@ export default function Schedule() {
   const [pickingMidweek, setPickingMidweek] = useState(null)   // numeric: week to add midweek to
   const [pickingScrimmage, setPickingScrimmage] = useState(null)
   const [showMidweekSection, setShowMidweekSection] = useState(false)
+  // Busy flag for heavy actions (Sim next week, Auto-create). Without this,
+  // clicks on those buttons block the main thread for 1-3s with no UI
+  // feedback — friend playtest report.
+  const [busy, setBusy] = useState(false)
 
   if (!save) return <Navigate to="/gm" replace />
 
@@ -82,62 +86,94 @@ export default function Schedule() {
   const totalWeekendSlots = filledWeekends + openWeeks.length
 
   function handleSimNextWeek() {
-    if (save.calendar.mode !== 'SEASON') {
-      save.calendar.mode = 'SEASON'
-      save.calendar.seasonWeek = 1
-      save.calendar.offseasonWeek = null
-    }
-    const ratings = seedFromPear(save.schools, save.conferences)
-    const summary = simWeek(save, save.schedule, ratings)
-    advanceWeek(save, save.schedule)
-    saveDynasty(save)
-    setSave({ ...save })
-    if (summary.userResults.length) {
-      gmToast('Week complete: ' + summary.userResults.map(r => `${r.result} ${r.score} vs ${r.opponent}`).join(' · '), 'success')
-    }
+    if (busy) return
+    setBusy(true)
+    // setTimeout gives React a tick to paint the disabled/busy button state
+    // BEFORE the synchronous simWeek pass (full league, ~1-3s) blocks the
+    // main thread. Mirrors Dashboard's simNextWeek pattern.
+    setTimeout(() => {
+      try {
+        if (save.calendar.mode !== 'SEASON') {
+          save.calendar.mode = 'SEASON'
+          save.calendar.seasonWeek = 1
+          save.calendar.offseasonWeek = null
+        }
+        const ratings = seedFromPear(save.schools, save.conferences)
+        const summary = simWeek(save, save.schedule, ratings)
+        advanceWeek(save, save.schedule)
+        saveDynasty(save)
+        setSave({ ...save })
+        if (summary.userResults.length) {
+          gmToast('Week complete: ' + summary.userResults.map(r => `${r.result} ${r.score} vs ${r.opponent}`).join(' · '), 'success')
+        }
+      } catch (err) {
+        console.error('sim next week failed:', err)
+        gmToast('Sim failed — see console for details.', 'warn')
+      } finally {
+        setBusy(false)
+      }
+    }, 30)
   }
 
   function handleAutoCreate() {
-    // Auto-fill open weekend slots + a couple midweek games. Idempotent —
-    // safe to click multiple times; only fills what's currently OPEN.
-    const flatNonNaia = nonNaiaRaw.divisions.flatMap(div =>
-      div.teams.map(t => ({ ...t, division: div.id })),
-    )
-    // Parity: feed the prior 2 years' opponents so the scheduler can demote
-    // them and pick fresh neighbors. Persisted on save.recentNonConfOpponents.
-    const recentMap = save.recentNonConfOpponents || {}
-    const recentYears = Object.keys(recentMap).map(Number).sort((a, b) => b - a).slice(0, 2)
-    const recent = Array.from(new Set(recentYears.flatMap(y => recentMap[y] || [])))
-    const result = autoCreateSchedule(
-      userSchoolId, userSchool.conferenceId, save.schools, flatNonNaia,
-      save.schedule, seasonYear, save.seed || Date.now(),
-      save.nwbbRatings || {}, recent,
-    )
-    if (result.games.length === 0) {
-      gmToast('Nothing to auto-fill — schedule already complete or no eligible opponents found.', 'info')
-      return
-    }
-    save.schedule.push(...result.games)
-    if (result.usedOpponentIds?.length > 0) {
-      if (!save.recentNonConfOpponents) save.recentNonConfOpponents = {}
-      // Merge with anything already recorded for this year (e.g. the user
-      // ran auto-create twice) instead of overwriting.
-      const prior = new Set(save.recentNonConfOpponents[seasonYear] || [])
-      for (const id of result.usedOpponentIds) prior.add(id)
-      save.recentNonConfOpponents[seasonYear] = Array.from(prior)
-      // Trim to last 3 years
-      const allYears = Object.keys(save.recentNonConfOpponents).map(Number).sort((a, b) => b - a)
-      for (const y of allYears.slice(3)) delete save.recentNonConfOpponents[y]
-    }
-    saveDynasty(save)
-    setSave({ ...save })
-    gmToast(result.summary + ' — review + adjust if you want.', 'success')
+    if (busy) return
+    setBusy(true)
+    // Defer so the busy state paints first — autoCreateSchedule is heavy
+    // (full slate generation against the non-NAIA team list).
+    setTimeout(() => {
+      try {
+        // Auto-fill open weekend slots + a couple midweek games. Idempotent —
+        // safe to click multiple times; only fills what's currently OPEN.
+        const flatNonNaia = nonNaiaRaw.divisions.flatMap(div =>
+          div.teams.map(t => ({ ...t, division: div.id })),
+        )
+        // Parity: feed the prior 2 years' opponents so the scheduler can demote
+        // them and pick fresh neighbors. Persisted on save.recentNonConfOpponents.
+        const recentMap = save.recentNonConfOpponents || {}
+        const recentYears = Object.keys(recentMap).map(Number).sort((a, b) => b - a).slice(0, 2)
+        const recent = Array.from(new Set(recentYears.flatMap(y => recentMap[y] || [])))
+        const result = autoCreateSchedule(
+          userSchoolId, userSchool.conferenceId, save.schools, flatNonNaia,
+          save.schedule, seasonYear, save.seed || Date.now(),
+          save.nwbbRatings || {}, recent,
+        )
+        if (result.games.length === 0) {
+          gmToast('Nothing to auto-fill — schedule already complete or no eligible opponents found.', 'info')
+          return
+        }
+        save.schedule.push(...result.games)
+        if (result.usedOpponentIds?.length > 0) {
+          if (!save.recentNonConfOpponents) save.recentNonConfOpponents = {}
+          // Merge with anything already recorded for this year (e.g. the user
+          // ran auto-create twice) instead of overwriting.
+          const prior = new Set(save.recentNonConfOpponents[seasonYear] || [])
+          for (const id of result.usedOpponentIds) prior.add(id)
+          save.recentNonConfOpponents[seasonYear] = Array.from(prior)
+          // Trim to last 3 years
+          const allYears = Object.keys(save.recentNonConfOpponents).map(Number).sort((a, b) => b - a)
+          for (const y of allYears.slice(3)) delete save.recentNonConfOpponents[y]
+        }
+        saveDynasty(save)
+        setSave({ ...save })
+        gmToast(result.summary + ' — review + adjust if you want.', 'success')
+      } catch (err) {
+        console.error('auto-create schedule failed:', err)
+        gmToast('Auto-create failed — see console for details.', 'warn')
+      } finally {
+        setBusy(false)
+      }
+    }, 30)
   }
 
-  function handleAddOpponent(week, opponent, options) {
+  function handleAddOpponent(week, opponent, options, isMidweek = false) {
     const result = tryAddNonConfGame(
       userSchoolId, opponent.id, opponent.division, week, seasonYear, schedule,
-      { userIsHome: options?.userIsHome ?? true, format: options?.format },
+      {
+        userIsHome: options?.userIsHome ?? true,
+        format: options?.format,
+        isMidweek,
+        userLevel: save.level,
+      },
     )
     if (!result.ok) { gmToast(result.error, 'error'); return }
     save.schedule.push(...result.games)
@@ -183,9 +219,10 @@ export default function Schedule() {
         </div>
         <button
           onClick={handleSimNextWeek}
-          className="self-start sm:self-auto px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 whitespace-nowrap"
+          disabled={busy}
+          className="self-start sm:self-auto px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 disabled:opacity-60 disabled:cursor-wait whitespace-nowrap"
         >
-          Sim next week
+          {busy ? 'Simming…' : 'Sim next week'}
         </button>
       </div>
 
@@ -227,9 +264,10 @@ export default function Schedule() {
             </div>
             <button
               onClick={handleAutoCreate}
-              className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 shrink-0"
+              disabled={busy}
+              className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-semibold hover:opacity-90 disabled:opacity-60 disabled:cursor-wait shrink-0"
             >
-               Auto-create schedule
+              {busy ? 'Building…' : ' Auto-create schedule'}
             </button>
           </div>
         </div>
@@ -416,7 +454,7 @@ export default function Schedule() {
           userSchool={userSchool}
           d1Remaining={0}    // D1 opponents are midweek only — exclude from weekend picker
           midweekMode={false}
-          onPick={(opp, options) => handleAddOpponent(pickingForWeek, opp, options)}
+          onPick={(opp, options) => handleAddOpponent(pickingForWeek, opp, options, false)}
           onClose={() => setPickingForWeek(null)}
         />
       )}
@@ -427,7 +465,7 @@ export default function Schedule() {
           userSchool={userSchool}
           d1Remaining={d1Remaining}
           midweekMode={true}
-          onPick={(opp, options) => handleAddOpponent(pickingMidweek, opp, options)}
+          onPick={(opp, options) => handleAddOpponent(pickingMidweek, opp, options, true)}
           onClose={() => setPickingMidweek(null)}
         />
       )}
