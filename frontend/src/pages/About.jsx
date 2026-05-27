@@ -60,7 +60,7 @@ const INTERNS = [
     name: 'Connor Broschard',
     role: 'Intern',
     playerId: 3336,
-    headshot: '/team-photos/connor-broschard.jpg',
+    headshot: null,  // restore '/team-photos/connor-broschard.jpg' when file saved
     blurb: 'Connor is an outfielder and pitcher at Lewis & Clark College, originally from Fairfield, California. He is studying Rhetoric and Media Studies with a minor in Entrepreneurial Leadership and Innovation. He has been fascinated by baseball stats and baseball media for as long as he can remember, and hopes to work professionally in the baseball world someday, whether in the media landscape or in a front office or scouting role. He is also a diehard Boston Red Sox fan.',
   },
   {
@@ -263,16 +263,12 @@ function TeamSection() {
   return (
     <div>
       {/* Founder card */}
+      {/* When Nate's headshot lands at /team-photos/nate-rasmussen.jpg,
+          re-add an <img> column inside this flex row. Left out for now
+          so the broken-image alt text doesn't show. */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
         <div className="px-5 py-5">
           <div className="flex flex-col sm:flex-row gap-5">
-            <div className="shrink-0">
-              <img
-                src="/team-photos/nate-rasmussen.jpg"
-                alt="Nate Rasmussen"
-                className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-gray-700"
-              />
-            </div>
             <div className="flex-1">
               <div className="flex items-baseline gap-2 flex-wrap mb-1">
                 <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Nate Rasmussen</h3>
