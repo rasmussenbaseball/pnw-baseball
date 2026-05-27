@@ -1065,7 +1065,14 @@ function FieldingTable({ fieldingStats, playerId }) {
                       className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                     >
                       <td className="px-2 py-2 text-left">{i === 0 ? season : ''}</td>
-                      <td className="px-2 py-2 font-semibold text-right">{r.position}</td>
+                      <td
+                        className="px-2 py-2 font-semibold text-right"
+                        title={r.position === 'ALL'
+                          ? 'Source page reports fielding totals only at the season level, not per position'
+                          : undefined}
+                      >
+                        {r.position === 'ALL' ? 'All' : r.position}
+                      </td>
                       <td className="px-2 py-2 text-right text-xs text-gray-500 dark:text-gray-400">
                         {r.team_short || ''}
                       </td>
