@@ -12,6 +12,7 @@
     "@sentry/react": "^10.53.1",
     "@supabase/supabase-js": "^2.42.0",
     "@tanstack/react-table": "^8.11.0",
+    "@vercel/og": "^0.11.1",
     "lz-string": "^1.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
