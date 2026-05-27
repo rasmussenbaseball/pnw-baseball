@@ -5320,14 +5320,14 @@ def batting_pbp_leaderboard(
 ):
     """Hitter plate-discipline leaderboard, aggregated from game_events.
 
-    Returns per-player: swing%, whiff%, contact%, FPS% (first-pitch
-    swing), F-Strike% (called against), putaway%, P/PA — plus
-    sample-size fields (tracked_pa, pitches, swings).
+    Returns per-player: swing rate, whiff rate, contact rate, FB rate,
+    air-pull rate, putaway rate, P/PA — plus sample-size fields
+    (tracked_pa, pitches, swings, bb_total, bb_total_pull).
     """
     allowed_sort = {
         "tracked_pa", "pitches", "swings",
         "swing_pct", "whiff_pct", "contact_pct",
-        "first_pitch_swing_pct", "first_pitch_strike_pct",
+        "fb_pct", "air_pull_pct",
         "putaway_pct", "pitches_per_pa",
     }
     if sort_by not in allowed_sort:
@@ -5362,23 +5362,27 @@ def batting_pbp_leaderboard(
                         FILTER (WHERE ge.pitches_thrown >= 1), 0) AS f_pitches,
                     COALESCE(SUM(CASE WHEN ge.was_in_play THEN 1 ELSE 0 END)
                         FILTER (WHERE ge.pitches_thrown >= 1), 0) AS in_play,
-                    COALESCE(SUM(CASE
-                        WHEN LEFT(ge.pitch_sequence, 1) IN ('K', 'F') THEN 1
-                        WHEN ge.pitch_sequence = '' AND ge.was_in_play THEN 1
-                        ELSE 0 END)
-                        FILTER (WHERE ge.pitches_thrown >= 1), 0) AS f1_swings,
-                    COALESCE(SUM(CASE
-                        WHEN LEFT(ge.pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
-                        WHEN ge.pitch_sequence = '' AND ge.was_in_play THEN 1
-                        ELSE 0 END)
-                        FILTER (WHERE ge.pitches_thrown >= 1), 0) AS f1_strikes,
                     COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1
                                        AND ge.strikes_before = 2) AS two_strike_pa,
                     COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1
                                        AND ge.strikes_before = 2
-                                       AND ge.result_type IN ('strikeout_swinging','strikeout_looking')) AS two_strike_k
+                                       AND ge.result_type IN ('strikeout_swinging','strikeout_looking')) AS two_strike_k,
+                    -- Batted-ball mix. bb_total is BIPs with a known
+                    -- batted-ball type (GB/LD/FB/PU). FB% is FB / bb_total.
+                    COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL) AS bb_total,
+                    COUNT(*) FILTER (WHERE ge.bb_type = 'FB') AS fb_count,
+                    -- Air-pull = LD or FB pulled to the batter's pull side.
+                    -- Needs handedness, so we join players. Switch-hitters
+                    -- (bats='S') and unknowns are excluded from the
+                    -- denominator and numerator (bb_total_pull).
+                    COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL
+                                       AND UPPER(plyr.bats) IN ('L','R')) AS bb_total_pull,
+                    COUNT(*) FILTER (WHERE ge.bb_type IN ('LD','FB')
+                        AND ((UPPER(plyr.bats) = 'R' AND ge.field_zone = 'LEFT')
+                          OR (UPPER(plyr.bats) = 'L' AND ge.field_zone = 'RIGHT'))) AS air_pull_count
                 FROM game_events ge
                 JOIN games g ON g.id = ge.game_id
+                LEFT JOIN players plyr ON plyr.id = ge.batter_player_id
                 WHERE g.season = %s AND ge.batter_player_id IS NOT NULL
                 GROUP BY ge.batter_player_id
             ),
@@ -5399,14 +5403,20 @@ def batting_pbp_leaderboard(
                     CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0
                         THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play)
                     END AS contact_pct,
-                    -- first-pitch swing rate, first-pitch strike rate, pitches per PA
-                    CASE WHEN pbp.tracked_pa > 0 THEN pbp.f1_swings::numeric / pbp.tracked_pa END AS first_pitch_swing_pct,
-                    CASE WHEN pbp.tracked_pa > 0 THEN pbp.f1_strikes::numeric / pbp.tracked_pa END AS first_pitch_strike_pct,
+                    -- pitches per PA
                     CASE WHEN pbp.tracked_pa > 0 THEN pbp.pitches::numeric / pbp.tracked_pa END AS pitches_per_pa,
                     -- putaway rate (lower is better for hitter)
                     CASE WHEN pbp.two_strike_pa > 0
                         THEN pbp.two_strike_k::numeric / pbp.two_strike_pa
-                    END AS putaway_pct
+                    END AS putaway_pct,
+                    -- FB rate = FB / total bb-tracked
+                    CASE WHEN pbp.bb_total > 0
+                        THEN pbp.fb_count::numeric / pbp.bb_total
+                    END AS fb_pct,
+                    -- Air-pull rate = LD or FB pulled / bb-tracked-with-known-handedness
+                    CASE WHEN pbp.bb_total_pull > 0
+                        THEN pbp.air_pull_count::numeric / pbp.bb_total_pull
+                    END AS air_pull_pct
                 FROM pbp
             )
             SELECT
@@ -5417,8 +5427,9 @@ def batting_pbp_leaderboard(
                 d.level AS division_level,
                 c.id AS conference_id, c.abbreviation AS conference_abbrev,
                 s.total_pa, s.tracked_pa, s.pitches, s.swings,
+                s.bb_total, s.bb_total_pull,
                 s.swing_pct, s.whiff_pct, s.contact_pct,
-                s.first_pitch_swing_pct, s.first_pitch_strike_pct,
+                s.fb_pct, s.air_pull_pct,
                 s.putaway_pct, s.pitches_per_pa
             FROM scored s
             JOIN players p ON p.id = s.player_id

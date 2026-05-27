@@ -219,11 +219,13 @@ export const BATTING_PBP_COLUMNS = [
   { key: 'contact_pct', label: 'Contact%', width: 80, format: 'pct',
     title: 'Contact% — fouls + balls in play, divided by total swings' },
 
-  // First-pitch & two-strike
-  { key: 'first_pitch_swing_pct', label: 'FPS%', width: 65, format: 'pct',
-    title: 'First-Pitch Swing% — share of PAs where the hitter swung at the first pitch' },
-  { key: 'first_pitch_strike_pct', label: 'F-Str%', width: 70, format: 'pct',
-    title: 'First-Pitch Strike% (against) — share of PAs that started 0-1' },
+  // Batted-ball mix (subset of in-play BIPs with known type/zone)
+  { key: 'fb_pct', label: 'FB%', width: 65, format: 'pct',
+    title: 'Fly-Ball% — share of balls in play classified as fly balls' },
+  { key: 'air_pull_pct', label: 'AirPull%', width: 80, format: 'pct',
+    title: 'Air-Pull% — LD or FB pulled to the batter\'s pull side, divided by all batted balls (handedness known)' },
+
+  // Two-strike survival
   { key: 'putaway_pct', label: 'PA-K%', width: 70, format: 'pct',
     title: 'Putaway% — 2-strike PAs that ended in a strikeout (lower is better for the hitter)' },
 
