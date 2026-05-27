@@ -258,7 +258,6 @@ export const FIELDING_POSITIONS = [
 export const FIELDING_PRESETS = {
   'Standard': ['games', 'games_started', 'putouts', 'assists', 'errors', 'double_plays', 'total_chances', 'fielding_pct'],
   'Catcher':  ['games', 'putouts', 'assists', 'errors', 'fielding_pct', 'passed_balls', 'stolen_bases_against', 'caught_stealing_by', 'cs_pct'],
-  'Advanced': ['games', 'innings', 'putouts', 'assists', 'errors', 'double_plays', 'total_chances', 'fielding_pct', 'range_factor'],
 }
 
 // ============================================================

@@ -56,18 +56,22 @@ const INTERNS = [
     headshot: null,
     blurb: 'Kai is a high school baseball player at Nathan Hale High School and a youth pitching coach working with the 13U to 15U age groups. He builds independent player development projects to further understand pitching and showcase his work, including regression models that look at how factors like bodyweight and sleep impact pitching velocity, plus deep dives into MLB pitching arsenals. He plans to attend either Gonzaga University or the University of Washington to study Business Administration and Finance, with hopes to work in professional baseball operations.',
   },
+  // For interns who play college ball in the PNW, `headshot` is the
+  // same URL their player profile page renders (sourced from each
+  // school's Sidearm CDN). If a school re-uploads a photo and the URL
+  // changes, update both here and the players row at the same time.
   {
     name: 'Connor Broschard',
     role: 'Intern',
     playerId: 3336,
-    headshot: null,  // restore '/team-photos/connor-broschard.jpg' when file saved
+    headshot: 'https://golcathletics.com/images/2025/12/16/Conor_Broschard_IWQMZ.jpg?width=80&quality=90',
     blurb: 'Connor is an outfielder and pitcher at Lewis & Clark College, originally from Fairfield, California. He is studying Rhetoric and Media Studies with a minor in Entrepreneurial Leadership and Innovation. He has been fascinated by baseball stats and baseball media for as long as he can remember, and hopes to work professionally in the baseball world someday, whether in the media landscape or in a front office or scouting role. He is also a diehard Boston Red Sox fan.',
   },
   {
     name: 'Oliver Duthie',
     role: 'Intern',
     playerId: 3002,
-    headshot: null,
+    headshot: 'https://gothunderbirds.ca/images/2026/1/6/BASE_Oliver_Duthie.jpg?width=80&quality=90',
     blurb: 'Bio coming soon.',
     bioPending: true,
   },
@@ -75,7 +79,7 @@ const INTERNS = [
     name: 'Trevor Kazahaya',
     role: 'Intern',
     playerId: 3352,
-    headshot: null,
+    headshot: 'https://goboxers.com/images/2026/2/23/0_Trevor_Kazahaya.jpg?width=80&quality=90',
     blurb: 'Bio coming soon.',
     bioPending: true,
   },
@@ -90,7 +94,7 @@ const INTERNS = [
     name: 'Nate Petz',
     role: 'Intern',
     playerId: 3253,
-    headshot: null,
+    headshot: 'https://athletics.whitman.edu/images/2025/11/7/Petz_HS.jpg?width=80&quality=90',
     blurb: 'Bio coming soon.',
     bioPending: true,
   },
@@ -98,7 +102,7 @@ const INTERNS = [
     name: 'Luke Malzewski',
     role: 'Intern',
     playerId: 3261,
-    headshot: null,
+    headshot: 'https://athletics.whitman.edu/images/2025/11/7/Malzewski_2_HS.jpg?width=80&quality=90',
     blurb: 'Bio coming soon.',
     bioPending: true,
   },
