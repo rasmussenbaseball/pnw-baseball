@@ -39,7 +39,7 @@ COMMITMENTS = [
     ("Wickstrom", "Sawyer", "Everett", "East Carolina"),
     ("Stenerson", "Silas", "Olympic", "Freed-Hardeman"),
     ("Allen", "Hunter", "Mt. Hood", "Western Oregon"),
-    ("Flemming", "Chase", "Lower Columbia", "Jessup University"),
+    ("Fleming", "Chase", "Big Bend", "Jessup University"),
 ]
 
 # (last_name, first_name, team_short_name) — players to set back to uncommitted.
