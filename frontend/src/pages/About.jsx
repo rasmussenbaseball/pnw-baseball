@@ -45,14 +45,58 @@ LOC.total = LOC.frontend + LOC.backend + LOC.scripts
 const CLAUDE_HOURS = 200
 
 
-// ─── Interns (placeholder roster — fill in headshots + blurbs as
-//     each person comes on board). Set "joining" to true to show the
-//     "coming soon" treatment.
+// ─── Interns. Each entry: name, role, headshot (path or null), blurb.
+//     Set bioPending: true when the person is on the team but hasn't
+//     submitted a bio yet — that swaps the blurb for a small
+//     placeholder line instead of leaving the card looking empty.
 const INTERNS = [
-  { name: 'Open Slot', role: 'Data & Research', headshot: null, blurb: 'Joining summer 2026. Focused on advanced metrics and player development research.', joining: true },
-  { name: 'Open Slot', role: 'Scouting', headshot: null, blurb: 'Joining summer 2026. Building scouting reports and Statcast-style player cards.', joining: true },
-  { name: 'Open Slot', role: 'Content & Social', headshot: null, blurb: 'Joining summer 2026. Articles, graphics, and recruiting coverage.', joining: true },
-  { name: 'Open Slot', role: 'Engineering', headshot: null, blurb: 'Joining summer 2026. Scraper coverage, data quality, and new feature builds.', joining: true },
+  {
+    name: 'Kai Malloch',
+    role: 'Data & Research',
+    headshot: null,
+    blurb: 'Kai is a high school baseball player at Nathan Hale High School and a youth pitching coach working with the 13U to 15U age groups. He builds independent player development projects to further understand pitching and showcase his work, including regression models that look at how factors like bodyweight and sleep impact pitching velocity, plus deep dives into MLB pitching arsenals. He plans to attend either Gonzaga University or the University of Washington to study Business Administration and Finance, with hopes to work in professional baseball operations.',
+  },
+  {
+    name: 'Connor Broschard',
+    role: 'Content & Media',
+    headshot: null,
+    blurb: 'Connor is an outfielder and pitcher at Lewis & Clark College, originally from Fairfield, California. He is studying Rhetoric and Media Studies with a minor in Entrepreneurial Leadership and Innovation. He has been fascinated by baseball stats and baseball media for as long as he can remember, and hopes to work professionally in the baseball world someday, whether in the media landscape or in a front office or scouting role. He is also a diehard Boston Red Sox fan.',
+  },
+  {
+    name: 'Oliver Duthie',
+    role: 'Intern',
+    headshot: null,
+    blurb: 'Bio coming soon.',
+    bioPending: true,
+  },
+  {
+    name: 'Trevor Kazahaya',
+    role: 'Intern',
+    headshot: null,
+    blurb: 'Bio coming soon.',
+    bioPending: true,
+  },
+  {
+    name: 'Zack Ahn',
+    role: 'Intern',
+    headshot: null,
+    blurb: 'Bio coming soon.',
+    bioPending: true,
+  },
+  {
+    name: 'Nate Petz',
+    role: 'Intern',
+    headshot: null,
+    blurb: 'Bio coming soon.',
+    bioPending: true,
+  },
+  {
+    name: 'Luke Malzewski',
+    role: 'Intern',
+    headshot: null,
+    blurb: 'Bio coming soon.',
+    bioPending: true,
+  },
 ]
 
 
@@ -299,7 +343,13 @@ function TeamSection() {
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider mb-1">
                     {intern.role}
                   </p>
-                  <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{intern.blurb}</p>
+                  <p className={`text-xs leading-relaxed ${
+                    intern.bioPending
+                      ? 'text-gray-400 dark:text-gray-500 italic'
+                      : 'text-gray-600 dark:text-gray-300'
+                  }`}>
+                    {intern.blurb}
+                  </p>
                 </div>
               </div>
             </div>
