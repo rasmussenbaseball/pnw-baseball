@@ -414,6 +414,14 @@ A historical bug caused some games to have flipped `team_id` values relative to 
 
 NWAC scorers update box scores for hours (sometimes a full day) after games conclude. The 6 AM Pacific re-scrape cron catches corrections. For one-off investigation: `debug_rescrape_game.py`.
 
+### 10.18 Fielding data sources
+
+Per-game / per-season fielding stats land in `game_fielding` and `fielding_stats`. Coverage:
+- **D1 / D2 / D3 / NAIA (Sidearm)**: full coverage. The Sidearm API ships a `fielding` sub-object per player with putouts / assists / errors / DPs / TPs / passed_balls / SBA / CS / pickoffs / CI. `_parse_sidearm_api_response` in `scripts/scrape_boxscores.py` writes one `game_fielding` row per (player, position). Aggregation happens via `scripts/aggregate_fielding.py` (wired into `daily_update.sh`).
+- **NWAC (Presto)**: NO fielding data. Presto box-score HTML exposes only Batting and Pitching tables; team season-stats pages don't expose fielding either. NWAC players show no fielding card on their profile (graceful empty). If NWAC ever adds it, the schema is ready.
+
+For multi-position games (a single player playing SS for 7 innings and RF for 2 in the same game), the Sidearm JSON `position` collapses to the player's primary position, so the secondary-position fielding numbers blend into the primary row. This is rare in college baseball. A future Phase 2 can parse the HTML Fielding table for true per-position accuracy.
+
 ---
 
 ## 11. PBP (Play-by-Play) System
