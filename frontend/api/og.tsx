@@ -186,57 +186,27 @@ function fmtInt(n) {
   return String(Math.round(Number(n)));
 }
 
-// Pre-fetch an image URL and convert to a base64 data URL.
+// Build a same-origin URL that proxies an external image through
+// /api/img. Satori (the renderer under @vercel/og) doesn't follow
+// HTTP redirects reliably on image fetches, so we cannot give it a
+// Sidearm-style URL that 302s to a CDN converter. Routing through
+// our own proxy lets us resolve redirects server-side and hand
+// Satori a clean image response.
 //
-// Satori (under @vercel/og) doesn't reliably follow HTTP redirects on
-// image fetches. Many of our headshots come from Sidearm-style URLs
-// that 302 to a CDN converter (sidearmdev.com), so the inline <img>
-// silently fails and the card renders an empty box.
-//
-// This helper resolves redirects, validates the response is actually
-// an image, and returns an inline data URL that Satori can render
-// without further network IO.
-//
-// Returns null on any failure (timeout, non-image content-type,
-// network error). Callers should fall through to a different image
-// or to text initials.
-async function resolveImageDataUrl(rawUrl, timeoutMs = 3000) {
+// Returns null when the raw URL is empty — callers fall through to
+// the team logo or initials.
+function proxiedImageUrl(rawUrl) {
   if (!rawUrl) return null;
-  // Strip known thumbnail query params so we pull a real-resolution
-  // image, not an 80px sidearm preview.
-  const cleanUrl = String(rawUrl)
-    .replace(/([?&])(width|w|quality|q|height|h|size)=[^&]*/g, '$1')
-    .replace(/[?&]+$/, '')
-    .replace(/\?&/, '?');
-  try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), timeoutMs);
-    const r = await fetch(cleanUrl, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent':
-          'NWBaseballStatsOG/1.0 (+https://nwbaseballstats.com)',
-        Accept: 'image/*',
-      },
-    });
-    clearTimeout(t);
-    if (!r.ok) return null;
-    const ct = (r.headers.get('content-type') || '').toLowerCase();
-    if (!ct.startsWith('image/')) return null;
-    const buf = await r.arrayBuffer();
-    // Cap embedded image size to ~3MB to keep PNG generation fast.
-    if (buf.byteLength > 3_000_000) return null;
-    const bytes = new Uint8Array(buf);
-    let bin = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      bin += String.fromCharCode(bytes[i]);
-    }
-    const base64 = btoa(bin);
-    return `data:${ct};base64,${base64}`;
-  } catch (_) {
-    return null;
+  // For images already on our own domain (team logos in /logos/*,
+  // headshots in /headshots/*) skip the proxy and let Satori fetch
+  // directly — same-origin, no redirects.
+  if (
+    rawUrl.startsWith(SITE_DOMAIN + '/logos/') ||
+    rawUrl.startsWith(SITE_DOMAIN + '/headshots/')
+  ) {
+    return rawUrl;
   }
+  return `${SITE_DOMAIN}/api/img?url=${encodeURIComponent(rawUrl)}`;
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -1035,37 +1005,31 @@ export default async function handler(req) {
                 (a, b) => Number(b.season || 0) - Number(a.season || 0)
               )[0]
             : null;
-        // Pre-fetch headshot + logo as inline data URLs so Satori
-        // doesn't try to follow redirects on the Sidearm CDN.
-        const headshotData = await resolveImageDataUrl(
-          fixUrl(player.headshot_url)
-        );
-        const logoData = headshotData
-          ? null
-          : await resolveImageDataUrl(fixUrl(player.logo_url));
+        // Route every external image through our /api/img proxy so
+        // Satori sees a stable same-origin URL with no redirects.
+        const headshotSrc = proxiedImageUrl(fixUrl(player.headshot_url));
+        const logoSrc = proxiedImageUrl(fixUrl(player.logo_url));
         element = (
           <PlayerCard
             player={player}
             latest={latest}
             isPitcher={isPitcher}
-            headshotSrc={headshotData}
-            logoSrc={logoData}
+            headshotSrc={headshotSrc}
+            logoSrc={logoSrc}
           />
         );
       }
     } else if (type === 'article' && slug) {
       const data = await safeFetch(`${API_BASE}/articles/${slug}`);
       if (data) {
-        const coverData = await resolveImageDataUrl(
-          fixUrl(data.hero_image_url)
-        );
-        element = <ArticleCard article={data} coverSrc={coverData} />;
+        const coverSrc = proxiedImageUrl(fixUrl(data.hero_image_url));
+        element = <ArticleCard article={data} coverSrc={coverSrc} />;
       }
     } else if (type === 'team' && id) {
       const data = await safeFetch(`${API_BASE}/teams/${id}`);
       if (data) {
-        const logoData = await resolveImageDataUrl(fixUrl(data.logo_url));
-        element = <TeamCard team={data} logoSrc={logoData} />;
+        const logoSrc = proxiedImageUrl(fixUrl(data.logo_url));
+        element = <TeamCard team={data} logoSrc={logoSrc} />;
       }
     } else if (type === 'gm') {
       element = <GmCard />;
