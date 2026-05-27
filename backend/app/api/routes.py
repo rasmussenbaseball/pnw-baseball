@@ -5426,7 +5426,7 @@ def batting_pbp_leaderboard(
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
             WHERE s.tracked_pa >= %s
-              AND t.is_active = TRUE
+              AND COALESCE(t.is_active, 1) = 1
               {where_sql}
             ORDER BY {sort_by} {direction} NULLS LAST, s.tracked_pa DESC
             LIMIT %s OFFSET %s
@@ -5452,7 +5452,7 @@ def batting_pbp_leaderboard(
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
             WHERE s.tracked_pa >= %s
-              AND t.is_active = TRUE
+              AND COALESCE(t.is_active, 1) = 1
               {where_sql}
         """
         cur.execute(count_query, [season, min_pa] + where_params)
@@ -5596,7 +5596,7 @@ def pitching_pbp_leaderboard(
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
             WHERE s.tracked_pa >= %s
-              AND t.is_active = TRUE
+              AND COALESCE(t.is_active, 1) = 1
               {where_sql}
             ORDER BY {sort_by} {direction} NULLS LAST, s.tracked_pa DESC
             LIMIT %s OFFSET %s
@@ -5621,7 +5621,7 @@ def pitching_pbp_leaderboard(
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
             WHERE s.tracked_pa >= %s
-              AND t.is_active = TRUE
+              AND COALESCE(t.is_active, 1) = 1
               {where_sql}
         """
         cur.execute(count_query, [season, min_bf] + where_params)
