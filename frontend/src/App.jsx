@@ -174,6 +174,7 @@ function RequirePortalAccess({ children }) {
 // ─── Existing pages ───
 import BattingLeaderboard from './pages/BattingLeaderboard'
 import PitchingLeaderboard from './pages/PitchingLeaderboard'
+import FieldingLeaderboard from './pages/FieldingLeaderboard'
 import WarLeaderboard from './pages/WarLeaderboard'
 import TeamStatsPage from './pages/TeamStatsPage'
 import TeamsPage from './pages/TeamsPage'
@@ -317,6 +318,7 @@ export default function App() {
           {/* Stats */}
           <Route path="/hitting" element={<BattingLeaderboard />} />
           <Route path="/pitching" element={<PitchingLeaderboard />} />
+          <Route path="/fielding" element={<FieldingLeaderboard />} />
           <Route path="/war" element={<WarLeaderboard />} />
           <Route path="/team-stats" element={<RequireTier minTier="free"><TeamStatsPage /></RequireTier>} />
           <Route path="/scatter" element={<ScatterPlot />} />

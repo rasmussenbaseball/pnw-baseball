@@ -17,6 +17,7 @@ const NAV = [
       { to: '/stat-leaders', label: 'Stat Leaders', desc: 'Top 10 in key categories' },
       { to: '/hitting', label: 'Hitting', desc: 'Batting leaderboards & stats' },
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
+      { to: '/fielding', label: 'Fielding', desc: 'Defensive leaderboards, filterable by position' },
       { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats', requires: 'free' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
       { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings', requires: 'free' },

@@ -5657,6 +5657,225 @@ def pitching_pbp_leaderboard(
 
 
 # ============================================================
+# FIELDING LEADERBOARD
+# ============================================================
+#
+# Two modes depending on the `position` query parameter:
+#
+# 1. `position` not set (or "ANY") — returns one row per
+#    (player, team) using the OFFICIAL season-total row when the
+#    season scraper populated one (position='ALL' in fielding_stats),
+#    and falling back to a SUM of the PBP-derived per-position rows
+#    when no 'ALL' row exists (e.g., D1 players, who only have
+#    box-score-sourced per-position rows).
+#
+# 2. `position` set to P/C/1B/2B/3B/SS/LF/CF/RF — returns one row
+#    per (player, team) at exactly that position. This is what the
+#    "best catchers in NAIA" or "top SS by FLD%" views render.
+#
+# fielding_pct, range_factor, and cs_pct are recomputed in the SELECT
+# so the COALESCEd "Any" totals stay consistent. Catcher-only stats
+# (PB / SBA / CS / CS%) are always returned; the frontend dashes
+# them out for non-catcher rows.
+
+@router.get("/leaderboards/fielding")
+@cached_endpoint(ttl_seconds=1800)
+def fielding_leaderboard(
+    season: int = Query(..., description="Season year"),
+    position: Optional[str] = Query(
+        None,
+        description="Filter by defensive position (P/C/1B/2B/3B/SS/LF/CF/RF). Omit for all-positions view.",
+    ),
+    division_id: Optional[int] = Query(None),
+    conference_id: Optional[int] = Query(None),
+    state: Optional[str] = Query(None),
+    team_id: Optional[int] = Query(None),
+    min_games: int = Query(0, description="Min games at position"),
+    min_chances: int = Query(0, description="Min total chances (PO+A+E)"),
+    sort_by: str = Query("fielding_pct", description="Sort column"),
+    sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
+    year_in_school: Optional[str] = Query(None),
+    limit: int = Query(50, description="Results per page"),
+    offset: int = Query(0, description="Pagination offset"),
+):
+    allowed_sort = {
+        "fielding_pct", "putouts", "assists", "errors", "double_plays",
+        "triple_plays", "total_chances", "range_factor",
+        "games", "games_started", "innings",
+        "passed_balls", "stolen_bases_against", "caught_stealing_by",
+        "cs_pct", "pickoffs",
+    }
+    if sort_by not in allowed_sort:
+        sort_by = "fielding_pct"
+    ascending = {"errors"}  # lower-is-better stats
+    default_dir = "ASC" if sort_by in ascending else "DESC"
+    sort_direction = sort_dir.upper() if sort_dir.upper() in ("ASC", "DESC") else default_dir
+
+    # Normalize position. "ANY" / "" / None all mean "no filter".
+    pos = (position or "").strip().upper()
+    if pos in ("", "ANY", "ALL_POS"):
+        pos = None
+    elif pos not in {"P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"}:
+        # Bad input — fall back to no filter rather than 400.
+        pos = None
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        params: list = []
+
+        if pos is None:
+            # ── All-positions view: prefer 'ALL' row, fall back to
+            #    per-position aggregate via FULL OUTER JOIN + COALESCE.
+            query = """
+                WITH agg AS (
+                    SELECT player_id, team_id, season,
+                           MAX(games) AS games,
+                           MAX(games_started) AS games_started,
+                           SUM(innings) AS innings,
+                           SUM(putouts) AS putouts,
+                           SUM(assists) AS assists,
+                           SUM(errors) AS errors,
+                           SUM(double_plays) AS double_plays,
+                           SUM(triple_plays) AS triple_plays,
+                           SUM(passed_balls) AS passed_balls,
+                           SUM(stolen_bases_against) AS stolen_bases_against,
+                           SUM(caught_stealing_by) AS caught_stealing_by,
+                           SUM(pickoffs) AS pickoffs,
+                           SUM(catchers_interference) AS catchers_interference
+                    FROM fielding_stats
+                    WHERE season = %s AND position != 'ALL'
+                    GROUP BY player_id, team_id, season
+                ),
+                all_rows AS (
+                    SELECT * FROM fielding_stats
+                    WHERE season = %s AND position = 'ALL'
+                ),
+                combined AS (
+                    SELECT
+                        COALESCE(ar.player_id, agg.player_id) AS player_id,
+                        COALESCE(ar.team_id, agg.team_id) AS team_id,
+                        COALESCE(ar.season, agg.season) AS season,
+                        'ALL'::varchar AS position,
+                        COALESCE(ar.games, agg.games) AS games,
+                        COALESCE(ar.games_started, agg.games_started) AS games_started,
+                        COALESCE(ar.innings, agg.innings) AS innings,
+                        COALESCE(ar.putouts, agg.putouts) AS putouts,
+                        COALESCE(ar.assists, agg.assists) AS assists,
+                        COALESCE(ar.errors, agg.errors) AS errors,
+                        COALESCE(ar.double_plays, agg.double_plays) AS double_plays,
+                        COALESCE(ar.triple_plays, agg.triple_plays) AS triple_plays,
+                        COALESCE(ar.passed_balls, agg.passed_balls) AS passed_balls,
+                        COALESCE(ar.stolen_bases_against, agg.stolen_bases_against) AS stolen_bases_against,
+                        COALESCE(ar.caught_stealing_by, agg.caught_stealing_by) AS caught_stealing_by,
+                        COALESCE(ar.pickoffs, agg.pickoffs) AS pickoffs,
+                        COALESCE(ar.catchers_interference, agg.catchers_interference) AS catchers_interference
+                    FROM all_rows ar
+                    FULL OUTER JOIN agg USING (player_id, team_id, season)
+                )
+                SELECT
+                    fs.player_id, fs.team_id, fs.season, fs.position,
+                    fs.games, fs.games_started, fs.innings,
+                    fs.putouts, fs.assists, fs.errors,
+                    fs.double_plays, fs.triple_plays,
+                    fs.passed_balls, fs.stolen_bases_against,
+                    fs.caught_stealing_by, fs.pickoffs,
+                    fs.catchers_interference,
+                    (COALESCE(fs.putouts,0) + COALESCE(fs.assists,0) + COALESCE(fs.errors,0)) AS total_chances,
+                    CASE WHEN (COALESCE(fs.putouts,0) + COALESCE(fs.assists,0) + COALESCE(fs.errors,0)) > 0
+                         THEN ROUND((COALESCE(fs.putouts,0) + COALESCE(fs.assists,0))::numeric
+                                    / (COALESCE(fs.putouts,0) + COALESCE(fs.assists,0) + COALESCE(fs.errors,0)), 4)
+                    END AS fielding_pct,
+                    CASE WHEN fs.innings IS NOT NULL AND fs.innings > 0
+                         THEN ROUND((COALESCE(fs.putouts,0) + COALESCE(fs.assists,0))::numeric / fs.innings * 9, 2)
+                    END AS range_factor,
+                    CASE WHEN (COALESCE(fs.stolen_bases_against,0) + COALESCE(fs.caught_stealing_by,0)) > 0
+                         THEN ROUND(COALESCE(fs.caught_stealing_by,0)::numeric
+                                    / (COALESCE(fs.stolen_bases_against,0) + COALESCE(fs.caught_stealing_by,0)), 4)
+                    END AS cs_pct,
+                    p.first_name, p.last_name, p.position AS primary_position,
+                    p.year_in_school, p.bats, p.throws, p.hometown,
+                    t.name AS team_name, t.short_name AS team_short, t.logo_url,
+                    t.state AS team_state,
+                    conf.name AS conference_name, conf.abbreviation AS conference_abbrev,
+                    d.name AS division_name, d.level AS division_level
+                FROM combined fs
+                JOIN players p ON fs.player_id = p.id
+                JOIN teams t ON fs.team_id = t.id
+                JOIN conferences conf ON t.conference_id = conf.id
+                JOIN divisions d ON conf.division_id = d.id
+                WHERE COALESCE(fs.games, 0) >= %s
+                  AND (COALESCE(fs.putouts,0) + COALESCE(fs.assists,0) + COALESCE(fs.errors,0)) >= %s
+            """
+            params = [season, season, min_games, min_chances]
+        else:
+            # ── Position-specific view: simple lookup against
+            #    fielding_stats with position = %s.
+            query = """
+                SELECT
+                    fs.player_id, fs.team_id, fs.season, fs.position,
+                    fs.games, fs.games_started, fs.innings,
+                    fs.putouts, fs.assists, fs.errors,
+                    fs.double_plays, fs.triple_plays,
+                    fs.passed_balls, fs.stolen_bases_against,
+                    fs.caught_stealing_by, fs.pickoffs,
+                    fs.catchers_interference,
+                    (COALESCE(fs.putouts,0) + COALESCE(fs.assists,0) + COALESCE(fs.errors,0)) AS total_chances,
+                    fs.fielding_pct, fs.range_factor, fs.cs_pct,
+                    p.first_name, p.last_name, p.position AS primary_position,
+                    p.year_in_school, p.bats, p.throws, p.hometown,
+                    t.name AS team_name, t.short_name AS team_short, t.logo_url,
+                    t.state AS team_state,
+                    conf.name AS conference_name, conf.abbreviation AS conference_abbrev,
+                    d.name AS division_name, d.level AS division_level
+                FROM fielding_stats fs
+                JOIN players p ON fs.player_id = p.id
+                JOIN teams t ON fs.team_id = t.id
+                JOIN conferences conf ON t.conference_id = conf.id
+                JOIN divisions d ON conf.division_id = d.id
+                WHERE fs.season = %s AND fs.position = %s
+                  AND COALESCE(fs.games, 0) >= %s
+                  AND (COALESCE(fs.putouts,0) + COALESCE(fs.assists,0) + COALESCE(fs.errors,0)) >= %s
+            """
+            params = [season, pos, min_games, min_chances]
+
+        # Shared filter clauses.
+        if division_id:
+            query += " AND conf.division_id = %s"
+            params.append(division_id)
+        if conference_id:
+            query += " AND t.conference_id = %s"
+            params.append(conference_id)
+        if state:
+            query += " AND t.state = %s"
+            params.append(state.upper())
+        if team_id:
+            query += " AND fs.team_id = %s"
+            params.append(team_id)
+        if year_in_school:
+            query += " AND p.year_in_school = %s"
+            params.append(year_in_school)
+
+        # ORDER BY uses the SELECT aliases (range_factor, cs_pct,
+        # total_chances, fielding_pct) — Postgres accepts those.
+        query += f" ORDER BY {sort_by} {sort_direction} NULLS LAST"
+        # Secondary sort to keep the order stable across reloads.
+        query += ", total_chances DESC NULLS LAST, fs.player_id ASC"
+        query += " LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        return {
+            "data": [dict(r) for r in rows],
+            "total": len(rows),
+            "limit": limit,
+            "offset": offset,
+            "season": season,
+            "position": pos or "ALL_POS",
+        }
+
+
+# ============================================================
 # WAR LEADERBOARD
 # ============================================================
 

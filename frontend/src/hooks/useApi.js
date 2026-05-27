@@ -155,6 +155,16 @@ export function usePitchingPbpLeaderboard(params) {
 }
 
 /**
+ * Fetch fielding leaderboard. `position` filter is optional — omit
+ * (or pass empty string) for an all-positions view that prefers the
+ * official season total per player, falling back to summed
+ * per-position rows where no season-total exists (e.g., D1).
+ */
+export function useFieldingLeaderboard(params) {
+  return useApi('/leaderboards/fielding', params, [JSON.stringify(params)])
+}
+
+/**
  * Fetch WAR leaderboard.
  */
 export function useWarLeaderboard(params) {

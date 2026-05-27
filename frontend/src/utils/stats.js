@@ -185,6 +185,82 @@ export const PITCHING_PRESET_FILTERS = {
   'Relievers': { max_gs: 0, min_ip: 10 },
 }
 
+
+// ============================================================
+// FIELDING LEADERBOARD
+// ============================================================
+//
+// Rows come from /api/v1/leaderboards/fielding with these keys:
+//   games, games_started, innings, putouts, assists, errors,
+//   double_plays, triple_plays, total_chances, fielding_pct,
+//   range_factor, passed_balls, stolen_bases_against,
+//   caught_stealing_by, cs_pct, pickoffs, position
+// plus the usual player + team meta (first_name, last_name,
+// team_short, team_id, logo_url, division_level, etc).
+
+export const FIELDING_COLUMNS = [
+  { key: 'rank', label: '#', width: 40, sortable: false },
+  { key: 'name', label: 'Player', width: 160, sortable: false,
+    render: (row) => `${row.first_name} ${row.last_name}` },
+  { key: 'team_short', label: 'Team', width: 90, sortable: false },
+  { key: 'position', label: 'Pos', width: 50, sortable: false,
+    render: (row) => row.position === 'ALL' ? '—' : row.position },
+  { key: 'division_level', label: 'Lvl', width: 55, sortable: false },
+
+  { key: 'games', label: 'G', width: 40, format: 'int' },
+  { key: 'games_started', label: 'GS', width: 40, format: 'int' },
+  { key: 'innings', label: 'INN', width: 55, format: 'era',
+    tooltip: 'Innings on defense. Only available from D1 box scores.' },
+  { key: 'putouts', label: 'PO', width: 45, format: 'int' },
+  { key: 'assists', label: 'A', width: 45, format: 'int' },
+  { key: 'errors', label: 'E', width: 45, format: 'int' },
+  { key: 'double_plays', label: 'DP', width: 45, format: 'int' },
+  { key: 'total_chances', label: 'TC', width: 50, format: 'int',
+    tooltip: 'Total Chances = PO + A + E' },
+  { key: 'fielding_pct', label: 'FLD%', width: 65, format: 'avg',
+    tooltip: '(PO + A) / TC. Higher is better.' },
+  { key: 'range_factor', label: 'RF/9', width: 60, format: 'era',
+    tooltip: 'Range Factor per 9 innings = (PO + A) / IP * 9' },
+
+  // Catcher-only — the FieldingTable on player pages renders an
+  // em-dash when these are 0 for non-catchers; we do the same in
+  // the leaderboard with a custom renderer.
+  { key: 'passed_balls', label: 'PB', width: 45, format: 'int',
+    render: (row) => row.passed_balls > 0 ? row.passed_balls : '—',
+    tooltip: 'Passed Balls (catcher only)' },
+  { key: 'stolen_bases_against', label: 'SBA', width: 50, format: 'int',
+    render: (row) => row.stolen_bases_against > 0 ? row.stolen_bases_against : '—',
+    tooltip: 'Stolen Bases Against (catcher only)' },
+  { key: 'caught_stealing_by', label: 'CS', width: 45, format: 'int',
+    render: (row) => row.caught_stealing_by > 0 ? row.caught_stealing_by : '—',
+    tooltip: 'Runners Caught Stealing (catcher only)' },
+  { key: 'cs_pct', label: 'CS%', width: 60, format: 'avg',
+    render: (row) => row.cs_pct != null && row.cs_pct > 0
+      ? (row.cs_pct >= 1 ? row.cs_pct.toFixed(3) : row.cs_pct.toFixed(3).replace('0.', '.'))
+      : '—',
+    tooltip: 'CS / (CS + SBA). Higher is better.' },
+]
+
+// Position selector options used by the page's pill bar.
+export const FIELDING_POSITIONS = [
+  { value: '',   label: 'Any' },
+  { value: 'P',  label: 'P' },
+  { value: 'C',  label: 'C' },
+  { value: '1B', label: '1B' },
+  { value: '2B', label: '2B' },
+  { value: '3B', label: '3B' },
+  { value: 'SS', label: 'SS' },
+  { value: 'LF', label: 'LF' },
+  { value: 'CF', label: 'CF' },
+  { value: 'RF', label: 'RF' },
+]
+
+export const FIELDING_PRESETS = {
+  'Standard': ['games', 'games_started', 'putouts', 'assists', 'errors', 'double_plays', 'total_chances', 'fielding_pct'],
+  'Catcher':  ['games', 'putouts', 'assists', 'errors', 'fielding_pct', 'passed_balls', 'stolen_bases_against', 'caught_stealing_by', 'cs_pct'],
+  'Advanced': ['games', 'innings', 'putouts', 'assists', 'errors', 'double_plays', 'total_chances', 'fielding_pct', 'range_factor'],
+}
+
 // ============================================================
 // PBP (Plate Discipline / Pitch-Level) Columns
 // ============================================================
