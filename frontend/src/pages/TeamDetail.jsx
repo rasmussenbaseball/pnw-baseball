@@ -5,6 +5,7 @@ import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import ExportCSVButton from '../components/ExportCSVButton'
 import { BATTING_COLUMNS, PITCHING_COLUMNS,
          formatStat, divisionBadgeClass } from '../utils/stats'
 
@@ -183,7 +184,14 @@ export default function TeamDetail() {
 
           {/* Batting table */}
           <div className="mb-6 sm:mb-8">
-            <h2 className="text-lg sm:text-xl font-bold text-pnw-slate mb-2 sm:mb-3">Batting</h2>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-lg sm:text-xl font-bold text-pnw-slate">Batting</h2>
+              <ExportCSVButton
+                data={sortedBatting}
+                columns={TEAM_BAT_COLUMNS}
+                filename={`nwbb_${teamId}_batting_2026`}
+              />
+            </div>
             <StatPresetBar
               presets={TEAM_BATTING_PRESETS}
               activePreset={batPreset}
@@ -203,7 +211,14 @@ export default function TeamDetail() {
 
           {/* Pitching table */}
           <div className="mb-8">
-            <h2 className="text-lg sm:text-xl font-bold text-pnw-slate mb-2 sm:mb-3">Pitching</h2>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-lg sm:text-xl font-bold text-pnw-slate">Pitching</h2>
+              <ExportCSVButton
+                data={sortedPitching}
+                columns={TEAM_PIT_COLUMNS}
+                filename={`nwbb_${teamId}_pitching_2026`}
+              />
+            </div>
             <StatPresetBar
               presets={TEAM_PITCHING_PRESETS}
               activePreset={pitPreset}

@@ -4,6 +4,7 @@ import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import ExportCSVButton from '../components/ExportCSVButton'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 import WpaByGameChart from '../components/WpaByGameChart'
@@ -948,14 +949,24 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function GameLogTable({ title, logs, columns }) {
+function GameLogTable({ title, logs, columns, filename }) {
   if (!logs || logs.length === 0) return null
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-4 sm:mb-6">
-      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 sm:mb-3">
-        {title}
-      </h3>
+      <div className="mb-2 sm:mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+          {title}
+        </h3>
+        {filename ? (
+          <ExportCSVButton
+            data={logs}
+            columns={columns}
+            filename={filename}
+            label="Export"
+          />
+        ) : null}
+      </div>
       <div className="overflow-x-auto -mx-3 sm:mx-0 max-h-[500px] overflow-y-auto">
         <div className="min-w-[700px] px-3 sm:px-0">
           <div className="overflow-x-auto">
@@ -1751,6 +1762,7 @@ export default function PlayerDetail() {
           title="Batting Game Log"
           logs={gameLogs.batting}
           columns={BATTING_GAMELOG_COLS}
+          filename={`nwbb_player_${playerId}_batting_gamelog`}
         />
       )}
       {gameLogs?.pitching?.length > 0
@@ -1759,6 +1771,7 @@ export default function PlayerDetail() {
           title="Pitching Game Log"
           logs={gameLogs.pitching}
           columns={PITCHING_GAMELOG_COLS}
+          filename={`nwbb_player_${playerId}_pitching_gamelog`}
         />
       )}
 

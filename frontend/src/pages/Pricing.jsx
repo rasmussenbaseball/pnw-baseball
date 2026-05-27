@@ -88,6 +88,7 @@ const TIERS = [
       'Team / Player / Opponent scouting reports',
       'JUCO Tracker + Historic Matchups',
       'All printable PDFs (player cards, bulk exports)',
+      'CSV data exports on every stat table',
       'TrackMan integration (coming soon)',
       'Custom tools built on request',
     ],

@@ -8,6 +8,7 @@ import {
 } from '../utils/stats'
 import StatPresetBar from '../components/StatPresetBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import ExportCSVButton from '../components/ExportCSVButton'
 import { usePersistedState } from '../hooks/usePersistedState'
 
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'NWAC']
@@ -161,7 +162,14 @@ export default function TeamStatsPage() {
       {/* Stat view presets */}
       <StatPresetBar presets={presets} activePreset={preset} onSelect={setPreset} />
 
-      <StatsLastUpdated className="mb-2" />
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <StatsLastUpdated />
+        <ExportCSVButton
+          data={data}
+          columns={columns}
+          filename={`nwbb_team_${statType}_${season}`}
+        />
+      </div>
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-200">

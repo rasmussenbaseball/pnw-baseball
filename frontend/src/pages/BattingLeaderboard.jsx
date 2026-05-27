@@ -3,6 +3,7 @@ import FilterBar from '../components/FilterBar'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import ExportCSVButton from '../components/ExportCSVButton'
 import { useBattingLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { BATTING_COLUMNS, BATTING_PRESETS } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
@@ -63,7 +64,29 @@ export default function BattingLeaderboard() {
         onSelect={setPreset}
       />
 
-      <StatsLastUpdated className="mb-2" />
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <StatsLastUpdated />
+        <ExportCSVButton
+          data={result?.data || []}
+          columns={BATTING_COLUMNS}
+          filename={`nwbb_hitting_${filters.season}`}
+          fetchAll={async () => {
+            const qs = new URLSearchParams({
+              ...Object.fromEntries(
+                Object.entries(apiParams).filter(([, v]) =>
+                  v !== undefined && v !== null && v !== ''
+                )
+              ),
+              limit: 10000,
+              offset: 0,
+            })
+            const r = await fetch(`/api/v1/leaderboards/batting?${qs}`)
+            if (!r.ok) throw new Error(`HTTP ${r.status}`)
+            const j = await r.json()
+            return j.data || []
+          }}
+        />
+      </div>
 
       <StatsTable
         data={result?.data || []}

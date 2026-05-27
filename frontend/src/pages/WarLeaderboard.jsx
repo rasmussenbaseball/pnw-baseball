@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import FilterBar from '../components/FilterBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import ExportCSVButton from '../components/ExportCSVButton'
 import { useWarLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import { Link } from 'react-router-dom'
@@ -115,7 +116,44 @@ export default function WarLeaderboard() {
         conferences={conferences}
       />
 
-      <StatsLastUpdated className="mb-2" />
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <StatsLastUpdated />
+        <ExportCSVButton
+          data={result?.data || []}
+          columns={[
+            { key: 'first_name', label: 'First Name' },
+            { key: 'last_name', label: 'Last Name' },
+            { key: 'team_name', label: 'Team' },
+            { key: 'division_level', label: 'Lvl' },
+            { key: 'year_in_school', label: 'Yr' },
+            { key: 'position', label: 'Pos' },
+            ...COLUMNS.map((c) => ({ key: c.key, label: c.label })),
+            { key: 'wins', label: 'W' },
+            { key: 'losses', label: 'L' },
+          ]}
+          filename={`nwbb_war_${filters.season}`}
+          fetchAll={async () => {
+            const params = new URLSearchParams({
+              season: filters.season,
+              ...(filters.division_id && { division_id: filters.division_id }),
+              ...(filters.conference_id && { conference_id: filters.conference_id }),
+              ...(filters.position_group && { position_group: filters.position_group }),
+              min_pa: filters.min_pa ?? 30,
+              min_ip: filters.min_ip ?? 10,
+              qualified: filters.qualified || false,
+              conference_only: filters.conference_only || false,
+              sort_by: sortBy,
+              sort_dir: sortDir,
+              limit: 10000,
+              offset: 0,
+            })
+            const r = await fetch(`/api/v1/leaderboards/war?${params}`)
+            if (!r.ok) throw new Error(`HTTP ${r.status}`)
+            const j = await r.json()
+            return j.data || []
+          }}
+        />
+      </div>
 
       {loading ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700

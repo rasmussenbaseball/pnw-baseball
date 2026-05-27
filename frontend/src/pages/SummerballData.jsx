@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
+import ExportCSVButton from '../components/ExportCSVButton'
 import {
   useSummerBattingLeaderboard,
   useSummerPitchingLeaderboard,
@@ -201,6 +202,14 @@ export default function SummerballData() {
         activePreset={preset}
         onSelect={setPreset}
       />
+
+      <div className="mb-2 flex items-center justify-end">
+        <ExportCSVButton
+          data={result?.data || []}
+          columns={columns}
+          filename={`nwbb_summer_${tab}_${activeFilters.season || 2025}`}
+        />
+      </div>
 
       <StatsTable
         data={result?.data || []}
