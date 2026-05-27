@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
+import { useAffiliatedTeam } from '../context/AffiliationContext'
 
 /**
  * StatsTable - sortable, configurable stats table.
@@ -16,6 +17,11 @@ export default function StatsTable({
   loading = false,
   offset = 0,
 }) {
+  // "Your team" highlight — Coach/Dev users who've designated a team
+  // get their players' rows tinted amber across every StatsTable on
+  // the site (leaderboards, summer, etc).
+  const { team: affiliatedTeam } = useAffiliatedTeam()
+  const affiliatedTeamId = affiliatedTeam?.id ?? null
   // Filter to visible columns if specified
   const displayColumns = visibleColumns
     ? columns.filter(c => visibleColumns.includes(c.key) || c.sortable === false)
@@ -174,19 +180,34 @@ export default function StatsTable({
           </tr>
         </thead>
         <tbody>
-          {data.map((row, i) => (
-            <tr key={row.id || row.player_id || i} className={row.is_qualified === false ? 'italic text-gray-500' : ''}>
-              {displayColumns.map(col => (
-                <td
-                  key={col.key}
-                  className={`${col.format === 'avg' || col.format === 'era' || col.format === 'war' || col.format === 'pct' || col.format === 'pctRaw' || col.format === 'int' || col.format === 'ip' ? 'font-mono text-right' : ''} ${stickyClass(col)}`}
-                  style={stickyMeta[col.key] ? stickyStyle(col) : undefined}
-                >
-                  {renderCell(row, col, i)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {data.map((row, i) => {
+            const isMyTeam = (
+              affiliatedTeamId
+              && (row.team_id === affiliatedTeamId
+                  || row.tm_id === affiliatedTeamId)
+            )
+            const rowClasses = [
+              row.is_qualified === false ? 'italic text-gray-500' : '',
+              // Subtle amber tint + thicker left accent for the user's
+              // affiliated team. Visible in both light + dark mode.
+              isMyTeam
+                ? 'bg-amber-50/70 dark:bg-amber-900/20 border-l-4 border-l-amber-400'
+                : '',
+            ].filter(Boolean).join(' ')
+            return (
+              <tr key={row.id || row.player_id || i} className={rowClasses}>
+                {displayColumns.map(col => (
+                  <td
+                    key={col.key}
+                    className={`${col.format === 'avg' || col.format === 'era' || col.format === 'war' || col.format === 'pct' || col.format === 'pctRaw' || col.format === 'int' || col.format === 'ip' ? 'font-mono text-right' : ''} ${stickyClass(col)}`}
+                    style={stickyMeta[col.key] ? stickyStyle(col) : undefined}
+                  >
+                    {renderCell(row, col, i)}
+                  </td>
+                ))}
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>

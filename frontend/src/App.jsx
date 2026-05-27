@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { AffiliationProvider } from './context/AffiliationContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { PreviewProvider } from './context/PreviewContext'
 import PreviewBanner from './components/PreviewBanner'
@@ -295,6 +296,7 @@ export default function App() {
     <ThemeProvider>
     <PreviewProvider>
     <AuthProvider>
+    <AffiliationProvider>
     <MaintenanceLockout>
     <PreviewBanner />
     <div className={`min-h-screen transition-colors ${
@@ -545,6 +547,7 @@ export default function App() {
       )}
     </div>
     </MaintenanceLockout>
+    </AffiliationProvider>
     </AuthProvider>
     </PreviewProvider>
     </ThemeProvider>

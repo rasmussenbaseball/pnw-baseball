@@ -6,18 +6,38 @@
 // The "Switch team" button in the header clears the team and re-shows
 // this gate.
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useTeams, useDivisions } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
+import { useAffiliatedTeam } from '../context/AffiliationContext'
 
 const SEASON = 2026
 
 
 export default function PortalTeamGate({ children }) {
   const { team, setTeam } = usePortalTeam()
+  const { team: affiliated, loading: affiliationLoading } = useAffiliatedTeam()
 
-  // If a team is already chosen, render children directly.
+  // When a Coach has designated "their team" on the Account page, the
+  // Portal should pre-fill with that team instead of forcing a manual
+  // pick on first entry. Only auto-fill when the portal team is still
+  // unset — we don't override a deliberate Portal choice.
+  useEffect(() => {
+    if (team) return
+    if (affiliationLoading) return
+    if (!affiliated) return
+    setTeam({
+      id: affiliated.id,
+      name: affiliated.school_name || affiliated.short_name,
+      short_name: affiliated.short_name,
+      logo_url: affiliated.logo_url,
+    })
+  }, [team, affiliated, affiliationLoading, setTeam])
+
+  // If a team is already chosen (or about to be auto-picked), render
+  // children directly.
   if (team) return children
+  if (affiliationLoading) return null
 
   return <TeamPicker onPick={setTeam} />
 }

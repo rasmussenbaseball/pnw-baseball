@@ -9,10 +9,14 @@
 // PUT endpoint, so changes here suppress the popup automatically (it
 // only shows when the user has no row, and saving here creates the row).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import { useAffiliatedTeam } from '../context/AffiliationContext'
+import { useTier } from '../hooks/useTier'
+import { tierMeets } from '../lib/tiers'
+import YourTeamSection from '../components/YourTeamSection'
 
 const API_BASE = '/api/v1'
 
@@ -222,6 +226,10 @@ export default function Account() {
           subInfo={subInfo}
         />
       </Section>
+
+      {/* ─── Your Team block (Coach + Dev only) ─── */}
+      <YourTeamSection />
+
 
       {/* ─── Email preferences block ─── */}
       <Section
@@ -588,3 +596,5 @@ function Choice({ checked, onChange, title, desc }) {
     </label>
   )
 }
+
+
