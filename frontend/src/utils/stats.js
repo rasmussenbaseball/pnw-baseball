@@ -186,6 +186,98 @@ export const PITCHING_PRESET_FILTERS = {
 }
 
 // ============================================================
+// PBP (Plate Discipline / Pitch-Level) Columns
+// ============================================================
+//
+// These power the "PBP" preset on the Hitting and Pitching
+// leaderboards. The row shape comes from
+//   /api/v1/leaderboards/batting-pbp
+//   /api/v1/leaderboards/pitching-pbp
+// and is intentionally NOT a superset of the normal batting/pitching
+// rows — fewer columns, all derived from game_events aggregates.
+
+export const BATTING_PBP_COLUMNS = [
+  { key: 'rank', label: '#', width: 40, sortable: false },
+  { key: 'name', label: 'Player', width: 160, sortable: false,
+    render: (row) => `${row.first_name} ${row.last_name}` },
+  { key: 'team_short', label: 'Team', width: 80, sortable: false },
+  { key: 'year_in_school', label: 'Yr', width: 40, sortable: false },
+  { key: 'position', label: 'Pos', width: 50, sortable: false },
+  { key: 'division_level', label: 'Lvl', width: 50, sortable: false },
+
+  // Sample-size columns
+  { key: 'tracked_pa', label: 'PA', width: 50, format: 'int',
+    title: 'Tracked plate appearances (PAs we have a pitch sequence for)' },
+  { key: 'pitches', label: 'Pit', width: 55, format: 'int',
+    title: 'Total pitches seen across tracked PAs' },
+
+  // Plate discipline
+  { key: 'swing_pct', label: 'Swing%', width: 70, format: 'pct',
+    title: 'Swing% — swings divided by pitches seen' },
+  { key: 'whiff_pct', label: 'Whiff%', width: 70, format: 'pct',
+    title: 'Whiff% — swinging strikes divided by total swings (lower is better)' },
+  { key: 'contact_pct', label: 'Contact%', width: 80, format: 'pct',
+    title: 'Contact% — fouls + balls in play, divided by total swings' },
+
+  // First-pitch & two-strike
+  { key: 'first_pitch_swing_pct', label: 'FPS%', width: 65, format: 'pct',
+    title: 'First-Pitch Swing% — share of PAs where the hitter swung at the first pitch' },
+  { key: 'first_pitch_strike_pct', label: 'F-Str%', width: 70, format: 'pct',
+    title: 'First-Pitch Strike% (against) — share of PAs that started 0-1' },
+  { key: 'putaway_pct', label: 'PA-K%', width: 70, format: 'pct',
+    title: 'Putaway% — 2-strike PAs that ended in a strikeout (lower is better for the hitter)' },
+
+  // Efficiency
+  { key: 'pitches_per_pa', label: 'P/PA', width: 60, format: 'era',
+    title: 'Pitches per plate appearance' },
+]
+
+export const PITCHING_PBP_COLUMNS = [
+  { key: 'rank', label: '#', width: 40, sortable: false },
+  { key: 'name', label: 'Player', width: 160, sortable: false,
+    render: (row) => `${row.first_name} ${row.last_name}` },
+  { key: 'team_short', label: 'Team', width: 80, sortable: false },
+  { key: 'year_in_school', label: 'Yr', width: 40, sortable: false },
+  { key: 'division_level', label: 'Lvl', width: 50, sortable: false },
+
+  // Sample-size columns (BF = batters faced for pitchers)
+  { key: 'tracked_pa', label: 'BF', width: 50, format: 'int',
+    title: 'Tracked batters faced (BFs we have a pitch sequence for)' },
+  { key: 'pitches', label: 'Pit', width: 55, format: 'int',
+    title: 'Total pitches thrown across tracked BFs' },
+
+  // Strike-throwing
+  { key: 'strike_pct', label: 'Str%', width: 70, format: 'pct',
+    title: 'Strike% — every called/swinging/foul/in-play pitch divided by total pitches' },
+  { key: 'first_pitch_strike_pct', label: 'F-Str%', width: 75, format: 'pct',
+    title: 'First-Pitch Strike% — share of BFs that started 0-1' },
+  { key: 'called_strike_pct', label: 'CSt%', width: 65, format: 'pct',
+    title: 'Called-Strike% — called strikes divided by total pitches' },
+
+  // Swing-and-miss
+  { key: 'whiff_pct', label: 'Whiff%', width: 70, format: 'pct',
+    title: 'Whiff% — swinging strikes divided by total swings against' },
+  { key: 'contact_pct', label: 'Contact%', width: 80, format: 'pct',
+    title: 'Contact% — fouls + balls in play, divided by total swings (lower is better)' },
+
+  // Two-strike + efficiency
+  { key: 'putaway_pct', label: 'Putaway%', width: 80, format: 'pct',
+    title: 'Putaway% — 2-strike BFs that ended in a strikeout' },
+  { key: 'on_or_out_3_pct', label: 'OO3%', width: 65, format: 'pct',
+    title: 'On-or-Out-in-3% — share of BFs that ended in 1-3 pitches via hit-or-out' },
+  { key: 'pitches_per_pa', label: 'P/BF', width: 60, format: 'era',
+    title: 'Pitches per batter faced' },
+]
+
+export const BATTING_PBP_PRESETS = {
+  'PBP': BATTING_PBP_COLUMNS.filter(c => c.sortable !== false).map(c => c.key),
+}
+
+export const PITCHING_PBP_PRESETS = {
+  'PBP': PITCHING_PBP_COLUMNS.filter(c => c.sortable !== false).map(c => c.key),
+}
+
+// ============================================================
 // Team Stats Columns & Presets
 // ============================================================
 

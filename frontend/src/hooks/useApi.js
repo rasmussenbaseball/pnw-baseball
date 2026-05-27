@@ -135,6 +135,20 @@ export function usePitchingLeaderboard(params) {
 }
 
 /**
+ * Fetch hitter plate-discipline leaderboard (PBP preset).
+ */
+export function useBattingPbpLeaderboard(params) {
+  return useApi('/leaderboards/batting-pbp', params, [JSON.stringify(params)])
+}
+
+/**
+ * Fetch pitcher pitch-level leaderboard (PBP preset).
+ */
+export function usePitchingPbpLeaderboard(params) {
+  return useApi('/leaderboards/pitching-pbp', params, [JSON.stringify(params)])
+}
+
+/**
  * Fetch WAR leaderboard.
  */
 export function useWarLeaderboard(params) {

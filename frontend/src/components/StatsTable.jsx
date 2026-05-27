@@ -179,7 +179,7 @@ export default function StatsTable({
               {displayColumns.map(col => (
                 <td
                   key={col.key}
-                  className={`${col.format === 'avg' || col.format === 'era' || col.format === 'war' ? 'font-mono text-right' : ''} ${stickyClass(col)}`}
+                  className={`${col.format === 'avg' || col.format === 'era' || col.format === 'war' || col.format === 'pct' || col.format === 'pctRaw' || col.format === 'int' || col.format === 'ip' ? 'font-mono text-right' : ''} ${stickyClass(col)}`}
                   style={stickyMeta[col.key] ? stickyStyle(col) : undefined}
                 >
                   {renderCell(row, col, i)}
