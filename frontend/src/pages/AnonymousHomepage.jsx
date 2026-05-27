@@ -10,11 +10,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  useBattingLeaderboard, usePitchingLeaderboard,
+  useBattingLeaderboard, usePitchingLeaderboard, useTeams,
 } from '../hooks/useApi'
 import { usePublishedArticles } from '../hooks/useArticles'
 
 const SEASON = 2026
+
+// Lower Columbia team_id for 2026 NWAC champ card.
+const LCC_TEAM_ID = 52
+const LCC_LOGO = '/logos/nwac/lower_columbia.png'
 
 export default function AnonymousHomepage() {
   return (
@@ -23,6 +27,7 @@ export default function AnonymousHomepage() {
 
       <div className="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto py-8 sm:py-12 space-y-12">
         <ByTheNumbersStrip />
+        <TeamCoverageWall />
         <SeasonInReviewSection />
         <InlineCta
           headline="Want to follow your team?"
@@ -173,15 +178,7 @@ function SeasonInReviewSection() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <FeatureCard
-          title="NWAC Champion"
-          eyebrow="Tournament"
-          headline="Lower Columbia"
-          subhead="16th NWAC title in school history. Jaylen Kennedy named tournament MVP."
-          accent="from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-900/10 border-amber-200 dark:border-amber-800/40"
-          link={{ to: '/articles/lower-columbia-nwac-champions', label: 'Read the recap' }}
-          emoji="🏆"
-        />
+        <NwacChampionCard />
         <PlayerHighlightCard
           eyebrow="Top Hitter (WAR)"
           player={topBatter}
@@ -199,29 +196,49 @@ function SeasonInReviewSection() {
   )
 }
 
-function FeatureCard({ title, eyebrow, headline, subhead, accent, link, emoji }) {
+// NWAC champion card — the school's actual logo + a quick numeric
+// snapshot from the tournament instead of a trophy emoji.
+function NwacChampionCard() {
   return (
-    <div className={`rounded-xl bg-gradient-to-br ${accent} border p-5 flex flex-col h-full`}>
-      <div className="text-[10px] font-semibold uppercase tracking-[2px] text-gray-500 dark:text-gray-400 mb-2">
-        {eyebrow}
+    <Link
+      to={`/team/${LCC_TEAM_ID}`}
+      className="group rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-900/10 border border-amber-200 dark:border-amber-800/40 p-5 flex flex-col h-full hover:border-amber-400 dark:hover:border-amber-600 transition-colors"
+    >
+      <div className="text-[10px] font-semibold uppercase tracking-[2px] text-amber-700 dark:text-amber-300 mb-3">
+        2026 NWAC Champion
       </div>
-      {emoji && <div className="text-3xl mb-2">{emoji}</div>}
-      <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{title}</div>
-      <div className="text-xl sm:text-2xl font-extrabold text-gray-900 dark:text-gray-100 mb-2 leading-tight">
-        {headline}
+      <div className="flex items-center gap-3 mb-3">
+        <img
+          src={LCC_LOGO}
+          alt=""
+          className="w-16 h-16 object-contain shrink-0 drop-shadow-sm"
+          onError={(e) => { e.target.style.display = 'none' }}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-xl sm:text-2xl font-extrabold text-gray-900 dark:text-gray-100 leading-tight group-hover:text-amber-700 dark:group-hover:text-amber-300 transition-colors">
+            Lower Columbia
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            Red Devils
+          </div>
+        </div>
       </div>
-      <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
-        {subhead}
+
+      <div className="flex gap-2 mt-1 mb-3">
+        <div className="flex-1 bg-white/60 dark:bg-gray-800/60 rounded-md p-2 text-center">
+          <div className="text-xl font-extrabold text-amber-700 dark:text-amber-300 tabular-nums">16</div>
+          <div className="text-[9px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">titles</div>
+        </div>
+        <div className="flex-1 bg-white/60 dark:bg-gray-800/60 rounded-md p-2 text-center">
+          <div className="text-xl font-extrabold text-amber-700 dark:text-amber-300 tabular-nums">MVP</div>
+          <div className="text-[9px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">Kennedy</div>
+        </div>
+      </div>
+
+      <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mt-auto">
+        16th NWAC title in school history. Catcher Jaylen Kennedy named tournament MVP.
       </p>
-      {link && (
-        <Link
-          to={link.to}
-          className="text-sm font-semibold text-nw-teal hover:underline self-start"
-        >
-          {link.label} →
-        </Link>
-      )}
-    </div>
+    </Link>
   )
 }
 
@@ -307,55 +324,259 @@ function InlineCta({ headline, body }) {
 // FREE TOOLS SHOWCASE
 // ============================================================
 function FreeToolsShowcase() {
-  const tools = [
-    {
-      title: 'Leaderboards',
-      desc: 'Hitting, pitching, and fielding leaders across every division.',
-      to: '/hitting',
-      icon: '📊',
-    },
-    {
-      title: 'Team Pages',
-      desc: 'Rosters, schedules, splits, advanced stats for 57 teams.',
-      to: '/teams',
-      icon: '⚾',
-    },
-    {
-      title: 'Standings',
-      desc: 'Live conference and overall rankings, plus PPI ratings.',
-      to: '/standings',
-      icon: '🏟️',
-    },
-    {
-      title: 'Stat Glossary',
-      desc: 'Every metric on the site defined, with formulas.',
-      to: '/about#glossary',
-      icon: '📖',
-    },
-  ]
   return (
     <section>
       <SectionHeading
         eyebrow="Free, no sign-up required"
         title="Start exploring"
-        sub="Everything on this row works for anonymous visitors. Sign up later to favorite players and personalize your view."
+        sub="Every tile below works for anonymous visitors. Sign up later to favorite players and personalize your view."
       />
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {tools.map((t) => (
-          <Link
-            key={t.to}
-            to={t.to}
-            className="group bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 hover:border-nw-teal hover:shadow-md transition-all"
-          >
-            <div className="text-3xl mb-2">{t.icon}</div>
-            <div className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100 mb-1 group-hover:text-nw-teal transition-colors">
-              {t.title}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <ToolTileLeaderboards />
+        <ToolTileFielding />
+        <ToolTileTeams />
+        <ToolTileGlossary />
+      </div>
+    </section>
+  )
+}
+
+function ToolTile({ to, title, desc, children }) {
+  return (
+    <Link
+      to={to}
+      className="group bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 hover:border-nw-teal hover:shadow-md transition-all flex flex-col h-full"
+    >
+      <div className="mb-3 sm:mb-4">{children}</div>
+      <div className="mt-auto">
+        <div className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 mb-1 group-hover:text-nw-teal transition-colors">
+          {title}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+          {desc}
+        </p>
+      </div>
+    </Link>
+  )
+}
+
+// Mini WAR leaderboard preview — actual top 3 from the live endpoint.
+function ToolTileLeaderboards() {
+  const { data: lb } = useBattingLeaderboard({
+    season: SEASON, sort_by: 'offensive_war', sort_dir: 'desc',
+    limit: 3, qualified: true,
+  })
+  const rows = lb?.data || []
+  return (
+    <ToolTile
+      to="/hitting"
+      title="Leaderboards"
+      desc="Hitting, pitching, and fielding leaders across every division."
+    >
+      <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-pnw-slate text-white text-[10px] font-semibold uppercase tracking-wider px-3 py-1.5 flex justify-between">
+          <span>2026 WAR Leaders</span>
+          <span>WAR</span>
+        </div>
+        <div className="divide-y divide-gray-100 dark:divide-gray-700">
+          {rows.length === 0 && [0, 1, 2].map((i) => (
+            <div key={i} className="px-3 py-2 animate-pulse">
+              <div className="h-3 w-2/3 bg-gray-200 dark:bg-gray-700 rounded" />
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              {t.desc}
-            </p>
+          ))}
+          {rows.map((r, i) => (
+            <div key={r.player_id || i} className="px-3 py-2 flex items-center gap-2">
+              <span className="text-[10px] font-bold text-gray-400 w-3">{i + 1}</span>
+              {r.logo_url && (
+                <img src={r.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
+                  onError={(e) => { e.target.style.display = 'none' }} />
+              )}
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate flex-1">
+                {r.first_name} {r.last_name}
+              </span>
+              <span className="text-xs font-mono font-bold text-nw-teal tabular-nums">
+                {(r.offensive_war ?? 0).toFixed(1)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </ToolTile>
+  )
+}
+
+// Mini fielding leaderboard preview — Best NAIA shortstops by FLD%.
+// Showcases the brand-new fielding leaderboard with a real-world slice.
+function ToolTileFielding() {
+  const [rows, setRows] = useState([])
+  useEffect(() => {
+    fetch(`/api/v1/leaderboards/fielding?season=${SEASON}&position=SS&division_id=4&min_games=10&limit=3`)
+      .then((r) => r.json())
+      .then((d) => setRows(d?.data || []))
+      .catch(() => {})
+  }, [])
+  return (
+    <ToolTile
+      to="/fielding"
+      title="Fielding Leaderboards"
+      desc="Per-position defense for every level. Filter by position or division."
+    >
+      <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-pnw-slate text-white text-[10px] font-semibold uppercase tracking-wider px-3 py-1.5 flex justify-between">
+          <span>NAIA SS by FLD%</span>
+          <span>FLD%</span>
+        </div>
+        <div className="divide-y divide-gray-100 dark:divide-gray-700">
+          {rows.length === 0 && [0, 1, 2].map((i) => (
+            <div key={i} className="px-3 py-2 animate-pulse">
+              <div className="h-3 w-2/3 bg-gray-200 dark:bg-gray-700 rounded" />
+            </div>
+          ))}
+          {rows.map((r, i) => (
+            <div key={r.player_id || i} className="px-3 py-2 flex items-center gap-2">
+              <span className="text-[10px] font-bold text-gray-400 w-3">{i + 1}</span>
+              {r.logo_url && (
+                <img src={r.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
+                  onError={(e) => { e.target.style.display = 'none' }} />
+              )}
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate flex-1">
+                {r.first_name} {r.last_name}
+              </span>
+              <span className="text-xs font-mono font-bold text-nw-teal tabular-nums">
+                {r.fielding_pct != null
+                  ? (r.fielding_pct >= 1 ? r.fielding_pct.toFixed(3) : r.fielding_pct.toFixed(3).replace('0.', '.'))
+                  : '-'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </ToolTile>
+  )
+}
+
+// Team-pages tile shows a small grid of REAL logos so the user
+// immediately understands what "57 teams" looks like visually.
+function ToolTileTeams() {
+  const { data: teams } = useTeams({ season: SEASON })
+  // Cap at 12 logos for the tile preview, prefer ones with logo_url.
+  const sample = (teams || [])
+    .filter((t) => t.logo_url)
+    .slice(0, 12)
+  return (
+    <ToolTile
+      to="/teams"
+      title="Team Pages"
+      desc="Rosters, schedules, splits, and advanced stats for every PNW program."
+    >
+      <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 p-3">
+        <div className="grid grid-cols-6 gap-1.5">
+          {sample.length === 0 && [...Array(12)].map((_, i) => (
+            <div key={i} className="aspect-square bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+          ))}
+          {sample.map((t) => (
+            <div key={t.id} className="aspect-square bg-white dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 flex items-center justify-center p-1">
+              <img
+                src={t.logo_url}
+                alt={t.short_name || t.name}
+                className="w-full h-full object-contain"
+                onError={(e) => { e.target.style.display = 'none' }}
+                loading="lazy"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </ToolTile>
+  )
+}
+
+// Glossary tile shows a real stat-definition snippet so the
+// "every metric defined" claim is immediately concrete.
+function ToolTileGlossary() {
+  return (
+    <ToolTile
+      to="/about#glossary"
+      title="Stat Glossary"
+      desc="Every metric on the site defined, with formulas."
+    >
+      <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 p-3 space-y-2.5">
+        <GlossaryRow term="wRC+"
+          formula="100 = league avg · 150 = elite"
+          desc="Weighted Runs Created plus." />
+        <GlossaryRow term="FIP"
+          formula="13·HR + 3·(BB+HBP) − 2·K / IP + cFIP"
+          desc="Fielding Independent Pitching." />
+        <GlossaryRow term="WAR"
+          formula="Replacement-level wins added"
+          desc="Wins Above Replacement." />
+      </div>
+    </ToolTile>
+  )
+}
+
+function GlossaryRow({ term, formula, desc }) {
+  return (
+    <div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-xs font-mono font-bold text-nw-teal">{term}</span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-400">{desc}</span>
+      </div>
+      <div className="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate">
+        {formula}
+      </div>
+    </div>
+  )
+}
+
+
+// ============================================================
+// TEAM COVERAGE WALL
+// ============================================================
+// One striking visual that demonstrates breadth at a glance. Pulls
+// every PNW team with a logo and lays them out as a dense grid.
+function TeamCoverageWall() {
+  const { data: teams } = useTeams({ season: SEASON })
+  const pnwTeams = (teams || [])
+    .filter((t) => t.logo_url && (t.is_pnw || ['WA', 'OR', 'ID', 'MT', 'BC'].includes(t.state)))
+  // Cap display at 36 so the grid doesn't sprawl on tall screens.
+  const display = pnwTeams.slice(0, 36)
+  const more = Math.max(0, pnwTeams.length - display.length)
+
+  if (display.length === 0) return null
+
+  return (
+    <section>
+      <SectionHeading
+        eyebrow="Coverage"
+        title="Every PNW program in one place"
+        sub={`${pnwTeams.length} active teams across D1, D2, D3, NAIA, and the NWAC. Click any logo to drop into that team's page.`}
+      />
+      <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-2">
+        {display.map((t) => (
+          <Link
+            key={t.id}
+            to={`/team/${t.id}`}
+            title={t.short_name || t.name}
+            className="aspect-square bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 p-1.5 flex items-center justify-center hover:border-nw-teal hover:shadow transition-all"
+          >
+            <img
+              src={t.logo_url}
+              alt={t.short_name || t.name}
+              className="w-full h-full object-contain"
+              loading="lazy"
+              onError={(e) => { e.target.style.display = 'none' }}
+            />
           </Link>
         ))}
+        {more > 0 && (
+          <Link
+            to="/teams"
+            className="aspect-square rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-[11px] font-bold text-gray-500 dark:text-gray-400 hover:border-nw-teal hover:text-nw-teal transition-colors"
+          >
+            +{more}
+          </Link>
+        )}
       </div>
     </section>
   )
@@ -409,11 +630,37 @@ function WhatsNextCard() {
 // LOCK-TEASE CTA
 // ============================================================
 function LockTeaseCta() {
+  // SVGs instead of emoji icons — match the rest of the site's
+  // visual language. All paths are heroicons-style 24x24 outline.
   const perks = [
-    { label: 'Favorite players + bookmark teams', icon: '★' },
-    { label: 'Personalized dashboards', icon: '📈' },
-    { label: 'Read every article', icon: '📰' },
-    { label: 'Email digests when your team plays', icon: '📧' },
+    {
+      label: 'Favorite players + bookmark teams',
+      svg: (
+        <path strokeLinecap="round" strokeLinejoin="round"
+          d="M11.48 3.5l2.46 4.99 5.51.8-3.99 3.88.94 5.49-4.92-2.59-4.92 2.59.94-5.49-3.99-3.88 5.51-.8L11.48 3.5z" />
+      ),
+    },
+    {
+      label: 'Personalized dashboards',
+      svg: (
+        <path strokeLinecap="round" strokeLinejoin="round"
+          d="M3 21V8m4 13V3m4 18v-9m4 9V6m4 15v-4" />
+      ),
+    },
+    {
+      label: 'Read every article',
+      svg: (
+        <path strokeLinecap="round" strokeLinejoin="round"
+          d="M4 6h16M4 10h16M4 14h10M4 18h7M19 14v5h-3" />
+      ),
+    },
+    {
+      label: 'Email digests when your team plays',
+      svg: (
+        <path strokeLinecap="round" strokeLinejoin="round"
+          d="M3 8l9 6 9-6M3 8v10a2 2 0 002 2h14a2 2 0 002-2V8M3 8l9-5 9 5" />
+      ),
+    },
   ]
   return (
     <section className="rounded-xl bg-gradient-to-br from-gray-900 to-pnw-slate dark:from-gray-950 dark:to-pnw-slate text-white p-6 sm:p-8">
@@ -439,8 +686,10 @@ function LockTeaseCta() {
         <ul className="space-y-3">
           {perks.map((p) => (
             <li key={p.label} className="flex items-start gap-3">
-              <span className="shrink-0 w-7 h-7 rounded-full bg-amber-400/15 text-amber-300 flex items-center justify-center text-sm font-bold">
-                {p.icon}
+              <span className="shrink-0 w-7 h-7 rounded-full bg-amber-400/15 text-amber-300 flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="w-4 h-4">
+                  {p.svg}
+                </svg>
               </span>
               <span className="text-sm text-white/90">{p.label}</span>
             </li>
@@ -480,8 +729,12 @@ function FeaturedArticles() {
                 style={{ backgroundImage: `url(${a.cover_image_url || a.image_url})` }}
               />
             ) : (
-              <div className="aspect-[16/9] bg-gradient-to-br from-nw-teal/20 to-pnw-sky/20 dark:from-nw-teal/30 dark:to-pnw-sky/30 flex items-center justify-center text-4xl">
-                ⚾
+              // No cover image — render a gradient header with the
+              // site mark instead of a baseball emoji.
+              <div className="aspect-[16/9] bg-gradient-to-br from-nw-teal/30 to-pnw-sky/30 dark:from-nw-teal/50 dark:to-pnw-sky/50 flex items-center justify-center">
+                <div className="text-white/90 font-black text-2xl tracking-tight">
+                  NW<span className="text-amber-300">·</span>BB
+                </div>
               </div>
             )}
             <div className="p-4">
