@@ -74,19 +74,54 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    const upstream = await fetch(parsed.toString(), {
+    let upstream = await fetch(parsed.toString(), {
       signal: controller.signal,
       redirect: 'follow',
       headers: {
         'User-Agent':
           'NWBaseballStats-ImageProxy/1.0 (+https://nwbaseballstats.com)',
-        Accept: 'image/*',
+        Accept: 'image/png,image/jpeg,image/*;q=0.8',
       },
     });
     clearTimeout(timer);
 
     if (!upstream.ok) {
       return new Response('upstream error', { status: 502 });
+    }
+
+    // Sidearm sites 302 their /images/ paths through
+    // images.sidearmdev.com/convert?... which returns WebP. Satori
+    // doesn't render every WebP variant reliably, so when we land
+    // on that converter we step around it and fetch the original
+    // (usually JPG/PNG) source directly from CloudFront.
+    if (upstream.url.includes('images.sidearmdev.com/')) {
+      try {
+        const inner = new URL(upstream.url);
+        const direct = inner.searchParams.get('url');
+        if (direct) {
+          const controller2 = new AbortController();
+          const t2 = setTimeout(() => controller2.abort(), 8000);
+          const alt = await fetch(direct, {
+            signal: controller2.signal,
+            redirect: 'follow',
+            headers: {
+              'User-Agent':
+                'NWBaseballStats-ImageProxy/1.0 (+https://nwbaseballstats.com)',
+              Accept: 'image/png,image/jpeg,image/*;q=0.8',
+            },
+          });
+          clearTimeout(t2);
+          if (alt.ok) {
+            const altCt = (alt.headers.get('content-type') || '').toLowerCase();
+            if (altCt.startsWith('image/')) {
+              upstream = alt;
+            }
+          }
+        }
+      } catch (_) {
+        // Fall through to the original (webp) response — better than
+        // failing entirely.
+      }
     }
 
     const ct = (upstream.headers.get('content-type') || '').toLowerCase();
