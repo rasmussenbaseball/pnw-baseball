@@ -94,17 +94,21 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response('not an image', { status: 415 });
     }
 
-    // Stream the bytes through. Strip any cookies / privileged
-    // upstream headers, set our own caching.
+    // Buffer the full body so we can set Content-Length. Satori's
+    // image loader is happier with a complete buffered response than
+    // with a chunked stream.
+    const buf = await upstream.arrayBuffer();
+
     const headers = new Headers();
     headers.set('Content-Type', ct);
+    headers.set('Content-Length', String(buf.byteLength));
     headers.set(
       'Cache-Control',
       'public, immutable, no-transform, max-age=86400, s-maxage=86400'
     );
     headers.set('Access-Control-Allow-Origin', '*');
 
-    return new Response(upstream.body, {
+    return new Response(buf, {
       status: 200,
       headers,
     });
