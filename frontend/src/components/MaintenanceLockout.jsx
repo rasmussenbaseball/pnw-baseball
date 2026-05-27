@@ -30,7 +30,7 @@ import { supabase } from '../lib/supabase'
 // To toggle the lockout: flip this constant and push. Vercel
 // auto-deploys in ~60s. Setting via Vercel env var (the old path)
 // also still works — env var wins if it's set to 'true'.
-const LOCKOUT_FORCE_ON = true
+const LOCKOUT_FORCE_ON = false
 
 export default function MaintenanceLockout({ children }) {
   const envFlag = import.meta.env.VITE_MAINTENANCE_LOCKOUT === 'true'
