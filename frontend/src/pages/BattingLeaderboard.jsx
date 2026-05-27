@@ -14,16 +14,18 @@ import {
 } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
 
+// PBP lives inside the View: pill bar as another preset alongside
+// Standard / Advanced / Power / Discipline / Speed. When the user
+// picks PBP we switch to the PBP endpoint + PBP column set under the
+// hood; the visual is the same pill toggle.
+const ALL_PRESETS = { ...BATTING_PRESETS, PBP: BATTING_PBP_PRESETS.PBP }
+
 export default function BattingLeaderboard() {
   const [filters, setFilters] = usePersistedState('bat_lb_filters', {
     season: 2026,
     min_pa: 50,
     _type: 'batting',
   })
-  // statView: 'standard' (existing leaderboard) or 'pbp' (plate-discipline).
-  // The PBP view sources from a separate endpoint, uses a different column
-  // set, and has its own sort defaults — but reuses the same filter bar.
-  const [statView, setStatView] = usePersistedState('bat_lb_statView', 'standard')
   const [sortBy, setSortBy] = usePersistedState('bat_lb_sortBy', 'batting_avg')
   const [sortDir, setSortDir] = usePersistedState('bat_lb_sortDir', 'desc')
   const [pbpSortBy, setPbpSortBy] = usePersistedState('bat_lb_pbp_sortBy', 'whiff_pct')
@@ -35,9 +37,8 @@ export default function BattingLeaderboard() {
   const { data: divisions } = useDivisions()
   const { data: conferences } = useConferences()
 
-  const isPbp = statView === 'pbp'
+  const isPbp = preset === 'PBP'
 
-  // ── Params for the standard endpoint ──
   const apiParams = {
     season: filters.season,
     division_id: filters.division_id,
@@ -54,10 +55,9 @@ export default function BattingLeaderboard() {
     offset: page * limit,
   }
 
-  // ── Params for the PBP endpoint ──
-  // PBP doesn't expose conference_only / qualified / position_group; it
-  // uses min_pa as a tracked-PA floor (default 30) with its own sort
-  // defaults pointing at whiff%.
+  // PBP endpoint uses a tracked-PA floor instead of min_pa from the
+  // standard filter, and doesn't honor conference_only / qualified /
+  // position_group (PBP rows are derived from game_events).
   const pbpParams = {
     season: filters.season,
     division_id: filters.division_id,
@@ -71,9 +71,8 @@ export default function BattingLeaderboard() {
     offset: page * limit,
   }
 
-  // Always call both hooks (React rules: hook order can't change between
-  // renders). The inactive one fires a cheap cached fetch in the
-  // background — backend caches batting endpoints for 30 minutes.
+  // Always call both hooks (React requires stable hook order). The
+  // inactive endpoint is cheap (cached 30 min on the backend).
   const standardResp = useBattingLeaderboard(apiParams)
   const pbpResp = useBattingPbpLeaderboard(pbpParams)
   const { data: result, loading } = isPbp ? pbpResp : standardResp
@@ -84,9 +83,13 @@ export default function BattingLeaderboard() {
     setPage(0)
   }
 
+  const handlePresetChange = (p) => {
+    setPreset(p)
+    setPage(0)
+  }
+
   const columns = isPbp ? BATTING_PBP_COLUMNS : BATTING_COLUMNS
-  const presets = isPbp ? BATTING_PBP_PRESETS : BATTING_PRESETS
-  const activePreset = isPbp ? 'PBP' : preset
+  const visibleCols = ALL_PRESETS[preset] // PBP preset → all PBP cols visible
   const sortKey = isPbp ? pbpSortBy : sortBy
   const sortDirVal = isPbp ? pbpSortDir : sortDir
   const exportEndpoint = isPbp ? '/api/v1/leaderboards/batting-pbp'
@@ -104,38 +107,11 @@ export default function BattingLeaderboard() {
         conferences={conferences}
       />
 
-      {/* Stat-source toggle: Standard vs PBP */}
-      <div className="mb-3 inline-flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
-        <button
-          onClick={() => { setStatView('standard'); setPage(0) }}
-          className={`px-3 sm:px-4 py-1.5 font-medium transition ${
-            !isPbp
-              ? 'bg-nw-teal text-white'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-          }`}
-        >
-          Standard Stats
-        </button>
-        <button
-          onClick={() => { setStatView('pbp'); setPage(0) }}
-          title="Plate discipline & pitch-level stats from per-PA play-by-play"
-          className={`px-3 sm:px-4 py-1.5 font-medium transition ${
-            isPbp
-              ? 'bg-nw-teal text-white'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-          }`}
-        >
-          PBP
-        </button>
-      </div>
-
-      {!isPbp && (
-        <StatPresetBar
-          presets={BATTING_PRESETS}
-          activePreset={preset}
-          onSelect={setPreset}
-        />
-      )}
+      <StatPresetBar
+        presets={ALL_PRESETS}
+        activePreset={preset}
+        onSelect={handlePresetChange}
+      />
 
       <div className="mb-2 flex items-center justify-between gap-2">
         <StatsLastUpdated />
@@ -164,7 +140,7 @@ export default function BattingLeaderboard() {
       <StatsTable
         data={result?.data || []}
         columns={columns}
-        visibleColumns={presets[activePreset]}
+        visibleColumns={visibleCols}
         sortBy={sortKey}
         sortDir={sortDirVal}
         onSort={handleSort}
@@ -172,7 +148,6 @@ export default function BattingLeaderboard() {
         offset={page * limit}
       />
 
-      {/* Pagination */}
       {result && result.total > limit && (
         <div className="flex justify-between items-center mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
           <span>

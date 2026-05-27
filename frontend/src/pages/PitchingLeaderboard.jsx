@@ -14,13 +14,16 @@ import {
 } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
 
+// PBP lives inside the View: pill bar as another preset alongside
+// Standard / Advanced / Strikeouts / Relievers.
+const ALL_PRESETS = { ...PITCHING_PRESETS, PBP: PITCHING_PBP_PRESETS.PBP }
+
 export default function PitchingLeaderboard() {
   const [filters, setFilters] = usePersistedState('pit_lb_filters', {
     season: 2026,
     min_ip: 20,
     _type: 'pitching',
   })
-  const [statView, setStatView] = usePersistedState('pit_lb_statView', 'standard')
   const [sortBy, setSortBy] = usePersistedState('pit_lb_sortBy', 'era')
   const [sortDir, setSortDir] = usePersistedState('pit_lb_sortDir', 'asc')
   const [pbpSortBy, setPbpSortBy] = usePersistedState('pit_lb_pbp_sortBy', 'strike_pct')
@@ -32,9 +35,8 @@ export default function PitchingLeaderboard() {
   const { data: divisions } = useDivisions()
   const { data: conferences } = useConferences()
 
-  const isPbp = statView === 'pbp'
+  const isPbp = preset === 'PBP'
 
-  // Some presets apply extra backend filters (e.g. Relievers → max_gs=0)
   const presetFilters = PITCHING_PRESET_FILTERS[preset] || {}
 
   const apiParams = {
@@ -53,7 +55,6 @@ export default function PitchingLeaderboard() {
     ...presetFilters,
   }
 
-  // PBP uses tracked-BF as the floor, not min_ip. Default 40 BF.
   const pbpParams = {
     season: filters.season,
     division_id: filters.division_id,
@@ -67,9 +68,6 @@ export default function PitchingLeaderboard() {
     offset: page * limit,
   }
 
-  // Always call both hooks (React requires stable hook order). The
-  // inactive one fires a cheap cached request — backend caches each
-  // pitching endpoint for 30 minutes.
   const standardResp = usePitchingLeaderboard(apiParams)
   const pbpResp = usePitchingPbpLeaderboard(pbpParams)
   const { data: result, loading } = isPbp ? pbpResp : standardResp
@@ -80,9 +78,13 @@ export default function PitchingLeaderboard() {
     setPage(0)
   }
 
+  const handlePresetChange = (p) => {
+    setPreset(p)
+    setPage(0)
+  }
+
   const columns = isPbp ? PITCHING_PBP_COLUMNS : PITCHING_COLUMNS
-  const presets = isPbp ? PITCHING_PBP_PRESETS : PITCHING_PRESETS
-  const activePreset = isPbp ? 'PBP' : preset
+  const visibleCols = ALL_PRESETS[preset]
   const sortKey = isPbp ? pbpSortBy : sortBy
   const sortDirVal = isPbp ? pbpSortDir : sortDir
   const exportEndpoint = isPbp ? '/api/v1/leaderboards/pitching-pbp'
@@ -100,38 +102,11 @@ export default function PitchingLeaderboard() {
         conferences={conferences}
       />
 
-      {/* Stat-source toggle: Standard vs PBP */}
-      <div className="mb-3 inline-flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
-        <button
-          onClick={() => { setStatView('standard'); setPage(0) }}
-          className={`px-3 sm:px-4 py-1.5 font-medium transition ${
-            !isPbp
-              ? 'bg-nw-teal text-white'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-          }`}
-        >
-          Standard Stats
-        </button>
-        <button
-          onClick={() => { setStatView('pbp'); setPage(0) }}
-          title="Plate discipline & pitch-level stats from per-PA play-by-play"
-          className={`px-3 sm:px-4 py-1.5 font-medium transition ${
-            isPbp
-              ? 'bg-nw-teal text-white'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-          }`}
-        >
-          PBP
-        </button>
-      </div>
-
-      {!isPbp && (
-        <StatPresetBar
-          presets={PITCHING_PRESETS}
-          activePreset={preset}
-          onSelect={(p) => { setPreset(p); setPage(0) }}
-        />
-      )}
+      <StatPresetBar
+        presets={ALL_PRESETS}
+        activePreset={preset}
+        onSelect={handlePresetChange}
+      />
 
       <div className="mb-2 flex items-center justify-between gap-2">
         <StatsLastUpdated />
@@ -160,7 +135,7 @@ export default function PitchingLeaderboard() {
       <StatsTable
         data={result?.data || []}
         columns={columns}
-        visibleColumns={presets[activePreset]}
+        visibleColumns={visibleCols}
         sortBy={sortKey}
         sortDir={sortDirVal}
         onSort={handleSort}
