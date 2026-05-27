@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { PreviewProvider } from './context/PreviewContext'
 import PreviewBanner from './components/PreviewBanner'
+import MaintenanceLockout from './components/MaintenanceLockout'
 import { isDeveloper } from './lib/tiers'
 import Header from './components/Header'
 import SignupPopup from './components/SignupPopup'
@@ -294,6 +295,7 @@ export default function App() {
     <ThemeProvider>
     <PreviewProvider>
     <AuthProvider>
+    <MaintenanceLockout>
     <PreviewBanner />
     <div className={`min-h-screen transition-colors ${
       isPortal ? 'bg-portal-cream'
@@ -542,6 +544,7 @@ export default function App() {
       </footer>
       )}
     </div>
+    </MaintenanceLockout>
     </AuthProvider>
     </PreviewProvider>
     </ThemeProvider>
