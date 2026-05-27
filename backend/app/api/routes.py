@@ -5368,7 +5368,7 @@ def batting_pbp_leaderboard(
                                        AND ge.strikes_before = 2
                                        AND ge.result_type IN ('strikeout_swinging','strikeout_looking')) AS two_strike_k,
                     -- Batted-ball mix. bb_total is BIPs with a known
-                    -- batted-ball type (GB/LD/FB/PU). FB% is FB / bb_total.
+                    -- batted-ball type (GB/LD/FB/PU). FB rate is FB / bb_total.
                     COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL) AS bb_total,
                     COUNT(*) FILTER (WHERE ge.bb_type = 'FB') AS fb_count,
                     -- Air-pull = LD or FB pulled to the batter's pull side.
