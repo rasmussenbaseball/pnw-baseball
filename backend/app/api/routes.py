@@ -5495,15 +5495,16 @@ def pitching_pbp_leaderboard(
 ):
     """Pitcher pitch-level leaderboard, aggregated from game_events.
 
-    Returns per-player: strike%, F-strike% (first-pitch strike),
-    called-strike%, whiff%, contact%, putaway%, P/BF, on-or-out-3%
-    — plus sample-size fields (tracked_bf, pitches, swings).
+    Returns per-player: strike rate, first-pitch strike rate,
+    called-strike rate, whiff rate, contact rate, putaway rate,
+    pitches per BF, on-or-out-in-3 rate, GB rate, plus sample-size
+    fields (tracked_pa, pitches, swings, bb_total).
     """
     allowed_sort = {
         "tracked_pa", "pitches", "swings",
         "strike_pct", "called_strike_pct", "whiff_pct", "contact_pct",
         "first_pitch_strike_pct", "putaway_pct",
-        "pitches_per_pa", "on_or_out_3_pct",
+        "pitches_per_pa", "on_or_out_3_pct", "gb_pct",
     }
     if sort_by not in allowed_sort:
         sort_by = "strike_pct"
@@ -5548,12 +5549,16 @@ def pitching_pbp_leaderboard(
                                        AND ge.strikes_before = 2
                                        AND ge.result_type IN ('strikeout_swinging','strikeout_looking')) AS two_strike_k,
                     -- on/out in 3: tracked PAs that resolved in 1-3 pitches via hit-or-out
-                    -- (walks/HBP/IBB/CI excluded — those are catcher / batter outcomes).
+                    -- (walks/HBP/IBB/CI excluded, those are catcher / batter outcomes).
                     COUNT(*) FILTER (
                         WHERE ge.pitches_thrown BETWEEN 1 AND 3
                           AND ge.result_type NOT IN
                               ('walk','intentional_walk','hbp','catcher_interference')
-                    ) AS on_or_out_3
+                    ) AS on_or_out_3,
+                    -- Batted-ball mix allowed. bb_total = BIPs with a
+                    -- known type (GB/LD/FB/PU). GB rate is GB / bb_total.
+                    COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL) AS bb_total,
+                    COUNT(*) FILTER (WHERE ge.bb_type = 'GB') AS gb_count
                 FROM game_events ge
                 JOIN games g ON g.id = ge.game_id
                 WHERE g.season = %s AND ge.pitcher_player_id IS NOT NULL
@@ -5587,7 +5592,11 @@ def pitching_pbp_leaderboard(
                     END AS pitches_per_pa,
                     CASE WHEN pbp.tracked_pa > 0
                         THEN pbp.on_or_out_3::numeric / pbp.tracked_pa
-                    END AS on_or_out_3_pct
+                    END AS on_or_out_3_pct,
+                    -- ground-ball rate = GB / total bb-tracked
+                    CASE WHEN pbp.bb_total > 0
+                        THEN pbp.gb_count::numeric / pbp.bb_total
+                    END AS gb_pct
                 FROM pbp
             )
             SELECT
@@ -5597,10 +5606,10 @@ def pitching_pbp_leaderboard(
                 t.school_name AS team_name, t.logo_url, t.state,
                 d.level AS division_level,
                 c.id AS conference_id, c.abbreviation AS conference_abbrev,
-                s.total_pa, s.tracked_pa, s.pitches, s.swings,
+                s.total_pa, s.tracked_pa, s.pitches, s.swings, s.bb_total,
                 s.strike_pct, s.called_strike_pct, s.whiff_pct, s.contact_pct,
                 s.first_pitch_strike_pct, s.putaway_pct,
-                s.pitches_per_pa, s.on_or_out_3_pct
+                s.pitches_per_pa, s.on_or_out_3_pct, s.gb_pct
             FROM scored s
             JOIN players p ON p.id = s.player_id
             JOIN teams t ON t.id = p.team_id

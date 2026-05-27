@@ -262,6 +262,10 @@ export const PITCHING_PBP_COLUMNS = [
   { key: 'contact_pct', label: 'Contact%', width: 80, format: 'pct',
     title: 'Contact% — fouls + balls in play, divided by total swings (lower is better)' },
 
+  // Batted-ball mix allowed
+  { key: 'gb_pct', label: 'GB%', width: 65, format: 'pct',
+    title: 'Ground-Ball% — share of balls in play (with known type) classified as ground balls' },
+
   // Two-strike + efficiency
   { key: 'putaway_pct', label: 'Putaway%', width: 80, format: 'pct',
     title: 'Putaway% — 2-strike BFs that ended in a strikeout' },
