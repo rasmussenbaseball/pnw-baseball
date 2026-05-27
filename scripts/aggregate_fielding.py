@@ -116,6 +116,10 @@ ON CONFLICT (player_id, season, position, team_id) DO UPDATE SET
 PRUNE_SQL = """
 DELETE FROM fielding_stats fs
 WHERE fs.season = %s
+  -- Position 'ALL' rows are populated by scrape_season_fielding.py
+  -- directly from team/conference season pages; they intentionally
+  -- have no game_fielding backing, so the prune must skip them.
+  AND fs.position != 'ALL'
   AND NOT EXISTS (
     SELECT 1
     FROM game_fielding gf
