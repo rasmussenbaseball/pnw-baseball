@@ -52,19 +52,21 @@ const CLAUDE_HOURS = 200
 const INTERNS = [
   {
     name: 'Kai Malloch',
-    role: 'Data & Research',
+    role: 'Intern',
     headshot: null,
     blurb: 'Kai is a high school baseball player at Nathan Hale High School and a youth pitching coach working with the 13U to 15U age groups. He builds independent player development projects to further understand pitching and showcase his work, including regression models that look at how factors like bodyweight and sleep impact pitching velocity, plus deep dives into MLB pitching arsenals. He plans to attend either Gonzaga University or the University of Washington to study Business Administration and Finance, with hopes to work in professional baseball operations.',
   },
   {
     name: 'Connor Broschard',
-    role: 'Content & Media',
+    role: 'Intern',
+    playerId: 3336,
     headshot: null,
     blurb: 'Connor is an outfielder and pitcher at Lewis & Clark College, originally from Fairfield, California. He is studying Rhetoric and Media Studies with a minor in Entrepreneurial Leadership and Innovation. He has been fascinated by baseball stats and baseball media for as long as he can remember, and hopes to work professionally in the baseball world someday, whether in the media landscape or in a front office or scouting role. He is also a diehard Boston Red Sox fan.',
   },
   {
     name: 'Oliver Duthie',
     role: 'Intern',
+    playerId: 3002,
     headshot: null,
     blurb: 'Bio coming soon.',
     bioPending: true,
@@ -72,6 +74,7 @@ const INTERNS = [
   {
     name: 'Trevor Kazahaya',
     role: 'Intern',
+    playerId: 3352,
     headshot: null,
     blurb: 'Bio coming soon.',
     bioPending: true,
@@ -86,6 +89,7 @@ const INTERNS = [
   {
     name: 'Nate Petz',
     role: 'Intern',
+    playerId: 3253,
     headshot: null,
     blurb: 'Bio coming soon.',
     bioPending: true,
@@ -93,6 +97,7 @@ const INTERNS = [
   {
     name: 'Luke Malzewski',
     role: 'Intern',
+    playerId: 3261,
     headshot: null,
     blurb: 'Bio coming soon.',
     bioPending: true,
@@ -313,7 +318,7 @@ function TeamSection() {
         subtitle="A small, hand-picked team helping build out scouting, content, and engineering"
       >
         <P>
-          Starting summer 2026, a group of student interns is joining NW Baseball Stats across data, scouting, content, and engineering. Roles are filled as bandwidth allows; bios go up here as each person comes on board.
+          The internship is geared toward giving young people in the Pacific Northwest real work experience inside the baseball world, building on the skills they already have in player development, scouting, writing, and analysis.
         </P>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-3">
           {INTERNS.map((intern, i) => (
@@ -333,7 +338,16 @@ function TeamSection() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2 flex-wrap">
-                    <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{intern.name}</p>
+                    {intern.playerId ? (
+                      <Link
+                        to={`/player/${intern.playerId}`}
+                        className="text-sm font-bold text-nw-teal hover:text-pnw-sky dark:text-nw-teal/90 dark:hover:text-pnw-sky underline-offset-2 hover:underline"
+                      >
+                        {intern.name}
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{intern.name}</p>
+                    )}
                     {intern.joining && (
                       <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">
                         Joining Soon
