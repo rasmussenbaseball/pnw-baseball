@@ -54,17 +54,20 @@ export default function MaintenanceLockout({ children }) {
   // Developer-tier bypass — check the REAL underlying user, not the
   // previewed tier. Without this, a developer who flipped their view
   // to "anonymous" with the preview widget would lock themselves out
-  // of their own site with no way back in (the preview toggle lives
-  // inside the regular UI that the lockout hides).
+  // of their own site with no way back in (the preview-exit toggle
+  // lives inside the regular UI that the lockout would otherwise hide).
+  //
+  // Devs always render the full site. If they want to see what a
+  // lower tier sees during a lockout window, they can flip the env
+  // flag off temporarily.
   const realEmail = realUser?.email
   if (realEmail && DEVELOPER_EMAILS.includes(realEmail)) {
-    // If a preview is active and it's the thing causing the apparent
-    // lockout, show a small banner-style exit button instead of the
-    // full lockout. Anything else, just pass through.
-    if (previewTier && !tierMeets(tier, 'coach')) {
-      return <PreviewLockoutBanner exitPreview={exitPreview} previewTier={previewTier}>
-        {children}
-      </PreviewLockoutBanner>
+    // Belt-and-suspenders: also clear any active preview that was
+    // hiding the in-site exit toggle. Otherwise the preview widget
+    // on the homepage would still report "previewing as X" once
+    // they're past the lockout.
+    if (previewTier) {
+      try { exitPreview() } catch { /* noop */ }
     }
     return children
   }
@@ -80,18 +83,15 @@ export default function MaintenanceLockout({ children }) {
 }
 
 
-function PreviewLockoutBanner({ children, exitPreview, previewTier }) {
-  // Devs previewing as a lower tier still see the lockout overlay
-  // from the previewed-tier's perspective — but with a sticky bar at
-  // the top that exits the preview in one click. This way the site
-  // owner can verify "what an anonymous user sees" without trapping
-  // themselves.
+function _UnusedPreviewBanner({ children, exitPreview, previewTier }) {
+  // Kept around in case we want to bring back the "view as X with
+  // a one-click exit" pattern after the lockout window. Not rendered
+  // currently — devs pass straight through the lockout instead.
   return (
     <>
       <div className="fixed top-0 inset-x-0 z-[10000] bg-amber-400 text-[#003845] text-xs sm:text-sm font-semibold px-3 py-1.5 flex items-center justify-center gap-3 shadow">
         <span>
-          Previewing as <span className="font-mono">{previewTier}</span> — the lockout
-          is hiding the site for this tier.
+          Previewing as <span className="font-mono">{previewTier}</span>
         </span>
         <button
           type="button"
@@ -101,12 +101,7 @@ function PreviewLockoutBanner({ children, exitPreview, previewTier }) {
           Exit preview
         </button>
       </div>
-      <div className="pt-8">
-        <LockoutScreen />
-      </div>
-      {/* keep children mounted (off-screen) so context state stays
-          stable; the LockoutScreen above visually covers them */}
-      <div className="hidden">{children}</div>
+      <div className="pt-8">{children}</div>
     </>
   )
 }
