@@ -1046,7 +1046,8 @@ function FieldingTable({ fieldingStats, playerId }) {
         <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="border-b-2 border-nw-teal/30">
-              {['Season', 'Pos', 'Team', 'G', 'GS', 'INN', 'PO', 'A', 'E', 'DP', 'FLD%', 'RF/9'].map((h) => (
+              {['Season', 'Pos', 'Team', 'G', 'PO', 'A', 'E', 'DP', 'FLD%',
+                'PB', 'SBA', 'CS', 'CS%'].map((h) => (
                 <th key={h} className="px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right first:text-left">
                   {h}
                 </th>
@@ -1057,6 +1058,18 @@ function FieldingTable({ fieldingStats, playerId }) {
             {seasons.map((season) => {
               const rows = bySeason[season]
               const total = rows.length > 1 ? sumRow(rows) : null
+              // Catcher stats (PB/SBA/CS/CS%) only apply when the row's
+              // position is C — or when there's *any* meaningful number
+              // there (sometimes scorers credit a non-C row with
+              // throw-outs in a quirky game). Show real values when
+              // present, em-dash otherwise so the column doesn't
+              // turn into a wall of zeros for shortstops.
+              const catcherCell = (val, kind) => {
+                const n = Number(val)
+                if (!n || isNaN(n)) return '—'
+                if (kind === 'pct') return fmtPct(val)
+                return fmtInt(val)
+              }
               return (
                 <Fragment key={season}>
                   {rows.map((r, i) => (
@@ -1077,8 +1090,6 @@ function FieldingTable({ fieldingStats, playerId }) {
                         {r.team_short || ''}
                       </td>
                       <td className="px-2 py-2 text-right font-mono">{fmtInt(r.games)}</td>
-                      <td className="px-2 py-2 text-right font-mono">{fmtInt(r.games_started)}</td>
-                      <td className="px-2 py-2 text-right font-mono">{r.innings != null ? fmtNum(r.innings, 1) : '-'}</td>
                       <td className="px-2 py-2 text-right font-mono">{fmtInt(r.putouts)}</td>
                       <td className="px-2 py-2 text-right font-mono">{fmtInt(r.assists)}</td>
                       <td className={`px-2 py-2 text-right font-mono ${(r.errors || 0) > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
@@ -1086,7 +1097,10 @@ function FieldingTable({ fieldingStats, playerId }) {
                       </td>
                       <td className="px-2 py-2 text-right font-mono">{fmtInt(r.double_plays)}</td>
                       <td className="px-2 py-2 text-right font-mono font-semibold">{fmtPct(r.fielding_pct)}</td>
-                      <td className="px-2 py-2 text-right font-mono">{r.range_factor != null ? fmtNum(r.range_factor, 2) : '-'}</td>
+                      <td className="px-2 py-2 text-right font-mono">{catcherCell(r.passed_balls)}</td>
+                      <td className="px-2 py-2 text-right font-mono">{catcherCell(r.stolen_bases_against)}</td>
+                      <td className="px-2 py-2 text-right font-mono">{catcherCell(r.caught_stealing_by)}</td>
+                      <td className="px-2 py-2 text-right font-mono">{catcherCell(r.cs_pct, 'pct')}</td>
                     </tr>
                   ))}
                   {total && (
@@ -1095,8 +1109,6 @@ function FieldingTable({ fieldingStats, playerId }) {
                       <td className="px-2 py-1.5 text-right text-gray-500 dark:text-gray-400">All</td>
                       <td className="px-2 py-1.5 text-right"></td>
                       <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.games)}</td>
-                      <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.games_started)}</td>
-                      <td className="px-2 py-1.5 text-right font-mono">{total.innings != null ? fmtNum(total.innings, 1) : '-'}</td>
                       <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.putouts)}</td>
                       <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.assists)}</td>
                       <td className={`px-2 py-1.5 text-right font-mono ${total.errors > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
@@ -1104,7 +1116,13 @@ function FieldingTable({ fieldingStats, playerId }) {
                       </td>
                       <td className="px-2 py-1.5 text-right font-mono">{fmtInt(total.double_plays)}</td>
                       <td className="px-2 py-1.5 text-right font-mono font-semibold">{fmtPct(total.fielding_pct)}</td>
-                      <td className="px-2 py-1.5 text-right font-mono">-</td>
+                      {/* PB/SBA/CS/CS% don't sum cleanly across positions
+                          since they only apply at C — dash them in the
+                          total row. */}
+                      <td className="px-2 py-1.5 text-right font-mono">—</td>
+                      <td className="px-2 py-1.5 text-right font-mono">—</td>
+                      <td className="px-2 py-1.5 text-right font-mono">—</td>
+                      <td className="px-2 py-1.5 text-right font-mono">—</td>
                     </tr>
                   )}
                 </Fragment>
