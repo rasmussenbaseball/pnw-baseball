@@ -1519,3 +1519,277 @@ def get_quiz(
             detail=f"Not enough data to build any questions for team {team_id}",
         )
     return {"team_id": team_id, "seasons": season_list, "questions": questions}
+
+
+# ════════════════════════════════════════════════════════════
+# LEAGUE QUIZ — questions about the leagues/divisions themselves
+# (not team-specific). Powers the homepage quiz widget for free
+# users. Data-driven templates × seasons × high/low × division-set
+# yield effectively unlimited unique questions.
+# ════════════════════════════════════════════════════════════
+
+# Division-level display labels. The keys match divisions.level.
+_DIV_LABEL = {
+    "D1": "NCAA Division I",
+    "D2": "NCAA Division II",
+    "D3": "NCAA Division III",
+    "NAIA": "NAIA",
+    "JUCO": "NWAC (JUCO)",
+}
+
+
+def _division_batting_agg(cur, season):
+    """League-wide batting aggregates per division for a season.
+    Returns {level: {...computed rate + counting stats...}}."""
+    cur.execute(
+        """
+        SELECT d.level,
+               COUNT(DISTINCT bs.team_id) AS teams,
+               SUM(bs.at_bats) AS ab, SUM(bs.hits) AS h,
+               SUM(bs.doubles) AS d2, SUM(bs.triples) AS d3,
+               SUM(bs.home_runs) AS hr, SUM(bs.walks) AS bb,
+               SUM(bs.hit_by_pitch) AS hbp, SUM(bs.sacrifice_flies) AS sf,
+               SUM(bs.stolen_bases) AS sb, SUM(bs.strikeouts) AS k
+        FROM batting_stats bs
+        JOIN teams t ON bs.team_id = t.id
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE bs.season = %s
+        GROUP BY d.level
+        """,
+        (season,),
+    )
+    out = {}
+    for r in cur.fetchall():
+        ab = r["ab"] or 0
+        if ab == 0 or not r["teams"]:
+            continue
+        h = r["h"] or 0
+        bb = r["bb"] or 0
+        hbp = r["hbp"] or 0
+        sf = r["sf"] or 0
+        tb = h + (r["d2"] or 0) + 2 * (r["d3"] or 0) + 3 * (r["hr"] or 0)
+        obp_den = ab + bb + hbp + sf
+        out[r["level"]] = {
+            "teams": r["teams"],
+            "avg": h / ab,
+            "obp": (h + bb + hbp) / obp_den if obp_den else 0,
+            "slg": tb / ab,
+            "ops": ((h + bb + hbp) / obp_den if obp_den else 0) + tb / ab,
+            "hr_per_team": (r["hr"] or 0) / r["teams"],
+            "sb_per_team": (r["sb"] or 0) / r["teams"],
+            "k_pct_approx": (r["k"] or 0) / (ab + bb) if (ab + bb) else 0,
+        }
+    return out
+
+
+def _division_pitching_agg(cur, season):
+    """League-wide pitching aggregates per division. Converts IP from
+    baseball notation (6.2 = 6 and 2/3) to true innings before
+    computing rate stats (see CLAUDE.md 10.5)."""
+    cur.execute(
+        """
+        SELECT d.level,
+               SUM(ps.earned_runs) AS er,
+               SUM(ps.strikeouts) AS k,
+               SUM(ps.walks) AS bb,
+               SUM(FLOOR(ps.innings_pitched)
+                   + (ps.innings_pitched - FLOOR(ps.innings_pitched)) * 10.0 / 3.0) AS true_ip
+        FROM pitching_stats ps
+        JOIN teams t ON ps.team_id = t.id
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE ps.season = %s
+        GROUP BY d.level
+        """,
+        (season,),
+    )
+    out = {}
+    for r in cur.fetchall():
+        ip = float(r["true_ip"] or 0)
+        if ip < 1:
+            continue
+        out[r["level"]] = {
+            "era": (r["er"] or 0) / ip * 9,
+            "k_per_9": (r["k"] or 0) / ip * 9,
+            "bb_per_9": (r["bb"] or 0) / ip * 9,
+        }
+    return out
+
+
+# Each metric: (source, key, label, better, fmt)
+#   source: 'bat' or 'pit'
+#   better: 'high' or 'low' (which extreme we ask for by default)
+#   fmt: how to format the value in the explanation
+def _fmt_avg3(v):
+    return f"{v:.3f}".lstrip("0") if v < 1 else f"{v:.3f}"
+
+
+_LEAGUE_METRICS = [
+    ("bat", "avg", "team batting average", _fmt_avg3),
+    ("bat", "obp", "team on-base percentage", _fmt_avg3),
+    ("bat", "slg", "team slugging percentage", _fmt_avg3),
+    ("bat", "ops", "team OPS", lambda v: f"{v:.3f}"),
+    ("bat", "hr_per_team", "home runs per team", lambda v: f"{v:.0f}"),
+    ("bat", "sb_per_team", "stolen bases per team", lambda v: f"{v:.0f}"),
+    ("pit", "era", "league ERA", lambda v: f"{v:.2f}"),
+    ("pit", "k_per_9", "strikeouts per 9 innings", lambda v: f"{v:.1f}"),
+]
+
+# Static league facts. Each: (question, correct, distractors, explanation, category)
+_STATIC_LEAGUE_FACTS = [
+    (
+        "Where is the NWAC baseball championship held?",
+        "Longview, WA",
+        ["Yakima, WA", "Spokane, WA", "Portland, OR", "Bend, OR"],
+        "The NWAC championship tournament is hosted in Longview, Washington.",
+        "NWAC",
+    ),
+    (
+        "How many teams qualify for the NWAC baseball playoffs?",
+        "16",
+        ["8", "12", "24", "32"],
+        "Four teams from each of the NWAC's four conferences (16 total) qualify.",
+        "NWAC",
+    ),
+    (
+        "How many conferences make up the NWAC?",
+        "4 (North, South, East, West)",
+        ["2", "3", "5", "6"],
+        "The NWAC splits into North, South, East, and West conferences.",
+        "NWAC",
+    ),
+    (
+        "Which of these is a junior-college (two-year) league?",
+        "NWAC",
+        ["NAIA", "NCAA Division II", "NCAA Division III", "West Coast Conference"],
+        "The NWAC (Northwest Athletic Conference) is the region's JUCO league.",
+        "Leagues",
+    ),
+    (
+        "How many competitive tiers does NW Baseball Stats track?",
+        "5",
+        ["3", "4", "6", "7"],
+        "We cover NCAA D1, D2, D3, NAIA, and the NWAC: five tiers.",
+        "Coverage",
+    ),
+    (
+        "Which league does NOT have an NCAA affiliation?",
+        "NWAC",
+        ["Division I", "Division II", "Division III", "Pac-12"],
+        "The NWAC is a community-college league, separate from the NCAA.",
+        "Leagues",
+    ),
+]
+
+
+def _shuffle_mc(correct, distractors, k=3):
+    """Return (options, correct_index) for an MC question with up to k
+    distractors plus the correct answer, shuffled."""
+    pool = list(distractors)
+    random.shuffle(pool)
+    options = [correct] + pool[:k]
+    random.shuffle(options)
+    return options, options.index(correct)
+
+
+def _league_stat_question(cur, season):
+    """Build a 'which division led/trailed in X' question."""
+    bat = _division_batting_agg(cur, season)
+    pit = _division_pitching_agg(cur, season)
+    random.shuffle(_LEAGUE_METRICS)
+    for source, key, label, fmt in _LEAGUE_METRICS:
+        agg = bat if source == "bat" else pit
+        # Need at least 4 divisions with this metric to make a clean MC.
+        rows = [(lvl, vals[key]) for lvl, vals in agg.items() if key in vals]
+        if len(rows) < 4:
+            continue
+        # ERA + nothing-special: lower is better; everything else higher.
+        ask_high = key not in ("era",) and not (source == "pit" and key in ("bb_per_9",))
+        # Randomly flip to "lowest" sometimes for variety on batting rates.
+        if source == "bat" and random.random() < 0.35:
+            ask_high = False
+        rows.sort(key=lambda x: x[1], reverse=ask_high)
+        winner_level, winner_val = rows[0]
+        correct = _DIV_LABEL.get(winner_level, winner_level)
+        distractors = [_DIV_LABEL.get(lvl, lvl) for lvl, _ in rows[1:]]
+        superlative = "highest" if ask_high else "lowest"
+        options, idx = _shuffle_mc(correct, distractors, k=3)
+        return {
+            "category": "Run Environment",
+            "question": f"Which league had the {superlative} {label} in {season}?",
+            "options": options,
+            "correct_index": idx,
+            "explanation": f"{correct} posted {fmt(winner_val)}, the {superlative} of any PNW league in {season}.",
+        }
+    return None
+
+
+def _league_count_question(cur, season):
+    """'How many teams in [division]?' with numeric distractors."""
+    bat = _division_batting_agg(cur, season)
+    levels = [lvl for lvl in bat.keys() if bat[lvl]["teams"] >= 3]
+    if not levels:
+        return None
+    lvl = random.choice(levels)
+    n = bat[lvl]["teams"]
+    label = _DIV_LABEL.get(lvl, lvl)
+    # Numeric distractors near the true count.
+    candidates = sorted({n + d for d in (-3, -2, -1, 1, 2, 3, 4) if n + d > 0})
+    random.shuffle(candidates)
+    distractors = [str(x) for x in candidates[:3]]
+    options, idx = _shuffle_mc(str(n), distractors, k=3)
+    return {
+        "category": "Coverage",
+        "question": f"How many {label} teams does NW Baseball Stats track in {season}?",
+        "options": options,
+        "correct_index": idx,
+        "explanation": f"We track {n} {label} teams in the Pacific Northwest for {season}.",
+    }
+
+
+def _league_static_question():
+    q, correct, distractors, explanation, category = random.choice(_STATIC_LEAGUE_FACTS)
+    options, idx = _shuffle_mc(correct, distractors, k=3)
+    return {
+        "category": category,
+        "question": q,
+        "options": options,
+        "correct_index": idx,
+        "explanation": explanation,
+    }
+
+
+@quiz_router.get("/league-question")
+def league_question(
+    season: int = Query(2026, description="Season for data-driven questions"),
+):
+    """One random league-level (non-team) trivia question. Mixes
+    data-driven stat-comparison + team-count questions with a bank of
+    static league facts. Safe to call repeatedly for a 'next question'
+    homepage widget."""
+    generators = []
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Weight: stat questions are the richest, so try them first /
+        # most often, then counts, then static facts.
+        roll = random.random()
+        order = []
+        if roll < 0.55:
+            order = ["stat", "count", "static"]
+        elif roll < 0.8:
+            order = ["count", "stat", "static"]
+        else:
+            order = ["static", "stat", "count"]
+        for kind in order:
+            if kind == "stat":
+                q = _league_stat_question(cur, season)
+            elif kind == "count":
+                q = _league_count_question(cur, season)
+            else:
+                q = _league_static_question()
+            if q:
+                q["season"] = season
+                return q
+    # Last resort — a static fact never needs the DB.
+    return _league_static_question()

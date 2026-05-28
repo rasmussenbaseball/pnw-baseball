@@ -194,6 +194,7 @@ import DailyRecapGraphic from './pages/DailyRecapGraphic'
 // ─── New pages ───
 import Homepage from './pages/Homepage'
 import AnonymousHomepage from './pages/AnonymousHomepage'
+import FreeHomepage from './pages/FreeHomepage'
 import SummerballData from './pages/SummerballData'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
@@ -563,19 +564,24 @@ export default function App() {
 // <main> wrapper. The portal pages use the full viewport (their own
 // PortalLayout handles padding internally), so this helper picks the
 // right wrapper based on the current route.
-// HomepageRouter — picks between the anonymous-tier homepage and the
-// signed-in dashboard Homepage. As future per-tier homepages land
-// (Free / Premium / Coach), branch here on `useTier()`.
+// HomepageRouter — picks the right homepage per tier:
+//   • not signed in        → AnonymousHomepage (signup-focused)
+//   • signed-in free tier  → FreeHomepage (data-rich + premium nudge)
+//   • premium / coach / dev → existing dashboard Homepage
+// Premium / Coach get their own dedicated homepages in a later pass.
 function HomepageRouter() {
-  const { user, loading } = useAuth()
-  if (loading) {
+  const { user, loading: authLoading } = useAuth()
+  const { tier, loading: tierLoading } = useTier()
+  if (authLoading || (user && tierLoading)) {
     return (
       <div className="flex justify-center py-20">
         <div className="animate-spin h-8 w-8 border-4 border-nw-teal border-t-transparent rounded-full" />
       </div>
     )
   }
-  return user ? <Homepage /> : <AnonymousHomepage />
+  if (!user) return <AnonymousHomepage />
+  if (tier === 'free') return <FreeHomepage />
+  return <Homepage />
 }
 
 
