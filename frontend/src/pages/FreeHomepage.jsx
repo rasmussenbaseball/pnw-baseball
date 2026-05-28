@@ -26,6 +26,7 @@ import { useTeams, useStatLeaders, useTopMoments } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
 import { TEAM_COORDS } from '../lib/teamCoords'
+import PixelHeadshot from '../gm/components/PixelHeadshot'
 
 const SEASON = 2026
 
@@ -928,6 +929,75 @@ function StateBreakdown() {
 // ============================================================
 // 6. PREMIUM SIM PROMO
 // ============================================================
+// Fake roster for the preview. Distinct ids → distinct pixel faces.
+// Cap/jersey use the brand colors so the squad looks like one team.
+const SIM_PREVIEW_ROSTER = [
+  { id: 'sim-tate-88',   name: 'M. Tate',   pos: 'SS',  ovr: 88, cls: 'Jr', a: ['CON 91', 'POW 84'] },
+  { id: 'sim-brandt-85', name: 'E. Brandt', pos: 'RHP', ovr: 85, cls: 'So', a: ['VELO 88', 'CMD 82'] },
+  { id: 'sim-vance-82',  name: 'J. Vance',  pos: 'CF',  ovr: 82, cls: 'Sr', a: ['SPD 94', 'DEF 86'] },
+  { id: 'sim-reyes-80',  name: 'C. Reyes',  pos: 'C',   ovr: 80, cls: 'Fr', a: ['CON 80', 'ARM 88'] },
+]
+
+function ovrColor(ovr) {
+  if (ovr >= 85) return '#16a34a'
+  if (ovr >= 80) return '#65a30d'
+  if (ovr >= 75) return '#ca8a04'
+  return '#9ca3af'
+}
+
+// SimPreview — a stylized "game window" mock showing what the
+// coaching sim looks like: pixel-art player faces + ratings, framed
+// like a screenshot so free users can see the product before buying.
+function SimPreview() {
+  return (
+    <div className="rounded-lg overflow-hidden border border-white/10 shadow-lg bg-[#1b1f33]">
+      {/* faux window chrome */}
+      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#11142a] border-b border-white/10">
+        <span className="w-2 h-2 rounded-full bg-red-400/70" />
+        <span className="w-2 h-2 rounded-full bg-amber-400/70" />
+        <span className="w-2 h-2 rounded-full bg-green-400/70" />
+        <span className="ml-2 text-[10px] font-mono text-white/40">roster — 2029 season</span>
+        <span className="ml-auto text-[10px] font-bold text-green-400">24-9</span>
+      </div>
+
+      {/* roster rows */}
+      <div className="divide-y divide-white/5">
+        {SIM_PREVIEW_ROSTER.map((p) => (
+          <div key={p.id} className="flex items-center gap-2.5 px-3 py-2">
+            <PixelHeadshot
+              playerId={p.id}
+              capColor="#003845"
+              jerseyColor="#00687a"
+              capAccent="#fbbf24"
+              size={34}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[13px] font-bold text-white truncate">{p.name}</span>
+                <span className="text-[9px] font-semibold text-white/40">{p.cls}</span>
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-amber-300/90 bg-amber-400/10 px-1 py-0.5 rounded">
+                  {p.pos}
+                </span>
+                <span className="text-[10px] font-mono text-white/50">{p.a[0]}</span>
+                <span className="text-[10px] font-mono text-white/50">{p.a[1]}</span>
+              </div>
+            </div>
+            <div
+              className="shrink-0 w-9 h-9 rounded-md flex items-center justify-center font-extrabold text-white text-sm tabular-nums"
+              style={{ background: ovrColor(p.ovr) }}
+              title="Overall rating"
+            >
+              {p.ovr}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function PremiumSimPromo() {
   return (
     <div className="rounded-xl bg-gradient-to-br from-gray-900 to-pnw-slate dark:from-gray-950 dark:to-pnw-slate text-white p-5 sm:p-6">
@@ -939,10 +1009,13 @@ function PremiumSimPromo() {
       </h3>
       <p className="text-sm text-white/75 leading-relaxed mb-4">
         The NW Coaching Simulator puts you in the GM chair: recruit, build a roster,
-        manage a budget, hire coaches, and chase a conference title across a full
-        dynasty. Included with Premium.
+        and chase a conference title across a full dynasty. Included with Premium.
       </p>
-      <ul className="space-y-1.5 mb-5 text-sm text-white/90">
+
+      {/* Live pixel-art preview of the game */}
+      <SimPreview />
+
+      <ul className="space-y-1.5 mt-4 mb-5 text-sm text-white/90">
         <li className="flex items-center gap-2"><Dot /> Multi-season dynasty mode</li>
         <li className="flex items-center gap-2"><Dot /> Recruiting + transfer portal</li>
         <li className="flex items-center gap-2"><Dot /> Coach hires + player development</li>
