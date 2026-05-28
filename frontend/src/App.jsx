@@ -195,6 +195,7 @@ import DailyRecapGraphic from './pages/DailyRecapGraphic'
 import Homepage from './pages/Homepage'
 import AnonymousHomepage from './pages/AnonymousHomepage'
 import FreeHomepage from './pages/FreeHomepage'
+import PremiumHomepage from './pages/PremiumHomepage'
 import SummerballData from './pages/SummerballData'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
@@ -581,6 +582,7 @@ function HomepageRouter() {
   }
   if (!user) return <AnonymousHomepage />
   if (tier === 'free') return <FreeHomepage />
+  if (tier === 'premium') return <PremiumHomepage />
   return <Homepage />
 }
 

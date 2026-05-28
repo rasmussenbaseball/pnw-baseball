@@ -1038,3 +1038,19 @@ function PremiumSimPromo() {
 function Dot() {
   return <span className="w-1.5 h-1.5 rounded-full bg-amber-300 shrink-0" />
 }
+
+
+// Re-export the data widgets so other per-tier homepages (Premium,
+// Coach) can compose them without duplicating the code. They close
+// over this module's constants (SEASON, DIV_COLORS, etc.), so they
+// keep working when imported elsewhere.
+export {
+  StatLeadersBoard,
+  ScatterWidget,
+  DivisionRunEnvChart,
+  PercentilesWidget,
+  LeagueQuizWidget,
+  WpaSwingsBoard,
+  PnwMapWidget,
+  StateBreakdown,
+}
