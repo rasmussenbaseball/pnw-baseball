@@ -33,6 +33,7 @@ DEVELOPER_EMAILS = {
     "oliver.duthie1010@gmail.com",
     "connorbroschard@gmail.com",
     "trevorkazahaya@gmail.com",
+    "zews2005@outlook.com",
 }
 
 COMPED_COACH_EMAILS = {
