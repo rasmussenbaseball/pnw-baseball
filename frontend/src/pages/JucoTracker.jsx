@@ -91,7 +91,7 @@ export default function JucoTracker() {
   const sortArrow = (key) => {
     if (!SORTABLE.has(key)) return null
     if (sortBy !== key) return <span className="text-gray-300 ml-0.5">↕</span>
-    return <span className="text-nw-teal ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>
+    return <span className="text-portal-accent ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>
   }
 
   const fmtCell = (row, col) => {
@@ -105,7 +105,7 @@ export default function JucoTracker() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-2">JUCO Tracker</h1>
+      <h1 className="text-2xl font-bold text-portal-purple dark:text-portal-cream mb-2">JUCO Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         NWAC players available for transfer to 4-year programs.
       </p>
@@ -214,19 +214,19 @@ export default function JucoTracker() {
           <table className="w-full text-[11px] leading-tight border-collapse">
             <thead>
               {/* Category header row */}
-              <tr className="sticky top-0 z-20 bg-pnw-slate">
+              <tr className="sticky top-0 z-20 bg-portal-purple">
                 {/* Frozen info columns */}
-                <th colSpan={7} style={{width:398,minWidth:398,maxWidth:398}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+                <th colSpan={7} style={{width:458,minWidth:458,maxWidth:458}} className="sticky left-0 z-30 bg-portal-purple text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
                   Player Info
                 </th>
                 {/* WAR */}
-                <th className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 border-r border-white/10"></th>
+                <th className="bg-portal-purple text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 border-r border-white/10"></th>
                 {/* Batting group */}
-                <th colSpan={BATTING_COLS.length} className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center border-r border-white/10">
+                <th colSpan={BATTING_COLS.length} className="bg-portal-purple text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center border-r border-white/10">
                   Batting
                 </th>
                 {/* Pitching group */}
-                <th colSpan={PITCHING_COLS.length} className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
+                <th colSpan={PITCHING_COLS.length} className="bg-portal-purple text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
                   Pitching
                 </th>
               </tr>
@@ -246,8 +246,8 @@ export default function JucoTracker() {
                     key={col.key}
                     onClick={() => handleSort(col.key)}
                     className={`px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-right whitespace-nowrap ${
-                      SORTABLE.has(col.key) ? 'cursor-pointer select-none hover:text-nw-teal' : ''
-                    } ${sortBy === col.key ? 'text-nw-teal bg-teal-50/50' : ''}`}
+                      SORTABLE.has(col.key) ? 'cursor-pointer select-none hover:text-portal-accent' : ''
+                    } ${sortBy === col.key ? 'text-portal-purple dark:text-portal-accent bg-portal-accent/10' : ''}`}
                   >
                     {col.label}{sortArrow(col.key)}
                   </th>
@@ -256,11 +256,11 @@ export default function JucoTracker() {
             </thead>
             <tbody>
               {(data || []).map((row, i) => (
-                <tr key={row.id} className={`border-b border-gray-50 hover:bg-teal-50/30 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/40'}`}>
+                <tr key={row.id} className={`border-b border-gray-50 dark:border-gray-700/50 hover:bg-portal-accent/5 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/40 dark:bg-gray-900/30'}`}>
                   {/* Frozen columns */}
                   <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-10 bg-inherit px-1 py-1 text-gray-400 dark:text-gray-500 text-right text-[10px] border-r border-gray-100 dark:border-gray-700">{i + 1}</td>
                   <td style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-10 bg-inherit px-1.5 py-1 font-medium overflow-hidden">
-                    <Link to={`/player/${row.id}`} className="text-nw-teal hover:underline whitespace-nowrap block truncate">
+                    <Link to={`/player/${row.id}`} className="text-portal-purple dark:text-portal-accent hover:underline whitespace-nowrap block truncate">
                       {row.first_name} {row.last_name}
                     </Link>
                   </td>
@@ -273,12 +273,12 @@ export default function JucoTracker() {
                       <span className="text-gray-600 dark:text-gray-400 truncate">{row.team_short || row.team_name}</span>
                     </div>
                   </td>
-                  <td style={{width:60,minWidth:60,maxWidth:60}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
-                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[288px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
-                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[320px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+                  <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
+                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
+                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
                   <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
                     {row.committed_to ? (
-                      <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
+                      <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-portal-accent/15 text-portal-accent dark:text-portal-accent-light rounded truncate max-w-full">{row.committed_to}</span>
                     ) : (
                       <span className="text-gray-400 dark:text-gray-500">-</span>
                     )}
@@ -289,7 +289,7 @@ export default function JucoTracker() {
                       key={col.key}
                       className={`px-1.5 py-1 text-right whitespace-nowrap ${
                         col.mono ? 'font-mono' : ''
-                      } ${sortBy === col.key ? 'bg-teal-50/50 font-semibold' : 'text-gray-600 dark:text-gray-400'}`}
+                      } ${sortBy === col.key ? 'bg-portal-accent/10 font-semibold text-portal-purple dark:text-portal-cream' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                       {fmtCell(row, col)}
                     </td>
