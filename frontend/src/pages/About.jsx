@@ -53,7 +53,7 @@ const INTERNS = [
   {
     name: 'Kai Malloch',
     role: 'Intern',
-    headshot: null,
+    headshot: '/team-photos/kai-malloch.jpg',
     blurb: 'Kai is a high school baseball player at Nathan Hale High School and a youth pitching coach working with the 13U to 15U age groups. He builds independent player development projects to further understand pitching and showcase his work, including regression models that look at how factors like bodyweight and sleep impact pitching velocity, plus deep dives into MLB pitching arsenals. He plans to attend either Gonzaga University or the University of Washington to study Business Administration and Finance, with hopes to work in professional baseball operations.',
   },
   // For interns who play college ball in the PNW, `headshot` is the
@@ -87,7 +87,7 @@ const INTERNS = [
   {
     name: 'Zack Ahn',
     role: 'Intern',
-    headshot: null,
+    headshot: '/team-photos/zack-ahn.jpg',
     blurb: 'Zack is a Washington-based student-athlete and catching coordinator focused on player development and baseball analytics. He works alongside former MLB pitcher Casey Sadler on youth player development, and is graduating from Eastlake High School with an associate degree earned through Central Washington University\'s Running Start program. A lifelong Seattle Mariners season-ticket holder, he hopes to play college baseball and work in its analysis.',
   },
   {
@@ -267,12 +267,16 @@ function TeamSection() {
   return (
     <div>
       {/* Founder card */}
-      {/* When Nate's headshot lands at /team-photos/nate-rasmussen.jpg,
-          re-add an <img> column inside this flex row. Left out for now
-          so the broken-image alt text doesn't show. */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
         <div className="px-5 py-5">
           <div className="flex flex-col sm:flex-row gap-5">
+            <div className="shrink-0">
+              <img
+                src="/team-photos/nate-rasmussen.jpg"
+                alt="Nate Rasmussen"
+                className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-gray-700 mx-auto sm:mx-0"
+              />
+            </div>
             <div className="flex-1">
               <div className="flex items-baseline gap-2 flex-wrap mb-1">
                 <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Nate Rasmussen</h3>
