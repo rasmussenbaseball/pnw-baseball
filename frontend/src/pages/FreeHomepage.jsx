@@ -20,8 +20,9 @@ import { Link } from 'react-router-dom'
 import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis,
   CartesianGrid, Tooltip as RTooltip, ZAxis,
+  BarChart, Bar, Cell, LabelList,
 } from 'recharts'
-import { useTeams } from '../hooks/useApi'
+import { useTeams, useStatLeaders } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
 
@@ -36,9 +37,12 @@ export default function FreeHomepage() {
     <div className="space-y-5 sm:space-y-6">
       <WelcomeStrip />
 
+      <StatLeadersBoard />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 flex flex-col gap-5">
           <ScatterWidget />
+          <DivisionRunEnvChart />
           <LeagueQuizWidget />
         </div>
         <div className="flex flex-col gap-5">
@@ -107,14 +111,6 @@ function ScatterWidget() {
       .catch(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [combo.x, combo.y])
-
-  // Auto-rotate every 9s.
-  useEffect(() => {
-    const t = setInterval(() => {
-      setComboIdx((i) => (i + 1) % SCATTER_COMBOS.length)
-    }, 9000)
-    return () => clearInterval(t)
-  }, [])
 
   // Split points by division for colored series.
   const byDivision = useMemo(() => {
@@ -218,6 +214,210 @@ function ScatterTip({ active, payload, combo }) {
       <div className="text-gray-500 dark:text-gray-400 mt-1">
         {combo.xl}: <span className="font-mono">{p.x}</span><br />
         {combo.yl}: <span className="font-mono">{p.y}</span>
+      </div>
+    </div>
+  )
+}
+
+
+// ============================================================
+// 2b. DIVISION RUN-ENVIRONMENT BAR CHART
+// ============================================================
+// Averages the per-team scatter values by division to show how the
+// five leagues stack up on a selectable stat. On-brand for a site
+// built around cross-division comparison. No new endpoint — reuses
+// /teams/scatter and aggregates client-side.
+const ENV_STATS = [
+  { key: 'team_avg', label: 'Team AVG', fmt: (v) => v.toFixed(3).replace(/^0/, ''), better: 'high' },
+  { key: 'team_obp', label: 'Team OBP', fmt: (v) => v.toFixed(3).replace(/^0/, ''), better: 'high' },
+  { key: 'team_slg', label: 'Team SLG', fmt: (v) => v.toFixed(3).replace(/^0/, ''), better: 'high' },
+  { key: 'team_era', label: 'Team ERA', fmt: (v) => v.toFixed(2), better: 'low' },
+]
+const DIV_ORDER = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
+
+function DivisionRunEnvChart() {
+  const [statIdx, setStatIdx] = useState(0)
+  const [bars, setBars] = useState([])
+  const [loading, setLoading] = useState(true)
+  const stat = ENV_STATS[statIdx]
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    fetch(`/api/v1/teams/scatter?season=${SEASON}&x_stat=${stat.key}&y_stat=win_pct`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        const pts = Array.isArray(d) ? d : []
+        const sums = {}
+        for (const p of pts) {
+          const lvl = p.division_level
+          if (!DIV_ORDER.includes(lvl)) continue
+          if (!sums[lvl]) sums[lvl] = { total: 0, n: 0 }
+          sums[lvl].total += p.x
+          sums[lvl].n += 1
+        }
+        const rows = DIV_ORDER
+          .filter((lvl) => sums[lvl]?.n)
+          .map((lvl) => ({ division: lvl, value: sums[lvl].total / sums[lvl].n }))
+        setBars(rows)
+        setLoading(false)
+      })
+      .catch(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [stat.key])
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[2px] text-nw-teal">
+            League comparison · {SEASON}
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Division run environments</h3>
+        </div>
+        <div className="flex flex-wrap gap-1 shrink-0">
+          {ENV_STATS.map((s, i) => (
+            <button
+              key={s.key}
+              onClick={() => setStatIdx(i)}
+              className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                i === statIdx
+                  ? 'bg-nw-teal text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="h-56 w-full">
+        {loading ? (
+          <div className="h-full flex items-center justify-center text-gray-400 animate-pulse text-sm">
+            Crunching {stat.label.toLowerCase()} by league...
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={bars} margin={{ top: 16, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" className="dark:opacity-20" />
+              <XAxis dataKey="division" tick={{ fontSize: 12, fontWeight: 600 }} stroke="#9ca3af" />
+              <YAxis
+                tick={{ fontSize: 11 }} stroke="#9ca3af"
+                domain={['auto', 'auto']}
+                tickFormatter={(v) => stat.fmt(v)}
+                width={44}
+              />
+              <RTooltip
+                cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                formatter={(v) => [stat.fmt(v), stat.label]}
+                labelClassName="font-bold"
+                contentStyle={{ fontSize: 12, borderRadius: 8 }}
+              />
+              <Bar dataKey="value" radius={[5, 5, 0, 0]}>
+                {bars.map((b) => (
+                  <Cell key={b.division} fill={DIV_COLORS[b.division] || '#6b7280'} />
+                ))}
+                <LabelList dataKey="value" position="top" formatter={(v) => stat.fmt(v)}
+                  style={{ fontSize: 11, fontWeight: 700, fill: '#6b7280' }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 text-center">
+        Average across every PNW team in each league. {stat.better === 'low' ? 'Lower is tougher to hit.' : 'Higher means more offense.'}
+      </p>
+    </div>
+  )
+}
+
+
+// ============================================================
+// 1b. STAT LEADERS BOARD
+// ============================================================
+// A compact multi-category board of the season's top performers.
+// Pulls the existing /stat-leaders payload and renders a few
+// hand-picked categories with team logos. Links into the
+// hitting / pitching leaderboards.
+const LEADER_CATEGORIES = [
+  { key: 'home_runs', label: 'Home Runs', side: 'batting', to: '/hitting' },
+  { key: 'batting_avg', label: 'Batting Avg', side: 'batting', to: '/hitting' },
+  { key: 'offensive_war', label: 'Position WAR', side: 'batting', to: '/war' },
+  { key: 'era', label: 'ERA', side: 'pitching', to: '/pitching' },
+  { key: 'strikeouts', label: 'Strikeouts', side: 'pitching', to: '/pitching' },
+  { key: 'pitching_war', label: 'Pitching WAR', side: 'pitching', to: '/war' },
+]
+
+function fmtLeaderValue(key, v) {
+  if (v == null) return '-'
+  if (key === 'batting_avg') return Number(v).toFixed(3).replace(/^0/, '')
+  if (key === 'era') return Number(v).toFixed(2)
+  if (key === 'offensive_war' || key === 'pitching_war') return Number(v).toFixed(1)
+  return Math.round(Number(v)).toString()
+}
+
+function StatLeadersBoard() {
+  const { data } = useStatLeaders(SEASON, 3, true)
+
+  const catMap = useMemo(() => {
+    const m = {}
+    for (const c of (data?.batting || [])) m[c.key] = c
+    for (const c of (data?.pitching || [])) m[c.key] = c
+    return m
+  }, [data])
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[2px] text-nw-teal">
+            2026 Leaders
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Who's on top</h3>
+        </div>
+        <Link to="/stat-leaders" className="text-xs font-semibold text-nw-teal hover:underline shrink-0">
+          All categories →
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {LEADER_CATEGORIES.map((cat) => {
+          const c = catMap[cat.key]
+          const leaders = (c?.leaders || []).slice(0, 3)
+          return (
+            <Link
+              key={cat.key}
+              to={cat.to}
+              className="group rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 hover:border-nw-teal transition-colors"
+            >
+              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 group-hover:text-nw-teal">
+                {cat.label}
+              </div>
+              <div className="space-y-1.5">
+                {leaders.length === 0 && [0, 1, 2].map((i) => (
+                  <div key={i} className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                ))}
+                {leaders.map((ld, i) => (
+                  <div key={ld.player_id || i} className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-bold w-3 ${i === 0 ? 'text-amber-500' : 'text-gray-400'}`}>{i + 1}</span>
+                    {ld.logo_url && (
+                      <img src={ld.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
+                        onError={(e) => { e.target.style.display = 'none' }} />
+                    )}
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate flex-1">
+                      {ld.first_name} {ld.last_name}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-nw-teal tabular-nums">
+                      {fmtLeaderValue(cat.key, ld.value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )
