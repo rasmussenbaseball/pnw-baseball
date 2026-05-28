@@ -104,7 +104,7 @@ export default function JucoTracker() {
   }
 
   return (
-    <div>
+    <div className="px-3 sm:px-5 lg:px-6 py-5">
       <h1 className="text-2xl font-bold text-portal-purple dark:text-portal-cream mb-2">JUCO Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         NWAC players available for transfer to 4-year programs.

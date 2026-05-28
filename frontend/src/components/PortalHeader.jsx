@@ -26,8 +26,6 @@ const NAV_SECTIONS = [
         desc: 'Lineups, rotation & bullpen scouting' },
       { to: '/portal/lineup-helper', label: 'Lineup Helper',
         desc: 'Optimal vs RHP / vs LHP batting orders + bench' },
-      { to: '/portal/juco-tracker', label: 'JUCO Tracker',
-        desc: 'Uncommitted NWAC players — find your next transfer' },
     ],
   },
   {
@@ -83,6 +81,16 @@ export default function PortalHeader() {
             >
               Home
             </Link>
+            <Link
+              to="/portal/juco-tracker"
+              className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
+                location.pathname === '/portal/juco-tracker'
+                  ? 'bg-portal-purple-light'
+                  : 'hover:bg-portal-purple-light'
+              }`}
+            >
+              JUCO Tracker
+            </Link>
             {NAV_SECTIONS.map(section => (
               <NavDropdown key={section.label} section={section} />
             ))}
@@ -135,6 +143,13 @@ export default function PortalHeader() {
                          hover:bg-portal-purple-light"
             >
               Home
+            </Link>
+            <Link
+              to="/portal/juco-tracker"
+              className="block px-3 py-2 rounded text-sm font-semibold
+                         hover:bg-portal-purple-light"
+            >
+              JUCO Tracker
             </Link>
             {NAV_SECTIONS.map(section => (
               <div key={section.label} className="pt-2">
