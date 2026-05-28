@@ -6,6 +6,7 @@ import { useWarLeaderboard, useDivisions, useConferences } from '../hooks/useApi
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import { Link } from 'react-router-dom'
 import { usePersistedState } from '../hooks/usePersistedState'
+import CommitBadge from '../components/CommitBadge'
 
 const COLUMNS = [
   // WAR cluster
@@ -103,8 +104,8 @@ export default function WarLeaderboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-2">WAR Leaderboard</h1>
-      <p className="text-sm text-gray-500 mb-4">
+      <h1 className="text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-2">WAR Leaderboard</h1>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Custom college WAR combining offensive value (wRAA-based) and pitching value (FIP-based).
         Two-way players have both components summed. Click any stat column to sort.
       </p>
@@ -177,7 +178,7 @@ export default function WarLeaderboard() {
                     key={col.key}
                     style={{ width: col.width, cursor: 'pointer', userSelect: 'none' }}
                     title={col.title || col.label}
-                    className={`${col.accent ? 'text-blue-700' : ''} ${col.key === sortBy ? 'bg-gray-100' : ''} hover:bg-gray-50`}
+                    className={`${col.accent ? 'text-blue-700 dark:text-blue-300' : ''} ${col.key === sortBy ? 'bg-gray-100 dark:bg-gray-700' : ''} hover:bg-gray-50 dark:hover:bg-gray-700/60`}
                     onClick={() => handleSort(col.key)}
                   >
                     {col.label}{sortIndicator(col.key)}
@@ -190,12 +191,15 @@ export default function WarLeaderboard() {
                 <tr key={row.player_id} className={row.is_qualified === false ? 'italic text-gray-500' : ''}>
                   <td className="sticky-col" style={{ position: 'sticky', left: 0, zIndex: 10 }}>{page * limit + i + 1}</td>
                   <td className="sticky-col sticky-col-last" style={{ position: 'sticky', left: 28, zIndex: 10 }}>
-                    <Link to={`/player/${row.player_id}`} className="player-link">
-                      {row.first_name} {row.last_name}
-                    </Link>
+                    <span className="flex flex-col">
+                      <Link to={`/player/${row.player_id}`} className="player-link">
+                        {row.first_name} {row.last_name}
+                      </Link>
+                      {row.committed_to && <CommitBadge school={row.committed_to} />}
+                    </span>
                   </td>
                   <td>
-                    <Link to={`/team/${row.team_id || ''}`} className="text-gray-700 hover:text-pnw-sky flex items-center gap-1">
+                    <Link to={`/team/${row.team_id || ''}`} className="text-gray-700 dark:text-gray-300 hover:text-pnw-sky flex items-center gap-1">
                       {row.logo_url && (
                         <img src={row.logo_url} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy"
                           onError={(e) => { e.target.style.display = 'none' }} />
@@ -213,7 +217,7 @@ export default function WarLeaderboard() {
                   {COLUMNS.map(col => (
                     <td
                       key={col.key}
-                      className={`font-mono text-right ${col.bold ? 'font-bold' : ''} ${col.accent ? 'text-blue-700 font-semibold' : ''} ${col.key === sortBy ? 'bg-blue-50' : ''}`}
+                      className={`font-mono text-right ${col.bold ? 'font-bold' : ''} ${col.accent ? 'text-blue-700 dark:text-blue-300 font-semibold' : ''} ${col.key === sortBy ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
                     >
                       {renderCell(col, row)}
                     </td>

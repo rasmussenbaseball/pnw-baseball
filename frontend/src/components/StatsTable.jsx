@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
+import CommitBadge from './CommitBadge'
 
 /**
  * StatsTable - sortable, configurable stats table.
@@ -65,12 +66,20 @@ export default function StatsTable({
       // linkKey: use an alternate row field for the player ID (e.g. spring_player_id for summer players)
       const linkId = col.linkKey ? row[col.linkKey] : (row.player_id || row.id)
       if (!linkId) {
-        return <span className="font-medium text-gray-900">{name}</span>
+        return (
+          <span className="flex flex-col">
+            <span className="font-medium text-gray-900">{name}</span>
+            {row.committed_to && <CommitBadge school={row.committed_to} />}
+          </span>
+        )
       }
       return (
-        <Link to={`/player/${linkId}`} className="player-link">
-          {name}
-        </Link>
+        <span className="flex flex-col">
+          <Link to={`/player/${linkId}`} className="player-link">
+            {name}
+          </Link>
+          {row.committed_to && <CommitBadge school={row.committed_to} />}
+        </span>
       )
     }
 
