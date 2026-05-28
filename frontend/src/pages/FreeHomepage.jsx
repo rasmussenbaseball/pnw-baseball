@@ -346,29 +346,103 @@ function DivisionRunEnvChart() {
 // ============================================================
 // 1b. STAT LEADERS BOARD
 // ============================================================
-// A compact multi-category board of the season's top performers.
-// Pulls the existing /stat-leaders payload and renders a few
-// hand-picked categories with team logos. Links into the
-// hitting / pitching leaderboards.
+// A dense multi-category board of the season's top performers. Pulls
+// the standard categories from /stat-leaders and two advanced
+// PBP-derived categories (hitter Air Pull%, pitcher Whiff%) from the
+// PBP leaderboards. Top 2 per category, packed into a tight grid.
+
+// Standard categories sourced from /stat-leaders. `fmt` controls value
+// formatting.
 const LEADER_CATEGORIES = [
-  { key: 'home_runs', label: 'Home Runs', side: 'batting', to: '/hitting' },
-  { key: 'batting_avg', label: 'Batting Avg', side: 'batting', to: '/hitting' },
-  { key: 'offensive_war', label: 'Position WAR', side: 'batting', to: '/war' },
-  { key: 'era', label: 'ERA', side: 'pitching', to: '/pitching' },
-  { key: 'strikeouts', label: 'Strikeouts', side: 'pitching', to: '/pitching' },
-  { key: 'pitching_war', label: 'Pitching WAR', side: 'pitching', to: '/war' },
+  { key: 'home_runs',      label: 'Home Runs',    to: '/hitting',  fmt: 'int' },
+  { key: 'batting_avg',    label: 'Batting Avg',  to: '/hitting',  fmt: 'avg' },
+  { key: 'wrc_plus',       label: 'wRC+',         to: '/hitting',  fmt: 'int' },
+  { key: 'iso',            label: 'ISO',          to: '/hitting',  fmt: 'avg' },
+  { key: 'offensive_war',  label: 'Position WAR', to: '/war',      fmt: 'war' },
+  { key: 'era',            label: 'ERA',          to: '/pitching', fmt: 'era' },
+  { key: 'strikeouts',     label: 'Strikeouts',   to: '/pitching', fmt: 'int' },
+  { key: 'fip_plus',       label: 'FIP+',         to: '/pitching', fmt: 'int' },
+  { key: 'k_minus_bb_pct', label: 'K-BB%',        to: '/pitching', fmt: 'pct' },
+  { key: 'pitching_war',   label: 'Pitching WAR', to: '/war',      fmt: 'war' },
 ]
 
-function fmtLeaderValue(key, v) {
+// Advanced PBP-derived categories. Fetched from the PBP leaderboards
+// sorted by the metric. `valueKey` is the field in the row payload.
+const PBP_LEADER_CATEGORIES = [
+  { id: 'air_pull', endpoint: 'batting-pbp', sort: 'air_pull_pct',
+    valueKey: 'air_pull_pct', label: 'Air Pull%', to: '/hitting' },
+  { id: 'whiff_p',  endpoint: 'pitching-pbp', sort: 'whiff_pct',
+    valueKey: 'whiff_pct', label: 'Whiff% (P)', to: '/pitching' },
+]
+
+function fmtLeaderValue(fmt, v) {
   if (v == null) return '-'
-  if (key === 'batting_avg') return Number(v).toFixed(3).replace(/^0/, '')
-  if (key === 'era') return Number(v).toFixed(2)
-  if (key === 'offensive_war' || key === 'pitching_war') return Number(v).toFixed(1)
-  return Math.round(Number(v)).toString()
+  const n = Number(v)
+  switch (fmt) {
+    case 'avg': return n.toFixed(3).replace(/^0/, '')
+    case 'era': return n.toFixed(2)
+    case 'war': return n.toFixed(1)
+    case 'pct': return (n * 100).toFixed(1) + '%'   // decimals → %
+    default:    return Math.round(n).toString()
+  }
+}
+
+function LeaderCard({ label, to, leaders }) {
+  return (
+    <Link
+      to={to}
+      className="group rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-2.5 py-2 hover:border-nw-teal transition-colors"
+    >
+      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5 group-hover:text-nw-teal truncate">
+        {label}
+      </div>
+      <div className="space-y-1">
+        {leaders.length === 0 && [0, 1].map((i) => (
+          <div key={i} className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+        ))}
+        {leaders.map((ld, i) => (
+          <div key={ld.player_id || i} className="flex items-center gap-1">
+            <span className={`text-[9px] font-bold w-2.5 ${i === 0 ? 'text-amber-500' : 'text-gray-400'}`}>{i + 1}</span>
+            {ld.logo_url && (
+              <img src={ld.logo_url} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
+                onError={(e) => { e.target.style.display = 'none' }} />
+            )}
+            <span className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 truncate flex-1">
+              {ld.first_name} {ld.last_name}
+            </span>
+            <span className="text-[11px] font-mono font-bold text-nw-teal tabular-nums">
+              {ld.display}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Link>
+  )
 }
 
 function StatLeadersBoard() {
-  const { data } = useStatLeaders(SEASON, 3, true)
+  const { data } = useStatLeaders(SEASON, 2, true)
+  const [pbp, setPbp] = useState({})
+
+  // Fetch the PBP-derived leader categories (top 2 each).
+  useEffect(() => {
+    let alive = true
+    PBP_LEADER_CATEGORIES.forEach((cat) => {
+      fetch(`/api/v1/leaderboards/${cat.endpoint}?season=${SEASON}&min_bf=80&sort_by=${cat.sort}&sort_dir=desc&limit=2`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (!alive) return
+          const leaders = (d?.data || []).slice(0, 2).map((r) => ({
+            player_id: r.player_id, first_name: r.first_name, last_name: r.last_name,
+            logo_url: r.logo_url,
+            display: fmtLeaderValue('pct', r[cat.valueKey]),
+          }))
+          setPbp((prev) => ({ ...prev, [cat.id]: leaders }))
+        })
+        .catch(() => {})
+    })
+    return () => { alive = false }
+  }, [])
 
   const catMap = useMemo(() => {
     const m = {}
@@ -376,6 +450,26 @@ function StatLeadersBoard() {
     for (const c of (data?.pitching || [])) m[c.key] = c
     return m
   }, [data])
+
+  // Build the full ordered card list: interleave standard + PBP so the
+  // advanced metrics sit next to their family (Air Pull% after the
+  // batting block, Whiff% after the pitching block).
+  const cards = []
+  for (const cat of LEADER_CATEGORIES) {
+    const c = catMap[cat.key]
+    const leaders = (c?.leaders || []).slice(0, 2).map((ld) => ({
+      ...ld, display: fmtLeaderValue(cat.fmt, ld.value),
+    }))
+    cards.push({ key: cat.key, label: cat.label, to: cat.to, leaders })
+    // Slot Air Pull% right after ISO (batting advanced cluster).
+    if (cat.key === 'iso' && pbp.air_pull) {
+      cards.push({ key: 'air_pull', label: 'Air Pull%', to: '/hitting', leaders: pbp.air_pull })
+    }
+    // Slot Whiff% (P) right after FIP+ (pitching advanced cluster).
+    if (cat.key === 'fip_plus' && pbp.whiff_p) {
+      cards.push({ key: 'whiff_p', label: 'Whiff% (P)', to: '/pitching', leaders: pbp.whiff_p })
+    }
+  }
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
@@ -391,42 +485,10 @@ function StatLeadersBoard() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {LEADER_CATEGORIES.map((cat) => {
-          const c = catMap[cat.key]
-          const leaders = (c?.leaders || []).slice(0, 3)
-          return (
-            <Link
-              key={cat.key}
-              to={cat.to}
-              className="group rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 hover:border-nw-teal transition-colors"
-            >
-              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 group-hover:text-nw-teal">
-                {cat.label}
-              </div>
-              <div className="space-y-1.5">
-                {leaders.length === 0 && [0, 1, 2].map((i) => (
-                  <div key={i} className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                ))}
-                {leaders.map((ld, i) => (
-                  <div key={ld.player_id || i} className="flex items-center gap-1.5">
-                    <span className={`text-[10px] font-bold w-3 ${i === 0 ? 'text-amber-500' : 'text-gray-400'}`}>{i + 1}</span>
-                    {ld.logo_url && (
-                      <img src={ld.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
-                        onError={(e) => { e.target.style.display = 'none' }} />
-                    )}
-                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate flex-1">
-                      {ld.first_name} {ld.last_name}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-nw-teal tabular-nums">
-                      {fmtLeaderValue(cat.key, ld.value)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Link>
-          )
-        })}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        {cards.map((c) => (
+          <LeaderCard key={c.key} label={c.label} to={c.to} leaders={c.leaders} />
+        ))}
       </div>
     </div>
   )

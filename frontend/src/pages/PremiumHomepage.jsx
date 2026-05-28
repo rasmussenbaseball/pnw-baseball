@@ -24,9 +24,6 @@ export default function PremiumHomepage() {
       <PreviewTierWidget />
       <PremiumWelcome />
 
-      {/* Headline feature: the coaching simulator */}
-      <CoachingSimWidget />
-
       {/* Premium toolbox — quick links to the biggest tools */}
       <PremiumToolbox />
 
@@ -44,6 +41,9 @@ export default function PremiumHomepage() {
           <WpaSwingsBoard />
         </div>
       </div>
+
+      {/* Coaching simulator — dense feature block, placed mid-page */}
+      <CoachingSimWidget />
 
       <LeagueQuizWidget />
       <PnwMapWidget />
@@ -104,105 +104,78 @@ function ovrColor(ovr) {
 
 function CoachingSimWidget() {
   return (
-    <section className="rounded-2xl overflow-hidden border border-white/10 shadow-xl bg-gradient-to-br from-gray-900 to-pnw-slate text-white">
-      <div className="px-5 sm:px-7 pt-6 pb-5">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-[10px] font-bold uppercase tracking-[2px] text-amber-300">
+    <section className="rounded-xl overflow-hidden border border-white/10 shadow-lg bg-gradient-to-br from-gray-900 to-pnw-slate text-white">
+      <div className="px-4 sm:px-5 py-4 flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-[2px] text-amber-300 mb-1">
             Premium · Included
-          </span>
+          </div>
+          <h2 className="text-lg sm:text-xl font-extrabold leading-tight">
+            NW Coaching Simulator
+          </h2>
+          <p className="text-xs text-white/65 max-w-xl leading-snug mt-1">
+            Turn-based dynasty + career sim across every PNW level. Recruit, build a roster,
+            manage a budget, and chase a title. Two ways to play.
+          </p>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-extrabold leading-tight mb-2">
-          NW Coaching Simulator
-        </h2>
-        <p className="text-sm sm:text-base text-white/75 max-w-2xl leading-relaxed">
-          A turn-based dynasty and career simulator covering every level of PNW
-          baseball, from the NWAC to Division I. Recruit, build a roster, manage a
-          budget, hire coaches, and chase a title. Pick how you want to play.
-        </p>
+        <Link
+          to="/gm"
+          className="shrink-0 px-4 py-2 rounded-lg bg-amber-400 text-[#003845] font-bold text-xs hover:bg-amber-300 transition-colors"
+        >
+          Open the Sim →
+        </Link>
       </div>
 
-      {/* Two mode panels */}
+      {/* Two compact mode panels */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-white/10">
         <SimModePanel
-          eyebrow="Mode 1"
           title="Dynasty"
           tagline="Run a program, your way."
-          body="Take the reins at any school in the region and run a full multi-season dynasty as head coach. Recruit classes, develop players, set lineups and rotations, manage your budget, and build a powerhouse."
-          bullets={['Pick any of 57 programs', 'Multi-season recruiting + portal', 'Full budget + coaching staff']}
+          body="Take the reins at any of 57 programs and run a full multi-season dynasty: recruit, develop, set lineups, manage the budget."
           roster={DYNASTY_ROSTER}
           rosterLabel="Your roster"
           cta={{ to: '/gm/new', label: 'Start a Dynasty' }}
         />
         <SimModePanel
-          eyebrow="Mode 2"
           title="Story Mode"
           tagline="Rise through the ranks."
-          body="Start at the bottom as a JUCO bench coach with nothing but ambition. Win games, earn promotions, and climb from the NWAC all the way to a Division I dugout in a career that's all your own."
-          bullets={['Begin as a JUCO assistant', 'Earn promotions + job offers', 'Build a coaching legacy']}
+          body="Start as a JUCO bench coach with nothing but ambition. Win games, earn promotions, and climb all the way to a D1 dugout."
           roster={STORY_ROSTER}
           rosterLabel="Where you start"
           cta={{ to: '/gm/new', label: 'Begin Your Story' }}
           accent
         />
       </div>
-
-      <div className="px-5 sm:px-7 py-4 bg-black/20 flex items-center justify-between gap-3 flex-wrap">
-        <span className="text-xs text-white/60">
-          Already have a save? Jump back into your dynasty.
-        </span>
-        <Link
-          to="/gm"
-          className="px-5 py-2.5 rounded-lg bg-amber-400 text-[#003845] font-bold text-sm hover:bg-amber-300 transition-colors"
-        >
-          Open the Sim →
-        </Link>
-      </div>
     </section>
   )
 }
 
-function SimModePanel({ eyebrow, title, tagline, body, bullets, roster, rosterLabel, cta, accent }) {
+function SimModePanel({ title, tagline, body, roster, rosterLabel, cta, accent }) {
   return (
-    <div className={`p-5 sm:p-6 ${accent ? 'bg-[#1a1530]' : 'bg-[#161a2e]'}`}>
-      <div className="text-[10px] font-bold uppercase tracking-[2px] text-amber-300/80 mb-1">{eyebrow}</div>
-      <h3 className="text-xl sm:text-2xl font-extrabold leading-tight">{title}</h3>
-      <p className="text-sm font-semibold text-amber-200/90 mb-3">{tagline}</p>
-      <p className="text-xs sm:text-sm text-white/70 leading-relaxed mb-4">{body}</p>
+    <div className={`px-4 py-3.5 ${accent ? 'bg-[#1a1530]' : 'bg-[#161a2e]'}`}>
+      <div className="flex items-baseline gap-2 mb-0.5">
+        <h3 className="text-base font-extrabold leading-tight">{title}</h3>
+        <span className="text-[11px] font-semibold text-amber-200/90">{tagline}</span>
+      </div>
+      <p className="text-[11px] text-white/65 leading-snug mb-2.5">{body}</p>
 
-      {/* Mini pixel roster preview */}
-      <div className="rounded-lg bg-black/25 border border-white/10 p-3 mb-4">
-        <div className="text-[9px] font-bold uppercase tracking-wider text-white/40 mb-2">{rosterLabel}</div>
-        <div className="flex flex-wrap gap-3">
+      {/* Inline pixel roster preview + CTA on one row */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
           {roster.map((p) => (
-            <div key={p.id} className="flex items-center gap-2">
-              <PixelHeadshot playerId={p.id} capColor="#003845" jerseyColor="#00687a" capAccent="#fbbf24" size={30} />
-              <div className="leading-tight">
-                <div className="text-xs font-bold text-white">{p.name}</div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-semibold text-amber-300/80">{p.pos}</span>
-                  <span className="text-[10px] font-extrabold tabular-nums" style={{ color: ovrColor(p.ovr) }}>{p.ovr}</span>
-                </div>
-              </div>
+            <div key={p.id} className="flex items-center gap-1" title={`${p.name} · ${p.pos} · ${p.ovr} OVR`}>
+              <PixelHeadshot playerId={p.id} capColor="#003845" jerseyColor="#00687a" capAccent="#fbbf24" size={26} />
+              <span className="text-[10px] font-extrabold tabular-nums" style={{ color: ovrColor(p.ovr) }}>{p.ovr}</span>
             </div>
           ))}
         </div>
+        <Link
+          to={cta.to}
+          className="shrink-0 px-3 py-1.5 rounded-md bg-white/10 border border-white/20 font-bold text-[11px] hover:bg-white/20 transition-colors whitespace-nowrap"
+        >
+          {cta.label}
+        </Link>
       </div>
-
-      <ul className="space-y-1.5 mb-5">
-        {bullets.map((b) => (
-          <li key={b} className="flex items-center gap-2 text-xs sm:text-sm text-white/85">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-300 shrink-0" />
-            {b}
-          </li>
-        ))}
-      </ul>
-
-      <Link
-        to={cta.to}
-        className="inline-block px-5 py-2.5 rounded-lg bg-white/10 border border-white/20 font-bold text-sm hover:bg-white/20 transition-colors"
-      >
-        {cta.label}
-      </Link>
     </div>
   )
 }
