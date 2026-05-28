@@ -15,16 +15,17 @@
 //
 // Wired in App.jsx HomepageRouter on tier === 'free'.
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis,
   CartesianGrid, Tooltip as RTooltip, ZAxis,
   BarChart, Bar, Cell, LabelList,
 } from 'recharts'
-import { useTeams, useStatLeaders } from '../hooks/useApi'
+import { useTeams, useStatLeaders, useTopMoments } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
+import { TEAM_COORDS } from '../lib/teamCoords'
 
 const SEASON = 2026
 
@@ -47,10 +48,12 @@ export default function FreeHomepage() {
         </div>
         <div className="flex flex-col gap-5">
           <PercentilesWidget />
+          <WpaSwingsBoard />
           <PremiumSimPromo />
         </div>
       </div>
 
+      <PnwMapWidget />
       <StateBreakdown />
     </div>
   )
@@ -644,6 +647,201 @@ function LeagueQuizWidget() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+
+// ============================================================
+// 4b. BIGGEST WIN-PROBABILITY SWINGS (rotating board)
+// ============================================================
+function WpaSwingsBoard() {
+  const { data } = useTopMoments(SEASON, { limit: 12 })
+  const moments = useMemo(() => {
+    const hm = data?.hitter_moments || []
+    return hm
+      .map((m) => ({ ...m, swing: Math.abs((m.wp_after ?? 0) - (m.wp_before ?? 0)) }))
+      .sort((a, b) => b.swing - a.swing)
+      .slice(0, 8)
+  }, [data])
+
+  const [idx, setIdx] = useState(0)
+  const [paused, setPaused] = useState(false)
+
+  // Auto-rotate the board every 6s unless the user is hovering.
+  useEffect(() => {
+    if (paused || moments.length < 2) return
+    const t = setInterval(() => setIdx((i) => (i + 1) % moments.length), 6000)
+    return () => clearInterval(t)
+  }, [paused, moments.length])
+
+  // Keep idx in range when data arrives.
+  useEffect(() => { setIdx(0) }, [moments.length])
+
+  const m = moments[idx]
+
+  return (
+    <div
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-5"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[2px] text-nw-teal">
+            Win Probability · {SEASON}
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Biggest swings</h3>
+        </div>
+        <Link to="/top-moments" className="text-xs font-semibold text-nw-teal hover:underline shrink-0">
+          All moments →
+        </Link>
+      </div>
+
+      {!m ? (
+        <div className="space-y-2 animate-pulse">
+          <div className="h-16 bg-gray-100 dark:bg-gray-700 rounded-lg" />
+          <div className="h-4 w-2/3 bg-gray-100 dark:bg-gray-700 rounded" />
+        </div>
+      ) : (
+        <Link to={`/game/${m.game_id}`} className="block group">
+          {/* Big swing number */}
+          <div className="flex items-baseline gap-2 mb-2">
+            <span className="text-3xl font-extrabold text-nw-teal tabular-nums">
+              +{Math.round(m.swing * 100)}%
+            </span>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-semibold">
+              win prob swing
+            </span>
+          </div>
+
+          {/* Matchup + score */}
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">
+            {m.game?.away_logo && <img src={m.game.away_logo} alt="" className="w-5 h-5 object-contain" onError={(e)=>{e.target.style.display='none'}} />}
+            <span className="truncate">{m.game?.away_short}</span>
+            <span className="text-gray-400 font-mono text-xs">{m.game?.final_away}-{m.game?.final_home}</span>
+            <span className="truncate">{m.game?.home_short}</span>
+            {m.game?.home_logo && <img src={m.game.home_logo} alt="" className="w-5 h-5 object-contain" onError={(e)=>{e.target.style.display='none'}} />}
+          </div>
+
+          {/* Play description */}
+          <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed line-clamp-2 group-hover:text-nw-teal transition-colors">
+            {m.result_text}
+          </p>
+          <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+            {m.batter?.name} · {m.half === 'bottom' ? 'Bot' : 'Top'} {m.inning} · {m.game_date}
+          </div>
+        </Link>
+      )}
+
+      {/* Dot pager */}
+      {moments.length > 1 && (
+        <div className="flex items-center justify-center gap-1.5 mt-3">
+          {moments.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              className={`h-1.5 rounded-full transition-all ${
+                i === idx ? 'w-5 bg-nw-teal' : 'w-1.5 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400'
+              }`}
+              aria-label={`Moment ${i + 1}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ============================================================
+// 5b. INTERACTIVE PNW MAP (Leaflet via global window.L)
+// ============================================================
+function PnwMapWidget() {
+  const { data: teams } = useTeams({ season: SEASON })
+  const containerRef = useRef(null)
+  const mapRef = useRef(null)
+
+  // Build a lookup of short_name → team row (for logo + id + division).
+  const teamByShort = useMemo(() => {
+    const m = {}
+    for (const t of (teams || [])) {
+      if (t.short_name) m[t.short_name] = t
+    }
+    return m
+  }, [teams])
+
+  useEffect(() => {
+    const L = window.L
+    if (!L || !containerRef.current || mapRef.current) return
+    if (Object.keys(teamByShort).length === 0) return
+
+    const map = L.map(containerRef.current, {
+      center: [46.2, -121.5],
+      zoom: 6,
+      scrollWheelZoom: false,
+      attributionControl: false,
+    })
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+    }).addTo(map)
+
+    const DIV_HEX = DIV_COLORS
+    const markers = []
+    for (const [shortName, coords] of Object.entries(TEAM_COORDS)) {
+      const team = teamByShort[shortName]
+      const color = team ? (DIV_HEX[team.division_level] || '#6b7280') : '#6b7280'
+      const logo = team?.logo_url || ''
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="width:30px;height:30px;border-radius:9999px;background:white;border:2px solid ${color};box-shadow:0 1px 3px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                 ${logo ? `<img src="${logo}" style="width:22px;height:22px;object-fit:contain;" />` : ''}
+               </div>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+      })
+      const marker = L.marker(coords, { icon }).addTo(map)
+      const teamId = team?.id
+      const popupHtml = `<div style="text-align:center;min-width:120px;">
+          ${logo ? `<img src="${logo}" style="width:36px;height:36px;object-fit:contain;margin:0 auto 4px;" />` : ''}
+          <div style="font-weight:700;font-size:13px;">${shortName}</div>
+          <div style="font-size:11px;color:#6b7280;">${team?.division_level || ''}</div>
+          ${teamId ? `<a href="/team/${teamId}" style="display:inline-block;margin-top:4px;font-size:11px;color:#00687a;font-weight:600;">View team →</a>` : ''}
+        </div>`
+      marker.bindPopup(popupHtml)
+      markers.push(marker)
+    }
+    mapRef.current = map
+
+    return () => { map.remove(); mapRef.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamByShort])
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+      <div className="text-[10px] font-semibold uppercase tracking-[2px] text-nw-teal mb-1">
+        Coverage map
+      </div>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">
+          Every program on the map
+        </h3>
+        <div className="flex flex-wrap gap-3">
+          {Object.keys(DIV_COLORS).map((lvl) => (
+            <span key={lvl} className="flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: DIV_COLORS[lvl] }} />
+              {lvl}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div
+        ref={containerRef}
+        className="w-full h-[420px] rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 z-0"
+      />
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
+        Click a marker for the team. Scroll-zoom is off, pinch or use the +/- controls to zoom.
+      </p>
     </div>
   )
 }

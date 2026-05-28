@@ -1760,6 +1760,129 @@ def _league_static_question():
     }
 
 
+# ── Team-within-division questions ───────────────────────────
+# "Which NAIA team had the highest team batting average in 2026?"
+# Still league-themed (scoped to one division) but the answer is a
+# specific team.
+
+def _division_team_batting(cur, season, level):
+    cur.execute(
+        """
+        SELECT t.id, t.short_name,
+               SUM(bs.at_bats) AS ab, SUM(bs.hits) AS h,
+               SUM(bs.doubles) AS d2, SUM(bs.triples) AS d3,
+               SUM(bs.home_runs) AS hr, SUM(bs.walks) AS bb,
+               SUM(bs.hit_by_pitch) AS hbp, SUM(bs.sacrifice_flies) AS sf,
+               SUM(bs.stolen_bases) AS sb
+        FROM batting_stats bs
+        JOIN teams t ON bs.team_id = t.id
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE bs.season = %s AND d.level = %s
+        GROUP BY t.id, t.short_name
+        HAVING SUM(bs.at_bats) > 0
+        """,
+        (season, level),
+    )
+    teams = []
+    for r in cur.fetchall():
+        ab = r["ab"] or 0
+        if ab < 50:  # filter tiny samples
+            continue
+        h = r["h"] or 0
+        bb = r["bb"] or 0
+        hbp = r["hbp"] or 0
+        sf = r["sf"] or 0
+        tb = h + (r["d2"] or 0) + 2 * (r["d3"] or 0) + 3 * (r["hr"] or 0)
+        obp_den = ab + bb + hbp + sf
+        teams.append({
+            "name": r["short_name"],
+            "avg": h / ab,
+            "obp": (h + bb + hbp) / obp_den if obp_den else 0,
+            "slg": tb / ab,
+            "hr": r["hr"] or 0,
+            "sb": r["sb"] or 0,
+        })
+    return teams
+
+
+def _division_team_pitching(cur, season, level):
+    cur.execute(
+        """
+        SELECT t.id, t.short_name,
+               SUM(ps.earned_runs) AS er, SUM(ps.wins) AS w,
+               SUM(ps.strikeouts) AS k,
+               SUM(FLOOR(ps.innings_pitched)
+                   + (ps.innings_pitched - FLOOR(ps.innings_pitched)) * 10.0 / 3.0) AS ip
+        FROM pitching_stats ps
+        JOIN teams t ON ps.team_id = t.id
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE ps.season = %s AND d.level = %s
+        GROUP BY t.id, t.short_name
+        HAVING SUM(ps.innings_pitched) > 0
+        """,
+        (season, level),
+    )
+    teams = []
+    for r in cur.fetchall():
+        ip = float(r["ip"] or 0)
+        if ip < 30:
+            continue
+        teams.append({
+            "name": r["short_name"],
+            "era": (r["er"] or 0) / ip * 9,
+            "wins": r["w"] or 0,
+            "k": r["k"] or 0,
+        })
+    return teams
+
+
+# (source, key, label, fmt, default_better)
+_TEAM_DIV_METRICS = [
+    ("bat", "avg", "team batting average", _fmt_avg3, "high"),
+    ("bat", "obp", "team on-base percentage", _fmt_avg3, "high"),
+    ("bat", "slg", "team slugging percentage", _fmt_avg3, "high"),
+    ("bat", "hr", "home runs", lambda v: f"{int(v)}", "high"),
+    ("bat", "sb", "stolen bases", lambda v: f"{int(v)}", "high"),
+    ("pit", "era", "team ERA", lambda v: f"{v:.2f}", "low"),
+    ("pit", "wins", "pitching wins", lambda v: f"{int(v)}", "high"),
+    ("pit", "k", "strikeouts", lambda v: f"{int(v)}", "high"),
+]
+
+
+def _division_team_leader_question(cur, season):
+    """Pick a division + stat, ask which TEAM in that league led."""
+    levels = list(_DIV_LABEL.keys())
+    random.shuffle(levels)
+    metrics = list(_TEAM_DIV_METRICS)
+    random.shuffle(metrics)
+    for level in levels:
+        for source, key, label, fmt, default_better in metrics:
+            teams = (_division_team_batting(cur, season, level) if source == "bat"
+                     else _division_team_pitching(cur, season, level))
+            if len(teams) < 4:
+                continue
+            ask_high = default_better == "high"
+            teams.sort(key=lambda x: x[key], reverse=ask_high)
+            winner = teams[0]
+            # Distractors: other teams in the division (closest few +
+            # some random) so it's not trivially the famous program.
+            others = [t["name"] for t in teams[1:]]
+            random.shuffle(others)
+            options, idx = _shuffle_mc(winner["name"], others, k=3)
+            superlative = "most" if key in ("hr", "sb", "wins", "k") else ("highest" if ask_high else "lowest")
+            label_word = "the most" if superlative == "most" else f"the {superlative}"
+            return {
+                "category": _DIV_LABEL.get(level, level),
+                "question": f"Which {_DIV_LABEL.get(level, level)} team had {label_word} {label} in {season}?",
+                "options": options,
+                "correct_index": idx,
+                "explanation": f"{winner['name']} led {_DIV_LABEL.get(level, level)} with {fmt(winner[key])} in {season}.",
+            }
+    return None
+
+
 @quiz_router.get("/league-question")
 def league_question(
     season: int = Query(2026, description="Season for data-driven questions"),
@@ -1768,21 +1891,24 @@ def league_question(
     data-driven stat-comparison + team-count questions with a bank of
     static league facts. Safe to call repeatedly for a 'next question'
     homepage widget."""
-    generators = []
     with get_connection() as conn:
         cur = conn.cursor()
-        # Weight: stat questions are the richest, so try them first /
-        # most often, then counts, then static facts.
+        # Weighted question mix. Team-within-division and league
+        # stat-comparison questions are the richest, so they're most
+        # likely; counts and static facts round it out.
         roll = random.random()
-        order = []
-        if roll < 0.55:
-            order = ["stat", "count", "static"]
-        elif roll < 0.8:
-            order = ["count", "stat", "static"]
+        if roll < 0.40:
+            order = ["team", "stat", "count", "static"]
+        elif roll < 0.70:
+            order = ["stat", "team", "count", "static"]
+        elif roll < 0.88:
+            order = ["count", "stat", "team", "static"]
         else:
-            order = ["static", "stat", "count"]
+            order = ["static", "team", "stat", "count"]
         for kind in order:
-            if kind == "stat":
+            if kind == "team":
+                q = _division_team_leader_question(cur, season)
+            elif kind == "stat":
                 q = _league_stat_question(cur, season)
             elif kind == "count":
                 q = _league_count_question(cur, season)
