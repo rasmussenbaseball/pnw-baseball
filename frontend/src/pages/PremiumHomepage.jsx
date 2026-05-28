@@ -22,7 +22,11 @@ import {
 
 const SEASON = 2026
 
-export default function PremiumHomepage() {
+// `portalShowcase` is an optional slot rendered directly beneath the
+// toolbox. The premium homepage passes nothing (so its output is
+// unchanged); the coach homepage passes its portal showcase widget so
+// the Coach & Scout portal tools surface high on the page.
+export default function PremiumHomepage({ portalShowcase = null }) {
   return (
     <div className="space-y-5 sm:space-y-6">
       <PreviewTierWidget />
@@ -30,6 +34,9 @@ export default function PremiumHomepage() {
 
       {/* Premium toolbox — quick links to the biggest tools */}
       <PremiumToolbox />
+
+      {/* Coach-tier portal showcase (slot is empty on the premium page) */}
+      {portalShowcase}
 
       {/* Season leaders */}
       <StatLeadersBoard />

@@ -196,6 +196,7 @@ import Homepage from './pages/Homepage'
 import AnonymousHomepage from './pages/AnonymousHomepage'
 import FreeHomepage from './pages/FreeHomepage'
 import PremiumHomepage from './pages/PremiumHomepage'
+import CoachHomepage from './pages/CoachHomepage'
 import SummerballData from './pages/SummerballData'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
@@ -568,8 +569,10 @@ export default function App() {
 // HomepageRouter — picks the right homepage per tier:
 //   • not signed in        → AnonymousHomepage (signup-focused)
 //   • signed-in free tier  → FreeHomepage (data-rich + premium nudge)
-//   • premium / coach / dev → existing dashboard Homepage
-// Premium / Coach get their own dedicated homepages in a later pass.
+//   • premium tier         → PremiumHomepage
+//   • coach tier / dev     → CoachHomepage (premium page + portal showcase)
+// Devs resolve to the 'dev' tier in "My View", so their landing page is
+// the coach homepage too.
 function HomepageRouter() {
   const { user, loading: authLoading } = useAuth()
   const { tier, loading: tierLoading } = useTier()
@@ -583,6 +586,7 @@ function HomepageRouter() {
   if (!user) return <AnonymousHomepage />
   if (tier === 'free') return <FreeHomepage />
   if (tier === 'premium') return <PremiumHomepage />
+  if (tier === 'coach' || tier === 'dev') return <CoachHomepage />
   return <Homepage />
 }
 
