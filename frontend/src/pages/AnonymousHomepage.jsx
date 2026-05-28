@@ -13,6 +13,7 @@ import {
   useBattingLeaderboard, usePitchingLeaderboard, useTeams,
 } from '../hooks/useApi'
 import { usePublishedArticles } from '../hooks/useArticles'
+import PreviewTierWidget from '../components/PreviewTierWidget'
 
 const SEASON = 2026
 
@@ -23,6 +24,12 @@ const LCC_LOGO = '/logos/nwac/lower_columbia.png'
 export default function AnonymousHomepage() {
   return (
     <div className="-mx-2 sm:-mx-4">
+      {/* Author-only "view as tier" toggle (renders nothing for normal
+          anonymous visitors). Inset above the full-bleed hero so the
+          dev can switch tiers while building per-tier homepages. */}
+      <div className="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+        <PreviewTierWidget />
+      </div>
       <HeroSection />
 
       <div className="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto py-8 sm:py-12 space-y-12">

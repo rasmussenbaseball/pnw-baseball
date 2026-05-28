@@ -27,6 +27,7 @@ import { useAuth } from '../context/AuthContext'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
 import { TEAM_COORDS } from '../lib/teamCoords'
 import PixelHeadshot from '../gm/components/PixelHeadshot'
+import PreviewTierWidget from '../components/PreviewTierWidget'
 
 const SEASON = 2026
 
@@ -37,6 +38,10 @@ const DIV_COLORS = {
 export default function FreeHomepage() {
   return (
     <div className="space-y-5 sm:space-y-6">
+      {/* Author-only "view as tier" toggle (renders nothing for
+          normal users). Pinned to the top so the dev can hop between
+          tiers while building per-tier homepages. */}
+      <PreviewTierWidget />
       <WelcomeStrip />
 
       <StatLeadersBoard />
