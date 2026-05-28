@@ -66,6 +66,7 @@ const INTERNS = [
     playerId: 3336,
     headshot: 'https://golcathletics.com/images/2025/12/16/Conor_Broschard_IWQMZ.jpg?width=80&quality=90',
     blurb: 'Connor is an outfielder and pitcher at Lewis & Clark College, originally from Fairfield, California. He is studying Rhetoric and Media Studies with a minor in Entrepreneurial Leadership and Innovation. He has been fascinated by baseball stats and baseball media for as long as he can remember, and hopes to work professionally in the baseball world someday, whether in the media landscape or in a front office or scouting role. He is also a diehard Boston Red Sox fan.',
+    highlight: { pct: 91, label: 'Opponent wOBA', value: '.252' },
   },
   {
     name: 'Oliver Duthie',
@@ -73,6 +74,7 @@ const INTERNS = [
     playerId: 3002,
     headshot: 'https://gothunderbirds.ca/images/2026/1/6/BASE_Oliver_Duthie.jpg?width=80&quality=90',
     blurb: 'Oliver recently graduated from the University of British Columbia, where he spent five years as a left-handed pitcher. Born and raised in Dubai, United Arab Emirates, he moved to Canada for school and immersed himself in analytics, player development, pitch design, and scouting, handling advance reports on opposing teams along the way. Whether he is building models in R, analyzing pitch shapes, or studying how arsenals and lineups fit together, he is focused on using data and technology to help players improve, with the goal of contributing to a professional baseball organization.',
+    highlight: { pct: 99, label: 'First-Pitch Strike%', value: '70.6%' },
   },
   {
     name: 'Trevor Kazahaya',
@@ -80,6 +82,7 @@ const INTERNS = [
     playerId: 3352,
     headshot: 'https://goboxers.com/images/2026/2/23/0_Trevor_Kazahaya.jpg?width=80&quality=90',
     blurb: 'Trevor is a student-athlete from Rancho Santa Margarita, California, studying Business Administration with concentrations in Accounting and Finance at Pacific University. A member of the Pacific Boxers, he is drawn to the analytical side of the game: player development, scouting, performance evaluation, and advanced metrics. His focus is combining modern analytics with on-field experience to give coaches, players, and fans meaningful insight, and to make advanced data more accessible across D2, D3, NAIA, and JUCO programs in the Pacific Northwest.',
+    highlight: { pct: 90, label: 'wRC+ (D3)', value: '133' },
   },
   {
     name: 'Zack Ahn',
@@ -93,6 +96,7 @@ const INTERNS = [
     playerId: 3253,
     headshot: 'https://athletics.whitman.edu/images/2025/11/7/Petz_HS.jpg?width=80&quality=90',
     blurb: 'Nate is from West Sacramento, California, and plays baseball while studying statistics at Whitman College. He has been All-Conference at both second base and catcher, and loves digging into advanced analytics, especially when they involve his friends and teammates.',
+    highlight: { pct: 94, label: 'WAR', value: '1.4' },
   },
   {
     name: 'Luke Malzewski',
@@ -100,6 +104,7 @@ const INTERNS = [
     playerId: 3261,
     headshot: 'https://athletics.whitman.edu/images/2025/11/7/Malzewski_2_HS.jpg?width=80&quality=90',
     blurb: 'Luke is a utility player at Whitman College, originally from Seattle, WA. He is studying Economics and works as an Athletic Event Management student worker, and earned All-Conference honors this past season. He has been fascinated by baseball stats since he started playing and has been surrounded by PNW baseball his whole life, and is excited to combine the two.',
+    highlight: { pct: 96, label: 'wRC+ (D3)', value: '146' },
   },
 ]
 
@@ -371,6 +376,25 @@ function TeamSection() {
                   </p>
                 </div>
               </div>
+
+              {/* 2026 statistical highlight — detached mini-section */}
+              {intern.highlight && (
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2.5">
+                  <div className="shrink-0 w-11 h-11 rounded-lg bg-gradient-to-br from-nw-teal to-pnw-sky text-white flex flex-col items-center justify-center leading-none shadow-sm">
+                    <span className="text-sm font-extrabold tabular-nums">{intern.highlight.pct}</span>
+                    <span className="text-[7px] font-bold uppercase tracking-wider opacity-80">pct</span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[9px] font-bold uppercase tracking-[1.5px] text-nw-teal mb-0.5">
+                      2026 Highlight
+                    </div>
+                    <div className="text-xs text-gray-700 dark:text-gray-200 leading-tight">
+                      <span className="font-extrabold text-gray-900 dark:text-gray-100">{intern.highlight.value}</span>{' '}
+                      {intern.highlight.label}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
