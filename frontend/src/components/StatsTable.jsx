@@ -61,14 +61,14 @@ export default function StatsTable({
     if (col.key === 'name' || col.render) {
       const name = col.render ? col.render(row) : `${row.first_name} ${row.last_name}`
       if (col.noLink) {
-        return <span className="font-medium text-gray-900">{name}</span>
+        return <span className="font-medium text-gray-900 dark:text-gray-100">{name}</span>
       }
       // linkKey: use an alternate row field for the player ID (e.g. spring_player_id for summer players)
       const linkId = col.linkKey ? row[col.linkKey] : (row.player_id || row.id)
       if (!linkId) {
         return (
           <span className="flex flex-col">
-            <span className="font-medium text-gray-900">{name}</span>
+            <span className="font-medium text-gray-900 dark:text-gray-100">{name}</span>
             {row.committed_to && <CommitBadge school={row.committed_to} />}
           </span>
         )
@@ -93,7 +93,7 @@ export default function StatsTable({
 
     if (col.key === 'team_short') {
       const teamContent = (
-        <span className={`flex items-center gap-1.5 ${col.noLink ? 'text-gray-700' : 'text-gray-700 hover:text-pnw-sky'}`}>
+        <span className={`flex items-center gap-1.5 ${col.noLink ? 'text-gray-700 dark:text-gray-300' : 'text-gray-700 dark:text-gray-300 hover:text-pnw-sky'}`}>
           {row.logo_url && (
             <img
               src={row.logo_url}

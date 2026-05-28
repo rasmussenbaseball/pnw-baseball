@@ -27,8 +27,14 @@ export default function PortalLayout({ children }) {
     <PortalTeamProvider>
       {/* font-portal cascades the Outfit typeface to everything inside
           the portal — header, home page, plus all wrapped pages
-          (Trends, Historic, Player Scouting). */}
-      <div className="min-h-screen bg-portal-cream font-portal">
+          (Trends, Historic, Player Scouting).
+          text-gray-900 pins the default text color dark: the portal is
+          a permanently-light cream surface, so without this it would
+          inherit the dark-mode body color (gray-100) and any element
+          without an explicit text color would turn light and vanish on
+          the light boxes. Components with their own text-* / dark:text-*
+          classes still override this default. */}
+      <div className="min-h-screen bg-portal-cream font-portal text-gray-900">
         <PortalHeader />
         <PortalTeamGate>
           <main>

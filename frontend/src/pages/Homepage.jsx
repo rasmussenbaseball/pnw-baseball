@@ -248,7 +248,7 @@ function LeaderCategory({ cat, type }) {
         <Link
           key={p.player_id}
           to={`/player/${p.player_id}`}
-          className={`flex items-center gap-1 py-[3px] text-xs hover:bg-gray-50 dark:hover:bg-gray-700/50rounded px-1 -mx-1 ${p.is_qualified === false ? 'italic text-gray-400' : ''}`}
+          className={`flex items-center gap-1 py-[3px] text-xs rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 px-1 -mx-1 ${p.is_qualified === false ? 'italic text-gray-400' : ''}`}
         >
           <span className={`w-3.5 text-right font-mono text-[10px] shrink-0 ${
             i === 0 ? 'text-amber-500 font-bold' : 'text-gray-400'
@@ -259,7 +259,7 @@ function LeaderCategory({ cat, type }) {
             <img src={p.logo_url} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
               onError={(e) => { e.target.style.display = 'none' }} />
           )}
-          <span className="text-gray-700 truncate flex-1 min-w-0">
+          <span className="text-gray-700 dark:text-gray-300 truncate flex-1 min-w-0">
             {p.first_name[0]}. {p.last_name}
           </span>
           <span className="font-bold text-pnw-slate dark:text-gray-100 font-mono text-[11px] shrink-0">
@@ -413,7 +413,7 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
               <img src={away.logo_url} alt="" className="w-10 h-10 object-contain mx-auto mb-1"
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <div className="text-xs font-bold text-gray-800">{away.short_name}</div>
+            <div className="text-xs font-bold text-gray-800 dark:text-gray-100">{away.short_name}</div>
             <div className="text-[10px] text-gray-400">{awayRec}{awayConfRec ? ` (${awayConfRec})` : ''}</div>
             {away.national_rank && (
               <div className="text-[10px] text-amber-600 font-semibold">#{Math.round(away.national_rank.composite_rank)}</div>
@@ -436,7 +436,7 @@ function MatchupOfTheDayWidget({ matchup, winProbs }) {
               <img src={home.logo_url} alt="" className="w-10 h-10 object-contain mx-auto mb-1"
                 onError={(e) => { e.target.style.display = 'none' }} />
             )}
-            <div className="text-xs font-bold text-gray-800">{home.short_name}</div>
+            <div className="text-xs font-bold text-gray-800 dark:text-gray-100">{home.short_name}</div>
             <div className="text-[10px] text-gray-400">{homeRec}{homeConfRec ? ` (${homeConfRec})` : ''}</div>
             {home.national_rank && (
               <div className="text-[10px] text-amber-600 font-semibold">#{Math.round(home.national_rank.composite_rank)}</div>
@@ -520,10 +520,10 @@ function UpsetOfTheDayWidget({ upset }) {
               onError={(e) => { e.target.style.display = 'none' }} />
           )}
           <div className="flex-1 min-w-0">
-            <span className="text-sm font-bold text-gray-900">{upset.winner}</span>
+            <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{upset.winner}</span>
             <span className="text-xs text-gray-400 ml-1">had a {winnerProb}% chance</span>
           </div>
-          <span className="text-xl font-bold text-gray-900 tabular-nums">{upset.winner_score}</span>
+          <span className="text-xl font-bold text-gray-900 dark:text-gray-100 tabular-nums">{upset.winner_score}</span>
         </div>
 
         {/* Loser */}
@@ -533,7 +533,7 @@ function UpsetOfTheDayWidget({ upset }) {
               onError={(e) => { e.target.style.display = 'none' }} />
           )}
           <div className="flex-1 min-w-0">
-            <span className="text-sm font-semibold text-gray-700">{upset.loser}</span>
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{upset.loser}</span>
             <span className="text-xs text-gray-400 ml-1">{loserProb}% favorite</span>
           </div>
           <span className="text-xl font-bold text-gray-500 tabular-nums">{upset.loser_score}</span>

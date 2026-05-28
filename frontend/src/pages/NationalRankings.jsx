@@ -20,11 +20,13 @@ function percentileColor(pct) {
 }
 
 function percentileBg(pct) {
-  if (pct >= 90) return 'bg-emerald-50'
-  if (pct >= 75) return 'bg-emerald-50/50'
+  // Light tints need dark-mode counterparts; otherwise the tinted row
+  // stays light in dark mode and the (now light) text vanishes on it.
+  if (pct >= 90) return 'bg-emerald-50 dark:bg-emerald-900/30'
+  if (pct >= 75) return 'bg-emerald-50/50 dark:bg-emerald-900/20'
   if (pct >= 50) return ''
-  if (pct >= 25) return 'bg-orange-50/50'
-  return 'bg-red-50/50'
+  if (pct >= 25) return 'bg-orange-50/50 dark:bg-orange-900/20'
+  return 'bg-red-50/50 dark:bg-red-900/20'
 }
 
 function PercentileBar({ value }) {

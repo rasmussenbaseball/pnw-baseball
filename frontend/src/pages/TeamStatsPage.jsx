@@ -93,7 +93,7 @@ export default function TeamStatsPage() {
           {row.logo_url && (
             <img src={row.logo_url} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
           )}
-          <span className="font-medium text-pnw-slate hover:text-pnw-green truncate">
+          <span className="font-medium text-pnw-slate dark:text-gray-100 hover:text-pnw-green truncate">
             {row.team_name}
           </span>
         </Link>
@@ -117,17 +117,17 @@ export default function TeamStatsPage() {
 
   return (
     <div>
-      <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate mb-3 sm:mb-4">Team Stats</h1>
+      <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-3 sm:mb-4">Team Stats</h1>
 
       {/* Hitting / Pitching toggle */}
       <div className="flex flex-wrap gap-2 mb-3">
-        <div className="flex rounded-lg overflow-hidden border border-gray-300">
+        <div className="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
           <button
             onClick={() => handleTypeChange('hitting')}
             className={`px-4 py-1.5 text-sm font-medium transition-colors
               ${statType === 'hitting'
                 ? 'bg-pnw-slate text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             Hitting
           </button>
@@ -136,14 +136,14 @@ export default function TeamStatsPage() {
             className={`px-4 py-1.5 text-sm font-medium transition-colors
               ${statType === 'pitching'
                 ? 'bg-pnw-slate text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             Pitching
           </button>
         </div>
 
         {/* Level filter */}
-        <div className="flex rounded-lg overflow-hidden border border-gray-300">
+        <div className="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
           {LEVELS.map(l => (
             <button
               key={l}
@@ -151,7 +151,7 @@ export default function TeamStatsPage() {
               className={`px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors
                 ${level === l
                   ? 'bg-pnw-green text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             >
               {l}
             </button>
@@ -172,10 +172,10 @@ export default function TeamStatsPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
         <table className="min-w-full text-xs sm:text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
+            <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
               {displayColumns.map(col => {
                 const isSorted = sortBy === col.key || (!sortBy && (
                   (statType === 'hitting' && col.key === 'avg') ||
@@ -189,8 +189,8 @@ export default function TeamStatsPage() {
                     key={col.key}
                     onClick={() => handleSort(col)}
                     className={`px-2 py-2 text-left font-semibold whitespace-nowrap
-                      ${col.sortable !== false ? 'cursor-pointer hover:bg-gray-100' : ''}
-                      ${isSorted ? 'text-pnw-green' : 'text-gray-600'}`}
+                      ${col.sortable !== false ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700' : ''}
+                      ${isSorted ? 'text-pnw-green dark:text-pnw-green' : 'text-gray-600 dark:text-gray-400'}`}
                     title={col.tooltip || ''}
                     style={{ minWidth: col.width }}
                   >
@@ -220,7 +220,7 @@ export default function TeamStatsPage() {
               data.map((row, idx) => (
                 <tr
                   key={row.team_id}
-                  className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+                  className={`border-b border-gray-100 dark:border-gray-700/60 hover:bg-gray-50 dark:hover:bg-gray-700/40 ${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/30 dark:bg-gray-900/30'}`}
                 >
                   {displayColumns.map(col => (
                     <td
@@ -230,7 +230,7 @@ export default function TeamStatsPage() {
                         ${(sortBy === col.key || (!sortBy && (
                           (statType === 'hitting' && col.key === 'avg') ||
                           (statType === 'pitching' && col.key === 'era')
-                        ))) ? 'font-semibold text-pnw-slate' : 'text-gray-700'}`}
+                        ))) ? 'font-semibold text-pnw-slate dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}`}
                     >
                       {renderCell(row, col, idx)}
                     </td>

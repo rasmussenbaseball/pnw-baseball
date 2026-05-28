@@ -214,7 +214,7 @@ function OverallTable({ teams, clinchedTeams }) {
               return (
                 <tr
                   key={team.id}
-                  className={`border-t border-gray-50 hover:bg-teal-50/50 ${i < 3 ? 'bg-amber-50/30' : ''}`}
+                  className={`border-t border-gray-50 dark:border-gray-700/60 hover:bg-teal-50/50 dark:hover:bg-teal-900/20 ${i < 3 ? 'bg-amber-50/30 dark:bg-amber-900/20' : ''}`}
                 >
                   <td className="text-center pl-2 pr-0.5 py-1 text-gray-400 font-mono text-[10px]">{i + 1}</td>
                   <td className="pl-2 pr-1 py-1">

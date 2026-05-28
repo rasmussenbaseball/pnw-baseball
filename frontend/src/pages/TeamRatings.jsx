@@ -21,11 +21,13 @@ function ppiColor(ppi) {
 }
 
 function ppiBg(ppi) {
-  if (ppi >= 65) return 'bg-emerald-50'
-  if (ppi >= 55) return 'bg-emerald-50/50'
+  // Light tints need dark-mode counterparts; otherwise the tinted row
+  // stays light in dark mode and the (now light) text vanishes on it.
+  if (ppi >= 65) return 'bg-emerald-50 dark:bg-emerald-900/30'
+  if (ppi >= 55) return 'bg-emerald-50/50 dark:bg-emerald-900/20'
   if (ppi >= 45) return ''
-  if (ppi >= 35) return 'bg-orange-50/50'
-  return 'bg-red-50/50'
+  if (ppi >= 35) return 'bg-orange-50/50 dark:bg-orange-900/20'
+  return 'bg-red-50/50 dark:bg-red-900/20'
 }
 
 // Mini bar chart for a 0-100 score
