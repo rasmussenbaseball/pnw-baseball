@@ -184,9 +184,10 @@ function CommitmentCard({ c }) {
             {c.committed_to}
           </div>
         )}
-        <div className="text-[10px] text-gray-400 dark:text-gray-500">
-          {fmtDate(c.commitment_date)}
-        </div>
+        {/* Commitment date intentionally hidden: the backend currently
+            returns players.updated_at (last scrape touch), not the real
+            date the player committed. Hidden until a true committed_at
+            timestamp is tracked. */}
       </div>
     </a>
   )
