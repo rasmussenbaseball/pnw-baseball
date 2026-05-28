@@ -176,6 +176,7 @@ function WeekCard({ save, slot, week, year, currentWeek, userSchoolId }) {
         {events.map(ek => {
           const meta = EVENT_TYPES[ek]
           if (!meta) return null
+          const evLabel = (save?.level && meta.labelByLevel?.[save.level]) || meta.label
           return (
             <span
               key={ek}
@@ -183,7 +184,7 @@ function WeekCard({ save, slot, week, year, currentWeek, userSchoolId }) {
               className={'inline-block px-1 py-0.5 rounded text-[9px] font-semibold ' +
                 (isToday ? 'bg-white/20' : isPast ? 'bg-gray-100 text-gray-400' : 'bg-white border border-gray-200 text-gray-700')}
             >
-              {meta.label}
+              {evLabel}
             </span>
           )
         })}

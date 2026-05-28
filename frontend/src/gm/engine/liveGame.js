@@ -223,6 +223,12 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
     }
     const wasTop = state.top
     if (wasTop) {
+      // College 10-run rule: home leads by 10+ after 7+ complete innings →
+      // home doesn't bat, game over.
+      if (state.inning >= 7 && (state.homeRuns - state.awayRuns) >= 10) {
+        finalize('Run rule — home leads by 10+ after 7.')
+        return
+      }
       if (state.inning >= 9 && state.homeRuns > state.awayRuns) {
         finalize('Home wins — bottom of 9 not required.')
         return
@@ -232,6 +238,12 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
       state.linescore.home.push(0)
       pushEvent({ kind: 'HALF_END', inning: state.inning, top: true, text: `End of top ${state.inning}. ${ctx.awayTeamName || 'Away'} ${state.awayRuns}, ${ctx.homeTeamName || 'Home'} ${state.homeRuns}.` })
     } else {
+      // College 10-run rule: either team leading by 10+ after 7+ complete
+      // innings ends the game.
+      if (state.inning >= 7 && Math.abs(state.homeRuns - state.awayRuns) >= 10) {
+        finalize('Run rule — 10-run lead after 7.')
+        return
+      }
       if (state.inning >= 9 && state.homeRuns !== state.awayRuns) {
         finalize('')
         return
@@ -241,8 +253,10 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
       // Start a new away-half inning bucket
       state.linescore.away.push(0)
       pushEvent({ kind: 'HALF_END', inning: state.inning - 1, top: false, text: `End of ${state.inning - 1}. ${ctx.awayTeamName || 'Away'} ${state.awayRuns}, ${ctx.homeTeamName || 'Home'} ${state.homeRuns}.` })
-      if (state.inning > 12) {
-        finalize('Game called after 12 innings.')
+      // No inning cap — play to a winner. 30-inning bound is an infinite-loop
+      // safety valve only (real games never reach it).
+      if (state.inning > 30) {
+        finalize('Game called after 30 innings.')
       }
     }
   }

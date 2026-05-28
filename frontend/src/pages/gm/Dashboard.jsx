@@ -784,6 +784,7 @@ export default function Dashboard() {
           rules govern this week at a glance. */}
       <SeasonPeriodBanner
         phase={currentPhase}
+        level={save.level}
         weekOfYear={weekOfYear}
         requiredAction={requiredAction}
         reqComplete={requiredAction ? requiredAction.isComplete(save) : null}
@@ -1042,9 +1043,13 @@ const SEASON_PALETTE = {
   'Summer Recruiting': { bg: 'bg-pnw-green',    text: 'text-pnw-green-fg', accent: 'border-team-accent' },
 }
 
-function SeasonPeriodBanner({ phase, weekOfYear, requiredAction, reqComplete, slot, autoOn }) {
+function SeasonPeriodBanner({ phase, level, weekOfYear, requiredAction, reqComplete, slot, autoOn }) {
   if (!phase) return null
   const season = phase.season || 'Offseason'
+  // Level-aware blurb so non-NAIA dynasties don't see "NAIA auto-bid" copy
+  // on the persistent banner (the one-time PhaseTransitionModal already does
+  // this; this banner was still showing the raw NAIA default).
+  const phaseBlurb = (level && phase.blurbByLevel?.[level]) || phase.blurb
   const palette = SEASON_PALETTE[season] || SEASON_PALETTE['Late Summer']
   // Required action drives the right-hand content. Auto mode hides the
   // "do it yourself" CTA since the AI handles required actions.
@@ -1072,7 +1077,7 @@ function SeasonPeriodBanner({ phase, weekOfYear, requiredAction, reqComplete, sl
               <div className="text-xs opacity-90 mt-0.5 leading-snug">{requiredAction.blurb}</div>
             </>
           ) : (
-            <div className="text-xs opacity-90 mt-1">{phase.blurb}</div>
+            <div className="text-xs opacity-90 mt-1">{phaseBlurb}</div>
           )}
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">

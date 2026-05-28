@@ -685,7 +685,10 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
   function pStat(id) { if (!pitcherStats[id]) pitcherStats[id] = {ip:0,h:0,bb:0,k:0,er:0,outs:0,pa:0,hbp:0,hr:0}; return pitcherStats[id] }
 
   while (state.inning <= 9 || state.homeRuns === state.awayRuns) {
-    if (state.inning > 12) break   // call it after 12 innings — extras rare in sim
+    // No real inning cap — baseball plays until a winner. The 30-inning bound
+    // is purely an infinite-loop safety valve (real games never reach it); the
+    // post-loop tie-breaker only fires in that ~impossible case.
+    if (state.inning > 30) break
 
     const batting = state.top ? awayLineup : homeLineup
     const defending = state.top ? homeLineup : awayLineup
@@ -796,18 +799,33 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
       state.outs = 0
       state.bases = [null, null, null]
       if (state.top) {
+        // Top half just ended → home is about to bat. College 10-run rule:
+        // if the HOME team already leads by 10+ after 7+ complete innings,
+        // the game is over — the home team doesn't need to bat.
+        if (state.inning >= 7 && (state.homeRuns - state.awayRuns) >= 10) {
+          state.runRule = true
+          break
+        }
         state.top = false
       } else {
+        // Bottom half just ended → a full inning is complete. 10-run rule
+        // applies to either team leading by 10+ after 7+ innings.
         state.top = true
         state.inning++
+        if ((state.inning - 1) >= 7 && Math.abs(state.homeRuns - state.awayRuns) >= 10) {
+          state.runRule = true
+          break
+        }
       }
     }
   }
 
-  // Extra-innings safety: the loop hard-stops after 12 innings, which could
-  // leave a TIE on the board — and a tie was then scored as a LOSS for the
-  // user with a tied line ("L 2-2"). Baseball has no ties; break it here with a
-  // slight nod to the home team (last at-bat).
+  // Extra-innings safety: the loop hard-stops after the 30-inning safety
+  // bound, which could leave a TIE on the board — and a tie was then scored
+  // as a LOSS for the user with a tied line ("L 2-2"). Baseball has no ties;
+  // break it here with a slight nod to the home team (last at-bat). This is
+  // effectively dead code now (games never reach 30 innings) but kept as a
+  // guard.
   if (state.homeRuns === state.awayRuns) {
     if (rng.chance(0.54)) state.homeRuns++; else state.awayRuns++
   }

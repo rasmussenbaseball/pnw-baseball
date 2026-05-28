@@ -68,8 +68,12 @@ export const EVENT_TYPES = {
   CONF_OPEN:                { label: 'Conference opens', desc: 'CCC play starts — Friday-Saturday-Sunday series.' },
   REG_SEASON_END:           { label: 'Regular season ends', desc: 'Last conference series; standings finalize.' },
   CONF_TOURNAMENT:          { label: 'Conference tournament', desc: 'Double-elimination bracket. Winner gets the auto-bid.' },
-  OPENING_ROUND:            { label: 'NAIA Opening Round', desc: 'Regional brackets — 4-team double-elim.' },
-  WORLD_SERIES:             { label: 'NAIA World Series', desc: 'Avista NAIA WS in Lewiston, ID.' },
+  // labelByLevel keeps NAIA's flavored names but swaps in level-correct copy
+  // for D1/D2/D3/NWAC so non-NAIA dynasties don't see "NAIA" on their calendar.
+  OPENING_ROUND:            { label: 'Opening Round', desc: 'Regional brackets — double-elimination.',
+    labelByLevel: { D1: 'NCAA Regionals', D2: 'NCAA D-II Regionals', D3: 'NCAA D-III Regionals', NAIA: 'NAIA Opening Round', NWAC: 'NWAC Super Regionals' } },
+  WORLD_SERIES:             { label: 'National Finals', desc: 'National championship round.',
+    labelByLevel: { D1: 'College World Series', D2: 'D-II World Series', D3: 'D-III World Series', NAIA: 'NAIA World Series', NWAC: 'NWAC Championship' } },
   LAST_DAY_RECRUITING:      { label: 'Late recruiting closes', desc: 'Final HS commitments locked for this cycle.' },
   CLASS_FINALIZE:           { label: 'Class finalizes', desc: 'Signed recruits officially join the roster — ratings fully revealed.' },
   LOCK_TRAVEL_BUDGET:       { label: 'Travel budget locks', desc: 'Travel allocation set from your scheduled trips. Adjust other categories from here.' },
