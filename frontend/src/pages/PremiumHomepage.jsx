@@ -7,16 +7,20 @@
 //
 // Wired in App.jsx HomepageRouter on tier === 'premium'.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
 import PreviewTierWidget from '../components/PreviewTierWidget'
 import PixelHeadshot from '../gm/components/PixelHeadshot'
+import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
+import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 import {
   StatLeadersBoard, ScatterWidget, DivisionRunEnvChart,
   PercentilesWidget, LeagueQuizWidget, WpaSwingsBoard, PnwMapWidget,
 } from './FreeHomepage'
+
+const SEASON = 2026
 
 export default function PremiumHomepage() {
   return (
@@ -41,6 +45,10 @@ export default function PremiumHomepage() {
           <WpaSwingsBoard />
         </div>
       </div>
+
+      {/* Mock player-page deep dives — rotate through the top 200 */}
+      <MockPlayerSpotlight mode="hitter" />
+      <MockPlayerSpotlight mode="pitcher" />
 
       {/* Coaching simulator — dense feature block, placed mid-page */}
       <CoachingSimWidget />
@@ -78,6 +86,165 @@ function PremiumWelcome() {
         <Link to="/news" className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-sm font-semibold transition-colors">Articles</Link>
       </div>
     </div>
+  )
+}
+
+
+// ============================================================
+// MOCK PLAYER SPOTLIGHT — full PBP + spray breakdown, rotating
+// through the top 200 hitters / pitchers
+// ============================================================
+// Reuses the EXACT components from the real player page
+// (PitchLevelStatsCard / PitcherPitchLevelStatsCard), which each
+// fetch their own data by playerId and render the color-coded
+// plate-discipline + batted-ball tiles, spray chart, count battle,
+// hand splits, and situational splits. We just pick a random player
+// from the top 200 (by WAR) and let the card do the rest.
+function fmtAvg(v) {
+  if (v == null) return '-'
+  const n = Number(v)
+  return n >= 1 ? n.toFixed(3) : n.toFixed(3).replace(/^0/, '')
+}
+
+function MockPlayerSpotlight({ mode }) {
+  const isHitter = mode === 'hitter'
+  const [pool, setPool] = useState([])
+  const [player, setPlayer] = useState(null)
+  // Some top-WAR players (e.g., a few D1 arms) have no PBP coverage, so
+  // their pitch-level card would render blank. We verify the selected
+  // player actually has tracked PBP data and auto-skip to another if
+  // not. `verifying` gates the render until we've confirmed data.
+  const [verifying, setVerifying] = useState(true)
+  const triesRef = useRef(0)
+
+  const pickRandom = useCallback((rows) => (
+    rows.length ? rows[Math.floor(Math.random() * rows.length)] : null
+  ), [])
+
+  useEffect(() => {
+    let alive = true
+    const sortBy = isHitter ? 'offensive_war' : 'pitching_war'
+    const endpoint = isHitter ? 'batting' : 'pitching'
+    fetch(`/api/v1/leaderboards/${endpoint}?season=${SEASON}&sort_by=${sortBy}&sort_dir=desc&limit=200&qualified=true`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        const rows = d?.data || []
+        setPool(rows)
+        triesRef.current = 0
+        setPlayer(pickRandom(rows))
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [isHitter, pickRandom])
+
+  // Verify the current player has PBP data; if not, hop to another.
+  useEffect(() => {
+    if (!player || pool.length === 0) return
+    let alive = true
+    setVerifying(true)
+    const url = isHitter
+      ? `/api/v1/players/${player.player_id}/pitch-level-stats?season=${SEASON}`
+      : `/api/v1/players/${player.player_id}/pitch-level-stats-pitcher?season=${SEASON}`
+    fetch(url)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        const disc = d?.discipline || {}
+        const ok = isHitter ? (disc.tracked_pa > 0) : (disc.total_pa > 0)
+        if (ok) {
+          setVerifying(false)
+          triesRef.current = 0
+        } else if (triesRef.current < 12) {
+          triesRef.current += 1
+          setPlayer(pickRandom(pool))   // re-triggers this effect
+        } else {
+          setVerifying(false)           // give up gracefully
+        }
+      })
+      .catch(() => { if (alive) setVerifying(false) })
+    return () => { alive = false }
+  }, [player, pool, isHitter, pickRandom])
+
+  const shuffle = () => {
+    triesRef.current = 0
+    setPlayer(pickRandom(pool))
+  }
+
+  const statLine = (p) => isHitter
+    ? [
+        ['AVG', fmtAvg(p.batting_avg)],
+        ['HR', p.home_runs ?? 0],
+        ['wRC+', Math.round(p.wrc_plus ?? 0)],
+        ['OPS', fmtAvg(p.ops)],
+        ['WAR', (p.offensive_war ?? 0).toFixed(1)],
+      ]
+    : [
+        ['ERA', (p.era ?? 0).toFixed(2)],
+        ['SO', p.strikeouts ?? 0],
+        ['FIP+', Math.round(p.fip_plus ?? 0)],
+        ['WHIP', (p.whip ?? 0).toFixed(2)],
+        ['WAR', (p.pitching_war ?? 0).toFixed(1)],
+      ]
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[2px] text-nw-teal">
+            {isHitter ? 'Hitter deep dive' : 'Pitcher deep dive'} · Top 200 by WAR
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            Full pitch-level breakdown
+          </h3>
+        </div>
+        <button
+          onClick={shuffle}
+          className="px-3 py-1.5 rounded-lg bg-nw-teal text-white text-xs font-semibold hover:bg-pnw-sky transition-colors shrink-0"
+        >
+          {isHitter ? 'Next hitter' : 'Next pitcher'}
+        </button>
+      </div>
+
+      {!player || verifying ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-400 animate-pulse">
+          Loading {isHitter ? 'hitter' : 'pitcher'}...
+        </div>
+      ) : (
+        <>
+          {/* Player header bar */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex items-center gap-3 flex-wrap">
+            {player.logo_url && (
+              <img src={player.logo_url} alt="" className="w-10 h-10 object-contain shrink-0"
+                onError={(e) => { e.target.style.display = 'none' }} />
+            )}
+            <div className="min-w-0">
+              <Link to={`/player/${player.player_id}`} className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-gray-100 hover:text-nw-teal leading-tight">
+                {player.first_name} {player.last_name}
+              </Link>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {player.team_short || player.team_name} · {player.division_level}
+                {player.position ? ` · ${player.position}` : ''}
+              </div>
+            </div>
+            <div className="ml-auto flex gap-2 flex-wrap">
+              {statLine(player).map(([label, value]) => (
+                <div key={label} className="text-center bg-gray-50 dark:bg-gray-900/40 rounded-md px-2.5 py-1.5 min-w-[52px]">
+                  <div className="text-sm font-extrabold text-gray-900 dark:text-gray-100 tabular-nums leading-none">{value}</div>
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* The real player-page pitch-level card (color-coded PBP +
+              spray chart + count/hand/situational splits) */}
+          {isHitter
+            ? <PitchLevelStatsCard key={player.player_id} playerId={player.player_id} season={SEASON} />
+            : <PitcherPitchLevelStatsCard key={player.player_id} playerId={player.player_id} season={SEASON} />}
+        </>
+      )}
+    </section>
   )
 }
 
