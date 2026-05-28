@@ -99,8 +99,7 @@ const INTERNS = [
     role: 'Intern',
     playerId: 3261,
     headshot: 'https://athletics.whitman.edu/images/2025/11/7/Malzewski_2_HS.jpg?width=80&quality=90',
-    blurb: 'Bio coming soon.',
-    bioPending: true,
+    blurb: 'Luke is a utility player at Whitman College, originally from Seattle, WA. He is studying Economics and works as an Athletic Event Management student worker, and earned All-Conference honors this past season. He has been fascinated by baseball stats since he started playing and has been surrounded by PNW baseball his whole life, and is excited to combine the two.',
   },
 ]
 
