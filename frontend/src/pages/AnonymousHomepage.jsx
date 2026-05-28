@@ -29,10 +29,6 @@ export default function AnonymousHomepage() {
         <ByTheNumbersStrip />
         <TeamCoverageWall />
         <SeasonInReviewSection />
-        <InlineCta
-          headline="Want to follow your team?"
-          body="Create a free account to favorite players, bookmark teams, and tailor stats to the schools you care about. No credit card."
-        />
         <FreeToolsShowcase />
         <WhatsNextCard />
         <LockTeaseCta />
@@ -169,6 +165,28 @@ function SeasonInReviewSection() {
   const topBatter = batting?.data?.[0]
   const topPitcher = pitching?.data?.[0]
 
+  const fmtAvg = (v) =>
+    v == null ? '-' : (v >= 1 ? v.toFixed(3) : v.toFixed(3).replace(/^0/, ''))
+  const fmtIp = (v) => (v == null ? '-' : Number(v).toFixed(1))
+
+  const hitterStats = topBatter ? [
+    { label: 'AVG', value: fmtAvg(topBatter.batting_avg) },
+    { label: 'HR', value: topBatter.home_runs ?? 0 },
+    { label: 'RBI', value: topBatter.rbi ?? 0 },
+    { label: 'OPS', value: fmtAvg(topBatter.ops) },
+    { label: 'wRC+', value: Math.round(topBatter.wrc_plus ?? 0) },
+    { label: 'WAR', value: (topBatter.offensive_war ?? 0).toFixed(1), highlight: true },
+  ] : []
+
+  const pitcherStats = topPitcher ? [
+    { label: 'ERA', value: (topPitcher.era ?? 0).toFixed(2) },
+    { label: 'SO', value: topPitcher.strikeouts ?? 0 },
+    { label: 'IP', value: fmtIp(topPitcher.innings_pitched) },
+    { label: 'WHIP', value: (topPitcher.whip ?? 0).toFixed(2) },
+    { label: 'ERA+', value: Math.round(topPitcher.era_plus ?? 0) },
+    { label: 'WAR', value: (topPitcher.pitching_war ?? 0).toFixed(1), highlight: true },
+  ] : []
+
   return (
     <section>
       <SectionHeading
@@ -180,16 +198,14 @@ function SeasonInReviewSection() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <NwacChampionCard />
         <PlayerHighlightCard
-          eyebrow="Top Hitter (WAR)"
+          eyebrow="Hitter of the Year"
           player={topBatter}
-          subStat={topBatter ? `${(topBatter.offensive_war ?? 0).toFixed(1)} WAR` : ''}
-          subStat2={topBatter ? `wRC+ ${Math.round(topBatter.wrc_plus ?? 0)}` : ''}
+          stats={hitterStats}
         />
         <PlayerHighlightCard
-          eyebrow="Top Pitcher (WAR)"
+          eyebrow="Pitcher of the Year"
           player={topPitcher}
-          subStat={topPitcher ? `${(topPitcher.pitching_war ?? 0).toFixed(1)} WAR` : ''}
-          subStat2={topPitcher ? `ERA+ ${Math.round(topPitcher.era_plus ?? 0)}` : ''}
+          stats={pitcherStats}
         />
       </div>
     </section>
@@ -242,31 +258,35 @@ function NwacChampionCard() {
   )
 }
 
-function PlayerHighlightCard({ eyebrow, player, subStat, subStat2 }) {
+function PlayerHighlightCard({ eyebrow, player, stats = [] }) {
   if (!player) {
     return (
       <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 animate-pulse">
         <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded mb-3" />
-        <div className="h-6 w-3/4 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
-        <div className="h-4 w-1/2 bg-gray-200 dark:bg-gray-700 rounded" />
+        <div className="h-6 w-3/4 bg-gray-200 dark:bg-gray-700 rounded mb-3" />
+        <div className="grid grid-cols-3 gap-2">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-10 bg-gray-100 dark:bg-gray-700/60 rounded" />
+          ))}
+        </div>
       </div>
     )
   }
   return (
     <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 flex flex-col h-full">
-      <div className="text-[10px] font-semibold uppercase tracking-[2px] text-gray-500 dark:text-gray-400 mb-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[2px] text-nw-teal mb-3">
         {eyebrow}
       </div>
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-3 mb-4">
         {player.headshot_url ? (
           <img
             src={player.headshot_url}
             alt=""
-            className="w-12 h-12 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700"
+            className="w-14 h-14 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700"
             onError={(e) => { e.target.style.display = 'none' }}
           />
         ) : (
-          <div className="w-12 h-12 rounded-full bg-nw-teal/15 dark:bg-nw-teal/25 flex items-center justify-center text-nw-teal font-bold">
+          <div className="w-14 h-14 rounded-full bg-nw-teal/15 dark:bg-nw-teal/25 flex items-center justify-center text-nw-teal font-bold text-lg">
             {(player.first_name?.[0] || '?')}{(player.last_name?.[0] || '')}
           </div>
         )}
@@ -277,44 +297,41 @@ function PlayerHighlightCard({ eyebrow, player, subStat, subStat2 }) {
           >
             {player.first_name} {player.last_name}
           </Link>
-          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-            {player.team_short || player.team_name} · {player.division_level}
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 truncate">
+            {player.logo_url && (
+              <img src={player.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
+                onError={(e) => { e.target.style.display = 'none' }} />
+            )}
+            <span className="truncate">
+              {player.team_short || player.team_name} · {player.division_level}
+              {player.year_in_school ? ` · ${player.year_in_school}` : ''}
+            </span>
           </div>
         </div>
       </div>
-      <div className="flex gap-3 mt-auto pt-3 border-t border-gray-100 dark:border-gray-700">
-        <div className="flex-1">
-          <div className="text-lg font-bold text-nw-teal tabular-nums">{subStat}</div>
-        </div>
-        <div className="flex-1 text-right">
-          <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 tabular-nums">{subStat2}</div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
-
-// ============================================================
-// INLINE SIGNUP CTAs
-// ============================================================
-function InlineCta({ headline, body }) {
-  return (
-    <div className="rounded-xl bg-nw-teal/8 dark:bg-nw-teal/15 border border-nw-teal/30 dark:border-nw-teal/40 px-5 py-5 sm:px-6 sm:py-6 flex flex-col sm:flex-row sm:items-center gap-4">
-      <div className="flex-1">
-        <div className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
-          {headline}
-        </div>
-        <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
-          {body}
-        </p>
+      {/* Full stat line — 3-col grid, WAR highlighted */}
+      <div className="grid grid-cols-3 gap-2 mt-auto">
+        {stats.map((s) => (
+          <div
+            key={s.label}
+            className={`rounded-lg px-2 py-2 text-center ${
+              s.highlight
+                ? 'bg-nw-teal/10 dark:bg-nw-teal/20'
+                : 'bg-gray-50 dark:bg-gray-900/40'
+            }`}
+          >
+            <div className={`text-base sm:text-lg font-extrabold tabular-nums leading-none ${
+              s.highlight ? 'text-nw-teal' : 'text-gray-900 dark:text-gray-100'
+            }`}>
+              {s.value}
+            </div>
+            <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mt-1">
+              {s.label}
+            </div>
+          </div>
+        ))}
       </div>
-      <Link
-        to="/auth?mode=signup"
-        className="shrink-0 px-5 py-2.5 bg-nw-teal text-white rounded-lg font-semibold text-sm hover:bg-pnw-sky transition-colors"
-      >
-        Sign up free
-      </Link>
     </div>
   )
 }
@@ -539,11 +556,8 @@ function TeamCoverageWall() {
   const { data: teams } = useTeams({ season: SEASON })
   const pnwTeams = (teams || [])
     .filter((t) => t.logo_url && (t.is_pnw || ['WA', 'OR', 'ID', 'MT', 'BC'].includes(t.state)))
-  // Cap display at 36 so the grid doesn't sprawl on tall screens.
-  const display = pnwTeams.slice(0, 36)
-  const more = Math.max(0, pnwTeams.length - display.length)
 
-  if (display.length === 0) return null
+  if (pnwTeams.length === 0) return null
 
   return (
     <section>
@@ -553,7 +567,7 @@ function TeamCoverageWall() {
         sub={`${pnwTeams.length} active teams across D1, D2, D3, NAIA, and the NWAC. Click any logo to drop into that team's page.`}
       />
       <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-2">
-        {display.map((t) => (
+        {pnwTeams.map((t) => (
           <Link
             key={t.id}
             to={`/team/${t.id}`}
@@ -569,14 +583,6 @@ function TeamCoverageWall() {
             />
           </Link>
         ))}
-        {more > 0 && (
-          <Link
-            to="/teams"
-            className="aspect-square rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-[11px] font-bold text-gray-500 dark:text-gray-400 hover:border-nw-teal hover:text-nw-teal transition-colors"
-          >
-            +{more}
-          </Link>
-        )}
       </div>
     </section>
   )
