@@ -72,8 +72,7 @@ const INTERNS = [
     role: 'Intern',
     playerId: 3002,
     headshot: 'https://gothunderbirds.ca/images/2026/1/6/BASE_Oliver_Duthie.jpg?width=80&quality=90',
-    blurb: 'Bio coming soon.',
-    bioPending: true,
+    blurb: 'Oliver recently graduated from the University of British Columbia, where he spent five years as a left-handed pitcher. Born and raised in Dubai, United Arab Emirates, he moved to Canada for school and immersed himself in analytics, player development, pitch design, and scouting, handling advance reports on opposing teams along the way. Whether he is building models in R, analyzing pitch shapes, or studying how arsenals and lineups fit together, he is focused on using data and technology to help players improve, with the goal of contributing to a professional baseball organization.',
   },
   {
     name: 'Trevor Kazahaya',
