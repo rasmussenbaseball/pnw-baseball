@@ -166,8 +166,11 @@ function MockPlayerSpotlight({ mode }) {
     return () => { alive = false }
   }, [player, pool, isHitter, pickRandom])
 
+  const [expanded, setExpanded] = useState(false)
+
   const shuffle = () => {
     triesRef.current = 0
+    setExpanded(false)            // start each new player compact
     setPlayer(pickRandom(pool))
   }
 
@@ -237,11 +240,28 @@ function MockPlayerSpotlight({ mode }) {
             </div>
           </div>
 
-          {/* The real player-page pitch-level card (color-coded PBP +
-              spray chart + count/hand/situational splits) */}
-          {isHitter
-            ? <PitchLevelStatsCard key={player.player_id} playerId={player.player_id} season={SEASON} />
-            : <PitcherPitchLevelStatsCard key={player.player_id} playerId={player.player_id} season={SEASON} />}
+          {/* The real player-page pitch-level card. Collapsed by
+              default to the top sections (discipline tiles + batted
+              ball + spray); "Show more" reveals the count battle,
+              hand splits, and situational tables. */}
+          <div className="relative">
+            <div className={expanded ? '' : 'max-h-[460px] overflow-hidden'}>
+              {isHitter
+                ? <PitchLevelStatsCard key={player.player_id} playerId={player.player_id} season={SEASON} />
+                : <PitcherPitchLevelStatsCard key={player.player_id} playerId={player.player_id} season={SEASON} />}
+            </div>
+            {!expanded && (
+              <div className="absolute bottom-0 inset-x-0 h-24 bg-gradient-to-t from-white dark:from-gray-800 to-transparent pointer-events-none rounded-b-lg" />
+            )}
+          </div>
+          <div className="flex justify-center -mt-2">
+            <button
+              onClick={() => setExpanded((e) => !e)}
+              className="px-4 py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-nw-teal hover:border-nw-teal shadow-sm transition-colors"
+            >
+              {expanded ? 'Show less ↑' : 'Show full breakdown ↓'}
+            </button>
+          </div>
         </>
       )}
     </section>
