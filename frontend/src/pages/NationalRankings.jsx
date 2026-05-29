@@ -70,7 +70,7 @@ function SosRankBadge({ rank, label }) {
 // ─── Division Rankings Table ───
 function DivisionSection({ division }) {
   const [expanded, setExpanded] = useState(true)
-  const badgeClass = BADGE_COLORS[division.division_level] || 'bg-gray-50 dark:bg-gray-900/400 text-white'
+  const badgeClass = BADGE_COLORS[division.division_level] || 'bg-gray-500 text-white'
   const hasData = division.teams.some(t => t.composite_rank)
 
   return (
@@ -78,7 +78,7 @@ function DivisionSection({ division }) {
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 dark:bg-gray-900/40 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-900/40 transition-colors"
       >
         <div className="flex items-center gap-3">
           <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${badgeClass}`}>

@@ -217,7 +217,7 @@ export default function WarLeaderboard() {
                   {COLUMNS.map(col => (
                     <td
                       key={col.key}
-                      className={`font-mono text-right ${col.bold ? 'font-bold' : ''} ${col.accent ? 'text-blue-700 dark:text-blue-300 font-semibold' : ''} ${col.key === sortBy ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
+                      className={`font-mono text-right text-gray-900 dark:text-gray-100 ${col.bold ? 'font-bold' : ''} ${col.accent ? 'text-blue-700 dark:text-blue-300 font-semibold' : ''} ${col.key === sortBy ? 'bg-blue-50 dark:bg-blue-900/30 !text-blue-900 dark:!text-blue-100' : ''}`}
                     >
                       {renderCell(col, row)}
                     </td>

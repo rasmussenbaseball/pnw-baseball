@@ -141,6 +141,15 @@ html.dark tr:hover td.sticky-col {
 .player-link {
   @apply text-nw-teal hover:text-nw-teal-dark font-medium hover:underline;
 }
+/* nw-teal (#00687a) is too dark to read on the dark-mode surfaces, so
+   linked player names across every leaderboard washed out. Use a light
+   teal in dark mode. */
+html.dark .player-link {
+  color: #5eead4;            /* teal-300 */
+}
+html.dark .player-link:hover {
+  color: #99f6e4;            /* teal-200 */
+}
 
 /* Filter badge */
 .filter-badge {

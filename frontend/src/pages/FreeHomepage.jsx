@@ -410,7 +410,7 @@ function LeaderCard({ label, to, leaders }) {
             <span className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 truncate flex-1">
               {ld.first_name} {ld.last_name}
             </span>
-            <span className="text-[11px] font-mono font-bold text-nw-teal tabular-nums">
+            <span className="text-[11px] font-mono font-bold text-nw-teal dark:text-teal-300 tabular-nums">
               {ld.display}
             </span>
           </div>
@@ -775,7 +775,7 @@ function WpaSwingsBoard() {
         <Link to={`/game/${m.game_id}`} className="block group">
           {/* Big swing number */}
           <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-3xl font-extrabold text-nw-teal tabular-nums">
+            <span className="text-3xl font-extrabold text-nw-teal dark:text-teal-300 tabular-nums">
               +{Math.round(m.swing * 100)}%
             </span>
             <span className="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-semibold">
@@ -959,7 +959,7 @@ function StateBreakdown() {
             <div key={s.code} className="rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3">
               <div className="flex items-baseline justify-between mb-2">
                 <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{s.name}</div>
-                <div className="text-xl font-extrabold text-nw-teal tabular-nums">{list.length}</div>
+                <div className="text-xl font-extrabold text-nw-teal dark:text-teal-300 tabular-nums">{list.length}</div>
               </div>
               <div className="grid grid-cols-4 gap-1.5">
                 {list.map((t) => (
