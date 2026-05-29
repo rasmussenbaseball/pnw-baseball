@@ -231,7 +231,7 @@ export default function Schedule() {
           <li><strong>Conference games are auto-generated</strong> — weekend series against every other team in your conference, alternating home/away year-over-year.</li>
           <li><strong>You fill the non-conference weekends</strong>. Pre-conference weeks usually have 2-3 open weekends. Use Auto-create for a smart starter slate, or pick opponents manually.</li>
           {save.level !== 'NWAC' && (
-            <li><strong>Midweek games</strong> — optional Tue/Wed single games for extra reps. Don't count toward your conf record.</li>
+            <li><strong>Midweek games</strong> — optional Tuesday single games for extra reps. Don't count toward your conf record.</li>
           )}
           <li><strong>Regular-season cap is {NAIA_GAME_CAP} record-counting games</strong>. Scrimmages and byes don't count.</li>
         </ul>
@@ -286,10 +286,10 @@ export default function Schedule() {
             </div>
             <div className={'text-xs ' + (scheduleIncomplete ? 'text-gray-400' : 'text-blue-700')}>
               {scheduleIncomplete
-                ? 'Fill all weekend slots above first. Then you can optionally add midweek games (Tue/Wed) for more reps.'
+                ? 'Fill all weekend slots above first. Then you can optionally add midweek games (Tuesdays) for more reps.'
                 : save.level === 'NAIA'
-                  ? `Optional Tuesday/Wednesday single games. NAIA-vs-D1 hard-capped at ${NAIA_D1_MIDWEEK_CAP}/year (${d1Remaining} left); NAIA-vs-NAIA or D2/D3 unrestricted.`
-                  : `Optional Tue/Wed single games against any ${save.level || 'level-eligible'} opponent. Don't count toward conference record.`
+                  ? `Optional Tuesday single games. NAIA-vs-D1 hard-capped at ${NAIA_D1_MIDWEEK_CAP}/year (${d1Remaining} left); NAIA-vs-NAIA or D2/D3 unrestricted.`
+                  : `Optional Tuesday single games against any ${save.level || 'level-eligible'} opponent. Don't count toward conference record.`
               }
             </div>
           </div>
@@ -304,7 +304,7 @@ export default function Schedule() {
         </div>
         {!scheduleIncomplete && showMidweekSection && (
           <div className="mt-3 space-y-1.5">
-            <p className="text-[11px] text-blue-800 mb-2">Pick a week (Tue/Wed slot). Midweeks are limited to non-conference opponents.</p>
+            <p className="text-[11px] text-blue-800 mb-2">Pick a week (Tuesday slot). Midweeks are limited to non-conference opponents.</p>
             <div className="grid grid-cols-3 md:grid-cols-6 gap-1">
               {scheduledWeekNums.filter(w => byWeek[w].some(g => g.type === 'CONFERENCE' || g.type === 'BYE' || g.type === 'NON_CONFERENCE'))
                 .map(week => (

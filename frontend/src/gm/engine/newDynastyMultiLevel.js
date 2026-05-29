@@ -1188,6 +1188,7 @@ function buildIndependentSchedule(userSchoolId, level, year, rng, targetGames) {
         year,
         seasonWeek: w + 1,
         weekOfYear: wk,
+        isMidweek: true,
         date: dateForWeek(year, wk, 1),
         homeId: w % 3 === 0 ? midOpp.id : userSchoolId,
         awayId: w % 3 === 0 ? userSchoolId : midOpp.id,

@@ -286,7 +286,11 @@ export function simWeek(state, schedule, ratings) {
       // entire available staff for the midweek game. simGame then picks
       // rotation[0] (now the 5th-best arm overall) as the starter and uses
       // the rest as relief.
-      const isMidweekGame = g.type === 'D1_MIDWEEK'
+      // Honor either the explicit isMidweek flag (set by buildMidweekSingle
+      // for manually-added Tuesday games at any level) OR the legacy
+      // D1_MIDWEEK type (used by the auto-scheduler + NAIA-vs-D1 path).
+      // Both signal "no weekend SPs on this Tuesday."
+      const isMidweekGame = g.isMidweek === true || g.type === 'D1_MIDWEEK'
       if (isMidweekGame) {
         homeLineup.pitcherRotation = (homeLineup.pitcherRotation || []).slice(4)
         awayLineup.pitcherRotation = (awayLineup.pitcherRotation || []).slice(4)

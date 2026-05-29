@@ -618,13 +618,15 @@ export function tryAddNonConfGame(userSchoolId, opponentSchoolId, opponentDivisi
 }
 
 /**
- * Add a single midweek D1 game (Tuesday or Wednesday).
+ * Add a single midweek D1 game (Tuesday).
  */
 function addD1Midweek(userSchoolId, opponentSchoolId, week, year, userIsHome) {
   const fri = seasonWeekFriday(week, year)
-  // Midweek = Wednesday of that week (Fri - 2 days)
-  const wed = new Date(fri)
-  wed.setUTCDate(wed.getUTCDate() - 2)
+  // Midweek = Tuesday of that week (Fri - 3 days). Standardized to Tuesday
+  // across every level so the calendar reads consistently and there are no
+  // Wed/Tue mixes per week (per Nate, May 2026).
+  const tue = new Date(fri)
+  tue.setUTCDate(tue.getUTCDate() - 3)
 
   const homeId = userIsHome ? userSchoolId : opponentSchoolId
   const awayId = userIsHome ? opponentSchoolId : userSchoolId
@@ -632,7 +634,8 @@ function addD1Midweek(userSchoolId, opponentSchoolId, week, year, userIsHome) {
     id: `d1mw_${year}_${week}_${homeId}_${awayId}_${Math.random().toString(36).slice(2, 8)}`,
     year,
     seasonWeek: week,
-    date: isoDate(wed),
+    isMidweek: true,
+    date: isoDate(tue),
     homeId,
     awayId,
     type: 'D1_MIDWEEK',
@@ -1248,13 +1251,15 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
   }
 
   // ── MIDWEEK GAMES ─────────────────────────────────────────────────────
-  // D1 teams play one midweek game (Tue/Wed) most weeks — adds ~10-12 games
-  // to a 36-game weekend slate, bringing the total to a realistic ~46-50.
-  // Pick mid + bottom-bucket regional opponents (cheaper travel, less risk).
-  // Non-NAIA path didn't have midweek logic before; that's why OSU only had
-  // 36 games on the schedule.
+  // D1/D2/D3 teams play one midweek game (Tuesday) most weeks — adds
+  // ~10-12 games to a 36-game weekend slate, bringing the total to a
+  // realistic ~46-50. Pick mid + bottom-bucket regional opponents (cheaper
+  // travel, less risk). Non-NAIA path didn't have midweek logic before;
+  // that's why OSU only had 36 games on the schedule.
+  // NWAC excluded — JUCO format is weekend 4-game series only, no midweeks.
   const isNAIA = level === 'NAIA'
-  if (!isNAIA) {
+  const isNwac = level === 'NWAC'
+  if (!isNAIA && !isNwac) {
     // Build a midweek opponent pool — bias toward proximity, prefer mid
     // and bottom buckets so it's a winnable game, dedupe vs weekend picks.
     const midweekRng = makeRng('midweek_ml', userSchoolId, year, seed + 11)
@@ -1320,20 +1325,22 @@ function autoCreateScheduleNonNaia(userSchoolId, conferenceId, userSchool, schoo
 }
 
 /**
- * Build a single-game midweek NAIA-vs-NAIA contest (Wednesday of `week`).
- * Used by auto-create when a regular series can't fit into a conf week.
+ * Build a single-game midweek contest (Tuesday of `week`). Used by
+ * auto-create AND by the manual "+ Add midweek" picker on the Schedule
+ * page. Midweeks are standardized to Tuesday across every level.
  */
 function buildMidweekSingle(userSchoolId, opponentId, week, year, userIsHome) {
   const fri = seasonWeekFriday(week, year)
-  const wed = new Date(fri)
-  wed.setUTCDate(wed.getUTCDate() - 2)
+  const tue = new Date(fri)
+  tue.setUTCDate(tue.getUTCDate() - 3)
   const homeId = userIsHome ? userSchoolId : opponentId
   const awayId = userIsHome ? opponentId : userSchoolId
   return {
     id: `mw_${year}_${week}_${homeId}_${awayId}_${Math.random().toString(36).slice(2, 8)}`,
     year,
     seasonWeek: week,
-    date: isoDate(wed),
+    isMidweek: true,
+    date: isoDate(tue),
     homeId,
     awayId,
     type: 'NON_CONFERENCE',
