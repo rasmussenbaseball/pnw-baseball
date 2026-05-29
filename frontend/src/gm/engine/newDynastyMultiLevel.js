@@ -715,22 +715,45 @@ function roundRobinRounds(teamIds) {
   return rounds
 }
 
-// Build a single Game record (3-game series day g uses dayOffset g+4 → weekend).
-function mkSeriesGame(seriesId, g, year, seasonWeek, weekOfYear, homeId, awayId, type) {
+// Build a single Game record. Default 3-game series — day g uses dayOffset
+// g+4 (Mon base + 4 = Fri, +5 = Sat, +6 = Sun). Pass explicit dayOffset / isDH
+// for 4-game NAIA series (Fri + Sat DH + Sun).
+function mkSeriesGame(seriesId, g, year, seasonWeek, weekOfYear, homeId, awayId, type, dayOffset = null, isDH = false) {
+  const off = dayOffset != null ? dayOffset : (g + 4)
   return {
     id: `${seriesId}_g${g}`,
     year,
     seasonWeek,
     weekOfYear,
-    date: dateForWeek(year, weekOfYear, g + 4),
+    date: dateForWeek(year, weekOfYear, off),
     homeId, awayId,
     type,
     seriesId,
     countsTowardRecord: true,
-    isDoubleheader: false,
+    isDoubleheader: isDH,
     played: false,
     homeRuns: null, awayRuns: null,
   }
+}
+
+// Game-day shape for a conference weekend series. NAIA plays 4-game
+// weekends (Fri + Sat DH + Sun) per conference_rules.json (Cascade and
+// most NAIA confs are seriesLength: 4). Everyone else plays 3-game
+// Fri/Sat/Sun series. Each entry is { off: dayOffset-from-Monday, dh }.
+function confSeriesDays(level) {
+  if (level === 'NAIA') {
+    return [
+      { off: 4, dh: false },   // Fri
+      { off: 5, dh: true },    // Sat G1
+      { off: 5, dh: true },    // Sat G2
+      { off: 6, dh: false },   // Sun
+    ]
+  }
+  return [
+    { off: 4, dh: false },     // Fri
+    { off: 5, dh: false },     // Sat
+    { off: 6, dh: false },     // Sun
+  ]
 }
 
 /**
@@ -753,6 +776,9 @@ export function buildFullDivisionSchedule(conferences, schools, level, year, see
   const games = []
 
   // 1. Per-conference round-robin in the back of the season.
+  // Conf-series shape is level-aware: NAIA plays 4-game weekends, everyone
+  // else plays 3-game (see confSeriesDays + conference_rules.json).
+  const seriesDays = confSeriesDays(level)
   for (const cid of Object.keys(conferences)) {
     const teamIds = (conferences[cid].schoolIds || []).filter(id => schools[id])
     if (teamIds.length < 2) continue
@@ -776,8 +802,9 @@ export function buildFullDivisionSchedule(conferences, schools, level, year, see
         const homeId = (n % 2) === 0 ? first : second
         const awayId = (n % 2) === 0 ? second : first
         const seriesId = `${cid}_${year}_w${w}_${homeId}`
-        for (let g = 0; g < 3; g++) {
-          games.push(mkSeriesGame(seriesId, g, year, w + 1, wk, homeId, awayId, 'CONFERENCE'))
+        for (let g = 0; g < seriesDays.length; g++) {
+          const slot = seriesDays[g]
+          games.push(mkSeriesGame(seriesId, g, year, w + 1, wk, homeId, awayId, 'CONFERENCE', slot.off, slot.dh))
         }
       }
     }
