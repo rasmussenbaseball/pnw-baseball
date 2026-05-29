@@ -22,7 +22,7 @@ import { seedFromPear } from '../../gm/engine/rankings'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
 import { positionFit, positionFitRank, positionFitLabel } from '../../gm/engine/positions'
 import {
-  ensureEnergyState, getEnergy, applyGameEnergyCosts, tickIntraDayRecovery,
+  ensureEnergyState, getEnergy, applyGameEnergyCosts, maybeResetEnergyForPostseason, tickIntraDayRecovery,
   energyLabel, energyColorClass,
 } from '../../gm/engine/energy'
 import { findBlockingPriorGame } from '../../gm/engine/schedule'
@@ -132,13 +132,17 @@ export default function Play() {
             accumulateBoxscore(save, result.boxscore, g.type)
             // Energy: deduct costs for the user's appearing players. Build the
             // appearance list from the user-side lineup + pitchers who threw.
-            // POSTSEASON games skip energy drain entirely (per Nate) so the
-            // back-to-back conference tournament / regional / WS schedule
-            // doesn't gas the user's team. Mirrors the season.simWeek path.
+            // POSTSEASON games run in reduced-energy mode (per Nate, May
+            // 2026): pitchers pay full cost so rotation choice matters,
+            // hitters pay 20% so the lineup stays fresh through the bracket.
+            // The one-time reset-to-100 also fires here in case the user
+            // jumps straight to a live postseason game without sim'ing past
+            // the boundary first. Mirrors the season.simWeek path.
             ensureEnergyState(save)
             const userTeam = save.teams[save.userSchoolId]
             const isPostseason = g.type === 'POSTSEASON'
-            if (userTeam && !isPostseason) {
+            if (isPostseason) maybeResetEnergyForPostseason(save)
+            if (userTeam) {
               const userSide = save.userSchoolId === g.homeId ? 'home' : 'away'
               const userLineup = resolveLineupForGame(save, save.userSchoolId, g.id)
               const isSecond = isSecondGameOfDayUI(save.schedule || [], g, save.userSchoolId)
@@ -163,7 +167,7 @@ export default function Play() {
                 const pitches = Math.round((ps.pa || 0) * 3.9)
                 apps.push({ playerId: pid, pitchesThrown: pitches, isPitcher: true, isSecondGameOfDay: isSecond })
               }
-              applyGameEnergyCosts(save, apps)
+              applyGameEnergyCosts(save, apps, isPostseason ? { postseason: true } : undefined)
             }
             // Update team W-L for record-counting games (everything except
             // scrimmages + BYEs). Mirrors the auto-sim path in season.simWeek.

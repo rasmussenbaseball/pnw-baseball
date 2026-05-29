@@ -35,7 +35,7 @@ import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, 
 import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
 import { makeRng } from './rng'
 import {
-  ensureEnergyState, getEnergy, applyGameEnergyCosts, tickWeeklyRecovery,
+  ensureEnergyState, getEnergy, applyGameEnergyCosts, maybeResetEnergyForPostseason, tickWeeklyRecovery,
   tickIntraDayRecovery, energyInjuryMultiplier,
 } from './energy'
 import nonNaiaRaw from '../data/non_naia_teams.json'
@@ -183,6 +183,17 @@ export function simWeek(state, schedule, ratings) {
   // Reset the weekly-stats accumulator at the start of every simWeek so
   // weeklyAwards has just THIS week's box scores to choose from.
   state.weeklyStats = {}
+  // POSTSEASON energy reset — if this week contains any postseason game and
+  // we haven't reset this dynasty-year yet, snap every tracked player back
+  // to 100. Gives the user their whole roster fresh for the bracket.
+  const weekHasPostseason = (schedule || []).some(g =>
+    g.type === 'POSTSEASON' && !g.played
+    && ((targetWeek != null && g.seasonWeek === targetWeek)
+      || (targetWeekOfYear != null && g.weekOfYear === targetWeekOfYear)),
+  )
+  if (weekHasPostseason) {
+    maybeResetEnergyForPostseason(state)
+  }
   // Energy lookup passed to simGame so PA-level outcomes reflect tired
   // bats / arms. Wrapped as a function (not a snapshot) because energy
   // can change between same-day games (intra-day recovery + game costs).
@@ -374,14 +385,16 @@ export function simWeek(state, schedule, ratings) {
     // flag the second-game-of-day surcharge so the same catcher / starter
     // who appeared in game 1 takes an extra hit in game 2.
     //
-    // POSTSEASON exemption (per Nate): conference tournaments, regionals,
-    // super regionals, and the World Series often play every day for 4-7
-    // straight days. The regular-season energy cadence (per-game drain +
-    // overnight recovery) wasn't calibrated for that, so users were getting
-    // gassed by the WS. Postseason games skip the energy drain entirely so
-    // every team plays the playoffs at full strength.
+    // POSTSEASON mode (per Nate, May 2026): conf tournaments, regionals,
+    // super regionals, and the WS often play every day for 4-7 straight
+    // days. Pitchers KEEP full energy cost so rotation choice matters and
+    // you can't ride one ace through the whole bracket. Hitters drain at
+    // ~20% so a manager can run their entire lineup all the way through
+    // the WS without losing the bench to fatigue. Pairs with the one-time
+    // reset-to-100 at the start of the postseason above.
     const isPostseason = g.type === 'POSTSEASON'
-    if (isUserGame && result.appearances && !isPostseason) {
+    const energyOpts = isPostseason ? { postseason: true } : undefined
+    if (isUserGame && result.appearances) {
       const isSecond = isSecondGameOfDay(schedule, g, userSchoolId)
       const userSide = g.homeId === userSchoolId ? 'home' : 'away'
       const userTeam = state.teams[userSchoolId]
@@ -391,7 +404,7 @@ export function simWeek(state, schedule, ratings) {
           return a.teamId === userSide
         })
         .map(a => ({ ...a, isSecondGameOfDay: isSecond }))
-      applyGameEnergyCosts(state, userAppearances)
+      applyGameEnergyCosts(state, userAppearances, energyOpts)
       // EQUAL FOOTING: charge the OPPONENT's lineup the same per-game energy
       // costs. simGame applies the energy dampener to BOTH sides via getEnergy,
       // but previously only the user accrued fatigue — opponents always played
@@ -404,8 +417,8 @@ export function simWeek(state, schedule, ratings) {
           return a.teamId !== userSide
         })
         .map(a => ({ ...a, isSecondGameOfDay: isSecond }))
-      applyGameEnergyCosts(state, oppAppearances)
-    } else if (isUserGame && !isPostseason) {
+      applyGameEnergyCosts(state, oppAppearances, energyOpts)
+    } else if (isUserGame) {
       // Fast-sim user game (vs non-NAIA) — deduct a baseline cost for the
       // starting 9 + starter so doubleheader energy still drains.
       const userTeam = state.teams[userSchoolId]
@@ -425,7 +438,7 @@ export function simWeek(state, schedule, ratings) {
         if (starter) {
           apps.push({ playerId: starter.id, pitchesThrown: 85, isPitcher: true, isSecondGameOfDay: isSecond })
         }
-        applyGameEnergyCosts(state, apps)
+        applyGameEnergyCosts(state, apps, energyOpts)
       }
     }
     // Persist the per-game boxscore on the user's games so the Play page

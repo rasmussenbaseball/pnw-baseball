@@ -104,6 +104,11 @@ export function applyGameEnergyCosts(state, appearances, opts = {}) {
   if (!Array.isArray(appearances) || appearances.length === 0) return
   ensureEnergyState(state)
   const players = opts.players || state.players || {}
+  // POSTSEASON MODE — pitchers pay their normal full cost (so a manager
+  // can't ride one ace through the WS), but hitters only pay ~20% so a
+  // full lineup can play every game of a 4-7 day playoff stretch without
+  // the bench getting cooked. Per Nate (May 2026).
+  const postseasonMode = opts.postseason === true
   for (const a of appearances) {
     const p = players[a.playerId]
     if (!p) continue
@@ -112,14 +117,48 @@ export function applyGameEnergyCosts(state, appearances, opts = {}) {
       cost = pitchingCost(a.pitchesThrown, p.pitcher?.stamina ?? 50, p.pitcher?.durability ?? 50)
     } else {
       cost = appearanceCost(p, a.position)
+      if (postseasonMode) cost *= 0.20
     }
     // Second-game-of-day surcharge — players who already played once
-    // today are extra cooked. Catchers especially.
+    // today are extra cooked. Catchers especially. Postseason shrinks
+    // this too — same 20% scale for the hitter side.
     if (a.isSecondGameOfDay) {
-      cost += a.position === 'C' ? 12 : 5
+      const surcharge = a.position === 'C' ? 12 : 5
+      cost += postseasonMode && !p.isPitcher ? surcharge * 0.20 : surcharge
     }
     adjustEnergy(state, a.playerId, -cost)
   }
+}
+
+/**
+ * Snap every tracked player back to 100 energy. Used as a one-time reset at
+ * the start of the postseason so every team enters the bracket fresh and the
+ * manager can use their whole roster. Idempotent — call as often as you like,
+ * the cap is 100 so re-running just no-ops on already-fresh players.
+ */
+export function resetAllEnergy(state) {
+  ensureEnergyState(state)
+  for (const pid of Object.keys(state.playerEnergy)) {
+    state.playerEnergy[pid] = 100
+  }
+}
+
+/**
+ * Fire resetAllEnergy at most once per dynasty-year. Caller is responsible for
+ * deciding WHEN to fire (e.g. when the current week first contains a
+ * POSTSEASON-typed game). Stamps state.flags.postseasonEnergyResetYear so
+ * subsequent calls in the same year are no-ops.
+ *
+ * @returns {boolean} true iff a reset actually fired this call
+ */
+export function maybeResetEnergyForPostseason(state) {
+  const year = state.calendar?.year
+  if (year == null) return false
+  if (!state.flags) state.flags = {}
+  if (state.flags.postseasonEnergyResetYear === year) return false
+  resetAllEnergy(state)
+  state.flags.postseasonEnergyResetYear = year
+  return true
 }
 
 /**
