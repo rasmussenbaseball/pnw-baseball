@@ -1048,13 +1048,14 @@ function LiveGameView({ save, game, onExit }) {
     const userLineup = resolveLineupForGame(save, userSchoolId, game.id)
     // Opponent — use defaultLineup for NAIA opponents, or build a synthetic
     // lineup for non-NAIA (just placeholder players based on strength).
-    let oppLineup
-    if (oppTeam) {
+    let oppLineup = null
+    // Only take the roster path when the opponent has a genuinely playable
+    // roster. Out-of-region opponents (national NAIA teams + D1/D2/D3 from
+    // the rating pool) carry a team rating + rank but NO generated player
+    // roster — a rating-only stub. Those (and any roster too thin to field
+    // nine) must fall through to the synthetic lineup below.
+    if (oppTeam && (oppTeam.rosterPlayerIds || []).length > 0) {
       oppLineup = resolveLineupForGame(save, oppId, game.id)
-      if (!oppLineup.batters.length) {
-        // safety net
-        oppLineup = { batters: [], pitcherRotation: [] }
-      }
       // Doubleheader rotation: if this is the opp's SECOND game today, start
       // their #2 pitcher instead of #1 (the AI doesn't have a manager who
       // sets game-2 lineups, so default to "throw a different arm"). Without
@@ -1073,11 +1074,15 @@ function LiveGameView({ save, game, onExit }) {
           ],
         }
       }
-    } else {
-      // Non-NAIA opponent — build a synthetic 9-batter / 5-pitcher list from
-      // a strength rating so the live engine has someone to face.
-      const strength = oppSchool?.strength ?? 0
-      oppLineup = makeSyntheticLineup(oppSchool, strength)
+    }
+    // Synthetic fallback — rating-only opponent, missing roster, or a roster
+    // that can't field a full nine + a staff. This is the real fix for the
+    // "Lineup exhausted" final: a rating-only team used to route into the
+    // roster path and hand the engine a short order. makeSyntheticLineup
+    // always returns 9 batters + 5 pitchers.
+    if (!oppLineup || (oppLineup.batters || []).length < 9 || (oppLineup.pitcherRotation || []).length === 0) {
+      const strength = oppSchool?.strength ?? oppTeam?.strength ?? 0
+      oppLineup = makeSyntheticLineup(oppSchool || { id: oppId, name: oppSchool?.name || oppId }, strength)
     }
     const homeLineup = isHome ? userLineup : oppLineup
     const awayLineup = isHome ? oppLineup : userLineup

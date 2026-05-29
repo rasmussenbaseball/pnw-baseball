@@ -13,6 +13,11 @@ import { defaultLineup } from './sim'
 import { playerOverall } from './playerRating'
 import { positionFit, positionFitRank } from './positions'
 import { getEnergy } from './energy'
+import { Sentry } from '../../lib/sentry'
+
+// Throttle the roster-health diagnostic to once per (team, year) per session
+// so a season's worth of autoLineup calls can't spam Sentry.
+const _rosterHealthReported = new Set()
 
 /** Get the saved lineup for a game (or null). */
 export function getSavedLineup(state, gameId) {
@@ -177,6 +182,24 @@ export function autoLineup(state, teamId, gameId) {
   // roster body (relax eligibility), and finally repeat bats if the roster is
   // pathologically tiny. Never leave a hole for the engine to trip on.
   if (batters.length < 9) {
+    // Roster-health diagnostic: if a team that's SUPPOSED to have a real
+    // roster (a substantial rosterPlayerIds list, not a rating-only stub)
+    // still can't field nine eligible hitters, that's genuine decay worth
+    // knowing about. Rating-only opponents (tiny/empty roster) are expected
+    // to land here and are NOT reported. Throttled to once per team/year.
+    const rosterCount = (team.rosterPlayerIds || []).length
+    if (rosterCount >= 25 && hitters.length < 9) {
+      const key = `${teamId}_${state.calendar?.year ?? 0}`
+      if (!_rosterHealthReported.has(key)) {
+        _rosterHealthReported.add(key)
+        try {
+          Sentry.captureMessage(
+            `GM roster decay: team ${teamId} has ${rosterCount} rostered but only ${hitters.length} eligible hitters (year ${state.calendar?.year}, level ${state.level})`,
+            { level: 'warning', tags: { gmIssue: 'roster_decay', gmLevel: state.level || 'unknown' } },
+          )
+        } catch { /* Sentry no-ops when uninitialized */ }
+      }
+    }
     const usedPad = new Set(batters.map(p => p.id))
     const benchHitters = hitters.filter(p => !usedPad.has(p.id))
     const allRoster = (team.rosterPlayerIds || []).map(id => state.players[id]).filter(Boolean)
