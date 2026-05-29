@@ -231,26 +231,29 @@ function rollingWoba(games, window = 10) {
   return out
 }
 
-// Game grade for the heatmap: simple OPS-driven 0-100. Empty AB → 50.
-function gameGrade(g) {
+// Per-game OPS. Returns null when the player didn't take a PA.
+function gameOps(g) {
   const ab = g.ab || 0
   const bb = g.bb || 0
   const h = g.h || 0
   const d = g['2b'] || 0
   const t = g['3b'] || 0
   const hr = g.hr || 0
-  const k = g.k || 0
   const tb = h + d + 2 * t + 3 * hr
   const pa = ab + bb
-  if (pa <= 0) return 50
+  if (pa <= 0) return null
   const obp = (h + bb) / pa
   const slg = ab > 0 ? tb / ab : 0
-  const ops = obp + slg
-  // Map OPS .000 → 0, 1.000 → 70, 1.500 → 100. K-heavy ABs drop floor.
-  let grade = Math.min(100, Math.max(0, Math.round(ops * 70)))
-  if (k >= 2 && h === 0) grade = Math.max(grade - 20, 10)
-  if (hr >= 1) grade = Math.max(grade, 80)
-  return grade
+  return obp + slg
+}
+// OPS-based color: red <.500, gray .500-.799, gold .800-.999, green 1.000-1.299, deep red ≥1.300
+function opsColor(ops) {
+  if (ops == null) return '#d4d4d4'
+  if (ops >= 1.300) return '#b8302a'
+  if (ops >= 1.000) return '#5b9d4d'
+  if (ops >= 0.800) return '#c9a44c'
+  if (ops >= 0.500) return '#9a9a9a'
+  return '#5d99c6'
 }
 
 // ── Hero: percentile rankings panel ────────────────────────────
@@ -382,7 +385,7 @@ function StreaksCardJW({ playerId, season = 2026 }) {
   return (
     <div className="rounded-md p-5 mb-4 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
       <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100" style={{ color: THEME.text, borderColor: THEME.text }}>
-        <span>🔥 {season} Streaks</span>
+        <span>{season} Streaks</span>
         <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>CURRENT</span>
       </h2>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -395,97 +398,298 @@ function StreaksCardJW({ playerId, season = 2026 }) {
   )
 }
 
-// ── wRC+ Game Tracker (heatmap) ────────────────────────────────
-function GameTracker({ games }) {
+// ── Per-Game OPS Chart ─────────────────────────────────────────
+// Replaces the opaque "grade" heatmap. Each game is a bar whose
+// height is the player's OPS for that game (capped at 2.000). Color
+// reflects performance tier so a glance tells you hot/cold without
+// needing to read raw numbers. Hover shows the box-score line.
+function PerGameOpsChart({ games }) {
   if (!games || !games.length) {
     return <div className="text-xs text-gray-500 dark:text-gray-400">No games yet</div>
   }
-  const cols = 16
-  const cellsTop = []
-  for (let i = 0; i < games.length; i++) {
-    const g = games[i]
-    const grade = gameGrade(g)
-    cellsTop.push({ g, grade })
-  }
-  // Month labels: place the month abbreviation in the column matching
-  // the first game of that month within row 0.
-  const monthLabels = Array(cols).fill('')
-  const monthOf = (g) => {
-    if (!g?.game_date) return ''
-    const m = new Date(g.game_date).toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase()
-    return m
-  }
-  let last = ''
-  cellsTop.slice(0, cols).forEach((c, i) => {
-    const m = monthOf(c.g)
-    if (m && m !== last) { monthLabels[i] = m; last = m }
-  })
-
-  // Stats for the meta row
-  const last5 = cellsTop.slice(-5)
-  const last5Grade = last5.length ? Math.round(last5.reduce((s, c) => s + c.grade, 0) / last5.length) : 0
-  const seasonAvgGrade = Math.round(cellsTop.reduce((s, c) => s + c.grade, 0) / cellsTop.length)
-  const best = cellsTop.reduce((acc, c) => c.grade > (acc?.grade ?? -1) ? c : acc, null)
-  const worst = cellsTop.reduce((acc, c) => c.grade < (acc?.grade ?? 999) ? c : acc, null)
-
+  const rows = games.map(g => ({ g, ops: gameOps(g) }))
+  const withOps = rows.filter(r => r.ops != null)
+  // Season + last 5 averages
+  const seasonOps = withOps.length
+    ? withOps.reduce((s, r) => s + r.ops, 0) / withOps.length : 0
+  const last5 = withOps.slice(-5)
+  const last5Ops = last5.length
+    ? last5.reduce((s, r) => s + r.ops, 0) / last5.length : 0
+  const best = withOps.reduce((acc, r) => r.ops > (acc?.ops ?? -1) ? r : acc, null)
+  const worst = withOps.reduce((acc, r) => r.ops < (acc?.ops ?? 999) ? r : acc, null)
   const fmtDate = d => {
     if (!d) return ''
     const dt = new Date(d)
     return `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`
   }
+  const fmtOps = v => v == null ? '—' : v.toFixed(3).replace(/^0/, '')
+
+  // Chart sizing
+  const barCount = rows.length
+  const w = 800
+  const h = 160
+  const padL = 36, padR = 8, padT = 10, padB = 28
+  const cw = w - padL - padR
+  const ch = h - padT - padB
+  const maxOps = 2.000
+  const barGap = 2
+  const barW = Math.max(2, (cw - (barCount - 1) * barGap) / barCount)
+  const yPos = v => padT + ch * (1 - Math.min(v, maxOps) / maxOps)
+  // Reference lines at .700 (avg), 1.000 (great)
+  const refLines = [
+    { v: 0.700, label: '.700 avg D2', color: THEME.poor },
+    { v: 1.000, label: '1.000', color: THEME.gold },
+    { v: seasonOps, label: `season ${fmtOps(seasonOps)}`, color: THEME.great },
+  ]
+  // X-axis date ticks every ~6 games
+  const tickInterval = Math.max(1, Math.ceil(barCount / 7))
 
   return (
     <div>
-      <div className="flex flex-wrap gap-x-5 gap-y-2 mb-3 text-[11px]" style={{ color: THEME.textMuted }}>
+      {/* Top stat strip */}
+      <div className="flex flex-wrap gap-x-6 gap-y-2 mb-3 text-[11px]" style={{ color: THEME.textMuted }}>
         <div className="flex flex-col">
-          <span className="text-[9.5px] uppercase tracking-wider" style={{ color: THEME.textLight }}>Season Grade</span>
-          <span className="text-base font-bold tabular-nums dark:text-gray-100" style={{ color: THEME.text }}>{seasonAvgGrade}</span>
+          <span className="text-[9.5px] uppercase tracking-wider" style={{ color: THEME.textLight }}>Season OPS</span>
+          <span className="text-base font-bold tabular-nums dark:text-gray-100" style={{ color: THEME.text }}>{fmtOps(seasonOps)}</span>
         </div>
         <div className="flex flex-col">
           <span className="text-[9.5px] uppercase tracking-wider" style={{ color: THEME.textLight }}>Last 5 Games</span>
-          <span className="text-base font-bold tabular-nums" style={{ color: last5Grade >= seasonAvgGrade ? THEME.great : THEME.poor }}>{last5Grade}</span>
+          <span className="text-base font-bold tabular-nums" style={{ color: last5Ops >= seasonOps ? THEME.great : THEME.poor }}>{fmtOps(last5Ops)}</span>
         </div>
         {best && (
           <div className="flex flex-col">
             <span className="text-[9.5px] uppercase tracking-wider" style={{ color: THEME.textLight }}>Best Game</span>
             <span className="text-base font-bold tabular-nums dark:text-gray-100" style={{ color: THEME.text }}>
-              {fmtDate(best.g.game_date)} {best.g.home_away === '@' ? '@' : 'vs'} {best.g.opponent_short?.slice(0, 12) || '?'}
+              {fmtDate(best.g.game_date)} · {fmtOps(best.ops)}
             </span>
           </div>
         )}
         {worst && (
           <div className="flex flex-col">
             <span className="text-[9.5px] uppercase tracking-wider" style={{ color: THEME.textLight }}>Coldest Game</span>
-            <span className="text-base font-bold tabular-nums" style={{ color: THEME.poor }}>{fmtDate(worst.g.game_date)}</span>
+            <span className="text-base font-bold tabular-nums" style={{ color: THEME.poor }}>{fmtDate(worst.g.game_date)} · {fmtOps(worst.ops)}</span>
           </div>
         )}
       </div>
 
-      <div className="grid gap-1 text-[10px] text-center font-bold tracking-wider mb-1" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, color: THEME.textLight }}>
-        {monthLabels.map((m, i) => <span key={i}>{m}</span>)}
-      </div>
-      <div className="grid gap-1 mb-2" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
-        {cellsTop.map((c, i) => {
-          const line = `${c.g.h || 0}-${c.g.ab || 0}${c.g.hr ? `, ${c.g.hr}HR` : ''}${c.g.bb ? `, ${c.g.bb}BB` : ''}${c.g.k ? `, ${c.g.k}K` : ''}`
-          return (
-            <div key={i}
-              className="aspect-square rounded-sm relative group cursor-pointer"
-              style={{ background: pctColor(c.grade), border: '1px solid rgba(0,0,0,0.05)' }}
-              title={`${fmtDate(c.g.game_date)} ${c.g.home_away === '@' ? '@' : 'vs'} ${c.g.opponent_short}: ${line} • grade ${c.grade}`} />
-          )
-        })}
+      {/* Chart */}
+      <div className="w-full overflow-x-auto">
+        <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" className="w-full" style={{ minWidth: '460px' }}>
+          {/* Y axis labels + gridlines */}
+          {[0.500, 1.000, 1.500, 2.000].map(v => (
+            <g key={v}>
+              <line x1={padL} y1={yPos(v)} x2={padL + cw} y2={yPos(v)} stroke={THEME.border} strokeWidth="0.6" strokeDasharray="2,3" />
+              <text x={padL - 5} y={yPos(v) + 3} textAnchor="end" fontSize="9" fill={THEME.textLight} fontWeight="600">{fmtOps(v)}</text>
+            </g>
+          ))}
+          {/* Reference lines */}
+          {refLines.map((rl, i) => (
+            <g key={i}>
+              <line x1={padL} y1={yPos(rl.v)} x2={padL + cw} y2={yPos(rl.v)} stroke={rl.color} strokeWidth="1" strokeDasharray="3,2" opacity="0.7" />
+              <text x={padL + cw - 4} y={yPos(rl.v) - 3} textAnchor="end" fontSize="8.5" fill={rl.color} fontWeight="700">{rl.label}</text>
+            </g>
+          ))}
+          {/* Bars */}
+          {rows.map((r, i) => {
+            const x = padL + i * (barW + barGap)
+            const y = r.ops != null ? yPos(r.ops) : padT + ch
+            const hBar = r.ops != null ? (padT + ch) - y : 0
+            const c = opsColor(r.ops)
+            const ab = r.g.ab || 0
+            const bb = r.g.bb || 0
+            const h2 = r.g.h || 0
+            const hr = r.g.hr || 0
+            const line = `${h2}-${ab}${bb ? `, ${bb}BB` : ''}${hr ? `, ${hr}HR` : ''}`
+            return (
+              <g key={i}>
+                <rect x={x} y={y} width={barW} height={hBar || 1} fill={c} rx="1">
+                  <title>{`${fmtDate(r.g.game_date)} ${r.g.home_away === '@' ? '@' : 'vs'} ${r.g.opponent_short}: ${line} · OPS ${fmtOps(r.ops)}`}</title>
+                </rect>
+              </g>
+            )
+          })}
+          {/* X axis tick dates */}
+          {rows.map((r, i) => {
+            if (i % tickInterval !== 0 && i !== rows.length - 1) return null
+            const x = padL + i * (barW + barGap) + barW / 2
+            return (
+              <text key={i} x={x} y={h - 8} textAnchor="middle" fontSize="9" fill={THEME.textLight} fontWeight="600">
+                {fmtDate(r.g.game_date)}
+              </text>
+            )
+          })}
+        </svg>
       </div>
 
-      <div className="flex items-center justify-center gap-2 text-[11px] font-semibold mt-2" style={{ color: THEME.textMuted }}>
-        <span>Cold</span>
-        <div className="flex gap-[2px]">
-          {[5, 20, 35, 50, 65, 80, 95].map((p, i) => (
-            <span key={i} className="w-[18px] h-[14px] rounded-sm" style={{ background: pctColor(p) }} />
-          ))}
-        </div>
-        <span>Hot</span>
-        <span className="ml-3 text-[10px] font-normal" style={{ color: THEME.textLight }}>Each cell = 1 game · hover for line</span>
+      {/* Legend */}
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[10.5px] font-semibold mt-3" style={{ color: THEME.textMuted }}>
+        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm" style={{ background: '#5d99c6' }} /> Below .500</span>
+        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm" style={{ background: '#9a9a9a' }} /> .500–.799</span>
+        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm" style={{ background: '#c9a44c' }} /> .800–.999</span>
+        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm" style={{ background: '#5b9d4d' }} /> 1.000–1.299</span>
+        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-sm" style={{ background: '#b8302a' }} /> 1.300+</span>
+        <span className="text-[10px] font-normal" style={{ color: THEME.textLight }}>Each bar = 1 game · hover for line</span>
       </div>
+    </div>
+  )
+}
+
+// ── Extended Season Stats table ───────────────────────────────
+// Full per-season slash line + advanced stats. Mirrors the columns
+// the production player page already shows, just rendered with the
+// prototype's typography.
+const EXTENDED_BATTING_COLS = [
+  { key: 'season',            label: 'Year', fmt: 'raw',  align: 'left' },
+  { key: 'team_short',        label: 'Team', fmt: 'raw',  align: 'left' },
+  { key: 'games',             label: 'G',    fmt: 'int' },
+  { key: 'plate_appearances', label: 'PA',   fmt: 'int' },
+  { key: 'at_bats',           label: 'AB',   fmt: 'int' },
+  { key: 'hits',              label: 'H',    fmt: 'int' },
+  { key: 'doubles',           label: '2B',   fmt: 'int' },
+  { key: 'triples',           label: '3B',   fmt: 'int' },
+  { key: 'home_runs',         label: 'HR',   fmt: 'int' },
+  { key: 'runs',              label: 'R',    fmt: 'int' },
+  { key: 'rbi',               label: 'RBI',  fmt: 'int' },
+  { key: 'walks',             label: 'BB',   fmt: 'int' },
+  { key: 'strikeouts',        label: 'K',    fmt: 'int' },
+  { key: 'stolen_bases',      label: 'SB',   fmt: 'int' },
+  { key: 'batting_avg',       label: 'AVG',  fmt: 'avg' },
+  { key: 'on_base_pct',       label: 'OBP',  fmt: 'avg' },
+  { key: 'slugging_pct',      label: 'SLG',  fmt: 'avg' },
+  { key: 'ops',               label: 'OPS',  fmt: 'avg' },
+  { key: 'woba',              label: 'wOBA', fmt: 'avg' },
+  { key: 'wrc_plus',          label: 'wRC+', fmt: 'int' },
+  { key: 'iso',               label: 'ISO',  fmt: 'avg' },
+  { key: 'bb_pct',            label: 'BB%',  fmt: 'pct' },
+  { key: 'k_pct',             label: 'K%',   fmt: 'pct' },
+  { key: 'offensive_war',     label: 'oWAR', fmt: 'war' },
+]
+
+function ExtendedSeasonStats({ rows }) {
+  if (!rows || !rows.length) return <div className="text-xs text-gray-500 dark:text-gray-400">No batting stats.</div>
+  const fmt = (key, v) => {
+    if (v == null || v === '') return key === 'raw' ? '—' : '—'
+    switch (key) {
+      case 'raw': return v
+      case 'int': return Math.round(v)
+      case 'avg': return formatPct('avg', v)
+      case 'pct': return `${(v * 100).toFixed(1)}%`
+      case 'war': return Number(v).toFixed(2)
+      default:    return v
+    }
+  }
+  return (
+    <div className="overflow-x-auto -mx-3 sm:mx-0">
+      <div className="min-w-[760px] px-3 sm:px-0">
+        <table className="w-full text-[11px] border-collapse">
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${THEME.border}` }}>
+              {EXTENDED_BATTING_COLS.map(c => (
+                <th key={c.key}
+                  className={`px-1.5 py-1.5 font-bold tracking-wide dark:text-gray-300 ${c.align === 'left' ? 'text-left' : 'text-right'}`}
+                  style={{ color: THEME.textLight }}>{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const isCurrent = i === rows.length - 1
+              return (
+                <tr key={r.season + '-' + (r.team_short || i)}
+                  className={`dark:text-gray-200 ${isCurrent ? 'font-bold dark:bg-amber-900/20' : ''}`}
+                  style={isCurrent ? { background: '#faf6ec', borderTop: `1px solid ${THEME.borderStrong}` } : { borderBottom: `1px solid #f0ebdc` }}>
+                  {EXTENDED_BATTING_COLS.map(c => (
+                    <td key={c.key}
+                      className={`px-1.5 py-1.5 tabular-nums dark:text-gray-100 ${c.align === 'left' ? 'text-left' : 'text-right'}`}
+                      style={{ color: THEME.text }}>
+                      {fmt(c.fmt, r[c.key])}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Defensive Stats (fielding) ────────────────────────────────
+const DEF_COLS_BASE = [
+  { key: 'season',       label: 'Year', align: 'left',  fmt: 'raw' },
+  { key: 'position',     label: 'Pos',  align: 'left',  fmt: 'raw' },
+  { key: 'games',        label: 'G',                    fmt: 'int' },
+  { key: 'games_started',label: 'GS',                   fmt: 'int' },
+  { key: 'innings',      label: 'Inn',                  fmt: 'inn' },
+  { key: 'putouts',      label: 'PO',                   fmt: 'int' },
+  { key: 'assists',      label: 'A',                    fmt: 'int' },
+  { key: 'errors',       label: 'E',                    fmt: 'int' },
+  { key: 'total_chances',label: 'TC',                   fmt: 'int' },
+  { key: 'double_plays', label: 'DP',                   fmt: 'int' },
+  { key: 'fielding_pct', label: 'FldPct',               fmt: 'avg' },
+]
+const DEF_COLS_CATCHER_EXTRA = [
+  { key: 'passed_balls',         label: 'PB',                 fmt: 'int' },
+  { key: 'stolen_bases_against', label: 'SBA',                fmt: 'int' },
+  { key: 'caught_stealing_by',   label: 'CS',                 fmt: 'int' },
+  { key: 'cs_pct',               label: 'CS%',                fmt: 'pctRaw' },
+]
+
+function DefensiveStats({ rows }) {
+  if (!rows || !rows.length) return <div className="text-xs text-gray-500 dark:text-gray-400">No defensive stats.</div>
+  const hasCatcher = rows.some(r => r.position === 'C')
+  const cols = hasCatcher ? [...DEF_COLS_BASE, ...DEF_COLS_CATCHER_EXTRA] : DEF_COLS_BASE
+  // Sort: newest season first, then games desc within season
+  const sorted = rows.slice().sort((a, b) =>
+    (b.season - a.season) || ((b.games || 0) - (a.games || 0))
+  )
+  const fmt = (kind, v) => {
+    if (v == null || v === '') return '—'
+    switch (kind) {
+      case 'raw':    return v
+      case 'int':    return Math.round(v)
+      case 'avg':    return Number(v).toFixed(3).replace(/^0/, '')
+      case 'pctRaw': return `${(Number(v) * 100).toFixed(1)}%`
+      case 'inn':    return Number(v).toFixed(1)
+      default:       return v
+    }
+  }
+  return (
+    <div className="overflow-x-auto -mx-3 sm:mx-0">
+      <div className="min-w-[680px] px-3 sm:px-0">
+        <table className="w-full text-[11px] border-collapse">
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${THEME.border}` }}>
+              {cols.map(c => (
+                <th key={c.key}
+                  className={`px-1.5 py-1.5 font-bold tracking-wide dark:text-gray-300 ${c.align === 'left' ? 'text-left' : 'text-right'}`}
+                  style={{ color: THEME.textLight }}>{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r, i) => (
+              <tr key={r.season + '-' + r.position + '-' + i}
+                className="dark:text-gray-200"
+                style={{ borderBottom: `1px solid #f0ebdc` }}>
+                {cols.map(c => (
+                  <td key={c.key}
+                    className={`px-1.5 py-1.5 tabular-nums dark:text-gray-100 ${c.align === 'left' ? 'text-left font-semibold' : 'text-right'}`}
+                    style={{ color: THEME.text }}>
+                    {fmt(c.fmt, r[c.key])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hasCatcher && (
+        <div className="text-[10px] mt-2 sm:mx-0 px-3 sm:px-0" style={{ color: THEME.textLight }}>
+          SBA = stolen bases attempted against this catcher · CS = runners thrown out · CS% caught-stealing rate
+        </div>
+      )}
     </div>
   )
 }
@@ -557,7 +761,7 @@ export default function JasonWrightProfile() {
     return <div className="text-center py-20 text-gray-500 dark:text-gray-400">{error || 'Player not found.'}</div>
   }
 
-  const { player, batting_stats, batting_percentiles, awards, pnw_rankings, position_breakdown } = data
+  const { player, batting_stats, batting_percentiles, fielding_stats, awards, pnw_rankings, position_breakdown } = data
   const battingByYear = (batting_stats || []).slice().sort((a, b) => a.season - b.season)
   const career = battingByYear.reduce((acc, s) => {
     acc.pa += s.plate_appearances || 0
@@ -649,8 +853,8 @@ export default function JasonWrightProfile() {
                   <span className="text-base font-bold" style={{ color: THEME.textMuted }}>#{player.jersey_number}</span>
                 )}
                 {hotFlag && (
-                  <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold px-2 py-[3px] rounded-full tracking-wide" style={{ background: 'rgba(255,107,53,0.12)', color: THEME.hot }}>
-                    🔥 HOT
+                  <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold px-2 py-[3px] rounded-full tracking-wide uppercase" style={{ background: 'rgba(255,107,53,0.12)', color: THEME.hot }}>
+                    Hot
                   </span>
                 )}
               </div>
@@ -731,7 +935,7 @@ export default function JasonWrightProfile() {
                 {(awards || []).map((a, i) => (
                   <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full inline-flex items-center gap-1"
                     style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
-                    🏆 GNAC {a.category} · {a.season}
+                    GNAC {a.category} · {a.season}
                   </span>
                 ))}
                 {(pnw_rankings || []).slice(0, 3).map((r, i) => (
@@ -771,13 +975,31 @@ export default function JasonWrightProfile() {
           </div>
         </div>
 
+        {/* ── EXTENDED SEASON STATS ── */}
+        <div className="rounded-md p-5 mb-4 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
+          <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100 dark:border-gray-500" style={{ color: THEME.text, borderColor: THEME.text }}>
+            <span>Batting Stats</span>
+            <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>BY SEASON</span>
+          </h2>
+          <ExtendedSeasonStats rows={battingByYear} />
+        </div>
+
+        {/* ── DEFENSIVE STATS ── */}
+        <div className="rounded-md p-5 mb-4 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
+          <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100 dark:border-gray-500" style={{ color: THEME.text, borderColor: THEME.text }}>
+            <span>Defensive Stats</span>
+            <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>BY POSITION</span>
+          </h2>
+          <DefensiveStats rows={fielding_stats} />
+        </div>
+
         {/* ── STREAKS ── */}
         <StreaksCardJW playerId={PLAYER_ID} />
 
         {/* ── PITCH LEVEL STATS (existing) ── */}
         <div className="rounded-md p-5 mb-4 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
           <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100 dark:border-gray-500" style={{ color: THEME.text, borderColor: THEME.text }}>
-            <span>⚾ Pitch Level Stats</span>
+            <span>Pitch Level Stats</span>
             <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>2026</span>
           </h2>
           <div className="-mx-2">
@@ -788,7 +1010,7 @@ export default function JasonWrightProfile() {
         {/* ── WPA AT THE PLATE (existing) ── */}
         <div className="rounded-md p-5 mb-4 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
           <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100 dark:border-gray-500" style={{ color: THEME.text, borderColor: THEME.text }}>
-            <span>⚡ WPA at the Plate</span>
+            <span>WPA at the Plate</span>
             <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>2026</span>
           </h2>
           <WpaByGameChart playerId={PLAYER_ID} position="batter" />
@@ -797,7 +1019,7 @@ export default function JasonWrightProfile() {
         {/* ── GAME LOG (inline compact) ── */}
         <div className="rounded-md p-5 mb-4 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
           <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100 dark:border-gray-500" style={{ color: THEME.text, borderColor: THEME.text }}>
-            <span>📝 Game Log</span>
+            <span>Game Log</span>
             <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>2026 SEASON</span>
           </h2>
           <GameLogJW games={battingGames} />
@@ -813,17 +1035,17 @@ export default function JasonWrightProfile() {
         {/* ── wRC+ GAME TRACKER ── */}
         <div className="rounded-md p-5 mb-4 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
           <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100 dark:border-gray-500" style={{ color: THEME.text, borderColor: THEME.text }}>
-            <span>📈 Per-Game Tracker</span>
+            <span>Per-Game OPS</span>
             <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>2026 · CHRONOLOGICAL</span>
           </h2>
-          <GameTracker games={battingGames} />
+          <PerGameOpsChart games={battingGames} />
         </div>
 
         {/* ── CAREER PATH + SIMILAR PLAYERS ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <div className="rounded-md p-5 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
             <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100 dark:border-gray-500" style={{ color: THEME.text, borderColor: THEME.text }}>
-              <span>🎓 Career Path</span>
+              <span>Career Path</span>
               <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>SCHOOLS</span>
             </h2>
             <CareerPath player={player} />
@@ -831,7 +1053,7 @@ export default function JasonWrightProfile() {
 
           <div className="rounded-md p-5 dark:bg-gray-800 dark:border-gray-700" style={{ background: '#fff', border: `1px solid ${THEME.border}` }}>
             <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2 dark:text-gray-100 dark:border-gray-500" style={{ color: THEME.text, borderColor: THEME.text }}>
-              <span>👥 Statistically Similar Players</span>
+              <span>Statistically Similar Players</span>
               <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>D2 · 2026</span>
             </h2>
             <div className="flex flex-col gap-2">
