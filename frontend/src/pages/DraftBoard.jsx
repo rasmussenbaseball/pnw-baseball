@@ -29,6 +29,26 @@ function formatDate(dateStr) {
 }
 
 
+// ─── Up/down movement arrow ──────────────────────────────────
+// Renders a small green ▲ or red ▼ next to the rank when the
+// prospect's `movement` field is set ('up' / 'down'). Nothing for
+// unchanged ranks.
+function MovementArrow({ movement }) {
+  if (movement !== 'up' && movement !== 'down') return null
+  const isUp = movement === 'up'
+  return (
+    <span
+      title={isUp ? 'Up since last update' : 'Down since last update'}
+      className={`text-[10px] font-bold leading-none shrink-0 ${
+        isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+      }`}
+    >
+      {isUp ? '▲' : '▼'}
+    </span>
+  )
+}
+
+
 // ─── Expandable player stats row ──────────────────────────────
 function PlayerStatsDropdown({ playerId, report, reportDate }) {
   const [data, setData] = useState(null)
@@ -230,10 +250,11 @@ export default function DraftBoard({ year }) {
                       onClick={() => toggleExpand(p.rank)}
                       className={`flex items-center px-4 py-3 cursor-pointer transition-colors ${isExpanded ? 'bg-teal-50/60' : 'hover:bg-teal-50/40'}`}
                     >
-                      <div className="w-12 shrink-0">
+                      <div className="w-12 shrink-0 flex items-center gap-1">
                         <span className={`text-sm font-bold ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400 dark:text-gray-500'}`}>
                           {p.rank}
                         </span>
+                        <MovementArrow movement={p.movement} />
                       </div>
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <img
@@ -296,9 +317,12 @@ export default function DraftBoard({ year }) {
                 onClick={() => toggleExpand(p.rank)}
                 className={`px-4 py-3 flex items-center gap-3 cursor-pointer ${isExpanded ? 'bg-teal-50/60' : ''}`}
               >
-                <span className={`text-lg font-bold w-8 text-center shrink-0 ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400 dark:text-gray-500'}`}>
-                  {p.rank}
-                </span>
+                <div className="w-8 shrink-0 flex flex-col items-center justify-center leading-none">
+                  <span className={`text-lg font-bold ${p.rank <= 3 ? 'text-amber-600' : 'text-gray-400 dark:text-gray-500'}`}>
+                    {p.rank}
+                  </span>
+                  <MovementArrow movement={p.movement} />
+                </div>
                 <img
                   src={logo}
                   alt=""
