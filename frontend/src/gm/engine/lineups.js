@@ -164,6 +164,44 @@ export function autoLineup(state, teamId, gameId) {
   const ordered = [...assignment].sort((a, b) => playerOverall(b.player) - playerOverall(a.player))
   const batters = ordered.map(x => x.player)
   const batterPositions = ordered.map(x => x.pos)
+
+  // ── Guarantee a full 9-man batting order ──────────────────────────────
+  // The greedy assignment above can leave FEWER than 9 batters when the
+  // eligible hitter pool is thin (a position with no eligible candidate gets
+  // skipped via `continue`, the DH is only added when bats remain, stale
+  // roster ids resolve to undefined, injuries/suspensions pile up, or an AI
+  // roster thins out several seasons in). The live engine indexes
+  // batters[idx % 9], so a short array returns `undefined` and the game bails
+  // with "Lineup exhausted." A real team always runs nine hitters out, so pad
+  // up to 9 — eligible bench bats first, then eligible pitchers, then ANY
+  // roster body (relax eligibility), and finally repeat bats if the roster is
+  // pathologically tiny. Never leave a hole for the engine to trip on.
+  if (batters.length < 9) {
+    const usedPad = new Set(batters.map(p => p.id))
+    const benchHitters = hitters.filter(p => !usedPad.has(p.id))
+    const allRoster = (team.rosterPlayerIds || []).map(id => state.players[id]).filter(Boolean)
+    const padPool = [
+      ...benchHitters,
+      ...pitchers.filter(p => !usedPad.has(p.id)),
+      ...allRoster.filter(p => !usedPad.has(p.id)),
+    ]
+    for (const p of padPool) {
+      if (batters.length >= 9) break
+      if (usedPad.has(p.id)) continue
+      usedPad.add(p.id)
+      batters.push(p)
+      batterPositions.push(p.primaryPosition || 'DH')
+    }
+    // Absolute last resort: fewer than 9 bodies on the whole roster. Repeat
+    // existing bats so the array still reaches 9 (the engine needs 9 slots).
+    let ri = 0
+    while (batters.length < 9 && batters.length > 0) {
+      batters.push(batters[ri % batters.length])
+      batterPositions.push(batterPositions[ri % batterPositions.length] || 'DH')
+      ri++
+    }
+  }
+
   const usedIds = new Set(batters.map(p => p.id))
   const bench = hitters.filter(p => !usedIds.has(p.id))
 
@@ -193,7 +231,19 @@ export function autoLineup(state, teamId, gameId) {
   }
   // Keep a deep bullpen reachable in-game for the user (up to 10 arms) so fresh
   // relievers are always available across a weekend; opponents use 6.
-  const pitcherRotation = rotation.slice(0, energyTracked ? 10 : 6)
+  let pitcherRotation = rotation.slice(0, energyTracked ? 10 : 6)
+
+  // Guarantee at least one arm. If the team has zero eligible pitchers (thin
+  // roster / all injured), the live engine's currentPitcher() would be
+  // undefined and the game would bail with "Lineup exhausted." Drop in an
+  // emergency arm — the best remaining body on the roster — so there's always
+  // someone on the mound (real teams send a position player out before they
+  // forfeit).
+  if (pitcherRotation.length === 0) {
+    const rosterBodies = (team.rosterPlayerIds || []).map(id => state.players[id]).filter(Boolean)
+    const emergency = [...rosterBodies].sort((a, b) => playerOverall(b) - playerOverall(a))[0]
+    if (emergency) pitcherRotation = [emergency]
+  }
 
   return { batters, batterPositions, pitcherRotation, bench }
 }

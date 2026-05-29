@@ -113,9 +113,20 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
   function pushEvent(ev) { state.events.push(ev) }
 
   function currentBatter() {
-    return state.top
-      ? state.awayBatters[state.awayPAIndex % 9]
-      : state.homeBatters[state.homePAIndex % 9]
+    const order = state.top ? state.awayBatters : state.homeBatters
+    const idx = state.top ? state.awayPAIndex : state.homePAIndex
+    if (!order || order.length === 0) return null
+    // Defensive: if the indexed slot is empty (a short/holey order slipped
+    // through lineup construction), scan forward for the next real batter
+    // rather than ending the game. Only return null if the whole order is
+    // empty. Pairs with the 9-man padding in lineups.autoLineup.
+    const direct = order[idx % order.length]
+    if (direct) return direct
+    for (let i = 1; i < order.length; i++) {
+      const b = order[(idx + i) % order.length]
+      if (b) return b
+    }
+    return null
   }
   function currentPitcher() {
     return state.top ? state.homePitcher : state.awayPitcher
