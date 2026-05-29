@@ -8,7 +8,7 @@
 // Color palette is the intern's cream/maroon/gold theme; dark variants
 // fall back to standard site colors.
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
@@ -558,7 +558,7 @@ export default function JasonWrightProfile() {
   }
 
   const { player, batting_stats, batting_percentiles, awards, pnw_rankings, position_breakdown } = data
-  const battingByYear = (batting_stats || []).sort((a, b) => a.season - b.season)
+  const battingByYear = (batting_stats || []).slice().sort((a, b) => a.season - b.season)
   const career = battingByYear.reduce((acc, s) => {
     acc.pa += s.plate_appearances || 0
     acc.ab += s.at_bats || 0
@@ -586,20 +586,21 @@ export default function JasonWrightProfile() {
 
   // Per-game wOBA series (rolling-10) for the hero chart
   const battingGames = gameLogs?.batting || []
-  const rolling = useMemo(() => rollingWoba(battingGames, 10), [battingGames])
+  const rolling = rollingWoba(battingGames, 10)
 
-  // Hot indicator: last 10 PAs OPS vs season OPS
+  // Hot indicator: last 7 games OPS vs season OPS (>10% bump = HOT)
   const lastN = battingGames.slice(-7)
-  const hotFlag = useMemo(() => {
-    if (!currSeason || lastN.length < 3) return false
+  let hotFlag = false
+  if (currSeason && lastN.length >= 3) {
     const slice = lastN.reduce((s, g) => ({
       ab: s.ab + (g.ab || 0), h: s.h + (g.h || 0), bb: s.bb + (g.bb || 0),
       tb: s.tb + (g.h || 0) + (g['2b'] || 0) + 2 * (g['3b'] || 0) + 3 * (g.hr || 0),
     }), { ab: 0, h: 0, bb: 0, tb: 0 })
-    if (slice.ab === 0) return false
-    const ops = (slice.h + slice.bb) / (slice.ab + slice.bb) + slice.tb / slice.ab
-    return ops > (currSeason.ops || 0) * 1.1
-  }, [lastN, currSeason])
+    if (slice.ab > 0) {
+      const ops = (slice.h + slice.bb) / (slice.ab + slice.bb) + slice.tb / slice.ab
+      hotFlag = ops > (currSeason.ops || 0) * 1.1
+    }
+  }
 
   // Position breakdown rows (top 3)
   const posRows = (position_breakdown || []).slice(0, 3)
