@@ -8,6 +8,12 @@ import ExportCSVButton from '../components/ExportCSVButton'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 import WpaByGameChart from '../components/WpaByGameChart'
+// Prototype layout test (intern proposal, 5/28/26) — limited to a
+// single player. Adds new hero (radar + percentile rankings + rolling
+// wOBA) and footer (heatmap, career path, similar players). Existing
+// middle sections (pitch level, splits, WPA, game log) preserved.
+import JasonWrightProfile from './JasonWrightProfile'
+const JASON_WRIGHT_PLAYER_ID = '3078'
 
 // ── Percentile bubble configs ──────────────────────────────────
 // Pre-2026: original metric set. Kept stable for historic seasons so
@@ -1436,7 +1442,20 @@ function StreaksCard({ playerId, season = 2026 }) {
 
 // ── Main Page ──────────────────────────────────────────────────
 
+// ── PROTOTYPE GATE ─────────────────────────────────────────────
+// Jason Wright (player 3078) renders the new prototype layout per
+// intern proposal (5/28/26). All other players go through the
+// standard component below. The wrapper pattern keeps hook ordering
+// consistent across player navigations.
 export default function PlayerDetail() {
+  const { playerId } = useParams()
+  if (String(playerId) === JASON_WRIGHT_PLAYER_ID) {
+    return <JasonWrightProfile />
+  }
+  return <PlayerDetailStandard />
+}
+
+function PlayerDetailStandard() {
   const { playerId } = useParams()
   const [percentileSeason, setPercentileSeason] = useState(null) // null = most recent (default)
   const [headshotError, setHeadshotError] = useState(false)
