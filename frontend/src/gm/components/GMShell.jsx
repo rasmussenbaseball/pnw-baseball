@@ -237,6 +237,7 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
   // mount). Falls back to the legacy gold when no team is themed.
   const accent = 'var(--team-accent, #fbbf24)'
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [reportBugOpen, setReportBugOpen] = useState(false)
   return (
     <header
       className="sticky top-0 z-30 border-b-4 shadow-lg"
@@ -277,6 +278,17 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
         >
           ← MAIN SITE
         </a>
+
+        {/* Report-a-bug entry point — opens a modal with our contact info. */}
+        <button
+          type="button"
+          onClick={() => setReportBugOpen(true)}
+          title="Report a bug or share feedback"
+          className="hidden sm:inline-block font-pixel-display text-[9px] tracking-widest px-2.5 py-1.5 border-2 text-amber-200 hover:text-amber-100 hover:border-amber-200 transition"
+          style={{ borderColor: '#7a5d1a' }}
+        >
+          🐛 REPORT BUG
+        </button>
 
         {/* Desktop nav (sm and up) */}
         <nav className="hidden sm:flex items-center gap-1">
@@ -340,7 +352,14 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
             </div>
           ))}
           {/* Themed back-to-main-site at bottom of mobile menu */}
-          <div className="pt-3 border-t-2" style={{ borderColor: '#3a3a5e' }}>
+          <div className="pt-3 border-t-2 space-y-2" style={{ borderColor: '#3a3a5e' }}>
+            <button
+              type="button"
+              onClick={() => { setReportBugOpen(true); setMobileNavOpen(false) }}
+              className="block w-full text-left font-pixel-display text-[10px] tracking-widest pl-3 py-2 text-amber-200 hover:text-amber-100"
+            >
+              🐛 REPORT BUG
+            </button>
             <a
               href="/"
               onClick={() => setMobileNavOpen(false)}
@@ -351,7 +370,86 @@ function PixelHeader({ slot, schoolName, schoolColors }) {
           </div>
         </div>
       )}
+      {reportBugOpen && <ReportBugModal onClose={() => setReportBugOpen(false)} />}
     </header>
+  )
+}
+
+/**
+ * Report-a-bug modal — points users at email + socials so we can squash
+ * issues faster than waiting for them to land in Sentry. No form submission
+ * (would need a backend route); copy is intentionally specific about what
+ * info to include so the report we DO get is actually actionable.
+ */
+function ReportBugModal({ onClose }) {
+  useModalDismiss(onClose)
+  return (
+    <div
+      className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#0f0f1e] border-4 max-w-md w-full p-6 shadow-2xl"
+        style={{ borderColor: 'var(--team-accent, #fbbf24)' }}
+      >
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="font-pixel-display text-[10px] tracking-widest text-amber-300 mb-1">
+              REPORT A BUG
+            </div>
+            <h2 className="font-pixel text-xl text-white">Found something off?</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-[#a8a8c8] hover:text-white text-2xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        <p className="text-sm text-[#e8e8e8] mb-4 leading-relaxed">
+          Help us squash it. Send a short note describing what you saw and
+          we'll look into it.
+        </p>
+
+        <div className="space-y-3 mb-4">
+          <a
+            href="mailto:info@nwbaseballstats.com?subject=NW%20Coaching%20Sim%20bug%20report&body=Level%3A%20%0ADynasty%20year%3A%20%0AWhat%20happened%3A%20%0AWhat%20you%20expected%3A%20"
+            className="block bg-[#1a1a2e] border-2 border-[#3a3a5e] hover:border-amber-300 p-3 transition"
+          >
+            <div className="font-pixel-display text-[9px] tracking-widest text-amber-300">EMAIL US</div>
+            <div className="font-pixel text-sm text-white mt-1">info@nwbaseballstats.com</div>
+          </a>
+          <div className="bg-[#1a1a2e] border-2 border-[#3a3a5e] p-3">
+            <div className="font-pixel-display text-[9px] tracking-widest text-amber-300">DM US ON SOCIALS</div>
+            <div className="font-pixel text-sm text-[#e8e8e8] mt-1">
+              @nwbaseballstats on Instagram &amp; X
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#1a1a2e] border border-[#3a3a5e] p-3 text-xs text-[#a8a8c8] leading-relaxed">
+          <div className="font-pixel-display text-[9px] tracking-widest text-amber-200 mb-1">PLEASE INCLUDE</div>
+          <ul className="space-y-0.5">
+            <li>• Your level (D1 / D2 / D3 / NAIA / NWAC) and dynasty year</li>
+            <li>• What you did right before the bug</li>
+            <li>• What happened vs. what you expected</li>
+            <li>• A screenshot if you can grab one</li>
+          </ul>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 w-full bg-amber-500 hover:bg-amber-400 text-[#0f0f1e] font-pixel-display text-[10px] tracking-widest py-2.5 transition"
+        >
+          GOT IT
+        </button>
+      </div>
+    </div>
   )
 }
 

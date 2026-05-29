@@ -260,12 +260,26 @@ function generatePendingGame(state, stage, pending, hostId = null) {
     awayId = pending.homeId
   }
   const woy = psWeekFor(state, stage)
-  const dayOfMay = 5 + (woy - 39) * 7   // rough display date within May
+  // Distribute games across the stage's week — ONE per calendar day, not
+  // all crammed onto a single date. Was: every game in a stage shared one
+  // date (e.g. all regional games on May 12), so the energy system treated
+  // them as same-day games — catchers and starters got slammed with the
+  // doubleheader surcharge across what was really a 4-day bracket, and
+  // overnight recovery never fired between rounds. Counts existing
+  // postseason games in this stage/year and adds that count as a day
+  // offset; rolls into June via Date arithmetic if a bracket runs long.
+  const existingInStage = (state.schedule || []).filter(g =>
+    g.type === 'POSTSEASON' && g.postseasonStage === stage && g.year === year,
+  ).length
+  // Base date = Monday-ish of the stage week. Month index 4 = May.
+  const base = new Date(Date.UTC(year, 4, 5 + (woy - 39) * 7))
+  base.setUTCDate(base.getUTCDate() + existingInStage)
+  const date = base.toISOString().slice(0, 10)
   state.schedule.push({
     id, year,
     seasonWeek: woy - 26,
     weekOfYear: woy,
-    date: `${year}-05-${String(Math.min(28, Math.max(5, dayOfMay))).padStart(2, '0')}`,
+    date,
     homeId, awayId,
     type: 'POSTSEASON', postseasonStage: stage, neutralSite,
     countsTowardRecord: false, isDoubleheader: false,
