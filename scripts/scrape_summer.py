@@ -60,8 +60,10 @@ LEAGUE_IDS = {
 }
 
 # Season ID mapping: (league_abbr, year) -> pointstreak season ID
+# Source: pointstreak season switcher dropdown on stats.html?leagueid=145
 SEASON_IDS = {
     # WCL
+    ("WCL", 2026): 34339,  # confirmed 2026-05-29
     ("WCL", 2025): 34070,
     ("WCL", 2024): 33874,
     ("WCL", 2023): 33635,
