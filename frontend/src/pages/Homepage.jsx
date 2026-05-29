@@ -119,7 +119,7 @@ function LeaderTicker({ leaders }) {
                 ? '/pitching' : '/hitting'}
               className="flex-none px-3 sm:px-4 py-2 sm:py-2.5 hover:bg-white/5 transition-colors min-w-0"
             >
-              <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-medium">{cat.label} Leader</div>
+              <div className="text-[10px] text-gray-300 uppercase tracking-wider font-medium">{cat.label} Leader</div>
               <div className="flex items-center gap-2 mt-0.5">
                 {top.logo_url && (
                   <img src={top.logo_url} alt="" className="w-5 h-5 object-contain"
@@ -132,7 +132,7 @@ function LeaderTicker({ leaders }) {
                   {fmtVal(top.value, cat.format)}
                 </span>
               </div>
-              <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{top.short_name}</div>
+              <div className="text-[10px] text-gray-400 truncate">{top.short_name}</div>
             </Link>
           )
         })}
@@ -259,7 +259,7 @@ function LeaderCategory({ cat, type }) {
             <img src={p.logo_url} alt="" className="w-3.5 h-3.5 object-contain shrink-0"
               onError={(e) => { e.target.style.display = 'none' }} />
           )}
-          <span className="text-gray-700 dark:text-gray-300 truncate flex-1 min-w-0">
+          <span className="text-gray-700 dark:text-gray-100 truncate flex-1 min-w-0">
             {p.first_name[0]}. {p.last_name}
           </span>
           <span className="font-bold text-pnw-slate dark:text-gray-100 font-mono text-[11px] shrink-0">

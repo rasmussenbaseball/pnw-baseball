@@ -527,7 +527,7 @@ function SpotlightCard({ eyebrow, eyebrowAccent, player, stats }) {
           <div className="grid grid-cols-4 gap-2">
             {stats.map((s, i) => (
               <div key={i}>
-                <div className="text-[9px] uppercase tracking-wide text-gray-400">{s.label}</div>
+                <div className="text-[9px] uppercase tracking-wide text-gray-500">{s.label}</div>
                 <div className="text-sm font-bold tabular-nums">{s.value}</div>
               </div>
             ))}
@@ -585,7 +585,7 @@ function TopHittersBoard({ ig }) {
     <Card title="Top Hitters" subtitle="By WAR · qualified">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-[10px] text-gray-400 uppercase tracking-wide border-b border-gray-100">
+          <tr className="text-[10px] text-gray-500 uppercase tracking-wide border-b border-gray-100">
             <th className="text-left pb-1.5">Player</th>
             <th className="text-right pb-1.5">AVG</th>
             <th className="text-right pb-1.5">wOBA</th>
@@ -637,7 +637,7 @@ function TopPitchersBoard({ ig }) {
     <Card title="Top Pitchers" subtitle="By WAR · min 5 IP">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-[10px] text-gray-400 uppercase tracking-wide border-b border-gray-100">
+          <tr className="text-[10px] text-gray-500 uppercase tracking-wide border-b border-gray-100">
             <th className="text-left pb-1.5">Player</th>
             <th className="text-right pb-1.5">ERA</th>
             <th className="text-right pb-1.5">SIERA</th>
