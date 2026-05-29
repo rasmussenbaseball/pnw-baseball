@@ -1817,3 +1817,130 @@ export function capRegularSeasonForLevel(schedule, level) {
   if (lastSeasonWeek >= 13) return schedule
   return schedule.filter(g => !(typeof g.seasonWeek === 'number' && g.seasonWeek > lastSeasonWeek))
 }
+
+/**
+ * Mid-season self-heal: when a non-user team's CURRENT-year schedule turned
+ * out too thin (round-robin gap, save predating the buildFullDivisionSchedule
+ * thin-pad, or any other root cause), pad the rest of the season with
+ * non-conf series in their open future weeks so the standings don't show
+ * 0-3 records all year while the user plays a full slate.
+ *
+ * Only operates on D1/D2/D3 (NAIA + NWAC have their own builders). Safe to
+ * run every session; idempotent (won't pad teams that are already at quota,
+ * won't touch played games).
+ */
+export function repairLeagueSchedule(state) {
+  if (!state?.schedule) return { padded: 0 }
+  const level = state.level
+  if (!level || level === 'NAIA' || level === 'NWAC' || level === 'INDEPENDENT_D1') return { padded: 0 }
+  const userSchoolId = state.userSchoolId
+  const layout = postseasonLayout(level)
+  const maxWeeks = Math.max(1, (layout.seasonEnd ?? 39) - 26)
+  const MIN_SERIES = Math.max(6, maxWeeks - 2)
+  const seasonStartWeek = 27
+  // Derive the target year from existing in-season games. Fall back to
+  // calendar.year + 1 (the spring year for an Aug-start calendar.year).
+  let year = null
+  for (const g of state.schedule) {
+    if (typeof g.year === 'number' && (g.type === 'CONFERENCE' || g.type === 'NON_CONFERENCE')) {
+      year = g.year
+      break
+    }
+  }
+  if (year == null) year = (state.calendar?.year ?? 0) + 1
+  // Build per-team series-week sets (one entry per series via _g0 marker).
+  // We count both played and unplayed; the pad only ADDS new series, never
+  // removes anything, and never touches played games.
+  const allTeams = Object.keys(state.schools || {}).filter(id => id !== userSchoolId)
+  const seriesByTeamWeek = {}
+  for (const g of state.schedule) {
+    if (g.type !== 'CONFERENCE' && g.type !== 'NON_CONFERENCE') continue
+    if (g.homeId === userSchoolId || g.awayId === userSchoolId) continue
+    if (g.year != null && g.year !== year) continue
+    if (!String(g.id || '').endsWith('_g0')) continue
+    for (const tid of [g.homeId, g.awayId]) {
+      if (!seriesByTeamWeek[tid]) seriesByTeamWeek[tid] = new Set()
+      if (typeof g.seasonWeek === 'number') seriesByTeamWeek[tid].add(g.seasonWeek)
+    }
+  }
+  const curSeasonWeek = state.calendar?.seasonWeek ?? 1
+  // Open FUTURE weeks per team (skip weeks already past + weeks already used).
+  const openByTeam = {}
+  for (const id of allTeams) {
+    const used = seriesByTeamWeek[id] || new Set()
+    const open = new Set()
+    for (let sw = Math.max(1, curSeasonWeek); sw <= maxWeeks; sw++) {
+      if (!used.has(sw)) open.add(sw)
+    }
+    openByTeam[id] = open
+  }
+  const thin = allTeams.filter(id => (seriesByTeamWeek[id]?.size || 0) < MIN_SERIES)
+  if (thin.length < 2) return { padded: 0 }
+  let padded = 0
+  let madeProgress = true
+  let safety = 0
+  while (madeProgress && safety++ < 200) {
+    madeProgress = false
+    const sortedThin = thin
+      .filter(id => (seriesByTeamWeek[id]?.size || 0) < MIN_SERIES)
+      .sort((a, b) => (seriesByTeamWeek[a]?.size || 0) - (seriesByTeamWeek[b]?.size || 0))
+    for (const id of sortedThin) {
+      if ((seriesByTeamWeek[id]?.size || 0) >= MIN_SERIES) continue
+      const myOpen = openByTeam[id]
+      if (!myOpen || myOpen.size === 0) continue
+      let partner = null, weekSw = null
+      for (const other of sortedThin) {
+        if (other === id) continue
+        if ((seriesByTeamWeek[other]?.size || 0) >= MIN_SERIES) continue
+        const theirOpen = openByTeam[other]
+        if (!theirOpen) continue
+        for (const sw of myOpen) {
+          if (theirOpen.has(sw)) { partner = other; weekSw = sw; break }
+        }
+        if (partner) break
+      }
+      if (!partner) continue
+      const wk = seasonStartWeek + (weekSw - 1)
+      const homeId = id < partner ? id : partner
+      const awayId = id < partner ? partner : id
+      const seriesId = `selfheal_${year}_w${weekSw}_${homeId}`
+      // Inline minimal series builder (3 weekend games). Mirrors mkSeriesGame.
+      for (let g = 0; g < 3; g++) {
+        const date = isoDateForWeek(year, wk, g + 4)
+        state.schedule.push({
+          id: `${seriesId}_g${g}`,
+          year,
+          seasonWeek: weekSw,
+          weekOfYear: wk,
+          date,
+          homeId, awayId,
+          type: 'NON_CONFERENCE',
+          seriesId,
+          countsTowardRecord: true,
+          isDoubleheader: false,
+          played: false,
+          homeRuns: null, awayRuns: null,
+        })
+      }
+      for (const tid of [id, partner]) {
+        if (!seriesByTeamWeek[tid]) seriesByTeamWeek[tid] = new Set()
+        seriesByTeamWeek[tid].add(weekSw)
+        openByTeam[tid].delete(weekSw)
+      }
+      padded++
+      madeProgress = true
+    }
+  }
+  return { padded }
+}
+
+// Local helper for repairLeagueSchedule's date stamps. Mirrors dateForWeek
+// used by mkSeriesGame so the series shows up on the correct Fri/Sat/Sun.
+function isoDateForWeek(year, weekOfYear, dayOffset) {
+  // weekOfYear 27 = first week of August school year (matches dateForWeek in
+  // newDynastyMultiLevel). Spring weeks land Feb-May. Use the spring year
+  // (= games' year field) for the Date constructor.
+  const base = new Date(Date.UTC(year - 1, 7, 1))   // Aug 1 of the prior calendar year
+  base.setUTCDate(base.getUTCDate() + (weekOfYear - 1) * 7 + dayOffset)
+  return base.toISOString().slice(0, 10)
+}

@@ -743,7 +743,12 @@ function mkSeriesGame(seriesId, g, year, seasonWeek, weekOfYear, homeId, awayId,
 export function buildFullDivisionSchedule(conferences, schools, level, year, seed, userSchoolId) {
   const layout = postseasonLayout(level)
   const maxWeeks = Math.max(1, (layout.seasonEnd ?? 39) - 26)
-  const FRONT_NONCONF = maxWeeks > 4 ? 2 : 0
+  // D3 conferences are smaller (NWC has 9 teams = 8 round-robin rounds), so
+  // 2 front non-conf weeks leaves a lot of empty conf-week slots that get
+  // filled by repeating round-robin pairings. Bump to 3 for D3 so the league
+  // plays a richer non-conf slate before conf opens. D1/D2 keep 2 (their
+  // conferences are denser; the round-robin uses most of the weeks).
+  const FRONT_NONCONF = maxWeeks > 4 ? (level === 'D3' ? 3 : 2) : 0
   const seasonStartWeek = 27
   const games = []
 
@@ -794,6 +799,84 @@ export function buildFullDivisionSchedule(conferences, schools, level, year, see
         for (let g = 0; g < 3; g++) {
           games.push(mkSeriesGame(seriesId, g, year, w + 1, wk, homeId, awayId, 'NON_CONFERENCE'))
         }
+      }
+    }
+  }
+
+  // 3. Defensive thin-schedule pad. Every non-user team should have at least
+  //    `MIN_SERIES` series scheduled across the season; if the conf round-
+  //    robin + front-week fillers left a team short (small conference,
+  //    odd-team-count BYE rounds, or any other gap), pad with extra non-conf
+  //    series in their open weeks. Without this, a non-user team can end up
+  //    with as few as 1 conf series scheduled and shows 0-3 in the standings
+  //    all year while the user racks up a full slate.
+  const MIN_SERIES = Math.max(6, maxWeeks - 2)   // leave 1-2 weeks free for misc
+  const allTeams = Object.keys(schools).filter(id => id !== userSchoolId)
+  const seriesByTeamWeek = {}   // teamId -> Set(seasonWeek)
+  for (const g of games) {
+    if (g.type !== 'CONFERENCE' && g.type !== 'NON_CONFERENCE') continue
+    if (g.homeId === userSchoolId || g.awayId === userSchoolId) continue
+    if (g.id.endsWith('_g0') === false && !g.id.match(/_g\d$/)) continue   // count one row per series via _g0
+    if (!g.id.endsWith('_g0')) continue
+    for (const tid of [g.homeId, g.awayId]) {
+      if (!seriesByTeamWeek[tid]) seriesByTeamWeek[tid] = new Set()
+      seriesByTeamWeek[tid].add(g.seasonWeek)
+    }
+  }
+  // Thin teams = teams whose total scheduled series count is below MIN_SERIES.
+  // Pair them up in their respective open weeks. Pure greedy by open-week
+  // intersection; this is a defensive pass so optimality isn't required.
+  const thin = allTeams.filter(id => (seriesByTeamWeek[id]?.size || 0) < MIN_SERIES)
+  if (thin.length >= 2) {
+    // Build per-team set of OPEN weeks (1..maxWeeks not in their series set).
+    const openByTeam = {}
+    for (const id of thin) {
+      const used = seriesByTeamWeek[id] || new Set()
+      const open = new Set()
+      for (let sw = 1; sw <= maxWeeks; sw++) if (!used.has(sw)) open.add(sw)
+      openByTeam[id] = open
+    }
+    // Pair each thin team with another thin team that shares an open week.
+    // Stops when no compatible pair found in a pass.
+    let madeProgress = true
+    let safety = 0
+    while (madeProgress && safety++ < 200) {
+      madeProgress = false
+      const sortedThin = thin
+        .filter(id => (seriesByTeamWeek[id]?.size || 0) < MIN_SERIES)
+        .sort((a, b) => (seriesByTeamWeek[a]?.size || 0) - (seriesByTeamWeek[b]?.size || 0))
+      for (const id of sortedThin) {
+        if ((seriesByTeamWeek[id]?.size || 0) >= MIN_SERIES) continue
+        const myOpen = openByTeam[id]
+        if (!myOpen || myOpen.size === 0) continue
+        // Find a partner with a shared open week.
+        let bestPartner = null
+        let bestWeek = null
+        for (const other of sortedThin) {
+          if (other === id) continue
+          if ((seriesByTeamWeek[other]?.size || 0) >= MIN_SERIES) continue
+          const theirOpen = openByTeam[other]
+          if (!theirOpen) continue
+          for (const w of myOpen) {
+            if (theirOpen.has(w)) { bestPartner = other; bestWeek = w; break }
+          }
+          if (bestPartner) break
+        }
+        if (!bestPartner) continue
+        // Schedule a 3-game NON_CONFERENCE series between them in the shared week.
+        const wk = seasonStartWeek + (bestWeek - 1)
+        const homeId = id < bestPartner ? id : bestPartner
+        const awayId = id < bestPartner ? bestPartner : id
+        const seriesId = `padfill_${year}_w${bestWeek}_${homeId}`
+        for (let g = 0; g < 3; g++) {
+          games.push(mkSeriesGame(seriesId, g, year, bestWeek, wk, homeId, awayId, 'NON_CONFERENCE'))
+        }
+        for (const tid of [id, bestPartner]) {
+          if (!seriesByTeamWeek[tid]) seriesByTeamWeek[tid] = new Set()
+          seriesByTeamWeek[tid].add(bestWeek)
+          openByTeam[tid].delete(bestWeek)
+        }
+        madeProgress = true
       }
     }
   }

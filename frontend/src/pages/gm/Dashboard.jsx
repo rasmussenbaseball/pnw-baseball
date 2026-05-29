@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
-import { simWeek, advanceWeek, advanceOffseasonWeek } from '../../gm/engine/season'
+import { simWeek, advanceWeek, advanceOffseasonWeek, repairLeagueSchedule } from '../../gm/engine/season'
 import { snapshotState, diffSnapshots } from '../../gm/engine/simAhead'
 import { canAdvanceWeek, phaseForWeek, requiredActionForWeek, ensureUnifiedCalendar, seasonForWeek, PHASES, dateForWeek, postseasonLayout } from '../../gm/engine/gameYear'
 import { seedFromPear } from '../../gm/engine/rankings'
@@ -155,6 +155,30 @@ export default function Dashboard() {
     if (!save.flags) save.flags = {}
     save.flags.lastOvrRefitYear = curYear
     saveDynasty(save)
+  }, [save])
+
+  // Schedule self-heal — patches existing saves where non-user D1/D2/D3
+  // teams ended up with too-thin schedules (e.g. NWC standings showing 0-3
+  // records all year while the user played a full 29-game slate). Pads
+  // upcoming open weeks with non-conf series so the standings catch up.
+  // Throttled once per (year, week) so it doesn't churn on every render.
+  useEffect(() => {
+    if (!save) return
+    const yr = save.calendar?.year ?? 0
+    const sw = save.calendar?.seasonWeek ?? 0
+    const key = `${yr}_${sw}`
+    if (save.flags?.lastScheduleRepairKey === key) return
+    try {
+      const res = repairLeagueSchedule(save)
+      if (res?.padded > 0) {
+        if (!save.flags) save.flags = {}
+        save.flags.lastScheduleRepairKey = key
+        saveDynasty(save)
+      } else {
+        if (!save.flags) save.flags = {}
+        save.flags.lastScheduleRepairKey = key
+      }
+    } catch (e) { console.warn('schedule self-heal failed:', e) }
   }, [save])
 
   // Postseason self-heal (per Nate, May 2026 — NWAC #2 seed reported "no
