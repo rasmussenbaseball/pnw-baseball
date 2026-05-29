@@ -434,15 +434,15 @@ function PercentileRow({ label, valueText, percentile, rank, total, comparison }
     : comparison === 'division' ? 'div' : ''
   return (
     <div className="grid grid-cols-[68px,1fr,84px,56px] items-center gap-2">
-      <div className="text-xs font-bold text-gray-700">{label}</div>
-      <div className="relative h-4 bg-gray-100 rounded overflow-hidden">
+      <div className="text-xs font-bold text-gray-700 dark:text-gray-300">{label}</div>
+      <div className="relative h-4 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden">
         <div
           className="h-full transition-all"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
-        <div className="absolute inset-y-0 left-1/2 w-px bg-gray-300" />
+        <div className="absolute inset-y-0 left-1/2 w-px bg-gray-300 dark:bg-gray-600" />
       </div>
-      <div className="text-[10px] tabular-nums text-right text-gray-600 leading-tight">
+      <div className="text-[10px] tabular-nums text-right text-gray-600 dark:text-gray-400 leading-tight">
         {rank != null && total != null
           ? <>#{rank}/{total}<span className="text-gray-400 ml-1">{compShort}</span></>
           : '—'}
@@ -501,7 +501,7 @@ function TopPitcherSpotlight({ ig }) {
 function SpotlightCard({ eyebrow, eyebrowAccent, player, stats }) {
   // Use the eyebrowAccent classes as a subtle gradient strip header.
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
       <div className={`h-1 ${eyebrowAccent}`} />
       <div className="p-4 flex items-center gap-4">
         <PlayerHeadshot
@@ -512,7 +512,7 @@ function SpotlightCard({ eyebrow, eyebrowAccent, player, stats }) {
           <div className="flex items-baseline gap-2">
             <Link
               to={`/players/${player.id || player.player_id}`}
-              className="text-base sm:text-lg font-bold text-portal-purple-dark hover:underline truncate"
+              className="text-base sm:text-lg font-bold text-portal-purple-dark dark:text-gray-100 hover:underline truncate"
             >
               {player.name || `${player.first_name} ${player.last_name}`}
             </Link>
@@ -520,14 +520,14 @@ function SpotlightCard({ eyebrow, eyebrowAccent, player, stats }) {
               {eyebrow}
             </span>
           </div>
-          <div className="text-[11px] text-gray-500 mb-2">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
             {player.position || ''}
             {player.year_in_school ? ` · ${player.year_in_school}` : ''}
           </div>
           <div className="grid grid-cols-4 gap-2">
             {stats.map((s, i) => (
               <div key={i}>
-                <div className="text-[9px] uppercase tracking-wide text-gray-500">{s.label}</div>
+                <div className="text-[9px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{s.label}</div>
                 <div className="text-sm font-bold tabular-nums">{s.value}</div>
               </div>
             ))}
@@ -567,7 +567,7 @@ function PlayerHeadshot({ src, name, size = 'md' }) {
     .join('')
     .toUpperCase()
   return (
-    <div className={`${cls} rounded-lg bg-portal-purple/10 text-portal-purple-dark
+    <div className={`${cls} rounded-lg bg-portal-purple/10 dark:bg-portal-purple/30 text-portal-purple-dark dark:text-gray-100
                      font-bold flex items-center justify-center shrink-0`}>
       {initials}
     </div>
@@ -585,7 +585,7 @@ function TopHittersBoard({ ig }) {
     <Card title="Top Hitters" subtitle="By WAR · qualified">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-[10px] text-gray-500 uppercase tracking-wide border-b border-gray-100">
+          <tr className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-gray-100 dark:border-gray-700">
             <th className="text-left pb-1.5">Player</th>
             <th className="text-right pb-1.5">AVG</th>
             <th className="text-right pb-1.5">wOBA</th>
@@ -596,11 +596,11 @@ function TopHittersBoard({ ig }) {
         <tbody>
           {rows.map((p, i) => (
             <tr key={p.id || i}
-                className="border-b border-gray-50 last:border-0 hover:bg-portal-purple/5 transition-colors">
+                className="border-b border-gray-50 dark:border-gray-700/50 last:border-0 hover:bg-portal-purple/5 dark:hover:bg-gray-700/40 transition-colors">
               <td className="py-1.5">
                 <Link
                   to={`/players/${p.id || p.player_id}`}
-                  className="text-portal-purple-dark hover:underline font-medium"
+                  className="text-portal-purple-dark dark:text-gray-100 hover:underline font-medium"
                 >
                   {p.name || `${p.first_name} ${p.last_name}`}
                 </Link>
@@ -637,7 +637,7 @@ function TopPitchersBoard({ ig }) {
     <Card title="Top Pitchers" subtitle="By WAR · min 5 IP">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-[10px] text-gray-500 uppercase tracking-wide border-b border-gray-100">
+          <tr className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-gray-100 dark:border-gray-700">
             <th className="text-left pb-1.5">Player</th>
             <th className="text-right pb-1.5">ERA</th>
             <th className="text-right pb-1.5">SIERA</th>
@@ -649,11 +649,11 @@ function TopPitchersBoard({ ig }) {
         <tbody>
           {rows.map((p, i) => (
             <tr key={p.id || i}
-                className="border-b border-gray-50 last:border-0 hover:bg-portal-purple/5 transition-colors">
+                className="border-b border-gray-50 dark:border-gray-700/50 last:border-0 hover:bg-portal-purple/5 dark:hover:bg-gray-700/40 transition-colors">
               <td className="py-1.5">
                 <Link
                   to={`/players/${p.id || p.player_id}`}
-                  className="text-portal-purple-dark hover:underline font-medium"
+                  className="text-portal-purple-dark dark:text-gray-100 hover:underline font-medium"
                 >
                   {p.name || `${p.first_name} ${p.last_name}`}
                 </Link>
@@ -749,12 +749,12 @@ function ClutchColumn({ title, rows, unit }) {
             const sign = p.total_wpa >= 0 ? '+' : ''
             const colorClass = p.total_wpa >= 0.5 ? 'text-emerald-700'
               : p.total_wpa <= -0.5 ? 'text-rose-700'
-              : 'text-gray-700'
+              : 'text-gray-700 dark:text-gray-300'
             return (
               <li key={p.player_id} className="flex items-center justify-between gap-2">
                 <Link
                   to={`/players/${p.player_id}`}
-                  className="text-sm font-medium text-portal-purple-dark hover:underline truncate"
+                  className="text-sm font-medium text-portal-purple-dark dark:text-gray-100 hover:underline truncate"
                 >
                   {p.name}
                 </Link>
@@ -822,15 +822,15 @@ function TopMomentsForTeam({ teamId }) {
                 +{m.wpa.toFixed(2)}
               </span>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-portal-purple-dark truncate">
+                <div className="text-sm font-semibold text-portal-purple-dark dark:text-gray-100 truncate">
                   <Link to={`/players/${featured.id}`} className="hover:underline">
                     {featured.name}
                   </Link>
-                  <span className="text-xs text-gray-500 font-normal ml-1.5">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1.5">
                     · {result.toLowerCase()}
                   </span>
                 </div>
-                <div className="text-[10px] text-gray-500 truncate">
+                <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                   {date} · {inn} · vs {opp?.name || '—'}
                 </div>
               </div>
@@ -862,14 +862,14 @@ function UpcomingSchedule({ teamId }) {
   }
   return (
     <Card title="Upcoming Schedule" subtitle={`Next ${games.length} games`}>
-      <ul className="divide-y divide-gray-100">
+      <ul className="divide-y divide-gray-100 dark:divide-gray-700">
         {games.map(g => {
           const isHome = g.home_team_id === teamId
           const oppShort = isHome ? g.away_short : g.home_short
           const oppLogo = isHome ? g.away_logo : g.home_logo
           return (
             <li key={g.id} className="flex items-center gap-2 py-1.5 text-sm">
-              <span className="text-[11px] text-gray-500 tabular-nums w-14 shrink-0">
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums w-14 shrink-0">
                 {formatDate(g.game_date)}
               </span>
               <span className="text-[10px] text-gray-400 w-5 shrink-0">
@@ -878,7 +878,7 @@ function UpcomingSchedule({ teamId }) {
               {oppLogo
                 ? <img src={oppLogo} alt="" className="h-5 w-5 object-contain shrink-0" />
                 : <div className="h-5 w-5 shrink-0" />}
-              <span className="font-medium text-gray-900 truncate flex-1">
+              <span className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1">
                 {oppShort || 'TBD'}
               </span>
               {g.is_postseason ? (
@@ -908,13 +908,13 @@ function UpcomingSchedule({ teamId }) {
 // ────────────────────────────────────────────────────────────────
 function Card({ title, subtitle, children }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-      <div className="px-4 py-2.5 border-b border-gray-100 flex items-baseline justify-between gap-2">
-        <div className="text-sm font-bold text-portal-purple-dark uppercase tracking-wide">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between gap-2">
+        <div className="text-sm font-bold text-portal-purple-dark dark:text-gray-100 uppercase tracking-wide">
           {title}
         </div>
         {subtitle && (
-          <div className="text-[10px] text-gray-500 truncate">{subtitle}</div>
+          <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{subtitle}</div>
         )}
       </div>
       <div className="p-3 sm:p-4">
@@ -930,7 +930,7 @@ function Skeleton({ label, rows = 3 }) {
     <Card title={label} subtitle="loading…">
       <div className="space-y-2">
         {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="h-4 bg-gray-100 animate-pulse rounded" />
+          <div key={i} className="h-4 bg-gray-100 dark:bg-gray-700 animate-pulse rounded" />
         ))}
       </div>
     </Card>

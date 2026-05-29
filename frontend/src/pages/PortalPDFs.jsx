@@ -27,8 +27,8 @@ export default function PortalPDFs() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-portal-purple-dark">Printable PDFs</h1>
-        <p className="text-sm text-gray-600">
+        <h1 className="text-2xl font-bold text-portal-purple-dark dark:text-gray-100">Printable PDFs</h1>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
           One-page reports built for the dugout. Print or save as PDF.
         </p>
       </div>
@@ -101,12 +101,12 @@ function ScoutingSheetCard({ onPick }) {
   const [teamId, setTeamId] = useState('')
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="text-lg font-bold text-portal-purple-dark">Team Scouting Sheet</h2>
-        <span className="text-[11px] text-gray-500">2 pages · hitters + pitchers</span>
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Team Scouting Sheet</h2>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">2 pages · hitters + pitchers</span>
       </div>
-      <p className="text-xs text-gray-600 mb-3">
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
         Every hitter and pitcher on the team's roster with the 13 / 12 most coach-relevant stats,
         color-shaded by conference percentile, plus a notes panel for in-game scribbles.
       </p>
@@ -153,12 +153,12 @@ function PlayerCardCard({ onPick }) {
   const [side, setSide] = useState(null)           // 'batting' | 'pitching' | null (let backend decide)
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="text-lg font-bold text-portal-purple-dark">Player Card</h2>
-        <span className="text-[11px] text-gray-500">1 page · stats + spray + percentiles</span>
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Player Card</h2>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">1 page · stats + spray + percentiles</span>
       </div>
-      <p className="text-xs text-gray-600 mb-3">
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
         One-page Statcast-style profile: percentile bars, spray chart, plate discipline,
         splits, season stats, and summer ball. For two-way players, pick a side or leave it
         on auto and we'll default to whichever side has more career WAR.
@@ -172,7 +172,7 @@ function PlayerCardCard({ onPick }) {
           placeholder="Search player by name..."
           className="rounded border border-gray-300 px-3 py-2 text-sm flex-1 min-w-[220px]"
         />
-        <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs">
+        <div className="inline-flex rounded-full bg-gray-100 dark:bg-gray-700 p-0.5 text-xs">
           {[
             ['auto',     'Auto'],
             ['batting',  'Hitting'],
@@ -184,7 +184,7 @@ function PlayerCardCard({ onPick }) {
               className={`px-3 py-1 rounded-full font-bold transition-all ${
                 (side || 'auto') === id
                   ? 'bg-portal-purple text-portal-cream'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
               }`}
             >
               {label}
@@ -195,7 +195,7 @@ function PlayerCardCard({ onPick }) {
 
       {/* Results dropdown */}
       {query.length >= 2 && (
-        <div className="border border-gray-200 rounded mb-2 max-h-72 overflow-y-auto bg-white">
+        <div className="border border-gray-200 dark:border-gray-700 rounded mb-2 max-h-72 overflow-y-auto bg-white dark:bg-gray-800">
           {loading ? (
             <div className="px-3 py-2 text-xs text-gray-400 italic animate-pulse">Searching…</div>
           ) : results.length === 0 ? (
@@ -206,7 +206,7 @@ function PlayerCardCard({ onPick }) {
                 key={p.id}
                 onClick={() => setSelected(p)}
                 className={`w-full text-left px-3 py-2 hover:bg-portal-purple/5 transition-colors
-                            border-b border-gray-100 last:border-0 flex items-center gap-2 ${
+                            border-b border-gray-100 dark:border-gray-700 last:border-0 flex items-center gap-2 ${
                   selected?.id === p.id ? 'bg-portal-purple/10' : ''
                 }`}
               >
@@ -214,13 +214,13 @@ function PlayerCardCard({ onPick }) {
                   <img src={p.logo_url} alt="" className="h-5 w-5 object-contain shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 truncate">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
                     {p.first_name} {p.last_name}
                     {p.jersey_number && (
                       <span className="text-gray-400 font-normal ml-1">#{p.jersey_number}</span>
                     )}
                   </div>
-                  <div className="text-[11px] text-gray-500 truncate">
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
                     {p.position || ''}
                     {p.team_short ? ` · ${p.team_short}` : ''}
                     {p.division_level ? ` · ${p.division_level}` : ''}
@@ -237,7 +237,7 @@ function PlayerCardCard({ onPick }) {
         <div className="flex items-center justify-between gap-2 bg-portal-purple/5 border border-portal-purple/20 rounded px-3 py-2">
           <div className="text-sm">
             <span className="font-bold">{selected.first_name} {selected.last_name}</span>
-            <span className="text-gray-500 text-xs ml-2">
+            <span className="text-gray-500 dark:text-gray-400 text-xs ml-2">
               {selected.team_short || ''} · {side ? side : 'auto side'}
             </span>
           </div>
@@ -276,12 +276,12 @@ function BullpenSheetCard({ onPick }) {
   const [teamId, setTeamId] = useState('')
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="text-lg font-bold text-portal-purple-dark">Bullpen Sheet</h2>
-        <span className="text-[11px] text-gray-500">1 page · roster + situational leaderboards</span>
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Bullpen Sheet</h2>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">1 page · roster + situational leaderboards</span>
       </div>
-      <p className="text-xs text-gray-600 mb-3">
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
         Every pitcher on the staff with their season stats, L/R splits, RISP wOBA,
         plus a "who's best in X" leaderboard for each game-state situation
         (home/road, vs LHH/RHH, bases empty, runners on, late & close). Built for
@@ -339,12 +339,12 @@ function CatcherCardsCard({ onPick }) {
   const [teamId, setTeamId] = useState('')
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="text-lg font-bold text-portal-purple-dark">Catcher Cards</h2>
-        <span className="text-[11px] text-gray-500">2 pages · 5″ × 2″ each · pocket-size</span>
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Catcher Cards</h2>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">2 pages · 5″ × 2″ each · pocket-size</span>
       </div>
-      <p className="text-xs text-gray-600 mb-3">
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
         Pick the opposing team. We generate two strict 5×2-inch cards covering
         their top 14 hitters by PA, 7 per card. Each row shows wOBA splits, K%,
         BB%, swing rates, ISO, SB, and a blank notes column. Save as PDF, print at
@@ -502,16 +502,16 @@ function BulkPlayerCardsCard({ onGenerate }) {
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="text-lg font-bold text-portal-purple-dark">Bulk Player Cards</h2>
-        <span className="text-[11px] text-gray-500">
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Bulk Player Cards</h2>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">
           {selectedCount > 0
             ? `${selectedCount} player${selectedCount === 1 ? '' : 's'} · ${totalCards} card${totalCards === 1 ? '' : 's'}`
             : 'pick a team, check players, print all at once'}
         </span>
       </div>
-      <p className="text-xs text-gray-600 mb-3">
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
         Pick a team, then check off which players you want cards for. For two-way
         players you can choose hitting, pitching, or both. Hits one big print
         dialog for the entire batch: one player card per physical page.
@@ -537,25 +537,25 @@ function BulkPlayerCardsCard({ onGenerate }) {
 
       {/* Roster checkbox list */}
       {teamId && (
-        <div className="border border-gray-200 rounded mb-3">
+        <div className="border border-gray-200 dark:border-gray-700 rounded mb-3">
           {sheetLoading || !sheet ? (
             <div className="px-3 py-4 text-xs text-gray-400 italic animate-pulse">Loading roster…</div>
           ) : roster.length === 0 ? (
             <div className="px-3 py-4 text-xs text-gray-400 italic">No players found on this team.</div>
           ) : (
             <>
-              <div className="px-3 py-2 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600">
+              <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
                   {roster.length} on roster
                 </span>
                 <div className="flex gap-2">
                   <button onClick={selectAll}
-                          className="text-[11px] font-semibold text-portal-purple hover:underline">
+                          className="text-[11px] font-semibold text-portal-purple dark:text-portal-accent-light hover:underline">
                     Select all
                   </button>
                   <span className="text-gray-300">·</span>
                   <button onClick={clearAll}
-                          className="text-[11px] font-semibold text-portal-purple hover:underline">
+                          className="text-[11px] font-semibold text-portal-purple dark:text-portal-accent-light hover:underline">
                     Clear
                   </button>
                 </div>
@@ -583,10 +583,10 @@ function BulkPlayerCardsCard({ onGenerate }) {
                         {p.jersey_number || '–'}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-gray-900 truncate">
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
                           {p.first_name} {p.last_name}
                         </div>
-                        <div className="text-[10px] text-gray-500 truncate">
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                           {p.position || ''}
                           {p.bats || p.throws ? ` · ${p.bats || '–'}/${p.throws || '–'}` : ''}
                           {p.year_in_school ? ` · ${p.year_in_school}` : ''}

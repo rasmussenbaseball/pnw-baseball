@@ -48,10 +48,10 @@ function fmtEra(v) {
 const COLOR_TEXT = {
   elite:   'text-emerald-700 font-semibold',
   good:    'text-emerald-600',
-  avg:     'text-gray-700',
+  avg:     'text-gray-700 dark:text-gray-300',
   poor:    'text-rose-500',
   bad:     'text-rose-700 font-semibold',
-  neutral: 'text-gray-500',
+  neutral: 'text-gray-500 dark:text-gray-400',
 }
 
 const COLOR_BAR_FILL = {
@@ -106,7 +106,7 @@ export default function TeamScouting() {
     <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5 space-y-4">
       <Card>
         <div className="flex items-center gap-3 flex-wrap">
-          <label className="text-sm font-semibold text-portal-purple-dark">Scout team:</label>
+          <label className="text-sm font-semibold text-portal-purple-dark dark:text-gray-100">Scout team:</label>
           <select
             value={selectedId ?? ''}
             onChange={(e) => setSelectedId(Number(e.target.value))}
@@ -132,7 +132,7 @@ export default function TeamScouting() {
 
       {loading && !data && (
         <Card>
-          <p className="text-sm text-gray-500 italic">Loading scouting report...</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 italic">Loading scouting report...</p>
         </Card>
       )}
 
@@ -247,20 +247,20 @@ function WriteupCard({ text }) {
   const [open, setOpen] = useState(true)
   if (!text) return null
   return (
-    <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
+    <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-gray-50 rounded-t-xl"
+        className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-t-xl"
       >
         <div>
-          <h2 className="text-base font-semibold text-portal-purple-dark">Scouting Writeup</h2>
-          <p className="text-xs text-gray-500">Auto-generated from conference percentiles</p>
+          <h2 className="text-base font-semibold text-portal-purple-dark dark:text-gray-100">Scouting Writeup</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Auto-generated from conference percentiles</p>
         </div>
         <Chevron open={open} />
       </button>
       {open && (
-        <div className="px-4 pb-4 border-t border-gray-100 pt-3 text-sm text-gray-800 leading-relaxed whitespace-pre-line">
+        <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3 text-sm text-gray-800 dark:text-gray-100 leading-relaxed whitespace-pre-line">
           {text}
         </div>
       )}
@@ -296,9 +296,9 @@ function StatPanelRow({ row }) {
 
   return (
     <div className="grid grid-cols-[80px_1fr_60px_70px] items-center gap-2 text-sm py-1">
-      <div className="text-gray-600 text-xs font-semibold uppercase tracking-wider">{row.label}</div>
+      <div className="text-gray-600 dark:text-gray-400 text-xs font-semibold uppercase tracking-wider">{row.label}</div>
       <div className="relative">
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
           {row.percentile != null && (
             <div
               className={`h-full ${barFill} transition-all`}
@@ -308,7 +308,7 @@ function StatPanelRow({ row }) {
         </div>
       </div>
       <div className={`text-right font-mono text-sm ${colorText}`}>{valueStr}</div>
-      <div className="text-right text-[11px] text-gray-500 tabular-nums" title={`Rank ${rankStr} in conference`}>
+      <div className="text-right text-[11px] text-gray-500 dark:text-gray-400 tabular-nums" title={`Rank ${rankStr} in conference`}>
         {row.percentile == null ? '—' : `${pctStr}%ile · ${row.rank}/${row.total}`}
       </div>
     </div>
@@ -342,7 +342,7 @@ function TeamSplitsPanel({ title, subtitle, splits, statSpecs }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left border-b border-gray-200">
+            <tr className="text-left border-b border-gray-200 dark:border-gray-700">
               <Th className="w-[120px]">Stat</Th>
               {splits.map(s => (
                 <Th key={s.label} className="text-right">{s.label}</Th>
@@ -351,14 +351,14 @@ function TeamSplitsPanel({ title, subtitle, splits, statSpecs }) {
           </thead>
           <tbody>
             {statSpecs.map(spec => (
-              <tr key={spec.key} className="border-b border-gray-100 last:border-0">
-                <td className="py-2 text-gray-600 text-xs font-semibold uppercase tracking-wider">
+              <tr key={spec.key} className="border-b border-gray-100 dark:border-gray-700 last:border-0">
+                <td className="py-2 text-gray-600 dark:text-gray-400 text-xs font-semibold uppercase tracking-wider">
                   {spec.label}
                 </td>
                 {splits.map(s => {
                   const v = s.stats?.[spec.key]
                   return (
-                    <td key={s.label} className="py-2 text-right font-mono text-sm text-gray-800">
+                    <td key={s.label} className="py-2 text-right font-mono text-sm text-gray-800 dark:text-gray-100">
                       {v == null ? '—' : spec.fmt(v)}
                     </td>
                   )
@@ -394,32 +394,32 @@ function RosterStrengthsSummary({ hitters, starters, relievers }) {
   ].filter(p => (p.strengths?.length || 0) + (p.weaknesses?.length || 0) > 0)
   if (!all.length) return null
   return (
-    <section className="bg-white border border-gray-200 rounded-xl shadow-sm">
+    <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-gray-50 rounded-t-xl"
+        className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-t-xl"
       >
         <div>
-          <h2 className="text-base font-semibold text-portal-purple-dark">Player Strengths & Weaknesses</h2>
-          <p className="text-xs text-gray-500">{all.length} players · top-2 / bottom-2 percentile flags per player</p>
+          <h2 className="text-base font-semibold text-portal-purple-dark dark:text-gray-100">Player Strengths & Weaknesses</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{all.length} players · top-2 / bottom-2 percentile flags per player</p>
         </div>
         <Chevron open={open} />
       </button>
       {open && (
-        <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-2">
+        <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
           {all.map(p => (
             <div key={`${p.role}-${p.player_id}`} className="text-sm leading-snug">
-              <Link to={`/player/${p.player_id}`} className="font-semibold text-portal-purple hover:underline">
+              <Link to={`/player/${p.player_id}`} className="font-semibold text-portal-purple dark:text-portal-accent-light hover:underline">
                 {p.first_name} {p.last_name}
               </Link>
-              <span className="ml-1.5 inline-block px-1 text-[10px] font-bold uppercase tracking-wider rounded bg-gray-100 text-gray-700">
+              <span className="ml-1.5 inline-block px-1 text-[10px] font-bold uppercase tracking-wider rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                 {p.role}
               </span>
               {p.position && (
-                <span className="ml-1.5 text-[11px] text-gray-500">{p.position}</span>
+                <span className="ml-1.5 text-[11px] text-gray-500 dark:text-gray-400">{p.position}</span>
               )}
-              <div className="text-xs mt-0.5 text-gray-700">
+              <div className="text-xs mt-0.5 text-gray-700 dark:text-gray-300">
                 {p.strengths?.length > 0 && (
                   <span className="text-emerald-700">
                     Strong: {p.strengths.map(s => `${s.label} (${Math.round(s.percentile)}th)`).join(', ')}
@@ -529,7 +529,7 @@ function PlayerTable({ title, subtitle, kind, rows }) {
   if (!rows || rows.length === 0) {
     return (
       <Card title={title} subtitle={subtitle}>
-        <p className="text-sm text-gray-500 italic">No qualifying players.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 italic">No qualifying players.</p>
       </Card>
     )
   }
@@ -547,8 +547,8 @@ function PlayerTable({ title, subtitle, kind, rows }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left border-b border-gray-200">
-              <Th className="w-[200px] sticky left-0 bg-white z-10">Player</Th>
+            <tr className="text-left border-b border-gray-200 dark:border-gray-700">
+              <Th className="w-[200px] sticky left-0 bg-white dark:bg-gray-800 z-10">Player</Th>
               <Th className="w-12">B/T</Th>
               <Th className="w-12">Yr</Th>
               {cols.map(c => (
@@ -591,7 +591,7 @@ function FilterTabs({ options, value, onChange }) {
             className={`px-2.5 py-1 text-xs font-semibold rounded border transition-colors ${
               active
                 ? 'bg-portal-purple text-portal-cream border-portal-purple'
-                : 'bg-white text-portal-purple-dark border-gray-300 hover:bg-gray-50'
+                : 'bg-white dark:bg-gray-800 text-portal-purple-dark dark:text-gray-100 border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/40'
             }`}
           >
             {o.label}
@@ -607,19 +607,19 @@ function PlayerRow({ player, cols, kind, splitKey }) {
   // We still keep position/bats/throws/year from the player root.
   const valueSource = splitKey ? (player.splits?.[splitKey] || {}) : player
   return (
-    <tr className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-      <td className="py-2 sticky left-0 bg-white z-10">
-        <Link to={`/player/${player.player_id}`} className="text-portal-purple hover:underline font-medium">
+    <tr className="border-b border-gray-100 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/40">
+      <td className="py-2 sticky left-0 bg-white dark:bg-gray-800 z-10">
+        <Link to={`/player/${player.player_id}`} className="text-portal-purple dark:text-portal-accent-light hover:underline font-medium">
           {player.first_name} {player.last_name}
         </Link>
         {player.position && (
-          <span className="ml-1.5 text-[10px] text-gray-500">{player.position}</span>
+          <span className="ml-1.5 text-[10px] text-gray-500 dark:text-gray-400">{player.position}</span>
         )}
       </td>
-      <td className="py-2 text-gray-600 text-xs">
+      <td className="py-2 text-gray-600 dark:text-gray-400 text-xs">
         {kind === 'hitter' ? (player.bats || '?') : (player.throws || '?')}
       </td>
-      <td className="py-2 text-gray-600 text-xs">{player.year_in_school || '—'}</td>
+      <td className="py-2 text-gray-600 dark:text-gray-400 text-xs">{player.year_in_school || '—'}</td>
       {cols.map(c => {
         const val = valueSource[c.key]
         const display = c.fmt ? c.fmt(val) : (val ?? '—')
@@ -628,7 +628,7 @@ function PlayerRow({ player, cols, kind, splitKey }) {
         const pctile = (!splitKey && c.pctileKey) ? pctileFor(player, c.pctileKey) : null
         const colorClass = c.muted
           ? 'text-gray-400'
-          : (pctile != null ? COLOR_TEXT[colorForPctile(pctile)] : 'text-gray-800')
+          : (pctile != null ? COLOR_TEXT[colorForPctile(pctile)] : 'text-gray-800 dark:text-gray-100')
         return (
           <td
             key={c.key}
@@ -650,11 +650,11 @@ function PlayerRow({ player, cols, kind, splitKey }) {
 
 function Card({ title, subtitle, children }) {
   return (
-    <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
+    <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-4">
       {title && (
         <header className="mb-3">
-          <h2 className="text-base font-semibold text-portal-purple-dark">{title}</h2>
-          {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+          <h2 className="text-base font-semibold text-portal-purple-dark dark:text-gray-100">{title}</h2>
+          {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>}
         </header>
       )}
       {children}
@@ -664,7 +664,7 @@ function Card({ title, subtitle, children }) {
 
 function Th({ children, className = '' }) {
   return (
-    <th className={`py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 ${className}`}>
+    <th className={`py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 ${className}`}>
       {children}
     </th>
   )

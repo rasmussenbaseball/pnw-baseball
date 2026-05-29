@@ -25,8 +25,8 @@ export default function OpponentTrends() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Trends</h1>
-      <p className="text-xs text-gray-500 mb-4">Lineup tendencies, rotation patterns & bullpen usage (weighted toward recent games)</p>
+      <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">Trends</h1>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Lineup tendencies, rotation patterns & bullpen usage (weighted toward recent games)</p>
 
       {/* Selectors */}
       <div className="flex flex-wrap gap-2 items-end mb-5">
@@ -51,15 +51,15 @@ export default function OpponentTrends() {
           {/* Team bar */}
           <div className="flex items-center gap-2 mb-3">
             {data.team.logo_url && <img src={data.team.logo_url} alt="" className="w-8 h-8 object-contain" />}
-            <span className="font-bold text-gray-900">{data.team.short_name || data.team.name}</span>
+            <span className="font-bold text-gray-900 dark:text-gray-100">{data.team.short_name || data.team.name}</span>
             <span className="text-xs text-gray-400">{data.games_analyzed}G · {data.team.conf_abbrev || data.team.conference_name} · {data.team.division_level}</span>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-0.5 mb-4 bg-gray-100 rounded-lg p-0.5 w-fit">
+          <div className="flex gap-0.5 mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 w-fit">
             {['lineups', 'pitching'].map(t => (
               <button key={t} onClick={() => setActiveTab(t)}
-                className={`px-3 py-1 rounded text-xs font-medium ${activeTab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                className={`px-3 py-1 rounded text-xs font-medium ${activeTab === t ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
                 {t === 'lineups' ? 'Lineups' : 'Pitching'}
               </button>
             ))}
@@ -94,13 +94,13 @@ function LineupsTab({ d }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5 w-fit">
+      <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 w-fit">
         {[
           { id: 'hand', label: 'vs RHP / LHP' },
           { id: 'game', label: 'By Game #' },
         ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)}
-            className={`px-3 py-1 rounded text-xs font-medium ${view === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+            className={`px-3 py-1 rounded text-xs font-medium ${view === t.id ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
             {t.label}
           </button>
         ))}
@@ -153,20 +153,20 @@ function LineupTable({ title, sub, data, accent }) {
   // expandable — clicking them is a no-op.
   const [expandedSpot, setExpandedSpot] = useState(null)
   if (!data || !data.lineup) return (
-    <div className="bg-white rounded-lg border border-gray-100 p-4 text-center text-gray-400 text-xs">
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 p-4 text-center text-gray-400 text-xs">
       {title}: Not enough data
     </div>
   )
 
   return (
-    <div className={`bg-white rounded-lg border ${accent ? 'border-blue-200' : 'border-gray-100'} overflow-hidden`}>
-      <div className={`px-3 py-2 ${accent ? 'bg-blue-50 border-b border-blue-100' : 'bg-gray-50 border-b border-gray-100'}`}>
-        <span className="text-xs font-bold text-gray-900">{title}</span>
+    <div className={`bg-white dark:bg-gray-800 rounded-lg border ${accent ? 'border-blue-200' : 'border-gray-100 dark:border-gray-700'} overflow-hidden`}>
+      <div className={`px-3 py-2 ${accent ? 'bg-blue-50 border-b border-blue-100' : 'bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700'}`}>
+        <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{title}</span>
         <span className="text-[10px] text-gray-400 ml-2">{sub}</span>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-[10px] text-gray-400 border-b border-gray-50">
+          <tr className="text-[10px] text-gray-400 border-b border-gray-50 dark:border-gray-700">
             <th className="w-7 py-1 text-center">#</th>
             <th className="w-10 py-1 text-center">Pos</th>
             <th className="py-1 pl-2 text-left">Player</th>
@@ -180,8 +180,8 @@ function LineupTable({ title, sub, data, accent }) {
             return (
               <Fragment key={i}>
                 <tr
-                  className={`border-b border-gray-50 last:border-0 align-top ${
-                    hasTendencies ? 'cursor-pointer hover:bg-gray-50' : ''
+                  className={`border-b border-gray-50 dark:border-gray-700 last:border-0 align-top ${
+                    hasTendencies ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40' : ''
                   }`}
                   onClick={() => hasTendencies && setExpandedSpot(isOpen ? null : row.spot)}
                 >
@@ -191,11 +191,11 @@ function LineupTable({ title, sub, data, accent }) {
                     )}
                     {row.spot}
                   </td>
-                  <td className="text-center py-1 text-gray-500 font-medium">{row.position}</td>
+                  <td className="text-center py-1 text-gray-500 dark:text-gray-400 font-medium">{row.position}</td>
                   <td className="py-1 pl-2">
-                    <span className="font-medium text-gray-900">{row.player_name}</span>
+                    <span className="font-medium text-gray-900 dark:text-gray-100">{row.player_name}</span>
                     {row.alts && row.alts.length > 0 && (
-                      <span className="text-gray-500">
+                      <span className="text-gray-500 dark:text-gray-400">
                         {row.alts.map((alt, ai) => (
                           <span key={ai}>
                             <span className="text-gray-300"> / </span>
@@ -205,11 +205,11 @@ function LineupTable({ title, sub, data, accent }) {
                       </span>
                     )}
                   </td>
-                  <td className="py-1 text-right pr-3 text-gray-500">{row.pct > 0 ? `${row.pct}%` : ''}</td>
+                  <td className="py-1 text-right pr-3 text-gray-500 dark:text-gray-400">{row.pct > 0 ? `${row.pct}%` : ''}</td>
                 </tr>
                 {isOpen && hasTendencies && (
                   <tr>
-                    <td colSpan={4} className="bg-gray-50 px-3 py-2">
+                    <td colSpan={4} className="bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
                       <HitterTendenciesBlock tendencies={row.tendencies} />
                     </td>
                   </tr>
@@ -220,9 +220,9 @@ function LineupTable({ title, sub, data, accent }) {
         </tbody>
       </table>
       {data.bench && data.bench.length > 0 && (
-        <div className="border-t border-gray-100 px-3 py-1.5">
+        <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-1.5">
           <span className="text-[10px] text-gray-400 font-medium">Bench: </span>
-          <span className="text-[10px] text-gray-600">
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">
             {data.bench.map(b => `${b.player_name} (${b.position || '?'}, ${b.games_started}G)`).join(' · ')}
           </span>
         </div>
@@ -233,9 +233,9 @@ function LineupTable({ title, sub, data, accent }) {
 
 function MiniTable({ title, cols, rows }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
-      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-        <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">{title}</span>
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+        <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{title}</span>
       </div>
       {rows.length === 0 ? (
         <div className="px-3 py-2 text-[10px] text-gray-400">None recorded</div>
@@ -250,9 +250,9 @@ function MiniTable({ title, cols, rows }) {
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i} className="border-t border-gray-50">
+              <tr key={i} className="border-t border-gray-50 dark:border-gray-700">
                 {row.map((cell, j) => (
-                  <td key={j} className={`py-0.5 px-1.5 ${j === 0 ? 'text-left pl-3 font-medium text-gray-900' : 'text-center text-gray-600'}`}>
+                  <td key={j} className={`py-0.5 px-1.5 ${j === 0 ? 'text-left pl-3 font-medium text-gray-900 dark:text-gray-100' : 'text-center text-gray-600 dark:text-gray-400'}`}>
                     {cell}
                   </td>
                 ))}
@@ -279,16 +279,16 @@ function HitterSplits({ rows }) {
   if (!rows || rows.length === 0) return null
 
   return (
-    <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
-      <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-        <span className="text-xs font-bold text-gray-900">Hitter Splits</span>
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+        <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Hitter Splits</span>
         <span className="text-[10px] text-gray-400 ml-2">
           Click a player to see splits by lineup spot and defensive position
         </span>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-[10px] text-gray-400 border-b border-gray-50">
+          <tr className="text-[10px] text-gray-400 border-b border-gray-50 dark:border-gray-700">
             <th className="py-1 pl-3 text-left">Player</th>
             <th className="w-10 py-1 text-center">Pos</th>
             <th className="w-10 py-1 text-center">G</th>
@@ -309,24 +309,24 @@ function HitterSplits({ rows }) {
               <Fragment key={p.player_name}>
                 <tr
                   onClick={() => setOpenName(isOpen ? null : p.player_name)}
-                  className="border-b border-gray-50 cursor-pointer hover:bg-gray-50"
+                  className="border-b border-gray-50 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40"
                 >
-                  <td className="py-1 pl-3 font-medium text-gray-900">
+                  <td className="py-1 pl-3 font-medium text-gray-900 dark:text-gray-100">
                     <span className="text-gray-400 mr-1">{isOpen ? '▾' : '▸'}</span>
                     {p.player_name}
                   </td>
-                  <td className="text-center py-1 text-gray-500">{p.primary_position || '—'}</td>
-                  <td className="text-center py-1 text-gray-600">{o.g}</td>
-                  <td className="text-center py-1 text-gray-600">{o.ab}</td>
-                  <td className="text-center py-1 text-gray-600">{o.hr}</td>
-                  <td className="text-center py-1 text-gray-600">{o.rbi}</td>
-                  <td className="text-center py-1 text-gray-800">{fmt3(o.avg)}</td>
-                  <td className="text-center py-1 text-gray-800">{fmt3(o.obp)}</td>
-                  <td className="text-center py-1 text-gray-800">{fmt3(o.slg)}</td>
-                  <td className="text-center py-1 pr-3 font-medium text-gray-900">{fmt3(o.ops)}</td>
+                  <td className="text-center py-1 text-gray-500 dark:text-gray-400">{p.primary_position || '—'}</td>
+                  <td className="text-center py-1 text-gray-600 dark:text-gray-400">{o.g}</td>
+                  <td className="text-center py-1 text-gray-600 dark:text-gray-400">{o.ab}</td>
+                  <td className="text-center py-1 text-gray-600 dark:text-gray-400">{o.hr}</td>
+                  <td className="text-center py-1 text-gray-600 dark:text-gray-400">{o.rbi}</td>
+                  <td className="text-center py-1 text-gray-800 dark:text-gray-100">{fmt3(o.avg)}</td>
+                  <td className="text-center py-1 text-gray-800 dark:text-gray-100">{fmt3(o.obp)}</td>
+                  <td className="text-center py-1 text-gray-800 dark:text-gray-100">{fmt3(o.slg)}</td>
+                  <td className="text-center py-1 pr-3 font-medium text-gray-900 dark:text-gray-100">{fmt3(o.ops)}</td>
                 </tr>
                 {isOpen && (
-                  <tr className="bg-gray-50 border-b border-gray-100">
+                  <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
                     <td colSpan={10} className="px-3 py-3">
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <SplitSubTable
@@ -356,16 +356,16 @@ function HitterSplits({ rows }) {
 
 function SplitSubTable({ title, rows, keyCol, keyLabel }) {
   return (
-    <div className="bg-white rounded border border-gray-100 overflow-hidden">
-      <div className="px-3 py-1.5 bg-white border-b border-gray-100">
-        <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">{title}</span>
+    <div className="bg-white dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className="px-3 py-1.5 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
+        <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{title}</span>
       </div>
       {!rows || rows.length === 0 ? (
         <div className="px-3 py-2 text-[10px] text-gray-400">Not enough at-bats to split</div>
       ) : (
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-[10px] text-gray-400 border-b border-gray-50">
+            <tr className="text-[10px] text-gray-400 border-b border-gray-50 dark:border-gray-700">
               <th className="py-1 pl-3 text-left w-14">{keyLabel}</th>
               <th className="w-10 py-1 text-center">G</th>
               <th className="w-10 py-1 text-center">AB</th>
@@ -380,17 +380,17 @@ function SplitSubTable({ title, rows, keyCol, keyLabel }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className="border-b border-gray-50 last:border-0">
-                <td className="py-0.5 pl-3 font-medium text-gray-900">{r[keyCol]}</td>
-                <td className="text-center py-0.5 text-gray-600">{r.g}</td>
-                <td className="text-center py-0.5 text-gray-600">{r.ab}</td>
-                <td className="text-center py-0.5 text-gray-600">{r.h}</td>
-                <td className="text-center py-0.5 text-gray-600">{r.hr}</td>
-                <td className="text-center py-0.5 text-gray-600">{r.rbi}</td>
-                <td className="text-center py-0.5 text-gray-800">{fmt3(r.avg)}</td>
-                <td className="text-center py-0.5 text-gray-800">{fmt3(r.obp)}</td>
-                <td className="text-center py-0.5 text-gray-800">{fmt3(r.slg)}</td>
-                <td className="text-center py-0.5 pr-3 font-medium text-gray-900">{fmt3(r.ops)}</td>
+              <tr key={i} className="border-b border-gray-50 dark:border-gray-700 last:border-0">
+                <td className="py-0.5 pl-3 font-medium text-gray-900 dark:text-gray-100">{r[keyCol]}</td>
+                <td className="text-center py-0.5 text-gray-600 dark:text-gray-400">{r.g}</td>
+                <td className="text-center py-0.5 text-gray-600 dark:text-gray-400">{r.ab}</td>
+                <td className="text-center py-0.5 text-gray-600 dark:text-gray-400">{r.h}</td>
+                <td className="text-center py-0.5 text-gray-600 dark:text-gray-400">{r.hr}</td>
+                <td className="text-center py-0.5 text-gray-600 dark:text-gray-400">{r.rbi}</td>
+                <td className="text-center py-0.5 text-gray-800 dark:text-gray-100">{fmt3(r.avg)}</td>
+                <td className="text-center py-0.5 text-gray-800 dark:text-gray-100">{fmt3(r.obp)}</td>
+                <td className="text-center py-0.5 text-gray-800 dark:text-gray-100">{fmt3(r.slg)}</td>
+                <td className="text-center py-0.5 pr-3 font-medium text-gray-900 dark:text-gray-100">{fmt3(r.ops)}</td>
               </tr>
             ))}
           </tbody>
@@ -411,13 +411,13 @@ function PitchingTab({ d }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5 w-fit">
+      <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 w-fit">
         {[
           { id: 'rotation', label: 'Rotation' },
           { id: 'bullpen', label: 'Bullpen' },
         ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)}
-            className={`px-3 py-1 rounded text-xs font-medium ${view === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+            className={`px-3 py-1 rounded text-xs font-medium ${view === t.id ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
             {t.label}
           </button>
         ))}
@@ -443,13 +443,13 @@ function RotationView({ d }) {
           <div className="text-xs font-bold text-teal-900 mb-2">Projected Rotation (Next Series)</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {d.predicted_rotation.map(p => (
-              <div key={p.game} className="bg-white rounded px-2.5 py-2 shadow-sm">
+              <div key={p.game} className="bg-white dark:bg-gray-800 rounded px-2.5 py-2 shadow-sm">
                 <div className="text-[10px] text-gray-400">Game {p.game}</div>
-                <div className="text-sm font-bold text-gray-900 flex items-center gap-1">
+                <div className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1">
                   {p.name}
                   <Hand t={p.throws} />
                 </div>
-                <div className="text-[10px] text-gray-500">
+                <div className="text-[10px] text-gray-500 dark:text-gray-400">
                   <span>{p.game_conf}% this game</span>
                   <span className="ml-1">· {p.week_pct}% starts week</span>
                 </div>
@@ -460,13 +460,13 @@ function RotationView({ d }) {
       )}
 
       {/* Starters table */}
-      <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
-        <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-          <span className="text-xs font-bold text-gray-900">Starting Pitchers</span>
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+          <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Starting Pitchers</span>
         </div>
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-[10px] text-gray-400 border-b border-gray-100">
+            <tr className="text-[10px] text-gray-400 border-b border-gray-100 dark:border-gray-700">
               <th className="py-1.5 pl-3 text-left">Pitcher</th>
               <th className="py-1.5 text-center">T</th>
               <th className="py-1.5 text-center">GS</th>
@@ -498,8 +498,8 @@ function RotationView({ d }) {
 function StarterRows({ sp, expanded, toggle }) {
   return (
     <>
-      <tr className="border-b border-gray-50 cursor-pointer hover:bg-gray-50" onClick={toggle}>
-        <td className="py-1.5 pl-3 font-medium text-gray-900">
+      <tr className="border-b border-gray-50 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" onClick={toggle}>
+        <td className="py-1.5 pl-3 font-medium text-gray-900 dark:text-gray-100">
           <span className="inline-flex items-center gap-1">
             <span className={`text-gray-400 text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
             <span>{sp.name}</span>
@@ -521,7 +521,7 @@ function StarterRows({ sp, expanded, toggle }) {
       </tr>
       {expanded && (sp.recent?.length > 0 || (sp.slot_splits && Object.keys(sp.slot_splits).length > 0) || sp.tendencies) && (
         <tr>
-          <td colSpan={13} className="bg-gray-50 px-3 py-2">
+          <td colSpan={13} className="bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
             <div className="space-y-3">
               {sp.tendencies && (
                 <PitcherTendenciesBlock tendencies={sp.tendencies} />
@@ -547,7 +547,7 @@ function StarterRows({ sp, expanded, toggle }) {
                       {['1', '2', '3', '4'].filter(k => sp.slot_splits[k]).map(k => {
                         const sl = sp.slot_splits[k]
                         return (
-                          <tr key={k} className="border-t border-gray-100">
+                          <tr key={k} className="border-t border-gray-100 dark:border-gray-700">
                             <td className="py-0.5 font-medium">G{k}</td>
                             <td className="text-center">{sl.gs}</td>
                             <td className="text-center">{sl.ip}</td>
@@ -584,18 +584,18 @@ function StarterRows({ sp, expanded, toggle }) {
                     </thead>
                     <tbody>
                       {[...sp.recent].reverse().map((s, i) => (
-                        <tr key={i} className="border-t border-gray-100">
-                          <td className="py-0.5 text-gray-500">{fmtDate(s.date)}</td>
+                        <tr key={i} className="border-t border-gray-100 dark:border-gray-700">
+                          <td className="py-0.5 text-gray-500 dark:text-gray-400">{fmtDate(s.date)}</td>
                           <td className="py-0.5 font-medium">{s.opp}</td>
-                          <td className="text-center text-gray-500">G{s.g}</td>
+                          <td className="text-center text-gray-500 dark:text-gray-400">G{s.g}</td>
                           <td className="text-center">{s.ip}</td>
                           <td className="text-center">{s.k}</td>
                           <td className="text-center">{s.er}</td>
                           <td className="text-center">
                             {s.dec && <span className={s.dec === 'W' ? 'text-green-600 font-bold' : s.dec === 'L' ? 'text-red-500 font-bold' : ''}>{s.dec}</span>}
                           </td>
-                          <td className="text-center text-gray-500">{s.gs || '—'}</td>
-                          <td className="text-center text-gray-500">{s.pc || '—'}</td>
+                          <td className="text-center text-gray-500 dark:text-gray-400">{s.gs || '—'}</td>
+                          <td className="text-center text-gray-500 dark:text-gray-400">{s.pc || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -622,9 +622,9 @@ function BullpenView({ relievers }) {
   const tierStyles = {
     elite: 'bg-green-50 border-green-200 text-green-900',
     great: 'bg-emerald-50 border-emerald-200 text-emerald-900',
-    average: 'bg-gray-50 border-gray-200 text-gray-800',
+    average: 'bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100',
     low: 'bg-amber-50 border-amber-200 text-amber-900',
-    sample: 'bg-white border-gray-200 text-gray-700',
+    sample: 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
   }
 
   const renderGroup = (title, list, startIdx, styleKey) => {
@@ -635,11 +635,11 @@ function BullpenView({ relievers }) {
           <span className="text-[10px] opacity-60">{list.length}</span>
         </div>
         {list.length === 0 ? (
-          <div className="text-center py-3 text-[11px] text-gray-400 bg-white">No pitchers in this tier</div>
+          <div className="text-center py-3 text-[11px] text-gray-400 bg-white dark:bg-gray-800">No pitchers in this tier</div>
         ) : (
-          <table className="w-full text-xs bg-white">
+          <table className="w-full text-xs bg-white dark:bg-gray-800">
             <thead>
-              <tr className="text-[10px] text-gray-400 border-b border-gray-50">
+              <tr className="text-[10px] text-gray-400 border-b border-gray-50 dark:border-gray-700">
                 <th className="py-1 pl-3 text-left">Pitcher</th>
                 <th className="py-1 text-center">T</th>
                 <th className="py-1 text-center">App</th>
@@ -685,8 +685,8 @@ function BullpenView({ relievers }) {
 function RelieverRows({ r, expanded, toggle }) {
   return (
     <>
-      <tr className="border-b border-gray-50 cursor-pointer hover:bg-gray-50" onClick={toggle}>
-        <td className="py-1 pl-3 font-medium text-gray-900">
+      <tr className="border-b border-gray-50 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" onClick={toggle}>
+        <td className="py-1 pl-3 font-medium text-gray-900 dark:text-gray-100">
           <span className="inline-flex items-center gap-1">
             <span className={`text-gray-400 text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}`}>▸</span>
             {r.is_top && <span className="text-yellow-500" title="Top reliever on team (rating)">★</span>}
@@ -709,7 +709,7 @@ function RelieverRows({ r, expanded, toggle }) {
       </tr>
       {expanded && (r.recent?.length > 0 || r.tendencies) && (
         <tr>
-          <td colSpan={13} className="bg-gray-50 px-3 py-2">
+          <td colSpan={13} className="bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
             <div className="space-y-2">
               {r.tendencies && (
                 <PitcherTendenciesBlock tendencies={r.tendencies} />
@@ -719,7 +719,7 @@ function RelieverRows({ r, expanded, toggle }) {
                   <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Recent Appearances</div>
                   <div className="flex flex-wrap gap-1.5">
                     {[...r.recent].reverse().map((a, i) => (
-                      <span key={i} className="text-[10px] bg-white border border-gray-200 rounded px-1.5 py-0.5">
+                      <span key={i} className="text-[10px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5">
                         {fmtDate(a.date)} {a.opp} {a.ip}IP {a.k}K
                         {a.er > 0 && <span className="text-red-500"> {a.er}ER</span>}
                         {a.dec && <span className={a.dec === 'S' ? 'text-green-600 font-bold' : ''}> {a.dec}</span>}
@@ -762,7 +762,7 @@ function PitcherTendenciesBlock({ tendencies }) {
   const wpaSign = wpa != null && wpa >= 0 ? '+' : ''
   const wpaColor = wpa == null ? 'text-gray-400' :
                    wpa >= 0.3 ? 'text-emerald-700' :
-                   wpa <= -0.3 ? 'text-rose-700' : 'text-gray-700'
+                   wpa <= -0.3 ? 'text-rose-700' : 'text-gray-700 dark:text-gray-300'
   return (
     <div>
       <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Tendencies (PBP)</div>
@@ -770,7 +770,7 @@ function PitcherTendenciesBlock({ tendencies }) {
         {tiles.map(tile => (
           <TinyTile key={tile.label} {...tile} />
         ))}
-        <div className="bg-white border border-gray-200 rounded p-1.5 text-center"
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-1.5 text-center"
              title="Total Win Probability Added: cumulative WP this pitcher has earned for his team">
           <div className="text-[9px] uppercase text-gray-400">WPA</div>
           <div className={`text-sm font-bold tabular-nums ${wpaColor}`}>
@@ -813,17 +813,17 @@ function HitterTendenciesBlock({ tendencies }) {
   const wpaSign = wpa != null && wpa >= 0 ? '+' : ''
   const wpaColor = wpa == null ? 'text-gray-400' :
                    wpa >= 0.3 ? 'text-emerald-700' :
-                   wpa <= -0.3 ? 'text-rose-700' : 'text-gray-700'
+                   wpa <= -0.3 ? 'text-rose-700' : 'text-gray-700 dark:text-gray-300'
   return (
     <div>
       <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">
-        Tendencies (PBP) {t.bats && <span className="ml-1 text-gray-500">· bats {t.bats}</span>}
+        Tendencies (PBP) {t.bats && <span className="ml-1 text-gray-500 dark:text-gray-400">· bats {t.bats}</span>}
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
         {tiles.map(tile => (
           <TinyTile key={tile.label} {...tile} />
         ))}
-        <div className="bg-white border border-gray-200 rounded p-1.5 text-center"
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-1.5 text-center"
              title="Total Win Probability Added: cumulative WP this hitter has earned">
           <div className="text-[9px] uppercase text-gray-400">WPA</div>
           <div className={`text-sm font-bold tabular-nums ${wpaColor}`}>
@@ -843,9 +843,9 @@ function TinyTile({ label, value, fmt, tip }) {
     : fmt === 'pct' ? `${(value * 100).toFixed(1)}%`
     : value.toFixed(2)
   return (
-    <div className="bg-white border border-gray-200 rounded p-1.5 text-center" title={tip}>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-1.5 text-center" title={tip}>
       <div className="text-[9px] uppercase text-gray-400">{label}</div>
-      <div className="text-sm font-bold text-gray-900 tabular-nums">{display}</div>
+      <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">{display}</div>
     </div>
   )
 }
@@ -868,7 +868,7 @@ function TierPill({ tier }) {
   const styles = {
     elite: 'bg-green-100 text-green-800',
     solid: 'bg-emerald-50 text-emerald-700',
-    average: 'bg-gray-100 text-gray-600',
+    average: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
     struggling: 'bg-amber-50 text-amber-800',
   }
   const labels = {
@@ -878,7 +878,7 @@ function TierPill({ tier }) {
     struggling: 'Low-Lev',
   }
   return (
-    <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[tier] || 'bg-gray-100 text-gray-500'}`}>
+    <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[tier] || 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
       {labels[tier] || tier}
     </span>
   )
@@ -903,11 +903,11 @@ function PitcherIcons({ p }) {
 
 function PitchingLegend() {
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-[11px] text-gray-700 space-y-2">
-      <div className="font-bold text-gray-900 text-xs">Key</div>
+    <div className="bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-[11px] text-gray-700 dark:text-gray-300 space-y-2">
+      <div className="font-bold text-gray-900 dark:text-gray-100 text-xs">Key</div>
 
       <div>
-        <div className="font-semibold text-gray-800 mb-1">Icons</div>
+        <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">Icons</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
           <div><span className="mr-1">🔥</span> Hot: combined ERA of 2.00 or better in last 2 appearances</div>
           <div><span className="mr-1">🧊</span> Cold: combined ERA of 7.00 or worse in last 2 appearances</div>
@@ -917,19 +917,19 @@ function PitchingLegend() {
       </div>
 
       <div>
-        <div className="font-semibold text-gray-800 mb-1">Leverage%</div>
+        <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">Leverage%</div>
         <div>Share of a reliever's appearances that came in a close game (score within 3 runs). A high number means the coach trusts them in tight spots.</div>
       </div>
 
       <div>
-        <div className="font-semibold text-gray-800 mb-1">Reliever Tiers</div>
-        <div className="text-[10.5px] text-gray-500 mb-1">Rating = K-BB% minus an FIP adjustment. Higher is better. Minimum 3 appearances to earn a tier.</div>
+        <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">Reliever Tiers</div>
+        <div className="text-[10.5px] text-gray-500 dark:text-gray-400 mb-1">Rating = K-BB% minus an FIP adjustment. Higher is better. Minimum 3 appearances to earn a tier.</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
           <div><span className="font-semibold text-green-800">Elite</span>: rating of 15 or higher</div>
           <div><span className="font-semibold text-emerald-700">Great</span>: rating of 5 to 15</div>
-          <div><span className="font-semibold text-gray-700">Average</span>: rating of -5 to 5</div>
+          <div><span className="font-semibold text-gray-700 dark:text-gray-300">Average</span>: rating of -5 to 5</div>
           <div><span className="font-semibold text-amber-800">Low-Leverage</span>: rating below -5</div>
-          <div><span className="font-semibold text-gray-600">Small Sample</span>: fewer than 3 appearances (no tier assigned yet)</div>
+          <div><span className="font-semibold text-gray-600 dark:text-gray-400">Small Sample</span>: fewer than 3 appearances (no tier assigned yet)</div>
         </div>
       </div>
     </div>

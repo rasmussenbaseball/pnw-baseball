@@ -60,8 +60,8 @@ export default function HistoricMatchups() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Historic</h1>
-      <p className="text-xs text-gray-500 mb-4">
+      <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">Historic</h1>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
         How a team's hitters and pitchers performed against a specific opponent this season
       </p>
 
@@ -101,7 +101,7 @@ export default function HistoricMatchups() {
           onClick={swap}
           disabled={!teamAId || !teamBId}
           title="Swap teams"
-          className="rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/40 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ⇄
         </button>
@@ -140,7 +140,7 @@ export default function HistoricMatchups() {
         <>
           {/* Game scoreboard */}
           <div className="mb-6">
-            <h2 className="text-xs uppercase tracking-wide text-gray-500 mb-2 font-semibold">
+            <h2 className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2 font-semibold">
               Series results · {data.games.length} game{data.games.length === 1 ? '' : 's'}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -151,13 +151,13 @@ export default function HistoricMatchups() {
           </div>
 
           {/* Batting / Pitching toggle (shared across both sides) */}
-          <div className="flex gap-0.5 mb-3 bg-gray-100 rounded-lg p-0.5 w-fit">
+          <div className="flex gap-0.5 mb-3 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 w-fit">
             {['batting', 'pitching'].map(t => (
               <button
                 key={t}
                 onClick={() => setMode(t)}
                 className={`px-3 py-1 rounded text-xs font-medium ${
-                  mode === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  mode === t ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'
                 }`}
               >
                 {t === 'batting' ? 'Batting' : 'Pitching'}
@@ -208,10 +208,10 @@ export default function HistoricMatchups() {
 function MatchupHistorySection({ data, teamA, teamB }) {
   return (
     <div className="mt-6">
-      <h2 className="text-xs uppercase tracking-wide text-gray-500 mb-2 font-semibold">
+      <h2 className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2 font-semibold">
         Matchup history · {data.total_pas} plate appearances
       </h2>
-      <p className="text-[11px] text-gray-500 mb-3 leading-snug">
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3 leading-snug">
         Every individual PA between hitters and pitchers from these games. Click
         a matchup to expand the full pitch-by-pitch sequence.
       </p>
@@ -235,7 +235,7 @@ function MatchupHistorySection({ data, teamA, teamB }) {
 
 function MatchupColumn({ title, batterTeamLogo, pitcherTeamLogo, matchups }) {
   return (
-    <div className="border border-gray-200 rounded">
+    <div className="border border-gray-200 dark:border-gray-700 rounded">
       <div className="flex items-center gap-2 px-3 py-2 bg-pnw-forest text-white rounded-t">
         {batterTeamLogo && (
           <img src={batterTeamLogo} alt="" className="h-4 w-4 object-contain" />
@@ -247,7 +247,7 @@ function MatchupColumn({ title, batterTeamLogo, pitcherTeamLogo, matchups }) {
           No PA data available
         </div>
       ) : (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-gray-100 dark:divide-gray-700">
           {matchups.map((m, i) => (
             <MatchupCard
               key={`${m.batter.id}-${m.pitcher.id}-${i}`}
@@ -267,30 +267,30 @@ function MatchupCard({ matchup, pitcherTeamLogo }) {
   const wpa = m.total_wpa
   const wpaSign = wpa >= 0 ? '+' : ''
   const wpaColor = wpa >= 0.05 ? 'text-emerald-700' :
-                   wpa <= -0.05 ? 'text-rose-700' : 'text-gray-600'
+                   wpa <= -0.05 ? 'text-rose-700' : 'text-gray-600 dark:text-gray-400'
   return (
     <div>
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left"
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 text-left"
       >
         <span className={`text-[11px] text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`}>
           ▶
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-gray-900 truncate">
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
               {m.batter.name}
             </span>
             <span className="text-xs text-gray-400">vs</span>
-            <span className="text-sm text-gray-700 truncate flex items-center gap-1">
+            <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex items-center gap-1">
               {pitcherTeamLogo && (
                 <img src={pitcherTeamLogo} alt="" className="h-3 w-3 object-contain" />
               )}
               {m.pitcher.name}
             </span>
           </div>
-          <div className="text-[11px] text-gray-500 mt-0.5">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
             {m.pa_count} PA · {m.hits} H · {m.walks} BB · {m.strikeouts} K
             {m.home_runs > 0 ? ` · ${m.home_runs} HR` : ''}
             {m.rbi > 0 ? ` · ${m.rbi} RBI` : ''}
@@ -301,7 +301,7 @@ function MatchupCard({ matchup, pitcherTeamLogo }) {
         </div>
       </button>
       {open && (
-        <div className="px-3 pb-3 pt-1 bg-gray-50">
+        <div className="px-3 pb-3 pt-1 bg-gray-50 dark:bg-gray-900/40">
           <div className="space-y-1">
             {m.pas.map((pa, i) => (
               <PaRow key={i} pa={pa} />
@@ -323,18 +323,18 @@ function PaRow({ pa }) {
   const wpaSign = wpa != null && wpa >= 0 ? '+' : ''
   const wpaColor = wpa == null ? 'text-gray-400' :
                    wpa >= 0.05 ? 'text-emerald-700' :
-                   wpa <= -0.05 ? 'text-rose-700' : 'text-gray-600'
+                   wpa <= -0.05 ? 'text-rose-700' : 'text-gray-600 dark:text-gray-400'
   const date = pa.game_date
     ? new Date(pa.game_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : '—'
   return (
-    <div className="flex items-center gap-2 text-[11px] py-1 px-2 bg-white rounded border border-gray-100">
-      <span className="text-gray-500 tabular-nums w-12 shrink-0">{date}</span>
-      <span className="text-gray-500 tabular-nums w-7 shrink-0">{inn}</span>
-      <span className="text-gray-500 tabular-nums w-9 shrink-0">{score}</span>
-      <span className="text-gray-500 tabular-nums w-7 shrink-0">{count}</span>
+    <div className="flex items-center gap-2 text-[11px] py-1 px-2 bg-white dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700">
+      <span className="text-gray-500 dark:text-gray-400 tabular-nums w-12 shrink-0">{date}</span>
+      <span className="text-gray-500 dark:text-gray-400 tabular-nums w-7 shrink-0">{inn}</span>
+      <span className="text-gray-500 dark:text-gray-400 tabular-nums w-9 shrink-0">{score}</span>
+      <span className="text-gray-500 dark:text-gray-400 tabular-nums w-7 shrink-0">{count}</span>
       <PitchSequence seq={pa.pitch_sequence} />
-      <span className="flex-1 text-gray-700 truncate" title={pa.result_text || ''}>
+      <span className="flex-1 text-gray-700 dark:text-gray-300 truncate" title={pa.result_text || ''}>
         {result}
       </span>
       <span className={`tabular-nums shrink-0 font-semibold ${wpaColor}`}>
@@ -357,7 +357,7 @@ function PitchSequence({ seq }) {
           c === 'K' || c === 'S' ? 'text-rose-600' :
           c === 'F' ? 'text-amber-600' :
           c === 'H' ? 'text-orange-700' :
-          'text-gray-500'
+          'text-gray-500 dark:text-gray-400'
         return (
           <span key={i} className={cls}>
             {c}
@@ -426,37 +426,37 @@ function GameCard({ game, teamAId }) {
     : ''
 
   return (
-    <div className="border border-gray-200 rounded p-2 bg-white">
-      <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
+    <div className="border border-gray-200 dark:border-gray-700 rounded p-2 bg-white dark:bg-gray-800">
+      <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-1">
         <span>{dateLabel}</span>
         <span>{locLabel}</span>
       </div>
       <div className="flex items-center justify-between">
-        <span className={`text-sm font-medium ${aWon ? 'text-pnw-forest' : aLost ? 'text-gray-500' : 'text-gray-700'}`}>
+        <span className={`text-sm font-medium ${aWon ? 'text-pnw-forest' : aLost ? 'text-gray-500 dark:text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
           {aShort}
         </span>
-        <span className={`text-sm font-bold ${aWon ? 'text-pnw-forest' : 'text-gray-700'}`}>
+        <span className={`text-sm font-bold ${aWon ? 'text-pnw-forest' : 'text-gray-700 dark:text-gray-300'}`}>
           {aScore}
         </span>
       </div>
       <div className="flex items-center justify-between">
-        <span className={`text-sm font-medium ${!aWon && !aLost ? 'text-gray-700' : aLost ? 'text-pnw-forest' : 'text-gray-500'}`}>
+        <span className={`text-sm font-medium ${!aWon && !aLost ? 'text-gray-700 dark:text-gray-300' : aLost ? 'text-pnw-forest' : 'text-gray-500 dark:text-gray-400'}`}>
           {bShort}
         </span>
-        <span className={`text-sm font-bold ${aLost ? 'text-pnw-forest' : 'text-gray-700'}`}>
+        <span className={`text-sm font-bold ${aLost ? 'text-pnw-forest' : 'text-gray-700 dark:text-gray-300'}`}>
           {bScore}
         </span>
       </div>
       {(game.winning_pitcher || game.losing_pitcher || game.save_pitcher) && (
-        <div className="mt-1 pt-1 border-t border-gray-100 text-[10px] text-gray-500 leading-snug">
+        <div className="mt-1 pt-1 border-t border-gray-100 dark:border-gray-700 text-[10px] text-gray-500 dark:text-gray-400 leading-snug">
           {game.winning_pitcher && (
-            <div>W: <span className="text-gray-700">{game.winning_pitcher}</span></div>
+            <div>W: <span className="text-gray-700 dark:text-gray-300">{game.winning_pitcher}</span></div>
           )}
           {game.losing_pitcher && (
-            <div>L: <span className="text-gray-700">{game.losing_pitcher}</span></div>
+            <div>L: <span className="text-gray-700 dark:text-gray-300">{game.losing_pitcher}</span></div>
           )}
           {game.save_pitcher && (
-            <div>SV: <span className="text-gray-700">{game.save_pitcher}</span></div>
+            <div>SV: <span className="text-gray-700 dark:text-gray-300">{game.save_pitcher}</span></div>
           )}
         </div>
       )}
@@ -466,7 +466,7 @@ function GameCard({ game, teamAId }) {
 
 function SideStats({ team, batting, pitching, totals, mode }) {
   return (
-    <div className="border border-gray-200 rounded">
+    <div className="border border-gray-200 dark:border-gray-700 rounded">
       <div className="flex items-center gap-2 px-3 py-2 bg-pnw-forest text-white rounded-t">
         {team.logo_url && (
           <img src={team.logo_url} alt="" className="w-6 h-6 object-contain bg-white rounded p-0.5" />
@@ -491,8 +491,8 @@ function SideStats({ team, batting, pitching, totals, mode }) {
 function TeamBattingTotals({ t }) {
   if (!t) return null
   return (
-    <div className="border-b border-gray-200 bg-pnw-cream/50 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">
+    <div className="border-b border-gray-200 dark:border-gray-700 bg-pnw-cream/50 dark:bg-gray-900/40 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1.5">
         Series Totals
       </div>
       <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
@@ -520,8 +520,8 @@ function TeamBattingTotals({ t }) {
 function TeamPitchingTotals({ t }) {
   if (!t) return null
   return (
-    <div className="border-b border-gray-200 bg-pnw-cream/50 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">
+    <div className="border-b border-gray-200 dark:border-gray-700 bg-pnw-cream/50 dark:bg-gray-900/40 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1.5">
         Series Totals
       </div>
       <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
@@ -548,8 +548,8 @@ function TeamPitchingTotals({ t }) {
 function Stat({ label, value }) {
   return (
     <div className="text-center">
-      <div className="text-[9px] uppercase tracking-wide text-gray-500 font-semibold">{label}</div>
-      <div className="text-xs font-semibold text-gray-900">{value ?? '-'}</div>
+      <div className="text-[9px] uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold">{label}</div>
+      <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">{value ?? '-'}</div>
     </div>
   )
 }
@@ -567,17 +567,17 @@ function BattingTable({ rows }) {
     <table className="w-full text-xs">
       <thead>
         {/* Section header: matchup vs season */}
-        <tr className="bg-gray-100 text-gray-600 uppercase tracking-wide text-[9px]">
-          <th className="sticky left-0 z-20 bg-gray-100" colSpan={1}></th>
+        <tr className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase tracking-wide text-[9px]">
+          <th className="sticky left-0 z-20 bg-gray-100 dark:bg-gray-700" colSpan={1}></th>
           <th colSpan={16} className="text-center py-1 border-r border-gray-300 font-semibold">
             Matchup
           </th>
-          <th colSpan={6} className="text-center py-1 bg-pnw-cream text-pnw-forest font-semibold">
+          <th colSpan={6} className="text-center py-1 bg-pnw-cream dark:bg-gray-900/40 text-pnw-forest font-semibold">
             Season
           </th>
         </tr>
-        <tr className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
-          <th className="text-left px-2 py-1.5 sticky left-0 z-20 bg-gray-50">Player</th>
+        <tr className="bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-400 uppercase tracking-wide text-[10px]">
+          <th className="text-left px-2 py-1.5 sticky left-0 z-20 bg-gray-50 dark:bg-gray-900/40">Player</th>
           <th className="px-1 py-1.5">G</th>
           <th className="px-1 py-1.5">PA</th>
           <th className="px-1 py-1.5">AB</th>
@@ -594,44 +594,44 @@ function BattingTable({ rows }) {
           <th className="px-1 py-1.5">OBP</th>
           <th className="px-1 py-1.5">SLG</th>
           <th className="px-1 py-1.5 border-r border-gray-300">OPS</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">PA</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">AVG</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">OPS</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">HR</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">K%</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">BB%</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">PA</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">AVG</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">OPS</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">HR</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">K%</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">BB%</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((r, i) => {
-          const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+          const rowBg = i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900/40'
           return (
             <tr key={r.player_id || `n${i}`} className={rowBg}>
-              <td className={`text-left px-2 py-1.5 text-gray-900 font-medium whitespace-nowrap sticky left-0 z-10 ${rowBg}`}>
+              <td className={`text-left px-2 py-1.5 text-gray-900 dark:text-gray-100 font-medium whitespace-nowrap sticky left-0 z-10 ${rowBg}`}>
                 {r.player_name}
               </td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.g}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.pa}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.ab}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.r}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.h}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.doubles}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.triples}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.hr}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.rbi}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.bb}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.k}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.sb}</td>
-              <td className="text-center px-1 py-1.5 font-semibold text-gray-900">{fmtRate(r.avg)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{fmtRate(r.obp)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{fmtRate(r.slg)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 border-r border-gray-300">{fmtRate(r.ops)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{r.season_pa ?? '-'}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30 font-semibold">{fmtRate(r.season_avg)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtRate(r.season_ops)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{r.season_hr ?? '-'}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_k_pct)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_bb_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.g}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.pa}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.ab}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.r}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.h}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.doubles}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.triples}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.hr}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.rbi}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.bb}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.k}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.sb}</td>
+              <td className="text-center px-1 py-1.5 font-semibold text-gray-900 dark:text-gray-100">{fmtRate(r.avg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{fmtRate(r.obp)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{fmtRate(r.slg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 border-r border-gray-300">{fmtRate(r.ops)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{r.season_pa ?? '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40 font-semibold">{fmtRate(r.season_avg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtRate(r.season_ops)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{r.season_hr ?? '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_k_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_bb_pct)}</td>
             </tr>
           )
         })}
@@ -648,17 +648,17 @@ function PitchingTable({ rows }) {
     <table className="w-full text-xs">
       <thead>
         {/* Section header: matchup vs season */}
-        <tr className="bg-gray-100 text-gray-600 uppercase tracking-wide text-[9px]">
-          <th className="sticky left-0 z-20 bg-gray-100" colSpan={1}></th>
+        <tr className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 uppercase tracking-wide text-[9px]">
+          <th className="sticky left-0 z-20 bg-gray-100 dark:bg-gray-700" colSpan={1}></th>
           <th colSpan={12} className="text-center py-1 border-r border-gray-300 font-semibold">
             Matchup
           </th>
-          <th colSpan={4} className="text-center py-1 bg-pnw-cream text-pnw-forest font-semibold">
+          <th colSpan={4} className="text-center py-1 bg-pnw-cream dark:bg-gray-900/40 text-pnw-forest font-semibold">
             Season
           </th>
         </tr>
-        <tr className="bg-gray-50 text-gray-600 uppercase tracking-wide text-[10px]">
-          <th className="text-left px-2 py-1.5 sticky left-0 z-20 bg-gray-50">Player</th>
+        <tr className="bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-400 uppercase tracking-wide text-[10px]">
+          <th className="text-left px-2 py-1.5 sticky left-0 z-20 bg-gray-50 dark:bg-gray-900/40">Player</th>
           <th className="px-1 py-1.5">G</th>
           <th className="px-1 py-1.5">GS</th>
           <th className="px-1 py-1.5">Dec</th>
@@ -671,38 +671,38 @@ function PitchingTable({ rows }) {
           <th className="px-1 py-1.5">ERA</th>
           <th className="px-1 py-1.5">WHIP</th>
           <th className="px-1 py-1.5 border-r border-gray-300">oAVG</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">IP</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">FIP</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">K%</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50">BB%</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">IP</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">FIP</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">K%</th>
+          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">BB%</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((r, i) => {
-          const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+          const rowBg = i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900/40'
           return (
             <tr key={r.player_id || `n${i}`} className={rowBg}>
-              <td className={`text-left px-2 py-1.5 text-gray-900 font-medium whitespace-nowrap sticky left-0 z-10 ${rowBg}`}>
+              <td className={`text-left px-2 py-1.5 text-gray-900 dark:text-gray-100 font-medium whitespace-nowrap sticky left-0 z-10 ${rowBg}`}>
                 {r.player_name}
               </td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.g}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.gs}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 text-[10px]">
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.g}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.gs}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 text-[10px]">
                 {r.decision_summary || '-'}
               </td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{fmtIp(r.ip)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.h}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.r}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.er}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.bb}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{r.k}</td>
-              <td className="text-center px-1 py-1.5 font-semibold text-gray-900">{fmtNum(r.era, 2)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700">{fmtNum(r.whip, 2)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 border-r border-gray-300">{fmtRate(r.opp_avg)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{r.season_ip != null ? fmtIp(r.season_ip) : '-'}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30 font-semibold">{fmtNum(r.season_fip, 2)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_k_pct)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 bg-pnw-cream/30">{fmtPct(r.season_bb_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{fmtIp(r.ip)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.h}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.r}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.er}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.bb}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{r.k}</td>
+              <td className="text-center px-1 py-1.5 font-semibold text-gray-900 dark:text-gray-100">{fmtNum(r.era, 2)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{fmtNum(r.whip, 2)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 border-r border-gray-300">{fmtRate(r.opp_avg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{r.season_ip != null ? fmtIp(r.season_ip) : '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40 font-semibold">{fmtNum(r.season_fip, 2)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_k_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_bb_pct)}</td>
             </tr>
           )
         })}

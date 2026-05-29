@@ -43,8 +43,8 @@ export default function PlayerScouting() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Player Scouting</h1>
-      <p className="text-xs text-gray-500 mb-4">
+      <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">Player Scouting</h1>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
         Opposing-coach scouting report. Strengths to avoid, weaknesses to
         exploit, and PBP-derived tendencies for any 2026 player.
       </p>
@@ -84,27 +84,27 @@ export default function PlayerScouting() {
 // ── Search results dropdown ────────────────────────────────────
 function SearchResults({ results, onSelect }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-4">
-      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-        <span className="text-xs font-semibold text-gray-700">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mb-4">
+      <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
           {results.length} result{results.length === 1 ? '' : 's'}
         </span>
       </div>
-      <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+      <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-72 overflow-y-auto">
         {results.map((p) => (
           <button
             key={p.id}
             onClick={() => onSelect(p.id)}
-            className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2"
+            className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 flex items-center gap-2"
           >
             {p.logo_url && (
               <img src={p.logo_url} alt="" className="h-5 w-5 object-contain" />
             )}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-900">
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
                 {p.first_name} {p.last_name}
               </div>
-              <div className="text-[11px] text-gray-500">
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">
                 {p.position || '?'} · {p.team_short || p.team_name || '—'} · {p.division_level || '—'}
               </div>
             </div>
@@ -151,8 +151,8 @@ function ScoutingReport({ playerId }) {
 
       {/* Both-sides players show the secondary side too */}
       {!isPitcher && profile?.pitching_stats?.length > 0 && pitcherStats && (
-        <div className="border-t border-gray-200 pt-4 mt-4">
-          <h2 className="text-sm font-bold text-gray-700 mb-2">
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+          <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
             Also pitches · secondary scouting
           </h2>
           <PitcherReport
@@ -163,8 +163,8 @@ function ScoutingReport({ playerId }) {
         </div>
       )}
       {isPitcher && profile?.batting_stats?.length > 0 && hitterStats && (
-        <div className="border-t border-gray-200 pt-4 mt-4">
-          <h2 className="text-sm font-bold text-gray-700 mb-2">
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+          <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
             Also hits · secondary scouting
           </h2>
           <HitterReport
@@ -181,18 +181,18 @@ function ScoutingReport({ playerId }) {
 // ── Player header ──────────────────────────────────────────────
 function PlayerHeader({ player }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center gap-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 flex items-center gap-4">
       {player.headshot_url && (
         <img
           src={player.headshot_url}
           alt=""
-          className="h-16 w-16 object-cover rounded border border-gray-200"
+          className="h-16 w-16 object-cover rounded border border-gray-200 dark:border-gray-700"
           onError={(e) => { e.target.style.display = 'none' }}
         />
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 flex-wrap">
-          <h2 className="text-xl font-bold text-gray-900">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {player.first_name} {player.last_name}
           </h2>
           <Link
@@ -202,7 +202,7 @@ function PlayerHeader({ player }) {
             full profile →
           </Link>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
+        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mt-1">
           {player.logo_url && (
             <img src={player.logo_url} alt="" className="h-4 w-4 object-contain" />
           )}
@@ -229,7 +229,7 @@ function PlayerHeader({ player }) {
           )}
         </div>
         {player.hometown && (
-          <div className="text-[11px] text-gray-500 mt-0.5">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
             {player.hometown}
           </div>
         )}
@@ -263,7 +263,7 @@ function HitterReport({ player, profile, stats }) {
           <div className="text-xs font-bold text-blue-900 uppercase mb-2">
             Scouting Summary
           </div>
-          <ul className="space-y-1.5 text-sm text-gray-800">
+          <ul className="space-y-1.5 text-sm text-gray-800 dark:text-gray-100">
             {narratives.map((n, i) => (
               <li key={i} className="flex gap-2">
                 <span className="text-blue-500 shrink-0">·</span>
@@ -345,7 +345,7 @@ function PitcherReport({ player, profile, stats }) {
           <div className="text-xs font-bold text-blue-900 uppercase mb-2">
             Scouting Summary
           </div>
-          <ul className="space-y-1.5 text-sm text-gray-800">
+          <ul className="space-y-1.5 text-sm text-gray-800 dark:text-gray-100">
             {narratives.map((n, i) => (
               <li key={i} className="flex gap-2">
                 <span className="text-blue-500 shrink-0">·</span>
@@ -409,9 +409,9 @@ function PercentilePanel({ title, subtitle, metrics, accent }) {
     <div className={`border rounded-lg overflow-hidden ${headerStyle}`}>
       <div className="px-3 py-2 border-b border-current/10">
         <div className={`text-xs font-bold uppercase ${titleStyle}`}>{title}</div>
-        <div className="text-[11px] text-gray-600">{subtitle}</div>
+        <div className="text-[11px] text-gray-600 dark:text-gray-400">{subtitle}</div>
       </div>
-      <div className="bg-white p-2">
+      <div className="bg-white dark:bg-gray-800 p-2">
         {metrics.length === 0 ? (
           <div className="text-xs text-gray-400 text-center py-3">
             No qualifying metrics
@@ -420,14 +420,14 @@ function PercentilePanel({ title, subtitle, metrics, accent }) {
           <ul className="space-y-1">
             {metrics.map((m, i) => (
               <li key={i} className="flex items-center justify-between text-xs">
-                <span className="text-gray-700">{m.label}</span>
+                <span className="text-gray-700 dark:text-gray-300">{m.label}</span>
                 <span className="flex items-center gap-2">
-                  <span className="text-gray-500 tabular-nums">{m.valueDisplay}</span>
+                  <span className="text-gray-500 dark:text-gray-400 tabular-nums">{m.valueDisplay}</span>
                   <span
                     className={`text-[10px] font-bold px-1.5 py-0.5 rounded tabular-nums ${
                       m.percentile >= 70 ? 'bg-emerald-100 text-emerald-800' :
                       m.percentile <= 30 ? 'bg-rose-100 text-rose-800' :
-                      'bg-gray-100 text-gray-700'
+                      'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                     }`}
                   >
                     {m.percentile}%ile
@@ -444,15 +444,15 @@ function PercentilePanel({ title, subtitle, metrics, accent }) {
 
 function StatLineCard({ label, items }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-        <span className="text-xs font-bold text-gray-900 uppercase">{label}</span>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+        <span className="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase">{label}</span>
       </div>
-      <div className="grid grid-cols-4 sm:grid-cols-8 gap-px bg-gray-100">
+      <div className="grid grid-cols-4 sm:grid-cols-8 gap-px bg-gray-100 dark:bg-gray-700">
         {items.map((item, i) => (
-          <div key={i} className="bg-white p-2 text-center">
+          <div key={i} className="bg-white dark:bg-gray-800 p-2 text-center">
             <div className="text-[10px] uppercase text-gray-400">{item.label}</div>
-            <div className="text-sm font-bold text-gray-900 tabular-nums">{item.value}</div>
+            <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">{item.value}</div>
           </div>
         ))}
       </div>
@@ -462,12 +462,12 @@ function StatLineCard({ label, items }) {
 
 function ContactProfileCard({ cp, bats }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-baseline justify-between">
-        <span className="text-xs font-bold text-gray-900 uppercase">Contact Profile</span>
-        <span className="text-[10px] text-gray-500">{cp.bb_total || 0} BIP{bats ? ` · bats ${bats}` : ''}</span>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase">Contact Profile</span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-400">{cp.bb_total || 0} BIP{bats ? ` · bats ${bats}` : ''}</span>
       </div>
-      <div className="grid grid-cols-4 sm:grid-cols-7 gap-px bg-gray-100">
+      <div className="grid grid-cols-4 sm:grid-cols-7 gap-px bg-gray-100 dark:bg-gray-700">
         <ContactTile label="GB%" value={cp.gb_pct} />
         <ContactTile label="LD%" value={cp.ld_pct} />
         <ContactTile label="FB%" value={cp.fb_pct} />
@@ -482,12 +482,12 @@ function ContactProfileCard({ cp, bats }) {
 
 function OppContactCard({ ocp }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-baseline justify-between">
-        <span className="text-xs font-bold text-gray-900 uppercase">Opponent Contact (against)</span>
-        <span className="text-[10px] text-gray-500">{ocp.bb_total || 0} BIP allowed</span>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase">Opponent Contact (against)</span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-400">{ocp.bb_total || 0} BIP allowed</span>
       </div>
-      <div className="grid grid-cols-4 gap-px bg-gray-100">
+      <div className="grid grid-cols-4 gap-px bg-gray-100 dark:bg-gray-700">
         <ContactTile label="GB%" value={ocp.gb_pct} />
         <ContactTile label="LD%" value={ocp.ld_pct} />
         <ContactTile label="FB%" value={ocp.fb_pct} />
@@ -500,9 +500,9 @@ function OppContactCard({ ocp }) {
 function ContactTile({ label, value }) {
   const display = value == null ? '—' : `${(value * 100).toFixed(0)}%`
   return (
-    <div className="bg-white p-2 text-center">
+    <div className="bg-white dark:bg-gray-800 p-2 text-center">
       <div className="text-[10px] uppercase text-gray-400">{label}</div>
-      <div className="text-sm font-bold text-gray-900 tabular-nums">{display}</div>
+      <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">{display}</div>
     </div>
   )
 }
@@ -524,21 +524,21 @@ function ApproachCard({ discipline, side }) {
     { label: 'P/PA', value: d.pitches_per_pa, fmt: 'num2' },
   ]
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-        <span className="text-xs font-bold text-gray-900 uppercase">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+        <span className="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase">
           {side === 'hitter' ? 'Hitter Approach' : 'Pitcher Approach'}
         </span>
       </div>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-px bg-gray-100">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-px bg-gray-100 dark:bg-gray-700">
         {tiles.map((t, i) => {
           const display = t.value == null ? '—'
             : t.fmt === 'num2' ? t.value.toFixed(2)
             : `${(t.value * 100).toFixed(1)}%`
           return (
-            <div key={i} className="bg-white p-2 text-center">
+            <div key={i} className="bg-white dark:bg-gray-800 p-2 text-center">
               <div className="text-[10px] uppercase text-gray-400">{t.label}</div>
-              <div className="text-sm font-bold text-gray-900 tabular-nums">{display}</div>
+              <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">{display}</div>
             </div>
           )
         })}
@@ -557,35 +557,35 @@ function ImpactCard({ discipline, side }) {
   const peakSign = peakWpa != null && peakWpa >= 0 ? '+' : ''
   const wpaColor = wpa == null ? 'text-gray-400' :
                    wpa >= 0.3 ? 'text-emerald-700' :
-                   wpa <= -0.3 ? 'text-rose-700' : 'text-gray-700'
+                   wpa <= -0.3 ? 'text-rose-700' : 'text-gray-700 dark:text-gray-300'
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-        <span className="text-xs font-bold text-gray-900 uppercase">Impact</span>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+        <span className="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase">Impact</span>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100">
-        <div className="bg-white p-2 text-center">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 dark:bg-gray-700">
+        <div className="bg-white dark:bg-gray-800 p-2 text-center">
           <div className="text-[10px] uppercase text-gray-400">Total WPA</div>
           <div className={`text-sm font-bold tabular-nums ${wpaColor}`}>
             {wpa == null ? '—' : `${sign}${wpa.toFixed(2)}`}
           </div>
           <div className="text-[10px] text-gray-400">{d.wpa_pa || 0} {side === 'pitcher' ? 'BF' : 'PA'}</div>
         </div>
-        <div className="bg-white p-2 text-center">
+        <div className="bg-white dark:bg-gray-800 p-2 text-center">
           <div className="text-[10px] uppercase text-gray-400">Peak WPA</div>
-          <div className="text-sm font-bold text-gray-900 tabular-nums">
+          <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">
             {peakWpa == null ? '—' : `${peakSign}${peakWpa.toFixed(2)}`}
           </div>
         </div>
-        <div className="bg-white p-2 text-center">
+        <div className="bg-white dark:bg-gray-800 p-2 text-center">
           <div className="text-[10px] uppercase text-gray-400">Avg LI</div>
-          <div className="text-sm font-bold text-gray-900 tabular-nums">
+          <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">
             {li == null ? '—' : li.toFixed(2)}
           </div>
         </div>
-        <div className="bg-white p-2 text-center">
+        <div className="bg-white dark:bg-gray-800 p-2 text-center">
           <div className="text-[10px] uppercase text-gray-400">Peak LI</div>
-          <div className="text-sm font-bold text-gray-900 tabular-nums">
+          <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">
             {peakLi == null ? '—' : peakLi.toFixed(1)}
           </div>
         </div>

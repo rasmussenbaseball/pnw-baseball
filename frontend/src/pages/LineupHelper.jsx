@@ -110,7 +110,7 @@ export default function LineupHelper() {
     return (
       <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5">
         <Card title="Lineup Helper">
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-gray-700 dark:text-gray-300">
             Pick a team in the header to see your optimized lineup.
           </p>
         </Card>
@@ -163,8 +163,8 @@ export default function LineupHelper() {
 
       {mode === 'auto' && data && data.error && (
         <Card title="Not enough data yet">
-          <p className="text-sm text-gray-700">{data.error}</p>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-sm text-gray-700 dark:text-gray-300">{data.error}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
             We need 9 hitters with at least 30 plate appearances each. Use
             "Build from scratch" instead if you want full control over the lineup.
           </p>
@@ -231,7 +231,7 @@ function LineupColumn({ vsHand, block, customized, onSwap, onReset, swapping }) 
   if (!block || block.error) {
     return (
       <Card title={label} subtitle={subtitle}>
-        <p className="text-sm text-gray-700">
+        <p className="text-sm text-gray-700 dark:text-gray-300">
           {block?.error || 'No lineup available.'}
         </p>
       </Card>
@@ -250,7 +250,7 @@ function LineupColumn({ vsHand, block, customized, onSwap, onReset, swapping }) 
         <button
           type="button"
           onClick={onReset}
-          className="text-[11px] text-portal-purple hover:underline"
+          className="text-[11px] text-portal-purple dark:text-portal-accent-light hover:underline"
         >
           Reset to optimal
         </button>
@@ -294,7 +294,7 @@ function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left border-b border-gray-200">
+          <tr className="text-left border-b border-gray-200 dark:border-gray-700">
             <Th className="w-10">#</Th>
             <Th>Player</Th>
             <Th className="w-12">Pos</Th>
@@ -316,7 +316,7 @@ function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
             )
             return (
               <Fragment key={`${s.slot}-${s.player_id}`}>
-                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                <tr className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40">
                   <td className="py-2 cursor-pointer" onClick={() => toggle(s.player_id)}>
                     <span
                       className="inline-flex items-center justify-center w-7 h-7 rounded-full
@@ -330,7 +330,7 @@ function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         to={`/player/${s.player_id}`}
-                        className="text-portal-purple hover:underline font-medium"
+                        className="text-portal-purple dark:text-portal-accent-light hover:underline font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {s.first_name} {s.last_name}
@@ -340,11 +340,11 @@ function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
                   </td>
                   <td className="py-2 cursor-pointer" onClick={() => toggle(s.player_id)}>
                     <span className="inline-block px-1.5 py-0.5 rounded
-                                     bg-gray-100 text-gray-800 text-xs font-mono">
+                                     bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-xs font-mono">
                       {s.assigned_position}
                     </span>
                   </td>
-                  <td className="py-2 text-gray-600 cursor-pointer" onClick={() => toggle(s.player_id)}>
+                  <td className="py-2 text-gray-600 dark:text-gray-400 cursor-pointer" onClick={() => toggle(s.player_id)}>
                     {s.bats || '?'}
                   </td>
                   <td className="py-2 text-right font-mono cursor-pointer" onClick={() => toggle(s.player_id)}>
@@ -356,7 +356,7 @@ function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
                   <td className="py-2 text-right font-mono cursor-pointer" onClick={() => toggle(s.player_id)}>
                     {fmtPct(s.BB_pct)}
                   </td>
-                  <td className="py-2 text-right text-gray-500 cursor-pointer" onClick={() => toggle(s.player_id)}>
+                  <td className="py-2 text-right text-gray-500 dark:text-gray-400 cursor-pointer" onClick={() => toggle(s.player_id)}>
                     {s.raw_pa}
                   </td>
                   <td className="py-2 text-right">
@@ -390,7 +390,7 @@ function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
                   </td>
                 </tr>
                 {isSwapping && (
-                  <tr className="border-b border-gray-100 bg-portal-purple/5">
+                  <tr className="border-b border-gray-100 dark:border-gray-700 bg-portal-purple/5 dark:bg-gray-900/40">
                     <td colSpan={9} className="px-3 py-3">
                       <SwapMenu
                         currentStarter={s}
@@ -409,7 +409,7 @@ function LineupTable({ starters, bench = [], vsHand, onSwap, swapping }) {
                   </tr>
                 )}
                 {isOpen && (
-                  <tr className="border-b border-gray-100 bg-gray-50">
+                  <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
                     <td colSpan={9} className="px-3 py-3">
                       <PlayerDetailPanel
                         entry={s}
@@ -437,13 +437,13 @@ function SwapMenu({ currentStarter, eligibleSubs, onPick, onCancel }) {
   if (!eligibleSubs.length) {
     return (
       <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-700">
+        <span className="text-gray-700 dark:text-gray-300">
           No bench players are eligible at <strong>{currentStarter.assigned_position}</strong>.
         </span>
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-portal-purple hover:underline"
+          className="text-xs text-portal-purple dark:text-portal-accent-light hover:underline"
         >
           Close
         </button>
@@ -453,14 +453,14 @@ function SwapMenu({ currentStarter, eligibleSubs, onPick, onCancel }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-600">
+        <p className="text-xs text-gray-600 dark:text-gray-400">
           Replace <strong>{currentStarter.first_name} {currentStarter.last_name}</strong>
           {' '}at <strong>{currentStarter.assigned_position}</strong> with:
         </p>
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-portal-purple hover:underline"
+          className="text-xs text-portal-purple dark:text-portal-accent-light hover:underline"
         >
           Cancel
         </button>
@@ -471,18 +471,18 @@ function SwapMenu({ currentStarter, eligibleSubs, onPick, onCancel }) {
             key={sub.player_id}
             type="button"
             onClick={() => onPick(sub.player_id)}
-            className="text-left px-3 py-2 bg-white border border-gray-200 rounded-md
-                       hover:border-portal-purple hover:bg-portal-purple/5 transition-colors"
+            className="text-left px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md
+                       hover:border-portal-purple hover:bg-portal-purple/5 dark:hover:bg-gray-700/40 transition-colors"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-portal-purple-dark">
+              <span className="font-medium text-portal-purple-dark dark:text-gray-100">
                 {sub.first_name} {sub.last_name}
               </span>
-              <span className="text-xs font-mono text-gray-500">
+              <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
                 {fmt3(sub.wOBA)} wOBA
               </span>
             </div>
-            <div className="text-[11px] text-gray-500 mt-0.5">
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
               {sub.bats || '?'} · {sub.raw_pa} PA · best fit slot {sub.best_slot}
             </div>
           </button>
@@ -506,13 +506,13 @@ function BenchTable({ bench }) {
   })
 
   if (!bench.length) {
-    return <p className="text-sm text-gray-500 italic">No bench depth.</p>
+    return <p className="text-sm text-gray-500 dark:text-gray-400 italic">No bench depth.</p>
   }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left border-b border-gray-200">
+          <tr className="text-left border-b border-gray-200 dark:border-gray-700">
             <Th className="w-8">#</Th>
             <Th>Player</Th>
             <Th className="w-16">Best Pos</Th>
@@ -528,14 +528,14 @@ function BenchTable({ bench }) {
             const isOpen = expanded.has(b.player_id)
             return (
               <Fragment key={b.player_id}>
-                <tr className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                <tr className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer"
                     onClick={() => toggle(b.player_id)}>
-                  <td className="py-2 text-gray-500">{idx + 1}</td>
+                  <td className="py-2 text-gray-500 dark:text-gray-400">{idx + 1}</td>
                   <td className="py-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         to={`/player/${b.player_id}`}
-                        className="text-portal-purple hover:underline font-medium"
+                        className="text-portal-purple dark:text-portal-accent-light hover:underline font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {b.first_name} {b.last_name}
@@ -545,20 +545,20 @@ function BenchTable({ bench }) {
                   </td>
                   <td className="py-2">
                     <span className="inline-block px-1.5 py-0.5 rounded
-                                     bg-gray-100 text-gray-800 text-xs font-mono">
+                                     bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-xs font-mono">
                       {b.best_position}
                     </span>
                   </td>
-                  <td className="py-2 text-gray-600">{b.bats || '?'}</td>
+                  <td className="py-2 text-gray-600 dark:text-gray-400">{b.bats || '?'}</td>
                   <td className="py-2 text-right font-mono">{fmt3(b.wOBA)}</td>
-                  <td className="py-2 text-right text-gray-500">{b.raw_pa}</td>
-                  <td className="py-2 text-right text-gray-600">#{b.best_slot}</td>
+                  <td className="py-2 text-right text-gray-500 dark:text-gray-400">{b.raw_pa}</td>
+                  <td className="py-2 text-right text-gray-600 dark:text-gray-400">#{b.best_slot}</td>
                   <td className="py-2 text-right">
                     <Chevron open={isOpen} />
                   </td>
                 </tr>
                 {isOpen && (
-                  <tr className="border-b border-gray-100 bg-gray-50">
+                  <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
                     <td colSpan={8} className="px-3 py-3">
                       <PlayerDetailPanel
                         entry={b}
@@ -604,8 +604,8 @@ function PlayerDetailPanel({ entry, reasoning, reasoningLabel }) {
     <div className="space-y-3">
       {reasoning && (
         <div className="text-sm">
-          <span className="font-semibold text-portal-purple-dark">{reasoningLabel}: </span>
-          <span className="text-gray-700">{reasoning}</span>
+          <span className="font-semibold text-portal-purple-dark dark:text-gray-100">{reasoningLabel}: </span>
+          <span className="text-gray-700 dark:text-gray-300">{reasoning}</span>
         </div>
       )}
 
@@ -645,8 +645,8 @@ function PlayerDetailPanel({ entry, reasoning, reasoningLabel }) {
         </StatGroup>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-gray-200">
-        <div className="text-xs text-gray-600 pt-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-gray-200 dark:border-gray-700">
+        <div className="text-xs text-gray-600 dark:text-gray-400 pt-2">
           <span className="font-semibold">Recent form (last {form?.days || 14} days): </span>
           {form?.status === 'unknown' || !form?.recent_wOBA
             ? <span className="italic">not enough recent PAs</span>
@@ -657,7 +657,7 @@ function PlayerDetailPanel({ entry, reasoning, reasoningLabel }) {
               </span>
             )}
         </div>
-        <div className="text-xs text-gray-600 pt-2">
+        <div className="text-xs text-gray-600 dark:text-gray-400 pt-2">
           <span className="font-semibold">Eligible positions: </span>
           {entry.eligible_positions?.length
             ? entry.eligible_positions.join(', ')
@@ -671,12 +671,12 @@ function PlayerDetailPanel({ entry, reasoning, reasoningLabel }) {
 
 function StatGroup({ title, subtitle, children }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-2.5">
-      <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-2.5">
+      <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
         {title}
       </h4>
       {subtitle && (
-        <div className="text-[9px] text-portal-purple/70 mb-1.5 italic">{subtitle}</div>
+        <div className="text-[9px] text-portal-purple/70 dark:text-portal-accent-light mb-1.5 italic">{subtitle}</div>
       )}
       <div className="space-y-1 mt-1">{children}</div>
     </div>
@@ -710,12 +710,12 @@ const STAT_TOOLTIPS = {
 }
 
 function StatRow({ label, value, highlight = false, muted = false }) {
-  const labelClass = muted ? 'text-gray-400' : 'text-gray-600'
+  const labelClass = muted ? 'text-gray-400' : 'text-gray-600 dark:text-gray-400'
   const valueClass = muted
     ? 'text-gray-400'
     : highlight
-      ? 'text-portal-purple-dark font-semibold'
-      : 'text-gray-900'
+      ? 'text-portal-purple-dark dark:text-gray-100 font-semibold'
+      : 'text-gray-900 dark:text-gray-100'
   const tooltip = STAT_TOOLTIPS[label]
   return (
     <div className="flex justify-between items-baseline text-xs" title={tooltip}>
@@ -767,7 +767,7 @@ function ModeTabs({ mode, setMode }) {
     `px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
       active
         ? 'bg-portal-purple text-portal-cream'
-        : 'bg-white text-portal-purple-dark border border-gray-200 hover:bg-gray-50'
+        : 'bg-white dark:bg-gray-800 text-portal-purple-dark dark:text-gray-100 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40'
     }`
   return (
     <div className="flex gap-2">
@@ -862,7 +862,7 @@ function BuildView({ teamId, season }) {
         subtitle="Pick any player at any position. We'll find the optimal batting order."
       >
         <div className="space-y-3">
-          <p className="text-xs text-gray-600 leading-relaxed">
+          <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
             Useful for trying out new combinations: a freshman you want to see
             in the leadoff spot, a defensive specialist at a new position, or
             running a "what if" lineup against a specific pitcher matchup.
@@ -872,12 +872,12 @@ function BuildView({ teamId, season }) {
 
           {/* vs hand selector */}
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="text-sm font-semibold text-portal-purple-dark">Optimize for:</span>
+            <span className="text-sm font-semibold text-portal-purple-dark dark:text-gray-100">Optimize for:</span>
             <VsHandRadio value={vsHand} setValue={setVsHand} />
           </div>
 
           {/* 9 player rows */}
-          <div className="border-t border-gray-200 pt-3">
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {assignments.map((a, idx) => (
                 <BuildRow
@@ -912,7 +912,7 @@ function BuildView({ teamId, season }) {
               {building ? 'Optimizing...' : 'Build optimal order'}
             </button>
             {!allFilled && (
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
                 Fill all 9 spots to continue.
               </span>
             )}
@@ -961,7 +961,7 @@ function VsHandRadio({ value, setValue }) {
           className={`px-3 py-1 text-xs font-semibold rounded border transition-colors ${
             value === o.v
               ? 'bg-portal-purple text-portal-cream border-portal-purple'
-              : 'bg-white text-portal-purple-dark border-gray-300 hover:bg-gray-50'
+              : 'bg-white dark:bg-gray-800 text-portal-purple-dark dark:text-gray-100 border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/40'
           }`}
         >
           {o.label}
@@ -977,7 +977,7 @@ function BuildRow({ rowIdx, assignment, roster, usedPlayerIds, usedPositions, ro
     (a.last_name || '').localeCompare(b.last_name || '')
   )
   return (
-    <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-md border border-gray-200">
+    <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-900/40 rounded-md border border-gray-200 dark:border-gray-700">
       <span className="w-6 text-center text-xs font-bold text-gray-400">{rowIdx + 1}</span>
       <select
         value={assignment.player_id ?? ''}
@@ -1032,7 +1032,7 @@ function vsHandLabel(vsHand) {
 function MethodologyCard() {
   return (
     <Card title="How this works" subtitle="The math behind the picks">
-      <div className="text-sm text-gray-700 space-y-2 leading-relaxed">
+      <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2 leading-relaxed">
         <p>
           The engine picks and orders the lineup using a 7-stat fitness score
           calibrated from The Book (Tango, Lichtman, Dolphin) and follow-on
@@ -1087,14 +1087,14 @@ function MethodologyCard() {
 
 function Card({ title, subtitle, children }) {
   return (
-    <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
+    <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-4">
       {title && (
         <header className="mb-3">
-          <h2 className="text-base font-semibold text-portal-purple-dark">
+          <h2 className="text-base font-semibold text-portal-purple-dark dark:text-gray-100">
             {title}
           </h2>
           {subtitle && (
-            <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>
           )}
         </header>
       )}
@@ -1105,7 +1105,7 @@ function Card({ title, subtitle, children }) {
 
 function Th({ children, className = '' }) {
   return (
-    <th className={`py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 ${className}`}>
+    <th className={`py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 ${className}`}>
       {children}
     </th>
   )
@@ -1124,7 +1124,7 @@ function LoadingState() {
           <Card>
             <div className="space-y-2">
               {[...Array(9)].map((_, j) => (
-                <div key={j} className="h-8 bg-gray-100 animate-pulse rounded" />
+                <div key={j} className="h-8 bg-gray-100 dark:bg-gray-700 animate-pulse rounded" />
               ))}
             </div>
           </Card>

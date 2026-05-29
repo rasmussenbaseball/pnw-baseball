@@ -71,7 +71,7 @@ function TeamPicker({ onPick }) {
 
   return (
     <div className="min-h-[calc(100vh-72px)] flex items-start justify-center
-                    py-10 px-4 bg-portal-cream">
+                    py-10 px-4 bg-portal-cream dark:bg-gray-900">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center
@@ -79,18 +79,18 @@ function TeamPicker({ onPick }) {
                           text-portal-accent text-2xl font-bold mb-3">
             ⚾
           </div>
-          <h1 className="text-2xl font-bold text-portal-purple-dark mb-1">
+          <h1 className="text-2xl font-bold text-portal-purple-dark dark:text-gray-100 mb-1">
             Welcome to the Coach &amp; Scouting Portal
           </h1>
-          <p className="text-sm text-gray-600 max-w-md mx-auto">
+          <p className="text-sm text-gray-600 dark:text-gray-400 max-w-md mx-auto">
             Pick your primary focus team. We'll remember it on this device
             so every page in the portal pre-loads with your team in mind.
             You can switch at any time from the header.
           </p>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3 flex flex-wrap gap-2">
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
+          <div className="border-b border-gray-100 dark:border-gray-700 px-4 py-3 flex flex-wrap gap-2">
             <select
               value={divisionId}
               onChange={(e) => setDivisionId(e.target.value)}

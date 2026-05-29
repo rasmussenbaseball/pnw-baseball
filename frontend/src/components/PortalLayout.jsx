@@ -22,19 +22,24 @@ import PortalTeamGate from './PortalTeamGate'
 // portal route declares <PortalLayout><Page /></PortalLayout> directly
 // in App.jsx — simpler than nested routes + Outlet, and easier to
 // reason about when routes don't render as expected.
-export default function PortalLayout({ children }) {
+// `lightOnly` keeps the surface light regardless of the site dark-mode
+// toggle. Used for the printable PDF pages (scouting sheet, bullpen
+// sheet, catcher cards, player cards, tournament sheet) which are
+// designed to render as white paper — darkening them would fight the
+// print output.
+export default function PortalLayout({ children, lightOnly = false }) {
   return (
     <PortalTeamProvider>
       {/* font-portal cascades the Outfit typeface to everything inside
-          the portal — header, home page, plus all wrapped pages
-          (Trends, Historic, Player Scouting).
-          text-gray-900 pins the default text color dark: the portal is
-          a permanently-light cream surface, so without this it would
-          inherit the dark-mode body color (gray-100) and any element
-          without an explicit text color would turn light and vanish on
-          the light boxes. Components with their own text-* / dark:text-*
-          classes still override this default. */}
-      <div className="min-h-screen bg-portal-cream font-portal text-gray-900">
+          the portal — header, home page, plus all wrapped pages.
+          Interactive pages follow the site dark-mode toggle (cream in
+          light, gray-900 in dark) and the default text color flips with
+          it. Print pages pass lightOnly so they always stay paper-white. */}
+      <div className={`min-h-screen font-portal ${
+        lightOnly
+          ? 'bg-portal-cream text-gray-900'
+          : 'bg-portal-cream dark:bg-gray-900 text-gray-900 dark:text-gray-100'
+      }`}>
         <PortalHeader />
         <PortalTeamGate>
           <main>

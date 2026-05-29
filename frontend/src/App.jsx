@@ -307,7 +307,7 @@ export default function App() {
     <PreviewBanner />
     <GlobalRouteLoader />
     <div className={`min-h-screen transition-colors ${
-      isPortal ? 'bg-portal-cream'
+      isPortal ? 'bg-portal-cream dark:bg-gray-900'
       : isGm ? 'bg-gray-50'
       : 'bg-nw-cream dark:bg-gray-900'
     }`}>
@@ -389,25 +389,25 @@ export default function App() {
           <Route path="/portal/team-scouting"
                  element={<RequirePortalAccess><PortalLayout><TeamScouting /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/scouting-sheet"
-                 element={<RequirePortalAccess><PortalLayout><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/scouting-sheet/:teamId"
-                 element={<RequirePortalAccess><PortalLayout><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/pdfs"
                  element={<RequirePortalAccess><PortalLayout><PortalPDFs /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/pdfs/player-card/:playerId"
-                 element={<RequirePortalAccess><PortalLayout><PlayerCardPDF /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><PlayerCardPDF /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/pdfs/bulk-player-cards"
-                 element={<RequirePortalAccess><PortalLayout><BulkPlayerCards /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><BulkPlayerCards /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/bullpen-sheet"
-                 element={<RequirePortalAccess><PortalLayout><BullpenSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><BullpenSheet /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/bullpen-sheet/:teamId"
-                 element={<RequirePortalAccess><PortalLayout><BullpenSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><BullpenSheet /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/catcher-cards"
-                 element={<RequirePortalAccess><PortalLayout><CatcherCards /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><CatcherCards /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/catcher-cards/:teamId"
-                 element={<RequirePortalAccess><PortalLayout><CatcherCards /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><CatcherCards /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/nwac-tournament-sheet"
-                 element={<RequirePortalAccess><PortalLayout><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout lightOnly><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
           {/* JUCO Tracker moved into the Coach & Scout portal (2026-05-25).
               Old /juco-tracker still works via the redirect above. */}
           <Route path="/portal/juco-tracker"

@@ -246,19 +246,19 @@ function NavDropdown({ section }) {
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 min-w-[260px] z-50
-                        bg-white text-gray-900 rounded-lg shadow-lg border
-                        border-gray-200 py-1.5">
+                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-lg border
+                        border-gray-200 dark:border-gray-700 py-1.5">
           {section.items.map(item => (
             <Link
               key={item.to}
               to={item.to}
-              className="block px-3 py-2 hover:bg-portal-purple/5
+              className="block px-3 py-2 hover:bg-portal-purple/5 dark:hover:bg-gray-700/60
                          transition-colors"
             >
-              <div className="text-sm font-semibold text-portal-purple">
+              <div className="text-sm font-semibold text-portal-purple dark:text-portal-accent-light">
                 {item.label}
               </div>
-              <div className="text-[11px] text-gray-500 mt-0.5">
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                 {item.desc}
               </div>
             </Link>
