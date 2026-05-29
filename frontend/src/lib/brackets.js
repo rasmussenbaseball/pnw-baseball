@@ -623,6 +623,45 @@ export const TOURNAMENTS = {
     // finals are regular cards.
     championshipGames: [14],
   },
+
+  // ───────────────────────────────────────────────────────────────
+  // NCAA EUGENE REGIONAL — May 29 to June 1, 2026 @ PK Park (Oregon)
+  //
+  // Four-team double elimination. THREE of the four teams are PNW D1
+  // programs (Oregon, Oregon State, Washington State); Yale is the
+  // out-of-region #4 seed. Standard NCAA regional structure:
+  //   G1: #2 vs #3, G2: #1 vs #4 (Fri)
+  //   G3: L1 vs L2 (elim, Sat), G4: W1 vs W2 (Sat)
+  //   G5: W3 vs L4 (elim, Sun), G6: W4 vs W5 (Regional Final, Sun)
+  //   G7: W4 vs W6 (if necessary, Mon)
+  //
+  // Logos live on the seed entries so the homepage widget needs no
+  // extra /teams fetch. Yale isn't in our DB (non-PNW); its games show
+  // as matchups and fill in live once it's scraped. PNW-vs-PNW games
+  // resolve live from /games/by-date via resolveBracket.
+  // ───────────────────────────────────────────────────────────────
+  eugene_regional_2026: {
+    label: 'NCAA Eugene Regional',
+    sub: 'May 29 to June 1, 2026 · PK Park, Eugene OR',
+    season: 2026,
+    formatLabel: 'Four-team double elimination · 3 PNW teams',
+    seeds: [
+      { seed: 1, team_id: 2,    name: 'Oregon',     record: '40-16',   pnw: true, note: 'No. 11 national seed · host', logo: '/logos/teams/oregon.svg' },
+      { seed: 2, team_id: 3,    name: 'Oregon St.', record: '43-12',   pnw: true, logo: '/logos/teams/oregon_st.svg' },
+      { seed: 3, team_id: 4,    name: 'Wash. St.',  record: '30-26',   pnw: true, logo: '/logos/washington_state.png' },
+      { seed: 4, team_id: null, name: 'Yale',       record: '30-13-1', logo: null },
+    ],
+    games: [
+      { num: 1, iso: '2026-05-29', day: 'Fri May 29', time: '3:00 PM',      home: { ref: 'seed', val: 2 },     away: { ref: 'seed', val: 3 } },
+      { num: 2, iso: '2026-05-29', day: 'Fri May 29', time: '8:00 PM',      home: { ref: 'seed', val: 1 },     away: { ref: 'seed', val: 4 } },
+      { num: 3, iso: '2026-05-30', day: 'Sat May 30', time: 'Elimination',  home: { ref: 'loser',  game: 1 },  away: { ref: 'loser',  game: 2 } },
+      { num: 4, iso: '2026-05-30', day: 'Sat May 30', time: 'Winners',      home: { ref: 'winner', game: 1 },  away: { ref: 'winner', game: 2 } },
+      { num: 5, iso: '2026-05-31', day: 'Sun May 31', time: 'Elimination',  home: { ref: 'winner', game: 3 },  away: { ref: 'loser',  game: 4 } },
+      { num: 6, iso: '2026-05-31', day: 'Sun May 31', time: 'Regional Final', home: { ref: 'winner', game: 4 }, away: { ref: 'winner', game: 5 } },
+      { num: 7, iso: '2026-06-01', day: 'Mon Jun 1',  time: 'If necessary', home: { ref: 'winner', game: 4 },  away: { ref: 'winner', game: 6 }, ifNecessary: true },
+    ],
+    championshipGames: [6, 7],
+  },
 }
 
 // ────────────────────────────────────────────

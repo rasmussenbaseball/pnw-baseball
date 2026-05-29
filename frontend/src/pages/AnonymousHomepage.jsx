@@ -14,6 +14,7 @@ import {
 } from '../hooks/useApi'
 import { usePublishedArticles } from '../hooks/useArticles'
 import PreviewTierWidget from '../components/PreviewTierWidget'
+import EugeneRegionalBracket from '../components/EugeneRegionalBracket'
 
 const SEASON = 2026
 
@@ -29,6 +30,11 @@ export default function AnonymousHomepage() {
           dev can switch tiers while building per-tier homepages. */}
       <div className="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
         <PreviewTierWidget />
+      </div>
+      {/* NCAA Eugene Regional bracket — pinned above the hero during
+          regional weekend (self-hides afterward). */}
+      <div className="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto pt-4">
+        <EugeneRegionalBracket />
       </div>
       <HeroSection />
 
