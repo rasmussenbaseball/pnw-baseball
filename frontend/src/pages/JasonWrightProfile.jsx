@@ -540,7 +540,8 @@ function PerGameOpsChart({ games }) {
 // prototype's typography.
 const EXTENDED_BATTING_COLS = [
   { key: 'season',            label: 'Year', fmt: 'raw',  align: 'left' },
-  { key: 'team_short',        label: 'Team', fmt: 'raw',  align: 'left' },
+  { key: '_typeLabel',        label: 'Lvl',  fmt: 'raw',  align: 'left' },
+  { key: '_team',             label: 'Team', fmt: 'raw',  align: 'left' },
   { key: 'games',             label: 'G',    fmt: 'int' },
   { key: 'plate_appearances', label: 'PA',   fmt: 'int' },
   { key: 'at_bats',           label: 'AB',   fmt: 'int' },
@@ -565,10 +566,17 @@ const EXTENDED_BATTING_COLS = [
   { key: 'offensive_war',     label: 'oWAR', fmt: 'war' },
 ]
 
+// Cols that don't exist on summer rows — render "—" so the table
+// stays aligned. Summer rosters give us slash line + counting stats
+// only; advanced metrics need PBP we don't have for summer leagues.
+const SUMMER_BLANK_COLS = new Set([
+  'woba', 'wrc_plus', 'iso', 'bb_pct', 'k_pct', 'offensive_war',
+])
+
 function ExtendedSeasonStats({ rows }) {
   if (!rows || !rows.length) return <div className="text-xs text-gray-500 dark:text-gray-400">No batting stats.</div>
   const fmt = (key, v) => {
-    if (v == null || v === '') return key === 'raw' ? '—' : '—'
+    if (v == null || v === '') return '—'
     switch (key) {
       case 'raw': return v
       case 'int': return Math.round(v)
@@ -578,9 +586,13 @@ function ExtendedSeasonStats({ rows }) {
       default:    return v
     }
   }
+  // Current spring season highlight = the latest spring row in the list
+  let lastSpringIdx = -1
+  rows.forEach((r, i) => { if (r._kind === 'spring') lastSpringIdx = i })
+
   return (
     <div className="overflow-x-auto -mx-3 sm:mx-0">
-      <div className="min-w-[760px] px-3 sm:px-0">
+      <div className="min-w-[820px] px-3 sm:px-0">
         <table className="w-full text-[11px] border-collapse">
           <thead>
             <tr style={{ borderBottom: `1px solid ${THEME.border}` }}>
@@ -593,18 +605,26 @@ function ExtendedSeasonStats({ rows }) {
           </thead>
           <tbody>
             {rows.map((r, i) => {
-              const isCurrent = i === rows.length - 1
+              const isCurrent = i === lastSpringIdx
+              const isSummer = r._kind === 'summer'
               return (
-                <tr key={r.season + '-' + (r.team_short || i)}
-                  className={`dark:text-gray-200 ${isCurrent ? 'font-bold dark:bg-amber-900/20' : ''}`}
-                  style={isCurrent ? { background: '#faf6ec', borderTop: `1px solid ${THEME.borderStrong}` } : { borderBottom: `1px solid #f0ebdc` }}>
-                  {EXTENDED_BATTING_COLS.map(c => (
-                    <td key={c.key}
-                      className={`px-1.5 py-1.5 tabular-nums dark:text-gray-100 ${c.align === 'left' ? 'text-left' : 'text-right'}`}
-                      style={{ color: THEME.text }}>
-                      {fmt(c.fmt, r[c.key])}
-                    </td>
-                  ))}
+                <tr key={`${r.season}-${r._kind}-${r._team}-${i}`}
+                  className={`${isCurrent ? 'font-bold dark:bg-amber-900/20' : 'dark:text-gray-200'} ${isSummer ? 'italic dark:bg-gray-900/40' : ''}`}
+                  style={isCurrent
+                    ? { background: '#faf6ec', borderTop: `1px solid ${THEME.borderStrong}` }
+                    : (isSummer
+                        ? { background: '#f7f3ea', borderBottom: `1px solid #ede6d2` }
+                        : { borderBottom: `1px solid #f0ebdc` })}>
+                  {EXTENDED_BATTING_COLS.map(c => {
+                    const blank = isSummer && SUMMER_BLANK_COLS.has(c.key)
+                    return (
+                      <td key={c.key}
+                        className={`px-1.5 py-1.5 tabular-nums dark:text-gray-100 ${c.align === 'left' ? 'text-left' : 'text-right'}`}
+                        style={{ color: isSummer ? THEME.textMuted : THEME.text }}>
+                        {blank ? '—' : fmt(c.fmt, r[c.key])}
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             })}
@@ -761,9 +781,32 @@ export default function JasonWrightProfile() {
     return <div className="text-center py-20 text-gray-500 dark:text-gray-400">{error || 'Player not found.'}</div>
   }
 
-  const { player, batting_stats, batting_percentiles, fielding_stats, awards, pnw_rankings, position_breakdown } = data
-  const battingByYear = (batting_stats || []).slice().sort((a, b) => a.season - b.season)
-  const career = battingByYear.reduce((acc, s) => {
+  const { player, batting_stats, summer_batting, batting_percentiles, fielding_stats, awards, pnw_rankings, position_breakdown } = data
+
+  // Tag spring + summer rows so we can interleave them chronologically
+  // for the hero stat table + extended Batting Stats card (BR-style:
+  // 2024 spring → 2024 summer → 2025 spring → 2025 summer → ...).
+  const springTagged = (batting_stats || []).map(s => ({
+    ...s,
+    _kind: 'spring',
+    _typeLabel: s.division_level || 'College',
+    _team: s.team_short || '—',
+  }))
+  const summerTagged = (summer_batting || []).map(s => ({
+    ...s,
+    _kind: 'summer',
+    _typeLabel: s.league_abbrev || 'Summer',
+    _team: s.team_name || '—',
+  }))
+  const allBattingRows = [...springTagged, ...summerTagged].sort((a, b) => {
+    if (a.season !== b.season) return a.season - b.season
+    return a._kind === 'spring' ? -1 : 1
+  })
+  // "Career" total stays spring-only (mirrors BR convention — spring
+  // college career is the headline, summer is a separate competition
+  // level and not rolled into the same totals).
+  const springRows = springTagged.slice().sort((a, b) => a.season - b.season)
+  const career = springRows.reduce((acc, s) => {
     acc.pa += s.plate_appearances || 0
     acc.ab += s.at_bats || 0
     acc.h  += s.hits || 0
@@ -779,7 +822,7 @@ export default function JasonWrightProfile() {
     ? (career.h + career.bb + career.hbp) / (career.ab + career.bb + career.hbp + career.sf) : 0
   const careerSLG = career.ab > 0 ? career.tb / career.ab : 0
 
-  const currSeason = battingByYear.slice(-1)[0]
+  const currSeason = springRows.slice(-1)[0]
   const seasonWobaVal = currSeason?.woba
 
   // Build radar data from live percentiles, fallback to 0 if missing
@@ -888,37 +931,42 @@ export default function JasonWrightProfile() {
                 </div>
               </div>
 
-              {/* Year-by-year table */}
+              {/* Year-by-year table — spring + summer interleaved chronologically.
+                  Summer rows are muted and show "—" for advanced stats. */}
               <table className="w-full mt-2 text-[11px] border-collapse">
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${THEME.border}` }}>
-                    {['Year','PA','AVG','OBP','SLG','HR','wRC+'].map(h => (
-                      <th key={h} className={`px-1.5 py-1 font-bold tracking-wide dark:text-gray-300 ${h === 'Year' ? 'text-left' : 'text-right'}`} style={{ color: THEME.textLight }}>{h}</th>
+                    {['Year','Lvl','PA','AVG','OBP','SLG','HR','wRC+'].map(h => (
+                      <th key={h} className={`px-1.5 py-1 font-bold tracking-wide dark:text-gray-300 ${h === 'Year' || h === 'Lvl' ? 'text-left' : 'text-right'}`} style={{ color: THEME.textLight }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {battingByYear.map((s, i) => {
-                    const isCurrent = i === battingByYear.length - 1
+                  {allBattingRows.map((s, i) => {
+                    const isCurrent = s._kind === 'spring' && i === allBattingRows.length - 1
+                    const isSummer = s._kind === 'summer'
+                    const rowStyle = isCurrent
+                      ? { background: '#faf6ec', borderTop: `1px solid ${THEME.borderStrong}` }
+                      : (isSummer ? { background: '#f7f3ea' } : {})
                     return (
-                      <tr key={s.season}
-                        className={isCurrent ? 'font-bold dark:bg-amber-900/20' : 'dark:text-gray-200'}
-                        style={isCurrent
-                          ? { background: '#faf6ec', borderTop: `1px solid ${THEME.borderStrong}` }
-                          : {}}>
+                      <tr key={`${s.season}-${s._kind}-${s._team}-${i}`}
+                        className={`${isCurrent ? 'font-bold dark:bg-amber-900/20' : 'dark:text-gray-200'} ${isSummer ? 'italic dark:bg-gray-900/40' : ''}`}
+                        style={rowStyle}>
                         <td className="px-1.5 py-1 text-left dark:text-gray-300" style={{ color: THEME.textMuted }}>{s.season}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{s.plate_appearances}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{formatPct('avg', s.batting_avg)}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{formatPct('avg', s.on_base_pct)}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{formatPct('avg', s.slugging_pct)}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{s.home_runs}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{Math.round(s.wrc_plus || 0)}</td>
+                        <td className="px-1.5 py-1 text-left dark:text-gray-300" style={{ color: isSummer ? THEME.textLight : THEME.textMuted }}>{s._typeLabel}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{s.plate_appearances ?? '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{s.batting_avg != null ? formatPct('avg', s.batting_avg) : '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{s.on_base_pct != null ? formatPct('avg', s.on_base_pct) : '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{s.slugging_pct != null ? formatPct('avg', s.slugging_pct) : '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{s.home_runs ?? '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{isSummer ? '—' : Math.round(s.wrc_plus || 0)}</td>
                       </tr>
                     )
                   })}
-                  {battingByYear.length > 1 && (
+                  {springRows.length > 1 && (
                     <tr style={{ borderTop: `1px solid ${THEME.border}` }} className="dark:text-gray-200">
                       <td className="px-1.5 py-1 text-left dark:text-gray-300" style={{ color: THEME.textMuted }}>Career</td>
+                      <td className="px-1.5 py-1 text-left dark:text-gray-300" style={{ color: THEME.textLight }}>Spring</td>
                       <td className="px-1.5 py-1 text-right tabular-nums">{career.pa}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums">{formatPct('avg', careerAvg)}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums">{formatPct('avg', careerOBP)}</td>
@@ -948,8 +996,10 @@ export default function JasonWrightProfile() {
             </div>
           </div>
 
-          {/* RIGHT: percentile rankings */}
-          <div className="p-5 border-l dark:bg-gray-800 dark:border-gray-700" style={{ borderColor: THEME.border }}>
+          {/* RIGHT: percentile rankings — flex-fills the column so rows
+              distribute across the full hero height rather than leaving
+              empty space below the last metric. */}
+          <div className="p-5 border-l dark:bg-gray-800 dark:border-gray-700 flex flex-col" style={{ borderColor: THEME.border }}>
             <div className="flex items-baseline gap-2 pb-2 mb-3 border-b-2 dark:border-gray-100" style={{ borderColor: THEME.text }}>
               <h3 className="text-base font-bold tracking-tight dark:text-gray-100" style={{ color: THEME.text }}>Percentile Rankings</h3>
               <span className="ml-auto text-[11px] tracking-widest font-semibold" style={{ color: THEME.textLight }}>2026 · VS. D2</span>
@@ -964,7 +1014,7 @@ export default function JasonWrightProfile() {
               </div>
               <span />
             </div>
-            <div>
+            <div className="flex-1 flex flex-col justify-between gap-1">
               {PCT_METRICS.map(m => {
                 const v = batting_percentiles?.[m.key]
                 const pct = v?.percentile
@@ -981,7 +1031,7 @@ export default function JasonWrightProfile() {
             <span>Batting Stats</span>
             <span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: THEME.textLight }}>BY SEASON</span>
           </h2>
-          <ExtendedSeasonStats rows={battingByYear} />
+          <ExtendedSeasonStats rows={allBattingRows} />
         </div>
 
         {/* ── DEFENSIVE STATS ── */}
