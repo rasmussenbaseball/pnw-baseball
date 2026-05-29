@@ -118,22 +118,23 @@ function GmChunkLoading() {
 }
 
 function RequireGmEarlyAccess({ children }) {
-  // GM access tiers:
-  //   1. Beta allowlist (GM_EARLY_ACCESS_EMAILS) — current testers
-  //      stay grandfathered in regardless of subscription.
-  //   2. Premium/Coach subscribers — auto-admitted once tier gating
-  //      is enabled. Until then, useTier returns 'coach' in soft mode
-  //      so the gate is inert for any signed-in user via this branch.
-  // This means: today, anyone signed in can reach /gm/* (soft mode
-  // bypasses the tier check). When VITE_TIER_GATING_ENABLED=true,
-  // only allowlisted testers + premium subscribers will get in.
+  // GM access — who gets into /gm/*:
+  //   1. Beta allowlist (GM_EARLY_ACCESS_EMAILS) — original private-alpha
+  //      testers, grandfathered in regardless of subscription.
+  //   2. Any PAID subscription tier — Premium, Coach & Scout, or Dev.
+  //      useTier() resolves the backend /me/subscription row: a paid sub
+  //      ('paid'/'premium') → 'premium', a coach sub → 'coach', and site
+  //      devs (DEVELOPER_EMAILS) → 'dev'. All three pass. Even if the
+  //      backend only distinguishes free/paid today, every paid user maps
+  //      to 'premium' and gets in.
+  // Blocked: signed-out + Free-tier users → the upsell card below.
   const { user, loading } = useAuth()
   const { tier, loading: tierLoading } = useTier()
   if (loading || tierLoading) return null
   if (!user) return <Navigate to="/login" replace />
 
   const onAllowlist = GM_EARLY_ACCESS_EMAILS.includes(user.email)
-  // Site devs (tier 'dev') always pass — they see everything.
+  // Premium, Coach & Scout, and Dev tiers all include the GM game.
   const hasPaidTier = tier === 'premium' || tier === 'coach' || tier === 'dev'
 
   if (!onAllowlist && !hasPaidTier) {
