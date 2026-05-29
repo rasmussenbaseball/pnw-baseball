@@ -473,30 +473,23 @@ export function openNonConfWeeks(schoolId, conferenceId, schedule, year, level =
  * @returns {{ allowed: boolean, reason?: string, mustBeMidweek?: boolean, mustBeScrimmage?: boolean }}
  */
 export function checkOpponentEligibility(opponentDivision, userLevel = 'NAIA') {
-  if (opponentDivision === 'NAIA') return { allowed: true }
-  // NCAA-on-NCAA cross-division is fine as a standard weekend series — the
-  // "D1 = midweek only" rule below is from a NAIA user's perspective; doesn't
-  // apply when the user is themselves at an NCAA level.
-  if (userLevel !== 'NAIA'
-    && (opponentDivision === 'D1' || opponentDivision === 'D2' || opponentDivision === 'D3')) {
-    return { allowed: true }
-  }
-  if (opponentDivision === 'D1') {
-    return {
-      allowed: true,
-      mustBeMidweek: true,
-      reason: `NAIA vs D1 is midweek only — hard cap of ${NAIA_D1_MIDWEEK_CAP}/year.`,
-    }
-  }
-  if (opponentDivision === 'D2' || opponentDivision === 'D3') {
-    return { allowed: true }
-  }
-  if (opponentDivision === 'JUCO_NWAC' || opponentDivision.startsWith('JUCO')) {
+  // NWAC / JUCO opponents are scrimmage-only (fall or spring pre-season) and
+  // are the ONLY level barred from midweek games — per Nate. Everyone else
+  // (NAIA, D1, D2, D3) is fair game for either weekend series or midweek
+  // singles, no caps.
+  if (opponentDivision === 'JUCO_NWAC' || (opponentDivision || '').startsWith('JUCO')) {
     return {
       allowed: true,
       mustBeScrimmage: true,
       reason: 'NWAC/JUCO games are scrimmages only (fall or spring pre-season). Do not count toward record.',
     }
+  }
+  // NAIA-vs-D1 still routes through the midweek single path (real-world:
+  // NAIA programs don't get D1 weekend series). The historical 2/year hard
+  // cap is removed — NAIA programs can schedule as many midweek D1 games
+  // as they want, subject only to the regular-season game cap.
+  if (userLevel === 'NAIA' && opponentDivision === 'D1') {
+    return { allowed: true, mustBeMidweek: true, reason: 'NAIA vs D1 is midweek only.' }
   }
   return { allowed: true }
 }
@@ -579,11 +572,9 @@ export function tryAddNonConfGame(userSchoolId, opponentSchoolId, opponentDivisi
     return { ok: false, error: 'Use the scrimmage scheduler for NWAC/JUCO opponents (fall or spring pre-season).' }
   }
 
-  // D1 midweek path (NAIA-vs-D1 only — separate hard cap)
+  // NAIA-vs-D1 midweek path — uncapped per Nate (was hard-capped at 2/year).
+  // The 55-game regular-season cap still applies via countRecordGames below.
   if (elig.mustBeMidweek) {
-    if (d1MidweeksRemaining(userSchoolId, schedule) === 0) {
-      return { ok: false, error: `D1 midweek cap reached (${NAIA_D1_MIDWEEK_CAP}/year).` }
-    }
     return addD1Midweek(userSchoolId, opponentSchoolId, week, year, opts.userIsHome ?? true)
   }
 

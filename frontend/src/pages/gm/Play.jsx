@@ -132,9 +132,13 @@ export default function Play() {
             accumulateBoxscore(save, result.boxscore, g.type)
             // Energy: deduct costs for the user's appearing players. Build the
             // appearance list from the user-side lineup + pitchers who threw.
+            // POSTSEASON games skip energy drain entirely (per Nate) so the
+            // back-to-back conference tournament / regional / WS schedule
+            // doesn't gas the user's team. Mirrors the season.simWeek path.
             ensureEnergyState(save)
             const userTeam = save.teams[save.userSchoolId]
-            if (userTeam) {
+            const isPostseason = g.type === 'POSTSEASON'
+            if (userTeam && !isPostseason) {
               const userSide = save.userSchoolId === g.homeId ? 'home' : 'away'
               const userLineup = resolveLineupForGame(save, save.userSchoolId, g.id)
               const isSecond = isSecondGameOfDayUI(save.schedule || [], g, save.userSchoolId)

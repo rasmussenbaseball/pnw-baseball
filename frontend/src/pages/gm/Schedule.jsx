@@ -288,8 +288,8 @@ export default function Schedule() {
               {scheduleIncomplete
                 ? 'Fill all weekend slots above first. Then you can optionally add midweek games (Tuesdays) for more reps.'
                 : save.level === 'NAIA'
-                  ? `Optional Tuesday single games. NAIA-vs-D1 hard-capped at ${NAIA_D1_MIDWEEK_CAP}/year (${d1Remaining} left); NAIA-vs-NAIA or D2/D3 unrestricted.`
-                  : `Optional Tuesday single games against any ${save.level || 'level-eligible'} opponent. Don't count toward conference record.`
+                  ? 'Optional Tuesday single games against any non-NWAC opponent. No caps — NAIA-vs-D1 included.'
+                  : `Optional Tuesday single games against any non-NWAC opponent. Don't count toward conference record.`
               }
             </div>
           </div>
@@ -654,7 +654,10 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
         // every weekend opponent is a D1 — so this filter would empty the
         // list. Skip it for D1 users.
         if (userLevel === 'D1') return true
-        if (t.division === 'D1') return midweekMode && d1Remaining > 0
+        // NAIA-vs-D1 stays midweek-only (real-world: NAIA programs don't
+        // get D1 weekend series). No cap on D1 midweeks now — any number
+        // are fine, subject to the 55-game regular-season cap.
+        if (t.division === 'D1') return midweekMode
         return true
       }),
   ).slice(0, 60)
@@ -694,7 +697,7 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
                 (divFilter === d ? 'bg-pnw-green text-white' : 'bg-gray-100 text-gray-700')
               }
             >
-              {d}{d === 'D1' && ` (${d1Remaining} left)`}
+              {d}
             </button>
           ))}
         </div>
@@ -709,8 +712,7 @@ function OpponentPicker({ save, userSchool, d1Remaining, midweekMode, onPick, on
 
         {midweekMode && (
           <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-3 text-xs text-blue-900">
-            Midweek single game.
-            {userLevel === 'NAIA' && ` D1 opponents are capped at ${NAIA_D1_MIDWEEK_CAP}/year.`}
+            Midweek single game. Any non-NWAC opponent is fair game.
           </div>
         )}
 

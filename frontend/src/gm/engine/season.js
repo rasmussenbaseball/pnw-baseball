@@ -373,7 +373,15 @@ export function simWeek(state, schedule, ratings) {
     // Energy costs for the user's side after every user game. Doubleheaders
     // flag the second-game-of-day surcharge so the same catcher / starter
     // who appeared in game 1 takes an extra hit in game 2.
-    if (isUserGame && result.appearances) {
+    //
+    // POSTSEASON exemption (per Nate): conference tournaments, regionals,
+    // super regionals, and the World Series often play every day for 4-7
+    // straight days. The regular-season energy cadence (per-game drain +
+    // overnight recovery) wasn't calibrated for that, so users were getting
+    // gassed by the WS. Postseason games skip the energy drain entirely so
+    // every team plays the playoffs at full strength.
+    const isPostseason = g.type === 'POSTSEASON'
+    if (isUserGame && result.appearances && !isPostseason) {
       const isSecond = isSecondGameOfDay(schedule, g, userSchoolId)
       const userSide = g.homeId === userSchoolId ? 'home' : 'away'
       const userTeam = state.teams[userSchoolId]
@@ -397,7 +405,7 @@ export function simWeek(state, schedule, ratings) {
         })
         .map(a => ({ ...a, isSecondGameOfDay: isSecond }))
       applyGameEnergyCosts(state, oppAppearances)
-    } else if (isUserGame) {
+    } else if (isUserGame && !isPostseason) {
       // Fast-sim user game (vs non-NAIA) — deduct a baseline cost for the
       // starting 9 + starter so doubleheader energy still drains.
       const userTeam = state.teams[userSchoolId]
