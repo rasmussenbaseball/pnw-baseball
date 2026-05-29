@@ -30,6 +30,11 @@ export function usePublishedArticles(limit = 50) {
 }
 
 export function usePublishedArticle(slug) {
+  // Send the Bearer token so the backend can resolve the viewer's tier.
+  // Without it every viewer looks anonymous and the paywall locks even
+  // free articles for signed-in free/premium/coach users.
+  const { session } = useAuth()
+  const token = session?.access_token || null
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -37,12 +42,13 @@ export function usePublishedArticle(slug) {
     if (!slug) return
     let alive = true
     setLoading(true)
-    fetch(`${API_BASE}/articles/${encodeURIComponent(slug)}`)
+    fetch(`${API_BASE}/articles/${encodeURIComponent(slug)}`, { headers: authHeaders(session) })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then(d => { if (alive) { setData(d); setLoading(false) } })
       .catch(e => { if (alive) { setError(e.message); setLoading(false) } })
     return () => { alive = false }
-  }, [slug])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, token])
   return { data, loading, error }
 }
 

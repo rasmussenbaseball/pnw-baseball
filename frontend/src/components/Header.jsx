@@ -272,7 +272,7 @@ function SearchBar({ mobile = false }) {
             onChange={handleChange}
             onKeyDown={(e) => { if (e.key === 'Escape') { setExpanded(false); setQuery(''); setResults(null); setOpen(false) } else handleKeyDown(e) }}
             placeholder="Search players & teams..."
-            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder-teal-200/50"
+            className="flex-1 bg-transparent dark:bg-transparent border-none outline-none text-base text-white placeholder-teal-200/50"
             autoFocus
           />
           {loading && (
@@ -358,7 +358,7 @@ function SearchBar({ mobile = false }) {
           onKeyDown={handleKeyDown}
           onFocus={() => { if (results && query.length >= 2) setOpen(true) }}
           placeholder="Search players & teams..."
-          className="bg-transparent border-none outline-none text-sm text-white placeholder-teal-200/50 ml-2 w-40 lg:w-48"
+          className="bg-transparent dark:bg-transparent border-none outline-none text-sm text-white placeholder-teal-200/50 ml-2 w-40 lg:w-48"
         />
         {loading && (
           <div className="animate-spin h-3.5 w-3.5 border-2 border-teal-200 border-t-transparent rounded-full ml-1 shrink-0" />

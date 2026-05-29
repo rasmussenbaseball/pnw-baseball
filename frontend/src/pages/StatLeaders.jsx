@@ -48,7 +48,7 @@ function LeaderCard({ category }) {
           return (
             <div
               key={player.player_id}
-              className={`flex items-center gap-2 px-3 py-2 hover:bg-teal-50/50 transition-colors ${i === 0 ? 'bg-amber-50/40' : ''} ${player.is_qualified === false ? 'italic text-gray-500 dark:text-gray-400' : ''}`}
+              className={`flex items-center gap-2 px-3 py-2 hover:bg-teal-50/50 dark:hover:bg-teal-900/20 transition-colors ${i === 0 ? 'bg-amber-50/40 dark:bg-amber-900/20' : ''} ${player.is_qualified === false ? 'italic text-gray-500 dark:text-gray-400' : ''}`}
             >
               {/* Rank */}
               <span className={`text-xs font-bold w-5 text-center shrink-0 ${i === 0 ? 'text-amber-600' : 'text-gray-400 dark:text-gray-500'}`}>

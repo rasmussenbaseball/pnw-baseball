@@ -191,7 +191,7 @@ def _row_to_full(r: dict) -> dict:
 def _tier_meets(actual: str, required: str) -> bool:
     """Mirror of frontend lib/tiers.js tierMeets — true if `actual` is
     at-or-above `required` on the tier ladder."""
-    rank = {"none": 0, "free": 1, "premium": 2, "coach": 3}
+    rank = {"none": 0, "free": 1, "premium": 2, "coach": 3, "dev": 99}
     return rank.get(actual, 0) >= rank.get(required, 0)
 
 
@@ -244,9 +244,22 @@ def _viewer_context(request) -> dict:
         return {"user_id": None, "tier": "none"}
     if resp.status_code != 200:
         return {"user_id": None, "tier": "none"}
-    uid = (resp.json() or {}).get("id")
+    body = resp.json() or {}
+    uid = body.get("id")
+    email = body.get("email")
     if not uid:
         return {"user_id": None, "tier": "none"}
+    # Developers / comped emails (interns, staff) are granted a tier via
+    # the allowlist regardless of their subscription row, so they can see
+    # every article. This mirrors require_tier() in auth.py.
+    comped = None
+    try:
+        from ._tier_allowlist import resolve_comped_tier
+        comped = resolve_comped_tier(email) if email else None
+    except Exception:
+        comped = None
+    if comped:
+        return {"user_id": uid, "tier": comped}
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT tier FROM user_subscriptions WHERE user_id = %s", (uid,))
