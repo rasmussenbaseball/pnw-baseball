@@ -36,6 +36,7 @@ from .api.email_prefs import router as email_prefs_router
 from .api.email_broadcasts import router as email_broadcasts_router
 from .api.account import router as account_router
 from .api.billing import router as billing_router
+from .api.summer import router as summer_router
 from .models.database import init_db, seed_divisions_and_conferences
 
 class DecimalJSONResponse(JSONResponse):
@@ -80,6 +81,7 @@ app.include_router(email_prefs_router, prefix="/api/v1")
 app.include_router(email_broadcasts_router, prefix="/api/v1")
 app.include_router(account_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
+app.include_router(summer_router, prefix="/api/v1")
 
 
 # ── Edge cache headers ───────────────────────────────────────────

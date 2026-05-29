@@ -62,6 +62,16 @@ const NAV = [
         requires: 'premium' },
     ],
   },
+  // Summer baseball — currently WCL, more leagues later. Single tab,
+  // single dropdown item that lands on /summer (internal tabs handle
+  // scoreboard / standings / teams / leaderboards inside).
+  {
+    label: 'Summer',
+    items: [
+      { to: '/summer', label: 'WCL Hub',
+        desc: 'Scoreboard, standings, leaderboards, and teams for the West Coast League' },
+    ],
+  },
   // Tab is open so anonymous can browse; each item enforces its own
   // gate (free account minimum for Grid/Quiz, premium for the Sim).
   {

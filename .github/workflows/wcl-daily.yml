@@ -1,0 +1,71 @@
+name: WCL Daily Scrape
+
+on:
+  # Once daily at 8 AM Pacific = 15:00 UTC (PDT) / 16:00 UTC (PST).
+  # WCL is summer-only (PDT) so 15:00 UTC = 8 AM PT works all season.
+  # During the run window (early June through August) this picks up
+  # every box score posted overnight + refreshes any in-progress games.
+  schedule:
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Season year (default 2026)'
+        required: false
+        default: '2026'
+      rescrape:
+        description: 'Re-parse box scores even if already ingested (true/false)'
+        required: false
+        default: 'false'
+      limit:
+        description: 'Max box scores to process (0 = unlimited)'
+        required: false
+        default: '0'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 psycopg2-binary python-dotenv
+
+      - name: Refresh WCL schedule (picks up new games / status flips)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          echo "→ Refreshing schedule for season $SEASON"
+          PYTHONPATH=backend python3 scripts/scrape_wcl_schedule.py --season "$SEASON"
+
+      - name: Scrape unfinished box scores
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          RESCRAPE="${{ github.event.inputs.rescrape || 'false' }}"
+          LIMIT="${{ github.event.inputs.limit || '0' }}"
+
+          ARGS="--season $SEASON"
+          if [ "$RESCRAPE" = "true" ]; then ARGS="$ARGS --rescrape"; fi
+          if [ -n "$LIMIT" ] && [ "$LIMIT" != "0" ]; then
+            ARGS="$ARGS --limit $LIMIT"
+          fi
+
+          echo "→ python3 scripts/scrape_wcl_boxscores.py $ARGS"
+          PYTHONPATH=backend python3 scripts/scrape_wcl_boxscores.py $ARGS
+
+      - name: Refresh WCL season aggregates (Pointstreak)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          echo "→ Refreshing WCL Pointstreak season aggregates for $SEASON"
+          PYTHONPATH=backend python3 scripts/scrape_summer.py --league WCL --season "$SEASON" || true
