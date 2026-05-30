@@ -48,9 +48,21 @@ export default function SummerGameDetail() {
 
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4">
-      <Link to="/summer" className="inline-block text-xs text-nw-teal dark:text-teal-300 hover:underline mb-3">
-        ← Summer Hub
-      </Link>
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <Link to="/summer" className="inline-block text-xs text-nw-teal dark:text-teal-300 hover:underline">
+          ← Summer Hub
+        </Link>
+        {isFinal && (
+          <Link
+            to={`/summer/game-recap?game=${game.id}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded
+                       border border-nw-teal text-nw-teal dark:text-teal-300 dark:border-teal-400
+                       hover:bg-nw-teal hover:text-white dark:hover:bg-teal-600 transition-colors"
+          >
+            Recap graphic
+          </Link>
+        )}
+      </div>
 
       {/* Header */}
       <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5 mb-4">

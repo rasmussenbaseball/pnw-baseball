@@ -984,7 +984,8 @@ const HUB_CARDS = [
   { to: '/summer/teams',       label: 'Teams',         desc: 'All 17 clubs, North + South' },
   { to: '/summer/pnw-alumni',  label: 'PNW Alumni',    desc: 'Spring college players in the WCL' },
   { to: '/summer/college-mix', label: 'College Mix',   desc: 'Which colleges are most represented' },
-  { to: '/summer/recap',       label: 'Recap Graphic', desc: 'Generate a shareable PNG of any day' },
+  { to: '/summer/recap',       label: 'Daily Recap Graphic', desc: 'Shareable PNG of a full day\'s slate' },
+  { to: '/summer/game-recap',  label: 'Game Recap Graphic',  desc: 'Shareable PNG for a single game' },
 ]
 
 export default function SummerHub() {

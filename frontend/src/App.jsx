@@ -181,6 +181,7 @@ import SummerGameDetail from './pages/SummerGameDetail'
 import SummerTeamDetail from './pages/SummerTeamDetail'
 import SummerPlayerDetail from './pages/SummerPlayerDetail'
 import WclRecapGraphic from './pages/WclRecapGraphic'
+import WclGameRecapGraphic from './pages/WclGameRecapGraphic'
 import SummerStatsPage from './pages/summer/SummerStatsPage'
 import SummerScoreboardPage from './pages/summer/SummerScoreboardPage'
 import SummerStandingsPage from './pages/summer/SummerStandingsPage'
@@ -355,6 +356,7 @@ export default function App() {
           <Route path="/summer/pnw-alumni" element={<RequireDev><SummerPnwAlumniPage /></RequireDev>} />
           <Route path="/summer/college-mix" element={<RequireDev><SummerCollegeMixPage /></RequireDev>} />
           <Route path="/summer/recap" element={<RequireDev><WclRecapGraphic /></RequireDev>} />
+          <Route path="/summer/game-recap" element={<RequireDev><WclGameRecapGraphic /></RequireDev>} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
           <Route path="/percentiles" element={<RequireTier minTier="free"><Percentiles /></RequireTier>} />
           <Route path="/records" element={<RequireTier minTier="free"><RecordsPage /></RequireTier>} />
