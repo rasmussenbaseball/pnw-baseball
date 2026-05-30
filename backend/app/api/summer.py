@@ -597,19 +597,30 @@ def summer_batting_leaderboard(
     qualified: bool = Query(False),
     min_pa: int = Query(20, ge=0),
     sort_by: str = Query("ops"),
+    sort_dir: Optional[str] = Query(None, description="'asc' | 'desc'. Defaults to the natural direction for the stat."),
     team_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=500),
 ):
+    # Whitelist sortable columns. Includes every stat column the
+    # endpoint returns so users can click-to-sort on any of them.
     valid_sorts = {
-        "ops", "batting_avg", "on_base_pct", "slugging_pct",
-        "home_runs", "rbi", "hits", "stolen_bases", "walks", "runs",
-        # Advanced (populated by compute_summer_advanced.py)
-        "woba", "wrc_plus", "iso", "k_pct", "bb_pct", "offensive_war",
+        "games", "games_started", "plate_appearances", "at_bats", "hits",
+        "doubles", "triples", "home_runs", "runs", "rbi",
+        "walks", "strikeouts", "hit_by_pitch", "sacrifice_flies",
+        "sacrifice_bunts", "stolen_bases", "caught_stealing",
+        "intentional_walks", "grounded_into_dp",
+        "batting_avg", "on_base_pct", "slugging_pct", "ops",
+        "woba", "wrc_plus", "wraa", "wrc", "iso", "babip",
+        "k_pct", "bb_pct", "offensive_war",
     }
     if sort_by not in valid_sorts:
         sort_by = "ops"
-    # k_pct ASC (lower = better contact); everything else DESC
-    direction = "ASC" if sort_by == "k_pct" else "DESC"
+    # k_pct is the only "lower-is-better" column on the batting side.
+    # Other columns sort high-to-low by default. Caller may override.
+    if sort_dir and sort_dir.lower() in ("asc", "desc"):
+        direction = sort_dir.upper()
+    else:
+        direction = "ASC" if sort_by == "k_pct" else "DESC"
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
@@ -960,19 +971,32 @@ def summer_pitching_leaderboard(
     qualified: bool = Query(False),
     min_ip: float = Query(10.0, ge=0),
     sort_by: str = Query("era"),
+    sort_dir: Optional[str] = Query(None, description="'asc' | 'desc'. Defaults to the natural direction for the stat."),
     team_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=500),
 ):
     valid_sorts = {
-        "era", "whip", "k_per_9", "bb_per_9",
-        "strikeouts", "wins", "saves", "innings_pitched",
-        # Advanced (populated by compute_summer_advanced.py)
-        "fip", "k_pct", "bb_pct", "pitching_war",
+        "games", "games_started", "complete_games", "shutouts",
+        "wins", "losses", "saves",
+        "innings_pitched", "batters_faced",
+        "hits_allowed", "runs_allowed", "earned_runs",
+        "home_runs_allowed", "walks", "strikeouts",
+        "hit_batters", "wild_pitches",
+        "era", "whip",
+        "k_per_9", "bb_per_9", "h_per_9", "hr_per_9", "k_bb_ratio",
+        "fip", "k_pct", "bb_pct", "babip_against", "pitching_war",
     }
     if sort_by not in valid_sorts:
         sort_by = "era"
-    asc_sorts = {"era", "whip", "bb_per_9", "fip", "bb_pct"}
-    direction = "ASC" if sort_by in asc_sorts else "DESC"
+    # Rate stats where lower-is-better
+    asc_sorts = {"era", "whip", "bb_per_9", "fip", "bb_pct",
+                 "hits_allowed", "earned_runs", "runs_allowed",
+                 "h_per_9", "hr_per_9", "home_runs_allowed",
+                 "losses", "babip_against", "hit_batters", "wild_pitches"}
+    if sort_dir and sort_dir.lower() in ("asc", "desc"):
+        direction = sort_dir.upper()
+    else:
+        direction = "ASC" if sort_by in asc_sorts else "DESC"
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)

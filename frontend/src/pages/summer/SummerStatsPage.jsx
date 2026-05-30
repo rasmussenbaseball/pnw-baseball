@@ -129,41 +129,37 @@ function fmtCol(p, fmt) {
   return String(p)
 }
 
+// Columns where lower-is-better (default arrow points up). Everything
+// else defaults to descending (arrow down).
+const BATTING_ASC_COLS = new Set(['k_pct', 'grounded_into_dp'])
+
 function BattingTab({ season }) {
-  const [sort,      setSort]      = useState('wrc_plus')
+  const [sort,      setSort]      = useState({ by: 'wrc_plus', dir: 'desc' })
   const [qualified, setQualified] = useState(true)
   const [preset,    setPreset]    = useState('Standard')
 
   const { data, loading, error } = useApi('/summer/leaderboards/batting',
-    { league: LEAGUE, season, qualified, sort_by: sort, limit: 250 },
-    [season, sort, qualified])
+    { league: LEAGUE, season, qualified, sort_by: sort.by, sort_dir: sort.dir, limit: 250 },
+    [season, sort.by, sort.dir, qualified])
 
   if (loading) return <Skeleton />
   if (error) return <Err msg={error} />
   const cols = BATTING_PRESETS[preset]
+  const handleSort = (col) => {
+    const cfg = BATTING_COL_MAP[col]
+    if (!cfg) return
+    const apiKey = cfg.key
+    // If clicking the active column → toggle dir. Otherwise → set the
+    // column's natural direction.
+    if (sort.by === apiKey) {
+      setSort({ by: apiKey, dir: sort.dir === 'desc' ? 'asc' : 'desc' })
+    } else {
+      setSort({ by: apiKey, dir: BATTING_ASC_COLS.has(apiKey) ? 'asc' : 'desc' })
+    }
+  }
   return (
     <>
       <FilterBar>
-        <Sort
-          label="Sort by"
-          value={sort}
-          onChange={setSort}
-          options={[
-            ['wrc_plus',     'wRC+'],
-            ['woba',         'wOBA'],
-            ['ops',          'OPS'],
-            ['batting_avg',  'AVG'],
-            ['on_base_pct',  'OBP'],
-            ['slugging_pct', 'SLG'],
-            ['iso',          'ISO'],
-            ['home_runs',    'HR'],
-            ['rbi',          'RBI'],
-            ['bb_pct',       'BB%'],
-            ['k_pct',        'K% (lower=better)'],
-            ['offensive_war','oWAR'],
-            ['stolen_bases', 'SB'],
-          ]}
-        />
         <Qualified value={qualified} onChange={setQualified} type="batting" />
       </FilterBar>
       <Presets value={preset} onChange={setPreset} options={Object.keys(BATTING_PRESETS)} />
@@ -175,7 +171,21 @@ function BattingTab({ season }) {
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700">
                 <Th left>#</Th><Th left>Player</Th><Th left>Team</Th>
-                {cols.map(c => <Th key={c}>{c}</Th>)}
+                {cols.map(c => {
+                  const cfg = BATTING_COL_MAP[c]
+                  const apiKey = cfg?.key
+                  const active = apiKey === sort.by
+                  return (
+                    <SortableTh
+                      key={c}
+                      label={c}
+                      active={active}
+                      dir={active ? sort.dir : null}
+                      sortable={!!cfg}
+                      onClick={() => handleSort(c)}
+                    />
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -187,7 +197,7 @@ function BattingTab({ season }) {
                   {cols.map(c => {
                     const cfg = BATTING_COL_MAP[c]
                     if (!cfg) return <Td key={c} num>—</Td>
-                    return <Td key={c} num bold={cfg.bold}>{fmtCol(p[cfg.key], cfg.fmt)}</Td>
+                    return <Td key={c} num bold={cfg.bold || cfg.key === sort.by}>{fmtCol(p[cfg.key], cfg.fmt)}</Td>
                   })}
                 </tr>
               ))}
@@ -241,40 +251,37 @@ const PITCHING_COL_MAP = {
 }
 
 
+const PITCHING_ASC_COLS = new Set([
+  'era', 'whip', 'fip', 'bb_pct', 'bb_per_9', 'h_per_9', 'hr_per_9',
+  'hits_allowed', 'earned_runs', 'runs_allowed', 'home_runs_allowed',
+  'losses', 'babip_against', 'hit_batters', 'wild_pitches',
+])
+
 function PitchingTab({ season }) {
-  const [sort,      setSort]      = useState('fip')
+  const [sort,      setSort]      = useState({ by: 'fip', dir: 'asc' })
   const [qualified, setQualified] = useState(true)
   const [preset,    setPreset]    = useState('Standard')
 
   const { data, loading, error } = useApi('/summer/leaderboards/pitching',
-    { league: LEAGUE, season, qualified, sort_by: sort, limit: 250 },
-    [season, sort, qualified])
+    { league: LEAGUE, season, qualified, sort_by: sort.by, sort_dir: sort.dir, limit: 250 },
+    [season, sort.by, sort.dir, qualified])
 
   if (loading) return <Skeleton />
   if (error) return <Err msg={error} />
   const cols = PITCHING_PRESETS[preset]
+  const handleSort = (col) => {
+    const cfg = PITCHING_COL_MAP[col]
+    if (!cfg) return
+    const apiKey = cfg.key
+    if (sort.by === apiKey) {
+      setSort({ by: apiKey, dir: sort.dir === 'desc' ? 'asc' : 'desc' })
+    } else {
+      setSort({ by: apiKey, dir: PITCHING_ASC_COLS.has(apiKey) ? 'asc' : 'desc' })
+    }
+  }
   return (
     <>
       <FilterBar>
-        <Sort
-          label="Sort by"
-          value={sort}
-          onChange={setSort}
-          options={[
-            ['fip',             'FIP (lower=better)'],
-            ['era',             'ERA (lower=better)'],
-            ['whip',            'WHIP (lower=better)'],
-            ['k_pct',           'K%'],
-            ['bb_pct',          'BB% (lower=better)'],
-            ['k_per_9',         'K/9'],
-            ['bb_per_9',        'BB/9 (lower=better)'],
-            ['strikeouts',      'Total K'],
-            ['wins',            'Wins'],
-            ['saves',           'Saves'],
-            ['innings_pitched', 'IP'],
-            ['pitching_war',    'pWAR'],
-          ]}
-        />
         <Qualified value={qualified} onChange={setQualified} type="pitching" />
       </FilterBar>
       <Presets value={preset} onChange={setPreset} options={Object.keys(PITCHING_PRESETS)} />
@@ -286,7 +293,21 @@ function PitchingTab({ season }) {
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700">
                 <Th left>#</Th><Th left>Player</Th><Th left>Team</Th>
-                {cols.map(c => <Th key={c}>{c}</Th>)}
+                {cols.map(c => {
+                  const cfg = PITCHING_COL_MAP[c]
+                  const apiKey = cfg?.key
+                  const active = apiKey === sort.by
+                  return (
+                    <SortableTh
+                      key={c}
+                      label={c}
+                      active={active}
+                      dir={active ? sort.dir : null}
+                      sortable={!!cfg}
+                      onClick={() => handleSort(c)}
+                    />
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -298,7 +319,7 @@ function PitchingTab({ season }) {
                   {cols.map(c => {
                     const cfg = PITCHING_COL_MAP[c]
                     if (!cfg) return <Td key={c} num>—</Td>
-                    return <Td key={c} num bold={cfg.bold}>{fmtCol(p[cfg.key], cfg.fmt)}</Td>
+                    return <Td key={c} num bold={cfg.bold || cfg.key === sort.by}>{fmtCol(p[cfg.key], cfg.fmt)}</Td>
                   })}
                 </tr>
               ))}
@@ -388,18 +409,20 @@ function FilterBar({ children }) {
   return <div className="flex flex-wrap items-end gap-3 mb-3">{children}</div>
 }
 
-function Sort({ label, value, onChange, options }) {
+function SortableTh({ label, active, dir, sortable, onClick }) {
+  const arrow = active ? (dir === 'asc' ? '▲' : '▼') : ''
   return (
-    <div>
-      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-0.5">{label}</label>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
-      >
-        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </div>
+    <th
+      onClick={sortable ? onClick : undefined}
+      className={`px-1.5 py-1.5 text-xs font-bold uppercase tracking-wide text-right ${
+        sortable ? 'cursor-pointer hover:text-nw-teal dark:hover:text-teal-300 select-none' : ''
+      } ${active ? 'text-nw-teal dark:text-teal-300' : 'text-gray-500 dark:text-gray-400'}`}
+    >
+      <span className="inline-flex items-center gap-0.5">
+        {label}
+        {arrow && <span className="text-[9px] leading-none">{arrow}</span>}
+      </span>
+    </th>
   )
 }
 
