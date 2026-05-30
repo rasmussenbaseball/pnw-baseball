@@ -1,12 +1,15 @@
 name: WCL Daily Scrape
 
 on:
-  # Once daily at 8 AM Pacific = 15:00 UTC (PDT) / 16:00 UTC (PST).
-  # WCL is summer-only (PDT) so 15:00 UTC = 8 AM PT works all season.
-  # During the run window (early June through August) this picks up
-  # every box score posted overnight + refreshes any in-progress games.
+  # Twice daily, both Pacific. WCL is summer-only (PDT = UTC-7) so these
+  # UTC times hold all season:
+  #   - 8:00 AM PT  (15:00 UTC)        — overnight finals + scorer corrections
+  #   - 10:30 PM PT (05:30 UTC next day) — that evening's scores / box scores
+  # Each run does the full pipeline (schedule → box scores → aggregates →
+  # PBP → fielding); every step is idempotent, so running twice is safe.
   schedule:
     - cron: '0 15 * * *'
+    - cron: '30 5 * * *'
   workflow_dispatch:
     inputs:
       season:
