@@ -10,6 +10,7 @@ const fmtAvg = v => v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')
 const fmtIp  = v => v == null ? '—' : Number(v).toFixed(1)
 const fmtEra = v => v == null ? '—' : Number(v).toFixed(2)
 const fmtInt = v => v == null ? '—' : Math.round(v)
+const fmtPct = v => v == null ? '—' : `${(Number(v) * 100).toFixed(1)}%`
 const fmtDate = d => {
   if (!d) return ''
   const dt = new Date(d)
@@ -36,7 +37,7 @@ export default function SummerPlayerDetail() {
     )
   }
 
-  const { player, batting, pitching, fielding, game_batting, game_pitching, spring_link } = data
+  const { player, batting, pitching, fielding, game_batting, game_pitching, spring_link, approach } = data
   const hasBatting = batting?.length > 0
   const hasPitching = pitching?.length > 0
   const hasFielding = fielding?.length > 0
@@ -132,6 +133,35 @@ export default function SummerPlayerDetail() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {approach && (
+        <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4 mb-4">
+          <div className="flex items-baseline justify-between mb-2 flex-wrap gap-1">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Plate Approach · {approach.season}</h3>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              From play-by-play · {approach.pa} PA, {approach.pitches_seen} pitches
+            </span>
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {[
+              ['Swing%', approach.swing_pct],
+              ['Contact%', approach.contact_pct],
+              ['Whiff%', approach.whiff_pct],
+              ['1st-Pitch Sw%', approach.first_pitch_swing_pct],
+              ['K%', approach.k_pct],
+              ['BB%', approach.bb_pct],
+            ].map(([label, val]) => (
+              <div key={label} className="rounded bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 p-2 text-center">
+                <div className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{fmtPct(val)}</div>
+                <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mt-0.5 leading-tight">{label}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
+            Pitch-level rates from tracked WCL play-by-play. Swing = whiff + foul + ball in play; contact excludes whiffs. Samples are small early in the season.
+          </p>
         </div>
       )}
 

@@ -366,6 +366,77 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
     }
 
 
+# ── Hitter approach splits (from summer_game_events PBP) ────────────
+
+# PA-ending result types written by parse_wcl_pbp. Standalone sub-events
+# (stolen_base, wild_pitch, ...) carry no batter_player_id, so filtering
+# by batter already excludes them; we also gate on these for safety.
+_PA_RESULT_TYPES = [
+    "single", "double", "triple", "home_run", "walk", "intentional_walk", "hbp",
+    "strikeout_swinging", "strikeout_looking", "ground_out", "fly_out", "line_out",
+    "pop_out", "sac_fly", "sac_bunt", "fielders_choice", "error", "double_play", "other",
+]
+
+
+def _compute_summer_approach(cur, player_id, season):
+    """Pitch-level + count approach splits from summer_game_events.
+
+    Pitch-sequence letters (StatCrew/Presto): K = swinging strike (whiff),
+    F = foul, B = ball, S = called strike. A swing = whiff + foul + ball
+    in play; contact excludes whiffs. Same formula as the spring
+    lineup_helper._fetch_pbp_stats_bulk. Returns None when no PBP PAs.
+    """
+    cur.execute(
+        """
+        SELECT
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS k_pitches,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_pitches,
+          COALESCE(SUM(LENGTH(COALESCE(pitch_sequence, ''))), 0) AS seq_total,
+          COUNT(*) FILTER (WHERE was_in_play) AS in_play,
+          COUNT(*) AS pa,
+          COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging', 'strikeout_looking')) AS k,
+          COUNT(*) FILTER (WHERE result_type IN ('walk', 'intentional_walk')) AS bb,
+          COUNT(*) FILTER (
+            WHERE LEFT(COALESCE(pitch_sequence, ''), 1) IN ('K', 'F')
+               OR (was_in_play AND COALESCE(LENGTH(pitch_sequence), 0) = 0)
+          ) AS fp_swing
+        FROM summer_game_events e
+        JOIN summer_games g ON g.id = e.game_id
+        WHERE e.batter_player_id = %s
+          AND g.season = %s
+          AND e.result_type = ANY(%s)
+        """,
+        (player_id, season, _PA_RESULT_TYPES),
+    )
+    r = cur.fetchone()
+    if not r or not r["pa"]:
+        return None
+
+    k_p = r["k_pitches"] or 0
+    f_p = r["f_pitches"] or 0
+    seq = r["seq_total"] or 0
+    in_play = r["in_play"] or 0
+    pa = r["pa"] or 0
+    swings = k_p + f_p + in_play
+    contact = f_p + in_play
+    pitches_seen = seq + in_play
+
+    def pct(num, den):
+        return round(num / den, 3) if den else None
+
+    return {
+        "season": season,
+        "pa": pa,
+        "pitches_seen": pitches_seen,
+        "swing_pct": pct(swings, pitches_seen),
+        "contact_pct": pct(contact, swings),
+        "whiff_pct": pct(k_p, swings),
+        "first_pitch_swing_pct": pct(r["fp_swing"] or 0, pa),
+        "k_pct": pct(r["k"] or 0, pa),
+        "bb_pct": pct(r["bb"] or 0, pa),
+    }
+
+
 # ── /summer/players/{id} ───────────────────────────────────────────
 
 @router.get("/summer/players/{player_id}")
@@ -461,6 +532,9 @@ def summer_player_detail(player_id: int, season: int = Query(2026)):
         )
         fielding = [dict(r) for r in cur.fetchall()]
 
+        # Hitter approach splits from parsed play-by-play (None if no PBP)
+        approach = _compute_summer_approach(cur, player_id, season)
+
     return {
         "player": dict(player),
         "batting": batting,
@@ -469,6 +543,7 @@ def summer_player_detail(player_id: int, season: int = Query(2026)):
         "game_batting": game_batting,
         "game_pitching": game_pitching,
         "spring_link": dict(spring_link) if spring_link else None,
+        "approach": approach,
     }
 
 
