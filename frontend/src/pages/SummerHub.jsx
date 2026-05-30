@@ -913,6 +913,14 @@ export default function SummerHub() {
             Daily box scores, standings, and player leaderboards across the West Coast League.
             Cross-linked to NWBB Stats spring profiles so you can track college players all year.
           </p>
+          <div className="mt-3">
+            <Link
+              to="/summer/recap"
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wide uppercase px-3 py-1.5 rounded-full bg-amber-200/20 hover:bg-amber-200/30 text-amber-100 border border-amber-200/40 transition"
+            >
+              Daily Recap Graphic →
+            </Link>
+          </div>
         </div>
       </div>
 

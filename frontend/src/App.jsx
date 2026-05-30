@@ -180,6 +180,7 @@ import SummerHub from './pages/SummerHub'
 import SummerGameDetail from './pages/SummerGameDetail'
 import SummerTeamDetail from './pages/SummerTeamDetail'
 import SummerPlayerDetail from './pages/SummerPlayerDetail'
+import WclRecapGraphic from './pages/WclRecapGraphic'
 import RequireDev from './components/RequireDev'
 import WarLeaderboard from './pages/WarLeaderboard'
 import TeamStatsPage from './pages/TeamStatsPage'
@@ -339,6 +340,7 @@ export default function App() {
           <Route path="/summer/games/:id" element={<RequireDev><SummerGameDetail /></RequireDev>} />
           <Route path="/summer/teams/:id" element={<RequireDev><SummerTeamDetail /></RequireDev>} />
           <Route path="/summer/players/:id" element={<RequireDev><SummerPlayerDetail /></RequireDev>} />
+          <Route path="/summer/recap" element={<RequireDev><WclRecapGraphic /></RequireDev>} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
           <Route path="/percentiles" element={<RequireTier minTier="free"><Percentiles /></RequireTier>} />
           <Route path="/records" element={<RequireTier minTier="free"><RecordsPage /></RequireTier>} />
