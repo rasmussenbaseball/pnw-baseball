@@ -62,14 +62,16 @@ const NAV = [
         requires: 'premium' },
     ],
   },
-  // Summer baseball — currently WCL, more leagues later. Single tab,
-  // single dropdown item that lands on /summer (internal tabs handle
-  // scoreboard / standings / teams / leaderboards inside).
+  // Summer baseball — currently WCL, more leagues later. Currently
+  // dev-only (RequireDev wraps the routes too). When ready to ship,
+  // drop `requireEmail` here and remove RequireDev from App.jsx.
   {
     label: 'Summer',
+    requireEmail: DEVELOPER_EMAILS,
     items: [
       { to: '/summer', label: 'WCL Hub',
-        desc: 'Scoreboard, standings, leaderboards, and teams for the West Coast League' },
+        desc: 'Scoreboard, standings, leaderboards, and teams for the West Coast League',
+        requireEmail: DEVELOPER_EMAILS },
     ],
   },
   // Tab is open so anonymous can browse; each item enforces its own
@@ -697,6 +699,19 @@ export default function Header() {
     return section.items?.some(item => location.pathname === item.to)
   }
 
+  // Tab-level visibility. A section with `requireEmail` is hidden
+  // entirely from non-matching users (no upsell, no lock icon — it
+  // just disappears). Used to gate the Summer tab to devs while the
+  // WCL section is still being built out.
+  const visibleNav = NAV.filter(section => {
+    if (section.requireEmail) {
+      const email = (user?.email || '').toLowerCase()
+      const allowed = section.requireEmail.map(e => e.toLowerCase())
+      if (!allowed.includes(email)) return false
+    }
+    return true
+  })
+
   return (
     <header className="bg-nw-teal text-white shadow-lg relative z-50">
       <div className="max-w-7xl mx-auto px-4">
@@ -718,7 +733,7 @@ export default function Header() {
           {/* Desktop Navigation + Search */}
           <div className="hidden lg:flex items-center gap-1">
             <nav className="flex items-center gap-0.5">
-              {NAV.map(section => (
+              {visibleNav.map(section => (
                 <NavTab
                   key={section.label}
                   section={section}
@@ -817,7 +832,7 @@ export default function Header() {
         {/* Mobile Navigation */}
         {mobileOpen && (
           <nav className="lg:hidden pb-4 border-t border-white/10 pt-2 space-y-1">
-            {NAV.map(section => {
+            {visibleNav.map(section => {
               // Direct link
               if (section.to) {
                 return (

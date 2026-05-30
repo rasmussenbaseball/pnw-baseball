@@ -29,6 +29,75 @@ const fmtDate = d => {
 }
 
 // ─────────────────────────────────────────────────────────────
+// League leaders ticker (always shown above the tab nav)
+// ─────────────────────────────────────────────────────────────
+
+const LEADER_CATS = [
+  { stat: 'ops',         label: 'OPS',  fmt: 'avg',  side: 'batting',  minPa: 5 },
+  { stat: 'batting_avg', label: 'AVG',  fmt: 'avg',  side: 'batting',  minPa: 5 },
+  { stat: 'home_runs',   label: 'HR',   fmt: 'int',  side: 'batting',  minPa: 1 },
+  { stat: 'rbi',         label: 'RBI',  fmt: 'int',  side: 'batting',  minPa: 1 },
+  { stat: 'strikeouts',  label: 'K',    fmt: 'int',  side: 'pitching', minIp: 1 },
+  { stat: 'era',         label: 'ERA',  fmt: 'era',  side: 'pitching', minIp: 5 },
+]
+
+function LeadersTicker() {
+  return (
+    <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1 py-2 mb-4 overflow-hidden">
+      <div className="flex items-center">
+        <span className="shrink-0 px-3 py-1 mr-2 rounded text-[10px] font-bold tracking-widest uppercase text-amber-900 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200">
+          WCL Leaders
+        </span>
+        <div className="flex-1 overflow-x-auto">
+          <div className="flex items-center gap-x-5 whitespace-nowrap">
+            {LEADER_CATS.map(cat => (
+              <LeaderCell key={cat.stat} cat={cat} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LeaderCell({ cat }) {
+  const endpoint = cat.side === 'batting'
+    ? '/summer/leaderboards/batting'
+    : '/summer/leaderboards/pitching'
+  const params = cat.side === 'batting'
+    ? { league: LEAGUE, season: SEASON, min_pa: cat.minPa, sort_by: cat.stat, limit: 1 }
+    : { league: LEAGUE, season: SEASON, min_ip: cat.minIp, sort_by: cat.stat, limit: 1 }
+  const { data, loading } = useApi(endpoint, params, [cat.stat])
+
+  if (loading) {
+    return <span className="text-xs text-gray-400 dark:text-gray-500">{cat.label} —</span>
+  }
+  const top = data?.[0]
+  if (!top) {
+    return (
+      <span className="text-xs">
+        <span className="font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{cat.label}</span>
+        <span className="ml-1 text-gray-400 dark:text-gray-500">—</span>
+      </span>
+    )
+  }
+  const raw = top[cat.stat]
+  const val = cat.fmt === 'avg' ? fmtAvg(raw)
+            : cat.fmt === 'era' ? (raw != null ? Number(raw).toFixed(2) : '—')
+            : fmtInt(raw)
+  return (
+    <span className="text-xs">
+      <span className="font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{cat.label}</span>
+      <Link to={`/summer/players/${top.player_id}`} className="ml-1 font-semibold text-gray-900 dark:text-gray-100 hover:text-nw-teal dark:hover:text-teal-300">
+        {top.first_name?.[0]}. {top.last_name}
+      </Link>
+      <span className="ml-1 text-gray-500 dark:text-gray-400">({top.team_short})</span>
+      <span className="ml-1.5 font-bold tabular-nums text-amber-700 dark:text-amber-300">{val}</span>
+    </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // Sub-views
 // ─────────────────────────────────────────────────────────────
 
@@ -138,6 +207,8 @@ function Standings() {
                     <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">W</th>
                     <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">L</th>
                     <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Pct</th>
+                    <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">L10</th>
+                    <th className="text-center px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Strk</th>
                     <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RS</th>
                     <th className="text-right pr-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RA</th>
                   </tr>
@@ -154,6 +225,12 @@ function Standings() {
                       <td className="text-right px-2 tabular-nums font-bold text-gray-900 dark:text-gray-100">{row.wins}</td>
                       <td className="text-right px-2 tabular-nums text-gray-700 dark:text-gray-300">{row.losses}</td>
                       <td className="text-right px-2 tabular-nums text-gray-700 dark:text-gray-300">{fmtAvg(row.pct)}</td>
+                      <td className="text-right px-2 tabular-nums text-gray-700 dark:text-gray-300">{row.l10_wins ?? 0}-{row.l10_losses ?? 0}</td>
+                      <td className={`text-center px-2 tabular-nums font-bold ${
+                        !row.streak ? 'text-gray-400 dark:text-gray-500'
+                        : row.streak.startsWith('W') ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
+                      }`}>{row.streak || '—'}</td>
                       <td className="text-right px-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_scored}</td>
                       <td className="text-right pr-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_against}</td>
                     </tr>
@@ -377,6 +454,8 @@ export default function SummerHub() {
           Daily scoreboard, standings, and player leaderboards across the WCL. Scrapes refresh every morning.
         </p>
       </div>
+
+      <LeadersTicker />
 
       <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-5 -mx-3 sm:mx-0 px-3 sm:px-0 gap-1">
         {TABS.map(t => (

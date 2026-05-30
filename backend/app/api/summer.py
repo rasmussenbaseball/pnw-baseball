@@ -431,62 +431,108 @@ def summer_standings(
     league: str = Query(DEFAULT_LEAGUE),
     season: int = Query(2026),
 ):
-    """W/L computed from summer_games (status='final'). Excludes
-    exhibitions when team_id is on both sides (Pickles intrasquads etc.)
-    by checking for distinct team_ids."""
+    """W/L per team plus last-10 record + current win/loss streak."""
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
+        # Pull every final game with a per-team result tag, sorted by
+        # date desc per team so we can compute L10 + streak in Python.
         cur.execute(
             """
             WITH finals AS (
-              SELECT id, away_team_id, home_team_id, away_score, home_score
+              SELECT id, game_date, away_team_id, home_team_id,
+                     away_score, home_score
               FROM summer_games
               WHERE league_id = %s AND season = %s
                 AND status = 'final'
                 AND away_score IS NOT NULL AND home_score IS NOT NULL
                 AND away_team_id IS NOT NULL AND home_team_id IS NOT NULL
                 AND away_team_id <> home_team_id
-            ),
-            team_results AS (
-              SELECT away_team_id AS team_id,
-                     SUM(CASE WHEN away_score > home_score THEN 1 ELSE 0 END) AS wins,
-                     SUM(CASE WHEN away_score < home_score THEN 1 ELSE 0 END) AS losses,
-                     SUM(away_score) AS rs,
-                     SUM(home_score) AS ra
-              FROM finals GROUP BY away_team_id
-              UNION ALL
-              SELECT home_team_id AS team_id,
-                     SUM(CASE WHEN home_score > away_score THEN 1 ELSE 0 END) AS wins,
-                     SUM(CASE WHEN home_score < away_score THEN 1 ELSE 0 END) AS losses,
-                     SUM(home_score) AS rs,
-                     SUM(away_score) AS ra
-              FROM finals GROUP BY home_team_id
-            ),
-            agg AS (
-              SELECT team_id,
-                     SUM(wins)::int  AS wins,
-                     SUM(losses)::int AS losses,
-                     SUM(rs)::int  AS runs_scored,
-                     SUM(ra)::int  AS runs_against
-              FROM team_results GROUP BY team_id
             )
-            SELECT a.team_id, t.name, t.short_name, t.logo_url, t.city, t.state,
-                   t.division,
-                   a.wins, a.losses,
-                   a.runs_scored, a.runs_against,
-                   CASE WHEN (a.wins + a.losses) > 0
-                        THEN a.wins::real / (a.wins + a.losses)
-                        ELSE NULL END AS pct
-            FROM agg a
-            JOIN summer_teams t ON t.id = a.team_id
-            WHERE t.league_id = %s
-            ORDER BY t.division NULLS LAST, a.wins DESC, pct DESC NULLS LAST, t.name
+            SELECT away_team_id AS team_id, game_date,
+                   CASE WHEN away_score > home_score THEN 'W'
+                        WHEN away_score < home_score THEN 'L'
+                        ELSE 'T' END AS result,
+                   away_score AS rs, home_score AS ra
+            FROM finals
+            UNION ALL
+            SELECT home_team_id AS team_id, game_date,
+                   CASE WHEN home_score > away_score THEN 'W'
+                        WHEN home_score < away_score THEN 'L'
+                        ELSE 'T' END AS result,
+                   home_score AS rs, away_score AS ra
+            FROM finals
+            ORDER BY team_id, game_date DESC
             """,
-            (league_id, season, league_id),
+            (league_id, season),
         )
-        rows = cur.fetchall()
-    return [dict(r) for r in rows]
+        per_team_games = {}
+        for row in cur.fetchall():
+            per_team_games.setdefault(row["team_id"], []).append(row)
+
+        # Teams metadata
+        cur.execute(
+            """
+            SELECT id, name, short_name, logo_url, city, state, division
+            FROM summer_teams WHERE league_id = %s AND is_active = TRUE
+            """,
+            (league_id,),
+        )
+        teams = {r["id"]: dict(r) for r in cur.fetchall()}
+
+    out = []
+    for team_id, meta in teams.items():
+        games = per_team_games.get(team_id, [])  # newest first
+        wins = sum(1 for g in games if g["result"] == "W")
+        losses = sum(1 for g in games if g["result"] == "L")
+        rs = sum((g["rs"] or 0) for g in games)
+        ra = sum((g["ra"] or 0) for g in games)
+        pct = wins / (wins + losses) if (wins + losses) else None
+
+        # L10: last 10 chronologically — list is newest first so take [:10]
+        last10 = games[:10]
+        l10_w = sum(1 for g in last10 if g["result"] == "W")
+        l10_l = sum(1 for g in last10 if g["result"] == "L")
+
+        # Streak: walk from the newest game; same letter as the most
+        # recent result, count consecutive.
+        streak = None
+        if games:
+            r0 = games[0]["result"]
+            if r0 in ("W", "L"):
+                n = 0
+                for g in games:
+                    if g["result"] == r0:
+                        n += 1
+                    else:
+                        break
+                streak = f"{r0}{n}"
+
+        out.append({
+            **meta,
+            "team_id": team_id,
+            "wins": wins,
+            "losses": losses,
+            "runs_scored": rs,
+            "runs_against": ra,
+            "pct": pct,
+            "l10_wins": l10_w,
+            "l10_losses": l10_l,
+            "streak": streak,
+        })
+
+    # Order: division asc (NULLS last), wins desc, pct desc
+    DIV_ORDER = {"North": 0, "South": 1, "East": 2, "West": 3}
+    out.sort(key=lambda r: (
+        DIV_ORDER.get(r.get("division") or "", 99),
+        -(r["wins"] or 0),
+        -(r["pct"] or 0),
+        r["name"] or "",
+    ))
+    # Drop teams with zero games AND skip them from the response so
+    # the standings don't show 17 0-0 rows while exhibitions are the
+    # only thing played.
+    return [r for r in out if (r["wins"] + r["losses"]) > 0]
 
 
 # ── /summer/leaderboards/batting ───────────────────────────────────

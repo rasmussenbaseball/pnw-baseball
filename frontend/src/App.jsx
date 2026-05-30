@@ -180,6 +180,7 @@ import SummerHub from './pages/SummerHub'
 import SummerGameDetail from './pages/SummerGameDetail'
 import SummerTeamDetail from './pages/SummerTeamDetail'
 import SummerPlayerDetail from './pages/SummerPlayerDetail'
+import RequireDev from './components/RequireDev'
 import WarLeaderboard from './pages/WarLeaderboard'
 import TeamStatsPage from './pages/TeamStatsPage'
 import TeamsPage from './pages/TeamsPage'
@@ -332,10 +333,12 @@ export default function App() {
           <Route path="/team-stats" element={<RequireTier minTier="free"><TeamStatsPage /></RequireTier>} />
           <Route path="/scatter" element={<ScatterPlot />} />
           <Route path="/summerball" element={<RequireTier minTier="free"><SummerballData /></RequireTier>} />
-          <Route path="/summer" element={<SummerHub />} />
-          <Route path="/summer/games/:id" element={<SummerGameDetail />} />
-          <Route path="/summer/teams/:id" element={<SummerTeamDetail />} />
-          <Route path="/summer/players/:id" element={<SummerPlayerDetail />} />
+          {/* Summer is locked to devs while we wrap up phase-2 polish.
+              Drop the RequireDev wrappers when ready to ship publicly. */}
+          <Route path="/summer" element={<RequireDev><SummerHub /></RequireDev>} />
+          <Route path="/summer/games/:id" element={<RequireDev><SummerGameDetail /></RequireDev>} />
+          <Route path="/summer/teams/:id" element={<RequireDev><SummerTeamDetail /></RequireDev>} />
+          <Route path="/summer/players/:id" element={<RequireDev><SummerPlayerDetail /></RequireDev>} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
           <Route path="/percentiles" element={<RequireTier minTier="free"><Percentiles /></RequireTier>} />
           <Route path="/records" element={<RequireTier minTier="free"><RecordsPage /></RequireTier>} />
