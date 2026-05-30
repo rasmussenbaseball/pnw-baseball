@@ -69,3 +69,21 @@ jobs:
           SEASON="${{ github.event.inputs.season || '2026' }}"
           echo "→ Refreshing WCL Pointstreak season aggregates for $SEASON"
           PYTHONPATH=backend python3 scripts/scrape_summer.py --league WCL --season "$SEASON" || true
+
+      - name: Resolve box-score player names + roll up
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          echo "→ Resolving box-score names → summer_players"
+          PYTHONPATH=backend python3 scripts/resolve_summer_game_players.py
+          echo "→ Rolling per-game data up into season aggregates"
+          PYTHONPATH=backend python3 scripts/aggregate_summer_stats.py --league WCL --season "$SEASON"
+
+      - name: Link summer ↔ spring players
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          echo "→ Auto-linking summer_players to spring players"
+          PYTHONPATH=backend python3 scripts/link_summer_to_spring.py --season "$SEASON"
