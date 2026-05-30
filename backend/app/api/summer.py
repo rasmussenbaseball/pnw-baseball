@@ -244,6 +244,38 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
 
+        # Top 5 batters by OPS
+        cur.execute(
+            """
+            SELECT b.player_id, b.plate_appearances, b.batting_avg, b.on_base_pct,
+                   b.slugging_pct, b.ops, b.woba, b.wrc_plus, b.home_runs, b.rbi,
+                   p.first_name, p.last_name, p.position
+            FROM summer_batting_stats b
+            JOIN summer_players p ON p.id = b.player_id
+            WHERE b.team_id = %s AND b.season = %s AND b.plate_appearances > 0
+            ORDER BY b.ops DESC NULLS LAST, b.plate_appearances DESC
+            LIMIT 6
+            """,
+            (team_id, season),
+        )
+        top_batters = [dict(r) for r in cur.fetchall()]
+
+        # Top 5 pitchers by ERA (min 1 IP, fall back to IP order)
+        cur.execute(
+            """
+            SELECT pt.player_id, pt.innings_pitched, pt.era, pt.whip, pt.fip,
+                   pt.k_per_9, pt.strikeouts, pt.wins, pt.losses, pt.saves,
+                   p.first_name, p.last_name
+            FROM summer_pitching_stats pt
+            JOIN summer_players p ON p.id = pt.player_id
+            WHERE pt.team_id = %s AND pt.season = %s AND pt.innings_pitched > 0
+            ORDER BY pt.era ASC NULLS LAST, pt.innings_pitched DESC
+            LIMIT 6
+            """,
+            (team_id, season),
+        )
+        top_pitchers = [dict(r) for r in cur.fetchall()]
+
         # Team season totals (sum across roster)
         cur.execute(
             """
@@ -329,6 +361,8 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
         "team_batting": team_bat,
         "recent_games": recent,
         "roster": roster,
+        "top_batters": top_batters,
+        "top_pitchers": top_pitchers,
     }
 
 
@@ -559,6 +593,7 @@ def summer_batting_leaderboard(
     season: int = Query(2026),
     min_pa: int = Query(20, ge=0),
     sort_by: str = Query("ops"),
+    team_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=500),
 ):
     valid_sorts = {
@@ -571,6 +606,7 @@ def summer_batting_leaderboard(
         sort_by = "ops"
     # k_pct ASC (lower = better contact); everything else DESC
     direction = "ASC" if sort_by == "k_pct" else "DESC"
+    team_clause = "AND b.team_id = %s" if team_id else ""
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
@@ -589,10 +625,11 @@ def summer_batting_leaderboard(
             JOIN summer_teams t   ON t.id = b.team_id
             WHERE t.league_id = %s AND b.season = %s
               AND b.plate_appearances >= %s
+              {team_clause}
             ORDER BY b.{sort_by} {direction} NULLS LAST
             LIMIT %s
             """,
-            (league_id, season, min_pa, limit),
+            (league_id, season, min_pa, team_id, limit) if team_id else (league_id, season, min_pa, limit),
         )
         rows = cur.fetchall()
     return [dict(r) for r in rows]
@@ -869,6 +906,7 @@ def summer_pitching_leaderboard(
     season: int = Query(2026),
     min_ip: float = Query(10.0, ge=0),
     sort_by: str = Query("era"),
+    team_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=500),
 ):
     valid_sorts = {
@@ -881,6 +919,7 @@ def summer_pitching_leaderboard(
         sort_by = "era"
     asc_sorts = {"era", "whip", "bb_per_9", "fip", "bb_pct"}
     direction = "ASC" if sort_by in asc_sorts else "DESC"
+    team_clause = "AND pt.team_id = %s" if team_id else ""
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
@@ -900,10 +939,11 @@ def summer_pitching_leaderboard(
             JOIN summer_teams t   ON t.id = pt.team_id
             WHERE t.league_id = %s AND pt.season = %s
               AND pt.innings_pitched >= %s
+              {team_clause}
             ORDER BY pt.{sort_by} {direction} NULLS LAST
             LIMIT %s
             """,
-            (league_id, season, min_ip, limit),
+            (league_id, season, min_ip, team_id, limit) if team_id else (league_id, season, min_ip, limit),
         )
         rows = cur.fetchall()
     return [dict(r) for r in rows]

@@ -34,7 +34,7 @@ export default function SummerTeamDetail() {
     )
   }
 
-  const { team, record, team_batting, recent_games, roster } = data
+  const { team, record, team_batting, recent_games, roster, top_batters, top_pitchers } = data
   const teamId = Number(id)
 
   return (
@@ -88,6 +88,78 @@ export default function SummerTeamDetail() {
             <Stat label="BB"  value={fmtInt(team_batting.bb)} />
             <Stat label="K"   value={fmtInt(team_batting.so)} />
           </div>
+        </div>
+      )}
+
+      {/* Team leaders strip */}
+      {(top_batters?.length > 0 || top_pitchers?.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          {top_batters?.length > 0 && (
+            <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Team Batting Leaders</h3>
+                <Link to={`/summer?team=${teamId}`} className="text-[11px] text-nw-teal dark:text-teal-300 hover:underline">All →</Link>
+              </div>
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    {['Player','Pos','PA','AVG','OPS','wRC+','HR','RBI'].map((h, i) => (
+                      <th key={h} className={`px-1.5 py-1 font-bold text-gray-500 dark:text-gray-400 uppercase text-[9px] ${i < 2 ? 'text-left' : 'text-right'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {top_batters.map(p => (
+                    <tr key={p.player_id} className="border-b border-gray-100 dark:border-gray-700/50">
+                      <td className="px-1.5 py-1 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                        <Link to={`/summer/players/${p.player_id}`} className="hover:underline">{p.first_name} {p.last_name}</Link>
+                      </td>
+                      <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400 uppercase">{p.position || ''}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.plate_appearances)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{fmtAvg(p.batting_avg)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums font-bold">{fmtAvg(p.ops)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{p.wrc_plus != null ? Math.round(p.wrc_plus) : '—'}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.home_runs)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.rbi)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {top_pitchers?.length > 0 && (
+            <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Team Pitching Leaders</h3>
+                <Link to={`/summer?team=${teamId}`} className="text-[11px] text-nw-teal dark:text-teal-300 hover:underline">All →</Link>
+              </div>
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    {['Pitcher','IP','W-L','SV','K','ERA','WHIP','FIP'].map((h, i) => (
+                      <th key={h} className={`px-1.5 py-1 font-bold text-gray-500 dark:text-gray-400 uppercase text-[9px] ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {top_pitchers.map(p => (
+                    <tr key={p.player_id} className="border-b border-gray-100 dark:border-gray-700/50">
+                      <td className="px-1.5 py-1 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                        <Link to={`/summer/players/${p.player_id}`} className="hover:underline">{p.first_name} {p.last_name}</Link>
+                      </td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{p.innings_pitched != null ? Number(p.innings_pitched).toFixed(1) : '—'}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.wins)}-{fmtInt(p.losses)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.saves)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.strikeouts)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums font-bold">{p.era != null ? Number(p.era).toFixed(2) : '—'}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{p.whip != null ? Number(p.whip).toFixed(2) : '—'}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums">{p.fip != null ? Number(p.fip).toFixed(2) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
