@@ -5657,6 +5657,192 @@ def pitching_pbp_leaderboard(
 
 
 # ============================================================
+# RELIEVER LEADERBOARD (Goose Eggs + reliever WPA, from game_events)
+# ============================================================
+#
+# Spring only (D1-NAIA): needs the base/out/score state + WPA that
+# game_events carries. Summer (summer_game_events) has no state yet.
+#
+# Reliever isolation: the starter of each (game, half) is the pitcher
+# with the earliest (inning, sequence_idx); every other pitcher in that
+# half is relieving. We aggregate ONLY non-starter events, so a
+# swingman's starts never pollute his relief line.
+#
+# Goose Eggs (per Tom Tango, adapted to the high-scoring PNW college
+# environment with a default 3-run lead threshold):
+#   A relief "goose window" inning is the 7th or later where, when the
+#   reliever enters, his team is NOT trailing (lead >= 0) AND either the
+#   lead is <= threshold OR the tying run is on base/at bat
+#   (lead <= runners_on_base + 1). NOTE the lead >= 0 floor: you cannot
+#   earn a goose egg while losing (this fixes the intern script, which
+#   credited mop-up innings in blowout losses).
+#   - GEG  = goose window + no runs scored during the stint + the pitcher
+#            finished the inning (3 outs) OR escaped a jam (>=1 out and
+#            outs + inherited runners >= 3).
+#   - BRK  = "broken egg": goose window where a run scored during the stint.
+#   - OPP  = goose opportunities (windows). Goose% = GEG / (GEG + BRK),
+#            so the board rewards quality, not just usage.
+
+@router.get("/leaderboards/relievers")
+@cached_endpoint(ttl_seconds=1800)
+def reliever_leaderboard(
+    season: int = Query(..., description="Season year"),
+    division_id: Optional[int] = Query(None),
+    conference_id: Optional[int] = Query(None),
+    state: Optional[str] = Query(None),
+    team_id: Optional[int] = Query(None),
+    year_in_school: Optional[str] = Query(None),
+    lead_threshold: int = Query(3, description="Max lead for a goose window (PNW college default 3)"),
+    min_bf: int = Query(20, description="Minimum relief batters faced"),
+    sort_by: str = Query("wpa", description="Sort column"),
+    sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
+    limit: int = Query(50),
+    offset: int = Query(0),
+):
+    """Reliever leaderboard from play-by-play: Goose Eggs, broken eggs,
+    reliever WPA, and relief rate stats (IP, K%, BB%, RA9, WHIP)."""
+    allowed_sort = {
+        "wpa", "geg", "brk", "opp", "goose_pct",
+        "app", "ip", "bf", "k", "bb", "h", "r",
+        "k_pct", "bb_pct", "ra9", "whip",
+    }
+    if sort_by not in allowed_sort:
+        sort_by = "wpa"
+    # Lower-is-better stats default ascending
+    ascending_stats = {"ra9", "bb_pct", "whip", "r", "brk"}
+    default_dir = "ASC" if sort_by in ascending_stats else "DESC"
+    direction = sort_dir.upper() if sort_dir.upper() in ("ASC", "DESC") else default_dir
+
+    where_sql, where_params = _pbp_filter_clauses({
+        "division_id": division_id,
+        "conference_id": conference_id,
+        "state": state,
+        "team_id": team_id,
+        "year_in_school": year_in_school,
+    })
+
+    # PA-ending result types (for batters-faced / K / BB / H counting)
+    pa_types = (
+        "'single','double','triple','home_run','walk','intentional_walk','hbp',"
+        "'strikeout_swinging','strikeout_looking','ground_out','fly_out','line_out',"
+        "'pop_out','sac_fly','sac_bunt','fielders_choice','error','double_play','other'"
+    )
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = f"""
+            WITH starters AS (
+                SELECT DISTINCT ON (ge.game_id, ge.half)
+                       ge.game_id, ge.half, ge.pitcher_player_id AS starter_id
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                WHERE g.season = %s
+                ORDER BY ge.game_id, ge.half, ge.inning, ge.sequence_idx
+            ),
+            relief_ev AS (
+                SELECT ge.*
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                JOIN starters st ON st.game_id = ge.game_id AND st.half = ge.half
+                WHERE g.season = %s
+                  AND ge.pitcher_player_id IS NOT NULL
+                  AND ge.pitcher_player_id <> st.starter_id
+            ),
+            agg AS (
+                SELECT pitcher_player_id AS player_id,
+                       COUNT(DISTINCT game_id) AS app,
+                       SUM(GREATEST(outs_after - outs_before, 0)) AS outs,
+                       COUNT(*) FILTER (WHERE result_type IN ({pa_types})) AS bf,
+                       COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging','strikeout_looking')) AS k,
+                       COUNT(*) FILTER (WHERE result_type IN ('walk','intentional_walk')) AS bb,
+                       COUNT(*) FILTER (WHERE result_type IN ('single','double','triple','home_run')) AS h,
+                       COALESCE(SUM(runs_on_play), 0) AS r,
+                       COALESCE(SUM(wpa_pitcher), 0) AS wpa
+                FROM relief_ev
+                GROUP BY pitcher_player_id
+            ),
+            stint AS (
+                SELECT game_id, inning, half, pitcher_player_id,
+                       MIN(sequence_idx) AS first_seq,
+                       COALESCE(SUM(runs_on_play), 0) AS runs_allowed,
+                       SUM(GREATEST(outs_after - outs_before, 0)) AS outs_recorded
+                FROM relief_ev
+                GROUP BY game_id, inning, half, pitcher_player_id
+            ),
+            entry AS (
+                SELECT s.pitcher_player_id, s.inning, s.runs_allowed, s.outs_recorded,
+                       e.bat_score_before, e.fld_score_before,
+                       (LENGTH(e.bases_before) - LENGTH(REPLACE(e.bases_before, '1', ''))) AS runners_on
+                FROM stint s
+                JOIN relief_ev e
+                  ON e.game_id = s.game_id AND e.inning = s.inning AND e.half = s.half
+                 AND e.pitcher_player_id = s.pitcher_player_id AND e.sequence_idx = s.first_seq
+            ),
+            goose AS (
+                SELECT player_id,
+                       COUNT(*) FILTER (WHERE window_ok) AS opp,
+                       COUNT(*) FILTER (
+                           WHERE window_ok AND runs_allowed = 0
+                             AND (outs_recorded = 3
+                                  OR (outs_recorded >= 1 AND outs_recorded + runners_on >= 3))
+                       ) AS geg,
+                       COUNT(*) FILTER (WHERE window_ok AND runs_allowed > 0) AS brk
+                FROM (
+                    SELECT pitcher_player_id AS player_id, runs_allowed, outs_recorded, runners_on,
+                           (inning >= 7
+                            AND (fld_score_before - bat_score_before) >= 0
+                            AND ((fld_score_before - bat_score_before) <= %s
+                                 OR (fld_score_before - bat_score_before) <= runners_on + 1)
+                           ) AS window_ok
+                    FROM entry
+                ) w
+                GROUP BY player_id
+            )
+            SELECT
+                p.id AS player_id, p.first_name, p.last_name, p.year_in_school,
+                p.position, p.throws,
+                t.id AS team_id, t.short_name AS team_short,
+                t.school_name AS team_name, t.logo_url, t.state,
+                d.level AS division_level,
+                c.id AS conference_id, c.abbreviation AS conference_abbrev,
+                a.app, a.outs, a.bf, a.k, a.bb, a.h, a.r, a.wpa,
+                COALESCE(gz.geg, 0) AS geg,
+                COALESCE(gz.brk, 0) AS brk,
+                COALESCE(gz.opp, 0) AS opp,
+                a.outs / 3.0 AS ip,
+                CASE WHEN a.bf > 0 THEN a.k::numeric / a.bf END AS k_pct,
+                CASE WHEN a.bf > 0 THEN a.bb::numeric / a.bf END AS bb_pct,
+                CASE WHEN a.outs > 0 THEN a.r * 27.0 / a.outs END AS ra9,
+                CASE WHEN a.outs > 0 THEN (a.h + a.bb) * 3.0 / a.outs END AS whip,
+                CASE WHEN COALESCE(gz.geg, 0) + COALESCE(gz.brk, 0) > 0
+                     THEN gz.geg::numeric / (gz.geg + gz.brk) END AS goose_pct
+            FROM agg a
+            JOIN players p ON p.id = a.player_id
+            JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            LEFT JOIN goose gz ON gz.player_id = a.player_id
+            WHERE a.bf >= %s
+              AND COALESCE(t.is_active, 1) = 1
+              {where_sql}
+            ORDER BY {sort_by} {direction} NULLS LAST, a.wpa DESC
+            LIMIT %s OFFSET %s
+        """
+        params = [season, season, lead_threshold] + [min_bf] + where_params + [limit, offset]
+        cur.execute(query, params)
+        rows = [dict(r) for r in cur.fetchall()]
+
+        return {
+            "data": rows,
+            "total": len(rows),
+            "limit": limit,
+            "offset": offset,
+            "season": season,
+            "lead_threshold": lead_threshold,
+        }
+
+
+# ============================================================
 # FIELDING LEADERBOARD
 # ============================================================
 #

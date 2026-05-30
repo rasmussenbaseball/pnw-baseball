@@ -176,6 +176,7 @@ function RequirePortalAccess({ children }) {
 import BattingLeaderboard from './pages/BattingLeaderboard'
 import PitchingLeaderboard from './pages/PitchingLeaderboard'
 import FieldingLeaderboard from './pages/FieldingLeaderboard'
+import RelieverLeaderboard from './pages/RelieverLeaderboard'
 import SummerHub from './pages/SummerHub'
 import SummerGameDetail from './pages/SummerGameDetail'
 import SummerTeamDetail from './pages/SummerTeamDetail'
@@ -336,6 +337,7 @@ export default function App() {
           <Route path="/hitting" element={<BattingLeaderboard />} />
           <Route path="/pitching" element={<PitchingLeaderboard />} />
           <Route path="/fielding" element={<FieldingLeaderboard />} />
+          <Route path="/relievers" element={<RelieverLeaderboard />} />
           <Route path="/war" element={<WarLeaderboard />} />
           <Route path="/team-stats" element={<RequireTier minTier="free"><TeamStatsPage /></RequireTier>} />
           <Route path="/scatter" element={<ScatterPlot />} />

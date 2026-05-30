@@ -261,6 +261,49 @@ export const FIELDING_PRESETS = {
 }
 
 // ============================================================
+// Reliever Columns (Goose Eggs + reliever WPA, from game_events)
+// ============================================================
+// Row shape comes from /api/v1/leaderboards/relievers. All relief-only,
+// derived from play-by-play. GEG/BRK/OPP/Goose% are the clutch story;
+// WPA is the headline value stat.
+export const RELIEVER_COLUMNS = [
+  { key: 'rank', label: '#', width: 40, sortable: false },
+  { key: 'name', label: 'Player', width: 160, sortable: false,
+    render: (row) => `${row.first_name} ${row.last_name}` },
+  { key: 'team_short', label: 'Team', width: 90, sortable: false },
+  { key: 'year_in_school', label: 'Yr', width: 40, sortable: false },
+  { key: 'division_level', label: 'Lvl', width: 50, sortable: false },
+
+  { key: 'app', label: 'App', width: 50, format: 'int', tooltip: 'Relief appearances' },
+  { key: 'ip', label: 'IP', width: 55,
+    render: (row) => { const o = row.outs || 0; return `${Math.floor(o / 3)}.${o % 3}` },
+    tooltip: 'Relief innings pitched (outs / 3)' },
+  { key: 'bf', label: 'BF', width: 50, format: 'int', tooltip: 'Batters faced in relief' },
+  { key: 'k_pct', label: 'K%', width: 60, format: 'pct', tooltip: 'Strikeouts / batters faced' },
+  { key: 'bb_pct', label: 'BB%', width: 60, format: 'pct', tooltip: 'Walks / batters faced (lower is better)' },
+  { key: 'ra9', label: 'RA9', width: 60, format: 'era',
+    tooltip: 'Runs allowed per 9 relief innings (from play-by-play; not earned-run adjusted)' },
+  { key: 'whip', label: 'WHIP', width: 65, format: 'era', tooltip: '(Hits + Walks) / IP' },
+  { key: 'wpa', label: 'WPA', width: 70,
+    render: (row) => row.wpa == null ? '—' : `${row.wpa >= 0 ? '+' : ''}${Number(row.wpa).toFixed(2)}`,
+    tooltip: 'Win Probability Added in relief. Sum of the win-prob swing on every play while pitching. Higher is better.' },
+
+  { key: 'geg', label: 'GEG', width: 55, format: 'int',
+    tooltip: 'Goose Eggs — clean high-leverage relief innings (7th+, team not trailing, lead <= 3 or tying run on base/at bat, no runs allowed).' },
+  { key: 'brk', label: 'BRK', width: 55, format: 'int',
+    tooltip: 'Broken Eggs — goose-window innings where a run scored (lower is better).' },
+  { key: 'opp', label: 'OPP', width: 55, format: 'int',
+    tooltip: 'Goose opportunities — high-leverage innings entered.' },
+  { key: 'goose_pct', label: 'Goose%', width: 70, format: 'pct',
+    tooltip: 'GEG / (GEG + BRK). How often he hangs the zero in a goose window.' },
+]
+
+export const RELIEVER_PRESETS = {
+  'Clutch': ['app', 'ip', 'wpa', 'geg', 'brk', 'opp', 'goose_pct'],
+  'Rates':  ['app', 'ip', 'bf', 'k_pct', 'bb_pct', 'ra9', 'whip', 'wpa'],
+}
+
+// ============================================================
 // PBP (Plate Discipline / Pitch-Level) Columns
 // ============================================================
 //

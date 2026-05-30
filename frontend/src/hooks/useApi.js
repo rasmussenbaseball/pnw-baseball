@@ -164,6 +164,10 @@ export function useFieldingLeaderboard(params) {
   return useApi('/leaderboards/fielding', params, [JSON.stringify(params)])
 }
 
+export function useRelieverLeaderboard(params) {
+  return useApi('/leaderboards/relievers', params, [JSON.stringify(params)])
+}
+
 /**
  * Fetch WAR leaderboard.
  */
