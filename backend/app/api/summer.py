@@ -413,10 +413,25 @@ def summer_player_detail(player_id: int, season: int = Query(2026)):
         )
         spring_link = cur.fetchone()
 
+        # Season fielding lines
+        cur.execute(
+            """
+            SELECT season, position, games, total_chances, putouts, assists, errors,
+                   passed_balls, double_plays, stolen_bases_against, caught_stealing_by,
+                   catcher_interference, fielding_pct, cs_pct
+            FROM summer_fielding_stats
+            WHERE player_id = %s
+            ORDER BY season DESC
+            """,
+            (player_id,),
+        )
+        fielding = [dict(r) for r in cur.fetchall()]
+
     return {
         "player": dict(player),
         "batting": batting,
         "pitching": pitching,
+        "fielding": fielding,
         "game_batting": game_batting,
         "game_pitching": game_pitching,
         "spring_link": dict(spring_link) if spring_link else None,
@@ -584,6 +599,141 @@ def summer_batting_leaderboard(
 
 
 # ── /summer/leaderboards/pitching ──────────────────────────────────
+
+# ── /summer/trends ─────────────────────────────────────────────────
+
+@router.get("/summer/trends")
+@cached_endpoint(ttl_seconds=600)
+def summer_trends(
+    league: str = Query(DEFAULT_LEAGUE),
+    season: int = Query(2026),
+    window: int = Query(5, ge=2, le=15),
+    min_total_pa: int = Query(15, ge=0),
+    min_recent_pa: int = Query(4, ge=0),
+    limit_each: int = Query(8, ge=1, le=25),
+):
+    """Hot/cold movers: last-{window}-games OPS minus season OPS.
+    Returns two lists (hot + cold), each sorted by absolute delta.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        league_id = _league_id_for(cur, league)
+
+        cur.execute(
+            """
+            WITH games_ranked AS (
+              SELECT b.player_id, b.team_id, g.id AS game_id, g.game_date,
+                     b.ab, b.bb, b.h, b."2b" AS d, b."3b" AS t, b.hr, b.sf, b.hbp,
+                     ROW_NUMBER() OVER (PARTITION BY b.player_id ORDER BY g.game_date DESC) AS rn
+              FROM summer_game_batting b
+              JOIN summer_games g  ON g.id = b.game_id
+              JOIN summer_teams st ON st.id = b.team_id
+              WHERE st.league_id = %s AND g.season = %s AND g.status = 'final'
+                AND b.player_id IS NOT NULL
+            ),
+            recent_agg AS (
+              SELECT player_id, team_id,
+                     SUM(ab) AS ab, SUM(bb) AS bb, SUM(h) AS h,
+                     SUM(d) AS d, SUM(t) AS t, SUM(hr) AS hr,
+                     SUM(sf) AS sf, SUM(hbp) AS hbp,
+                     COUNT(*) AS games
+              FROM games_ranked
+              WHERE rn <= %s
+              GROUP BY player_id, team_id
+            ),
+            season_agg AS (
+              SELECT player_id, team_id,
+                     SUM(ab) AS ab, SUM(bb) AS bb, SUM(h) AS h,
+                     SUM(d) AS d, SUM(t) AS t, SUM(hr) AS hr,
+                     SUM(sf) AS sf, SUM(hbp) AS hbp
+              FROM games_ranked
+              GROUP BY player_id, team_id
+            )
+            SELECT
+              r.player_id,
+              r.team_id,
+              sp.first_name, sp.last_name,
+              st.short_name AS team_short, st.logo_url,
+              r.games AS recent_games,
+              (r.ab + r.bb + r.hbp + r.sf) AS recent_pa,
+              (s.ab + s.bb + s.hbp + s.sf) AS season_pa,
+              CASE WHEN (r.ab + r.bb + r.hbp + r.sf) > 0
+                   THEN ((r.h + r.bb + r.hbp)::real / NULLIF((r.ab + r.bb + r.hbp + r.sf),0))
+                      + (CASE WHEN r.ab > 0 THEN (r.h + r.d + 2*r.t + 3*r.hr)::real / r.ab ELSE 0 END)
+                   ELSE NULL END AS recent_ops,
+              CASE WHEN (s.ab + s.bb + s.hbp + s.sf) > 0
+                   THEN ((s.h + s.bb + s.hbp)::real / NULLIF((s.ab + s.bb + s.hbp + s.sf),0))
+                      + (CASE WHEN s.ab > 0 THEN (s.h + s.d + 2*s.t + 3*s.hr)::real / s.ab ELSE 0 END)
+                   ELSE NULL END AS season_ops
+            FROM recent_agg r
+            JOIN season_agg s ON s.player_id = r.player_id AND s.team_id = r.team_id
+            JOIN summer_players sp ON sp.id = r.player_id
+            JOIN summer_teams st   ON st.id = r.team_id
+            WHERE (r.ab + r.bb + r.hbp + r.sf) >= %s
+              AND (s.ab + s.bb + s.hbp + s.sf) >= %s
+            """,
+            (league_id, season, window, min_recent_pa, min_total_pa),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+    # Compute delta in Python, split into hot/cold, sort + slice
+    for r in rows:
+        if r.get("recent_ops") is not None and r.get("season_ops") is not None:
+            r["delta"] = r["recent_ops"] - r["season_ops"]
+        else:
+            r["delta"] = None
+    hot  = sorted([r for r in rows if (r.get("delta") or 0) > 0.05],
+                  key=lambda r: -r["delta"])[:limit_each]
+    cold = sorted([r for r in rows if (r.get("delta") or 0) < -0.05],
+                  key=lambda r:  r["delta"])[:limit_each]
+    return {"window": window, "hot": hot, "cold": cold}
+
+
+# ── /summer/leaderboards/fielding ──────────────────────────────────
+
+@router.get("/summer/leaderboards/fielding")
+@cached_endpoint(ttl_seconds=600)
+def summer_fielding_leaderboard(
+    league: str = Query(DEFAULT_LEAGUE),
+    season: int = Query(2026),
+    min_chances: int = Query(5, ge=0),
+    sort_by: str = Query("fielding_pct"),
+    limit: int = Query(100, ge=1, le=500),
+):
+    valid_sorts = {
+        "fielding_pct", "total_chances", "putouts", "assists", "errors",
+        "double_plays", "stolen_bases_against", "caught_stealing_by", "cs_pct",
+    }
+    if sort_by not in valid_sorts:
+        sort_by = "fielding_pct"
+    # errors DESC = more errors (worse defender) at top — flip ASC so default is "fewest errors"
+    asc_sorts = {"errors"}
+    direction = "ASC" if sort_by in asc_sorts else "DESC"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        league_id = _league_id_for(cur, league)
+        cur.execute(
+            f"""
+            SELECT p.id   AS player_id,
+                   p.first_name, p.last_name, p.position,
+                   t.id   AS team_id, t.short_name AS team_short, t.name AS team_name, t.logo_url,
+                   f.games, f.total_chances, f.putouts, f.assists, f.errors,
+                   f.passed_balls, f.double_plays,
+                   f.stolen_bases_against, f.caught_stealing_by,
+                   f.fielding_pct, f.cs_pct
+            FROM summer_fielding_stats f
+            JOIN summer_players p ON p.id = f.player_id
+            JOIN summer_teams t   ON t.id = f.team_id
+            WHERE t.league_id = %s AND f.season = %s
+              AND f.total_chances >= %s
+            ORDER BY f.{sort_by} {direction} NULLS LAST, f.total_chances DESC
+            LIMIT %s
+            """,
+            (league_id, season, min_chances, limit),
+        )
+        rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
 
 # ── /summer/college-representation ─────────────────────────────────
 

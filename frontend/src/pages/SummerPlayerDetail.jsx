@@ -36,9 +36,10 @@ export default function SummerPlayerDetail() {
     )
   }
 
-  const { player, batting, pitching, game_batting, game_pitching, spring_link } = data
+  const { player, batting, pitching, fielding, game_batting, game_pitching, spring_link } = data
   const hasBatting = batting?.length > 0
   const hasPitching = pitching?.length > 0
+  const hasFielding = fielding?.length > 0
 
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4">
@@ -165,6 +166,41 @@ export default function SummerPlayerDetail() {
                     <td className="px-1.5 py-1 text-right font-bold">{fmtEra(r.era)}</td>
                     <td className="px-1.5 py-1 text-right">{fmtEra(r.whip)}</td>
                     <td className="px-1.5 py-1 text-right">{fmtEra(r.k_per_9)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {hasFielding && (
+        <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4 mb-4">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">Fielding · by Season</h3>
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-[12px] tabular-nums">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  {['Year','G','TC','PO','A','E','DP','PB','SBA','CS','FldPct','CS%'].map((h, i) => (
+                    <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {fielding.map((r, i) => (
+                  <tr key={i} className="border-b border-gray-100 dark:border-gray-700/50">
+                    <td className="px-1.5 py-1 text-left font-semibold">{r.season}</td>
+                    <td className="px-1.5 py-1 text-right">{r.games ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.total_chances ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.putouts ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.assists ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.errors ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.double_plays ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.passed_balls ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.stolen_bases_against ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.caught_stealing_by ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-right font-bold">{r.fielding_pct != null ? Number(r.fielding_pct).toFixed(3).replace(/^0/, '') : '—'}</td>
+                    <td className="px-1.5 py-1 text-right">{r.cs_pct != null ? `${(r.cs_pct * 100).toFixed(1)}%` : '—'}</td>
                   </tr>
                 ))}
               </tbody>

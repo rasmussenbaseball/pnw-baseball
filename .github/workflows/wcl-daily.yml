@@ -82,6 +82,14 @@ jobs:
           echo "→ Computing wOBA / wRC+ / FIP / oWAR / pWAR"
           PYTHONPATH=backend python3 scripts/compute_summer_advanced.py --season "$SEASON"
 
+      - name: Scrape WCL season fielding
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          echo "→ Pulling WCL season fielding from wclstats.com"
+          PYTHONPATH=backend python3 scripts/scrape_wcl_fielding.py --season "$SEASON" || true
+
       - name: Link summer ↔ spring players
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

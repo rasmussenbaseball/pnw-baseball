@@ -9,9 +9,11 @@ import { useApi } from '../hooks/useApi'
 
 const TABS = [
   { key: 'scoreboard',  label: 'Scoreboard' },
+  { key: 'calendar',    label: 'Calendar' },
   { key: 'standings',   label: 'Standings' },
-  { key: 'batting',     label: 'Batting Leaders' },
-  { key: 'pitching',    label: 'Pitching Leaders' },
+  { key: 'batting',     label: 'Batting' },
+  { key: 'pitching',    label: 'Pitching' },
+  { key: 'fielding',    label: 'Fielding' },
   { key: 'teams',       label: 'Teams' },
   { key: 'pnw',         label: 'PNW Alumni' },
   { key: 'colleges',    label: 'College Mix' },
@@ -47,9 +49,11 @@ const LEADER_CATS = [
 ]
 
 function LeadersTicker() {
+  // Mobile: 2-up grid so leaders aren't hidden behind horizontal scroll.
+  // Desktop: original single-row ticker.
   return (
-    <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1 py-2 mb-4 overflow-hidden">
-      <div className="flex items-center">
+    <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-2 mb-4">
+      <div className="hidden sm:flex items-center overflow-hidden">
         <span className="shrink-0 px-3 py-1 mr-2 rounded text-[10px] font-bold tracking-widest uppercase text-amber-900 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200">
           WCL Leaders
         </span>
@@ -59,6 +63,16 @@ function LeadersTicker() {
               <LeaderCell key={cat.stat} cat={cat} />
             ))}
           </div>
+        </div>
+      </div>
+      <div className="sm:hidden">
+        <div className="text-[10px] font-bold tracking-widest uppercase text-amber-900 dark:text-amber-200 mb-1.5">
+          WCL Leaders
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          {LEADER_CATS.map(cat => (
+            <LeaderCell key={cat.stat} cat={cat} />
+          ))}
         </div>
       </div>
     </div>
@@ -99,6 +113,52 @@ function LeaderCell({ cat }) {
       <span className="ml-1 text-gray-500 dark:text-gray-400">({top.team_short})</span>
       <span className="ml-1.5 font-bold tabular-nums text-amber-700 dark:text-amber-300">{val}</span>
     </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Hot/Cold trend widget (last-5 OPS vs season OPS)
+// ─────────────────────────────────────────────────────────────
+
+function TrendsWidget() {
+  const { data, loading } = useApi('/summer/trends', { league: LEAGUE, season: SEASON, window: 5 })
+  if (loading || !data) return null
+  const { hot = [], cold = [] } = data
+  if (!hot.length && !cold.length) return null
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+      <TrendList title="Hot · last 5 games" rows={hot} accent="emerald" />
+      <TrendList title="Cold · last 5 games" rows={cold} accent="rose" />
+    </div>
+  )
+}
+
+function TrendList({ title, rows, accent }) {
+  const headerColor = accent === 'emerald'
+    ? 'text-emerald-700 dark:text-emerald-300'
+    : 'text-rose-700 dark:text-rose-300'
+  const deltaColor = accent === 'emerald'
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : 'text-rose-600 dark:text-rose-400'
+  return (
+    <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+      <div className={`text-[10px] sm:text-xs font-bold tracking-widest uppercase mb-2 ${headerColor}`}>{title}</div>
+      {rows.length === 0
+        ? <div className="text-xs text-gray-500 dark:text-gray-400">No qualifiers yet.</div>
+        : <ul className="flex flex-col gap-1">
+            {rows.slice(0, 5).map(r => (
+              <li key={r.player_id} className="flex items-center justify-between gap-2 text-xs">
+                <Link to={`/summer/players/${r.player_id}`} className="font-semibold text-gray-900 dark:text-gray-100 hover:text-nw-teal truncate">
+                  {r.first_name?.[0]}. {r.last_name}
+                </Link>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">{r.team_short}</span>
+                <span className={`tabular-nums font-bold ${deltaColor} shrink-0`}>
+                  {r.delta > 0 ? '+' : ''}{Number(r.delta).toFixed(3)} OPS
+                </span>
+              </li>
+            ))}
+          </ul>}
+    </div>
   )
 }
 
@@ -173,6 +233,110 @@ function Side({ teamId, name, short, logo, score, bold, dim }) {
       <span className={`text-base tabular-nums ${bold ? 'font-bold text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'}`}>
         {score == null ? '—' : score}
       </span>
+    </div>
+  )
+}
+
+function ScheduleCalendar() {
+  // Default to current month — but if pre-June, default to June 2026 so
+  // visitors see the opening series instead of an empty May.
+  const today = new Date()
+  const minMonth = new Date(2026, 5, 1) // June 2026
+  const initial = today < minMonth
+    ? new Date(2026, 5, 1)
+    : new Date(today.getFullYear(), today.getMonth(), 1)
+  const [cursor, setCursor] = useState(initial)
+
+  // Window covers the full visible month + leading/trailing weeks
+  const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+  const monthEnd   = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
+  const gridStart  = new Date(monthStart)
+  gridStart.setDate(monthStart.getDate() - monthStart.getDay()) // back up to Sunday
+  const gridEnd    = new Date(monthEnd)
+  gridEnd.setDate(monthEnd.getDate() + (6 - monthEnd.getDay()))
+
+  // Convert to days_back / days_ahead from "today"
+  const daysBack  = Math.max(0, Math.ceil((today - gridStart) / 86400000))
+  const daysAhead = Math.max(0, Math.ceil((gridEnd - today) / 86400000))
+
+  const { data, loading, error } = useApi('/summer/scoreboard',
+    { league: LEAGUE, season: SEASON, days_back: Math.min(60, daysBack), days_ahead: Math.min(60, daysAhead) },
+    [cursor.toISOString()])
+
+  if (error) return <ErrorState msg={error} />
+
+  // Bucket games by yyyy-mm-dd
+  const byDate = {}
+  for (const g of (data || [])) {
+    if (!byDate[g.game_date]) byDate[g.game_date] = []
+    byDate[g.game_date].push(g)
+  }
+
+  // Build 6x7 grid of cells from gridStart
+  const cells = []
+  const cur = new Date(gridStart)
+  while (cur <= gridEnd) {
+    cells.push(new Date(cur))
+    cur.setDate(cur.getDate() + 1)
+  }
+  const dayKey = d => d.toISOString().slice(0, 10)
+  const monthLabel = cursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <button
+          onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
+          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+          ← Prev
+        </button>
+        <div className="flex-1 text-center text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100">{monthLabel}</div>
+        <button
+          onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
+          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+          Next →
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-px text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500 mb-1">
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <div key={d} className="text-center">{d}</div>)}
+      </div>
+      <div className="grid grid-cols-7 gap-px border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden bg-gray-200 dark:bg-gray-700">
+        {cells.map((d, i) => {
+          const inMonth = d.getMonth() === cursor.getMonth()
+          const isToday = d.toDateString() === today.toDateString()
+          const games = byDate[dayKey(d)] || []
+          return (
+            <div key={i}
+              className={`min-h-[80px] sm:min-h-[100px] p-1 sm:p-1.5 ${inMonth ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'} ${isToday ? 'ring-2 ring-nw-teal dark:ring-teal-400 ring-inset' : ''}`}>
+              <div className={`text-[10px] sm:text-xs font-bold mb-1 ${inMonth ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-600'}`}>
+                {d.getDate()}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {games.slice(0, 3).map(g => {
+                  const isFinal = g.status === 'final'
+                  const awayWon = isFinal && g.away_score > g.home_score
+                  return (
+                    <Link key={g.id} to={`/summer/games/${g.id}`}
+                      className="block text-[10px] sm:text-[11px] leading-tight rounded px-1 py-0.5 bg-gray-50 dark:bg-gray-700/70 hover:bg-gray-100 dark:hover:bg-gray-700 truncate">
+                      <span className={awayWon ? 'font-bold' : ''}>{g.away_short || g.away_team_name?.split(' ').slice(-1)[0]}</span>
+                      <span className="text-gray-400 mx-0.5">@</span>
+                      <span className={!awayWon && isFinal ? 'font-bold' : ''}>{g.home_short || g.home_team_name?.split(' ').slice(-1)[0]}</span>
+                      {isFinal && g.away_score != null && (
+                        <span className="ml-1 tabular-nums text-gray-500 dark:text-gray-400">{g.away_score}-{g.home_score}</span>
+                      )}
+                    </Link>
+                  )
+                })}
+                {games.length > 3 && (
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">+{games.length - 3} more</span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {loading && <div className="text-center text-xs text-gray-400 dark:text-gray-500 mt-2">Loading…</div>}
     </div>
   )
 }
@@ -385,6 +549,74 @@ function PitchingLeaders() {
                   <td className="px-1.5 py-1 text-right tabular-nums">{p.bb_pct != null ? `${(p.bb_pct * 100).toFixed(1)}%` : '—'}</td>
                   <td className="px-1.5 py-1 text-right tabular-nums">{fmtEra(p.k_per_9)}</td>
                   <td className="px-1.5 py-1 text-right tabular-nums">{p.pitching_war != null ? Number(p.pitching_war).toFixed(2) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function FieldingLeaders() {
+  const [sort, setSort] = useState('fielding_pct')
+  const { data, loading, error } = useApi('/summer/leaderboards/fielding',
+    { league: LEAGUE, season: SEASON, min_chances: 3, sort_by: sort, limit: 100 },
+    [sort])
+  if (loading) return <SkeletonRows />
+  if (error) return <ErrorState msg={error} />
+  if (!data?.length) {
+    return <EmptyState msg="No qualified fielders yet. Min 3 chances; lower the bar once league play starts." />
+  }
+  return (
+    <>
+      <SortBar
+        value={sort} onChange={setSort}
+        options={[
+          { value: 'fielding_pct',         label: 'FldPct' },
+          { value: 'total_chances',        label: 'Chances' },
+          { value: 'putouts',              label: 'Putouts' },
+          { value: 'assists',              label: 'Assists' },
+          { value: 'errors',               label: 'Errors (fewest first)' },
+          { value: 'double_plays',         label: 'Double Plays' },
+          { value: 'stolen_bases_against', label: 'SB Against' },
+          { value: 'caught_stealing_by',   label: 'Caught Stealing' },
+          { value: 'cs_pct',               label: 'CS%' },
+        ]}
+      />
+      <div className="overflow-x-auto -mx-3 sm:mx-0">
+        <div className="min-w-[820px] px-3 sm:px-0">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-700">
+                {['#','Player','Pos','Team','G','TC','PO','A','E','DP','PB','SBA','CS','FldPct','CS%'].map((h, i) => (
+                  <th key={h} className={`px-1.5 py-1.5 text-xs font-bold text-gray-500 dark:text-gray-400 ${i < 4 ? 'text-left' : 'text-right'}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((p, i) => (
+                <tr key={p.player_id + '-' + i} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                  <td className="px-1.5 py-1 text-gray-500 dark:text-gray-400 tabular-nums">{i + 1}</td>
+                  <td className="px-1.5 py-1 font-semibold text-gray-900 dark:text-gray-100">
+                    <Link to={`/summer/players/${p.player_id}`} className="hover:underline">{p.first_name} {p.last_name}</Link>
+                  </td>
+                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400 uppercase">{p.position || ''}</td>
+                  <td className="px-1.5 py-1">
+                    <Link to={`/summer/teams/${p.team_id}`} className="text-nw-teal dark:text-teal-300 hover:underline">{p.team_short}</Link>
+                  </td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.games)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.total_chances)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.putouts)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.assists)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.errors)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.double_plays)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.passed_balls)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.stolen_bases_against)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.caught_stealing_by)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums font-bold">{p.fielding_pct != null ? fmtAvg(p.fielding_pct) : '—'}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{p.cs_pct != null ? `${(p.cs_pct * 100).toFixed(1)}%` : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -624,6 +856,7 @@ export default function SummerHub() {
       )}
 
       <LeadersTicker />
+      <TrendsWidget />
 
       <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-5 -mx-3 sm:mx-0 px-3 sm:px-0 gap-1">
         {TABS.map(t => (
@@ -643,9 +876,11 @@ export default function SummerHub() {
 
       <div className="min-h-[260px]">
         {tab === 'scoreboard' && <Scoreboard />}
+        {tab === 'calendar'   && <ScheduleCalendar />}
         {tab === 'standings'  && <Standings />}
         {tab === 'batting'    && <BattingLeaders />}
         {tab === 'pitching'   && <PitchingLeaders />}
+        {tab === 'fielding'   && <FieldingLeaders />}
         {tab === 'teams'      && <Teams />}
         {tab === 'pnw'        && <PnwAlumni />}
         {tab === 'colleges'   && <CollegeMix />}
