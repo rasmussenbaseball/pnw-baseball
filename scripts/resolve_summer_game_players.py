@@ -47,9 +47,15 @@ def _norm(s):
 # Order digit + period: "1. ", "12. "
 # Position code at start: "1b", "2b", "3b", "ss", "lf", "cf", "rf",
 #   "c", "p", "dh", "ph", "pr", "of", "if".
+# Position codes are emitted LOWERCASE by the box score and are either
+# glued to a Capitalized name ("cAnders", "pKolby", "1bM.D.") or
+# followed by whitespace ("rf  Noah"). We therefore match lowercase
+# codes only (no re.IGNORECASE) AND require an uppercase letter,
+# whitespace, or end-of-string right after the code. That way we never
+# chop the leading capital off a real first name like "Casey", "Cole",
+# or "Preston" (whose "C"/"pr" would otherwise match the "c"/"pr" code).
 _PREFIX_RE = re.compile(
-    r"^\s*(?:\d+\.\s*|(?:1b|2b|3b|ss|lf|cf|rf|dh|ph|pr|of|if|p|c)\s*)+",
-    re.IGNORECASE,
+    r"^\s*(?:\d+\.\s*|(?:1b|2b|3b|ss|lf|cf|rf|dh|ph|pr|of|if|p|c)(?=[A-Z]|\s|$)\s*)+",
 )
 # Trailing pitcher decision parenthetical:
 #   "Kolby Lukinchuk(W, 1-0)" or "Player Name (W)"
