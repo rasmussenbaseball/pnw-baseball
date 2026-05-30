@@ -82,6 +82,21 @@ jobs:
           echo "→ Computing wOBA / wRC+ / FIP / oWAR / pWAR"
           PYTHONPATH=backend python3 scripts/compute_summer_advanced.py --season "$SEASON"
 
+      - name: Scrape WCL play-by-play (hitter approach splits)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          RESCRAPE="${{ github.event.inputs.rescrape || 'false' }}"
+          # Runs AFTER box scores (for starter seeding) and name
+          # resolution (so summer_players rosters exist to resolve
+          # batter/pitcher IDs). Default mode only ingests final games
+          # that don't yet have events, so new games are picked up daily.
+          ARGS="--season $SEASON"
+          if [ "$RESCRAPE" = "true" ]; then ARGS="$ARGS --rescrape"; fi
+          echo "→ python3 scripts/scrape_summer_pbp.py $ARGS"
+          PYTHONPATH=backend python3 scripts/scrape_summer_pbp.py $ARGS || true
+
       - name: Scrape WCL season fielding
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
