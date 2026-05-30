@@ -4201,6 +4201,301 @@ def get_team_rankings(
 # TEAM INFO GRAPHIC (single-payload data for the social card)
 # ============================================================
 
+# ============================================================
+# TEAM SEASON RECAP (end-of-year, positive-only social graphic)
+# ============================================================
+
+def _recap_ordinal(n):
+    if n is None:
+        return None
+    if 10 <= (n % 100) <= 20:
+        suf = "th"
+    else:
+        suf = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suf}"
+
+
+def _recap_fmt_val(v, fmt):
+    if v is None:
+        return ""
+    if fmt == "avg3":
+        s = f"{v:.3f}"
+        return s[1:] if 0 < v < 1 else s   # .812, not 0.812
+    if fmt == "era":
+        return f"{v:.2f}"
+    if fmt == "plusint":
+        return f"+{int(round(v))}" if v > 0 else f"{int(round(v))}"
+    if fmt == "int":
+        return f"{int(round(v))}"
+    return str(v)
+
+
+def _best_team_superlative(conf_rows, team_id, scope_label):
+    """Pick the team stat where this team ranks best within its
+    conference. Positive framing: prefer an outright lead, else the
+    highest finish. Returns None if no rankable categories."""
+    cats = [
+        ("team_ops",          "OPS",              True,  "avg3"),
+        ("team_batting_avg",  "batting average",  True,  "avg3"),
+        ("run_differential",  "run differential", True,  "plusint"),
+        ("runs_scored",       "runs scored",      True,  "int"),
+        ("team_era",          "team ERA",         False, "era"),
+        ("team_whip",         "WHIP",             False, "era"),
+        ("team_fielding_pct", "fielding %",       True,  "avg3"),
+    ]
+    me = next((r for r in conf_rows if r["team_id"] == team_id), None)
+    if not me:
+        return None
+    best = None
+    for key, label, higher_is_better, fmt in cats:
+        vals = [(r["team_id"], r[key]) for r in conf_rows if r.get(key) is not None]
+        if len(vals) < 3 or me.get(key) is None:
+            continue
+        vals.sort(key=lambda x: x[1], reverse=higher_is_better)
+        rank = next((i + 1 for i, (tid, _) in enumerate(vals) if tid == team_id), None)
+        if rank is None:
+            continue
+        if best is None or rank < best["rank"]:
+            best = {"category": label, "rank": rank, "total": len(vals),
+                    "value": me[key], "fmt": fmt}
+    if not best:
+        return None
+    val_str = _recap_fmt_val(best["value"], best["fmt"])
+    led = best["rank"] == 1
+    best["led"] = led
+    best["rank_ordinal"] = _recap_ordinal(best["rank"])
+    best["value_display"] = val_str
+    best["scope"] = scope_label
+    if led:
+        best["text"] = f"Led the {scope_label} in {best['category']} ({val_str})"
+    else:
+        best["text"] = f"{best['rank_ordinal']} in the {scope_label} in {best['category']} ({val_str})"
+    return best
+
+
+@router.get("/teams/{team_id}/season-recap")
+@cached_endpoint(ttl_seconds=1800)
+def team_season_recap(
+    team_id: int,
+    season: int = Query(2026, description="Season year"),
+):
+    """Positive-only end-of-year team snapshot for the season-recap social
+    graphic: record + conference standing, longest win streak, best hitter
+    & best pitcher (by WAR), freshman of the year, a team superlative (best
+    conference rank in a team stat), and the most clutch moment (highest
+    hitter WPA play of the season)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT t.id, t.name, t.short_name, t.logo_url, t.mascot, t.city, t.state,
+                   t.conference_id, c.name AS conference_name, c.abbreviation AS conference_abbrev,
+                   d.id AS division_id, d.level AS division_level, d.name AS division_name
+            FROM teams t
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE t.id = %s
+        """, (team_id,))
+        team = cur.fetchone()
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        team = dict(team)
+
+        cur.execute("""
+            SELECT wins, losses, ties, conference_wins, conference_losses,
+                   team_ops, team_batting_avg, team_era, team_whip, team_fielding_pct,
+                   run_differential, runs_scored, runs_allowed
+            FROM team_season_stats WHERE team_id = %s AND season = %s
+        """, (team_id, season))
+        rec = dict(cur.fetchone() or {})
+
+        # Conference standing place (same ordering as /teams/{id}/rankings)
+        cur.execute("""
+            SELECT t.id FROM teams t
+            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
+            WHERE t.conference_id = %s AND t.is_active = 1
+            ORDER BY
+                CASE WHEN (COALESCE(s.conference_wins,0) + COALESCE(s.conference_losses,0)) > 0
+                     THEN CAST(COALESCE(s.conference_wins,0) AS numeric) /
+                          (COALESCE(s.conference_wins,0) + COALESCE(s.conference_losses,0))
+                     ELSE CAST(COALESCE(s.wins,0) AS numeric) /
+                          NULLIF(COALESCE(s.wins,0) + COALESCE(s.losses,0), 0) END DESC,
+                COALESCE(s.wins,0) DESC
+        """, (season, team["conference_id"]))
+        conf_ids = [r["id"] for r in cur.fetchall()]
+        conf_total = len(conf_ids)
+        conf_place = conf_ids.index(team_id) + 1 if team_id in conf_ids else None
+
+        # Longest win streak (chronological)
+        cur.execute("""
+            SELECT g.home_team_id, g.home_score, g.away_score
+            FROM games g
+            WHERE g.season = %s AND g.status = 'final'
+              AND (g.home_team_id = %s OR g.away_team_id = %s)
+              AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+            ORDER BY g.game_date, g.id
+        """, (season, team_id, team_id))
+        streak = longest = 0
+        for g in cur.fetchall():
+            is_home = g["home_team_id"] == team_id
+            ts = g["home_score"] if is_home else g["away_score"]
+            os_ = g["away_score"] if is_home else g["home_score"]
+            if ts > os_:
+                streak += 1
+                longest = max(longest, streak)
+            elif ts < os_:
+                streak = 0
+        longest_win_streak = longest
+
+        # Best hitter by oWAR (qualified)
+        cur.execute(f"""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
+                   bs.woba::float AS woba, bs.wrc_plus::float AS wrc_plus,
+                   bs.offensive_war::float AS war, bs.plate_appearances AS pa,
+                   bs.home_runs AS hr, bs.rbi AS rbi, bs.stolen_bases AS sb,
+                   bs.batting_avg::float AS avg
+            FROM batting_stats bs JOIN players p ON bs.player_id = p.id
+            LEFT JOIN team_season_stats tss ON tss.team_id = bs.team_id AND tss.season = bs.season
+            WHERE bs.team_id = %s AND bs.season = %s AND bs.offensive_war IS NOT NULL
+              AND bs.plate_appearances >= {QUALIFIED_PA_PER_GAME}
+                  * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+            ORDER BY bs.offensive_war DESC NULLS LAST LIMIT 1
+        """, (team_id, season))
+        r = cur.fetchone()
+        best_hitter = dict(r) if r else None
+
+        # Best pitcher by pWAR (min 5 IP)
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
+                   ps.siera::float AS siera, ps.era::float AS era,
+                   (COALESCE(ps.k_pct,0) * 100)::float AS k_pct,
+                   ps.pitching_war::float AS war, ps.innings_pitched::float AS ip,
+                   CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0
+                        THEN COALESCE(ps.hits_allowed,0)::float
+                             / (ps.batters_faced - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0))
+                        END AS baa
+            FROM pitching_stats ps JOIN players p ON ps.player_id = p.id
+            WHERE ps.team_id = %s AND ps.season = %s
+              AND COALESCE(ps.innings_pitched,0) >= 5 AND ps.pitching_war IS NOT NULL
+            ORDER BY ps.pitching_war DESC NULLS LAST LIMIT 1
+        """, (team_id, season))
+        r = cur.fetchone()
+        best_pitcher = dict(r) if r else None
+
+        # Freshman of the year (Fr / R-Fr; best WAR, hitter or pitcher)
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
+                   bs.woba::float AS woba, bs.wrc_plus::float AS wrc_plus,
+                   bs.offensive_war::float AS war, bs.plate_appearances AS pa,
+                   bs.home_runs AS hr, bs.rbi AS rbi, bs.stolen_bases AS sb
+            FROM batting_stats bs JOIN players p ON bs.player_id = p.id
+            WHERE bs.team_id = %s AND bs.season = %s AND p.year_in_school ILIKE '%%fr'
+              AND bs.offensive_war IS NOT NULL AND bs.plate_appearances >= 20
+            ORDER BY bs.offensive_war DESC NULLS LAST LIMIT 1
+        """, (team_id, season))
+        fr_h = cur.fetchone()
+        fr_h = dict(fr_h) if fr_h else None
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
+                   ps.siera::float AS siera, (COALESCE(ps.k_pct,0) * 100)::float AS k_pct,
+                   ps.pitching_war::float AS war, ps.innings_pitched::float AS ip,
+                   CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0
+                        THEN COALESCE(ps.hits_allowed,0)::float
+                             / (ps.batters_faced - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0))
+                        END AS baa
+            FROM pitching_stats ps JOIN players p ON ps.player_id = p.id
+            WHERE ps.team_id = %s AND ps.season = %s AND p.year_in_school ILIKE '%%fr'
+              AND ps.pitching_war IS NOT NULL AND COALESCE(ps.innings_pitched,0) >= 10
+            ORDER BY ps.pitching_war DESC NULLS LAST LIMIT 1
+        """, (team_id, season))
+        fr_p = cur.fetchone()
+        fr_p = dict(fr_p) if fr_p else None
+        freshman = None
+        hw = fr_h["war"] if fr_h and fr_h.get("war") is not None else -999
+        pw = fr_p["war"] if fr_p and fr_p.get("war") is not None else -999
+        if fr_h and hw >= pw:
+            freshman = {"kind": "hitter", **fr_h}
+        elif fr_p:
+            freshman = {"kind": "pitcher", **fr_p}
+
+        # Team superlative (best conference rank in a team stat)
+        cur.execute("""
+            SELECT s.team_id,
+                   s.team_ops::float AS team_ops, s.team_batting_avg::float AS team_batting_avg,
+                   s.team_era::float AS team_era, s.team_whip::float AS team_whip,
+                   s.team_fielding_pct::float AS team_fielding_pct,
+                   s.run_differential::float AS run_differential, s.runs_scored::float AS runs_scored
+            FROM team_season_stats s JOIN teams t ON t.id = s.team_id
+            WHERE t.conference_id = %s AND s.season = %s AND t.is_active = 1
+        """, (team["conference_id"], season))
+        conf_rows = [dict(r2) for r2 in cur.fetchall()]
+        superlative = _best_team_superlative(
+            conf_rows, team_id, team.get("conference_abbrev") or team.get("conference_name"))
+
+        # Most clutch moment (top hitter WPA, audit-clean games only)
+        cur.execute("""
+            WITH game_audit AS (
+                SELECT g.id AS game_id
+                FROM games g LEFT JOIN game_events e ON e.game_id = g.id
+                WHERE g.season = %s AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+                GROUP BY g.id, g.home_score, g.away_score
+                HAVING ABS((g.home_score + g.away_score) - COALESCE(SUM(e.runs_on_play), 0)) = 0
+            )
+            SELECT ge.batter_name, ge.pitcher_name, ge.result_type, ge.result_text,
+                   ge.inning, ge.half, ge.bases_before, ge.outs_before,
+                   ge.balls_before, ge.strikes_before,
+                   ge.bat_score_before, ge.fld_score_before,
+                   ge.wpa_batter::float AS wpa,
+                   ge.wp_before::float AS wp_before, ge.wp_after::float AS wp_after,
+                   g.game_date, g.home_team_id,
+                   ht.short_name AS home_short, at2.short_name AS away_short
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            JOIN game_audit ga ON ga.game_id = ge.game_id
+            LEFT JOIN teams ht ON ht.id = g.home_team_id
+            LEFT JOIN teams at2 ON at2.id = g.away_team_id
+            WHERE g.season = %s AND ge.wpa_batter IS NOT NULL
+              AND ((ge.half = 'bottom' AND g.home_team_id = %s)
+                   OR (ge.half = 'top' AND g.away_team_id = %s))
+            ORDER BY ge.wpa_batter DESC LIMIT 1
+        """, (season, season, team_id, team_id))
+        cm = cur.fetchone()
+        clutch = None
+        if cm:
+            cm = dict(cm)
+            is_home = cm["half"] == "bottom"
+            clutch = {
+                "batter_name": cm["batter_name"], "pitcher_name": cm["pitcher_name"],
+                "result_type": cm["result_type"], "result_text": cm["result_text"],
+                "inning": cm["inning"], "half": cm["half"],
+                "bases_before": cm["bases_before"], "outs_before": cm["outs_before"],
+                "balls_before": cm["balls_before"], "strikes_before": cm["strikes_before"],
+                "bat_score_before": cm["bat_score_before"], "fld_score_before": cm["fld_score_before"],
+                "wpa": cm["wpa"], "wp_before": cm["wp_before"], "wp_after": cm["wp_after"],
+                "game_date": cm["game_date"].isoformat() if cm["game_date"] else None,
+                "home_away": "vs" if is_home else "@",
+                "opponent_short": cm["away_short"] if is_home else cm["home_short"],
+            }
+
+    return {
+        "team": team,
+        "season": season,
+        "record": {
+            "wins": rec.get("wins"), "losses": rec.get("losses"), "ties": rec.get("ties"),
+            "conference_wins": rec.get("conference_wins"),
+            "conference_losses": rec.get("conference_losses"),
+            "conference_place": conf_place, "conference_total": conf_total,
+            "conference_place_ordinal": _recap_ordinal(conf_place),
+        },
+        "longest_win_streak": longest_win_streak,
+        "best_hitter": best_hitter,
+        "best_pitcher": best_pitcher,
+        "freshman_of_year": freshman,
+        "superlative": superlative,
+        "clutch_moment": clutch,
+    }
+
+
 @router.get("/teams/{team_id}/info-graphic")
 def team_info_graphic(
     team_id: int,

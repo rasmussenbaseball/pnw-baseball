@@ -17,6 +17,7 @@ const GRAPHICS = [
   { to: '/all-conference-graphic',  label: 'All-Conference Teams',  desc: 'Render the All-Conference 1st / 2nd / HM teams.' },
   { to: '/top-performers-graphic',  label: 'Top Performers',        desc: 'Weekly top 10 hitters and pitchers.' },
   { to: '/team-info-graphic',       label: 'Team Info',             desc: 'Full team overview graphic.' },
+  { to: '/team-season-recap',       label: 'Team Season Recap',     desc: 'End-of-year highlights: record, WAR leaders, clutch moment.' },
 ]
 
 export default function GraphicsHub() {
