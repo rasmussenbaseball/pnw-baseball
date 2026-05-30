@@ -349,7 +349,16 @@ export default function WclRecapGraphic() {
     setLoading(true); setError(null); setGames([]); setDetails({})
     ;(async () => {
       try {
-        const r = await fetch(`${API_BASE}/summer/scoreboard?league=WCL&season=2026&days_back=30&days_ahead=2`)
+        // Calculate the exact window we need for the chosen date — picks
+        // either the today + 0 ahead path (if date is in the past) or
+        // a one-day-ahead window.
+        const target = new Date(date + 'T00:00:00')
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const diffDays = Math.round((today - target) / 86400000)
+        const back  = Math.max(0, Math.min(120, diffDays))
+        const ahead = Math.max(0, Math.min(120, -diffDays))
+        const r = await fetch(`${API_BASE}/summer/scoreboard?league=WCL&season=2026&days_back=${back}&days_ahead=${ahead}`)
         if (!r.ok) throw new Error(`scoreboard fetch failed: ${r.status}`)
         const all = await r.json()
         const onDate = all.filter(g => g.game_date === date)

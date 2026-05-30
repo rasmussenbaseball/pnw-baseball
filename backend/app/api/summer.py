@@ -70,8 +70,8 @@ def summer_leagues():
 def summer_scoreboard(
     league: str = Query(DEFAULT_LEAGUE),
     season: int = Query(2026),
-    days_back: int = Query(3, ge=0, le=14),
-    days_ahead: int = Query(3, ge=0, le=14),
+    days_back: int = Query(3, ge=0, le=120),
+    days_ahead: int = Query(3, ge=0, le=120),
 ):
     """Recent + upcoming games. Default window is yesterday + today + tomorrow."""
     with get_connection() as conn:
