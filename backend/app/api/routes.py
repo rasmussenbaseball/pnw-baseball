@@ -4227,79 +4227,253 @@ def _recap_fmt_val(v, fmt):
         return f"+{int(round(v))}" if v > 0 else f"{int(round(v))}"
     if fmt == "int":
         return f"{int(round(v))}"
+    if fmt == "pct":
+        return f"{v * 100:.1f}%"
+    if fmt == "ratio":
+        return f"{v:.2f}"
     return str(v)
 
 
-def _conf_player_rank(cur, conference_id, season, table, stat, value, higher_better, min_col, min_val):
-    """Rank a player's stat within their conference (1 = best). `table`,
-    `stat`, `min_col` are trusted constants (never user input)."""
+def _scope_player_rank(cur, season, where_sql, where_param, table, stat, value, higher_better, min_col, min_val):
+    """Rank a player's stat within a scope (conference or division), 1 = best.
+    `table`, `stat`, `min_col`, `where_sql` are trusted constants."""
     if value is None:
         return None, None
     op = ">" if higher_better else "<"
     cur.execute(f"""
         SELECT
-          (SELECT COUNT(*) FROM {table} s JOIN teams t ON t.id = s.team_id
-           WHERE t.conference_id = %s AND s.season = %s AND s.{min_col} >= %s
+          (SELECT COUNT(*) FROM {table} s
+             JOIN teams t ON t.id = s.team_id
+             JOIN conferences c ON c.id = t.conference_id
+             JOIN divisions d ON d.id = c.division_id
+           WHERE s.season = %s AND {where_sql} AND s.{min_col} >= %s
              AND s.{stat} IS NOT NULL AND s.{stat} {op} %s) AS better,
-          (SELECT COUNT(*) FROM {table} s JOIN teams t ON t.id = s.team_id
-           WHERE t.conference_id = %s AND s.season = %s AND s.{min_col} >= %s
+          (SELECT COUNT(*) FROM {table} s
+             JOIN teams t ON t.id = s.team_id
+             JOIN conferences c ON c.id = t.conference_id
+             JOIN divisions d ON d.id = c.division_id
+           WHERE s.season = %s AND {where_sql} AND s.{min_col} >= %s
              AND s.{stat} IS NOT NULL) AS total
-    """, (conference_id, season, min_val, value, conference_id, season, min_val))
+    """, (season, where_param, min_val, value, season, where_param, min_val))
     r = cur.fetchone()
     return (r["better"] or 0) + 1, (r["total"] or 0)
 
 
-def _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher):
-    """Pick the most flattering, genuinely-positive 'they excelled at'
-    line. Considers both team-stat conference ranks (gated to top-half
-    finishes and positive values) and the standout player's conference
-    ranks (a star is always a positive). Returns None if nothing
-    qualifies — better to omit than to spin a weakness."""
-    conf_id = team["conference_id"]
-    scope = team.get("conference_abbrev") or team.get("conference_name") or "conference"
-    team_id = team["id"]
-    cands = []  # (rank, kind_priority, text)  kind: 0=player, 1=team
+def _team_scope_metrics(cur, season, where_sql, where_param):
+    """Deep per-team metric dict for every team in a scope (conference or
+    division), aggregating team_season_stats + batting + pitching +
+    fielding. `where_sql` is a trusted fragment over aliases t / c / d
+    (e.g. "c.id = %s" or "d.level = %s")."""
+    metrics = {}
 
-    # ── Team-stat candidates (only genuine, positive strengths) ──
-    me = next((r for r in conf_rows if r["team_id"] == team_id), None)
-    if me:
-        team_cats = [
-            ("team_ops",          "OPS",              True,  "avg3",    False),
-            ("team_batting_avg",  "batting average",  True,  "avg3",    False),
-            ("runs_scored",       "runs scored",      True,  "int",     False),
-            ("run_differential",  "run differential", True,  "plusint", True),   # positivity-gated
-            ("team_era",          "team ERA",         False, "era",     False),
-            ("team_whip",         "WHIP",             False, "era",     False),
-            ("team_fielding_pct", "fielding %",       True,  "avg3",    False),
-        ]
-        for key, label, higher, fmt, gate_positive in team_cats:
-            vals = [(r["team_id"], r[key]) for r in conf_rows if r.get(key) is not None]
-            if len(vals) < 3 or me.get(key) is None:
+    def ensure(tid):
+        return metrics.setdefault(tid, {})
+
+    cur.execute(f"""
+        SELECT s.team_id, s.team_ops::float AS team_ops,
+               s.team_batting_avg::float AS team_batting_avg,
+               s.team_era::float AS team_era, s.team_whip::float AS team_whip,
+               s.team_fielding_pct::float AS team_fielding_pct,
+               s.run_differential::float AS run_diff
+        FROM team_season_stats s
+          JOIN teams t ON t.id = s.team_id
+          JOIN conferences c ON c.id = t.conference_id
+          JOIN divisions d ON d.id = c.division_id
+        WHERE s.season = %s AND t.is_active = 1 AND {where_sql}
+    """, (season, where_param))
+    for r in cur.fetchall():
+        m = ensure(r["team_id"])
+        for k in ("team_ops", "team_batting_avg", "team_era", "team_whip",
+                  "team_fielding_pct", "run_diff"):
+            m[k] = r[k]
+
+    cur.execute(f"""
+        SELECT bs.team_id,
+               SUM(bs.runs) AS runs,
+               SUM(bs.home_runs) AS hr, SUM(bs.doubles) AS dbl, SUM(bs.triples) AS tpl,
+               SUM(bs.stolen_bases) AS sb, SUM(bs.caught_stealing) AS cs,
+               SUM(bs.walks) AS bb, SUM(bs.hit_by_pitch) AS hbp,
+               SUM(bs.sacrifice_flies) AS sf, SUM(bs.sacrifice_bunts) AS sh,
+               SUM(bs.rbi) AS rbi, SUM(bs.intentional_walks) AS ibb,
+               SUM(bs.at_bats) AS ab, SUM(bs.plate_appearances) AS pa,
+               SUM(bs.woba * bs.plate_appearances) FILTER (WHERE bs.woba IS NOT NULL) AS wsum,
+               SUM(bs.plate_appearances) FILTER (WHERE bs.woba IS NOT NULL) AS wpa,
+               SUM(bs.wrc_plus * bs.plate_appearances) FILTER (WHERE bs.wrc_plus IS NOT NULL) AS rcsum,
+               SUM(bs.plate_appearances) FILTER (WHERE bs.wrc_plus IS NOT NULL) AS rcpa,
+               SUM(bs.on_base_pct * bs.plate_appearances) FILTER (WHERE bs.on_base_pct IS NOT NULL) AS obsum,
+               SUM(bs.plate_appearances) FILTER (WHERE bs.on_base_pct IS NOT NULL) AS obpa,
+               SUM(bs.slugging_pct * bs.plate_appearances) FILTER (WHERE bs.slugging_pct IS NOT NULL) AS slsum,
+               SUM(bs.plate_appearances) FILTER (WHERE bs.slugging_pct IS NOT NULL) AS slpa
+        FROM batting_stats bs
+          JOIN teams t ON t.id = bs.team_id
+          JOIN conferences c ON c.id = t.conference_id
+          JOIN divisions d ON d.id = c.division_id
+        WHERE bs.season = %s AND {where_sql} GROUP BY bs.team_id
+    """, (season, where_param))
+    for r in cur.fetchall():
+        m = ensure(r["team_id"])
+        gv = lambda k: (r[k] or 0)
+        pa, ab = gv("pa"), gv("ab")
+        m["hr"], m["doubles"], m["triples"] = gv("hr"), gv("dbl"), gv("tpl")
+        m["sb"], m["bb"], m["hbp"] = gv("sb"), gv("bb"), gv("hbp")
+        m["sf"], m["sh"], m["rbi"], m["ibb"] = gv("sf"), gv("sh"), gv("rbi"), gv("ibb")
+        m["runs_scored"] = gv("runs")   # reliable across divisions (team_season_stats is sparse for D1)
+        m["xbh"] = gv("dbl") + gv("tpl") + gv("hr")
+        m["bb_rate"] = (gv("bb") / pa) if pa else None
+        m["sb_rate"] = (gv("sb") / pa) if pa else None
+        m["iso"] = ((gv("dbl") + 2 * gv("tpl") + 3 * gv("hr")) / ab) if ab else None
+        att = gv("sb") + gv("cs")
+        m["sb_success"] = (gv("sb") / att) if att >= 10 else None
+        m["woba"] = (r["wsum"] / r["wpa"]) if r["wpa"] else None
+        m["wrc_plus"] = (r["rcsum"] / r["rcpa"]) if r["rcpa"] else None
+        m["obp"] = (r["obsum"] / r["obpa"]) if r["obpa"] else None
+        m["slg"] = (r["slsum"] / r["slpa"]) if r["slpa"] else None
+
+    cur.execute(f"""
+        SELECT ps.team_id,
+               SUM(ps.strikeouts) AS k, SUM(ps.saves) AS sv, SUM(ps.complete_games) AS cg,
+               SUM(ps.shutouts) AS sho, SUM(ps.quality_starts) AS qs,
+               SUM(ps.walks) AS bb, SUM(ps.batters_faced) AS bf
+        FROM pitching_stats ps
+          JOIN teams t ON t.id = ps.team_id
+          JOIN conferences c ON c.id = t.conference_id
+          JOIN divisions d ON d.id = c.division_id
+        WHERE ps.season = %s AND {where_sql} GROUP BY ps.team_id
+    """, (season, where_param))
+    for r in cur.fetchall():
+        m = ensure(r["team_id"])
+        gv = lambda k: (r[k] or 0)
+        bf = gv("bf")
+        m["p_k"], m["sv"], m["cg"] = gv("k"), gv("sv"), gv("cg")
+        m["sho"], m["qs"] = gv("sho"), gv("qs")
+        m["p_k_rate"] = (gv("k") / bf) if bf else None
+        m["k_bb"] = (gv("k") / gv("bb")) if gv("bb") else None
+
+    cur.execute(f"""
+        SELECT fs.team_id, SUM(fs.caught_stealing_by) AS csb,
+               SUM(fs.stolen_bases_against) AS sba
+        FROM fielding_stats fs
+          JOIN teams t ON t.id = fs.team_id
+          JOIN conferences c ON c.id = t.conference_id
+          JOIN divisions d ON d.id = c.division_id
+        WHERE fs.season = %s AND {where_sql} GROUP BY fs.team_id
+    """, (season, where_param))
+    for r in cur.fetchall():
+        m = ensure(r["team_id"])
+        gv = lambda k: (r[k] or 0)
+        m["cs_caught"] = gv("csb")
+        catt = gv("csb") + gv("sba")
+        m["cs_rate"] = (gv("csb") / catt) if catt >= 10 else None
+
+    return metrics
+
+
+# (metric, label, higher_is_better, tier, fmt). tier 1 = headline,
+# 2 = solid, 3 = quirky. Deep + quirky so even a weak team leads in
+# SOMETHING within its conference. All framed positively.
+_SUPERLATIVE_CATALOG = [
+    ("team_ops",          "OPS",                        True,  1, "avg3"),
+    ("team_batting_avg",  "batting average",            True,  1, "avg3"),
+    ("obp",               "on-base percentage",         True,  1, "avg3"),
+    ("slg",               "slugging percentage",        True,  1, "avg3"),
+    ("woba",              "wOBA",                       True,  1, "avg3"),
+    ("wrc_plus",          "wRC+",                       True,  1, "int"),
+    ("team_era",          "team ERA",                   False, 1, "era"),
+    ("team_whip",         "WHIP",                       False, 1, "era"),
+    ("runs_scored",       "runs scored",                True,  2, "int"),
+    ("hr",                "home runs",                  True,  2, "int"),
+    ("sb",                "stolen bases",               True,  2, "int"),
+    ("p_k",               "strikeouts",                 True,  2, "int"),
+    ("p_k_rate",          "strikeout rate",             True,  2, "pct"),
+    ("k_bb",              "strikeout-to-walk ratio",    True,  2, "ratio"),
+    ("qs",                "quality starts",             True,  2, "int"),
+    ("team_fielding_pct", "fielding percentage",        True,  2, "avg3"),
+    ("iso",               "isolated power",             True,  2, "avg3"),
+    ("bb_rate",           "walk rate",                  True,  2, "pct"),
+    ("run_diff",          "run differential",           True,  2, "plusint"),  # gated > 0
+    ("xbh",               "extra-base hits",            True,  3, "int"),
+    ("doubles",           "doubles",                    True,  3, "int"),
+    ("triples",           "triples",                    True,  3, "int"),
+    ("rbi",               "RBI",                        True,  3, "int"),
+    ("bb",                "walks drawn",                True,  3, "int"),
+    ("hbp",               "times hit by pitch",         True,  3, "int"),
+    ("sf",                "sacrifice flies",            True,  3, "int"),
+    ("sh",                "sacrifice bunts",            True,  3, "int"),
+    ("ibb",               "intentional walks drawn",    True,  3, "int"),
+    ("sb_success",        "stolen-base success rate",   True,  3, "pct"),
+    ("sb_rate",           "stolen-base rate",           True,  3, "pct"),
+    ("sv",                "saves",                      True,  3, "int"),
+    ("cg",                "complete games",             True,  3, "int"),
+    ("sho",               "shutouts",                   True,  3, "int"),
+    ("cs_caught",         "runners caught stealing",    True,  3, "int"),
+    ("cs_rate",           "caught-stealing rate",       True,  3, "pct"),
+]
+
+
+def _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher):
+    """Find the most flattering, genuinely-positive 'they excelled at'
+    line. Ranks the team within its conference across ~35 categories
+    (headline rate stats down to quirky counting stats) plus the standout
+    player's conference ranks, and surfaces the team's best finish so
+    even a weak team leads in something. Returns None only if the
+    conference is too small to rank."""
+    conf_id = team["conference_id"]
+    team_id = team["id"]
+    cands = []  # (rank, tier, kind_priority, text)  kind: 0=player, 1=team
+
+    # Prefer conference scope; fall back to division-wide ranking when the
+    # conference is too small to rank meaningfully (independents, sparse D1
+    # conferences we only partially track).
+    metrics = _team_scope_metrics(cur, season, "c.id = %s", conf_id)
+    if len(metrics) >= 3:
+        where_sql, where_param = "c.id = %s", conf_id
+        scope = team.get("conference_abbrev") or team.get("conference_name") or "their conference"
+    else:
+        lvl = team.get("division_level")
+        where_sql, where_param = "d.level = %s", lvl
+        metrics = _team_scope_metrics(cur, season, where_sql, where_param)
+        scope = {"D1": "NCAA D1", "D2": "NCAA D2", "D3": "NCAA D3",
+                 "NAIA": "NAIA", "JUCO": "the NWAC"}.get(str(lvl), str(lvl) or "their division")
+
+    for metric, label, higher, tier, fmt in _SUPERLATIVE_CATALOG:
+        vals = [(tid, mm[metric]) for tid, mm in metrics.items() if mm.get(metric) is not None]
+        if len(vals) < 3:
+            continue
+        if metric == "run_diff":
+            mine = next((v for tid, v in vals if tid == team_id), None)
+            if mine is None or mine <= 0:
                 continue
-            if gate_positive and me[key] <= 0:
-                continue
-            vals.sort(key=lambda x: x[1], reverse=higher)
-            rank = next((i + 1 for i, (tid, _) in enumerate(vals) if tid == team_id), None)
-            if rank is None or rank > (len(vals) + 1) // 2:   # top half only
-                continue
-            vs = _recap_fmt_val(me[key], fmt)
+        vals.sort(key=lambda x: x[1], reverse=higher)
+        rank = next((i + 1 for i, (tid, _) in enumerate(vals) if tid == team_id), None)
+        if rank is None:
+            continue
+        my_val = next(v for tid, v in vals if tid == team_id)
+        # Never surface a zero/empty "strength" (e.g. a sparse-data column
+        # where every team reads 0) — leading in 0-of-something is meaningless.
+        if not my_val:
+            continue
+        vs = _recap_fmt_val(my_val, fmt)
+        if higher:
             text = (f"Led the {scope} in {label} ({vs})" if rank == 1
                     else f"{_recap_ordinal(rank)} in the {scope} in {label} ({vs})")
-            cands.append((rank, 1, text))
+        else:
+            text = (f"Posted the {scope}'s best {label} ({vs})" if rank == 1
+                    else f"{_recap_ordinal(rank)}-best {label} in the {scope} ({vs})")
+        cands.append((rank, tier, 1, text))
 
-    # ── Player-driven candidates (top-3 in conference only) ──
+    # ── Standout-player candidates (top-3 in conference) ──
     def add_player(player, value, stat_col, label, higher, table, min_col, min_val, fmt, floor=None):
         if not player or value is None or (floor is not None and value < floor):
             return
-        rank, total = _conf_player_rank(cur, conf_id, season, table, stat_col,
-                                        value, higher, min_col, min_val)
+        rank, total = _scope_player_rank(cur, season, where_sql, where_param, table, stat_col,
+                                         value, higher, min_col, min_val)
         if not rank or total < 3 or rank > 3:
             return
         nm = f"{player['first_name']} {player['last_name']}"
         vs = _recap_fmt_val(value, fmt)
         text = (f"{nm} led the {scope} in {label} ({vs})" if rank == 1
                 else f"{nm} ranked {_recap_ordinal(rank)} in the {scope} in {label} ({vs})")
-        cands.append((rank, 0, text))
+        cands.append((rank, 1, 0, text))
 
     if best_hitter:
         add_player(best_hitter, best_hitter.get("wrc_plus"), "wrc_plus", "wRC+", True,
@@ -4314,8 +4488,10 @@ def _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher
 
     if not cands:
         return None
-    cands.sort(key=lambda c: (c[0], c[1]))   # best rank first, player breaks ties
-    rank, kind_priority, text = cands[0]
+    # Best finish first; among equal ranks prefer headline tiers, then a
+    # standout-player line over a team-stat line.
+    cands.sort(key=lambda c: (c[0], c[1], c[2]))
+    rank, tier, kind_priority, text = cands[0]
     return {"text": text, "rank": rank, "kind": "player" if kind_priority == 0 else "team"}
 
 
