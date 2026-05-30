@@ -549,9 +549,13 @@ def summer_batting_leaderboard(
     valid_sorts = {
         "ops", "batting_avg", "on_base_pct", "slugging_pct",
         "home_runs", "rbi", "hits", "stolen_bases", "walks", "runs",
+        # Advanced (populated by compute_summer_advanced.py)
+        "woba", "wrc_plus", "iso", "k_pct", "bb_pct", "offensive_war",
     }
     if sort_by not in valid_sorts:
         sort_by = "ops"
+    # k_pct ASC (lower = better contact); everything else DESC
+    direction = "ASC" if sort_by == "k_pct" else "DESC"
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
@@ -563,13 +567,14 @@ def summer_batting_leaderboard(
                    t.id   AS team_id, t.name AS team_name, t.short_name AS team_short, t.logo_url,
                    b.games, b.plate_appearances, b.at_bats, b.hits, b.doubles, b.triples,
                    b.home_runs, b.runs, b.rbi, b.walks, b.strikeouts, b.stolen_bases,
-                   b.batting_avg, b.on_base_pct, b.slugging_pct, b.ops
+                   b.batting_avg, b.on_base_pct, b.slugging_pct, b.ops,
+                   b.woba, b.wrc_plus, b.iso, b.k_pct, b.bb_pct, b.offensive_war
             FROM summer_batting_stats b
             JOIN summer_players p ON p.id = b.player_id
             JOIN summer_teams t   ON t.id = b.team_id
             WHERE t.league_id = %s AND b.season = %s
               AND b.plate_appearances >= %s
-            ORDER BY b.{sort_by} DESC NULLS LAST
+            ORDER BY b.{sort_by} {direction} NULLS LAST
             LIMIT %s
             """,
             (league_id, season, min_pa, limit),
@@ -579,6 +584,133 @@ def summer_batting_leaderboard(
 
 
 # ── /summer/leaderboards/pitching ──────────────────────────────────
+
+# ── /summer/college-representation ─────────────────────────────────
+
+@router.get("/summer/college-representation")
+@cached_endpoint(ttl_seconds=900)
+def summer_college_representation(
+    league: str = Query(DEFAULT_LEAGUE),
+    season: int = Query(2026),
+    limit: int = Query(25, ge=1, le=100),
+):
+    """Top colleges by number of players currently rostered in the
+    given summer league. Pulls college from summer_players (set by
+    Pointstreak roster scrape) and falls back to the spring team's
+    school_name via summer_player_links when summer college is blank.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        league_id = _league_id_for(cur, league)
+        cur.execute(
+            """
+            WITH active_players AS (
+              SELECT DISTINCT sp.id, sp.college, sp.team_id AS summer_team_id
+              FROM summer_players sp
+              JOIN summer_teams t ON t.id = sp.team_id
+              WHERE t.league_id = %s
+                AND EXISTS (
+                    SELECT 1 FROM summer_game_batting gb
+                    JOIN summer_games g ON g.id = gb.game_id
+                    WHERE gb.player_id = sp.id AND g.season = %s
+                )
+            ),
+            with_spring AS (
+              SELECT ap.id, ap.summer_team_id,
+                     COALESCE(NULLIF(ap.college, ''),
+                              ct.school_name)         AS college,
+                     ct.id                            AS spring_team_id,
+                     ct.short_name                    AS spring_team_short,
+                     ct.logo_url                      AS spring_team_logo
+              FROM active_players ap
+              LEFT JOIN summer_player_links spl ON spl.summer_player_id = ap.id
+              LEFT JOIN players sp ON sp.id = spl.spring_player_id
+              LEFT JOIN teams ct ON ct.id = sp.team_id
+            )
+            SELECT
+                COALESCE(college, 'Unknown')      AS college,
+                spring_team_id,
+                spring_team_short,
+                spring_team_logo,
+                COUNT(*)::int                     AS players,
+                COUNT(DISTINCT summer_team_id)::int AS wcl_teams
+            FROM with_spring
+            GROUP BY college, spring_team_id, spring_team_short, spring_team_logo
+            HAVING COALESCE(college, '') <> ''
+            ORDER BY players DESC, college
+            LIMIT %s
+            """,
+            (league_id, season, limit),
+        )
+        rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── /summer/pnw-alumni ─────────────────────────────────────────────
+
+@router.get("/summer/pnw-alumni")
+@cached_endpoint(ttl_seconds=600)
+def summer_pnw_alumni(
+    league: str = Query(DEFAULT_LEAGUE),
+    season: int = Query(2026),
+    limit: int = Query(500, ge=1, le=1000),
+):
+    """Spring PNW college players currently rostered in this summer
+    league, paired with their college team for cross-linking.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        league_id = _league_id_for(cur, league)
+        cur.execute(
+            """
+            SELECT
+                sp.id              AS summer_player_id,
+                sp.first_name      AS summer_first,
+                sp.last_name       AS summer_last,
+                sp.position        AS summer_position,
+                st.id              AS summer_team_id,
+                st.short_name      AS summer_team_short,
+                st.name            AS summer_team_name,
+                st.logo_url        AS summer_team_logo,
+                st.division        AS summer_division,
+                p.id               AS spring_player_id,
+                p.first_name       AS spring_first,
+                p.last_name        AS spring_last,
+                p.position         AS spring_position,
+                p.year_in_school   AS year,
+                t.id               AS spring_team_id,
+                t.short_name       AS spring_team_short,
+                t.school_name      AS spring_school,
+                t.logo_url         AS spring_team_logo,
+                d.level            AS division_level
+            FROM summer_player_links spl
+            JOIN summer_players sp ON sp.id = spl.summer_player_id
+            JOIN summer_teams st   ON st.id = sp.team_id
+            JOIN players p         ON p.id = spl.spring_player_id
+            JOIN teams t           ON t.id = p.team_id
+            LEFT JOIN conferences c ON c.id = t.conference_id
+            LEFT JOIN divisions d   ON d.id = c.division_id
+            WHERE st.league_id = %s
+              AND (
+                EXISTS (
+                  SELECT 1 FROM summer_game_batting gb
+                  JOIN summer_games g ON g.id = gb.game_id
+                  WHERE gb.player_id = sp.id AND g.season = %s
+                )
+                OR EXISTS (
+                  SELECT 1 FROM summer_game_pitching gp
+                  JOIN summer_games g ON g.id = gp.game_id
+                  WHERE gp.player_id = sp.id AND g.season = %s
+                )
+              )
+            ORDER BY t.school_name, p.last_name, p.first_name
+            LIMIT %s
+            """,
+            (league_id, season, season, limit),
+        )
+        rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
 
 @router.get("/summer/leaderboards/pitching")
 @cached_endpoint(ttl_seconds=600)
@@ -592,10 +724,12 @@ def summer_pitching_leaderboard(
     valid_sorts = {
         "era", "whip", "k_per_9", "bb_per_9",
         "strikeouts", "wins", "saves", "innings_pitched",
+        # Advanced (populated by compute_summer_advanced.py)
+        "fip", "k_pct", "bb_pct", "pitching_war",
     }
     if sort_by not in valid_sorts:
         sort_by = "era"
-    asc_sorts = {"era", "whip", "bb_per_9"}
+    asc_sorts = {"era", "whip", "bb_per_9", "fip", "bb_pct"}
     direction = "ASC" if sort_by in asc_sorts else "DESC"
     with get_connection() as conn:
         cur = conn.cursor()
@@ -609,7 +743,8 @@ def summer_pitching_leaderboard(
                    pt.games, pt.games_started, pt.innings_pitched,
                    pt.wins, pt.losses, pt.saves, pt.strikeouts, pt.walks,
                    pt.earned_runs, pt.hits_allowed,
-                   pt.era, pt.whip, pt.k_per_9, pt.bb_per_9
+                   pt.era, pt.whip, pt.k_per_9, pt.bb_per_9,
+                   pt.fip, pt.k_pct, pt.bb_pct, pt.pitching_war
             FROM summer_pitching_stats pt
             JOIN summer_players p ON p.id = pt.player_id
             JOIN summer_teams t   ON t.id = pt.team_id

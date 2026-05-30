@@ -70,7 +70,7 @@ jobs:
           echo "→ Refreshing WCL Pointstreak season aggregates for $SEASON"
           PYTHONPATH=backend python3 scripts/scrape_summer.py --league WCL --season "$SEASON" || true
 
-      - name: Resolve box-score player names + roll up
+      - name: Resolve box-score player names + roll up + advanced stats
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -79,6 +79,8 @@ jobs:
           PYTHONPATH=backend python3 scripts/resolve_summer_game_players.py
           echo "→ Rolling per-game data up into season aggregates"
           PYTHONPATH=backend python3 scripts/aggregate_summer_stats.py --league WCL --season "$SEASON"
+          echo "→ Computing wOBA / wRC+ / FIP / oWAR / pWAR"
+          PYTHONPATH=backend python3 scripts/compute_summer_advanced.py --season "$SEASON"
 
       - name: Link summer ↔ spring players
         env:
