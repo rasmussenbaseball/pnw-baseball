@@ -75,15 +75,72 @@ export default function SummerStatsPage() {
 
 // ─── Batting ───────────────────────────────────────────────
 
+const BATTING_PRESETS = {
+  Standard: ['G','PA','AB','H','2B','3B','HR','R','RBI','BB','K','SB','AVG','OBP','SLG','OPS'],
+  Advanced: ['PA','AVG','OBP','SLG','wOBA','wRC+','wRAA','ISO','BABIP','BB%','K%','oWAR'],
+  Power:    ['G','PA','AB','2B','3B','HR','RBI','SLG','ISO','wRC+'],
+  Discipline: ['PA','BB','K','HBP','BB%','K%','OBP','wOBA'],
+  Speed:    ['G','SB','CS','3B','R','AVG','OBP'],
+}
+
+const BATTING_COL_MAP = {
+  G:    { key: 'games', fmt: 'int' },
+  GS:   { key: 'games_started', fmt: 'int' },
+  PA:   { key: 'plate_appearances', fmt: 'int' },
+  AB:   { key: 'at_bats', fmt: 'int' },
+  H:    { key: 'hits', fmt: 'int' },
+  '2B': { key: 'doubles', fmt: 'int' },
+  '3B': { key: 'triples', fmt: 'int' },
+  HR:   { key: 'home_runs', fmt: 'int' },
+  R:    { key: 'runs', fmt: 'int' },
+  RBI:  { key: 'rbi', fmt: 'int' },
+  BB:   { key: 'walks', fmt: 'int' },
+  IBB:  { key: 'intentional_walks', fmt: 'int' },
+  HBP:  { key: 'hit_by_pitch', fmt: 'int' },
+  K:    { key: 'strikeouts', fmt: 'int' },
+  SF:   { key: 'sacrifice_flies', fmt: 'int' },
+  SH:   { key: 'sacrifice_bunts', fmt: 'int' },
+  SB:   { key: 'stolen_bases', fmt: 'int' },
+  CS:   { key: 'caught_stealing', fmt: 'int' },
+  GIDP: { key: 'grounded_into_dp', fmt: 'int' },
+  AVG:  { key: 'batting_avg', fmt: 'avg', bold: true },
+  OBP:  { key: 'on_base_pct', fmt: 'avg' },
+  SLG:  { key: 'slugging_pct', fmt: 'avg' },
+  OPS:  { key: 'ops', fmt: 'avg', bold: true },
+  wOBA: { key: 'woba', fmt: 'avg' },
+  'wRC+': { key: 'wrc_plus', fmt: 'int', bold: true },
+  wRAA: { key: 'wraa', fmt: 'one' },
+  wRC:  { key: 'wrc', fmt: 'int' },
+  ISO:  { key: 'iso', fmt: 'avg' },
+  BABIP:{ key: 'babip', fmt: 'avg' },
+  'BB%':{ key: 'bb_pct', fmt: 'pct' },
+  'K%': { key: 'k_pct', fmt: 'pct' },
+  oWAR: { key: 'offensive_war', fmt: 'war' },
+}
+
+function fmtCol(p, fmt) {
+  if (p == null) return '—'
+  if (fmt === 'avg') return fmtAvg(p)
+  if (fmt === 'pct') return fmtPct(p)
+  if (fmt === 'war') return Number(p).toFixed(2)
+  if (fmt === 'one') return Number(p).toFixed(1)
+  if (fmt === 'int') return fmtInt(p)
+  if (fmt === 'era') return fmtEra(p)
+  return String(p)
+}
+
 function BattingTab({ season }) {
-  const [sort,  setSort]  = useState('wrc_plus')
-  const [minPa, setMinPa] = useState(10)
+  const [sort,      setSort]      = useState('wrc_plus')
+  const [qualified, setQualified] = useState(true)
+  const [preset,    setPreset]    = useState('Standard')
+
   const { data, loading, error } = useApi('/summer/leaderboards/batting',
-    { league: LEAGUE, season, min_pa: minPa, sort_by: sort, limit: 200 },
-    [season, sort, minPa])
+    { league: LEAGUE, season, qualified, sort_by: sort, limit: 250 },
+    [season, sort, qualified])
 
   if (loading) return <Skeleton />
   if (error) return <Err msg={error} />
+  const cols = BATTING_PRESETS[preset]
   return (
     <>
       <FilterBar>
@@ -107,18 +164,18 @@ function BattingTab({ season }) {
             ['stolen_bases', 'SB'],
           ]}
         />
-        <Min label="Min PA" value={minPa} onChange={setMinPa} steps={[0, 10, 25, 50, 75, 100]} />
+        <Qualified value={qualified} onChange={setQualified} type="batting" />
       </FilterBar>
+      <Presets value={preset} onChange={setPreset} options={Object.keys(BATTING_PRESETS)} />
       {!data?.length ? (
-        <Empty msg={`No qualified batters in ${season} with ${minPa}+ PA yet.`} />
+        <Empty msg={`No ${qualified ? 'qualified' : 'qualifying'} batters in ${season} yet.`} />
       ) : (
         <Scroll>
           <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700">
-                {['#','Player','Team','PA','AVG','OBP','SLG','OPS','wOBA','wRC+','ISO','HR','BB%','K%','oWAR'].map((h, i) => (
-                  <Th key={h} left={i < 3}>{h}</Th>
-                ))}
+                <Th left>#</Th><Th left>Player</Th><Th left>Team</Th>
+                {cols.map(c => <Th key={c}>{c}</Th>)}
               </tr>
             </thead>
             <tbody>
@@ -127,18 +184,11 @@ function BattingTab({ season }) {
                   <Rank>{i + 1}</Rank>
                   <Player p={p} />
                   <Team p={p} />
-                  <Td num>{fmtInt(p.plate_appearances)}</Td>
-                  <Td num>{fmtAvg(p.batting_avg)}</Td>
-                  <Td num>{fmtAvg(p.on_base_pct)}</Td>
-                  <Td num>{fmtAvg(p.slugging_pct)}</Td>
-                  <Td num bold>{fmtAvg(p.ops)}</Td>
-                  <Td num>{fmtAvg(p.woba)}</Td>
-                  <Td num bold>{p.wrc_plus != null ? Math.round(p.wrc_plus) : '—'}</Td>
-                  <Td num>{fmtAvg(p.iso)}</Td>
-                  <Td num>{fmtInt(p.home_runs)}</Td>
-                  <Td num>{fmtPct(p.bb_pct)}</Td>
-                  <Td num>{fmtPct(p.k_pct)}</Td>
-                  <Td num>{p.offensive_war != null ? Number(p.offensive_war).toFixed(2) : '—'}</Td>
+                  {cols.map(c => {
+                    const cfg = BATTING_COL_MAP[c]
+                    if (!cfg) return <Td key={c} num>—</Td>
+                    return <Td key={c} num bold={cfg.bold}>{fmtCol(p[cfg.key], cfg.fmt)}</Td>
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -151,15 +201,58 @@ function BattingTab({ season }) {
 
 // ─── Pitching ──────────────────────────────────────────────
 
+const PITCHING_PRESETS = {
+  Standard: ['G','GS','W','L','SV','IP','H','R','ER','BB','K','HR','ERA','WHIP'],
+  Advanced: ['IP','BF','ERA','WHIP','FIP','K/9','BB/9','HR/9','K%','BB%','BABIP','pWAR'],
+  Workload: ['G','GS','CG','SHO','IP','BF','W','L','SV'],
+  Discipline:['IP','BF','K','BB','HBP','WP','K/9','BB/9','K%','BB%','K/BB'],
+}
+
+const PITCHING_COL_MAP = {
+  G:    { key: 'games', fmt: 'int' },
+  GS:   { key: 'games_started', fmt: 'int' },
+  CG:   { key: 'complete_games', fmt: 'int' },
+  SHO:  { key: 'shutouts', fmt: 'int' },
+  W:    { key: 'wins', fmt: 'int' },
+  L:    { key: 'losses', fmt: 'int' },
+  SV:   { key: 'saves', fmt: 'int' },
+  IP:   { key: 'innings_pitched', fmt: 'one' },
+  BF:   { key: 'batters_faced', fmt: 'int' },
+  H:    { key: 'hits_allowed', fmt: 'int' },
+  R:    { key: 'runs_allowed', fmt: 'int' },
+  ER:   { key: 'earned_runs', fmt: 'int' },
+  BB:   { key: 'walks', fmt: 'int' },
+  K:    { key: 'strikeouts', fmt: 'int' },
+  HR:   { key: 'home_runs_allowed', fmt: 'int' },
+  HBP:  { key: 'hit_batters', fmt: 'int' },
+  WP:   { key: 'wild_pitches', fmt: 'int' },
+  ERA:  { key: 'era',  fmt: 'era', bold: true },
+  WHIP: { key: 'whip', fmt: 'era' },
+  FIP:  { key: 'fip',  fmt: 'era', bold: true },
+  'K/9':{ key: 'k_per_9',  fmt: 'era' },
+  'BB/9':{ key: 'bb_per_9', fmt: 'era' },
+  'H/9':{ key: 'h_per_9',   fmt: 'era' },
+  'HR/9':{ key: 'hr_per_9', fmt: 'era' },
+  'K/BB':{ key: 'k_bb_ratio', fmt: 'era' },
+  'K%': { key: 'k_pct',  fmt: 'pct' },
+  'BB%':{ key: 'bb_pct', fmt: 'pct' },
+  BABIP:{ key: 'babip_against', fmt: 'avg' },
+  pWAR: { key: 'pitching_war', fmt: 'war' },
+}
+
+
 function PitchingTab({ season }) {
-  const [sort,  setSort]  = useState('fip')
-  const [minIp, setMinIp] = useState(3)
+  const [sort,      setSort]      = useState('fip')
+  const [qualified, setQualified] = useState(true)
+  const [preset,    setPreset]    = useState('Standard')
+
   const { data, loading, error } = useApi('/summer/leaderboards/pitching',
-    { league: LEAGUE, season, min_ip: minIp, sort_by: sort, limit: 200 },
-    [season, sort, minIp])
+    { league: LEAGUE, season, qualified, sort_by: sort, limit: 250 },
+    [season, sort, qualified])
 
   if (loading) return <Skeleton />
   if (error) return <Err msg={error} />
+  const cols = PITCHING_PRESETS[preset]
   return (
     <>
       <FilterBar>
@@ -182,18 +275,18 @@ function PitchingTab({ season }) {
             ['pitching_war',    'pWAR'],
           ]}
         />
-        <Min label="Min IP" value={minIp} onChange={setMinIp} steps={[0, 3, 10, 20, 30, 50]} />
+        <Qualified value={qualified} onChange={setQualified} type="pitching" />
       </FilterBar>
+      <Presets value={preset} onChange={setPreset} options={Object.keys(PITCHING_PRESETS)} />
       {!data?.length ? (
-        <Empty msg={`No qualified pitchers in ${season} with ${minIp}+ IP yet.`} />
+        <Empty msg={`No ${qualified ? 'qualified' : 'qualifying'} pitchers in ${season} yet.`} />
       ) : (
         <Scroll>
           <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700">
-                {['#','Player','Team','IP','W','L','SV','K','BB','ERA','WHIP','FIP','K%','BB%','K/9','pWAR'].map((h, i) => (
-                  <Th key={h} left={i < 3}>{h}</Th>
-                ))}
+                <Th left>#</Th><Th left>Player</Th><Th left>Team</Th>
+                {cols.map(c => <Th key={c}>{c}</Th>)}
               </tr>
             </thead>
             <tbody>
@@ -202,19 +295,11 @@ function PitchingTab({ season }) {
                   <Rank>{i + 1}</Rank>
                   <Player p={p} />
                   <Team p={p} />
-                  <Td num>{p.innings_pitched != null ? Number(p.innings_pitched).toFixed(1) : '—'}</Td>
-                  <Td num>{fmtInt(p.wins)}</Td>
-                  <Td num>{fmtInt(p.losses)}</Td>
-                  <Td num>{fmtInt(p.saves)}</Td>
-                  <Td num>{fmtInt(p.strikeouts)}</Td>
-                  <Td num>{fmtInt(p.walks)}</Td>
-                  <Td num bold>{fmtEra(p.era)}</Td>
-                  <Td num>{fmtEra(p.whip)}</Td>
-                  <Td num bold>{fmtEra(p.fip)}</Td>
-                  <Td num>{fmtPct(p.k_pct)}</Td>
-                  <Td num>{fmtPct(p.bb_pct)}</Td>
-                  <Td num>{fmtEra(p.k_per_9)}</Td>
-                  <Td num>{p.pitching_war != null ? Number(p.pitching_war).toFixed(2) : '—'}</Td>
+                  {cols.map(c => {
+                    const cfg = PITCHING_COL_MAP[c]
+                    if (!cfg) return <Td key={c} num>—</Td>
+                    return <Td key={c} num bold={cfg.bold}>{fmtCol(p[cfg.key], cfg.fmt)}</Td>
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -329,6 +414,46 @@ function Min({ label, value, onChange, steps }) {
       >
         {steps.map(s => <option key={s} value={s}>{s === 0 ? 'No min' : `${s}+`}</option>)}
       </select>
+    </div>
+  )
+}
+
+function Qualified({ value, onChange, type }) {
+  const threshold = type === 'pitching' ? '0.75 IP per team game' : '2.0 PA per team game'
+  return (
+    <div>
+      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-0.5">Filter</label>
+      <label className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={value}
+          onChange={e => onChange(e.target.checked)}
+          className="w-3.5 h-3.5"
+        />
+        <span>Qualified only</span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-400">({threshold})</span>
+      </label>
+    </div>
+  )
+}
+
+function Presets({ value, onChange, options }) {
+  return (
+    <div className="flex items-center gap-1 mb-3 -mt-1 overflow-x-auto">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mr-1 shrink-0">View</span>
+      {options.map(opt => (
+        <button
+          key={opt}
+          onClick={() => onChange(opt)}
+          className={`px-2.5 py-1 text-xs font-semibold rounded-md whitespace-nowrap transition ${
+            value === opt
+              ? 'bg-nw-teal text-white'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}
+        >
+          {opt}
+        </button>
+      ))}
     </div>
   )
 }

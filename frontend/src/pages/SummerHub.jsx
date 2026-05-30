@@ -181,6 +181,95 @@ function SlateSide({ team, logo, score, bold, dim }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Stat Leaders strip — top 5 per category (batting + pitching),
+// mirrors the spring /stat-leaders page in spirit but compact
+// enough to live on the Hub homepage.
+// ─────────────────────────────────────────────────────────────
+
+const BATTING_LEADER_CATS = [
+  { stat: 'batting_avg',  label: 'AVG',  fmt: 'avg' },
+  { stat: 'home_runs',    label: 'HR',   fmt: 'int' },
+  { stat: 'rbi',          label: 'RBI',  fmt: 'int' },
+  { stat: 'ops',          label: 'OPS',  fmt: 'avg' },
+  { stat: 'wrc_plus',     label: 'wRC+', fmt: 'int' },
+  { stat: 'stolen_bases', label: 'SB',   fmt: 'int' },
+]
+const PITCHING_LEADER_CATS = [
+  { stat: 'era',           label: 'ERA',  fmt: 'era' },
+  { stat: 'strikeouts',    label: 'K',    fmt: 'int' },
+  { stat: 'wins',          label: 'W',    fmt: 'int' },
+  { stat: 'saves',         label: 'SV',   fmt: 'int' },
+  { stat: 'fip',           label: 'FIP',  fmt: 'era' },
+  { stat: 'innings_pitched', label: 'IP', fmt: 'era' },
+]
+
+export function StatLeaders() {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <LeadersColumn title="Top Hitters" cats={BATTING_LEADER_CATS} endpoint="/summer/leaderboards/batting" />
+      <LeadersColumn title="Top Pitchers" cats={PITCHING_LEADER_CATS} endpoint="/summer/leaderboards/pitching" />
+    </div>
+  )
+}
+
+function LeadersColumn({ title, cats, endpoint }) {
+  return (
+    <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">{title}</h3>
+        <Link to="/summer/stats" className="text-[11px] font-semibold text-nw-teal dark:text-teal-300 hover:underline">
+          Full leaderboards →
+        </Link>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+        {cats.map(c => <LeaderTopFive key={c.stat} cat={c} endpoint={endpoint} />)}
+      </div>
+    </div>
+  )
+}
+
+function LeaderTopFive({ cat, endpoint }) {
+  const { data, loading } = useApi(endpoint,
+    { league: LEAGUE, season: SEASON, qualified: true, sort_by: cat.stat, limit: 5 },
+    [cat.stat])
+
+  if (loading) {
+    return <div className="text-[11px] text-gray-400 dark:text-gray-500">Loading {cat.label}…</div>
+  }
+  if (!data?.length) {
+    return (
+      <div>
+        <div className="text-[10px] font-bold tracking-widest uppercase text-amber-700 dark:text-amber-300 mb-1">{cat.label}</div>
+        <div className="text-[11px] text-gray-400 dark:text-gray-500">No qualified players yet</div>
+      </div>
+    )
+  }
+  const fmt = (v) => {
+    if (v == null) return '—'
+    if (cat.fmt === 'avg') return fmtAvg(v)
+    if (cat.fmt === 'era') return Number(v).toFixed(2)
+    return Math.round(v).toString()
+  }
+  return (
+    <div>
+      <div className="text-[10px] font-bold tracking-widest uppercase text-amber-700 dark:text-amber-300 mb-1">{cat.label}</div>
+      <ol className="space-y-0.5">
+        {data.map((p, i) => (
+          <li key={p.player_id} className="flex items-center gap-1.5 text-[11.5px]">
+            <span className="w-3 text-gray-400 dark:text-gray-500 tabular-nums">{i + 1}</span>
+            <Link to={`/summer/players/${p.player_id}`} className="flex-1 truncate font-semibold text-gray-900 dark:text-gray-100 hover:text-nw-teal">
+              {p.first_name?.[0]}. {p.last_name}
+            </Link>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">{p.team_short}</span>
+            <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100 shrink-0">{fmt(p[cat.stat])}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // Hot/Cold trend widget (last-5 OPS vs season OPS)
 // ─────────────────────────────────────────────────────────────
 
@@ -966,6 +1055,7 @@ export default function SummerHub() {
       <TodaySlate />
       <LeadersTicker />
       <TrendsWidget />
+      <StatLeaders />
 
       {/* Navigation cards — explorers tap one to land on a dedicated
           page instead of digging through nested tabs. */}

@@ -591,6 +591,10 @@ def summer_standings(
 def summer_batting_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
     season: int = Query(2026),
+    # Qualifying. When `qualified=True`, ignores `min_pa` and uses the
+    # ratio convention: a hitter is qualified at >= 2.0 PA per team
+    # game played (industry standard for summer leagues).
+    qualified: bool = Query(False),
     min_pa: int = Query(20, ge=0),
     sort_by: str = Query("ops"),
     team_id: Optional[int] = None,
@@ -606,30 +610,77 @@ def summer_batting_leaderboard(
         sort_by = "ops"
     # k_pct ASC (lower = better contact); everything else DESC
     direction = "ASC" if sort_by == "k_pct" else "DESC"
-    team_clause = "AND b.team_id = %s" if team_id else ""
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
+        # Build SQL + params in lockstep so order can't drift.
+        # When qualified=True, JOIN to a per-team game-count and use
+        # PA >= team_g * 2.0. Otherwise use the absolute min_pa cap.
+        params = []
+        if qualified:
+            qual_join = """
+                JOIN (
+                  SELECT team_id, COUNT(*)::int AS team_g
+                  FROM (
+                    SELECT home_team_id AS team_id FROM summer_games
+                    WHERE league_id = %s AND season = %s AND status = 'final'
+                      AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+                      AND home_team_id <> away_team_id
+                    UNION ALL
+                    SELECT away_team_id AS team_id FROM summer_games
+                    WHERE league_id = %s AND season = %s AND status = 'final'
+                      AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+                      AND home_team_id <> away_team_id
+                  ) x
+                  GROUP BY team_id
+                ) tg ON tg.team_id = b.team_id
+            """
+            params.extend([league_id, season, league_id, season])
+            qual_filter = "AND b.plate_appearances >= tg.team_g * 2.0"
+        else:
+            qual_join = ""
+            qual_filter = "AND b.plate_appearances >= %s"
+
+        # WHERE league_id + season
+        params.extend([league_id, season])
+        # Inline min_pa AFTER the WHERE league/season placeholders so
+        # the order matches the SQL.
+        if not qualified:
+            params.append(min_pa)
+
+        team_clause = ""
+        if team_id:
+            team_clause = "AND b.team_id = %s"
+            params.append(team_id)
+
+        params.append(limit)
         cur.execute(
             f"""
             SELECT p.id   AS player_id,
                    p.first_name, p.last_name,
                    p.position, p.college, p.year_in_school,
                    t.id   AS team_id, t.name AS team_name, t.short_name AS team_short, t.logo_url,
-                   b.games, b.plate_appearances, b.at_bats, b.hits, b.doubles, b.triples,
-                   b.home_runs, b.runs, b.rbi, b.walks, b.strikeouts, b.stolen_bases,
+                   b.games, b.games_started, b.plate_appearances, b.at_bats, b.hits,
+                   b.doubles, b.triples, b.home_runs, b.runs, b.rbi,
+                   b.walks, b.strikeouts, b.hit_by_pitch,
+                   b.sacrifice_flies, b.sacrifice_bunts,
+                   b.stolen_bases, b.caught_stealing, b.intentional_walks,
+                   b.grounded_into_dp,
                    b.batting_avg, b.on_base_pct, b.slugging_pct, b.ops,
-                   b.woba, b.wrc_plus, b.iso, b.k_pct, b.bb_pct, b.offensive_war
+                   b.woba, b.wrc_plus, b.wraa, b.wrc,
+                   b.iso, b.babip,
+                   b.k_pct, b.bb_pct, b.offensive_war
             FROM summer_batting_stats b
             JOIN summer_players p ON p.id = b.player_id
             JOIN summer_teams t   ON t.id = b.team_id
+            {qual_join}
             WHERE t.league_id = %s AND b.season = %s
-              AND b.plate_appearances >= %s
+              {qual_filter}
               {team_clause}
             ORDER BY b.{sort_by} {direction} NULLS LAST
             LIMIT %s
             """,
-            (league_id, season, min_pa, team_id, limit) if team_id else (league_id, season, min_pa, limit),
+            tuple(params),
         )
         rows = cur.fetchall()
     return [dict(r) for r in rows]
@@ -904,6 +955,9 @@ def summer_pnw_alumni(
 def summer_pitching_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
     season: int = Query(2026),
+    # Qualified pitchers = IP >= team_games * 0.75 (matches MLB
+    # convention scaled to short summer seasons).
+    qualified: bool = Query(False),
     min_ip: float = Query(10.0, ge=0),
     sort_by: str = Query("era"),
     team_id: Optional[int] = None,
@@ -919,31 +973,72 @@ def summer_pitching_leaderboard(
         sort_by = "era"
     asc_sorts = {"era", "whip", "bb_per_9", "fip", "bb_pct"}
     direction = "ASC" if sort_by in asc_sorts else "DESC"
-    team_clause = "AND pt.team_id = %s" if team_id else ""
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
+        # Build SQL + params in lockstep. Same pattern as batting.
+        params = []
+        if qualified:
+            qual_join = """
+                JOIN (
+                  SELECT team_id, COUNT(*)::int AS team_g
+                  FROM (
+                    SELECT home_team_id AS team_id FROM summer_games
+                    WHERE league_id = %s AND season = %s AND status = 'final'
+                      AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+                      AND home_team_id <> away_team_id
+                    UNION ALL
+                    SELECT away_team_id AS team_id FROM summer_games
+                    WHERE league_id = %s AND season = %s AND status = 'final'
+                      AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+                      AND home_team_id <> away_team_id
+                  ) x
+                  GROUP BY team_id
+                ) tg ON tg.team_id = pt.team_id
+            """
+            params.extend([league_id, season, league_id, season])
+            qual_filter = "AND pt.innings_pitched >= tg.team_g * 0.75"
+        else:
+            qual_join = ""
+            qual_filter = "AND pt.innings_pitched >= %s"
+
+        params.extend([league_id, season])
+        if not qualified:
+            params.append(min_ip)
+
+        team_clause = ""
+        if team_id:
+            team_clause = "AND pt.team_id = %s"
+            params.append(team_id)
+
+        params.append(limit)
         cur.execute(
             f"""
             SELECT p.id   AS player_id,
                    p.first_name, p.last_name,
                    p.position, p.college, p.year_in_school,
                    t.id   AS team_id, t.name AS team_name, t.short_name AS team_short, t.logo_url,
-                   pt.games, pt.games_started, pt.innings_pitched,
-                   pt.wins, pt.losses, pt.saves, pt.strikeouts, pt.walks,
-                   pt.earned_runs, pt.hits_allowed,
-                   pt.era, pt.whip, pt.k_per_9, pt.bb_per_9,
-                   pt.fip, pt.k_pct, pt.bb_pct, pt.pitching_war
+                   pt.games, pt.games_started,
+                   pt.complete_games, pt.shutouts,
+                   pt.wins, pt.losses, pt.saves,
+                   pt.innings_pitched, pt.batters_faced,
+                   pt.hits_allowed, pt.runs_allowed, pt.earned_runs,
+                   pt.home_runs_allowed, pt.walks, pt.strikeouts,
+                   pt.hit_batters, pt.wild_pitches,
+                   pt.era, pt.whip,
+                   pt.k_per_9, pt.bb_per_9, pt.h_per_9, pt.hr_per_9, pt.k_bb_ratio,
+                   pt.fip, pt.k_pct, pt.bb_pct, pt.babip_against, pt.pitching_war
             FROM summer_pitching_stats pt
             JOIN summer_players p ON p.id = pt.player_id
             JOIN summer_teams t   ON t.id = pt.team_id
+            {qual_join}
             WHERE t.league_id = %s AND pt.season = %s
-              AND pt.innings_pitched >= %s
+              {qual_filter}
               {team_clause}
             ORDER BY pt.{sort_by} {direction} NULLS LAST
             LIMIT %s
             """,
-            (league_id, season, min_ip, team_id, limit) if team_id else (league_id, season, min_ip, limit),
+            tuple(params),
         )
         rows = cur.fetchall()
     return [dict(r) for r in rows]
