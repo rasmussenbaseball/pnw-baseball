@@ -1523,7 +1523,7 @@ function PlayerDetailStandard() {
     )
   }
 
-  const { player, batting_stats, pitching_stats, fielding_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, position_breakdown, linked_players, summer_batting, summer_pitching } = data
+  const { player, batting_stats, pitching_stats, fielding_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, position_breakdown, linked_players, summer_batting, summer_pitching, current_summer_assignment } = data
   const isTransfer = linked_players && linked_players.length > 1
   const hasBatting = batting_stats && batting_stats.length > 0
   const hasPitching = pitching_stats && pitching_stats.length > 0
@@ -1651,6 +1651,24 @@ function PlayerDetailStandard() {
               <div><span className="text-gray-400 dark:text-gray-500">Prev</span> <span className="font-medium">{player.previous_school}</span></div>
             )}
           </div>
+
+          {/* Current summer-league assignment (WCL/PIL) — shown on the
+              spring profile so coaches/scouts can hop straight to the
+              summer page for current per-game logs. */}
+          {current_summer_assignment && (
+            <div className="basis-full mt-2">
+              <Link
+                to={`/summer/teams/${current_summer_assignment.team_id}`}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+              >
+                {current_summer_assignment.team_logo && (
+                  <img src={current_summer_assignment.team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />
+                )}
+                Summer: {current_summer_assignment.team_short || current_summer_assignment.team_name}
+                <span className="text-[10px] opacity-70">· {current_summer_assignment.league_abbrev}</span>
+              </Link>
+            </div>
+          )}
 
           {/* Multi-school career path — inline in header (was a separate card) */}
           {isTransfer && (

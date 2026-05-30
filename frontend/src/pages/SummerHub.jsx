@@ -110,39 +110,60 @@ function Standings() {
   if (!data?.length) {
     return <EmptyState msg="No standings yet — first conference games haven't been played." />
   }
+  // Group by division (data sorted server-side division NULLS LAST → wins desc)
+  const groups = {}
+  for (const r of data) {
+    const key = r.division || 'Other'
+    if (!groups[key]) groups[key] = []
+    groups[key].push(r)
+  }
+  const order = ['North', 'South', 'East', 'West', 'Other']
+  const divisions = Object.keys(groups).sort(
+    (a, b) => (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) -
+              (order.indexOf(b) === -1 ? 99 : order.indexOf(b))
+  )
   return (
-    <div className="overflow-x-auto -mx-3 sm:mx-0">
-      <div className="min-w-[560px] px-3 sm:px-0">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="text-left py-2 pl-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Team</th>
-              <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">W</th>
-              <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">L</th>
-              <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Pct</th>
-              <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RS</th>
-              <th className="text-right pr-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RA</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map(row => (
-              <tr key={row.team_id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                <td className="py-1.5 pl-2">
-                  <Link to={`/summer/teams/${row.team_id}`} className="flex items-center gap-2 text-nw-teal dark:text-teal-300 hover:underline font-semibold">
-                    {row.logo_url && <img src={row.logo_url} alt="" className="w-5 h-5 object-contain shrink-0" loading="lazy" />}
-                    <span>{row.short_name || row.name}</span>
-                  </Link>
-                </td>
-                <td className="text-right px-2 tabular-nums font-bold text-gray-900 dark:text-gray-100">{row.wins}</td>
-                <td className="text-right px-2 tabular-nums text-gray-700 dark:text-gray-300">{row.losses}</td>
-                <td className="text-right px-2 tabular-nums text-gray-700 dark:text-gray-300">{fmtAvg(row.pct)}</td>
-                <td className="text-right px-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_scored}</td>
-                <td className="text-right pr-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_against}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div className="flex flex-col gap-5">
+      {divisions.map(div => (
+        <div key={div}>
+          <div className="text-xs font-bold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-2">
+            {div} {div !== 'Other' && 'Division'}
+          </div>
+          <div className="overflow-x-auto -mx-3 sm:mx-0">
+            <div className="min-w-[560px] px-3 sm:px-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    <th className="text-left py-2 pl-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Team</th>
+                    <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">W</th>
+                    <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">L</th>
+                    <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Pct</th>
+                    <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RS</th>
+                    <th className="text-right pr-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups[div].map(row => (
+                    <tr key={row.team_id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                      <td className="py-1.5 pl-2">
+                        <Link to={`/summer/teams/${row.team_id}`} className="flex items-center gap-2 text-nw-teal dark:text-teal-300 hover:underline font-semibold">
+                          {row.logo_url && <img src={row.logo_url} alt="" className="w-5 h-5 object-contain shrink-0" loading="lazy" />}
+                          <span>{row.short_name || row.name}</span>
+                        </Link>
+                      </td>
+                      <td className="text-right px-2 tabular-nums font-bold text-gray-900 dark:text-gray-100">{row.wins}</td>
+                      <td className="text-right px-2 tabular-nums text-gray-700 dark:text-gray-300">{row.losses}</td>
+                      <td className="text-right px-2 tabular-nums text-gray-700 dark:text-gray-300">{fmtAvg(row.pct)}</td>
+                      <td className="text-right px-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_scored}</td>
+                      <td className="text-right pr-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_against}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -258,22 +279,43 @@ function Teams() {
   if (loading) return <SkeletonRows />
   if (error) return <ErrorState msg={error} />
   if (!data?.length) return <EmptyState msg="No teams loaded yet." />
+  // Group by division
+  const groups = {}
+  for (const t of data) {
+    const key = t.division || 'Other'
+    if (!groups[key]) groups[key] = []
+    groups[key].push(t)
+  }
+  const order = ['North', 'South', 'East', 'West', 'Other']
+  const divisions = Object.keys(groups).sort(
+    (a, b) => (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) -
+              (order.indexOf(b) === -1 ? 99 : order.indexOf(b))
+  )
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-      {data.map(t => (
-        <Link
-          key={t.id}
-          to={`/summer/teams/${t.id}`}
-          className="flex items-center gap-3 p-3 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-nw-teal dark:hover:border-teal-400 transition"
-        >
-          {t.logo_url
-            ? <img src={t.logo_url} alt="" className="w-9 h-9 object-contain shrink-0" loading="lazy" />
-            : <div className="w-9 h-9 rounded bg-gray-100 dark:bg-gray-700 shrink-0" />}
-          <div className="min-w-0">
-            <div className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">{t.name}</div>
-            {t.city && <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{t.city}{t.state ? `, ${t.state}` : ''}</div>}
+    <div className="flex flex-col gap-5">
+      {divisions.map(div => (
+        <div key={div}>
+          <div className="text-xs font-bold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-2">
+            {div} {div !== 'Other' && 'Division'}
           </div>
-        </Link>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {groups[div].map(t => (
+              <Link
+                key={t.id}
+                to={`/summer/teams/${t.id}`}
+                className="flex items-center gap-3 p-3 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-nw-teal dark:hover:border-teal-400 transition"
+              >
+                {t.logo_url
+                  ? <img src={t.logo_url} alt="" className="w-9 h-9 object-contain shrink-0" loading="lazy" />
+                  : <div className="w-9 h-9 rounded bg-gray-100 dark:bg-gray-700 shrink-0" />}
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">{t.name}</div>
+                  {t.city && <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{t.city}{t.state ? `, ${t.state}` : ''}</div>}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   )

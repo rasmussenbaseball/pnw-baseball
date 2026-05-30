@@ -781,7 +781,7 @@ export default function JasonWrightProfile() {
     return <div className="text-center py-20 text-gray-500 dark:text-gray-400">{error || 'Player not found.'}</div>
   }
 
-  const { player, batting_stats, summer_batting, batting_percentiles, fielding_stats, awards, pnw_rankings, position_breakdown } = data
+  const { player, batting_stats, summer_batting, batting_percentiles, fielding_stats, awards, pnw_rankings, position_breakdown, current_summer_assignment } = data
 
   // Tag spring + summer rows so we can interleave them chronologically
   // for the hero stat table + extended Batting Stats card (BR-style:
@@ -909,6 +909,16 @@ export default function JasonWrightProfile() {
                 {player.hometown && <><br />From: {player.hometown}</>}
                 {player.previous_school && <> &nbsp;|&nbsp; Prev: {player.previous_school}</>}
               </div>
+              {current_summer_assignment && (
+                <Link
+                  to={`/summer/teams/${current_summer_assignment.team_id}`}
+                  className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                >
+                  {current_summer_assignment.team_logo && <img src={current_summer_assignment.team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />}
+                  Summer 2026: {current_summer_assignment.team_short || current_summer_assignment.team_name}
+                  <span className="text-[10px] opacity-70">· {current_summer_assignment.league_abbrev}</span>
+                </Link>
+              )}
 
               {/* Skill profile + rolling wOBA side-by-side */}
               <div className="grid grid-cols-1 sm:grid-cols-[0.95fr_1.05fr] gap-3.5 items-stretch my-3 py-2 border-y" style={{ borderColor: THEME.border }}>

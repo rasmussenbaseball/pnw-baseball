@@ -177,6 +177,9 @@ import BattingLeaderboard from './pages/BattingLeaderboard'
 import PitchingLeaderboard from './pages/PitchingLeaderboard'
 import FieldingLeaderboard from './pages/FieldingLeaderboard'
 import SummerHub from './pages/SummerHub'
+import SummerGameDetail from './pages/SummerGameDetail'
+import SummerTeamDetail from './pages/SummerTeamDetail'
+import SummerPlayerDetail from './pages/SummerPlayerDetail'
 import WarLeaderboard from './pages/WarLeaderboard'
 import TeamStatsPage from './pages/TeamStatsPage'
 import TeamsPage from './pages/TeamsPage'
@@ -330,6 +333,9 @@ export default function App() {
           <Route path="/scatter" element={<ScatterPlot />} />
           <Route path="/summerball" element={<RequireTier minTier="free"><SummerballData /></RequireTier>} />
           <Route path="/summer" element={<SummerHub />} />
+          <Route path="/summer/games/:id" element={<SummerGameDetail />} />
+          <Route path="/summer/teams/:id" element={<SummerTeamDetail />} />
+          <Route path="/summer/players/:id" element={<SummerPlayerDetail />} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
           <Route path="/percentiles" element={<RequireTier minTier="free"><Percentiles /></RequireTier>} />
           <Route path="/records" element={<RequireTier minTier="free"><RecordsPage /></RequireTier>} />

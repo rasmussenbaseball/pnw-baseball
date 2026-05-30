@@ -215,7 +215,7 @@ def summer_teams(league: str = Query(DEFAULT_LEAGUE)):
         league_id = _league_id_for(cur, league)
         cur.execute(
             """
-            SELECT id, name, short_name, city, state, logo_url
+            SELECT id, name, short_name, city, state, logo_url, division
             FROM summer_teams
             WHERE league_id = %s AND is_active = TRUE
             ORDER BY name
@@ -243,6 +243,52 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
         team = cur.fetchone()
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
+
+        # Team season totals (sum across roster)
+        cur.execute(
+            """
+            SELECT
+                SUM(games)::int             AS bat_games,
+                SUM(plate_appearances)::int AS pa,
+                SUM(at_bats)::int           AS ab,
+                SUM(hits)::int              AS hits,
+                SUM(doubles)::int           AS doubles,
+                SUM(triples)::int           AS triples,
+                SUM(home_runs)::int         AS home_runs,
+                SUM(walks)::int             AS bb,
+                SUM(strikeouts)::int        AS so,
+                SUM(rbi)::int               AS rbi,
+                SUM(stolen_bases)::int      AS sb,
+                CASE WHEN SUM(at_bats) > 0
+                     THEN SUM(hits)::real / SUM(at_bats) ELSE 0 END AS team_avg
+            FROM summer_batting_stats
+            WHERE team_id = %s AND season = %s
+            """,
+            (team_id, season),
+        )
+        team_bat = dict(cur.fetchone() or {})
+
+        # W/L from finals
+        cur.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE
+                    WHEN (home_team_id = %s AND home_score > away_score)
+                      OR (away_team_id = %s AND away_score > home_score)
+                    THEN 1 ELSE 0 END), 0)::int AS wins,
+                COALESCE(SUM(CASE
+                    WHEN (home_team_id = %s AND home_score < away_score)
+                      OR (away_team_id = %s AND away_score < home_score)
+                    THEN 1 ELSE 0 END), 0)::int AS losses
+            FROM summer_games
+            WHERE (home_team_id = %s OR away_team_id = %s)
+              AND season = %s AND status = 'final'
+              AND away_team_id IS NOT NULL AND home_team_id IS NOT NULL
+              AND away_team_id <> home_team_id
+            """,
+            (team_id, team_id, team_id, team_id, team_id, team_id, season),
+        )
+        record = dict(cur.fetchone() or {"wins": 0, "losses": 0})
 
         # Last 10 games
         cur.execute(
@@ -277,7 +323,104 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
         )
         roster = [dict(r) for r in cur.fetchall()]
 
-    return {"team": dict(team), "recent_games": recent, "roster": roster}
+    return {
+        "team": dict(team),
+        "record": record,
+        "team_batting": team_bat,
+        "recent_games": recent,
+        "roster": roster,
+    }
+
+
+# ── /summer/players/{id} ───────────────────────────────────────────
+
+@router.get("/summer/players/{player_id}")
+@cached_endpoint(ttl_seconds=180)
+def summer_player_detail(player_id: int, season: int = Query(2026)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT p.*,
+                   t.id   AS team_id,
+                   t.name AS team_name,
+                   t.short_name AS team_short,
+                   t.logo_url AS team_logo,
+                   l.abbreviation AS league_abbr,
+                   l.name AS league_name
+            FROM summer_players p
+            JOIN summer_teams t   ON t.id = p.team_id
+            JOIN summer_leagues l ON l.id = t.league_id
+            WHERE p.id = %s
+            """,
+            (player_id,),
+        )
+        player = cur.fetchone()
+        if not player:
+            raise HTTPException(status_code=404, detail="Summer player not found")
+
+        # Season totals
+        cur.execute(
+            "SELECT * FROM summer_batting_stats WHERE player_id = %s ORDER BY season",
+            (player_id,),
+        )
+        batting = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            "SELECT * FROM summer_pitching_stats WHERE player_id = %s ORDER BY season",
+            (player_id,),
+        )
+        pitching = [dict(r) for r in cur.fetchall()]
+
+        # Per-game logs for the requested season
+        cur.execute(
+            """
+            SELECT b.*, g.game_date, g.away_team_name, g.home_team_name,
+                   g.away_score, g.home_score, g.away_team_id, g.home_team_id
+            FROM summer_game_batting b
+            JOIN summer_games g ON g.id = b.game_id
+            WHERE b.player_id = %s AND g.season = %s
+            ORDER BY g.game_date
+            """,
+            (player_id, season),
+        )
+        game_batting = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """
+            SELECT p.*, g.game_date, g.away_team_name, g.home_team_name,
+                   g.away_score, g.home_score, g.away_team_id, g.home_team_id
+            FROM summer_game_pitching p
+            JOIN summer_games g ON g.id = p.game_id
+            WHERE p.player_id = %s AND g.season = %s
+            ORDER BY g.game_date
+            """,
+            (player_id, season),
+        )
+        game_pitching = [dict(r) for r in cur.fetchall()]
+
+        # Spring link, if known
+        cur.execute(
+            """
+            SELECT pl.spring_player_id, sp.first_name AS spring_first, sp.last_name AS spring_last,
+                   sp.team_id AS spring_team_id, sp.position AS spring_position,
+                   t.short_name AS spring_team_short, t.logo_url AS spring_team_logo
+            FROM summer_player_links pl
+            JOIN players sp ON sp.id = pl.spring_player_id
+            LEFT JOIN teams t ON t.id = sp.team_id
+            WHERE pl.summer_player_id = %s
+            LIMIT 1
+            """,
+            (player_id,),
+        )
+        spring_link = cur.fetchone()
+
+    return {
+        "player": dict(player),
+        "batting": batting,
+        "pitching": pitching,
+        "game_batting": game_batting,
+        "game_pitching": game_pitching,
+        "spring_link": dict(spring_link) if spring_link else None,
+    }
 
 
 # ── /summer/standings ──────────────────────────────────────────────
@@ -329,6 +472,7 @@ def summer_standings(
               FROM team_results GROUP BY team_id
             )
             SELECT a.team_id, t.name, t.short_name, t.logo_url, t.city, t.state,
+                   t.division,
                    a.wins, a.losses,
                    a.runs_scored, a.runs_against,
                    CASE WHEN (a.wins + a.losses) > 0
@@ -337,7 +481,7 @@ def summer_standings(
             FROM agg a
             JOIN summer_teams t ON t.id = a.team_id
             WHERE t.league_id = %s
-            ORDER BY a.wins DESC, pct DESC NULLS LAST, t.name
+            ORDER BY t.division NULLS LAST, a.wins DESC, pct DESC NULLS LAST, t.name
             """,
             (league_id, season, league_id),
         )

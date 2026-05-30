@@ -7912,6 +7912,34 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             )
             summer_pitching = [dict(r) for r in cur.fetchall()]
 
+        # ── Current summer assignment ──
+        # "Currently with: Yakima Pippins" badge for the spring player
+        # page. Picks the most recent summer team for this player from
+        # summer_players. Independent of summer_batting_stats so it
+        # surfaces a roster spot even before the first game is played.
+        current_summer_assignment = None
+        if summer_links:
+            cur.execute(
+                f"""SELECT sp.id   AS summer_player_id,
+                           st.id   AS team_id,
+                           st.name AS team_name,
+                           st.short_name AS team_short,
+                           st.logo_url   AS team_logo,
+                           st.division,
+                           sl.abbreviation AS league_abbrev,
+                           sl.name AS league_name
+                    FROM summer_players sp
+                    JOIN summer_teams st ON st.id = sp.team_id
+                    JOIN summer_leagues sl ON sl.id = st.league_id
+                    WHERE sp.id IN ({sp_placeholders})
+                    ORDER BY sp.updated_at DESC NULLS LAST, sp.id DESC
+                    LIMIT 1""",
+                summer_player_ids,
+            )
+            row = cur.fetchone()
+            if row:
+                current_summer_assignment = dict(row)
+
         # ── Fielding (per-position per-season) ──
         # One row per (season, position) at each team the player has
         # been on. Frontend groups by season and renders each position
@@ -7960,6 +7988,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             "linked_players": linked_players,
             "summer_batting": summer_batting,
             "summer_pitching": summer_pitching,
+            "current_summer_assignment": current_summer_assignment,
         }
 
 
