@@ -177,13 +177,13 @@ export const PITCHING_PRESETS = {
   'Standard': ['wins', 'losses', 'saves', 'games', 'games_started', 'quality_starts', 'innings_pitched', 'strikeouts', 'walks', 'hits_allowed', 'earned_runs', 'era', 'whip', 'baa'],
   'Advanced': ['innings_pitched', 'quality_starts', 'era', 'era_plus', 'fip', 'fip_plus', 'xfip', 'siera', 'k_pct', 'bb_pct', 'k_bb_pct', 'babip_against', 'baa', 'lob_pct', 'pitching_war'],
   'Strikeouts': ['innings_pitched', 'strikeouts', 'k_pct', 'bb_pct', 'k_bb_pct', 'k_bb_ratio', 'walks'],
-  'Relievers': ['games', 'saves', 'innings_pitched', 'era', 'era_plus', 'fip', 'fip_plus', 'whip', 'baa', 'k_pct', 'bb_pct', 'k_bb_pct', 'pitching_war'],
+  // 'Relievers' view retired — see the dedicated /relievers leaderboard
+  // (Goose Eggs + reliever WPA) instead.
 }
 
-// Presets that apply special backend filters (e.g. Relievers → max_gs=0)
-export const PITCHING_PRESET_FILTERS = {
-  'Relievers': { max_gs: 0, min_ip: 10 },
-}
+// Presets that apply special backend filters. (Relievers view was retired
+// in favor of the dedicated /relievers page.)
+export const PITCHING_PRESET_FILTERS = {}
 
 
 // ============================================================

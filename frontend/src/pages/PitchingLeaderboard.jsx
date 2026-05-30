@@ -35,9 +35,14 @@ export default function PitchingLeaderboard() {
   const { data: divisions } = useDivisions()
   const { data: conferences } = useConferences()
 
-  const isPbp = preset === 'PBP'
+  // A previously-persisted preset that no longer exists (we retired the
+  // "Relievers" view in favor of the dedicated /relievers page) falls
+  // back to Standard so the table never renders with undefined columns.
+  const effectivePreset = ALL_PRESETS[preset] ? preset : 'Standard'
 
-  const presetFilters = PITCHING_PRESET_FILTERS[preset] || {}
+  const isPbp = effectivePreset === 'PBP'
+
+  const presetFilters = PITCHING_PRESET_FILTERS[effectivePreset] || {}
 
   const apiParams = {
     season: filters.season,
@@ -84,7 +89,7 @@ export default function PitchingLeaderboard() {
   }
 
   const columns = isPbp ? PITCHING_PBP_COLUMNS : PITCHING_COLUMNS
-  const visibleCols = ALL_PRESETS[preset]
+  const visibleCols = ALL_PRESETS[effectivePreset]
   const sortKey = isPbp ? pbpSortBy : sortBy
   const sortDirVal = isPbp ? pbpSortDir : sortDir
   const exportEndpoint = isPbp ? '/api/v1/leaderboards/pitching-pbp'
