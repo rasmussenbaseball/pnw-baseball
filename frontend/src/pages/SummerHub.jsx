@@ -19,8 +19,12 @@ const TABS = [
   { key: 'colleges',    label: 'College Mix' },
 ]
 
-// 2026 WCL regular season opener — surfaces a banner during exhibitions.
-const REGULAR_SEASON_OPENS = new Date('2026-06-04T00:00:00-07:00')
+// 2026 WCL key dates. The schedule scraper marks games as
+// 'exhibition' / 'conference' / 'playoff' so we can also infer
+// season phase from data, but these dates anchor the UI banner.
+const SEASON_OPENS    = new Date('2026-05-29T00:00:00-07:00')  // first regular-season games
+const REGULAR_FULL_GO = new Date('2026-06-04T00:00:00-07:00')  // every team in play
+const PLAYOFFS_START  = new Date('2026-08-12T00:00:00-07:00')  // approx
 
 const LEAGUE = 'WCL'
 const SEASON = 2026
@@ -113,6 +117,66 @@ function LeaderCell({ cat }) {
       <span className="ml-1 text-gray-500 dark:text-gray-400">({top.team_short})</span>
       <span className="ml-1.5 font-bold tabular-nums text-amber-700 dark:text-amber-300">{val}</span>
     </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Today's slate widget — surfaces tonight's games at the top
+// ─────────────────────────────────────────────────────────────
+
+function todayKey() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function TodaySlate() {
+  // Pull just a tight window so we get today's games quickly
+  const { data } = useApi('/summer/scoreboard',
+    { league: LEAGUE, season: SEASON, days_back: 0, days_ahead: 1 }, [])
+  if (!data) return null
+  const today = todayKey()
+  const games = data.filter(g => g.game_date === today)
+  if (games.length === 0) return null
+  return (
+    <div className="rounded-md border border-nw-teal/40 dark:border-teal-400/40 bg-nw-teal/5 dark:bg-teal-900/20 px-3 py-2.5 mb-4">
+      <div className="flex items-baseline gap-2 mb-2">
+        <span className="text-[10px] font-bold tracking-widest uppercase text-nw-teal dark:text-teal-300">Tonight's WCL slate</span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-400">{games.length} game{games.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+        {games.map(g => {
+          const isFinal = g.status === 'final'
+          const awayWon = isFinal && g.away_score > g.home_score
+          const homeWon = isFinal && g.home_score > g.away_score
+          return (
+            <Link key={g.id} to={`/summer/games/${g.id}`}
+              className="block rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-1.5 hover:border-nw-teal dark:hover:border-teal-400">
+              <div className="flex justify-between items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">
+                <span>{isFinal ? 'Final' : g.status === 'in_progress' ? 'Live' : 'Scheduled'}</span>
+              </div>
+              <SlateSide team={g.away_short || g.away_team_name} logo={g.away_logo} score={g.away_score} bold={awayWon} dim={isFinal && homeWon} />
+              <SlateSide team={g.home_short || g.home_team_name} logo={g.home_logo} score={g.home_score} bold={homeWon} dim={isFinal && awayWon} />
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function SlateSide({ team, logo, score, bold, dim }) {
+  return (
+    <div className={`flex items-center gap-1.5 py-0.5 ${dim ? 'opacity-60' : ''}`}>
+      {logo
+        ? <img src={logo} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" />
+        : <div className="w-4 h-4 rounded bg-gray-100 dark:bg-gray-700 shrink-0" />}
+      <span className={`flex-1 text-xs truncate ${bold ? 'font-bold text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}`}>
+        {team || 'TBD'}
+      </span>
+      <span className={`text-sm tabular-nums ${bold ? 'font-bold text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'}`}>
+        {score == null ? '' : score}
+      </span>
+    </div>
   )
 }
 
@@ -817,7 +881,13 @@ function ErrorState({ msg }) {
 
 export default function SummerHub() {
   const [tab, setTab] = useState('scoreboard')
-  const preSeason = new Date() < REGULAR_SEASON_OPENS
+  const now = new Date()
+  // Phase: preseason → opening (between first game and full slate) →
+  // regular → playoffs. Drives the banner copy.
+  const phase = now < SEASON_OPENS ? 'preseason'
+              : now < REGULAR_FULL_GO ? 'opening'
+              : now < PLAYOFFS_START ? 'regular'
+              : 'playoffs'
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4">
       {/* WCL hero — gold/navy gradient. Tailwind colors so dark mode behaves. */}
@@ -846,15 +916,31 @@ export default function SummerHub() {
         </div>
       </div>
 
-      {preSeason && (
-        <div className="rounded-md border border-amber-300 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 mb-4 flex items-start gap-2">
+      {phase === 'preseason' && (
+        <div className="rounded-md border border-amber-300 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 mb-4">
           <div className="text-xs sm:text-sm text-amber-900 dark:text-amber-200">
-            <span className="font-bold">Preseason.</span> WCL regular season opens Wednesday, June 4. Exhibition games are showing now;
+            <span className="font-bold">Preseason.</span> WCL regular season opens Thursday, May 29. Exhibitions only for now —
             standings + leaderboards fill in once league play begins.
           </div>
         </div>
       )}
+      {phase === 'opening' && (
+        <div className="rounded-md border border-emerald-300 dark:border-emerald-700/50 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 mb-4">
+          <div className="text-xs sm:text-sm text-emerald-900 dark:text-emerald-200">
+            <span className="font-bold">Opening weekend.</span> First regular-season games are in the books. Full league schedule
+            kicks off Wednesday, June 4.
+          </div>
+        </div>
+      )}
+      {phase === 'playoffs' && (
+        <div className="rounded-md border border-rose-300 dark:border-rose-700/50 bg-rose-50 dark:bg-rose-900/20 px-3 py-2 mb-4">
+          <div className="text-xs sm:text-sm text-rose-900 dark:text-rose-200">
+            <span className="font-bold">Playoffs.</span> Postseason underway.
+          </div>
+        </div>
+      )}
 
+      <TodaySlate />
       <LeadersTicker />
       <TrendsWidget />
 
