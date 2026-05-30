@@ -36,6 +36,7 @@ import argparse
 import logging
 import re
 import json
+import hashlib
 from datetime import datetime, date
 from pathlib import Path
 
@@ -385,6 +386,63 @@ def fetch_json(url, params=None, retries=2):
 # ============================================================
 # Game Score Metrics
 # ============================================================
+
+def compute_box_fingerprint(game_data, box_batting, box_pitching, box_fielding):
+    """Deterministic hash of a parsed box score's content.
+
+    Lets the writer skip the DELETE + INSERT cascade when the box
+    score hasn't actually changed since the last scrape. ~90% of box
+    scores in our daily cron are unchanged (final games from days or
+    weeks ago, re-scraped to catch the rare scorer correction).
+
+    Includes:
+      • final score, hits, errors, line score, innings
+      • home/away team_ids (catches the historic Pacific flip bug)
+      • every batting + pitching + fielding row's full stat tuple
+        (sorted by name within each side so ordering noise from the
+        parser doesn't break the hash)
+
+    Returns a hex SHA-256 digest (64 chars).
+    """
+    def _norm_rows(rows, keys):
+        out = []
+        for r in (rows or []):
+            tup = [(k, r.get(k)) for k in keys]
+            out.append(tup)
+        # Sort by name so the parser's row order doesn't bust the hash
+        out.sort(key=lambda x: str(dict(x).get("player_name") or ""))
+        return out
+
+    BAT_KEYS = ("player_name", "position", "ab", "r", "h", "rbi", "bb", "so",
+                "2b", "3b", "hr", "sb", "cs", "sf", "sh", "hbp")
+    PIT_KEYS = ("player_name", "ip", "h", "r", "er", "bb", "so", "hr", "bf",
+                "wp", "hbp", "pitches", "strikes", "decision", "is_starter")
+    FLD_KEYS = ("player_name", "position", "po", "a", "e", "dp", "tp",
+                "passed_balls", "sba", "cs", "pickoffs", "ci")
+
+    sig = {
+        "ht": game_data.get("home_team_id"),
+        "at": game_data.get("away_team_id"),
+        "hs": game_data.get("home_score"),
+        "as": game_data.get("away_score"),
+        "hh": game_data.get("home_hits"),
+        "ah": game_data.get("away_hits"),
+        "he": game_data.get("home_errors"),
+        "ae": game_data.get("away_errors"),
+        "in": game_data.get("innings"),
+        "st": game_data.get("status"),
+        "hl": game_data.get("home_line_score"),
+        "al": game_data.get("away_line_score"),
+        "hb": _norm_rows((box_batting or {}).get("home"), BAT_KEYS),
+        "ab": _norm_rows((box_batting or {}).get("away"), BAT_KEYS),
+        "hp": _norm_rows((box_pitching or {}).get("home"), PIT_KEYS),
+        "ap": _norm_rows((box_pitching or {}).get("away"), PIT_KEYS),
+        "hf": _norm_rows((box_fielding or {}).get("home"), FLD_KEYS),
+        "af": _norm_rows((box_fielding or {}).get("away"), FLD_KEYS),
+    }
+    blob = json.dumps(sig, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
 
 def compute_bill_james_game_score(ip, h, er, bb, k, hr=0, unearn_runs=0):
     """
@@ -2992,6 +3050,7 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
     base_url, sport, platform = team_config
     games_found = 0
     games_scraped = 0
+    games_unchanged = 0  # box fingerprint matched, writes skipped
     errors = 0
 
     logger.info(f"\n{'='*60}")
@@ -3268,6 +3327,42 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                     errors += 1
                     continue
 
+                # Compute fingerprint from the parsed box. If the
+                # stored fingerprint matches AND the game is final,
+                # nothing has changed since the last scrape — skip
+                # the DELETE+INSERT cascade. Cuts daily write volume
+                # ~90% since most games re-scraped are weeks-old
+                # finals that never change.
+                fingerprint = compute_box_fingerprint(
+                    game_data, box_batting, box_pitching, box_fielding,
+                )
+                cur.execute(
+                    "SELECT box_fingerprint, status FROM games WHERE id = %s",
+                    (game_id,),
+                )
+                existing = cur.fetchone()
+                existing_fp = existing["box_fingerprint"] if existing else None
+                existing_status = existing["status"] if existing else None
+                is_final = (game_data.get("status") == "final"
+                            or existing_status == "final")
+
+                # Sanity check: only skip when batting rows actually
+                # exist. If the table got nuked since last scrape we
+                # want to repopulate even with a matching fingerprint.
+                has_existing_rows = False
+                if existing_fp == fingerprint and is_final and fingerprint:
+                    cur.execute(
+                        "SELECT 1 FROM game_batting WHERE game_id = %s LIMIT 1",
+                        (game_id,),
+                    )
+                    has_existing_rows = cur.fetchone() is not None
+
+                if existing_fp == fingerprint and is_final and has_existing_rows:
+                    logger.info(f"    Box unchanged (fingerprint match) — skip writes")
+                    games_unchanged += 1
+                    games_scraped += 1
+                    continue
+
                 # Delete old game-level stats before re-inserting
                 # (ensures correct team_id assignments if home/away changed)
                 if box_batting or box_pitching:
@@ -3295,6 +3390,13 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                 if box_fielding.get("away"):
                     insert_game_fielding(cur, game_id, away_team, box_fielding["away"], season_year)
 
+                # Stamp the fingerprint last so an interrupted run
+                # doesn't leave behind a fingerprint with no rows.
+                cur.execute(
+                    "UPDATE games SET box_fingerprint = %s WHERE id = %s",
+                    (fingerprint, game_id),
+                )
+
                 conn.commit()
 
             games_scraped += 1
@@ -3305,7 +3407,10 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
             traceback.print_exc()
             errors += 1
 
-    logger.info(f"\n  {db_short}: {games_found} found, {games_scraped} scraped, {errors} errors")
+    logger.info(
+        f"\n  {db_short}: {games_found} found, {games_scraped} scraped "
+        f"({games_unchanged} unchanged, writes skipped), {errors} errors"
+    )
     return games_found, games_scraped, errors
 
 
