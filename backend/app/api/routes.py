@@ -4230,47 +4230,93 @@ def _recap_fmt_val(v, fmt):
     return str(v)
 
 
-def _best_team_superlative(conf_rows, team_id, scope_label):
-    """Pick the team stat where this team ranks best within its
-    conference. Positive framing: prefer an outright lead, else the
-    highest finish. Returns None if no rankable categories."""
-    cats = [
-        ("team_ops",          "OPS",              True,  "avg3"),
-        ("team_batting_avg",  "batting average",  True,  "avg3"),
-        ("run_differential",  "run differential", True,  "plusint"),
-        ("runs_scored",       "runs scored",      True,  "int"),
-        ("team_era",          "team ERA",         False, "era"),
-        ("team_whip",         "WHIP",             False, "era"),
-        ("team_fielding_pct", "fielding %",       True,  "avg3"),
-    ]
+def _conf_player_rank(cur, conference_id, season, table, stat, value, higher_better, min_col, min_val):
+    """Rank a player's stat within their conference (1 = best). `table`,
+    `stat`, `min_col` are trusted constants (never user input)."""
+    if value is None:
+        return None, None
+    op = ">" if higher_better else "<"
+    cur.execute(f"""
+        SELECT
+          (SELECT COUNT(*) FROM {table} s JOIN teams t ON t.id = s.team_id
+           WHERE t.conference_id = %s AND s.season = %s AND s.{min_col} >= %s
+             AND s.{stat} IS NOT NULL AND s.{stat} {op} %s) AS better,
+          (SELECT COUNT(*) FROM {table} s JOIN teams t ON t.id = s.team_id
+           WHERE t.conference_id = %s AND s.season = %s AND s.{min_col} >= %s
+             AND s.{stat} IS NOT NULL) AS total
+    """, (conference_id, season, min_val, value, conference_id, season, min_val))
+    r = cur.fetchone()
+    return (r["better"] or 0) + 1, (r["total"] or 0)
+
+
+def _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher):
+    """Pick the most flattering, genuinely-positive 'they excelled at'
+    line. Considers both team-stat conference ranks (gated to top-half
+    finishes and positive values) and the standout player's conference
+    ranks (a star is always a positive). Returns None if nothing
+    qualifies — better to omit than to spin a weakness."""
+    conf_id = team["conference_id"]
+    scope = team.get("conference_abbrev") or team.get("conference_name") or "conference"
+    team_id = team["id"]
+    cands = []  # (rank, kind_priority, text)  kind: 0=player, 1=team
+
+    # ── Team-stat candidates (only genuine, positive strengths) ──
     me = next((r for r in conf_rows if r["team_id"] == team_id), None)
-    if not me:
+    if me:
+        team_cats = [
+            ("team_ops",          "OPS",              True,  "avg3",    False),
+            ("team_batting_avg",  "batting average",  True,  "avg3",    False),
+            ("runs_scored",       "runs scored",      True,  "int",     False),
+            ("run_differential",  "run differential", True,  "plusint", True),   # positivity-gated
+            ("team_era",          "team ERA",         False, "era",     False),
+            ("team_whip",         "WHIP",             False, "era",     False),
+            ("team_fielding_pct", "fielding %",       True,  "avg3",    False),
+        ]
+        for key, label, higher, fmt, gate_positive in team_cats:
+            vals = [(r["team_id"], r[key]) for r in conf_rows if r.get(key) is not None]
+            if len(vals) < 3 or me.get(key) is None:
+                continue
+            if gate_positive and me[key] <= 0:
+                continue
+            vals.sort(key=lambda x: x[1], reverse=higher)
+            rank = next((i + 1 for i, (tid, _) in enumerate(vals) if tid == team_id), None)
+            if rank is None or rank > (len(vals) + 1) // 2:   # top half only
+                continue
+            vs = _recap_fmt_val(me[key], fmt)
+            text = (f"Led the {scope} in {label} ({vs})" if rank == 1
+                    else f"{_recap_ordinal(rank)} in the {scope} in {label} ({vs})")
+            cands.append((rank, 1, text))
+
+    # ── Player-driven candidates (top-3 in conference only) ──
+    def add_player(player, value, stat_col, label, higher, table, min_col, min_val, fmt, floor=None):
+        if not player or value is None or (floor is not None and value < floor):
+            return
+        rank, total = _conf_player_rank(cur, conf_id, season, table, stat_col,
+                                        value, higher, min_col, min_val)
+        if not rank or total < 3 or rank > 3:
+            return
+        nm = f"{player['first_name']} {player['last_name']}"
+        vs = _recap_fmt_val(value, fmt)
+        text = (f"{nm} led the {scope} in {label} ({vs})" if rank == 1
+                else f"{nm} ranked {_recap_ordinal(rank)} in the {scope} in {label} ({vs})")
+        cands.append((rank, 0, text))
+
+    if best_hitter:
+        add_player(best_hitter, best_hitter.get("wrc_plus"), "wrc_plus", "wRC+", True,
+                   "batting_stats", "plate_appearances", 50, "int")
+        add_player(best_hitter, best_hitter.get("sb"), "stolen_bases", "stolen bases", True,
+                   "batting_stats", "plate_appearances", 50, "int", floor=8)
+        add_player(best_hitter, best_hitter.get("hr"), "home_runs", "home runs", True,
+                   "batting_stats", "plate_appearances", 50, "int", floor=5)
+    if best_pitcher:
+        add_player(best_pitcher, best_pitcher.get("era"), "era", "ERA", False,
+                   "pitching_stats", "innings_pitched", 20, "era")
+
+    if not cands:
         return None
-    best = None
-    for key, label, higher_is_better, fmt in cats:
-        vals = [(r["team_id"], r[key]) for r in conf_rows if r.get(key) is not None]
-        if len(vals) < 3 or me.get(key) is None:
-            continue
-        vals.sort(key=lambda x: x[1], reverse=higher_is_better)
-        rank = next((i + 1 for i, (tid, _) in enumerate(vals) if tid == team_id), None)
-        if rank is None:
-            continue
-        if best is None or rank < best["rank"]:
-            best = {"category": label, "rank": rank, "total": len(vals),
-                    "value": me[key], "fmt": fmt}
-    if not best:
-        return None
-    val_str = _recap_fmt_val(best["value"], best["fmt"])
-    led = best["rank"] == 1
-    best["led"] = led
-    best["rank_ordinal"] = _recap_ordinal(best["rank"])
-    best["value_display"] = val_str
-    best["scope"] = scope_label
-    if led:
-        best["text"] = f"Led the {scope_label} in {best['category']} ({val_str})"
-    else:
-        best["text"] = f"{best['rank_ordinal']} in the {scope_label} in {best['category']} ({val_str})"
-    return best
+    cands.sort(key=lambda c: (c[0], c[1]))   # best rank first, player breaks ties
+    rank, kind_priority, text = cands[0]
+    return {"text": text, "rank": rank, "kind": "player" if kind_priority == 0 else "team"}
 
 
 @router.get("/teams/{team_id}/season-recap")
@@ -4382,7 +4428,10 @@ def team_season_recap(
         r = cur.fetchone()
         best_pitcher = dict(r) if r else None
 
-        # Freshman of the year (Fr / R-Fr; best WAR, hitter or pitcher)
+        # Freshman of the year (Fr / R-Fr; best WAR, hitter or pitcher).
+        # Exclude the Best Hitter / Best Pitcher so it's always a 3rd player.
+        exclude_ids = [pid for pid in [(best_hitter or {}).get("id"),
+                                       (best_pitcher or {}).get("id")] if pid]
         cur.execute("""
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
                    bs.woba::float AS woba, bs.wrc_plus::float AS wrc_plus,
@@ -4391,8 +4440,9 @@ def team_season_recap(
             FROM batting_stats bs JOIN players p ON bs.player_id = p.id
             WHERE bs.team_id = %s AND bs.season = %s AND p.year_in_school ILIKE '%%fr'
               AND bs.offensive_war IS NOT NULL AND bs.plate_appearances >= 20
+              AND p.id <> ALL(%s::int[])
             ORDER BY bs.offensive_war DESC NULLS LAST LIMIT 1
-        """, (team_id, season))
+        """, (team_id, season, exclude_ids))
         fr_h = cur.fetchone()
         fr_h = dict(fr_h) if fr_h else None
         cur.execute("""
@@ -4406,8 +4456,9 @@ def team_season_recap(
             FROM pitching_stats ps JOIN players p ON ps.player_id = p.id
             WHERE ps.team_id = %s AND ps.season = %s AND p.year_in_school ILIKE '%%fr'
               AND ps.pitching_war IS NOT NULL AND COALESCE(ps.innings_pitched,0) >= 10
+              AND p.id <> ALL(%s::int[])
             ORDER BY ps.pitching_war DESC NULLS LAST LIMIT 1
-        """, (team_id, season))
+        """, (team_id, season, exclude_ids))
         fr_p = cur.fetchone()
         fr_p = dict(fr_p) if fr_p else None
         freshman = None
@@ -4429,8 +4480,7 @@ def team_season_recap(
             WHERE t.conference_id = %s AND s.season = %s AND t.is_active = 1
         """, (team["conference_id"], season))
         conf_rows = [dict(r2) for r2 in cur.fetchall()]
-        superlative = _best_team_superlative(
-            conf_rows, team_id, team.get("conference_abbrev") or team.get("conference_name"))
+        superlative = _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher)
 
         # Most clutch moment (top hitter WPA, audit-clean games only)
         cur.execute("""
@@ -4477,6 +4527,63 @@ def team_season_recap(
                 "opponent_short": cm["away_short"] if is_home else cm["home_short"],
             }
 
+        # Signature win: the win over the highest-ranked opponent (by
+        # national composite rank), else the biggest-margin win.
+        cur.execute("""
+            SELECT g.game_date, g.home_team_id, g.home_score, g.away_score,
+                   ht.short_name AS home_short, ht.name AS home_name,
+                   at2.short_name AS away_short, at2.name AS away_name,
+                   crh.composite_rank AS home_rank, cra.composite_rank AS away_rank
+            FROM games g
+            LEFT JOIN teams ht ON ht.id = g.home_team_id
+            LEFT JOIN teams at2 ON at2.id = g.away_team_id
+            LEFT JOIN composite_rankings crh ON crh.team_id = g.home_team_id AND crh.season = %s
+            LEFT JOIN composite_rankings cra ON cra.team_id = g.away_team_id AND cra.season = %s
+            WHERE g.season = %s AND g.status = 'final'
+              AND (g.home_team_id = %s OR g.away_team_id = %s)
+              AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+        """, (season, season, season, team_id, team_id))
+        wins = []
+        for g in cur.fetchall():
+            g = dict(g)
+            is_home = g["home_team_id"] == team_id
+            ts = g["home_score"] if is_home else g["away_score"]
+            os_ = g["away_score"] if is_home else g["home_score"]
+            if ts is None or os_ is None or ts <= os_:
+                continue
+            wins.append({
+                "game_date": g["game_date"].isoformat() if g["game_date"] else None,
+                "home_away": "vs" if is_home else "@",
+                "opponent_short": g["away_short"] if is_home else g["home_short"],
+                "opponent_name": g["away_name"] if is_home else g["home_name"],
+                "opponent_rank": g["away_rank"] if is_home else g["home_rank"],
+                "team_score": ts, "opp_score": os_, "margin": ts - os_,
+            })
+        signature_win = None
+        if wins:
+            wins.sort(key=lambda w: (w["opponent_rank"] if w["opponent_rank"] is not None else 99999,
+                                     -w["margin"]))
+            signature_win = wins[0]
+
+        # Team leaders (HR / SB / pitching K / SV). table + stat are trusted constants.
+        def _leader(table, stat):
+            cur.execute(f"""
+                SELECT p.first_name, p.last_name, s.{stat} AS val
+                FROM {table} s JOIN players p ON p.id = s.player_id
+                WHERE s.team_id = %s AND s.season = %s AND s.{stat} IS NOT NULL
+                ORDER BY s.{stat} DESC NULLS LAST LIMIT 1
+            """, (team_id, season))
+            rr = cur.fetchone()
+            if rr and rr["val"] and rr["val"] > 0:
+                return {"name": f"{rr['first_name']} {rr['last_name']}", "value": int(rr["val"])}
+            return None
+        team_leaders = {
+            "hr": _leader("batting_stats", "home_runs"),
+            "sb": _leader("batting_stats", "stolen_bases"),
+            "k":  _leader("pitching_stats", "strikeouts"),
+            "sv": _leader("pitching_stats", "saves"),
+        }
+
     return {
         "team": team,
         "season": season,
@@ -4492,6 +4599,8 @@ def team_season_recap(
         "best_pitcher": best_pitcher,
         "freshman_of_year": freshman,
         "superlative": superlative,
+        "signature_win": signature_win,
+        "team_leaders": team_leaders,
         "clutch_moment": clutch,
     }
 

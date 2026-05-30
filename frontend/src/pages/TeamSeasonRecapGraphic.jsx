@@ -114,6 +114,23 @@ async function drawHeader(ctx, data) {
   if (logo) ctx.drawImage(logo, 40, 38, 124, 124)
   else { ctx.fillStyle = 'rgba(255,255,255,0.15)'; roundRect(ctx, 40, 38, 124, 124, 12); ctx.fill() }
 
+  // Conference-finish badge (top-right pill)
+  const place = (data.record || {}).conference_place_ordinal
+  const confShort = t.conference_abbrev || ''
+  let nameRight = W - 40
+  if (place) {
+    const bw = 196, bh = 92, bx = W - 40 - bw, by = 50
+    ctx.fillStyle = 'rgba(255,255,255,0.16)'; roundRect(ctx, bx, by, bw, bh, 14); ctx.fill()
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#fff'; ctx.font = '900 40px -apple-system, sans-serif'
+    ctx.fillText(String(place).toUpperCase(), bx + bw / 2, by + 50)
+    if (confShort) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '800 13px -apple-system, sans-serif'
+      ctx.fillText(`IN ${confShort}`, bx + bw / 2, by + 76)
+    }
+    nameRight = bx - 20
+  }
+
   const tx = 188
   ctx.textAlign = 'left'
   ctx.fillStyle = 'rgba(255,255,255,0.85)'
@@ -122,7 +139,7 @@ async function drawHeader(ctx, data) {
 
   ctx.fillStyle = '#fff'
   ctx.font = '900 52px -apple-system, sans-serif'
-  ctx.fillText(truncate(ctx, cleanTeamName(t.name), W - tx - 40), tx, 120)
+  ctx.fillText(truncate(ctx, cleanTeamName(t.name), nameRight - tx), tx, 120)
 
   ctx.fillStyle = 'rgba(255,255,255,0.8)'
   ctx.font = '600 20px -apple-system, sans-serif'
@@ -138,8 +155,7 @@ function drawTopBoxes(ctx, data, top) {
   const boxes = [
     { label: 'RECORD', big: `${rec.wins ?? 0}-${rec.losses ?? 0}`,
       sub: rec.conference_wins != null
-        ? `${rec.conference_wins}-${rec.conference_losses} ${data.team.conference_abbrev || 'conf'}` +
-          (rec.conference_place_ordinal ? `  ·  ${rec.conference_place_ordinal} of ${rec.conference_total}` : '')
+        ? `${rec.conference_wins}-${rec.conference_losses} ${data.team.conference_abbrev || 'conf'}`
         : '' },
     { label: 'LONGEST WIN STREAK', big: `${data.longest_win_streak ?? 0}`,
       sub: (data.longest_win_streak === 1 ? 'game' : 'games') + ' in a row' },
@@ -178,14 +194,14 @@ async function drawPlayerCard(ctx, top, label, labelColor, player, kind, teamLog
   const colX = x + 130
   // Name
   ctx.fillStyle = C.text; ctx.font = '800 30px -apple-system, sans-serif'
-  const nm = `${player.first_name} ${player.last_name}`
-  const yr = player.year_in_school ? `  ${player.year_in_school}` : ''
-  ctx.fillText(truncate(ctx, nm, w - 320), colX, top + 78)
-  // class-year tag
-  if (yr) {
-    const nmW = ctx.measureText(truncate(ctx, nm, w - 320)).width
+  const nm = truncate(ctx, `${player.first_name} ${player.last_name}`, w - 340)
+  ctx.fillText(nm, colX, top + 78)
+  // class-year + position tag
+  const tag = [player.year_in_school, (player.position || '').toUpperCase()].filter(Boolean).join(' · ')
+  if (tag) {
+    const nmW = ctx.measureText(nm).width
     ctx.fillStyle = C.faint; ctx.font = '700 18px -apple-system, sans-serif'
-    ctx.fillText(yr.trim(), colX + nmW + 12, top + 78)
+    ctx.fillText(tag, colX + nmW + 12, top + 78)
   }
 
   // Stat lines
@@ -277,6 +293,53 @@ async function drawClutch(ctx, cm, top) {
   return top + h
 }
 
+function drawLeaders(ctx, leaders, top) {
+  const items = [['HR', leaders.hr], ['SB', leaders.sb], ['K', leaders.k], ['SV', leaders.sv]]
+    .filter(([, v]) => v)
+  if (!items.length) return top
+  const pad = 40, x = pad, w = W - pad * 2, h = 134
+  ctx.fillStyle = C.card; roundRect(ctx, x, top, w, h, 16); ctx.fill()
+  ctx.strokeStyle = 'rgba(14,116,144,0.18)'; ctx.lineWidth = 1; ctx.stroke()
+  ctx.textAlign = 'left'
+  ctx.fillStyle = C.teal; ctx.font = '900 14px -apple-system, sans-serif'
+  ctx.fillText('TEAM LEADERS', x + 24, top + 32)
+  const cellW = w / items.length
+  items.forEach(([label, v], i) => {
+    const cx = x + i * cellW + cellW / 2
+    ctx.textAlign = 'center'
+    ctx.fillStyle = C.text; ctx.font = '900 42px -apple-system, sans-serif'
+    ctx.fillText(String(v.value), cx, top + 92)
+    ctx.fillStyle = C.teal; ctx.font = '800 14px -apple-system, sans-serif'
+    ctx.fillText(label, cx, top + 112)
+    ctx.fillStyle = C.muted; ctx.font = '500 14px -apple-system, sans-serif'
+    ctx.fillText(truncate(ctx, v.name, cellW - 20), cx, top + 130)
+  })
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)'
+  for (let i = 1; i < items.length; i++) {
+    const dx = x + i * cellW
+    ctx.beginPath(); ctx.moveTo(dx, top + 48); ctx.lineTo(dx, top + h - 16); ctx.stroke()
+  }
+  return top + h
+}
+
+function drawSignature(ctx, sw, top) {
+  if (!sw) return top
+  const pad = 40, x = pad, w = W - pad * 2, h = 96
+  ctx.fillStyle = C.card; roundRect(ctx, x, top, w, h, 16); ctx.fill()
+  ctx.strokeStyle = 'rgba(14,116,144,0.18)'; ctx.lineWidth = 1; ctx.stroke()
+  ctx.textAlign = 'left'
+  ctx.fillStyle = C.gold; ctx.font = '900 14px -apple-system, sans-serif'
+  ctx.fillText('SIGNATURE WIN', x + 24, top + 32)
+  const rk = sw.opponent_rank ? `#${Math.round(sw.opponent_rank)} ` : ''
+  const main = `${sw.team_score}-${sw.opp_score}   ${sw.home_away} ${rk}${sw.opponent_short || sw.opponent_name || ''}`
+  ctx.fillStyle = C.text; ctx.font = '800 26px -apple-system, sans-serif'
+  ctx.fillText(truncate(ctx, main, w - 180), x + 24, top + 72)
+  ctx.textAlign = 'right'
+  ctx.fillStyle = C.muted; ctx.font = '600 16px -apple-system, sans-serif'
+  ctx.fillText(shortDate(sw.game_date), x + w - 24, top + 72)
+  return top + h
+}
+
 function drawFooter(ctx, y) {
   ctx.fillStyle = C.slate
   ctx.fillRect(0, y, W, 60)
@@ -294,11 +357,16 @@ async function renderRecap(canvas, data) {
   const hasFr = !!data.freshman_of_year
   const hasSup = !!data.superlative
   const hasClutch = !!data.clutch_moment
+  const tl = data.team_leaders || {}
+  const hasLeaders = !!(tl.hr || tl.sb || tl.k || tl.sv)
+  const hasSig = !!data.signature_win
   let H = HEADER + 24
   H += 110 + GAP            // top boxes
   H += (150 + GAP) * 2      // hitter + pitcher
   if (hasFr) H += 150 + GAP
+  if (hasLeaders) H += 134 + GAP
   if (hasSup) H += 70 + GAP
+  if (hasSig) H += 96 + GAP
   if (hasClutch) H += 180 + GAP
   H += 8 + FOOTER
 
@@ -320,7 +388,9 @@ async function renderRecap(canvas, data) {
     const fr = data.freshman_of_year
     y = await drawPlayerCard(ctx, y, 'FRESHMAN OF THE YEAR', C.gold, fr, fr.kind, logoUrl) + GAP
   }
+  if (hasLeaders) y = drawLeaders(ctx, tl, y) + GAP
   if (hasSup) y = drawSuperlative(ctx, data.superlative, y) + GAP
+  if (hasSig) y = drawSignature(ctx, data.signature_win, y) + GAP
   if (hasClutch) y = await drawClutch(ctx, data.clutch_moment, y) + GAP
   drawFooter(ctx, H - FOOTER)
 }
