@@ -260,6 +260,9 @@ function LeaderTopFive({ cat, endpoint }) {
             <Link to={`/summer/players/${p.player_id}`} className="flex-1 truncate font-semibold text-gray-900 dark:text-gray-100 hover:text-nw-teal">
               {p.first_name?.[0]}. {p.last_name}
             </Link>
+            {p.logo_url && (
+              <img src={p.logo_url} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" />
+            )}
             <span className="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">{p.team_short}</span>
             <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100 shrink-0">{fmt(p[cat.stat])}</span>
           </li>
@@ -1031,16 +1034,8 @@ export default function SummerHub() {
       {phase === 'preseason' && (
         <div className="rounded-md border border-amber-300 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 mb-4">
           <div className="text-xs sm:text-sm text-amber-900 dark:text-amber-200">
-            <span className="font-bold">Preseason.</span> WCL regular season opens Thursday, May 29. Exhibitions only for now —
-            standings + leaderboards fill in once league play begins.
-          </div>
-        </div>
-      )}
-      {phase === 'opening' && (
-        <div className="rounded-md border border-emerald-300 dark:border-emerald-700/50 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 mb-4">
-          <div className="text-xs sm:text-sm text-emerald-900 dark:text-emerald-200">
-            <span className="font-bold">Opening weekend.</span> First regular-season games are in the books. Full league schedule
-            kicks off Wednesday, June 4.
+            <span className="font-bold">Preseason.</span> Exhibitions only for now. Standings + leaderboards
+            fill in once league play begins.
           </div>
         </div>
       )}
@@ -1053,7 +1048,6 @@ export default function SummerHub() {
       )}
 
       <TodaySlate />
-      <LeadersTicker />
       <TrendsWidget />
       <StatLeaders />
 

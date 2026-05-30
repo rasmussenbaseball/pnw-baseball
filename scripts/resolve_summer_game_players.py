@@ -39,6 +39,34 @@ def _norm(s):
     return re.sub(r"[^a-z]", "", (s or "").lower())
 
 
+# Match a leading box-score order/position prefix that the Presto
+# scraper occasionally leaves on the player name. Examples:
+#   "1. Kolby Lukinchuk(W, 1-0)"  → "Kolby Lukinchuk"
+#   "1bM.D. Conner"               → "M.D. Conner"
+#   "rf  Noah Albanese"           → "Noah Albanese"
+# Order digit + period: "1. ", "12. "
+# Position code at start: "1b", "2b", "3b", "ss", "lf", "cf", "rf",
+#   "c", "p", "dh", "ph", "pr", "of", "if".
+_PREFIX_RE = re.compile(
+    r"^\s*(?:\d+\.\s*|(?:1b|2b|3b|ss|lf|cf|rf|dh|ph|pr|of|if|p|c)\s*)+",
+    re.IGNORECASE,
+)
+# Trailing pitcher decision parenthetical:
+#   "Kolby Lukinchuk(W, 1-0)" or "Player Name (W)"
+_DECISION_RE = re.compile(r"\s*\(\s*[WLSHBwlsbh][^)]*\)\s*$")
+
+
+def sanitize_player_name(raw):
+    """Strip box-score noise (order prefix, position prefix, decision
+    parenthetical) so summer_players rows store the actual name."""
+    if not raw:
+        return ""
+    n = raw.strip()
+    n = _DECISION_RE.sub("", n)
+    n = _PREFIX_RE.sub("", n)
+    return n.strip()
+
+
 def build_lookup(cur):
     """Return {team_id: {match_key: player_id}} + {team_id: {last: set(player_id)}}."""
     cur.execute(
@@ -100,7 +128,8 @@ def _split_first_last(name):
 def create_stub_player(cur, team_id, player_name, position=None):
     """Create a minimal summer_players row for a name we've never seen
     before. Pointstreak roster scrape fills in real bio data later."""
-    first, last = _split_first_last(player_name)
+    cleaned = sanitize_player_name(player_name)
+    first, last = _split_first_last(cleaned)
     if not last:
         return None
     cur.execute(
@@ -152,20 +181,22 @@ def run(dry_run=False, create_stubs=True):
         stub_cache = {}  # (team_id, norm_name) -> player_id
 
         def _resolve_or_stub(name, team_id, position=None):
-            pid = resolve_one(name, team_id, exact, by_last)
+            # Clean the box-score noise off the name BEFORE trying to
+            # resolve so "Kolby Lukinchuk(W, 1-0)" matches an existing
+            # "Kolby Lukinchuk" row instead of stubbing a new mess.
+            clean = sanitize_player_name(name)
+            pid = resolve_one(clean, team_id, exact, by_last)
             if pid is not None:
                 return pid, False
             if not create_stubs or dry_run:
                 return None, False
-            cache_key = (team_id, _norm(name))
+            cache_key = (team_id, _norm(clean))
             if cache_key in stub_cache:
                 return stub_cache[cache_key], True
-            pid = create_stub_player(cur, team_id, name, position)
+            pid = create_stub_player(cur, team_id, clean, position)
             if pid is not None:
                 stub_cache[cache_key] = pid
-                # Add to lookups so the next row with the same name
-                # also resolves this run.
-                exact.setdefault(team_id, {})[_norm(name)] = pid
+                exact.setdefault(team_id, {})[_norm(clean)] = pid
             return pid, True
 
         bat_resolved = bat_stubbed = 0
