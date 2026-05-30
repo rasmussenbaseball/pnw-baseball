@@ -636,9 +636,8 @@ export const TOURNAMENTS = {
   //   G7: W4 vs W6 (if necessary, Mon)
   //
   // Logos live on the seed entries so the homepage widget needs no
-  // extra /teams fetch. Yale isn't in our DB (non-PNW); its games show
-  // as matchups and fill in live once it's scraped. PNW-vs-PNW games
-  // resolve live from /games/by-date via resolveBracket.
+  // extra /teams fetch. Yale lives in teams (id 33230, OOC) and gets
+  // resolved live like the PNW programs do via resolveBracket.
   // ───────────────────────────────────────────────────────────────
   eugene_regional_2026: {
     label: 'NCAA Eugene Regional',
@@ -646,10 +645,10 @@ export const TOURNAMENTS = {
     season: 2026,
     formatLabel: 'Four-team double elimination · 3 PNW teams',
     seeds: [
-      { seed: 1, team_id: 2,    name: 'Oregon',     record: '40-16',   pnw: true, note: 'No. 11 national seed · host', logo: '/logos/teams/oregon.svg' },
-      { seed: 2, team_id: 3,    name: 'Oregon St.', record: '43-12',   pnw: true, logo: '/logos/teams/oregon_st.svg' },
-      { seed: 3, team_id: 4,    name: 'Wash. St.',  record: '30-26',   pnw: true, logo: '/logos/washington_state.png' },
-      { seed: 4, team_id: null, name: 'Yale',       record: '30-13-1', logo: null },
+      { seed: 1, team_id: 2,     name: 'Oregon',     record: '40-16',   pnw: true, note: 'No. 11 national seed · host', logo: '/logos/teams/oregon.svg' },
+      { seed: 2, team_id: 3,     name: 'Oregon St.', record: '43-12',   pnw: true, logo: '/logos/teams/oregon_st.svg' },
+      { seed: 3, team_id: 4,     name: 'Wash. St.',  record: '30-26',   pnw: true, logo: '/logos/washington_state.png' },
+      { seed: 4, team_id: 33230, name: 'Yale',       record: '30-13-1', logo: null },
     ],
     games: [
       { num: 1, iso: '2026-05-29', day: 'Fri May 29', time: '3:00 PM',      home: { ref: 'seed', val: 2 },     away: { ref: 'seed', val: 3 } },
