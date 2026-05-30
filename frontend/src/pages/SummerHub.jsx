@@ -52,7 +52,7 @@ const LEADER_CATS = [
   { stat: 'era',         label: 'ERA',  fmt: 'era',  side: 'pitching', minIp: 5 },
 ]
 
-function LeadersTicker() {
+export function LeadersTicker() {
   // Mobile: 2-up grid so leaders aren't hidden behind horizontal scroll.
   // Desktop: original single-row ticker.
   return (
@@ -129,7 +129,7 @@ function todayKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
-function TodaySlate() {
+export function TodaySlate() {
   // Pull just a tight window so we get today's games quickly
   const { data } = useApi('/summer/scoreboard',
     { league: LEAGUE, season: SEASON, days_back: 0, days_ahead: 1 }, [])
@@ -184,7 +184,7 @@ function SlateSide({ team, logo, score, bold, dim }) {
 // Hot/Cold trend widget (last-5 OPS vs season OPS)
 // ─────────────────────────────────────────────────────────────
 
-function TrendsWidget() {
+export function TrendsWidget() {
   const { data, loading } = useApi('/summer/trends', { league: LEAGUE, season: SEASON, window: 5 })
   if (loading || !data) return null
   const { hot = [], cold = [] } = data
@@ -230,7 +230,7 @@ function TrendList({ title, rows, accent }) {
 // Sub-views
 // ─────────────────────────────────────────────────────────────
 
-function Scoreboard() {
+export function Scoreboard() {
   const { data, loading, error } = useApi('/summer/scoreboard', {
     league: LEAGUE, season: SEASON, days_back: 14, days_ahead: 7,
   })
@@ -301,7 +301,7 @@ function Side({ teamId, name, short, logo, score, bold, dim }) {
   )
 }
 
-function ScheduleCalendar() {
+export function ScheduleCalendar() {
   // Default to current month — but if pre-June, default to June 2026 so
   // visitors see the opening series instead of an empty May.
   const today = new Date()
@@ -405,7 +405,7 @@ function ScheduleCalendar() {
   )
 }
 
-function Standings() {
+export function Standings() {
   const { data, loading, error } = useApi('/summer/standings', { league: LEAGUE, season: SEASON })
   if (loading) return <SkeletonRows />
   if (error) return <ErrorState msg={error} />
@@ -478,7 +478,7 @@ function Standings() {
   )
 }
 
-function BattingLeaders() {
+export function BattingLeaders() {
   const [sort, setSort] = useState('wrc_plus')
   const { data, loading, error } = useApi('/summer/leaderboards/batting',
     { league: LEAGUE, season: SEASON, min_pa: 10, sort_by: sort, limit: 100 },
@@ -551,7 +551,7 @@ function BattingLeaders() {
   )
 }
 
-function PitchingLeaders() {
+export function PitchingLeaders() {
   const [sort, setSort] = useState('fip')
   const { data, loading, error } = useApi('/summer/leaderboards/pitching',
     { league: LEAGUE, season: SEASON, min_ip: 3, sort_by: sort, limit: 100 },
@@ -623,7 +623,7 @@ function PitchingLeaders() {
   )
 }
 
-function FieldingLeaders() {
+export function FieldingLeaders() {
   const [sort, setSort] = useState('fielding_pct')
   const { data, loading, error } = useApi('/summer/leaderboards/fielding',
     { league: LEAGUE, season: SEASON, min_chances: 3, sort_by: sort, limit: 100 },
@@ -691,7 +691,7 @@ function FieldingLeaders() {
   )
 }
 
-function PnwAlumni() {
+export function PnwAlumni() {
   const { data, loading, error } = useApi('/summer/pnw-alumni', { league: LEAGUE, season: SEASON })
   if (loading) return <SkeletonRows />
   if (error) return <ErrorState msg={error} />
@@ -751,7 +751,7 @@ function PnwAlumni() {
   )
 }
 
-function CollegeMix() {
+export function CollegeMix() {
   const { data, loading, error } = useApi('/summer/college-representation', { league: LEAGUE, season: SEASON, limit: 50 })
   if (loading) return <SkeletonRows />
   if (error) return <ErrorState msg={error} />
@@ -791,7 +791,7 @@ function CollegeMix() {
   )
 }
 
-function Teams() {
+export function Teams() {
   const { data, loading, error } = useApi('/summer/teams', { league: LEAGUE })
   if (loading) return <SkeletonRows />
   if (error) return <ErrorState msg={error} />
@@ -879,8 +879,23 @@ function ErrorState({ msg }) {
 // Main
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// Hub homepage — overview widgets + navigation cards. The deep
+// data tables now live on dedicated /summer/<section> pages so
+// the Hub stays light and scannable.
+// ─────────────────────────────────────────────────────────────
+
+const HUB_CARDS = [
+  { to: '/summer/scoreboard',  label: 'Scoreboard',    desc: 'Yesterday + tonight + the calendar grid' },
+  { to: '/summer/standings',   label: 'Standings',     desc: 'W/L, L10, streak by division' },
+  { to: '/summer/stats',       label: 'Stats',         desc: 'Batting, pitching, fielding leaders + history' },
+  { to: '/summer/teams',       label: 'Teams',         desc: 'All 17 clubs, North + South' },
+  { to: '/summer/pnw-alumni',  label: 'PNW Alumni',    desc: 'Spring college players in the WCL' },
+  { to: '/summer/college-mix', label: 'College Mix',   desc: 'Which colleges are most represented' },
+  { to: '/summer/recap',       label: 'Recap Graphic', desc: 'Generate a shareable PNG of any day' },
+]
+
 export default function SummerHub() {
-  const [tab, setTab] = useState('scoreboard')
   const now = new Date()
   // Phase: preseason → opening (between first game and full slate) →
   // regular → playoffs. Drives the banner copy.
@@ -952,33 +967,56 @@ export default function SummerHub() {
       <LeadersTicker />
       <TrendsWidget />
 
-      <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-5 -mx-3 sm:mx-0 px-3 sm:px-0 gap-1">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-3 py-2 text-sm font-semibold whitespace-nowrap border-b-2 transition ${
-              tab === t.key
-                ? 'border-nw-teal text-nw-teal dark:border-teal-300 dark:text-teal-300'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Navigation cards — explorers tap one to land on a dedicated
+          page instead of digging through nested tabs. */}
+      <div className="mb-6">
+        <div className="text-[11px] font-bold tracking-widest uppercase text-gray-500 dark:text-gray-400 mb-2">
+          Explore
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+          {HUB_CARDS.map(c => (
+            <Link
+              key={c.to}
+              to={c.to}
+              className="group block rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 hover:border-nw-teal dark:hover:border-teal-400 transition"
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{c.label}</span>
+                <span className="text-nw-teal dark:text-teal-300 opacity-0 group-hover:opacity-100 transition">→</span>
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">{c.desc}</div>
+            </Link>
+          ))}
+        </div>
       </div>
 
-      <div className="min-h-[260px]">
-        {tab === 'scoreboard' && <Scoreboard />}
-        {tab === 'calendar'   && <ScheduleCalendar />}
-        {tab === 'standings'  && <Standings />}
-        {tab === 'batting'    && <BattingLeaders />}
-        {tab === 'pitching'   && <PitchingLeaders />}
-        {tab === 'fielding'   && <FieldingLeaders />}
-        {tab === 'teams'      && <Teams />}
-        {tab === 'pnw'        && <PnwAlumni />}
-        {tab === 'colleges'   && <CollegeMix />}
+      {/* Standings preview — keep below the cards so the Hub still
+          shows live league context without forcing a click. */}
+      <div className="mb-6">
+        <div className="flex items-baseline justify-between mb-2">
+          <div className="text-[11px] font-bold tracking-widest uppercase text-gray-500 dark:text-gray-400">
+            Standings
+          </div>
+          <Link to="/summer/standings" className="text-[11px] font-semibold text-nw-teal dark:text-teal-300 hover:underline">
+            Full standings →
+          </Link>
+        </div>
+        <Standings />
       </div>
+
+      {/* Recent results — same Scoreboard widget the dedicated page uses */}
+      <div className="mb-6">
+        <div className="flex items-baseline justify-between mb-2">
+          <div className="text-[11px] font-bold tracking-widest uppercase text-gray-500 dark:text-gray-400">
+            Recent Games
+          </div>
+          <Link to="/summer/scoreboard" className="text-[11px] font-semibold text-nw-teal dark:text-teal-300 hover:underline">
+            Full scoreboard →
+          </Link>
+        </div>
+        <Scoreboard />
+      </div>
+
     </div>
   )
 }
