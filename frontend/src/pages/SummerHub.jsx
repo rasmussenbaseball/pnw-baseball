@@ -981,7 +981,7 @@ const HUB_CARDS = [
   { to: '/summer/scoreboard',  label: 'Scoreboard',    desc: 'Yesterday + tonight + the calendar grid' },
   { to: '/summer/standings',   label: 'Standings',     desc: 'W/L, L10, streak by division' },
   { to: '/summer/stats',       label: 'Stats',         desc: 'Batting, pitching, fielding leaders + history' },
-  { to: '/summer/teams',       label: 'Teams',         desc: 'All 17 clubs, North + South' },
+  { to: '/summer/teams',       label: 'Teams',         desc: 'Every club, North + South' },
   { to: '/summer/pnw-alumni',  label: 'PNW Alumni',    desc: 'Spring college players in the WCL' },
   { to: '/summer/college-mix', label: 'College Mix',   desc: 'Which colleges are most represented' },
   { to: '/summer/recap',       label: 'Daily Recap Graphic', desc: 'Shareable PNG of a full day\'s slate' },
