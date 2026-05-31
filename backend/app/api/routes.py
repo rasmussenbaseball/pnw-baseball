@@ -4295,6 +4295,7 @@ def _team_scope_metrics(cur, season, where_sql, where_param):
                SUM(bs.walks) AS bb, SUM(bs.hit_by_pitch) AS hbp,
                SUM(bs.sacrifice_flies) AS sf, SUM(bs.sacrifice_bunts) AS sh,
                SUM(bs.rbi) AS rbi, SUM(bs.intentional_walks) AS ibb,
+               SUM(bs.strikeouts) AS so,
                SUM(bs.at_bats) AS ab, SUM(bs.plate_appearances) AS pa,
                SUM(bs.woba * bs.plate_appearances) FILTER (WHERE bs.woba IS NOT NULL) AS wsum,
                SUM(bs.plate_appearances) FILTER (WHERE bs.woba IS NOT NULL) AS wpa,
@@ -4320,6 +4321,7 @@ def _team_scope_metrics(cur, season, where_sql, where_param):
         m["runs_scored"] = gv("runs")   # reliable across divisions (team_season_stats is sparse for D1)
         m["xbh"] = gv("dbl") + gv("tpl") + gv("hr")
         m["bb_rate"] = (gv("bb") / pa) if pa else None
+        m["h_k_rate"] = (gv("so") / pa) if pa else None   # hitter K rate — LOWER is better
         m["sb_rate"] = (gv("sb") / pa) if pa else None
         m["iso"] = ((gv("dbl") + 2 * gv("tpl") + 3 * gv("hr")) / ab) if ab else None
         att = gv("sb") + gv("cs")
@@ -4347,6 +4349,7 @@ def _team_scope_metrics(cur, season, where_sql, where_param):
         m["p_k"], m["sv"], m["cg"] = gv("k"), gv("sv"), gv("cg")
         m["sho"], m["qs"] = gv("sho"), gv("qs")
         m["p_k_rate"] = (gv("k") / bf) if bf else None
+        m["p_bb_rate"] = (gv("bb") / bf) if bf else None   # pitcher walk rate — LOWER is better
         m["k_bb"] = (gv("k") / gv("bb")) if gv("bb") else None
 
     cur.execute(f"""
@@ -4384,12 +4387,14 @@ _SUPERLATIVE_CATALOG = [
     ("hr",                "home runs",                  True,  2, "int"),
     ("sb",                "stolen bases",               True,  2, "int"),
     ("p_k",               "strikeouts",                 True,  2, "int"),
-    ("p_k_rate",          "strikeout rate",             True,  2, "pct"),
+    ("p_k_rate",          "pitching strikeout rate",    True,  2, "pct"),
+    ("p_bb_rate",         "pitching walk rate",         False, 2, "pct"),   # fewer walks = better
     ("k_bb",              "strikeout-to-walk ratio",    True,  2, "ratio"),
     ("qs",                "quality starts",             True,  2, "int"),
     ("team_fielding_pct", "fielding percentage",        True,  2, "avg3"),
     ("iso",               "isolated power",             True,  2, "avg3"),
     ("bb_rate",           "walk rate",                  True,  2, "pct"),
+    ("h_k_rate",          "strikeout rate",             False, 2, "pct"),   # hitters: fewer Ks = better
     ("run_diff",          "run differential",           True,  2, "plusint"),  # gated > 0
     ("xbh",               "extra-base hits",            True,  3, "int"),
     ("doubles",           "doubles",                    True,  3, "int"),
@@ -4457,8 +4462,8 @@ def _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher
             text = (f"Led the {scope} in {label} ({vs})" if rank == 1
                     else f"{_recap_ordinal(rank)} in the {scope} in {label} ({vs})")
         else:
-            text = (f"Posted the {scope}'s best {label} ({vs})" if rank == 1
-                    else f"{_recap_ordinal(rank)}-best {label} in the {scope} ({vs})")
+            text = (f"Had the {scope}'s lowest {label} ({vs})" if rank == 1
+                    else f"{_recap_ordinal(rank)}-lowest {label} in the {scope} ({vs})")
         cands.append((rank, tier, 1, text))
 
     # ── Standout-player candidates (top-3 in conference) ──
@@ -4749,23 +4754,40 @@ def team_season_recap(
                                      -w["margin"]))
             signature_win = wins[0]
 
-        # Team leaders (HR / SB / pitching K / SV). table + stat are trusted constants.
-        def _leader(table, stat):
+        # Team leaders. table / stat / min_col are trusted constants.
+        def _leader(table, stat, lower=False, min_col=None, min_val=0, fmt="int"):
+            direction = "ASC" if lower else "DESC"
+            wm = f" AND s.{min_col} >= {min_val}" if min_col else ""
             cur.execute(f"""
                 SELECT p.first_name, p.last_name, s.{stat} AS val
                 FROM {table} s JOIN players p ON p.id = s.player_id
-                WHERE s.team_id = %s AND s.season = %s AND s.{stat} IS NOT NULL
-                ORDER BY s.{stat} DESC NULLS LAST LIMIT 1
+                WHERE s.team_id = %s AND s.season = %s AND s.{stat} IS NOT NULL{wm}
+                ORDER BY s.{stat} {direction} NULLS LAST LIMIT 1
             """, (team_id, season))
             rr = cur.fetchone()
-            if rr and rr["val"] and rr["val"] > 0:
-                return {"name": f"{rr['first_name']} {rr['last_name']}", "value": int(rr["val"])}
-            return None
+            if not rr or rr["val"] is None:
+                return None
+            v = float(rr["val"])
+            if not lower and fmt == "int" and v <= 0:
+                return None
+            if fmt == "avg":
+                disp = f"{v:.3f}"; disp = disp[1:] if disp.startswith("0.") else disp
+            elif fmt == "era":
+                disp = f"{v:.2f}"
+            else:
+                disp = str(int(round(v)))
+            return {"name": f"{rr['first_name']} {rr['last_name']}", "display": disp}
+
         team_leaders = {
-            "hr": _leader("batting_stats", "home_runs"),
-            "sb": _leader("batting_stats", "stolen_bases"),
-            "k":  _leader("pitching_stats", "strikeouts"),
-            "sv": _leader("pitching_stats", "saves"),
+            "avg": _leader("batting_stats", "batting_avg", min_col="plate_appearances", min_val=40, fmt="avg"),
+            "hr":  _leader("batting_stats", "home_runs"),
+            "rbi": _leader("batting_stats", "rbi"),
+            "sb":  _leader("batting_stats", "stolen_bases"),
+            "r":   _leader("batting_stats", "runs"),
+            "w":   _leader("pitching_stats", "wins"),
+            "k":   _leader("pitching_stats", "strikeouts"),
+            "sv":  _leader("pitching_stats", "saves"),
+            "era": _leader("pitching_stats", "era", lower=True, min_col="innings_pitched", min_val=20, fmt="era"),
         }
 
     return {

@@ -300,23 +300,29 @@ function makePlayerCard(label, player, kind) {
 }
 
 function makeLeaders(leaders) {
-  const items = [['HR', leaders.hr], ['SB', leaders.sb], ['K', leaders.k], ['SV', leaders.sv]].filter(([, v]) => v)
+  // Ordered candidates; show up to 6 present in one compressed row.
+  const items = [
+    ['AVG', leaders.avg], ['HR', leaders.hr], ['RBI', leaders.rbi], ['SB', leaders.sb],
+    ['K', leaders.k], ['SV', leaders.sv], ['ERA', leaders.era], ['R', leaders.r], ['W', leaders.w],
+  ].filter(([, v]) => v).slice(0, 6)
   return (ctx, theme, x, y, w, h) => {
     card(ctx, theme, x, y, w, h)
     ctx.textAlign = 'left'
     ctx.fillStyle = theme.accent; ctx.font = '900 14px -apple-system, sans-serif'
     ctx.fillText('TEAM LEADERS', x + 26, y + 28)
+    if (!items.length) return
     const cellW = w / items.length
+    const vfs = items.length >= 6 ? 30 : items.length >= 5 ? 33 : 38
     items.forEach(([label, v], i) => {
       const cx = x + i * cellW + cellW / 2
       ctx.textAlign = 'center'
       // bottom-anchored so the player name never spills past the card
-      ctx.fillStyle = theme.slate; ctx.font = '900 38px -apple-system, sans-serif'
-      ctx.fillText(String(v.value), cx, y + h - 44)
+      ctx.fillStyle = theme.slate; ctx.font = `900 ${vfs}px -apple-system, sans-serif`
+      ctx.fillText(v.display, cx, y + h - 44)
       ctx.fillStyle = theme.accent; ctx.font = '800 14px -apple-system, sans-serif'
       ctx.fillText(label, cx, y + h - 24)
       ctx.fillStyle = theme.muted; ctx.font = '500 13px -apple-system, sans-serif'
-      ctx.fillText(truncate(ctx, v.name, cellW - 18), cx, y + h - 7)
+      ctx.fillText(truncate(ctx, v.name, cellW - 14), cx, y + h - 7)
     })
     ctx.strokeStyle = 'rgba(0,0,0,0.06)'
     for (let i = 1; i < items.length; i++) {
@@ -448,7 +454,8 @@ async function renderRecap(canvas, data) {
     sections.push({ wt: 1.65, draw: (c, th, x, yy, w, h) => makePlayerCard('FRESHMAN OF THE YEAR', fr, fr.kind)(c, th, x, yy, w, h, logo) })
   }
   const tl = data.team_leaders || {}
-  if (tl.hr || tl.sb || tl.k || tl.sv) sections.push({ wt: 0.95, draw: makeLeaders(tl) })
+  if (tl.avg || tl.hr || tl.rbi || tl.sb || tl.r || tl.w || tl.k || tl.sv || tl.era)
+    sections.push({ wt: 0.95, draw: makeLeaders(tl) })
   if (data.superlative || data.signature_win) sections.push({ wt: 0.9, draw: makeSuperSig(data.superlative, data.signature_win) })
   if (data.clutch_moment) sections.push({ wt: 1.4, draw: makeClutch(data.clutch_moment) })
 
