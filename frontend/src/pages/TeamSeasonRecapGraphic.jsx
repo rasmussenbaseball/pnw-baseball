@@ -318,16 +318,16 @@ function makeLeaders(leaders) {
       ctx.textAlign = 'center'
       // bottom-anchored so the player name never spills past the card
       ctx.fillStyle = theme.slate; ctx.font = `900 ${vfs}px -apple-system, sans-serif`
-      ctx.fillText(v.display, cx, y + h - 44)
+      ctx.fillText(v.display, cx, y + h - 50)
       ctx.fillStyle = theme.accent; ctx.font = '800 14px -apple-system, sans-serif'
-      ctx.fillText(label, cx, y + h - 24)
+      ctx.fillText(label, cx, y + h - 30)
       ctx.fillStyle = theme.muted; ctx.font = '500 13px -apple-system, sans-serif'
-      ctx.fillText(truncate(ctx, v.name, cellW - 14), cx, y + h - 7)
+      ctx.fillText(truncate(ctx, v.name, cellW - 16), cx, y + h - 13)
     })
     ctx.strokeStyle = 'rgba(0,0,0,0.06)'
     for (let i = 1; i < items.length; i++) {
       const dx = x + i * cellW
-      ctx.beginPath(); ctx.moveTo(dx, y + 42); ctx.lineTo(dx, y + h - 14); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(dx, y + 44); ctx.lineTo(dx, y + h - 18); ctx.stroke()
     }
   }
 }
@@ -343,17 +343,6 @@ function wrapLines(ctx, text, maxW, maxLines) {
   if (cur) lines.push(cur)
   return lines.length <= maxLines ? lines : null
 }
-// Draw text wrapped to up to `maxLines`, shrinking the font until it fits.
-function wrapFit(ctx, text, x, y, maxW, startFont = 24, maxLines = 2, lh = 6) {
-  for (let fs = startFont; fs >= 13; fs--) {
-    ctx.font = `700 ${fs}px -apple-system, sans-serif`
-    const lines = wrapLines(ctx, text, maxW, maxLines)
-    if (lines) { lines.forEach((ln, i) => ctx.fillText(ln, x, y + i * (fs + lh))); return }
-  }
-  ctx.font = '700 13px -apple-system, sans-serif'
-  ctx.fillText(truncate(ctx, text, maxW), x, y)
-}
-
 // Superlative + Signature Win share one band (side by side) to save height.
 function makeSuperSig(sup, sw) {
   return (ctx, theme, x, y, w, h) => {
@@ -366,7 +355,23 @@ function makeSuperSig(sup, sw) {
       ctx.fillStyle = 'rgba(255,255,255,0.80)'; ctx.font = '900 12px -apple-system, sans-serif'
       ctx.fillText('THEY EXCELLED AT', x + 20, y + 26)
       ctx.fillStyle = '#fff'
-      wrapFit(ctx, sup.text, x + 20, y + 52, halfW - 40, both ? 21 : 25, 2)
+      // fit to ≤2 lines, then vertically center in the area below the label
+      const top = y + 40, bot = y + h - 16
+      let placed = false
+      for (let fs = both ? 21 : 25; fs >= 13 && !placed; fs--) {
+        ctx.font = `700 ${fs}px -apple-system, sans-serif`
+        const lines = wrapLines(ctx, sup.text, halfW - 40, 2)
+        const lh = fs + 6
+        if (lines && lines.length * lh <= (bot - top)) {
+          const startY = top + ((bot - top) - lines.length * lh) / 2 + fs
+          lines.forEach((ln, i) => ctx.fillText(ln, x + 20, startY + i * lh))
+          placed = true
+        }
+      }
+      if (!placed) {
+        ctx.font = '700 13px -apple-system, sans-serif'
+        ctx.fillText(truncate(ctx, sup.text, halfW - 40), x + 20, (top + bot) / 2 + 5)
+      }
     }
     if (sw) {
       const sx = sup ? x + halfW + gap : x
@@ -377,9 +382,9 @@ function makeSuperSig(sup, sw) {
       const rk = sw.opponent_rank ? `#${Math.round(sw.opponent_rank)} ` : ''
       const main = `${sw.team_score}-${sw.opp_score}  ${sw.home_away} ${rk}${sw.opponent_short || sw.opponent_name || ''}`
       ctx.fillStyle = theme.slate; ctx.font = '800 23px -apple-system, sans-serif'
-      ctx.fillText(truncate(ctx, main, halfW - 40), sx + 20, y + 56)
+      ctx.fillText(truncate(ctx, main, halfW - 40), sx + 20, y + 58)
       ctx.fillStyle = theme.muted; ctx.font = '600 14px -apple-system, sans-serif'
-      ctx.fillText(shortDate(sw.game_date), sx + 20, y + 80)
+      ctx.fillText(shortDate(sw.game_date), sx + 20, y + h - 16)
     }
   }
 }
@@ -406,11 +411,12 @@ function makeClutch(cm) {
       .filter(Boolean).join('   ·   ')
     ctx.fillStyle = theme.muted; ctx.font = '500 14px -apple-system, sans-serif'
     ctx.fillText(truncate(ctx, sit, w - 160), hx, y + 90)
+    // narrative + win-prob — bottom-anchored so they never touch the border
     ctx.fillStyle = '#334155'; ctx.font = 'italic 500 15px -apple-system, sans-serif'
-    ctx.fillText(truncate(ctx, `"${cm.result_text || ''}"`, w - 48), x + 24, y + 116)
+    ctx.fillText(truncate(ctx, `"${cm.result_text || ''}"`, w - 48), x + 24, y + h - 36)
     if (cm.wp_before != null && cm.wp_after != null) {
       ctx.fillStyle = theme.slate; ctx.font = '700 15px -apple-system, sans-serif'
-      ctx.fillText(`Win probability swung from ${Math.round(cm.wp_before * 100)}% to ${Math.round(cm.wp_after * 100)}%`, x + 24, y + 140)
+      ctx.fillText(`Win probability swung from ${Math.round(cm.wp_before * 100)}% to ${Math.round(cm.wp_after * 100)}%`, x + 24, y + h - 14)
     }
   }
 }
@@ -455,9 +461,9 @@ async function renderRecap(canvas, data) {
   }
   const tl = data.team_leaders || {}
   if (tl.avg || tl.hr || tl.rbi || tl.sb || tl.r || tl.w || tl.k || tl.sv || tl.era)
-    sections.push({ wt: 0.95, draw: makeLeaders(tl) })
-  if (data.superlative || data.signature_win) sections.push({ wt: 0.9, draw: makeSuperSig(data.superlative, data.signature_win) })
-  if (data.clutch_moment) sections.push({ wt: 1.4, draw: makeClutch(data.clutch_moment) })
+    sections.push({ wt: 1.15, draw: makeLeaders(tl) })
+  if (data.superlative || data.signature_win) sections.push({ wt: 1.1, draw: makeSuperSig(data.superlative, data.signature_win) })
+  if (data.clutch_moment) sections.push({ wt: 1.6, draw: makeClutch(data.clutch_moment) })
 
   const midTop = y
   const midBottom = H - 66 - 16
