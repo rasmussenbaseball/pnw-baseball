@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams, Navigate } from 'react-router-dom'
+import { Link, useSearchParams, Navigate, useBlocker } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
@@ -1192,11 +1192,7 @@ function LiveGameView({ save, game, onExit }) {
   const [subMenuOpen, setSubMenuOpen] = useState(null)   // 'PITCH'|'HIT'|'RUN'|'FIELD'|null
 
   // Guard against accidental tab close / refresh / browser back during a
-  // live game (per Zack's report). Doesn't prevent deliberate in-app nav —
-  // the "Save & exit" / "Auto-finish & exit" buttons below are the
-  // intended clean-exit paths. Persisting partial state across remounts
-  // is a bigger refactor (the engine holds player refs in closures);
-  // tracked separately.
+  // live game (per Zack's report).
   useEffect(() => {
     function onBeforeUnload(e) {
       if (live.isOver()) return
@@ -1207,6 +1203,27 @@ function LiveGameView({ save, game, onExit }) {
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [live])
+
+  // Block deliberate in-app navigation while a live game is in progress.
+  // The user gets a confirm dialog before leaving — most accidental exits
+  // (clicking the GMShell home/nav buttons) get caught here. The clean
+  // exit path is still "Save & exit" / "Auto-finish & exit" below, which
+  // commits the result before navigating.
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    !live.isOver() && currentLocation.pathname !== nextLocation.pathname,
+  )
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      const leave = window.confirm(
+        "You're in the middle of a live game.\n\n" +
+        'Leaving now will reset the game — your progress so far will be lost. ' +
+        "Use the \"Save & exit\" or \"Auto-finish & exit\" button below to leave cleanly.\n\n" +
+        'Leave anyway?',
+      )
+      if (leave) blocker.proceed()
+      else blocker.reset()
+    }
+  }, [blocker])
 
   function doStep() { live.step(); rerender() }
   function doHalfInning() { live.simHalfInning(); rerender() }
