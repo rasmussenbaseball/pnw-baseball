@@ -4429,16 +4429,29 @@ def _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher
     # Prefer conference scope; fall back to division-wide ranking when the
     # conference is too small to rank meaningfully (independents, sparse D1
     # conferences we only partially track).
+    # Count teams with DEEP (rankable batting/pitching) data — not the
+    # shallow run-differential-only shells we create for out-of-region
+    # opponents. A conference where we only deeply track one member (e.g.
+    # a PNW D1 team in a mostly out-of-region conference like the MWC)
+    # can't rank team stats meaningfully, so fall back to the division-wide
+    # PNW pool instead of defaulting to a standout-player line.
+    def _deep(m):
+        return sum(1 for mm in m.values()
+                   if mm.get("runs_scored") is not None or mm.get("p_k") is not None)
+
     metrics = _team_scope_metrics(cur, season, "c.id = %s", conf_id)
-    if len(metrics) >= 3:
+    if _deep(metrics) >= 3:
         where_sql, where_param = "c.id = %s", conf_id
         scope = team.get("conference_abbrev") or team.get("conference_name") or "their conference"
     else:
         lvl = team.get("division_level")
         where_sql, where_param = "d.level = %s", lvl
         metrics = _team_scope_metrics(cur, season, where_sql, where_param)
-        scope = {"D1": "NCAA D1", "D2": "NCAA D2", "D3": "NCAA D3",
-                 "NAIA": "NAIA", "JUCO": "the NWAC"}.get(str(lvl), str(lvl) or "their division")
+        # We only deeply track PNW teams, so this pool is the PNW members of
+        # the division. Label it "PNW D1" etc. rather than "NCAA D1" so the
+        # graphic never overclaims a national rank.
+        scope = {"D1": "PNW D1", "D2": "PNW D2", "D3": "PNW D3",
+                 "NAIA": "PNW NAIA", "JUCO": "the NWAC"}.get(str(lvl), str(lvl) or "their division")
 
     for metric, label, higher, tier, fmt in _SUPERLATIVE_CATALOG:
         vals = [(tid, mm[metric]) for tid, mm in metrics.items() if mm.get(metric) is not None]
@@ -4493,9 +4506,13 @@ def _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher
 
     if not cands:
         return None
-    # Best finish first; among equal ranks prefer headline tiers, then a
-    # standout-player line over a team-stat line.
-    cands.sort(key=lambda c: (c[0], c[1], c[2]))
+    # "THEY EXCELLED AT" describes the TEAM, so always prefer a team-stat
+    # line (kind_priority 1) over a standout-player line (kind_priority 0).
+    # A player line is only a last resort for teams with no rankable team
+    # stat at all (the standout already has their own Best Hitter/Pitcher
+    # card, so we never duplicate a player here when a team stat exists).
+    # Within the chosen kind: best finish first, then headline tiers.
+    cands.sort(key=lambda c: (0 if c[2] == 1 else 1, c[0], c[1]))
     rank, tier, kind_priority, text = cands[0]
     return {"text": text, "rank": rank, "kind": "player" if kind_priority == 0 else "team"}
 
