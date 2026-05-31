@@ -235,12 +235,39 @@ function CareerView({ save, team, accent, slot, hasAnalyticsMgr }) {
 
 // ─── Tables ───────────────────────────────────────────────────────────────
 
+/**
+ * Per-table sortable header. Clicking a header sorts by that column and
+ * toggles asc/desc on subsequent clicks. ERA / WHIP / FIP / xFIP default
+ * to ascending (lower = better); everything else defaults to descending.
+ * Per Zack's note: "an option to sort by a certain stat by clicking on it
+ * in the stat page would be a great addition."
+ */
+function SortableTh({ label, sortKey, currentKey, currentDir, onSort, defaultDir = 'desc', title }) {
+  const active = sortKey === currentKey
+  const arrow = active ? (currentDir === 'asc' ? '▲' : '▼') : ''
+  return (
+    <th
+      onClick={() => onSort(sortKey, defaultDir)}
+      title={title || `Sort by ${label}`}
+      className={'cursor-pointer select-none hover:text-amber-300 transition ' + (active ? 'text-amber-300' : '')}
+    >
+      {label}{arrow ? <span className="ml-0.5 text-[8px]">{arrow}</span> : null}
+    </th>
+  )
+}
+
 function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, emptyMsg }) {
   // NOTE: all hooks must run unconditionally and in the same order on every
   // render — never put a hook after an early return, or React throws
   // "rendered more hooks than during the previous render" and white-screens
   // the page the moment `rows` flips between empty and non-empty.
   const lg = useMemo(() => leagueAverages(save), [save])
+  const [sortKey, setSortKey] = useState('wOBA')
+  const [sortDir, setSortDir] = useState('desc')
+  function handleSort(key, defaultDir) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir(defaultDir || 'desc') }
+  }
   if (rows.length === 0) {
     return (
       <PixelCard accent={accent} title="HITTING">
@@ -249,30 +276,56 @@ function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, em
     )
   }
   const enriched = rows.map(r => ({ r, adv: computeBatting(r, lg) }))
-  // Without an analytics manager, sort by OPS instead of wOBA (advanced
-  // stats are hidden) so the table is still ordered something sensible.
-  const sorted = hasAnalyticsMgr
-    ? [...enriched].sort((a, b) => b.adv.wOBA - a.adv.wOBA)
-    : [...enriched].sort((a, b) => b.adv.ops - a.adv.ops)
-  // Advanced-stats lock removed (Zack's intern note: locked here but visible
-  // on every player profile). Stats are always shown; the Data Analytics
-  // Manager hire keeps its other utility but no longer gates this UI.
-  const hide = false
+  // Accessor for every sortable column. Player / position get string sorts,
+  // everything else is numeric.
+  const valueOf = ({ r, adv }, key) => {
+    switch (key) {
+      case 'name':  return `${r.player.lastName} ${r.player.firstName}`.toLowerCase()
+      case 'pos':   return r.player.primaryPosition || ''
+      case 'cl':    return r.player.classYear || ''
+      case 'ab':    return r.ab || 0
+      case 'h':     return r.h || 0
+      case 'd':     return r.d || 0
+      case 't':     return r.t || 0
+      case 'hr':    return r.hr || 0
+      case 'rbi':   return r.rbi || 0
+      case 'bb':    return r.bb || 0
+      case 'k':     return r.k || 0
+      case 'avg':   return adv.avg || 0
+      case 'obp':   return adv.obp || 0
+      case 'slg':   return adv.slg || 0
+      case 'ops':   return adv.ops || 0
+      case 'wOBA':  return adv.wOBA || 0
+      case 'wRC+':  return adv.wRCplus || 0
+      case 'oWAR':  return adv.oWAR || 0
+      default:      return 0
+    }
+  }
+  const sorted = [...enriched].sort((a, b) => {
+    const av = valueOf(a, sortKey)
+    const bv = valueOf(b, sortKey)
+    const cmp = typeof av === 'string' ? av.localeCompare(bv) : (av - bv)
+    return sortDir === 'asc' ? cmp : -cmp
+  })
   const lockedCell = <td className="text-gray-500 italic">???</td>
+  const hide = false
+  // Compact helper to render a sortable column with consistent props.
+  const C = (label, key, defaultDir = 'desc') => (
+    <SortableTh label={label} sortKey={key} currentKey={sortKey} currentDir={sortDir} onSort={handleSort} defaultDir={defaultDir} />
+  )
   return (
     <PixelCard accent={accent} title="HITTING">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-base font-pixel">
           <thead>
             <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
-              <th className="py-1 pr-2">PLAYER</th>
-              <th>POS</th><th>CL</th>
+              {C('PLAYER', 'name', 'asc')}
+              {C('POS', 'pos', 'asc')}
+              {C('CL', 'cl', 'asc')}
               {careerMode && <th>YRS</th>}
-              <th>AB</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th><th>BB</th><th>K</th>
-              <th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th>
-              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">wOBA </span> : 'wOBA'}</th>
-              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">wRC+ </span> : 'wRC+'}</th>
-              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">oWAR </span> : 'oWAR'}</th>
+              {C('AB', 'ab')}{C('H', 'h')}{C('2B', 'd')}{C('3B', 't')}{C('HR', 'hr')}{C('RBI', 'rbi')}{C('BB', 'bb')}{C('K', 'k', 'asc')}
+              {C('AVG', 'avg')}{C('OBP', 'obp')}{C('SLG', 'slg')}{C('OPS', 'ops')}
+              {C('wOBA', 'wOBA')}{C('wRC+', 'wRC+')}{C('oWAR', 'oWAR')}
             </tr>
           </thead>
           <tbody>
@@ -308,6 +361,12 @@ function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, em
 function PitcherTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, emptyMsg }) {
   // Hooks must run before any early return (see BatterTable note).
   const lg = useMemo(() => leagueAverages(save), [save])
+  const [sortKey, setSortKey] = useState('fip')
+  const [sortDir, setSortDir] = useState('asc')
+  function handleSort(key, defaultDir) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir(defaultDir || 'desc') }
+  }
   if (rows.length === 0) {
     return (
       <PixelCard accent={accent} title="PITCHING">
@@ -316,29 +375,47 @@ function PitcherTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, e
     )
   }
   const enriched = rows.map(r => ({ r, adv: computePitching(r, lg) }))
-  // Without analytics manager, sort by ERA instead of FIP (FIP is hidden).
-  const sorted = hasAnalyticsMgr
-    ? [...enriched].sort((a, b) => a.adv.fip - b.adv.fip)
-    : [...enriched].sort((a, b) => a.adv.era - b.adv.era)
-  // Advanced-stats lock removed (Zack's intern note: locked here but visible
-  // on every player profile). Stats are always shown; the Data Analytics
-  // Manager hire keeps its other utility but no longer gates this UI.
-  const hide = false
+  const valueOf = ({ r, adv }, key) => {
+    switch (key) {
+      case 'name': return `${r.player.lastName} ${r.player.firstName}`.toLowerCase()
+      case 'cl':   return r.player.classYear || ''
+      case 'ip':   return adv.ip || 0
+      case 'h':    return r.h || 0
+      case 'bb':   return r.bb || 0
+      case 'k':    return r.k || 0
+      case 'er':   return r.er || 0
+      case 'era':  return adv.era || 0
+      case 'whip': return adv.whip || 0
+      case 'k9':   return adv.kPer9 || 0
+      case 'fip':  return adv.fip || 0
+      case 'xfip': return adv.xfip || 0
+      case 'pWAR': return adv.pWAR || 0
+      default:     return 0
+    }
+  }
+  const sorted = [...enriched].sort((a, b) => {
+    const av = valueOf(a, sortKey)
+    const bv = valueOf(b, sortKey)
+    const cmp = typeof av === 'string' ? av.localeCompare(bv) : (av - bv)
+    return sortDir === 'asc' ? cmp : -cmp
+  })
   const lockedCell = <td className="text-gray-500 italic">???</td>
+  const hide = false
+  const C = (label, key, defaultDir = 'desc') => (
+    <SortableTh label={label} sortKey={key} currentKey={sortKey} currentDir={sortDir} onSort={handleSort} defaultDir={defaultDir} />
+  )
   return (
     <PixelCard accent={accent} title="PITCHING">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-base font-pixel">
           <thead>
             <tr className="text-[#a8a8c8] text-left font-pixel-display text-[10px] tracking-widest">
-              <th className="py-1 pr-2">PLAYER</th>
-              <th>CL</th>
+              {C('PLAYER', 'name', 'asc')}
+              {C('CL', 'cl', 'asc')}
               {careerMode && <th>YRS</th>}
-              <th>IP</th><th>H</th><th>BB</th><th>K</th><th>ER</th>
-              <th>ERA</th><th>WHIP</th><th>K/9</th>
-              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">FIP </span> : 'FIP'}</th>
-              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">xFIP </span> : 'xFIP'}</th>
-              <th title={hide ? 'Hire a Data Analytics Manager to unlock' : ''}>{hide ? <span className="text-gray-500">pWAR </span> : 'pWAR'}</th>
+              {C('IP', 'ip')}{C('H', 'h', 'asc')}{C('BB', 'bb', 'asc')}{C('K', 'k')}{C('ER', 'er', 'asc')}
+              {C('ERA', 'era', 'asc')}{C('WHIP', 'whip', 'asc')}{C('K/9', 'k9')}
+              {C('FIP', 'fip', 'asc')}{C('xFIP', 'xfip', 'asc')}{C('pWAR', 'pWAR')}
             </tr>
           </thead>
           <tbody>

@@ -832,7 +832,7 @@ function RecruitRow({ recruit, save, interest, noise, expanded, onToggleExpand, 
             className={'text-base leading-none transition ' + (recruit.followed ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400')}
             title={recruit.followed ? 'Unfollow' : 'Follow / star this recruit'}
           >
-            {recruit.followed ? '' : ''}
+            {recruit.followed ? '★' : '☆'}
           </button>
         </td>
         <td className="text-xs">

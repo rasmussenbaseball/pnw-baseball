@@ -285,6 +285,26 @@ export function saveLineup(state, gameId, lineup) {
 }
 
 /**
+ * Save the user's DEFAULT lineup. This applies as a fallback to any future
+ * user game that doesn't have an explicit per-game lineup set. Reported by
+ * Zack — users were having to set the same lineup for every single game.
+ *
+ * Note: ONLY batters + batterPositions persist as defaults. The starting
+ * pitcher rotates by series-game so it's not part of the default.
+ */
+export function saveDefaultLineup(state, lineup) {
+  state.defaultLineup = {
+    batters: [...(lineup.batters || [])],
+    batterPositions: lineup.batterPositions ? [...lineup.batterPositions] : null,
+  }
+}
+
+/** Get the user's default lineup if one is set. */
+export function getDefaultLineup(state) {
+  return state.defaultLineup || null
+}
+
+/**
  * Resolve a saved lineup (or default) into the { batters, pitcherRotation }
  * shape that simGame expects. Falls back to defaultLineup when nothing is
  * saved — that's the legacy behavior for non-user games or untouched user
@@ -322,6 +342,37 @@ export function resolveLineupForGame(state, teamId, gameId) {
         ? [...saved.batterPositions]
         : batters.map(b => b.primaryPosition)
       return { batters, batterPositions, pitcherRotation: rotation, bench, wasSaved: true }
+    }
+  }
+  // DEFAULT LINEUP fallback — only for the user's team and only if no per-
+  // game saved lineup exists. Lets users "set it once and forget it" per
+  // Zack's report. Pitcher rotation is NOT part of the default (rotates by
+  // series-game); it falls through to autoLineup's rotation logic.
+  if (teamId === state.userSchoolId) {
+    const def = getDefaultLineup(state)
+    if (def && (def.batters || []).length === 9) {
+      const byId = Object.fromEntries(players.map(p => [p.id, p]))
+      const batters = def.batters.map(id => byId[id]).filter(Boolean)
+      if (batters.length === 9) {
+        // Reuse autoLineup's smart pitcher rotation but keep the default's
+        // batting order. autoLineup handles series-game pitcher rotation +
+        // energy-aware rest, so we get the best of both worlds: stable
+        // batting order + auto-rotated arms.
+        const auto = autoLineup(state, teamId, gameId)
+        const batterPositions = def.batterPositions && def.batterPositions.length === 9
+          ? [...def.batterPositions]
+          : batters.map(b => b.primaryPosition)
+        const activeIds = new Set([...batters.map(b => b.id), ...auto.pitcherRotation.map(p => p.id)])
+        const bench = players.filter(p => !activeIds.has(p.id))
+        return {
+          batters,
+          batterPositions,
+          pitcherRotation: auto.pitcherRotation,
+          bench,
+          wasSaved: false,
+          fromDefault: true,
+        }
+      }
     }
   }
   // No saved lineup → smart auto lineup (positional, energy-aware rest +

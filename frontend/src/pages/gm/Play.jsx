@@ -14,7 +14,7 @@ import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
 import { defaultLineup } from '../../gm/engine/sim'
 import { __pools } from '../../gm/engine/names'
-import { resolveLineupForGame, getSavedLineup, saveLineup } from '../../gm/engine/lineups'
+import { resolveLineupForGame, getSavedLineup, saveLineup, saveDefaultLineup, getDefaultLineup } from '../../gm/engine/lineups'
 import { createLiveGame } from '../../gm/engine/liveGame'
 import { simWeek, advanceWeek } from '../../gm/engine/season'
 import { tickInteractivePostseason } from '../../gm/engine/postseasonInteractive'
@@ -828,6 +828,21 @@ function LineupEditor({ save, game, onSave, onCancel }) {
       bullpenIds: pitchers.filter(p => p.id !== starterId).map(p => p.id),
     })
   }
+  function handleSaveAsDefault() {
+    if (!canSave) return
+    const payload = {
+      batters: slots.map(s => s.playerId),
+      batterPositions: slots.map(s => s.position),
+      starterPitcherId: starterId,
+      bullpenIds: pitchers.filter(p => p.id !== starterId).map(p => p.id),
+    }
+    // Persist as the user's default batting order — applies to every future
+    // game that doesn't have an explicit per-game lineup set. Per Zack's
+    // report ("can't set lineup for the foreseeable future"). Also commit
+    // this lineup to the current game so the user sees immediate effect.
+    saveDefaultLineup(save, payload)
+    onSave(payload)
+  }
 
   const isHome = game.homeId === userSchoolId
   const oppId = isHome ? game.awayId : game.homeId
@@ -995,11 +1010,24 @@ function LineupEditor({ save, game, onSave, onCancel }) {
         </PixelCard>
       </div>
 
-      <div className="flex justify-end gap-2 mt-4">
+      <div className="flex justify-end gap-2 mt-4 flex-wrap">
         <PixelButton onClick={onCancel} accent="#3a3a5e">Cancel</PixelButton>
+        <PixelButton
+          onClick={handleSaveAsDefault}
+          disabled={!canSave}
+          accent="#7a5d1a"
+          title="Save this batting order as your default — applies to every future game until you change it."
+        >
+          Save as default lineup
+        </PixelButton>
         <PixelButton onClick={handleSave} disabled={!canSave}>
           Save lineup
         </PixelButton>
+      </div>
+      <div className="text-[10px] text-[#a8a8c8] mt-2 text-right font-pixel">
+        {getDefaultLineup(save)
+          ? 'Default lineup is set — new games auto-fill from it. "Save as default" overwrites; "Save lineup" applies to this game only.'
+          : 'No default lineup yet. "Save as default" saves this order for every future game; "Save lineup" applies to this game only.'}
       </div>
     </div>
     </GMShell>
