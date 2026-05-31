@@ -4405,7 +4405,7 @@ _SUPERLATIVE_CATALOG = [
     ("sv",                "saves",                      True,  3, "int"),
     ("cg",                "complete games",             True,  3, "int"),
     ("sho",               "shutouts",                   True,  3, "int"),
-    ("cs_caught",         "runners caught stealing",    True,  3, "int"),
+    ("cs_caught",         "runners thrown out",         True,  3, "int"),
     ("cs_rate",           "caught-stealing rate",       True,  3, "pct"),
 ]
 
@@ -4575,7 +4575,8 @@ def team_season_recap(
                    bs.woba::float AS woba, bs.wrc_plus::float AS wrc_plus,
                    bs.offensive_war::float AS war, bs.plate_appearances AS pa,
                    bs.home_runs AS hr, bs.rbi AS rbi, bs.stolen_bases AS sb,
-                   bs.batting_avg::float AS avg
+                   bs.batting_avg::float AS avg, bs.on_base_pct::float AS obp,
+                   bs.slugging_pct::float AS slg
             FROM batting_stats bs JOIN players p ON bs.player_id = p.id
             LEFT JOIN team_season_stats tss ON tss.team_id = bs.team_id AND tss.season = bs.season
             WHERE bs.team_id = %s AND bs.season = %s AND bs.offensive_war IS NOT NULL
@@ -4590,6 +4591,8 @@ def team_season_recap(
         cur.execute("""
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
                    ps.siera::float AS siera, ps.era::float AS era,
+                   ps.fip::float AS fip, ps.whip::float AS whip,
+                   ps.walks AS bb, ps.strikeouts AS k,
                    (COALESCE(ps.k_pct,0) * 100)::float AS k_pct,
                    ps.pitching_war::float AS war, ps.innings_pitched::float AS ip,
                    CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0
@@ -4612,7 +4615,9 @@ def team_season_recap(
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
                    bs.woba::float AS woba, bs.wrc_plus::float AS wrc_plus,
                    bs.offensive_war::float AS war, bs.plate_appearances AS pa,
-                   bs.home_runs AS hr, bs.rbi AS rbi, bs.stolen_bases AS sb
+                   bs.home_runs AS hr, bs.rbi AS rbi, bs.stolen_bases AS sb,
+                   bs.batting_avg::float AS avg, bs.on_base_pct::float AS obp,
+                   bs.slugging_pct::float AS slg
             FROM batting_stats bs JOIN players p ON bs.player_id = p.id
             WHERE bs.team_id = %s AND bs.season = %s AND p.year_in_school ILIKE '%%fr'
               AND bs.offensive_war IS NOT NULL AND bs.plate_appearances >= 20
@@ -4623,7 +4628,10 @@ def team_season_recap(
         fr_h = dict(fr_h) if fr_h else None
         cur.execute("""
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
-                   ps.siera::float AS siera, (COALESCE(ps.k_pct,0) * 100)::float AS k_pct,
+                   ps.siera::float AS siera, ps.era::float AS era,
+                   ps.fip::float AS fip, ps.whip::float AS whip,
+                   ps.walks AS bb, ps.strikeouts AS k,
+                   (COALESCE(ps.k_pct,0) * 100)::float AS k_pct,
                    ps.pitching_war::float AS war, ps.innings_pitched::float AS ip,
                    CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0
                         THEN COALESCE(ps.hits_allowed,0)::float

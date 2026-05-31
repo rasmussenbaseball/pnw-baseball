@@ -244,44 +244,58 @@ function drawRecordStreak(ctx, theme, data, y) {
   return h
 }
 
+function statTable(ctx, theme, x, yVal, w, cols) {
+  const cw = w / cols.length
+  cols.forEach((c, i) => {
+    const cx = x + i * cw + cw / 2
+    ctx.textAlign = 'center'
+    ctx.fillStyle = theme.slate; ctx.font = '800 23px -apple-system, sans-serif'
+    ctx.fillText(c.v, cx, yVal)
+    ctx.fillStyle = theme.faint; ctx.font = '700 12px -apple-system, sans-serif'
+    ctx.fillText(c.l, cx, yVal + 19)
+  })
+}
+const hitterCols = (p) => [
+  { l: 'AVG', v: fmtAvg(p.avg) }, { l: 'OBP', v: fmtAvg(p.obp) }, { l: 'SLG', v: fmtAvg(p.slg) },
+  { l: 'wOBA', v: fmtAvg(p.woba) }, { l: 'wRC+', v: p.wrc_plus != null ? String(Math.round(p.wrc_plus)) : '-' },
+  { l: 'HR', v: String(p.hr ?? 0) }, { l: 'RBI', v: String(p.rbi ?? 0) }, { l: 'SB', v: String(p.sb ?? 0) },
+]
+const pitcherCols = (p) => [
+  { l: 'ERA', v: fmtEra(p.era) }, { l: 'SIERA', v: fmtEra(p.siera) }, { l: 'FIP', v: fmtEra(p.fip) },
+  { l: 'WHIP', v: fmtEra(p.whip) }, { l: 'K', v: String(p.k ?? 0) }, { l: 'BB', v: String(p.bb ?? 0) },
+  { l: 'K%', v: fmtPct(p.k_pct) }, { l: 'BAA', v: fmtAvg(p.baa) },
+]
+
 function makePlayerCard(label, player, kind) {
   return (ctx, theme, x, y, w, h, logo) => {
     card(ctx, theme, x, y, w, h)
+    const pad = 26
+    // section label
     ctx.textAlign = 'left'
     ctx.fillStyle = theme.accent; ctx.font = '900 14px -apple-system, sans-serif'
-    ctx.fillText(label, x + 24, y + 30)
-    const cy = y + h / 2 + 8
-    const headSize = Math.min(h - 50, 92)
-    // headshot if present, else team logo — full, on a tile (no circle)
-    drawLogoTile(ctx, player._img || logo, x + 24 + headSize / 2, cy + 2, headSize, theme)
-    const colX = x + 24 + headSize + 22
-    ctx.fillStyle = theme.slate; ctx.font = '800 31px -apple-system, sans-serif'
-    const nm = truncate(ctx, `${player.first_name} ${player.last_name}`, w - (colX - x) - 150)
-    ctx.fillText(nm, colX, cy - 16)
-    const tag = [player.year_in_school, (player.position || '').toUpperCase()].filter(Boolean).join(' · ')
-    if (tag) {
-      const nmW = ctx.measureText(nm).width
-      ctx.fillStyle = theme.faint; ctx.font = '700 17px -apple-system, sans-serif'
-      ctx.fillText(tag, colX + nmW + 12, cy - 16)
-    }
-    let l1, l2
-    if (kind === 'hitter') {
-      l1 = `${fmtAvg(player.woba)} wOBA   ·   ${player.wrc_plus != null ? Math.round(player.wrc_plus) : '-'} wRC+`
-      l2 = `${player.pa ?? 0} PA   ·   ${player.hr ?? 0} HR   ·   ${player.rbi ?? 0} RBI   ·   ${player.sb ?? 0} SB`
-    } else {
-      l1 = `${fmtEra(player.siera)} SIERA   ·   ${fmtPct(player.k_pct)} K`
-      l2 = `${fmtIp(player.ip)} IP   ·   ${fmtAvg(player.baa)} BAA`
-    }
-    ctx.fillStyle = '#334155'; ctx.font = '600 18px -apple-system, sans-serif'
-    ctx.fillText(l1, colX, cy + 14)
-    ctx.fillStyle = theme.muted; ctx.font = '500 16px -apple-system, sans-serif'
-    ctx.fillText(l2, colX, cy + 40)
-    // big WAR
+    ctx.fillText(label, x + pad, y + 28)
+    // logo tile (full, no crop) + name — top-anchored
+    const tile = 60
+    drawLogoTile(ctx, player._img || logo, x + pad + tile / 2, y + 44 + tile / 2, tile, theme)
+    const nx = x + pad + tile + 18
+    ctx.fillStyle = theme.slate; ctx.font = '800 30px -apple-system, sans-serif'
+    const nm = truncate(ctx, `${player.first_name} ${player.last_name}`, w - (nx - x) - 160)
+    ctx.fillText(nm, nx, y + 66)
+    const vol = kind === 'hitter' ? `${player.pa ?? 0} PA` : `${fmtIp(player.ip)} IP`
+    const tag = [player.year_in_school, (player.position || '').toUpperCase(), vol].filter(Boolean).join(' · ')
+    ctx.fillStyle = theme.muted; ctx.font = '600 15px -apple-system, sans-serif'
+    ctx.fillText(tag, nx, y + 90)
+    // big WAR (top-right)
     ctx.textAlign = 'right'
-    ctx.fillStyle = theme.accent; ctx.font = '900 58px -apple-system, sans-serif'
-    ctx.fillText(fmtWar(player.war), x + w - 30, cy + 12)
-    ctx.fillStyle = theme.faint; ctx.font = '800 16px -apple-system, sans-serif'
-    ctx.fillText('WAR', x + w - 30, cy + 38)
+    ctx.fillStyle = theme.accent; ctx.font = '900 50px -apple-system, sans-serif'
+    ctx.fillText(fmtWar(player.war), x + w - pad, y + 72)
+    ctx.fillStyle = theme.faint; ctx.font = '800 14px -apple-system, sans-serif'
+    ctx.fillText('WAR', x + w - pad, y + 92)
+    // full stat table — bottom-anchored so it never crowds the name
+    ctx.strokeStyle = 'rgba(0,0,0,0.07)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(x + pad, y + h - 58); ctx.lineTo(x + w - pad, y + h - 58); ctx.stroke()
+    statTable(ctx, theme, x + pad, y + h - 30, w - pad * 2,
+              kind === 'hitter' ? hitterCols(player) : pitcherCols(player))
   }
 }
 
@@ -291,56 +305,76 @@ function makeLeaders(leaders) {
     card(ctx, theme, x, y, w, h)
     ctx.textAlign = 'left'
     ctx.fillStyle = theme.accent; ctx.font = '900 14px -apple-system, sans-serif'
-    ctx.fillText('TEAM LEADERS', x + 24, y + 28)
+    ctx.fillText('TEAM LEADERS', x + 26, y + 28)
     const cellW = w / items.length
-    const midY = y + 28 + (h - 28) / 2
     items.forEach(([label, v], i) => {
       const cx = x + i * cellW + cellW / 2
       ctx.textAlign = 'center'
-      ctx.fillStyle = theme.slate; ctx.font = '900 40px -apple-system, sans-serif'
-      ctx.fillText(String(v.value), cx, midY + 2)
+      // bottom-anchored so the player name never spills past the card
+      ctx.fillStyle = theme.slate; ctx.font = '900 38px -apple-system, sans-serif'
+      ctx.fillText(String(v.value), cx, y + h - 44)
       ctx.fillStyle = theme.accent; ctx.font = '800 14px -apple-system, sans-serif'
-      ctx.fillText(label, cx, midY + 24)
-      ctx.fillStyle = theme.muted; ctx.font = '500 14px -apple-system, sans-serif'
-      ctx.fillText(truncate(ctx, v.name, cellW - 20), cx, midY + 46)
+      ctx.fillText(label, cx, y + h - 24)
+      ctx.fillStyle = theme.muted; ctx.font = '500 13px -apple-system, sans-serif'
+      ctx.fillText(truncate(ctx, v.name, cellW - 18), cx, y + h - 7)
     })
     ctx.strokeStyle = 'rgba(0,0,0,0.06)'
     for (let i = 1; i < items.length; i++) {
       const dx = x + i * cellW
-      ctx.beginPath(); ctx.moveTo(dx, y + 44); ctx.lineTo(dx, y + h - 18); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(dx, y + 42); ctx.lineTo(dx, y + h - 14); ctx.stroke()
     }
   }
 }
 
-function makeSuperlative(sup) {
-  return (ctx, theme, x, y, w, h) => {
-    ctx.fillStyle = theme.fill; roundRect(ctx, x, y, w, h, 16); ctx.fill()
-    ctx.textAlign = 'left'
-    const cy = y + h / 2
-    ctx.fillStyle = 'rgba(255,255,255,0.78)'; ctx.font = '900 13px -apple-system, sans-serif'
-    ctx.fillText('THEY EXCELLED AT', x + 24, cy - 12)
-    ctx.fillStyle = '#fff'
-    let fs = 25
-    do { ctx.font = `700 ${fs}px -apple-system, sans-serif`; fs -= 1 }
-    while (ctx.measureText(sup.text).width > (w - 48) && fs > 15)
-    ctx.fillText(sup.text, x + 24, cy + 20)
+function wrapLines(ctx, text, maxW, maxLines) {
+  const words = (text || '').split(' ')
+  const lines = []; let cur = ''
+  for (const wd of words) {
+    const t = cur ? cur + ' ' + wd : wd
+    if (ctx.measureText(t).width <= maxW) cur = t
+    else { if (cur) lines.push(cur); cur = wd; if (lines.length >= maxLines) return null }
   }
+  if (cur) lines.push(cur)
+  return lines.length <= maxLines ? lines : null
+}
+// Draw text wrapped to up to `maxLines`, shrinking the font until it fits.
+function wrapFit(ctx, text, x, y, maxW, startFont = 24, maxLines = 2, lh = 6) {
+  for (let fs = startFont; fs >= 13; fs--) {
+    ctx.font = `700 ${fs}px -apple-system, sans-serif`
+    const lines = wrapLines(ctx, text, maxW, maxLines)
+    if (lines) { lines.forEach((ln, i) => ctx.fillText(ln, x, y + i * (fs + lh))); return }
+  }
+  ctx.font = '700 13px -apple-system, sans-serif'
+  ctx.fillText(truncate(ctx, text, maxW), x, y)
 }
 
-function makeSignature(sw) {
+// Superlative + Signature Win share one band (side by side) to save height.
+function makeSuperSig(sup, sw) {
   return (ctx, theme, x, y, w, h) => {
-    card(ctx, theme, x, y, w, h)
-    ctx.textAlign = 'left'
-    const cy = y + h / 2
-    ctx.fillStyle = theme.accent; ctx.font = '900 13px -apple-system, sans-serif'
-    ctx.fillText('SIGNATURE WIN', x + 24, cy - 14)
-    const rk = sw.opponent_rank ? `#${Math.round(sw.opponent_rank)} ` : ''
-    const main = `${sw.team_score}-${sw.opp_score}  ${sw.home_away} ${rk}${sw.opponent_short || sw.opponent_name || ''}`
-    ctx.fillStyle = theme.slate; ctx.font = '800 25px -apple-system, sans-serif'
-    ctx.fillText(truncate(ctx, main, w - 150), x + 24, cy + 20)
-    ctx.textAlign = 'right'
-    ctx.fillStyle = theme.muted; ctx.font = '600 16px -apple-system, sans-serif'
-    ctx.fillText(shortDate(sw.game_date), x + w - 24, cy + 18)
+    const gap = 16
+    const both = sup && sw
+    const halfW = both ? (w - gap) / 2 : w
+    if (sup) {
+      ctx.fillStyle = theme.fill; roundRect(ctx, x, y, halfW, h, 16); ctx.fill()
+      ctx.textAlign = 'left'
+      ctx.fillStyle = 'rgba(255,255,255,0.80)'; ctx.font = '900 12px -apple-system, sans-serif'
+      ctx.fillText('THEY EXCELLED AT', x + 20, y + 26)
+      ctx.fillStyle = '#fff'
+      wrapFit(ctx, sup.text, x + 20, y + 52, halfW - 40, both ? 21 : 25, 2)
+    }
+    if (sw) {
+      const sx = sup ? x + halfW + gap : x
+      card(ctx, theme, sx, y, halfW, h)
+      ctx.textAlign = 'left'
+      ctx.fillStyle = theme.accent; ctx.font = '900 12px -apple-system, sans-serif'
+      ctx.fillText('SIGNATURE WIN', sx + 20, y + 26)
+      const rk = sw.opponent_rank ? `#${Math.round(sw.opponent_rank)} ` : ''
+      const main = `${sw.team_score}-${sw.opp_score}  ${sw.home_away} ${rk}${sw.opponent_short || sw.opponent_name || ''}`
+      ctx.fillStyle = theme.slate; ctx.font = '800 23px -apple-system, sans-serif'
+      ctx.fillText(truncate(ctx, main, halfW - 40), sx + 20, y + 56)
+      ctx.fillStyle = theme.muted; ctx.font = '600 14px -apple-system, sans-serif'
+      ctx.fillText(shortDate(sw.game_date), sx + 20, y + 80)
+    }
   }
 }
 
@@ -404,19 +438,19 @@ async function renderRecap(canvas, data) {
   y += recH + 18
   drawFooter(ctx, theme)
 
-  // Build the present middle sections with relative weights.
+  // Build the present middle sections with relative weights (≈ natural
+  // heights). Player cards carry a full stat table so they're tallest.
   const sections = []
-  if (data.best_hitter) sections.push({ wt: 1.0, draw: (c, th, x, yy, w, h) => makePlayerCard('BEST HITTER', data.best_hitter, 'hitter')(c, th, x, yy, w, h, logo) })
-  if (data.best_pitcher) sections.push({ wt: 1.0, draw: (c, th, x, yy, w, h) => makePlayerCard('BEST PITCHER', data.best_pitcher, 'pitcher')(c, th, x, yy, w, h, logo) })
+  if (data.best_hitter) sections.push({ wt: 1.65, draw: (c, th, x, yy, w, h) => makePlayerCard('BEST HITTER', data.best_hitter, 'hitter')(c, th, x, yy, w, h, logo) })
+  if (data.best_pitcher) sections.push({ wt: 1.65, draw: (c, th, x, yy, w, h) => makePlayerCard('BEST PITCHER', data.best_pitcher, 'pitcher')(c, th, x, yy, w, h, logo) })
   if (data.freshman_of_year) {
     const fr = data.freshman_of_year
-    sections.push({ wt: 1.0, draw: (c, th, x, yy, w, h) => makePlayerCard('FRESHMAN OF THE YEAR', fr, fr.kind)(c, th, x, yy, w, h, logo) })
+    sections.push({ wt: 1.65, draw: (c, th, x, yy, w, h) => makePlayerCard('FRESHMAN OF THE YEAR', fr, fr.kind)(c, th, x, yy, w, h, logo) })
   }
   const tl = data.team_leaders || {}
-  if (tl.hr || tl.sb || tl.k || tl.sv) sections.push({ wt: 0.92, draw: makeLeaders(tl) })
-  if (data.superlative) sections.push({ wt: 0.6, draw: makeSuperlative(data.superlative) })
-  if (data.signature_win) sections.push({ wt: 0.62, draw: makeSignature(data.signature_win) })
-  if (data.clutch_moment) sections.push({ wt: 1.2, draw: makeClutch(data.clutch_moment) })
+  if (tl.hr || tl.sb || tl.k || tl.sv) sections.push({ wt: 0.95, draw: makeLeaders(tl) })
+  if (data.superlative || data.signature_win) sections.push({ wt: 0.9, draw: makeSuperSig(data.superlative, data.signature_win) })
+  if (data.clutch_moment) sections.push({ wt: 1.4, draw: makeClutch(data.clutch_moment) })
 
   const midTop = y
   const midBottom = H - 66 - 16
