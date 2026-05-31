@@ -338,7 +338,11 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
         )
         recent = [dict(r) for r in cur.fetchall()]
 
-        # Roster — summer_players + season batting line if any
+        # Roster — only players who have ACTUALLY APPEARED for this team
+        # this season. summer_players accumulates every name the roster +
+        # box-score scrapes have ever seen across years (hundreds per team),
+        # so without an accurate live 2026 roster we restrict to anyone with
+        # a batting or pitching line in a {season} game for this team.
         cur.execute(
             """
             SELECT p.id, p.first_name, p.last_name, p.jersey_number,
@@ -349,9 +353,17 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
             LEFT JOIN summer_batting_stats b
                    ON b.player_id = p.id AND b.season = %s AND b.team_id = p.team_id
             WHERE p.team_id = %s
+              AND (
+                EXISTS (SELECT 1 FROM summer_game_batting gb
+                        JOIN summer_games g ON g.id = gb.game_id
+                        WHERE gb.player_id = p.id AND gb.team_id = %s AND g.season = %s)
+                OR EXISTS (SELECT 1 FROM summer_game_pitching gp
+                        JOIN summer_games g ON g.id = gp.game_id
+                        WHERE gp.player_id = p.id AND gp.team_id = %s AND g.season = %s)
+              )
             ORDER BY p.last_name, p.first_name
             """,
-            (season, team_id),
+            (season, team_id, team_id, season, team_id, season),
         )
         roster = [dict(r) for r in cur.fetchall()]
 
