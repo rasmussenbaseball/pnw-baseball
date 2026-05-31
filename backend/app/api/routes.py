@@ -4658,6 +4658,63 @@ def team_season_recap(
         elif fr_p:
             freshman = {"kind": "pitcher", **fr_p}
 
+        # Transfer of the year — fallback when no freshman qualified.
+        # A transfer is a non-freshman whose first season with THIS team is
+        # the current season (no prior-season batting/pitching rows for this
+        # team). Excludes best hitter / best pitcher so it's a distinct player.
+        transfer = None
+        if freshman is None:
+            cur.execute("""
+                SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
+                       bs.woba::float AS woba, bs.wrc_plus::float AS wrc_plus,
+                       bs.offensive_war::float AS war, bs.plate_appearances AS pa,
+                       bs.home_runs AS hr, bs.rbi AS rbi, bs.stolen_bases AS sb,
+                       bs.batting_avg::float AS avg, bs.on_base_pct::float AS obp,
+                       bs.slugging_pct::float AS slg
+                FROM batting_stats bs JOIN players p ON bs.player_id = p.id
+                WHERE bs.team_id = %s AND bs.season = %s
+                  AND (p.year_in_school IS NULL OR p.year_in_school NOT ILIKE '%%fr')
+                  AND bs.offensive_war IS NOT NULL AND bs.plate_appearances >= 20
+                  AND p.id <> ALL(%s::int[])
+                  AND NOT EXISTS (SELECT 1 FROM batting_stats b2
+                                  WHERE b2.player_id = p.id AND b2.team_id = %s AND b2.season < %s)
+                  AND NOT EXISTS (SELECT 1 FROM pitching_stats p2
+                                  WHERE p2.player_id = p.id AND p2.team_id = %s AND p2.season < %s)
+                ORDER BY bs.offensive_war DESC NULLS LAST LIMIT 1
+            """, (team_id, season, exclude_ids, team_id, season, team_id, season))
+            tr_h = cur.fetchone()
+            tr_h = dict(tr_h) if tr_h else None
+            cur.execute("""
+                SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school, p.headshot_url,
+                       ps.siera::float AS siera, ps.era::float AS era,
+                       ps.fip::float AS fip, ps.whip::float AS whip,
+                       ps.walks AS bb, ps.strikeouts AS k,
+                       (COALESCE(ps.k_pct,0) * 100)::float AS k_pct,
+                       ps.pitching_war::float AS war, ps.innings_pitched::float AS ip,
+                       CASE WHEN (COALESCE(ps.batters_faced,0) - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0)) > 0
+                            THEN COALESCE(ps.hits_allowed,0)::float
+                                 / (ps.batters_faced - COALESCE(ps.walks,0) - COALESCE(ps.hit_batters,0))
+                            END AS baa
+                FROM pitching_stats ps JOIN players p ON ps.player_id = p.id
+                WHERE ps.team_id = %s AND ps.season = %s
+                  AND (p.year_in_school IS NULL OR p.year_in_school NOT ILIKE '%%fr')
+                  AND ps.pitching_war IS NOT NULL AND COALESCE(ps.innings_pitched,0) >= 10
+                  AND p.id <> ALL(%s::int[])
+                  AND NOT EXISTS (SELECT 1 FROM batting_stats b2
+                                  WHERE b2.player_id = p.id AND b2.team_id = %s AND b2.season < %s)
+                  AND NOT EXISTS (SELECT 1 FROM pitching_stats p2
+                                  WHERE p2.player_id = p.id AND p2.team_id = %s AND p2.season < %s)
+                ORDER BY ps.pitching_war DESC NULLS LAST LIMIT 1
+            """, (team_id, season, exclude_ids, team_id, season, team_id, season))
+            tr_p = cur.fetchone()
+            tr_p = dict(tr_p) if tr_p else None
+            thw = tr_h["war"] if tr_h and tr_h.get("war") is not None else -999
+            tpw = tr_p["war"] if tr_p and tr_p.get("war") is not None else -999
+            if tr_h and thw >= tpw:
+                transfer = {"kind": "hitter", **tr_h}
+            elif tr_p:
+                transfer = {"kind": "pitcher", **tr_p}
+
         # Team superlative (best conference rank in a team stat)
         cur.execute("""
             SELECT s.team_id,
@@ -4694,6 +4751,12 @@ def team_season_recap(
             LEFT JOIN teams ht ON ht.id = g.home_team_id
             LEFT JOIN teams at2 ON at2.id = g.away_team_id
             WHERE g.season = %s AND ge.wpa_batter IS NOT NULL
+              AND ge.batter_player_id IS NOT NULL
+              AND ge.batter_name IS NOT NULL
+              AND ge.result_type NOT IN (
+                  'stolen_base', 'caught_stealing', 'wild_pitch',
+                  'passed_ball', 'balk', 'pickoff', 'runner_other'
+              )
               AND ((ge.half = 'bottom' AND g.home_team_id = %s)
                    OR (ge.half = 'top' AND g.away_team_id = %s))
             ORDER BY ge.wpa_batter DESC LIMIT 1
@@ -4804,6 +4867,7 @@ def team_season_recap(
         "best_hitter": best_hitter,
         "best_pitcher": best_pitcher,
         "freshman_of_year": freshman,
+        "transfer_of_year": transfer,
         "superlative": superlative,
         "signature_win": signature_win,
         "team_leaders": team_leaders,

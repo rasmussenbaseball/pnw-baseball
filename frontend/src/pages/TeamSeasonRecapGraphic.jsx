@@ -440,7 +440,7 @@ async function renderRecap(canvas, data) {
 
   // preload headshots for the player cards (fall back to team logo)
   const prep = async (p) => { if (p) p._img = await tryLoad(p.headshot_url) }
-  await Promise.all([prep(data.best_hitter), prep(data.best_pitcher), prep(data.freshman_of_year)])
+  await Promise.all([prep(data.best_hitter), prep(data.best_pitcher), prep(data.freshman_of_year), prep(data.transfer_of_year)])
 
   ctx.fillStyle = theme.bg; ctx.fillRect(0, 0, W, H)
 
@@ -458,6 +458,9 @@ async function renderRecap(canvas, data) {
   if (data.freshman_of_year) {
     const fr = data.freshman_of_year
     sections.push({ wt: 1.65, draw: (c, th, x, yy, w, h) => makePlayerCard('FRESHMAN OF THE YEAR', fr, fr.kind)(c, th, x, yy, w, h, logo) })
+  } else if (data.transfer_of_year) {
+    const tr = data.transfer_of_year
+    sections.push({ wt: 1.65, draw: (c, th, x, yy, w, h) => makePlayerCard('TRANSFER OF THE YEAR', tr, tr.kind)(c, th, x, yy, w, h, logo) })
   }
   const tl = data.team_leaders || {}
   if (tl.avg || tl.hr || tl.rbi || tl.sb || tl.r || tl.w || tl.k || tl.sv || tl.era)
