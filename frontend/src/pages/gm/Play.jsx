@@ -121,11 +121,17 @@ export default function Play() {
               }
               harvest(result.homeLineup)
               harvest(result.awayLineup)
+              // Capture lineup IDs so the box score can sort batters by
+              // BATTING ORDER (not by hits — per Zack's report). Stored as
+              // playerId arrays per side, in order.
+              const lineupIds = (lineup) => (lineup?.batters || []).map(b => b?.id).filter(Boolean)
               g.boxscore = {
                 batterStats: result.boxscore.batterStats,
                 pitcherStats: result.boxscore.pitcherStats || {},
                 innings: result.boxscore.innings || null,
                 playerNames,
+                homeLineupIds: lineupIds(result.homeLineup),
+                awayLineupIds: lineupIds(result.awayLineup),
               }
             }
             // Accumulate stats into save.playerStats
@@ -402,6 +408,19 @@ function GameCard({ save, game, onSetLineup, onEnterGame }) {
   const oppId = isHome ? game.awayId : game.homeId
   const opp = save.schools[oppId] || NON_NAIA_DISPLAY[oppId] || { name: oppId }
   const saved = getSavedLineup(save, game.id)
+  // Project the opponent's likely starter so the user can see it BEFORE
+  // entering the game (per Zack's report). For real-rostered opponents
+  // (in the user's level pool) we resolve their lineup; for rating-only
+  // teams (out-of-region D1/D2/D3, national NAIA pool) we have no real
+  // staff, so we just show TBD.
+  const oppStarter = (() => {
+    try {
+      const oppTeam = save.teams[oppId]
+      if (!oppTeam || !(oppTeam.rosterPlayerIds || []).length) return null
+      const oppLineup = resolveLineupForGame(save, oppId, game.id)
+      return oppLineup.pitcherRotation?.[0] || null
+    } catch { return null }
+  })()
   const isFallScrim = game.type === 'FALL_SCRIMMAGE'
   // Doubleheader gate: if there's an earlier-in-day game vs the same team
   // that hasn't been played yet, this game is locked.
@@ -436,6 +455,17 @@ function GameCard({ save, game, onSetLineup, onEnterGame }) {
             </div>
             <div className="text-xs text-gray-500">
               {typeLabel} • {game.date}{dhLabel ? ` • ${dhLabel}` : ''}
+            </div>
+            <div className="text-[11px] text-gray-600 mt-0.5">
+              Projected SP:{' '}
+              {oppStarter ? (
+                <span>
+                  <strong>{oppStarter.firstName} {oppStarter.lastName}</strong>
+                  {oppStarter.throws ? ` (${oppStarter.throws}HP)` : ''}
+                </span>
+              ) : (
+                <span className="italic text-gray-400">TBD (rating-only opponent)</span>
+              )}
             </div>
           </div>
         </div>
@@ -550,8 +580,23 @@ function BoxScoreModal({ save, game, oppName, isHome, onClose }) {
     const row = { pid, name: nameFor(pid), ...s }
     if (isMyRoster(pid)) myPitchers.push(row); else oppPitchers.push(row)
   }
-  myBatters.sort((a, b) => (b.h || 0) - (a.h || 0))
-  oppBatters.sort((a, b) => (b.h || 0) - (a.h || 0))
+  // Sort hitters by BATTING ORDER (not by hits — per Zack's note). Lineup
+  // IDs are captured when the boxscore is persisted; subs / pinch hitters
+  // appear after starters, ordered by hits as a sensible fallback. Old
+  // saves without the lineup IDs fall through cleanly (every player gets
+  // indexOf -1 → all sort by hits, matching legacy behavior).
+  const myLineupIds  = isHome ? (bs.homeLineupIds || []) : (bs.awayLineupIds || [])
+  const oppLineupIds = isHome ? (bs.awayLineupIds || []) : (bs.homeLineupIds || [])
+  const sortByLineup = (ids) => (a, b) => {
+    const ia = ids.indexOf(a.pid)
+    const ib = ids.indexOf(b.pid)
+    if (ia === -1 && ib === -1) return (b.h || 0) - (a.h || 0)
+    if (ia === -1) return 1
+    if (ib === -1) return -1
+    return ia - ib
+  }
+  myBatters.sort(sortByLineup(myLineupIds))
+  oppBatters.sort(sortByLineup(oppLineupIds))
   myPitchers.sort((a, b) => (b.outs || 0) - (a.outs || 0))
   oppPitchers.sort((a, b) => (b.outs || 0) - (a.outs || 0))
   const userSchool = save.schools[userSchoolId]
@@ -1118,6 +1163,23 @@ function LiveGameView({ save, game, onExit }) {
   const rerender = () => bump(x => x + 1)
   const [subMenuOpen, setSubMenuOpen] = useState(null)   // 'PITCH'|'HIT'|'RUN'|'FIELD'|null
 
+  // Guard against accidental tab close / refresh / browser back during a
+  // live game (per Zack's report). Doesn't prevent deliberate in-app nav —
+  // the "Save & exit" / "Auto-finish & exit" buttons below are the
+  // intended clean-exit paths. Persisting partial state across remounts
+  // is a bigger refactor (the engine holds player refs in closures);
+  // tracked separately.
+  useEffect(() => {
+    function onBeforeUnload(e) {
+      if (live.isOver()) return
+      e.preventDefault()
+      e.returnValue = ''   // legacy Chrome / Safari trigger
+      return ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [live])
+
   function doStep() { live.step(); rerender() }
   function doHalfInning() { live.simHalfInning(); rerender() }
   function doRest() { live.simRest(); rerender() }
@@ -1646,34 +1708,59 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
   const fielders = userSide === 'home' ? state.homeFielders : state.awayFielders
 
   if (kind === 'PITCH') {
+    // Group bullpen by role (per Zack's report: starters were mixed in with
+    // relievers with no visible distinction). Stamina ≥ 65 = starter arm,
+    // < 65 = reliever — matches how the engine builds the rotation.
+    const pitcherRow = (p) => {
+      const energy = save ? getEnergy(save, p.id) : 100
+      const ovr = playerOverall(p)
+      const yr = p.redshirtUsed ? 'RS-' + p.classYear : p.classYear
+      return (
+        <button
+          key={p.id}
+          onClick={() => onSubmit('PITCH', { player: p })}
+          className="w-full text-left p-2 hover:bg-amber-400/10 rounded text-sm flex justify-between items-center border border-[#3a3a5e]"
+        >
+          <span className="font-medium text-white flex items-center gap-2">
+            <span className="font-mono text-[11px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded">{ovr}</span>
+            <span className="text-[10px] text-[#a8a8c8] font-mono">{yr}</span>
+            {p.firstName} {p.lastName}
+            {p.throws ? <span className="text-[10px] text-[#a8a8c8] font-mono">({p.throws}HP)</span> : null}
+          </span>
+          <span className="text-[11px] text-[#a8a8c8] font-mono flex items-center gap-2">
+            <span className={energyColorClass(energy)}>NRG {Math.round(energy)}</span>
+            <span>Stuff {p.pitcher?.stuff} · Stam {p.pitcher?.stamina} · Velo {p.pitcher?.velocity_avg?.toFixed(0) || '—'}</span>
+          </span>
+        </button>
+      )
+    }
+    const startersInPen = bullpen.filter(p => (p.pitcher?.stamina ?? 50) >= 65)
+    const relievers = bullpen.filter(p => (p.pitcher?.stamina ?? 50) < 65)
     return (
       <SubModal title="Pitching change" onClose={onClose}>
         {bullpen.length === 0 ? (
           <div className="text-sm text-[#a8a8c8]">No pitchers left in the bullpen.</div>
         ) : (
-          <div className="space-y-1 max-h-80 overflow-y-auto">
-            {bullpen.map(p => {
-              const energy = save ? getEnergy(save, p.id) : 100
-              const ovr = playerOverall(p)
-              const yr = p.redshirtUsed ? 'RS-' + p.classYear : p.classYear
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => onSubmit('PITCH', { player: p })}
-                  className="w-full text-left p-2 hover:bg-amber-400/10 rounded text-sm flex justify-between items-center border border-[#3a3a5e]"
-                >
-                  <span className="font-medium text-white flex items-center gap-2">
-                    <span className="font-mono text-[11px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded">{ovr}</span>
-                    <span className="text-[10px] text-[#a8a8c8] font-mono">{yr}</span>
-                    {p.firstName} {p.lastName}
-                  </span>
-                  <span className="text-[11px] text-[#a8a8c8] font-mono flex items-center gap-2">
-                    <span className={energyColorClass(energy)}>NRG {Math.round(energy)}</span>
-                    <span>Stuff {p.pitcher?.stuff} · Stam {p.pitcher?.stamina} · Velo {p.pitcher?.velocity_avg?.toFixed(0) || '—'}</span>
-                  </span>
-                </button>
-              )
-            })}
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {relievers.length > 0 && (
+              <div>
+                <div className="font-pixel-display text-[10px] tracking-widest text-blue-300 mb-1">
+                  RELIEVERS ({relievers.length})
+                </div>
+                <div className="space-y-1">{relievers.map(pitcherRow)}</div>
+              </div>
+            )}
+            {startersInPen.length > 0 && (
+              <div>
+                <div className="font-pixel-display text-[10px] tracking-widest text-amber-300 mb-1">
+                  STARTERS — RESTING ({startersInPen.length})
+                </div>
+                <div className="text-[11px] text-[#a8a8c8] italic mb-1.5">
+                  Bringing a starter in disrupts the weekend rotation. Usually only do this in an elimination game.
+                </div>
+                <div className="space-y-1">{startersInPen.map(pitcherRow)}</div>
+              </div>
+            )}
           </div>
         )}
       </SubModal>
