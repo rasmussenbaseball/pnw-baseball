@@ -136,8 +136,11 @@ function RequireGmEarlyAccess({ children }) {
   const onAllowlist = GM_EARLY_ACCESS_EMAILS.includes(user.email)
   // Premium, Coach & Scout, and Dev tiers all include the GM game.
   const hasPaidTier = tier === 'premium' || tier === 'coach' || tier === 'dev'
+  // Launch-week promo: free to play for every signed-in user until the
+  // cutoff in lib/gmPromo.js, after which this gate auto-reverts.
+  const freePlay = isGmFreePlay()
 
-  if (!onAllowlist && !hasPaidTier) {
+  if (!onAllowlist && !hasPaidTier && !freePlay) {
     return (
       <div className="max-w-xl mx-auto py-16 text-center">
         <h1 className="text-3xl font-bold text-pnw-slate dark:text-gray-100 mb-4">NW Coaching Simulator</h1>
@@ -246,6 +249,7 @@ import Account from './pages/Account'
 import Pricing from './pages/Pricing'
 import RequireTier from './components/RequireTier'
 import { useTier } from './hooks/useTier'
+import { isGmFreePlay } from './lib/gmPromo'
 import OpponentTrends from './pages/OpponentTrends'
 import HistoricMatchups from './pages/HistoricMatchups'
 import LineupHelper from './pages/LineupHelper'

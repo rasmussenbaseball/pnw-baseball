@@ -4,6 +4,15 @@ import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import { useTier } from '../hooks/useTier'
 import { tierMeets, TIER_META, DEVELOPER_EMAILS } from '../lib/tiers'
+import { isGmFreePlay } from '../lib/gmPromo'
+
+// During the launch-week free-play promo the NW Coaching Simulator is open
+// to everyone, so we drop its nav lock badge. Reverts automatically after
+// the cutoff in lib/gmPromo.js.
+function effectiveRequires(item) {
+  if (item.to === '/gm' && isGmFreePlay()) return undefined
+  return item.requires
+}
 
 // ─── Navigation structure ───
 const NAV = [
@@ -546,12 +555,13 @@ function DropdownPanel({ items, onClose }) {
             </div>
           )
         }
-        const needsUpgrade = item.requires && !tierMeets(tier, item.requires)
+        const req = effectiveRequires(item)
+        const needsUpgrade = req && !tierMeets(tier, req)
         const showLock = item.locked || needsUpgrade
         const subtext = item.locked
           ? 'Coming soon'
           : (needsUpgrade
-              ? `${TIER_META[item.requires]?.label || item.requires} required`
+              ? `${TIER_META[req]?.label || req} required`
               : item.desc)
         // Visual treatment for locked rows: knock down opacity so they
         // read as clearly inaccessible without removing them from the
@@ -903,7 +913,8 @@ export default function Header() {
                           </div>
                         ) : (
                           (() => {
-                            const needsUpgrade = item.requires && !tierMeets(tier, item.requires)
+                            const req = effectiveRequires(item)
+                            const needsUpgrade = req && !tierMeets(tier, req)
                             const showLock = item.locked || needsUpgrade
                             const dimmed = item.locked || needsUpgrade
                             return (
