@@ -1225,6 +1225,14 @@ function LiveGameView({ save, game, onExit }) {
   const userConfidence = isHome ? s.homeConfidence : s.awayConfidence
   const userPitches = isHome ? s.homePitches : s.awayPitches
 
+  // Opponent-side data for the matchup panel (per Zack's note: users
+  // couldn't see the opp's lineup or their bullpen-arm handedness).
+  const oppBatters = isHome ? s.awayBatters : s.homeBatters
+  const oppPitcher = isHome ? s.awayPitcher : s.homePitcher
+  const oppBullpen = isHome ? s.awayBullpen : s.homeBullpen
+  const oppPAIdx = isHome ? s.awayPAIndex : s.homePAIndex
+  const [showOppLineup, setShowOppLineup] = useState(false)
+
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>
     <div className="max-w-6xl mx-auto">
@@ -1277,6 +1285,77 @@ function LiveGameView({ save, game, onExit }) {
           </div>
         </div>
       )}
+
+      {/* OPPOSING LINEUP PANEL — toggleable, per Zack's report. Shows the
+          opp's batting order with handedness so the user can plan match-ups
+          (which side to pinch hit, when to bring in a same-side reliever).
+          Also surfaces the opp's bullpen handedness for the next-pitcher
+          decision. */}
+      <div className="bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded-lg mb-3">
+        <button
+          type="button"
+          onClick={() => setShowOppLineup(o => !o)}
+          className="w-full flex justify-between items-center px-3 py-2 text-left hover:bg-[#3a3a5e]/30"
+        >
+          <span className="text-[10px] font-pixel font-bold uppercase tracking-widest text-amber-300">
+            Opp lineup &amp; bullpen
+          </span>
+          <span className="text-[10px] text-[#a8a8c8] font-pixel">{showOppLineup ? '▾' : '▸'}</span>
+        </button>
+        {showOppLineup && (
+          <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+            <div>
+              <div className="text-[9px] font-pixel-display tracking-widest text-[#a8a8c8] mb-1">BATTING ORDER</div>
+              <ol className="space-y-0.5">
+                {oppBatters.map((b, idx) => {
+                  if (!b) return null
+                  const isUp = idx === (oppPAIdx % 9)
+                  return (
+                    <li
+                      key={b.id || idx}
+                      className={'flex justify-between gap-2 px-1.5 py-0.5 rounded font-pixel ' + (isUp ? 'bg-amber-400/15 text-amber-200' : 'text-[#e8e8e8]')}
+                    >
+                      <span className="truncate">
+                        <span className="text-[#a8a8c8] font-mono mr-1">{idx + 1}.</span>
+                        {b.firstName} {b.lastName}
+                        {b.bats ? <span className="text-[#a8a8c8] font-mono ml-1">({b.bats}H)</span> : null}
+                      </span>
+                      <span className="text-[#a8a8c8] font-mono shrink-0">{b.primaryPosition || ''}</span>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
+            <div>
+              <div className="text-[9px] font-pixel-display tracking-widest text-[#a8a8c8] mb-1">ON THE MOUND</div>
+              {oppPitcher ? (
+                <div className="px-1.5 py-0.5 font-pixel text-amber-200 mb-2">
+                  {oppPitcher.firstName} {oppPitcher.lastName}
+                  {oppPitcher.throws ? <span className="text-[#a8a8c8] font-mono ml-1">({oppPitcher.throws}HP)</span> : null}
+                </div>
+              ) : <div className="text-[#a8a8c8] italic">—</div>}
+              <div className="text-[9px] font-pixel-display tracking-widest text-[#a8a8c8] mb-1 mt-2">OPP BULLPEN</div>
+              {(oppBullpen || []).length === 0 ? (
+                <div className="text-[#a8a8c8] italic">Empty.</div>
+              ) : (
+                <ul className="space-y-0.5">
+                  {oppBullpen.slice(0, 8).map(p => (
+                    <li key={p.id} className="flex justify-between gap-2 px-1.5 py-0.5 font-pixel text-[#e8e8e8]">
+                      <span className="truncate">
+                        {p.firstName} {p.lastName}
+                        {p.throws ? <span className="text-[#a8a8c8] font-mono ml-1">({p.throws}HP)</span> : null}
+                      </span>
+                      <span className="text-[#a8a8c8] font-mono shrink-0">
+                        {(p.pitcher?.stamina ?? 50) >= 65 ? 'SP' : 'RP'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* PLAY-BY-PLAY — pinned high so the latest action is always above the
           fold. Scrollable list, newest first. */}

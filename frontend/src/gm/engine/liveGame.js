@@ -381,7 +381,16 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
       defenderPositions.push(pos)
     }
     const batterEnergy = ctx.getEnergy ? ctx.getEnergy(batter.id) : 100
-    const pitcherEnergy = ctx.getEnergy ? ctx.getEnergy(pitcher.id) : 100
+    // Combine CROSS-GAME energy (drained between games) with IN-GAME fatigue
+    // (accumulated per-pitch this game). Before this, only cross-game energy
+    // reached simPA, so a starter could throw 100 pitches in one game with
+    // zero in-engine drop-off (Zack's "complete game every time" report).
+    // Treat in-game fatigue as up to -50 energy at the gassed cap (100), so
+    // a 90-pitch starter at "gassed" effectively pitches at ~50 energy →
+    // ~14% rating regression toward 50.
+    const inGameFatigue = state.top ? state.homeFatigue : state.awayFatigue
+    const baseEnergy = ctx.getEnergy ? ctx.getEnergy(pitcher.id) : 100
+    const pitcherEnergy = Math.max(0, Math.min(100, baseEnergy - inGameFatigue * 0.5))
     let result = simPA(batter, pitcher, {
       leverage,
       coachMotivator: motivator,
@@ -478,6 +487,29 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
   function simRest() {
     let safety = 0
     while (!state.isOver && safety < 500) {
+      // Auto-pull the USER's pitcher when gassed during sim-to-end. Without
+      // this, clicking "Sim to end" with a tired starter rode them through
+      // all 9 innings regardless of how badly it was going (Zack's report).
+      // Mirrors the opponent auto-sub logic in flipHalfInning, only it
+      // fires on the user side during simRest. PAuto-pull thresholds:
+      //   - Fatigue ≥ 80 (gassed)         OR
+      //   - Pitches ≥ 100 (over a typical CG cap) OR
+      //   - ER ≥ 5 on the current line (blow-up)
+      // Plus a guard so we only pull when there's a real reliever
+      // (stamina < 65) available — don't yank a starter for another starter.
+      const us = ctx.userSide
+      if (us === 'home' || us === 'away') {
+        const fatigue = state[`${us}Fatigue`]
+        const pitches = state[`${us}Pitches`]
+        const line = state[`${us}PitcherLine`]
+        const er = line?.er ?? 0
+        const bullpen = state[`${us}Bullpen`]
+        const overworked = fatigue >= 80 || pitches >= 100 || er >= 5
+        if (overworked && Array.isArray(bullpen) && bullpen.length > 0) {
+          const reliever = bullpen.find(p => (p.pitcher?.stamina ?? 50) < 65) || bullpen[0]
+          if (reliever) pitchingChange(reliever)
+        }
+      }
       step()
       safety++
     }
