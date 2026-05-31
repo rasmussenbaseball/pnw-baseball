@@ -175,6 +175,11 @@ export default function PlayerDetail() {
         </div>
       </div>
 
+      {/* Per-game log — sourced from save.schedule[].boxscore. Only games the
+          user actually played (live or auto-sim with boxscore captured) show
+          per-PA stats; older non-user games may not have a boxscore. */}
+      <GameLogCard save={save} player={player} />
+
       {/* Ratings detail */}
       {player.isHitter && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
@@ -343,6 +348,134 @@ function RatingPill({ label, value, tier }) {
     <div className={'rounded p-3 text-center ' + tier.bg}>
       <div className={'text-2xl font-bold ' + tier.color}>{value}</div>
       <div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>
+    </div>
+  )
+}
+
+/**
+ * Per-game log for the player. Pulls every played game from save.schedule
+ * that has a captured boxscore + an entry for this player. Sorted newest
+ * first. Per Zack's note: "having game logs on player pages for both
+ * hitters and pitchers would be a good addition."
+ */
+function GameLogCard({ save, player }) {
+  const rows = useMemo(() => {
+    if (!save?.schedule || !player?.id) return []
+    const out = []
+    const userSchoolId = save.userSchoolId
+    for (const g of save.schedule) {
+      if (!g.played) continue
+      const bs = g.boxscore
+      if (!bs) continue
+      const batLine = bs.batterStats?.[player.id]
+      const pitLine = bs.pitcherStats?.[player.id]
+      if (!batLine && !pitLine) continue
+      const userIsHome = g.homeId === userSchoolId
+      const oppId = userIsHome ? g.awayId : g.homeId
+      const opp = save.schools?.[oppId]
+      const oppName = opp?.name || (typeof oppId === 'string' ? oppId.replace(/[-_]/g, ' ') : 'Opp')
+      const my = userIsHome ? g.homeRuns : g.awayRuns
+      const them = userIsHome ? g.awayRuns : g.homeRuns
+      const result = my == null || them == null ? '' : (my > them ? 'W' : my < them ? 'L' : '—')
+      out.push({
+        id: g.id,
+        date: g.date || '',
+        opp: oppName,
+        opPrefix: userIsHome ? 'vs' : '@',
+        result,
+        score: my != null && them != null ? `${my}-${them}` : '',
+        bat: batLine || null,
+        pit: pitLine || null,
+      })
+    }
+    out.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    return out
+  }, [save, player?.id])
+
+  if (rows.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-2">Game Log</h2>
+        <p className="text-sm text-gray-400">No game-by-game logs yet. (Boxscores are captured for games the user plays or auto-sims this season.)</p>
+      </div>
+    )
+  }
+  const isPitcher = player?.isPitcher
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Game Log <span className="normal-case text-gray-400 font-normal">({rows.length} game{rows.length === 1 ? '' : 's'})</span></h2>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-xs">
+          <thead className="text-[10px] uppercase tracking-wider text-gray-500 text-left">
+            {isPitcher ? (
+              <tr className="border-b border-gray-200">
+                <th className="py-1 pr-2">Date</th>
+                <th>Opp</th>
+                <th>Res</th>
+                <th className="text-center">IP</th>
+                <th className="text-center">H</th>
+                <th className="text-center">ER</th>
+                <th className="text-center">BB</th>
+                <th className="text-center">K</th>
+                <th className="text-center">HR</th>
+                <th className="text-center">PA</th>
+              </tr>
+            ) : (
+              <tr className="border-b border-gray-200">
+                <th className="py-1 pr-2">Date</th>
+                <th>Opp</th>
+                <th>Res</th>
+                <th className="text-center">AB</th>
+                <th className="text-center">H</th>
+                <th className="text-center">2B</th>
+                <th className="text-center">3B</th>
+                <th className="text-center">HR</th>
+                <th className="text-center">RBI</th>
+                <th className="text-center">BB</th>
+                <th className="text-center">K</th>
+                <th className="text-center">SB</th>
+              </tr>
+            )}
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const colorCls = r.result === 'W' ? 'text-emerald-700' : r.result === 'L' ? 'text-red-700' : 'text-gray-500'
+              return (
+                <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-1 pr-2 text-gray-700 whitespace-nowrap">{r.date}</td>
+                  <td className="text-gray-700 whitespace-nowrap">{r.opPrefix} {r.opp}</td>
+                  <td className={'font-bold ' + colorCls + ' whitespace-nowrap'}>{r.result}{r.score ? ` ${r.score}` : ''}</td>
+                  {isPitcher && r.pit ? (
+                    <>
+                      <td className="text-center font-mono">{formatIp((r.pit.outs || 0) / 3)}</td>
+                      <td className="text-center">{r.pit.h || 0}</td>
+                      <td className="text-center">{r.pit.er || 0}</td>
+                      <td className="text-center">{r.pit.bb || 0}</td>
+                      <td className="text-center font-bold">{r.pit.k || 0}</td>
+                      <td className="text-center">{r.pit.hr || 0}</td>
+                      <td className="text-center text-gray-500">{r.pit.pa || 0}</td>
+                    </>
+                  ) : !isPitcher && r.bat ? (
+                    <>
+                      <td className="text-center">{r.bat.ab || 0}</td>
+                      <td className="text-center font-bold">{r.bat.h || 0}</td>
+                      <td className="text-center">{r.bat.d || 0}</td>
+                      <td className="text-center">{r.bat.t || 0}</td>
+                      <td className="text-center">{r.bat.hr || 0}</td>
+                      <td className="text-center">{r.bat.rbi || 0}</td>
+                      <td className="text-center">{r.bat.bb || 0}</td>
+                      <td className="text-center">{r.bat.k || 0}</td>
+                      <td className="text-center">{r.bat.sb || 0}</td>
+                    </>
+                  ) : (
+                    <td colSpan={9} className="text-center text-gray-400 italic">—</td>
+                  )}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
