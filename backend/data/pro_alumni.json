@@ -1,0 +1,2037 @@
+{
+  "generated_at": "2026-05-31T19:33:27.740502+00:00",
+  "source": "Pro alumni.xlsx",
+  "players": [
+    {
+      "name": "Riley O'Brien",
+      "college_raw": "College of Idaho",
+      "college_team_ids": [
+        21
+      ],
+      "player_id": null,
+      "drafted_by": "Tampa Bay Rays",
+      "year_drafted": 2017,
+      "pick": "229",
+      "current_team": "St. Louis Cardinals",
+      "level": "MLB",
+      "affiliate": "St. Louis Cardinals",
+      "stats_url": "https://www.mlb.com/player/riley-o-brien-676617"
+    },
+    {
+      "name": "Payton Graham",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 3789,
+      "drafted_by": "St. Louis Cardinals",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "Palm Beach Cardinals",
+      "level": "Rk",
+      "affiliate": "St. Louis Cardinals",
+      "stats_url": "https://www.mlb.com/player/payton-graham-804979?stats=career-r-pitching-minors&year=2026"
+    },
+    {
+      "name": "Troy Johnston",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 7993,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2019,
+      "pick": "501",
+      "current_team": "Colorado Rockies",
+      "level": "MLB",
+      "affiliate": "Colorado Rockies",
+      "stats_url": "https://www.mlb.com/player/troy-johnston-687859"
+    },
+    {
+      "name": "William Kempner",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 6524,
+      "drafted_by": "San Francisco Giants",
+      "year_drafted": 2022,
+      "pick": "106",
+      "current_team": "Miami Marlins",
+      "level": "MLB",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.mlb.com/player/william-kempner-687531"
+    },
+    {
+      "name": "Casey Legumina",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 8001,
+      "drafted_by": "Minnesota Twins",
+      "year_drafted": 2019,
+      "pick": "239",
+      "current_team": "Tampa Bay Rays",
+      "level": "MLB",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.mlb.com/player/casey-legumina-668984"
+    },
+    {
+      "name": "Eli Morgan",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": null,
+      "drafted_by": "Cleveland Indians",
+      "year_drafted": 2017,
+      "pick": "252",
+      "current_team": "Kansas City Royals",
+      "level": "MLB",
+      "affiliate": "Kansas City Royals",
+      "stats_url": "https://www.mlb.com/player/eli-morgan-669212"
+    },
+    {
+      "name": "Brett Harris",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 7855,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2021,
+      "pick": "218",
+      "current_team": "Las Vegas Aviators",
+      "level": "AAA",
+      "affiliate": "Oakland Athletics",
+      "stats_url": "https://www.milb.com/player/brett-harris-695391"
+    },
+    {
+      "name": "Alek Jacob",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 7864,
+      "drafted_by": "San Diego Padres",
+      "year_drafted": 2021,
+      "pick": "490",
+      "current_team": "El Paso Chihuahuas",
+      "level": "AAA",
+      "affiliate": "San Diego Padres",
+      "stats_url": "https://www.milb.com/player/alek-jacob-689690"
+    },
+    {
+      "name": "Wyatt Mills",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": null,
+      "drafted_by": "Seattle Mariners",
+      "year_drafted": 2017,
+      "pick": "93",
+      "current_team": "Oklahoma City Comets",
+      "level": "AAA",
+      "affiliate": "Los Angeles Dodgers",
+      "stats_url": "https://www.milb.com/player/wyatt-mills-670090"
+    },
+    {
+      "name": "Marco Gonzales",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": null,
+      "drafted_by": "St. Louis Cardinals",
+      "year_drafted": 2013,
+      "pick": "19",
+      "current_team": "El Paso Chihuahuas",
+      "level": "AAA",
+      "affiliate": "San Diego Padres",
+      "stats_url": "https://www.milb.com/player/marco-gonzales-594835"
+    },
+    {
+      "name": "Michael Rucker",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": null,
+      "drafted_by": "Chicago Cubs",
+      "year_drafted": 2016,
+      "pick": "344",
+      "current_team": "Tacoma Rainiers",
+      "level": "AAA",
+      "affiliate": "Seattle Mariners",
+      "stats_url": "https://www.milb.com/player/michael-rucker-621074"
+    },
+    {
+      "name": "Owen Wild",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 5571,
+      "drafted_by": "Tampa Bay Rays",
+      "year_drafted": 2023,
+      "pick": "213",
+      "current_team": "Durham Bulls",
+      "level": "AAA",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.milb.com/player/owen-wild-801643"
+    },
+    {
+      "name": "Brody Jessee",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 6525,
+      "drafted_by": "Cincinnati Reds",
+      "year_drafted": 2022,
+      "pick": "303",
+      "current_team": "Chattanooga Lookouts",
+      "level": "AA",
+      "affiliate": "Cincinnati Reds",
+      "stats_url": "https://www.milb.com/player/brody-jessee-689297"
+    },
+    {
+      "name": "Trystan Vrieling",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 6520,
+      "drafted_by": "New York Yankees",
+      "year_drafted": 2022,
+      "pick": "100",
+      "current_team": "Richmond Flying Squirrels",
+      "level": "AA",
+      "affiliate": "San Francisco Giants",
+      "stats_url": "https://www.milb.com/player/trystan-vrieling-801639"
+    },
+    {
+      "name": "Gabriel Hughes",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 6519,
+      "drafted_by": "Colorado Rockies",
+      "year_drafted": 2022,
+      "pick": "10",
+      "current_team": "Spokane Indians",
+      "level": "A+",
+      "affiliate": "Colorado Rockies",
+      "stats_url": "https://www.milb.com/player/gabriel-hughes-687312"
+    },
+    {
+      "name": "Cade McGee",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 5563,
+      "drafted_by": "St. Louis Cardinals",
+      "year_drafted": 2024,
+      "pick": "261",
+      "current_team": "Peoria Chiefs",
+      "level": "A+",
+      "affiliate": "St. Louis Cardinals",
+      "stats_url": "https://www.milb.com/player/cade-mcgee-801629"
+    },
+    {
+      "name": "Liam Paddack",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 4677,
+      "drafted_by": "Chicago White Sox",
+      "year_drafted": 2024,
+      "pick": "529",
+      "current_team": "Winston-Salem Dash",
+      "level": "A+",
+      "affiliate": "Chicago White Sox",
+      "stats_url": "https://www.milb.com/player/liam-paddack-822473"
+    },
+    {
+      "name": "Trey Peters",
+      "college_raw": "Gonzaga University",
+      "college_team_ids": [
+        483
+      ],
+      "player_id": 4682,
+      "drafted_by": "Pittsburgh Pirates",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "Greensboro Grasshoppers",
+      "level": "A+",
+      "affiliate": "Pittsburgh Pirates",
+      "stats_url": "https://www.milb.com/player/treyson-peters-824288"
+    },
+    {
+      "name": "Connor Brogdon",
+      "college_raw": "Lewis and Clarke State",
+      "college_team_ids": [
+        22
+      ],
+      "player_id": null,
+      "drafted_by": "Philadelphia Phillies",
+      "year_drafted": 2017,
+      "pick": "293",
+      "current_team": "Cleveland Guardians.",
+      "level": "MLB",
+      "affiliate": "Cleveland Guardians",
+      "stats_url": "https://www.mlb.com/player/connor-brogdon-641401"
+    },
+    {
+      "name": "Zach Penrod",
+      "college_raw": "Northwest Nazarene University  and Corban University",
+      "college_team_ids": [
+        9,
+        23
+      ],
+      "player_id": 8364,
+      "drafted_by": "Texas Rangers",
+      "year_drafted": 2018,
+      "pick": "NDFA",
+      "current_team": "Rochester Red Wings",
+      "level": "AAA",
+      "affiliate": "Washington Nationals",
+      "stats_url": "https://www.milb.com/player/zach-penrod-683068"
+    },
+    {
+      "name": "Kyle Dernedde",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 5529,
+      "drafted_by": "Cleveland Guardians",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "ACL Guardians",
+      "level": "Rk",
+      "affiliate": "Cleveland Guardians",
+      "stats_url": "https://www.milb.com/player/kyle-dernedde-686952"
+    },
+    {
+      "name": "Travis Bazzana",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 4625,
+      "drafted_by": "Cleveland Guardians",
+      "year_drafted": 2024,
+      "pick": "1",
+      "current_team": "Cleveland Guardians",
+      "level": "MLB",
+      "affiliate": "Cleveland Guardians",
+      "stats_url": "https://www.mlb.com/player/travis-bazzana-683953"
+    },
+    {
+      "name": "Matthew Boyd",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": null,
+      "drafted_by": "Toronto Blue Jays",
+      "year_drafted": 2013,
+      "pick": "175",
+      "current_team": "Chicago Cubs",
+      "level": "MLB",
+      "affiliate": "Chicago Cubs",
+      "stats_url": "https://www.mlb.com/player/matthew-boyd-571510"
+    },
+    {
+      "name": "Michael Conforto",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": null,
+      "drafted_by": "New York Mets",
+      "year_drafted": 2014,
+      "pick": "10",
+      "current_team": "Chicago Cubs",
+      "level": "MLB",
+      "affiliate": "Chicago Cubs",
+      "stats_url": "https://www.mlb.com/player/michael-conforto-624424"
+    },
+    {
+      "name": "Brandon Eisert",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 7973,
+      "drafted_by": "Toronto Blue Jays",
+      "year_drafted": 2019,
+      "pick": "537",
+      "current_team": "Chicago White Sox",
+      "level": "MLB",
+      "affiliate": "Chicago White Sox",
+      "stats_url": "https://www.mlb.com/player/brandon-eisert-685126"
+    },
+    {
+      "name": "Steven Kwan",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 8054,
+      "drafted_by": "Cleveland Guardians",
+      "year_drafted": 2018,
+      "pick": "163",
+      "current_team": "Cleveland Guardians",
+      "level": "MLB",
+      "affiliate": "Cleveland Guardians",
+      "stats_url": "https://www.mlb.com/player/steven-kwan-680757"
+    },
+    {
+      "name": "Trevor Larnach",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 8055,
+      "drafted_by": "Minnesota Twins",
+      "year_drafted": 2018,
+      "pick": "20",
+      "current_team": "Minnesota Twins",
+      "level": "MLB",
+      "affiliate": "Minnesota Twins",
+      "stats_url": "https://www.mlb.com/player/trevor-larnach-663616"
+    },
+    {
+      "name": "Nick Madrigal",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 8053,
+      "drafted_by": "Chicago White Sox",
+      "year_drafted": 2018,
+      "pick": "4",
+      "current_team": "Los Angeles Angels",
+      "level": "MLB",
+      "affiliate": "Los Angeles Angels",
+      "stats_url": "https://www.mlb.com/player/nick-madrigal-663611"
+    },
+    {
+      "name": "Wade Meckler",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 6481,
+      "drafted_by": "San Francisco Giants",
+      "year_drafted": 2022,
+      "pick": "256",
+      "current_team": "Los Angeles Angels",
+      "level": "MLB",
+      "affiliate": "Los Angeles Angels",
+      "stats_url": "https://www.mlb.com/player/wade-meckler-685133"
+    },
+    {
+      "name": "Jacob Melton",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 6480,
+      "drafted_by": "Houston Astros",
+      "year_drafted": 2022,
+      "pick": "64",
+      "current_team": "Tampa Bay Rays",
+      "level": "MLB",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.mlb.com/player/jacob-melton-689200"
+    },
+    {
+      "name": "Drew Rasmussen",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": null,
+      "drafted_by": "Milwaukee Brewers",
+      "year_drafted": 2018,
+      "pick": "185",
+      "current_team": "Tampa Bay Rays",
+      "level": "MLB",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.mlb.com/player/drew-rasmussen-656876"
+    },
+    {
+      "name": "Adley Rutschman",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 7966,
+      "drafted_by": "Baltimore Orioles",
+      "year_drafted": 2019,
+      "pick": "1",
+      "current_team": "Baltimore Orioles",
+      "level": "MLB",
+      "affiliate": "Baltimore Orioles",
+      "stats_url": "https://www.mlb.com/player/adley-rutschman-668939"
+    },
+    {
+      "name": "Cam Booser",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": null,
+      "drafted_by": "Minnesota Twins",
+      "year_drafted": 2013,
+      "pick": "NDFA",
+      "current_team": "Durham Bulls",
+      "level": "AAA",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.milb.com/player/cam-booser-592155"
+    },
+    {
+      "name": "Andrew Walling",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 7898,
+      "drafted_by": "Philadelphia Phillies",
+      "year_drafted": 2022,
+      "pick": "NDFA",
+      "current_team": "Lehigh Valley IronPigs",
+      "level": "AAA",
+      "affiliate": "Philadelphia Phillies",
+      "stats_url": "https://www.milb.com/player/andrew-walling-681003"
+    },
+    {
+      "name": "Kevin Abel",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 7828,
+      "drafted_by": "Cincinnati Reds",
+      "year_drafted": 2021,
+      "pick": "210",
+      "current_team": "Chattanooga Lookouts",
+      "level": "AA",
+      "affiliate": "Cincinnati Reds",
+      "stats_url": "https://www.milb.com/player/kevin-abel-674265"
+    },
+    {
+      "name": "D.J. Carpenter",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 6493,
+      "drafted_by": "St. Louis Cardinals",
+      "year_drafted": 2022,
+      "pick": "427",
+      "current_team": "Springfield Cardinals",
+      "level": "AA",
+      "affiliate": "St. Louis Cardinals",
+      "stats_url": "https://www.milb.com/player/d-j-carpenter-681884"
+    },
+    {
+      "name": "Christian Chamberlain",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 7897,
+      "drafted_by": "Kansas City Royals",
+      "year_drafted": 2020,
+      "pick": "105",
+      "current_team": "Northwest Arkansas Naturals",
+      "level": "AA",
+      "affiliate": "Kansas City Royals",
+      "stats_url": "https://www.milb.com/player/christian-chamberlain-685125"
+    },
+    {
+      "name": "Garret Forrester",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 5527,
+      "drafted_by": "Pittsburgh Pirates",
+      "year_drafted": 2023,
+      "pick": "73",
+      "current_team": "Pensacola Blue Wahoos",
+      "level": "AA",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/garret-forrester-807720"
+    },
+    {
+      "name": "Tristan Garnett",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": null,
+      "drafted_by": "Philadelphia Phillies",
+      "year_drafted": 2021,
+      "pick": "NDFA",
+      "current_team": "Reading Fightin Phils",
+      "level": "AA",
+      "affiliate": "Philadelphia Phillies",
+      "stats_url": "https://www.milb.com/player/tristan-garnett-702911"
+    },
+    {
+      "name": "Gavin Logan",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 6482,
+      "drafted_by": "Arizona Diamondbacks",
+      "year_drafted": 2022,
+      "pick": "258",
+      "current_team": "Amarillo Sod Poodles",
+      "level": "AA",
+      "affiliate": "Arizona Diamondbacks",
+      "stats_url": "https://www.milb.com/player/gavin-logan-678099"
+    },
+    {
+      "name": "Kai Murphy",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 7899,
+      "drafted_by": "San Diego Padres",
+      "year_drafted": 2022,
+      "pick": "NDFA",
+      "current_team": "San Antonio Missions",
+      "level": "AA",
+      "affiliate": "San Diego Padres",
+      "stats_url": "https://www.milb.com/player/kai-murphy-687625"
+    },
+    {
+      "name": "Chase Watkins",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 7833,
+      "drafted_by": "Chicago Cubs",
+      "year_drafted": 2021,
+      "pick": "274",
+      "current_team": "Birmingham Barons",
+      "level": "AA",
+      "affiliate": "Chicago White Sox",
+      "stats_url": "https://www.milb.com/player/chase-watkins-677352"
+    },
+    {
+      "name": "Ryan Brown",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 5534,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2023,
+      "pick": "466",
+      "current_team": "Lansing Lugnuts",
+      "level": "A+",
+      "affiliate": "Oakland Athletics",
+      "stats_url": "https://www.milb.com/player/ryan-brown-688664"
+    },
+    {
+      "name": "Aiden Jimenez",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 5538,
+      "drafted_by": "Kansas City Royals",
+      "year_drafted": 2025,
+      "pick": "158",
+      "current_team": "Quad Cities River Bandits",
+      "level": "A+",
+      "affiliate": "Kansas City Royals",
+      "stats_url": "https://www.milb.com/player/aiden-jimenez-804525"
+    },
+    {
+      "name": "Jacob Kmatz",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 4634,
+      "drafted_by": "Tampa Bay Rays",
+      "year_drafted": 2024,
+      "pick": "154",
+      "current_team": "Bowling Green Hot Rods",
+      "level": "A+",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.milb.com/player/jacob-kmatz-695771"
+    },
+    {
+      "name": "Aiden May",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 4633,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2024,
+      "pick": "70",
+      "current_team": "Beloit Sky Carp",
+      "level": "A+",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/aiden-may-801995"
+    },
+    {
+      "name": "Wilson Weber",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 3748,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2025,
+      "pick": "384",
+      "current_team": "Beloit Sky Carp",
+      "level": "A+",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/wilson-weber-701777"
+    },
+    {
+      "name": "Ty Doucette",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": null,
+      "drafted_by": "Cincinnati Reds",
+      "year_drafted": 2025,
+      "pick": "294",
+      "current_team": "Daytona Tortugas",
+      "level": "A",
+      "affiliate": "Cincinnati Reds",
+      "stats_url": "https://www.milb.com/player/ty-doucette-802494"
+    },
+    {
+      "name": "Brandon Forrester",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": null,
+      "drafted_by": "Houston Astros",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "Fayetteville Woodpeckers",
+      "level": "A",
+      "affiliate": "Houston Astros",
+      "stats_url": "https://www.milb.com/player/brandon-forrester-822162"
+    },
+    {
+      "name": "Mason Guerra",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 4630,
+      "drafted_by": "Atlanta Braves",
+      "year_drafted": 2024,
+      "pick": "431",
+      "current_team": "Rome Emperors",
+      "level": "A",
+      "affiliate": "Atlanta Braves",
+      "stats_url": "https://www.milb.com/player/mason-guerra-701653"
+    },
+    {
+      "name": "Nelson Keljo",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 3758,
+      "drafted_by": "Cleveland Guardians",
+      "year_drafted": 2025,
+      "pick": "192",
+      "current_team": "Hill City Howlers",
+      "level": "A",
+      "affiliate": "Cleveland Guardians",
+      "stats_url": "https://www.milb.com/player/nelson-keljo-804940"
+    },
+    {
+      "name": "Dallas Macias",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 3754,
+      "drafted_by": "Atlanta Braves",
+      "year_drafted": 2025,
+      "pick": "457",
+      "current_team": "Augusta GreenJackets",
+      "level": "A",
+      "affiliate": "Atlanta Braves",
+      "stats_url": "https://www.milb.com/player/dallas-macias-702582"
+    },
+    {
+      "name": "Kellan Oakes",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 3757,
+      "drafted_by": "Houston Astros",
+      "year_drafted": 2025,
+      "pick": "276",
+      "current_team": "Fayetteville Woodpeckers",
+      "level": "A",
+      "affiliate": "Houston Astros",
+      "stats_url": "https://www.milb.com/player/kellan-oakes-822163"
+    },
+    {
+      "name": "Canon Reeder",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 3749,
+      "drafted_by": "Pittsburgh Pirates",
+      "year_drafted": 2025,
+      "pick": "533",
+      "current_team": "Bradenton Marauders",
+      "level": "A",
+      "affiliate": "Pittsburgh Pirates",
+      "stats_url": "https://www.milb.com/player/canon-reeder-822165"
+    },
+    {
+      "name": "Tanner Smith",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 4632,
+      "drafted_by": "Atlanta Braves",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "Augusta GreenJackets",
+      "level": "A",
+      "affiliate": "Atlanta Braves",
+      "stats_url": "https://www.milb.com/player/tanner-smith-695659"
+    },
+    {
+      "name": "Sam Stuhr",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": null,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2024,
+      "pick": "137",
+      "current_team": "Stockton Ports",
+      "level": "A",
+      "affiliate": "Oakland Athletics",
+      "stats_url": "https://www.milb.com/player/sam-stuhr-702023"
+    },
+    {
+      "name": "Gavin Turley",
+      "college_raw": "Oregon State University",
+      "college_team_ids": [
+        3
+      ],
+      "player_id": 3746,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2025,
+      "pick": "110",
+      "current_team": "Stockton Ports",
+      "level": "A",
+      "affiliate": "Oakland Athletics",
+      "stats_url": "https://www.milb.com/player/gavin-turley-702504"
+    },
+    {
+      "name": "Aiva Arquette",
+      "college_raw": "Oregon State University  and University of Washington",
+      "college_team_ids": [
+        3,
+        1
+      ],
+      "player_id": 3745,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2025,
+      "pick": "7",
+      "current_team": "Pensacola Blue Wahoos",
+      "level": "AA",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/aiva-arquette-804109"
+    },
+    {
+      "name": "Trent Sellers",
+      "college_raw": "Oregon State University and Lewis and Clarke State and Washington State University",
+      "college_team_ids": [
+        3,
+        22,
+        4
+      ],
+      "player_id": 5533,
+      "drafted_by": "New York Yankees",
+      "year_drafted": 2023,
+      "pick": "NDFA",
+      "current_team": "Somerset Patriots",
+      "level": "AA",
+      "affiliate": "New York Yankees",
+      "stats_url": "https://www.milb.com/player/trent-sellers-815587"
+    },
+    {
+      "name": "Elijah Hainline",
+      "college_raw": "Oregon State University and Washington State University",
+      "college_team_ids": [
+        3,
+        4
+      ],
+      "player_id": 4628,
+      "drafted_by": "Los Angeles Dodgers",
+      "year_drafted": 2024,
+      "pick": "220",
+      "current_team": "Tulsa Drillers",
+      "level": "AA",
+      "affiliate": "Los Angeles Dodgers",
+      "stats_url": "https://www.milb.com/player/elijah-hainline-809944"
+    },
+    {
+      "name": "Justin Armbruester",
+      "college_raw": "Pacific Lutheran University",
+      "college_team_ids": [
+        11
+      ],
+      "player_id": 8564,
+      "drafted_by": "Baltimore Orioles",
+      "year_drafted": 2021,
+      "pick": "347",
+      "current_team": "St. Lucie Mets",
+      "level": "A",
+      "affiliate": "New York Mets",
+      "stats_url": "https://www.milb.com/player/justin-armbruester-701859"
+    },
+    {
+      "name": "Janson Junk",
+      "college_raw": "Seattle University",
+      "college_team_ids": [
+        484
+      ],
+      "player_id": null,
+      "drafted_by": "New York Yankees",
+      "year_drafted": 2017,
+      "pick": "662",
+      "current_team": "Miami Marlins",
+      "level": "MLB",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.mlb.com/player/janson-junk-676083"
+    },
+    {
+      "name": "Tarik Skubal",
+      "college_raw": "Seattle University",
+      "college_team_ids": [
+        484
+      ],
+      "player_id": 8118,
+      "drafted_by": "Detroit Tigers",
+      "year_drafted": 2018,
+      "pick": "255",
+      "current_team": "Detroit Tigers",
+      "level": "MLB",
+      "affiliate": "Detroit Tigers",
+      "stats_url": "https://www.mlb.com/player/tarik-skubal-669373"
+    },
+    {
+      "name": "Nestor German",
+      "college_raw": "Seattle University",
+      "college_team_ids": [
+        484
+      ],
+      "player_id": 7393,
+      "drafted_by": "Baltimore Orioles",
+      "year_drafted": 2023,
+      "pick": "331",
+      "current_team": "Norfolk Tides",
+      "level": "AAA",
+      "affiliate": "Baltimore Orioles",
+      "stats_url": "https://www.milb.com/player/nestor-german-815148"
+    },
+    {
+      "name": "Garrett Hawkins",
+      "college_raw": "The University of British Columbia",
+      "college_team_ids": [
+        5720
+      ],
+      "player_id": 8841,
+      "drafted_by": "San Diego Padres",
+      "year_drafted": 2021,
+      "pick": "280",
+      "current_team": "El Paso Chihuahuas",
+      "level": "AAA",
+      "affiliate": "San Diego Padres",
+      "stats_url": "https://www.milb.com/player/garrett-hawkins-678184"
+    },
+    {
+      "name": "Ryan Heppner",
+      "college_raw": "The University of British Columbia",
+      "college_team_ids": [
+        5720
+      ],
+      "player_id": 4797,
+      "drafted_by": "Atlanta Braves",
+      "year_drafted": 2025,
+      "pick": "577",
+      "current_team": "Augusta GreenJackets",
+      "level": "A",
+      "affiliate": "Atlanta Braves",
+      "stats_url": "https://www.milb.com/player/ryan-heppner-836085"
+    },
+    {
+      "name": "Jonny McGill",
+      "college_raw": "The University of British Columbia",
+      "college_team_ids": [
+        5720
+      ],
+      "player_id": 4785,
+      "drafted_by": "Los Angeles Angels",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "Rancho Cucamonga Quakes",
+      "level": "A",
+      "affiliate": "Los Angeles Angels",
+      "stats_url": "https://www.milb.com/player/jonny-mcgill-692169"
+    },
+    {
+      "name": "Vicarte Domingo",
+      "college_raw": "The University of British Columbia",
+      "college_team_ids": [
+        5720
+      ],
+      "player_id": 5684,
+      "drafted_by": "San Diego Padres",
+      "year_drafted": 2024,
+      "pick": "570",
+      "current_team": "Lake Elsinore Storm",
+      "level": "A",
+      "affiliate": "San Diego Padres",
+      "stats_url": "https://www.milb.com/player/vicarte-domingo-692157"
+    },
+    {
+      "name": "Adam Maier",
+      "college_raw": "The University of British Columbia and University of Oregon",
+      "college_team_ids": [
+        5720,
+        2
+      ],
+      "player_id": 6472,
+      "drafted_by": "Atlanta Braves",
+      "year_drafted": 2021,
+      "pick": "215",
+      "current_team": "Everett AquaSox",
+      "level": "A+",
+      "affiliate": "Seattle Mariners",
+      "stats_url": "https://www.milb.com/player/adam-maier-683264"
+    },
+    {
+      "name": "Jeffery Heard",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 3729,
+      "drafted_by": "Los Angeles Angels",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "ACL Angels",
+      "level": "Rk",
+      "affiliate": "Los Angeles Angels",
+      "stats_url": "https://www.milb.com/player/jeffery-heard-822153"
+    },
+    {
+      "name": "Mason Neville",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 3726,
+      "drafted_by": "Cincinnati Reds",
+      "year_drafted": 2025,
+      "pick": "114",
+      "current_team": "ACL Reds",
+      "level": "Rk",
+      "affiliate": "Cincinnati Reds",
+      "stats_url": "https://www.milb.com/player/mason-neville-702563"
+    },
+    {
+      "name": "Garrett Cleavinger",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": null,
+      "drafted_by": "Baltimore Orioles",
+      "year_drafted": 2015,
+      "pick": "102",
+      "current_team": "Tampa Bay Rays",
+      "level": "MLB",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.mlb.com/player/garrett-cleavinger-664076"
+    },
+    {
+      "name": "Jonny DeLuca",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 7953,
+      "drafted_by": "Los Angeles Dodgers",
+      "year_drafted": 2019,
+      "pick": "761",
+      "current_team": "Tampa Bay Rays",
+      "level": "MLB",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.mlb.com/player/jonny-deluca-676356"
+    },
+    {
+      "name": "Ryne Nelson",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 7962,
+      "drafted_by": "Arizona Diamondbacks",
+      "year_drafted": 2019,
+      "pick": "56",
+      "current_team": "Arizona Diamondbacks",
+      "level": "MLB",
+      "affiliate": "Arizona Diamondbacks",
+      "stats_url": "https://www.mlb.com/player/ryne-nelson-669194"
+    },
+    {
+      "name": "Rikuu Nishida",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 5509,
+      "drafted_by": "Chicago White Sox",
+      "year_drafted": 2023,
+      "pick": "329",
+      "current_team": "Chicago White Sox",
+      "level": "MLB",
+      "affiliate": "Chicago White Sox",
+      "stats_url": "https://www.mlb.com/player/rikuu-nishida-807747"
+    },
+    {
+      "name": "David Peterson",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": null,
+      "drafted_by": "New York Mets",
+      "year_drafted": 2017,
+      "pick": "20",
+      "current_team": "New York Mets",
+      "level": "MLB",
+      "affiliate": "New York Mets",
+      "stats_url": "https://www.mlb.com/player/david-peterson-656849"
+    },
+    {
+      "name": "Spencer Steer",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 7952,
+      "drafted_by": "Minnesota Twins",
+      "year_drafted": 2019,
+      "pick": "90",
+      "current_team": "Cincinnati Reds",
+      "level": "MLB",
+      "affiliate": "Cincinnati Reds",
+      "stats_url": "https://www.mlb.com/player/spencer-steer-668715"
+    },
+    {
+      "name": "Robby Ahlstrom",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": null,
+      "drafted_by": "New York Yankees",
+      "year_drafted": 2021,
+      "pick": "213",
+      "current_team": "Round Rock Express",
+      "level": "AAA",
+      "affiliate": "Texas Rangers",
+      "stats_url": "https://www.milb.com/player/robby-ahlstrom-695239"
+    },
+    {
+      "name": "Cole Irvin",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": null,
+      "drafted_by": "Philadelphia Phillies",
+      "year_drafted": 2016,
+      "pick": "137",
+      "current_team": "Oklahoma City Comets",
+      "level": "AAA",
+      "affiliate": "Los Angeles Dodgers",
+      "stats_url": "https://www.milb.com/player/cole-irvin-608344"
+    },
+    {
+      "name": "Josh Kasevich",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 6463,
+      "drafted_by": "Toronto Blue Jays",
+      "year_drafted": 2022,
+      "pick": "60",
+      "current_team": "Buffalo Bisons",
+      "level": "AAA",
+      "affiliate": "Toronto Blue Jays",
+      "stats_url": "https://www.milb.com/player/josh-kasevich-688460"
+    },
+    {
+      "name": "Matt Krook",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": null,
+      "drafted_by": "San Francisco Giants",
+      "year_drafted": 2016,
+      "pick": "125",
+      "current_team": "Las Vegas Aviators",
+      "level": "AAA",
+      "affiliate": "Athletics",
+      "stats_url": "https://www.milb.com/player/matt-krook-640454"
+    },
+    {
+      "name": "Aaron Zavala",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 7801,
+      "drafted_by": "Texas Rangers",
+      "year_drafted": 2021,
+      "pick": "38",
+      "current_team": "Round Rock Express",
+      "level": "AAA",
+      "affiliate": "Texas Rangers",
+      "stats_url": "https://www.milb.com/player/aaron-zavala-701648"
+    },
+    {
+      "name": "Sabin Ceballos",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 5507,
+      "drafted_by": "Atlanta Braves",
+      "year_drafted": 2023,
+      "pick": "94",
+      "current_team": "Richmond Flying Squirrels",
+      "level": "AA",
+      "affiliate": "San Francisco Giants",
+      "stats_url": "https://www.milb.com/player/sabin-ceballos-694754"
+    },
+    {
+      "name": "R.J. Gordon",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 4616,
+      "drafted_by": "New York Mets",
+      "year_drafted": 2024,
+      "pick": "383",
+      "current_team": "Binghamton Rumble Ponies",
+      "level": "AA",
+      "affiliate": "New York Mets",
+      "stats_url": "https://www.milb.com/player/r-j-gordon-822161"
+    },
+    {
+      "name": "Logan Mercado",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 4620,
+      "drafted_by": "Arizona Diamondbacks",
+      "year_drafted": 2024,
+      "pick": "NDFA",
+      "current_team": "Amarillo Sod Poodles",
+      "level": "AA",
+      "affiliate": "Arizona Diamondbacks",
+      "stats_url": "https://www.milb.com/player/logan-mercado-694781"
+    },
+    {
+      "name": "Brennan Milone",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 6461,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2022,
+      "pick": "184",
+      "current_team": "Midland RockHounds",
+      "level": "AA",
+      "affiliate": "Oakland Athletics",
+      "stats_url": "https://www.milb.com/player/brennan-milone-686810"
+    },
+    {
+      "name": "Brock Moore",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 4621,
+      "drafted_by": "Seattle Mariners",
+      "year_drafted": 2024,
+      "pick": "213",
+      "current_team": "Arkansas Travelers",
+      "level": "AA",
+      "affiliate": "Seattle Mariners",
+      "stats_url": "https://www.milb.com/player/brock-moore-822160"
+    },
+    {
+      "name": "Nico Tellache",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 7817,
+      "drafted_by": "Seattle Mariners",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "Arkansas Travelers",
+      "level": "AA",
+      "affiliate": "Seattle Mariners",
+      "stats_url": "https://www.milb.com/player/nico-tellache-688548"
+    },
+    {
+      "name": "Kenyon Yovan",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 7803,
+      "drafted_by": "Los Angeles Angels",
+      "year_drafted": 2019,
+      "pick": "881",
+      "current_team": "Rocket City Trash Pandas",
+      "level": "AA",
+      "affiliate": "Los Angeles Angels",
+      "stats_url": "https://www.milb.com/player/kenyon-yovan-668719"
+    },
+    {
+      "name": "Isaac Ayon",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 6468,
+      "drafted_by": "Los Angeles Dodgers",
+      "year_drafted": 2024,
+      "pick": "550",
+      "current_team": "Great Lakes Loons",
+      "level": "A+",
+      "affiliate": "Los Angeles Dodgers",
+      "stats_url": "https://www.milb.com/player/isaac-ayon-694847"
+    },
+    {
+      "name": "Rio Britton",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 6469,
+      "drafted_by": "Arizona Diamondbacks",
+      "year_drafted": 2023,
+      "pick": "445",
+      "current_team": "Hillsboro Hops",
+      "level": "A+",
+      "affiliate": "Arizona Diamondbacks",
+      "stats_url": "https://www.milb.com/player/rio-britton-694833"
+    },
+    {
+      "name": "Carter Garate",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 3728,
+      "drafted_by": "Texas Rangers",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "Hub City Spartanburgers",
+      "level": "A+",
+      "affiliate": "Texas Rangers",
+      "stats_url": "https://www.milb.com/player/carter-garate-804466"
+    },
+    {
+      "name": "Mason Lytle",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 5516,
+      "drafted_by": "Houston Astros",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "Asheville Tourists",
+      "level": "A+",
+      "affiliate": "Houston Astros",
+      "stats_url": "https://www.milb.com/player/mason-lytle-809860"
+    },
+    {
+      "name": "Maxton Martin",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": null,
+      "drafted_by": "Texas Rangers",
+      "year_drafted": 2023,
+      "pick": "321",
+      "current_team": "Hub City Spartanburgers",
+      "level": "A+",
+      "affiliate": "Texas Rangers",
+      "stats_url": "https://www.milb.com/player/maxton-martin-807722"
+    },
+    {
+      "name": "Colby Shade",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 5506,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2023,
+      "pick": "263",
+      "current_team": "Beloit Sky Carp",
+      "level": "A+",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/colby-shade-694974"
+    },
+    {
+      "name": "Brayden Spears",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 7818,
+      "drafted_by": "Chicago Cubs",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "South Bend Cubs",
+      "level": "A+",
+      "affiliate": "Chicago Cubs",
+      "stats_url": "https://www.milb.com/player/brayden-spears-687168"
+    },
+    {
+      "name": "Bennett Thompson",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 4611,
+      "drafted_by": "Cleveland Guardians",
+      "year_drafted": 2024,
+      "pick": "385",
+      "current_team": "Lake County Captains",
+      "level": "A+",
+      "affiliate": "Cleveland Guardians",
+      "stats_url": "https://www.milb.com/player/bennett-thompson-701750"
+    },
+    {
+      "name": "Anson Aroz",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 3727,
+      "drafted_by": "Los Angeles Dodgers",
+      "year_drafted": 2025,
+      "pick": "585",
+      "current_team": "Ontario Tower Buzzers",
+      "level": "A",
+      "affiliate": "Los Angeles Dodgers",
+      "stats_url": "https://www.milb.com/player/anson-aroz-695484"
+    },
+    {
+      "name": "Grayson Grinsell",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 3735,
+      "drafted_by": "Detroit Tigers",
+      "year_drafted": 2025,
+      "pick": "189",
+      "current_team": "Lakeland Flying Tigers",
+      "level": "A",
+      "affiliate": "Detroit Tigers",
+      "stats_url": "https://www.milb.com/player/grayson-grinsell-804852"
+    },
+    {
+      "name": "Chase Meggers",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 3730,
+      "drafted_by": "New York Mets",
+      "year_drafted": 2025,
+      "pick": "NDFA",
+      "current_team": "St. Lucie Mets",
+      "level": "A",
+      "affiliate": "New York Mets",
+      "stats_url": "https://www.milb.com/player/chase-meggers-809861"
+    },
+    {
+      "name": "Jason Reitz",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 3736,
+      "drafted_by": "Minnesota Twins",
+      "year_drafted": 2025,
+      "pick": "119",
+      "current_team": "Fort Myers Mighty Mussels",
+      "level": "A",
+      "affiliate": "Minnesota Twins",
+      "stats_url": "https://www.milb.com/player/jason-reitz-805279"
+    },
+    {
+      "name": "Jacob Walsh",
+      "college_raw": "University of Oregon",
+      "college_team_ids": [
+        2
+      ],
+      "player_id": 3725,
+      "drafted_by": "Washington Nationals",
+      "year_drafted": 2025,
+      "pick": "441",
+      "current_team": "Fredericksburg Nationals",
+      "level": "A",
+      "affiliate": "Washington Nationals",
+      "stats_url": "http://milb.com/player/jacob-walsh-701862"
+    },
+    {
+      "name": "Andrew Kittredge",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": null,
+      "drafted_by": "Seattle Mariners",
+      "year_drafted": 2008,
+      "pick": "1360",
+      "current_team": "Baltimore Orioles",
+      "level": "MLB",
+      "affiliate": "Baltimore Orioles",
+      "stats_url": "https://www.mlb.com/player/andrew-kittredge-552640"
+    },
+    {
+      "name": "Stevie Emanuels",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 7881,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2020,
+      "pick": "157",
+      "current_team": "Las Vegas Aviators",
+      "level": "AAA",
+      "affiliate": "Athletics",
+      "stats_url": "https://www.milb.com/player/stevie-emanuels-669434"
+    },
+    {
+      "name": "Levi Jordan",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 8030,
+      "drafted_by": "Chicago Cubs",
+      "year_drafted": 2018,
+      "pick": "878",
+      "current_team": "Rochester Red Wings",
+      "level": "AAA",
+      "affiliate": "Washington Nationals",
+      "stats_url": "https://www.milb.com/player/levi-jordan-682119"
+    },
+    {
+      "name": "Willie MacIver",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 8032,
+      "drafted_by": "Colorado Rockies",
+      "year_drafted": 2018,
+      "pick": "276",
+      "current_team": "Buffalo Bisons",
+      "level": "AAA",
+      "affiliate": "Toronto Blue Jays",
+      "stats_url": "https://www.milb.com/player/willie-maciver-680862"
+    },
+    {
+      "name": "Austin Voth",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": null,
+      "drafted_by": "Washington Nationals",
+      "year_drafted": 2013,
+      "pick": "166",
+      "current_team": "Buffalo Bisons",
+      "level": "AAA",
+      "affiliate": "Toronto Blue Jays",
+      "stats_url": "https://www.milb.com/player/austin-voth-608723"
+    },
+    {
+      "name": "Braiden Ward",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 7779,
+      "drafted_by": "Colorado Rockies",
+      "year_drafted": 2021,
+      "pick": "470",
+      "current_team": "Worcester Red Sox",
+      "level": "AAA",
+      "affiliate": "Boston Red Sox",
+      "stats_url": "https://www.milb.com/player/braiden-ward-685274"
+    },
+    {
+      "name": "Diego Barrera",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 7949,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2023,
+      "pick": "586",
+      "current_team": "Midland RockHounds",
+      "level": "AA",
+      "affiliate": "Oakland Athletics",
+      "stats_url": "https://www.milb.com/player/diego-barrera-685290"
+    },
+    {
+      "name": "Stu Flesland",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": null,
+      "drafted_by": "Colorado Rockies",
+      "year_drafted": 2023,
+      "pick": "322",
+      "current_team": "Hartford Yard Goats",
+      "level": "AA",
+      "affiliate": "Colorado Rockies",
+      "stats_url": "https://www.milb.com/player/stu-flesland-iii-687317"
+    },
+    {
+      "name": "Cole Fontenelle",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 7786,
+      "drafted_by": "Los Angeles Angels",
+      "year_drafted": 2023,
+      "pick": "204",
+      "current_team": "Rocket City Trash Pandas",
+      "level": "AA",
+      "affiliate": "Los Angeles Angels",
+      "stats_url": "https://www.milb.com/player/cole-fontenelle-694304"
+    },
+    {
+      "name": "Coby Morales",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 5489,
+      "drafted_by": "New York Yankees",
+      "year_drafted": 2023,
+      "pick": "552",
+      "current_team": "Somerset Patriots",
+      "level": "AA",
+      "affiliate": "New York Yankees",
+      "stats_url": "https://www.milb.com/player/coby-morales-815089"
+    },
+    {
+      "name": "Stefan Raeth",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 6455,
+      "drafted_by": "Seattle Mariners",
+      "year_drafted": 2022,
+      "pick": "516",
+      "current_team": "Arkansas Travelers",
+      "level": "AA",
+      "affiliate": "Seattle Mariners",
+      "stats_url": "https://www.milb.com/player/stefan-raeth-806288"
+    },
+    {
+      "name": "Will Simpson",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 5488,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2023,
+      "pick": "436",
+      "current_team": "Montgomery Biscuits",
+      "level": "AA",
+      "affiliate": "Tampa Bay Rays",
+      "stats_url": "https://www.milb.com/player/will-simpson-687310"
+    },
+    {
+      "name": "Michael Snyder",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 5492,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2024,
+      "pick": "304",
+      "current_team": "Pensacola Blue Wahoos",
+      "level": "AA",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/michael-snyder-688617"
+    },
+    {
+      "name": "Cam Clayton",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 4594,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2024,
+      "pick": "424",
+      "current_team": "Beloit Sky Carp",
+      "level": "A+",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/cam-clayton-701784"
+    },
+    {
+      "name": "Kiefer Lord",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 5501,
+      "drafted_by": "Baltimore Orioles",
+      "year_drafted": 2023,
+      "pick": "86",
+      "current_team": "Frederick Keys",
+      "level": "A+",
+      "affiliate": "Baltimore Orioles",
+      "stats_url": "https://www.milb.com/player/kiefer-lord-811296"
+    },
+    {
+      "name": "Case Matter",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 5502,
+      "drafted_by": "Texas Rangers",
+      "year_drafted": 2023,
+      "pick": "291",
+      "current_team": "Hub City Spartanburgers",
+      "level": "A+",
+      "affiliate": "Texas Rangers",
+      "stats_url": "https://www.milb.com/player/case-matter-811318"
+    },
+    {
+      "name": "Max Banks",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 3712,
+      "drafted_by": "Chicago White Sox",
+      "year_drafted": 2025,
+      "pick": "406",
+      "current_team": "Kannapolis Cannon Ballers",
+      "level": "A",
+      "affiliate": "Chicago White Sox",
+      "stats_url": "https://www.milb.com/player/max-banks-822514"
+    },
+    {
+      "name": "Kyle Fossum",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 4597,
+      "drafted_by": "Colorado Rockies",
+      "year_drafted": 2026,
+      "pick": "NDFA",
+      "current_team": "Fresno Grizzlies",
+      "level": "A",
+      "affiliate": "Colorado Rockies",
+      "stats_url": "https://www.milb.com/player/kyle-fossum-822531"
+    },
+    {
+      "name": "Tommy Takayoshi",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 7880,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2024,
+      "pick": "NDFA",
+      "current_team": "Stockton Ports",
+      "level": "A",
+      "affiliate": "Athletics",
+      "stats_url": "https://www.baseball-reference.com/register/player.fcgi?id=takayo000tom"
+    },
+    {
+      "name": "Johnny Tincher",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 5490,
+      "drafted_by": "Cleveland Guardians",
+      "year_drafted": 2023,
+      "pick": "338",
+      "current_team": "Chesapeake Baysox",
+      "level": "AA",
+      "affiliate": "Baltimore Orioles",
+      "stats_url": "https://www.milb.com/player/johnny-tincher-814816"
+    },
+    {
+      "name": "Lucas Knowles",
+      "college_raw": "University of Washington",
+      "college_team_ids": [
+        1
+      ],
+      "player_id": 8038,
+      "drafted_by": "Washington Nationals",
+      "year_drafted": 2019,
+      "pick": "423",
+      "current_team": "Tri-City Dust Devils",
+      "level": "A+",
+      "affiliate": "Los Angeles Angels",
+      "stats_url": "https://www.milb.com/player/lucas-knowles-686731"
+    },
+    {
+      "name": "Kyle Manzardo",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 7836,
+      "drafted_by": "Tampa Bay Rays",
+      "year_drafted": 2021,
+      "pick": "64",
+      "current_team": "Cleveland Guardians",
+      "level": "MLB",
+      "affiliate": "Cleveland Guardians",
+      "stats_url": "https://www.mlb.com/player/kyle-manzardo-700932"
+    },
+    {
+      "name": "Ryan Walker",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 8076,
+      "drafted_by": "San Francisco Giants",
+      "year_drafted": 2018,
+      "pick": "916",
+      "current_team": "San Francisco Giants",
+      "level": "MLB",
+      "affiliate": "San Francisco Giants",
+      "stats_url": "https://www.mlb.com/player/ryan-walker-676254"
+    },
+    {
+      "name": "Ian Hamilton",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": null,
+      "drafted_by": "Chicago White Sox",
+      "year_drafted": 2016,
+      "pick": "326",
+      "current_team": "Gwinnett Stripers",
+      "level": "AAA",
+      "affiliate": "Atlanta Braves",
+      "stats_url": "https://www.milb.com/player/ian-hamilton-641656"
+    },
+    {
+      "name": "Brandon White",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 7848,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2021,
+      "pick": "359",
+      "current_team": "Jacksonville Jumbo Shrimp",
+      "level": "AAA",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/brandon-white-681449"
+    },
+    {
+      "name": "Keith Jones II",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 6501,
+      "drafted_by": "Texas Rangers",
+      "year_drafted": 2024,
+      "pick": "285",
+      "current_team": "Frisco RoughRiders",
+      "level": "AA",
+      "affiliate": "Texas Rangers",
+      "stats_url": "https://www.milb.com/player/keith-jones-ii-695069"
+    },
+    {
+      "name": "Zane Mills",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 7847,
+      "drafted_by": "St. Louis Cardinals",
+      "year_drafted": 2021,
+      "pick": "120",
+      "current_team": "Knoxville Smokies",
+      "level": "AA",
+      "affiliate": "Chicago Cubs",
+      "stats_url": "https://www.milb.com/player/zane-mills-677312"
+    },
+    {
+      "name": "Sam Brown",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 5542,
+      "drafted_by": "Los Angeles Angels",
+      "year_drafted": 2023,
+      "pick": "354",
+      "current_team": "Harrisburg Senators",
+      "level": "AA",
+      "affiliate": "Washington Nationals",
+      "stats_url": "https://www.milb.com/player/sam-brown-694848"
+    },
+    {
+      "name": "Dakota Hawkins",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 5551,
+      "drafted_by": "New York Mets",
+      "year_drafted": 2023,
+      "pick": "NDFA",
+      "current_team": "Brooklyn Cyclones",
+      "level": "A+",
+      "affiliate": "New York Mets",
+      "stats_url": "https://www.milb.com/player/dakota-hawkins-809950"
+    },
+    {
+      "name": "Brady Hill",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 7840,
+      "drafted_by": "Colorado Rockies",
+      "year_drafted": 2022,
+      "pick": "446",
+      "current_team": "Wilmington Blue Rocks",
+      "level": "A+",
+      "affiliate": "Washington Nationals",
+      "stats_url": "https://www.milb.com/player/brady-hill-687984"
+    },
+    {
+      "name": "Gunner Gouldsmith",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 7838,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2024,
+      "pick": "556",
+      "current_team": "Lansing Lugnuts",
+      "level": "A+",
+      "affiliate": "Athletics",
+      "stats_url": "https://www.milb.com/player/gunner-gouldsmith-802005"
+    },
+    {
+      "name": "Will Cresswell",
+      "college_raw": "Washington State University",
+      "college_team_ids": [
+        4
+      ],
+      "player_id": 3764,
+      "drafted_by": "Toronto Blue Jays",
+      "year_drafted": 2025,
+      "pick": "532",
+      "current_team": "Dunedin Blue Jays",
+      "level": "A",
+      "affiliate": "Toronto Blue Jays",
+      "stats_url": "https://www.milb.com/player/will-cresswell-701796"
+    },
+    {
+      "name": "Hunter Dryden",
+      "college_raw": "Whitworth University",
+      "college_team_ids": [
+        13
+      ],
+      "player_id": 4914,
+      "drafted_by": "San Francisco Giants",
+      "year_drafted": 2024,
+      "pick": "508",
+      "current_team": "Eugene Emeralds",
+      "level": "A+",
+      "affiliate": "San Francisco Giants",
+      "stats_url": "https://www.milb.com/player/hunter-dryden-827500"
+    }
+  ]
+}

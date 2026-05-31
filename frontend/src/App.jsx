@@ -196,6 +196,7 @@ import RequireDev from './components/RequireDev'
 import WarLeaderboard from './pages/WarLeaderboard'
 import TeamStatsPage from './pages/TeamStatsPage'
 import TeamsPage from './pages/TeamsPage'
+import ProTracker from './pages/ProTracker'
 import TeamDetail from './pages/TeamDetail'
 import TeamComparison from './pages/TeamComparison'
 import ScatterPlot from './pages/ScatterPlot'
@@ -371,6 +372,7 @@ export default function App() {
 
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />
+          <Route path="/pro-tracker" element={<ProTracker />} />
           <Route path="/standings" element={<StandingsPage />} />
           <Route path="/results" element={<Navigate to="/scoreboard" replace />} />
           <Route path="/scoreboard" element={<Scoreboard />} />
