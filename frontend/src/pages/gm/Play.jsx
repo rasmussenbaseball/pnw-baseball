@@ -179,7 +179,7 @@ export default function Play() {
                 if (g.homeRuns > g.awayRuns) {
                   homeTeam.wins++; awayTeam.losses++
                   if (g.type === 'CONFERENCE') { homeTeam.confWins++; awayTeam.confLosses++ }
-                } else {
+                } else if (g.awayRuns > g.homeRuns) {
                   awayTeam.wins++; homeTeam.losses++
                   if (g.type === 'CONFERENCE') { awayTeam.confWins++; homeTeam.confLosses++ }
                 }

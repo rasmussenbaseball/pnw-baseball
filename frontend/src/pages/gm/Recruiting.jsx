@@ -1369,7 +1369,16 @@ function RecruitModal({ recruit, save, onAction, onOffer, onWithdraw, onClose })
             <button
               onClick={() => onOffer(recruit, offerAmount, save.level === 'D1' ? nilOffer : 0)}
               className="flex-1 px-3 py-1.5 bg-pnw-green text-white rounded text-xs font-semibold hover:opacity-90"
-              disabled={(save.schools[save.userSchoolId]?.scholarshipPool || 0) === 0 && nilOffer === 0}
+              // D3 + NWAC have no athletic-aid pool BY DESIGN. The old check
+              // (pool===0 && nilOffer===0) permanently disabled Submit Offer
+              // for every JUCO user — reported by Zack Ahn. Those levels
+              // recruit on fit / playing time / academics, not dollars; the
+              // button stays enabled.
+              disabled={
+                save.level !== 'D3' && save.level !== 'NWAC'
+                && (save.schools[save.userSchoolId]?.scholarshipPool || 0) === 0
+                && nilOffer === 0
+              }
             >
               {hasLiveOffer ? 'Update Offer (1 AP)' : 'Submit Offer'}
             </button>

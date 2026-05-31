@@ -573,13 +573,16 @@ export function simWeek(state, schedule, ratings) {
       }
     }
 
-    // Update W-L only for record-counting games (scrimmages don't count)
+    // Update W-L only for record-counting games (scrimmages don't count).
+    // Ties get no W/L attribution — baseball games shouldn't end in ties
+    // (the engines play to a winner), but defending against an "L 4-4"
+    // display per Zack's note.
     const counts = g.countsTowardRecord !== false
     if (counts && homeTeam && awayTeam) {
       if (result.homeRuns > result.awayRuns) {
         homeTeam.wins++; awayTeam.losses++
         if (g.type === 'CONFERENCE') { homeTeam.confWins++; awayTeam.confLosses++ }
-      } else {
+      } else if (result.awayRuns > result.homeRuns) {
         awayTeam.wins++; homeTeam.losses++
         if (g.type === 'CONFERENCE') { awayTeam.confWins++; homeTeam.confLosses++ }
       }

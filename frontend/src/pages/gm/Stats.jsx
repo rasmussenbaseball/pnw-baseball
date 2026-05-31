@@ -13,7 +13,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import { displayPosition, displayClassYear } from '../../gm/engine/format'
-import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtWar } from '../../gm/engine/advancedStats'
+import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtWar, formatIp } from '../../gm/engine/advancedStats'
 import GMShell, { PixelCard } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
@@ -76,7 +76,9 @@ export default function Stats() {
       </div>
 
       {/* Data Analytics Manager gate banner */}
-      {!hasAnalyticsMgr && <AnalyticsGateBanner slot={slot} />}
+      {/* Analytics gate banner removed — advanced stats are now visible by
+          default everywhere (the lock contradicted the player-profile view,
+          per Zack's note). */}
 
       {/* View toggle */}
       <div className="flex gap-2 mb-4">
@@ -252,7 +254,10 @@ function BatterTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, em
   const sorted = hasAnalyticsMgr
     ? [...enriched].sort((a, b) => b.adv.wOBA - a.adv.wOBA)
     : [...enriched].sort((a, b) => b.adv.ops - a.adv.ops)
-  const hide = !hasAnalyticsMgr
+  // Advanced-stats lock removed (Zack's intern note: locked here but visible
+  // on every player profile). Stats are always shown; the Data Analytics
+  // Manager hire keeps its other utility but no longer gates this UI.
+  const hide = false
   const lockedCell = <td className="text-gray-500 italic">???</td>
   return (
     <PixelCard accent={accent} title="HITTING">
@@ -315,7 +320,10 @@ function PitcherTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, e
   const sorted = hasAnalyticsMgr
     ? [...enriched].sort((a, b) => a.adv.fip - b.adv.fip)
     : [...enriched].sort((a, b) => a.adv.era - b.adv.era)
-  const hide = !hasAnalyticsMgr
+  // Advanced-stats lock removed (Zack's intern note: locked here but visible
+  // on every player profile). Stats are always shown; the Data Analytics
+  // Manager hire keeps its other utility but no longer gates this UI.
+  const hide = false
   const lockedCell = <td className="text-gray-500 italic">???</td>
   return (
     <PixelCard accent={accent} title="PITCHING">
@@ -344,7 +352,7 @@ function PitcherTable({ rows, save, accent, slot, careerMode, hasAnalyticsMgr, e
                 </td>
                 <td>{displayClassYear(r.player)}</td>
                 {careerMode && <td>{r.years}</td>}
-                <td>{r.ip ? r.ip.toFixed(1) : '—'}</td>
+                <td>{formatIp(r.ip)}</td>
                 <td>{r.h}</td><td>{r.bb}</td><td>{r.k}</td><td>{r.er}</td>
                 <td className="font-bold">{fmt2(adv.era)}</td>
                 <td>{fmt2(adv.whip)}</td>

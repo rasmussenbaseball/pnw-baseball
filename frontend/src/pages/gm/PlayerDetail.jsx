@@ -9,7 +9,7 @@ import {
 import AttrTooltip from '../../gm/components/AttrTooltip'
 import { prettyLabel, displayPosition, displayClassYear } from '../../gm/engine/format'
 import { ensureHappiness, happinessLevel, HAPPINESS_DISPLAY } from '../../gm/engine/happiness'
-import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtPct, fmtWar } from '../../gm/engine/advancedStats'
+import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtPct, fmtWar, formatIp } from '../../gm/engine/advancedStats'
 import GMShell, { ModalCloseButton, useModalDismiss } from '../../gm/components/GMShell'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
 
@@ -396,7 +396,7 @@ function PitchingStatsLine({ stats, save }) {
     <div className="space-y-3">
       {/* Traditional */}
       <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
-        <Stat label="IP" value={stats.ip ? stats.ip.toFixed(1) : '—'} />
+        <Stat label="IP" value={formatIp(stats.ip)} />
         <Stat label="ERA" value={fmt2(adv.era)} />
         <Stat label="WHIP" value={fmt2(adv.whip)} />
         <Stat label="H" value={stats.h} />

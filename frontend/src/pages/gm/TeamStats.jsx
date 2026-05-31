@@ -20,7 +20,7 @@ import { loadDynasty } from '../../gm/engine/save'
 import { ensureUnifiedCalendar } from '../../gm/engine/gameYear'
 import { displayPosition } from '../../gm/engine/format'
 import { synthesizeLeagueStats, synthesizeConferenceStats, aggregateTeamStats, synthesizeTeamStats } from '../../gm/engine/leagueStats'
-import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtWar } from '../../gm/engine/advancedStats'
+import { leagueAverages, computeBatting, computePitching, fmtRate, fmt2, fmtWar, formatIp } from '../../gm/engine/advancedStats'
 import GMShell, { PixelCard } from '../../gm/components/GMShell'
 import SortableHeader, { useTableSort } from '../../gm/components/SortableHeader'
 import PixelHeadshot from '../../gm/components/PixelHeadshot'
@@ -294,7 +294,8 @@ function ComparisonRow({ label, user, conf, naia, fmt, lowerIsBetter = false, le
 }
 
 function TeamComparisonTable({ rows, slot, hasAnalyticsMgr }) {
-  const hide = !hasAnalyticsMgr
+  // Advanced-stats lock removed (was inconsistent with player profile).
+  const hide = false
   const extractors = useMemo(() => ({
     name:    r => r.schoolName.toLowerCase(),
     record:  r => parseInt(r.record, 10) || 0,
@@ -478,7 +479,8 @@ function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId,
       </PixelCard>
     )
   }
-  const hide = !hasAnalyticsMgr
+  // Advanced-stats lock removed (was inconsistent with player profile).
+  const hide = false
   const lockTh = (label) => (
     <th className="pr-2 text-gray-500" title="Hire a Data Analytics Manager to unlock">{label} </th>
   )
@@ -526,7 +528,7 @@ function LeaderCard({ title, rows, accent, slot, columns, isPitcher, userTeamId,
                   {hide ? lockTd : <td className="pr-2 font-mono tabular-nums">{fmt2(r.adv.fip)}</td>}
                   <td className="pr-2 font-mono tabular-nums">{fmt2(r.adv.era)}</td>
                   <td className="pr-2 font-mono tabular-nums">{r.stats.k}</td>
-                  <td className="pr-2 font-mono tabular-nums">{r.adv.ip.toFixed(1)}</td>
+                  <td className="pr-2 font-mono tabular-nums">{formatIp(r.adv.ip)}</td>
                 </> : <>
                   {hide ? lockTd : <td className="pr-2 font-mono tabular-nums">{fmtRate(r.adv.wOBA)}</td>}
                   {hide ? lockTd : <td className="pr-2 font-mono tabular-nums">{r.adv.wRCplus}</td>}

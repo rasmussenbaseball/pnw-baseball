@@ -67,6 +67,19 @@ export function outsToDecimalIp(outs) {
   return outs / 3
 }
 
+/**
+ * Format a decimal-IP value (the legacy outs/3 storage shape) into baseball
+ * notation "X.Y" where Y ∈ {0,1,2} represents thirds of an inning. The old
+ * display path used `ip.toFixed(1)`, which produced "6.7" for 20 outs — read
+ * by users as 6 and 7/10 of an inning, when the real value is 6.2 (6 IP + 2
+ * outs). Reported by Zack Ahn, May 2026.
+ */
+export function formatIp(ip) {
+  if (ip == null || Number.isNaN(ip)) return '—'
+  const outs = Math.max(0, Math.round(ip * 3))
+  return outsToIp(outs).toFixed(1)
+}
+
 // ─── League averages (computed from the user's save) ────────────────────────
 
 /**
