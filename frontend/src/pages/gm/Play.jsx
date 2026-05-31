@@ -54,6 +54,35 @@ const NON_NAIA_DISPLAY = (() => {
   return out
 })()
 
+// ─── In-progress live-game persistence ───────────────────────────────────
+// localStorage-backed resume so leaving a live game mid-stream doesn't
+// reset it on return (per Zack's report). The engine accepts a `restore`
+// payload at creation; this layer just shuttles JSON in and out under a
+// stable per-(user, slot, game) key. Cleared on a clean finalize.
+function liveGameStorageKey(userSchoolId, slot, gameId) {
+  return `gm.liveGame.v1.${userSchoolId || 'guest'}.${slot}.${gameId}`
+}
+function loadInProgressLiveGame(userSchoolId, slot, gameId) {
+  try {
+    const raw = localStorage.getItem(liveGameStorageKey(userSchoolId, slot, gameId))
+    if (!raw) return null
+    const data = JSON.parse(raw)
+    if (!data?.state) return null
+    return data
+  } catch { return null }
+}
+function saveInProgressLiveGame(userSchoolId, slot, gameId, state, batterStats, pitcherStats) {
+  try {
+    const payload = JSON.stringify({ state, batterStats, pitcherStats })
+    localStorage.setItem(liveGameStorageKey(userSchoolId, slot, gameId), payload)
+  } catch { /* localStorage quota / private mode — skip silently */ }
+}
+function clearInProgressLiveGame(userSchoolId, slot, gameId) {
+  try {
+    localStorage.removeItem(liveGameStorageKey(userSchoolId, slot, gameId))
+  } catch { /* ignore */ }
+}
+
 export default function Play() {
   const { user } = useAuth()
   const [params] = useSearchParams()
@@ -1169,6 +1198,10 @@ function LiveGameView({ save, game, onExit }) {
     const awayLineup = isHome ? oppLineup : userLineup
     const userHC = save.coaches[userTeam.headCoachId]
     const oppHC = oppTeam ? save.coaches[oppTeam.headCoachId] : null
+    // Check for a saved in-progress game state from a prior session
+    // (per Zack: exiting an active game would reset it). If found, the
+    // engine restores the saved state on creation.
+    const restore = loadInProgressLiveGame(save.userSchoolId, slot, game.id)
     liveRef.current = createLiveGame(homeLineup, awayLineup, {
       homeMotivator: (isHome ? userHC?.motivator : oppHC?.motivator) ?? 50,
       awayMotivator: (isHome ? oppHC?.motivator : userHC?.motivator) ?? 50,
@@ -1182,7 +1215,7 @@ function LiveGameView({ save, game, onExit }) {
       // Wrapped (not snapshotted) so back-to-back doubleheader games read
       // the latest energy after the prior game's cost was applied.
       getEnergy: (pid) => getEnergy(save, pid),
-    }, game.id)
+    }, game.id, restore)
   }
   const live = liveRef.current
 
@@ -1225,19 +1258,30 @@ function LiveGameView({ save, game, onExit }) {
     }
   }, [blocker])
 
-  function doStep() { live.step(); rerender() }
-  function doHalfInning() { live.simHalfInning(); rerender() }
-  function doRest() { live.simRest(); rerender() }
+  // Persist the in-progress state to localStorage after every action so a
+  // mid-game exit (tab close, in-app nav, browser crash) can resume on
+  // return. Cleared by handleFinish below when the game ends cleanly.
+  function persist() {
+    if (live.isOver()) return
+    const box = live.getBoxscore()
+    saveInProgressLiveGame(save.userSchoolId, slot, game.id, live.state, box.batterStats, box.pitcherStats)
+  }
+  function doStep() { live.step(); persist(); rerender() }
+  function doHalfInning() { live.simHalfInning(); persist(); rerender() }
+  function doRest() { live.simRest(); persist(); rerender() }
   function handleSubmitSub(kind, payload) {
     if (kind === 'PITCH') live.pitchingChange(payload.player)
     if (kind === 'HIT')   live.pinchHit(payload.side, payload.spotIdx, payload.player)
     if (kind === 'RUN')   live.pinchRun(payload.side, payload.baseIdx, payload.player)
     if (kind === 'FIELD') live.defensiveSub(payload.side, payload.position, payload.player)
     setSubMenuOpen(null)
+    persist()
     rerender()
   }
   function handleFinish() {
     if (!live.isOver()) live.simRest()
+    // Clean exit — the game's done, clear the in-progress save.
+    clearInProgressLiveGame(save.userSchoolId, slot, game.id)
     onExit(live.getResult())
   }
 

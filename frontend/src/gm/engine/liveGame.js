@@ -22,7 +22,7 @@ import { simPA } from './sim'
  * @param {{ homeMotivator?: number, awayMotivator?: number, homeTeamName?: string, awayTeamName?: string }} ctx
  * @param {string} seedKey
  */
-export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
+export function createLiveGame(homeLineup, awayLineup, ctx, seedKey, restore = null) {
   const rng = makeRng('live', seedKey)
   // Field-position assignment: prefer the lineup's per-slot batterPositions
   // (set by the LineupEditor — players may be playing OUT OF position) and
@@ -98,9 +98,25 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey) {
   state.homeConfidence = state.homePitcher?.pitcher?.composure ?? 50
   state.awayConfidence = state.awayPitcher?.pitcher?.composure ?? 50
 
-  // Per-player accumulators (mirror simGame's structure)
-  const batterStats = {}
-  const pitcherStats = {}
+  // Per-player accumulators (mirror simGame's structure).
+  // Declared with `let` so a `restore` payload can swap in saved values
+  // — the engine's bStat/pStat helpers always look up by id, so
+  // reassigning these refs only affects what new entries get added to.
+  let batterStats = {}
+  let pitcherStats = {}
+
+  // STATE RESTORE — replay-on-return for live games (per Zack's report:
+  // "exiting an active game deletes the save"). If a saved state is
+  // passed in, swap it in wholesale. The state shape is JSON-safe (no
+  // closures), so we can serialize via localStorage and rebuild on the
+  // next mount. Player object refs become plain JS objects after the
+  // round-trip but the engine reads fields off them by name so it still
+  // works correctly.
+  if (restore?.state) {
+    Object.assign(state, restore.state)
+  }
+  if (restore?.batterStats) batterStats = restore.batterStats
+  if (restore?.pitcherStats) pitcherStats = restore.pitcherStats
   function bStat(id) {
     if (!batterStats[id]) batterStats[id] = { ab:0,h:0,d:0,t:0,hr:0,bb:0,k:0,rbi:0,pa:0,hbp:0,sf:0,sac:0,gidp:0,roe:0,sb:0,cs:0 }
     return batterStats[id]
