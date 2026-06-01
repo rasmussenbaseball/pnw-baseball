@@ -21,6 +21,12 @@ const BATTING_COLS = [
   { key: 'rbi',            label: 'RBI',  format: 'int' },
   { key: 'stolen_bases',   label: 'SB',   format: 'int' },
   { key: 'plate_appearances', label: 'PA', format: 'int' },
+  { key: 'bat_k_pct',      label: 'K%',      format: 'pct', mono: true },
+  { key: 'bat_bb_pct',     label: 'BB%',     format: 'pct', mono: true },
+  { key: 'contact_pct',    label: 'Contact%',format: 'pct', mono: true },
+  { key: 'swing_pct',      label: 'Swing%',  format: 'pct', mono: true },
+  { key: 'air_pull_pct',   label: 'AIRPULL%',format: 'pct', mono: true },
+  { key: 'batter_wpa',     label: 'WPA',     format: 'wpa', mono: true },
   { key: 'offensive_war',  label: 'oWAR', format: 'war',  mono: true },
 ]
 
@@ -28,9 +34,15 @@ const PITCHING_COLS = [
   { key: 'era',            label: 'ERA',  format: 'era',  mono: true },
   { key: 'fip',            label: 'FIP',  format: 'era',  mono: true },
   { key: 'fip_plus',       label: 'FIP+', format: 'int',  mono: true },
+  { key: 'siera',          label: 'SIERA',format: 'era',  mono: true },
+  { key: 'baa',            label: 'BAA',  format: 'avg',  mono: true },
   { key: 'pitch_k_pct',    label: 'K%',   format: 'pct',  mono: true },
   { key: 'pitch_bb_pct',   label: 'BB%',  format: 'pct',  mono: true },
+  { key: 'whiff_pct',      label: 'Whiff%',  format: 'pct', mono: true },
+  { key: 'strike_pct',     label: 'Strike%', format: 'pct', mono: true },
+  { key: 'first_pitch_strike_pct', label: 'FPS%', format: 'pct', mono: true },
   { key: 'innings_pitched', label: 'IP',   format: 'ip' },
+  { key: 'pitcher_wpa',    label: 'WPA',  format: 'wpa',  mono: true },
   { key: 'pitching_war',   label: 'pWAR', format: 'war',  mono: true },
 ]
 
@@ -99,6 +111,7 @@ export default function JucoTracker() {
     if (col.format === 'pct') return val != null ? (Number(val) * 100).toFixed(1) + '%' : '-'
     if (col.format === 'int') return val != null ? Math.round(val) : '-'
     if (col.format === 'ip') return val ? formatStat(val, 'ip') : '-'
+    if (col.format === 'wpa') return val != null ? (val >= 0 ? '+' : '') + Number(val).toFixed(2) : '-'
     if (col.format) return formatStat(val, col.format)
     return val ?? '-'
   }
@@ -216,7 +229,7 @@ export default function JucoTracker() {
               {/* Category header row */}
               <tr className="sticky top-0 z-20 bg-pnw-slate">
                 {/* Frozen info columns */}
-                <th colSpan={7} style={{width:398,minWidth:398,maxWidth:398}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+                <th colSpan={7} style={{width:458,minWidth:458,maxWidth:458}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
                   Player Info
                 </th>
                 {/* WAR */}
@@ -273,9 +286,9 @@ export default function JucoTracker() {
                       <span className="text-gray-600 dark:text-gray-400 truncate">{row.team_short || row.team_name}</span>
                     </div>
                   </td>
-                  <td style={{width:60,minWidth:60,maxWidth:60}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
-                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[288px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
-                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[320px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+                  <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
+                  <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
+                  <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
                   <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
                     {row.committed_to ? (
                       <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>

@@ -8950,6 +8950,75 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         }
 
 
+# ── Shared PBP stat columns for the JUCO + Transfer trackers ──────
+# Per-player season aggregates from game_events: discipline (Contact%,
+# Swing%, Whiff%, Strike%, FPS%), AIRPULL%, and WPA. Built as CTEs so
+# both tracker endpoints render the same extra columns. Each CTE takes a
+# season %s placeholder first, then whatever params its filter predicate
+# needs (none for the JUCO subquery, an ANY(%s) id list for transfers).
+_PLAYER_PBP_SELECT = """
+                   CASE WHEN (COALESCE(ps2.batters_faced,0)-COALESCE(ps2.walks,0)-COALESCE(ps2.hit_batters,0)) > 0
+                        THEN COALESCE(ps2.hits_allowed,0)::numeric
+                             / (COALESCE(ps2.batters_faced,0)-COALESCE(ps2.walks,0)-COALESCE(ps2.hit_batters,0)) END AS baa,
+                   CASE WHEN bpbp.pitches > 0 THEN (bpbp.kp+bpbp.fp+bpbp.inp)::numeric/bpbp.pitches END AS swing_pct,
+                   CASE WHEN (bpbp.kp+bpbp.fp+bpbp.inp) > 0 THEN (bpbp.fp+bpbp.inp)::numeric/(bpbp.kp+bpbp.fp+bpbp.inp) END AS contact_pct,
+                   CASE WHEN bpbp.bbtp > 0 THEN bpbp.apc::numeric/bpbp.bbtp END AS air_pull_pct,
+                   bpbp.wpa AS batter_wpa,
+                   CASE WHEN ppbp.pitches > 0 THEN (ppbp.kp+ppbp.sp+ppbp.fp+ppbp.inp)::numeric/ppbp.pitches END AS strike_pct,
+                   CASE WHEN (ppbp.kp+ppbp.fp+ppbp.inp) > 0 THEN ppbp.kp::numeric/(ppbp.kp+ppbp.fp+ppbp.inp) END AS whiff_pct,
+                   CASE WHEN ppbp.tpa > 0 THEN ppbp.f1::numeric/ppbp.tpa END AS first_pitch_strike_pct,
+                   ppbp.wpa AS pitcher_wpa,
+"""
+
+
+def _PLAYER_PBP_CTES(batter_pred: str, pitcher_pred: str, with_juco_ids: bool = False) -> str:
+    juco_cte = """
+            juco_ids AS (
+                SELECT p.id FROM players p
+                JOIN teams t ON p.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE d.level = 'JUCO'
+            ),
+    """ if with_juco_ids else ""
+    return f"""
+        WITH {juco_cte}
+            bpbp AS (
+                SELECT ge.batter_player_id AS pid,
+                    COALESCE(SUM(ge.pitches_thrown) FILTER (WHERE ge.pitches_thrown>=1),0) AS pitches,
+                    COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'K',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS kp,
+                    COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'F',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS fp,
+                    COALESCE(SUM(CASE WHEN ge.was_in_play THEN 1 ELSE 0 END) FILTER (WHERE ge.pitches_thrown>=1),0) AS inp,
+                    COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL AND UPPER(plyr.bats) IN ('L','R')) AS bbtp,
+                    COUNT(*) FILTER (WHERE ge.bb_type IN ('LD','FB')
+                        AND ((UPPER(plyr.bats)='R' AND ge.field_zone='LEFT')
+                          OR (UPPER(plyr.bats)='L' AND ge.field_zone='RIGHT'))) AS apc,
+                    SUM(ge.wpa_batter) AS wpa
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                LEFT JOIN players plyr ON plyr.id = ge.batter_player_id
+                WHERE g.season = %s AND {batter_pred}
+                GROUP BY ge.batter_player_id
+            ),
+            ppbp AS (
+                SELECT ge.pitcher_player_id AS pid,
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown>=1) AS tpa,
+                    COALESCE(SUM(ge.pitches_thrown) FILTER (WHERE ge.pitches_thrown>=1),0) AS pitches,
+                    COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'K',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS kp,
+                    COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'S',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS sp,
+                    COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'F',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS fp,
+                    COALESCE(SUM(CASE WHEN ge.was_in_play THEN 1 ELSE 0 END) FILTER (WHERE ge.pitches_thrown>=1),0) AS inp,
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown>=1
+                        AND (LEFT(ge.pitch_sequence,1) IN ('K','S','F') OR (ge.pitch_sequence='' AND ge.was_in_play))) AS f1,
+                    SUM(ge.wpa_pitcher) AS wpa
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                WHERE g.season = %s AND {pitcher_pred}
+                GROUP BY ge.pitcher_player_id
+            )
+    """
+
+
 @router.get("/players/juco/uncommitted")
 def uncommitted_juco_players(
     season: int = Query(...),
@@ -8985,14 +9054,20 @@ def uncommitted_juco_players(
 
     with get_connection() as conn:
         cur = conn.cursor()
-        query = """
+        query = _PLAYER_PBP_CTES(
+            "ge.batter_player_id IN (SELECT id FROM juco_ids)",
+            "ge.pitcher_player_id IN (SELECT id FROM juco_ids)",
+            with_juco_ids=True,
+        ) + """
             SELECT p.*, t.name as team_name, t.short_name as team_short, t.logo_url,
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
                    bs.woba, bs.wrc_plus, bs.offensive_war,
                    bs.home_runs, bs.rbi, bs.stolen_bases, bs.plate_appearances,
-                   ps2.era, ps2.fip, ps2.fip_plus, ps2.era_minus, ps2.xfip, ps2.strikeouts as pitch_k,
+                   bs.k_pct as bat_k_pct, bs.bb_pct as bat_bb_pct,
+                   ps2.era, ps2.fip, ps2.fip_plus, ps2.era_minus, ps2.xfip, ps2.siera, ps2.strikeouts as pitch_k,
                    ps2.k_pct as pitch_k_pct, ps2.bb_pct as pitch_bb_pct,
                    ps2.innings_pitched, ps2.pitching_war,
+                   """ + _PLAYER_PBP_SELECT + """
                    COALESCE(bs.offensive_war, 0) + COALESCE(ps2.pitching_war, 0) as total_war
             FROM players p
             JOIN teams t ON p.team_id = t.id
@@ -9000,10 +9075,14 @@ def uncommitted_juco_players(
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.season = %s
             LEFT JOIN pitching_stats ps2 ON p.id = ps2.player_id AND ps2.season = %s
+            LEFT JOIN bpbp ON bpbp.pid = p.id
+            LEFT JOIN ppbp ON ppbp.pid = p.id
             WHERE d.level = 'JUCO'
               AND (bs.player_id IS NOT NULL OR ps2.player_id IS NOT NULL)
         """
-        params: list = [season, season]
+        # PBP CTE season params first (batter, then pitcher), then the
+        # batting_stats + pitching_stats join seasons.
+        params: list = [season, season, season, season]
 
         if year_in_school:
             query = _apply_year_filter(query, params, year_in_school)
@@ -9099,15 +9178,20 @@ def transfer_portal_players(
 
     with get_connection() as conn:
         cur = conn.cursor()
-        query = """
+        query = _PLAYER_PBP_CTES(
+            "ge.batter_player_id = ANY(%s)",
+            "ge.pitcher_player_id = ANY(%s)",
+        ) + """
             SELECT p.*, t.name as team_name, t.short_name as team_short, t.logo_url,
                    d.level as division_level,
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
                    bs.woba, bs.wrc_plus, bs.offensive_war,
                    bs.home_runs, bs.rbi, bs.stolen_bases, bs.plate_appearances,
-                   ps2.era, ps2.fip, ps2.fip_plus, ps2.era_minus, ps2.xfip, ps2.strikeouts as pitch_k,
+                   bs.k_pct as bat_k_pct, bs.bb_pct as bat_bb_pct,
+                   ps2.era, ps2.fip, ps2.fip_plus, ps2.era_minus, ps2.xfip, ps2.siera, ps2.strikeouts as pitch_k,
                    ps2.k_pct as pitch_k_pct, ps2.bb_pct as pitch_bb_pct,
                    ps2.innings_pitched, ps2.pitching_war,
+                   """ + _PLAYER_PBP_SELECT + """
                    COALESCE(bs.offensive_war, 0) + COALESCE(ps2.pitching_war, 0) as total_war
             FROM players p
             JOIN teams t ON p.team_id = t.id
@@ -9115,9 +9199,13 @@ def transfer_portal_players(
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.season = %s
             LEFT JOIN pitching_stats ps2 ON p.id = ps2.player_id AND ps2.season = %s
+            LEFT JOIN bpbp ON bpbp.pid = p.id
+            LEFT JOIN ppbp ON ppbp.pid = p.id
             WHERE p.id = ANY(%s)
         """
-        params: list = [season, season, ids]
+        # CTE params (bpbp season+ids, ppbp season+ids), then bs/ps2 seasons,
+        # then the main id filter.
+        params: list = [season, ids, season, ids, season, season, ids]
         if position:
             if position == 'P':
                 query += " AND (p.position IN ('RHP','LHP') OR p.position LIKE 'RHP/%%' OR p.position LIKE 'LHP/%%')"

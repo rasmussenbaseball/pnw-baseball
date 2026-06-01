@@ -21,6 +21,12 @@ const BATTING_COLS = [
   { key: 'rbi',            label: 'RBI',  format: 'int' },
   { key: 'stolen_bases',   label: 'SB',   format: 'int' },
   { key: 'plate_appearances', label: 'PA', format: 'int' },
+  { key: 'bat_k_pct',      label: 'K%',      format: 'pct', mono: true },
+  { key: 'bat_bb_pct',     label: 'BB%',     format: 'pct', mono: true },
+  { key: 'contact_pct',    label: 'Contact%',format: 'pct', mono: true },
+  { key: 'swing_pct',      label: 'Swing%',  format: 'pct', mono: true },
+  { key: 'air_pull_pct',   label: 'AIRPULL%',format: 'pct', mono: true },
+  { key: 'batter_wpa',     label: 'WPA',     format: 'wpa', mono: true },
   { key: 'offensive_war',  label: 'oWAR', format: 'war',  mono: true },
 ]
 
@@ -28,9 +34,15 @@ const PITCHING_COLS = [
   { key: 'era',            label: 'ERA',  format: 'era',  mono: true },
   { key: 'fip',            label: 'FIP',  format: 'era',  mono: true },
   { key: 'fip_plus',       label: 'FIP+', format: 'int',  mono: true },
+  { key: 'siera',          label: 'SIERA',format: 'era',  mono: true },
+  { key: 'baa',            label: 'BAA',  format: 'avg',  mono: true },
   { key: 'pitch_k_pct',    label: 'K%',   format: 'pct',  mono: true },
   { key: 'pitch_bb_pct',   label: 'BB%',  format: 'pct',  mono: true },
+  { key: 'whiff_pct',      label: 'Whiff%',  format: 'pct', mono: true },
+  { key: 'strike_pct',     label: 'Strike%', format: 'pct', mono: true },
+  { key: 'first_pitch_strike_pct', label: 'FPS%', format: 'pct', mono: true },
   { key: 'innings_pitched', label: 'IP',   format: 'ip' },
+  { key: 'pitcher_wpa',    label: 'WPA',  format: 'wpa',  mono: true },
   { key: 'pitching_war',   label: 'pWAR', format: 'war',  mono: true },
 ]
 
@@ -89,6 +101,7 @@ export default function TransferPortalTracker() {
     if (col.format === 'pct') return val != null ? (Number(val) * 100).toFixed(1) + '%' : '-'
     if (col.format === 'int') return val != null ? Math.round(val) : '-'
     if (col.format === 'ip') return val ? formatStat(val, 'ip') : '-'
+    if (col.format === 'wpa') return val != null ? (val >= 0 ? '+' : '') + Number(val).toFixed(2) : '-'
     if (col.format) return formatStat(val, col.format)
     return val ?? '-'
   }
@@ -170,7 +183,7 @@ export default function TransferPortalTracker() {
             <thead>
               {/* Category header row */}
               <tr className="sticky top-0 z-20 bg-pnw-slate">
-                <th colSpan={7} style={{width:398,minWidth:398,maxWidth:398}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+                <th colSpan={7} style={{width:478,minWidth:478,maxWidth:478}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
                   Player Info
                 </th>
                 <th className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 border-r border-white/10"></th>
