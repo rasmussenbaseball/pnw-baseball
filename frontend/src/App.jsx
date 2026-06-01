@@ -354,18 +354,18 @@ export default function App() {
           <Route path="/summerball" element={<Navigate to="/summer/stats" replace />} />
           {/* Summer is locked to devs while we wrap up phase-2 polish.
               Drop the RequireDev wrappers when ready to ship publicly. */}
-          <Route path="/summer" element={<RequireDev><SummerHub /></RequireDev>} />
-          <Route path="/summer/stats" element={<RequireDev><SummerStatsPage /></RequireDev>} />
-          <Route path="/summer/scoreboard" element={<RequireDev><SummerScoreboardPage /></RequireDev>} />
-          <Route path="/summer/standings" element={<RequireDev><SummerStandingsPage /></RequireDev>} />
-          <Route path="/summer/teams" element={<RequireDev><SummerTeamsPage /></RequireDev>} />
-          <Route path="/summer/teams/:id" element={<RequireDev><SummerTeamDetail /></RequireDev>} />
-          <Route path="/summer/players/:id" element={<RequireDev><SummerPlayerDetail /></RequireDev>} />
-          <Route path="/summer/games/:id" element={<RequireDev><SummerGameDetail /></RequireDev>} />
-          <Route path="/summer/pnw-alumni" element={<RequireDev><SummerPnwAlumniPage /></RequireDev>} />
-          <Route path="/summer/college-mix" element={<RequireDev><SummerCollegeMixPage /></RequireDev>} />
-          <Route path="/summer/recap" element={<RequireDev><WclRecapGraphic /></RequireDev>} />
-          <Route path="/summer/game-recap" element={<RequireDev><WclGameRecapGraphic /></RequireDev>} />
+          <Route path="/summer" element={<RequireAuth><SummerHub /></RequireAuth>} />
+          <Route path="/summer/stats" element={<RequireAuth><SummerStatsPage /></RequireAuth>} />
+          <Route path="/summer/scoreboard" element={<RequireAuth><SummerScoreboardPage /></RequireAuth>} />
+          <Route path="/summer/standings" element={<RequireAuth><SummerStandingsPage /></RequireAuth>} />
+          <Route path="/summer/teams" element={<RequireAuth><SummerTeamsPage /></RequireAuth>} />
+          <Route path="/summer/teams/:id" element={<RequireAuth><SummerTeamDetail /></RequireAuth>} />
+          <Route path="/summer/players/:id" element={<RequireAuth><SummerPlayerDetail /></RequireAuth>} />
+          <Route path="/summer/games/:id" element={<RequireAuth><SummerGameDetail /></RequireAuth>} />
+          <Route path="/summer/pnw-alumni" element={<RequireAuth><SummerPnwAlumniPage /></RequireAuth>} />
+          <Route path="/summer/college-mix" element={<RequireAuth><SummerCollegeMixPage /></RequireAuth>} />
+          <Route path="/summer/recap" element={<RequireAuth><WclRecapGraphic /></RequireAuth>} />
+          <Route path="/summer/game-recap" element={<RequireAuth><WclGameRecapGraphic /></RequireAuth>} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
           <Route path="/percentiles" element={<RequireTier minTier="free"><Percentiles /></RequireTier>} />
           <Route path="/records" element={<RequireTier minTier="free"><RecordsPage /></RequireTier>} />

@@ -28,7 +28,6 @@ import { useAffiliatedTeam } from '../context/AffiliationContext'
 import { TEAM_COORDS } from '../lib/teamCoords'
 import PixelHeadshot from '../gm/components/PixelHeadshot'
 import PreviewTierWidget from '../components/PreviewTierWidget'
-import EugeneRegionalBracket from '../components/EugeneRegionalBracket'
 
 const SEASON = 2026
 
@@ -43,7 +42,6 @@ export default function FreeHomepage() {
           normal users). Pinned to the top so the dev can hop between
           tiers while building per-tier homepages. */}
       <PreviewTierWidget />
-      <EugeneRegionalBracket />
       <WelcomeStrip />
 
       <StatLeadersBoard />

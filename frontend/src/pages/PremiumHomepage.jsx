@@ -12,7 +12,6 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
 import PreviewTierWidget from '../components/PreviewTierWidget'
-import EugeneRegionalBracket from '../components/EugeneRegionalBracket'
 import PixelHeadshot from '../gm/components/PixelHeadshot'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
@@ -31,7 +30,6 @@ export default function PremiumHomepage({ portalShowcase = null }) {
   return (
     <div className="space-y-5 sm:space-y-6">
       <PreviewTierWidget />
-      <EugeneRegionalBracket />
       <PremiumWelcome />
 
       {/* Premium toolbox — quick links to the biggest tools */}

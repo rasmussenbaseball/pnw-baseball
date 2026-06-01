@@ -73,22 +73,22 @@ const NAV = [
         requires: 'premium' },
     ],
   },
-  // Summer baseball — currently WCL, more leagues later. Currently
-  // dev-only (RequireDev wraps the routes too). When ready to ship,
-  // drop `requireEmail` here and remove RequireDev from App.jsx.
+  // Summer baseball — currently WCL, more leagues later. The tab is
+  // visible to everyone; items carry requires:'free' so anonymous
+  // visitors see a lock (prompting signup) while every signed-in tier
+  // has full access (routes use RequireAuth in App.jsx).
   {
     label: 'Summer',
-    requireEmail: DEVELOPER_EMAILS,
     items: [
-      { to: '/summer',             label: 'WCL Hub',        desc: 'Overview: today\'s games, leaders, standings + links to every section' },
-      { to: '/summer/scoreboard',  label: 'Scoreboard',     desc: 'Recent + upcoming WCL games, list and calendar views' },
-      { to: '/summer/standings',   label: 'Standings',      desc: 'North + South division standings with L10 and streaks' },
-      { to: '/summer/stats',       label: 'Stats',          desc: 'Batting, pitching, fielding leaderboards. Multi-year picker.' },
-      { to: '/summer/teams',       label: 'Teams',          desc: 'Browse every WCL club, grouped by division' },
-      { to: '/summer/pnw-alumni',  label: 'PNW Alumni',     desc: 'PNW college players on WCL rosters this summer' },
-      { to: '/summer/college-mix', label: 'College Mix',    desc: 'Most-represented schools in the WCL' },
-      { to: '/summer/recap',       label: 'Daily Recap Graphic', desc: 'Shareable PNG of a full day\'s WCL slate' },
-      { to: '/summer/game-recap',  label: 'Game Recap Graphic',  desc: 'Shareable PNG for any single WCL game' },
+      { to: '/summer',             label: 'WCL Hub',        desc: 'Overview: today\'s games, leaders, standings + links to every section', requires: 'free' },
+      { to: '/summer/scoreboard',  label: 'Scoreboard',     desc: 'Recent + upcoming WCL games, list and calendar views', requires: 'free' },
+      { to: '/summer/standings',   label: 'Standings',      desc: 'North + South division standings with L10 and streaks', requires: 'free' },
+      { to: '/summer/stats',       label: 'Stats',          desc: 'Batting, pitching, fielding leaderboards. Multi-year picker.', requires: 'free' },
+      { to: '/summer/teams',       label: 'Teams',          desc: 'Browse every WCL club, grouped by division', requires: 'free' },
+      { to: '/summer/pnw-alumni',  label: 'PNW Alumni',     desc: 'PNW college players on WCL rosters this summer', requires: 'free' },
+      { to: '/summer/college-mix', label: 'College Mix',    desc: 'Most-represented schools in the WCL', requires: 'free' },
+      { to: '/summer/recap',       label: 'Daily Recap Graphic', desc: 'Shareable PNG of a full day\'s WCL slate', requires: 'free' },
+      { to: '/summer/game-recap',  label: 'Game Recap Graphic',  desc: 'Shareable PNG for any single WCL game', requires: 'free' },
     ],
   },
   // Tab is open so anonymous can browse; each item enforces its own
