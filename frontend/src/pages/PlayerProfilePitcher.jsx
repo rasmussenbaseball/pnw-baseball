@@ -24,12 +24,10 @@ const PCT_METRICS_ALL = [
   { key: 'pitching_war',           label: 'WAR',          fmt: 'war' },
   { key: 'k_pct',                  label: 'K%',           fmt: 'pct' },
   { key: 'bb_pct',                 label: 'BB%',          fmt: 'pct' },
-  { key: 'k_bb_pct',               label: 'K-BB%',        fmt: 'pct' },
   { key: 'fip',                    label: 'FIP',          fmt: 'era' },
   { key: 'siera',                  label: 'SIERA',        fmt: 'era' },
   { key: 'xfip',                   label: 'xFIP',         fmt: 'era' },
   { key: 'baa',                    label: 'BAA',          fmt: 'avg' },
-  { key: 'lob_pct',                label: 'LOB%',         fmt: 'pct' },
   { key: 'strike_pct',             label: 'Strike%',      fmt: 'pct' },
   { key: 'first_pitch_strike_pct', label: 'FPS%',         fmt: 'pct' },
   { key: 'whiff_pct',              label: 'Whiff%',       fmt: 'pct' },
@@ -45,7 +43,6 @@ const RADAR_PREF = [
   { key: 'strike_pct', label: 'Strike%' },
   { key: 'fip',        label: 'FIP' },
   { key: 'siera',      label: 'SIERA' },
-  { key: 'k_bb_pct',   label: 'K-BB%' },
   { key: 'bb_pct',     label: 'BB%' },
   { key: 'opp_woba',   label: 'opp wOBA' },
   { key: 'baa',        label: 'BAA' },
@@ -200,8 +197,6 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
   const last5 = pitchingGames.slice(-5).map(g => ({ ip: ipToTrue(g.ip), er: g.er || 0 })).filter(o => o.ip > 0)
   const last5Ip = last5.reduce((s, o) => s + o.ip, 0)
   const last5Era = last5Ip > 0 ? (last5.reduce((s, o) => s + o.er, 0) * 9) / last5Ip : null
-  // Hot: recent ERA notably below season ERA
-  const hotFlag = (seasonEra != null && last5Era != null && last5Era < seasonEra * 0.9)
 
   const seasonRange = springRows.length ? `${springRows[0].season}${springRows.length > 1 ? `–${springRows[springRows.length - 1].season}` : ''}` : null
   const role = (currSeason?.games_started || 0) >= ((currSeason?.games || 0) - (currSeason?.games_started || 0)) && (currSeason?.games_started || 0) > 0 ? 'Starter' : 'Reliever'
@@ -233,7 +228,6 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
             <div className="flex items-baseline gap-2 flex-wrap">
               <h1 className="text-[22px] font-bold tracking-tight" style={{ color: T.text }}>{player.first_name} {player.last_name}</h1>
               {player.jersey_number && <span className="text-base font-bold" style={{ color: T.textMuted }}>#{player.jersey_number}</span>}
-              {hotFlag && <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold px-2 py-[3px] rounded-full tracking-wide uppercase" style={{ background: 'rgba(255,107,53,0.12)', color: T.hot }}>Hot</span>}
             </div>
             <div className="text-[13px] font-semibold mt-1" style={{ color: T.textMuted }}>
               {player.position} | <Link to={`/team/${player.team_id}`} className="hover:underline">{player.team_name}</Link>

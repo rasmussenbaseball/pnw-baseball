@@ -7599,11 +7599,16 @@ def _compute_2026_pbp_batting_percentiles(conn, division_level, season, player_i
           COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
           COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS f_in_play,
           COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+          COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
           COUNT(*) FILTER (
             WHERE bb_type IN ('LD','FB')
               AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
                 OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
           ) AS air_pull,
+          -- 2-strike contact: swings + contact within 2-strike PAs only.
+          COALESCE(SUM(CASE WHEN strikes_before = 2 THEN LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', '')) ELSE 0 END), 0) AS ts_f_k,
+          COALESCE(SUM(CASE WHEN strikes_before = 2 THEN LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', '')) ELSE 0 END), 0) AS ts_f_f,
+          COUNT(*) FILTER (WHERE strikes_before = 2 AND was_in_play AND pitches_thrown IS NOT NULL) AS ts_in_play,
           COUNT(*) AS pa
         FROM game_events ge
         JOIN games g ON g.id = ge.game_id
@@ -7616,10 +7621,15 @@ def _compute_2026_pbp_batting_percentiles(conn, division_level, season, player_i
     bb_total = r.get("bb_total") or 0
     contact_pct = (contact / swings) if swings > 0 else None
     air_pull_pct = (r.get("air_pull", 0) / bb_total) if bb_total > 0 else None
+    fb_pct = ((r.get("fb_n") or 0) / bb_total) if bb_total > 0 else None
+    ts_swings = (r.get("ts_f_k") or 0) + (r.get("ts_f_f") or 0) + (r.get("ts_in_play") or 0)
+    ts_contact = (r.get("ts_f_f") or 0) + (r.get("ts_in_play") or 0)
+    two_strike_contact_pct = (ts_contact / ts_swings) if ts_swings > 0 else None
 
     baselines = _get_pitch_level_baselines(cur, season, division_level, weights)
     overall = baselines.get("overall") or {}
     deciles = overall.get("deciles") or {}
+    two_strike_deciles = (baselines.get("two_strike") or {}).get("deciles") or {}
 
     out = {}
     if contact_pct is not None:
@@ -7630,6 +7640,14 @@ def _compute_2026_pbp_batting_percentiles(conn, division_level, season, player_i
         p = _pct_from_deciles(air_pull_pct, deciles.get("air_pull_pct"), higher_better=True)
         if p is not None:
             out["air_pull_pct"] = {"value": air_pull_pct, "percentile": p}
+    if fb_pct is not None:
+        p = _pct_from_deciles(fb_pct, deciles.get("fb_pct"), higher_better=True)
+        if p is not None:
+            out["fb_pct"] = {"value": fb_pct, "percentile": p}
+    if two_strike_contact_pct is not None:
+        p = _pct_from_deciles(two_strike_contact_pct, two_strike_deciles.get("contact_pct"), higher_better=True)
+        if p is not None:
+            out["two_strike_contact_pct"] = {"value": two_strike_contact_pct, "percentile": p}
 
     # WPA — total Win Probability Added across the season. Phase D.5.
     cur.execute("""
@@ -7843,6 +7861,7 @@ def _compute_percentiles(conn, division_level: str, season: int, player_stats: d
     if stat_type == "batting":
         metrics = {
             "woba":          {"col": "bs.woba",          "higher_better": True},
+            "wobacon":       {"col": "bs.wobacon",       "higher_better": True},
             "wrc_plus":      {"col": "bs.wrc_plus",      "higher_better": True},
             "iso":           {"col": "bs.iso",           "higher_better": True},
             "bb_pct":        {"col": "bs.bb_pct",        "higher_better": True},
@@ -8867,6 +8886,12 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                     JOIN summer_teams st ON st.id = sp.team_id
                     JOIN summer_leagues sl ON sl.id = st.league_id
                     WHERE sp.id IN ({sp_placeholders})
+                      -- Only surface a "Summer 2026" assignment for players
+                      -- actively on a 2026 WCL roster — that's the only
+                      -- current summer data we have. Excludes PIL and
+                      -- inactive/old WCL teams so stale buttons don't show.
+                      AND sl.abbreviation = 'WCL'
+                      AND st.is_active = TRUE
                     ORDER BY sp.updated_at DESC NULLS LAST, sp.id DESC
                     LIMIT 1""",
                 summer_player_ids,

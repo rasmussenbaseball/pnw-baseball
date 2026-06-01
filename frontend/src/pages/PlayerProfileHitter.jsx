@@ -21,17 +21,20 @@ const SEASON = 2026
 
 // Right-panel percentile rows + radar axes (batting).
 const PCT_METRICS = [
-  { key: 'offensive_war', label: 'WAR',      fmt: 'war' },
-  { key: 'wrc_plus',      label: 'wRC+',     fmt: 'int' },
-  { key: 'woba',          label: 'wOBA',     fmt: 'avg' },
-  { key: 'iso',           label: 'ISO',      fmt: 'avg' },
-  { key: 'hr_pa_pct',     label: 'HR/PA',    fmt: 'pct' },
-  { key: 'k_pct',         label: 'K%',       fmt: 'pct' },
-  { key: 'bb_pct',        label: 'BB%',      fmt: 'pct' },
-  { key: 'contact_pct',   label: 'Contact%', fmt: 'pct' },
-  { key: 'air_pull_pct',  label: 'AIRPULL%', fmt: 'pct' },
-  { key: 'sb_per_pa',     label: 'SB/PA',    fmt: 'pct' },
-  { key: 'wpa',           label: 'WPA',      fmt: 'wpa' },
+  { key: 'offensive_war',          label: 'WAR',         fmt: 'war' },
+  { key: 'wrc_plus',               label: 'wRC+',        fmt: 'int' },
+  { key: 'woba',                   label: 'wOBA',        fmt: 'avg' },
+  { key: 'wobacon',                label: 'wOBACON',     fmt: 'avg' },
+  { key: 'iso',                    label: 'ISO',         fmt: 'avg' },
+  { key: 'hr_pa_pct',              label: 'HR/PA',       fmt: 'pct' },
+  { key: 'k_pct',                  label: 'K%',          fmt: 'pct' },
+  { key: 'bb_pct',                 label: 'BB%',         fmt: 'pct' },
+  { key: 'contact_pct',            label: 'Contact%',    fmt: 'pct' },
+  { key: 'two_strike_contact_pct', label: '2K Contact%', fmt: 'pct' },
+  { key: 'air_pull_pct',           label: 'AIRPULL%',    fmt: 'pct' },
+  { key: 'fb_pct',                 label: 'FB%',         fmt: 'pct' },
+  { key: 'sb_per_pa',              label: 'SB/PA',       fmt: 'pct' },
+  { key: 'wpa',                    label: 'WPA',         fmt: 'wpa' },
 ]
 const RADAR_KEYS = [
   { key: 'wrc_plus',    label: 'wRC+' },
@@ -45,12 +48,15 @@ const TOOLTIPS = {
   WAR:        { what: 'Wins Above Replacement.', why: 'Single best one-number summary.', range: 'Poor <0.5 | Avg ~1.5 | Great 3.0+' },
   'wRC+':     { what: 'Weighted Runs Created Plus, 100 = league avg.', why: 'Park + league adjusted.', range: 'Poor <85 | Avg ~100 | Great 130+' },
   wOBA:       { what: 'Weighted On-Base Average.', why: 'Better single offensive number than OBP/SLG.', range: 'Poor <.310 | Avg ~.330 | Great .400+' },
+  wOBACON:    { what: 'wOBA on contact (balls in play).', why: 'Quality of contact, stripped of Ks and walks.', range: 'Poor <.330 | Avg ~.380 | Great .450+' },
   ISO:        { what: 'Isolated Power. SLG − AVG.', why: 'Pure extra-base power.', range: 'Poor <.130 | Avg ~.160 | Great .220+' },
   'HR/PA':    { what: 'Home runs per plate appearance.', why: 'Cleanest power-frequency metric.', range: 'Poor <1% | Avg ~2.5% | Great 4%+' },
   'K%':       { what: 'Strikeout rate.', why: 'Lower is better contact.', range: 'Poor >25% | Avg ~20% | Great <15%' },
   'BB%':      { what: 'Walk rate.', why: 'Plate discipline / pitch selection.', range: 'Poor <6% | Avg ~8% | Great 12%+' },
   'Contact%': { what: '% of swings that make contact.', why: 'Pure bat-to-ball skill.', range: 'Poor <72% | Avg ~78% | Great 85%+' },
+  '2K Contact%': { what: 'Contact rate on swings with 2 strikes.', why: 'Two-strike battling / strikeout avoidance.', range: 'Poor <70% | Avg ~78% | Great 85%+' },
   'AIRPULL%': { what: '% of air-ball contact pulled.', why: 'Proxy for hard intentional contact.', range: 'Poor <12% | Avg ~16% | Great 22%+' },
+  'FB%':      { what: 'Fly-ball rate on batted balls.', why: 'Launch / power tendency.', range: 'Low <30% | Avg ~38% | High 48%+' },
   'SB/PA':    { what: 'Stolen-base attempts per PA.', why: 'Speed + baserunning aggression.', range: 'Poor 0% | Avg ~3% | Great 8%+' },
   WPA:        { what: 'Win Probability Added.', why: 'Context-dependent clutch value.', range: 'Poor <0 | Avg ~0 | Great +1.5+' },
 }
@@ -228,17 +234,6 @@ export default function PlayerProfileHitter({ playerId, data, sideToggle = null 
   const battingGames = gameLogs?.batting || []
   const rolling = rollingWoba(battingGames, 10)
 
-  // Hot indicator: last 7 games OPS vs season OPS (>10% bump = HOT)
-  const lastN = battingGames.slice(-7)
-  let hotFlag = false
-  if (currSeason && lastN.length >= 3) {
-    const slice = lastN.reduce((s, g) => ({
-      ab: s.ab + (g.ab || 0), h: s.h + (g.h || 0), bb: s.bb + (g.bb || 0),
-      tb: s.tb + (g.h || 0) + (g['2b'] || 0) + 2 * (g['3b'] || 0) + 3 * (g.hr || 0),
-    }), { ab: 0, h: 0, bb: 0, tb: 0 })
-    if (slice.ab > 0) hotFlag = ((slice.h + slice.bb) / (slice.ab + slice.bb) + slice.tb / slice.ab) > (currSeason.ops || 0) * 1.1
-  }
-
   const posRows = (position_breakdown || []).slice(0, 3)
 
   // Per-game OPS chart inputs
@@ -287,7 +282,6 @@ export default function PlayerProfileHitter({ playerId, data, sideToggle = null 
             <div className="flex items-baseline gap-2 flex-wrap">
               <h1 className="text-[22px] font-bold tracking-tight" style={{ color: T.text }}>{player.first_name} {player.last_name}</h1>
               {player.jersey_number && <span className="text-base font-bold" style={{ color: T.textMuted }}>#{player.jersey_number}</span>}
-              {hotFlag && <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold px-2 py-[3px] rounded-full tracking-wide uppercase" style={{ background: 'rgba(255,107,53,0.12)', color: T.hot }}>Hot</span>}
             </div>
             <div className="text-[13px] font-semibold mt-1" style={{ color: T.textMuted }}>
               {player.position} | <Link to={`/team/${player.team_id}`} className="hover:underline">{player.team_name}</Link>
