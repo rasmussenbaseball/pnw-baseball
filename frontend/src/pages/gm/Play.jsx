@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams, Navigate, useBlocker } from 'react-router-dom'
+import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { Sentry } from '../../lib/sentry'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
@@ -1270,26 +1270,20 @@ function LiveGameView({ save, slot: slotProp, game, onExit }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [live])
 
-  // Block deliberate in-app navigation while a live game is in progress.
-  // The user gets a confirm dialog before leaving — most accidental exits
-  // (clicking the GMShell home/nav buttons) get caught here. The clean
-  // exit path is still "Save & exit" / "Auto-finish & exit" below, which
-  // commits the result before navigating.
-  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
-    !live.isOver() && currentLocation.pathname !== nextLocation.pathname,
-  )
-  useEffect(() => {
-    if (blocker.state === 'blocked') {
-      const leave = window.confirm(
-        "You're in the middle of a live game.\n\n" +
-        'Leaving now will reset the game — your progress so far will be lost. ' +
-        "Use the \"Save & exit\" or \"Auto-finish & exit\" button below to leave cleanly.\n\n" +
-        'Leave anyway?',
-      )
-      if (leave) blocker.proceed()
-      else blocker.reset()
-    }
-  }, [blocker])
+  // NOTE: We used to call react-router-dom's useBlocker here to intercept
+  // in-app navigation during a live game and prompt the user. That was the
+  // root cause of Sentry JS-REACT-* "No error message" alerts: useBlocker
+  // is a data-router-only hook in react-router-dom 6.4+, but this app
+  // mounts a plain BrowserRouter (see main.jsx), so every render of the
+  // Play page threw an internal react-router error with an empty message.
+  // The user's experience was a sudden "this page hit an error" boundary
+  // screen even though nothing else was wrong.
+  //
+  // We don't actually need the blocker anymore — the localStorage persist
+  // below saves the in-progress game state after EVERY action, so an
+  // accidental in-app navigation is no longer destructive. The user can
+  // come right back and pick up where they left off. The beforeunload
+  // listener above still handles tab close / refresh / browser-back.
 
   // Persist the in-progress state to localStorage after every action so a
   // mid-game exit (tab close, in-app nav, browser crash) can resume on
