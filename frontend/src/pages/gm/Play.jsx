@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams, Navigate, useBlocker } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { Sentry } from '../../lib/sentry'
 import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import { playerOverall, overallTier } from '../../gm/engine/playerRating'
 import { defaultLineup } from '../../gm/engine/sim'
@@ -1209,6 +1210,31 @@ function LiveGameView({ save, slot: slotProp, game, onExit }) {
     // (per Zack: exiting an active game would reset it). If found, the
     // engine restores the saved state on creation.
     const restore = loadInProgressLiveGame(save.userSchoolId, slot, game.id)
+    // Sentry breadcrumb — log every live-game creation so when this page
+    // crashes we can see in the alert exactly which game / slot / save
+    // the user was in. JS-REACT-8/9 alerts have no actionable context
+    // about which game state triggered them; this fills that gap.
+    try {
+      Sentry.addBreadcrumb({
+        category: 'gm.liveGame',
+        message: 'createLiveGame',
+        level: 'info',
+        data: {
+          gameId: game.id,
+          slot,
+          userSchoolId: save.userSchoolId,
+          level: save.level,
+          year: save.calendar?.year,
+          isHome,
+          restored: !!restore,
+          oppId: oppTeam?.id,
+          userBatters: (userLineup?.batters || []).length,
+          oppBatters: (oppLineup?.batters || []).length,
+          userPitchers: (userLineup?.pitcherRotation || []).length,
+          oppPitchers: (oppLineup?.pitcherRotation || []).length,
+        },
+      })
+    } catch { /* Sentry no-ops when uninitialized */ }
     liveRef.current = createLiveGame(homeLineup, awayLineup, {
       homeMotivator: (isHome ? userHC?.motivator : oppHC?.motivator) ?? 50,
       awayMotivator: (isHome ? oppHC?.motivator : userHC?.motivator) ?? 50,

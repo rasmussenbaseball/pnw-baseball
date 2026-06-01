@@ -37,5 +37,12 @@ export default defineConfig({
     // GM engine chunk is intentionally large (full sim + data); warning
     // would just be noise.
     chunkSizeWarningLimit: 1024,
+    // Emit sourcemaps alongside minified JS so Sentry can symbolicate
+    // production stack traces. Without these, alerts arrive with opaque
+    // single-letter function names (`De`, `Yd`, `zR`) and the React
+    // boundary can't tell us which component threw. Sourcemaps are
+    // hosted publicly — fine for this project since the GM game is
+    // hobby-scale and the code's not proprietary.
+    sourcemap: true,
   },
 })
