@@ -201,6 +201,51 @@ export default function Dashboard() {
     } catch (e) { console.warn('postseason self-heal tick failed:', e) }
   }, [save])
 
+  // ── Corrupt-postseason self-heal ────────────────────────────────────
+  // Reported by friend playing Bushnell (CCC, year 1): they won CC
+  // tournament round 1 vs Eastern Oregon and the Postseason page
+  // suddenly showed all 10 NAIA regionals already simulated with
+  // champions crowned — and Bushnell wasn't in any of them. Their
+  // CONF round was still in progress (vs Lewis-Clark State next), so
+  // buildNationalRegionals shouldn't have fired yet.
+  //
+  // Whatever path caused it, the symptom is the same: ps.national.regionals
+  // exists, user is still alive in CONF (or even just qualified + not
+  // eliminated), but they're not in any of the listed regionals. That
+  // state is salvageable — wipe ps.national.regionals so it can rebuild
+  // correctly when the conf tournament actually finishes.
+  useEffect(() => {
+    if (!save) return
+    const ps = save.postseason
+    if (!ps?.interactive) return
+    const uid = save.userSchoolId
+    const stage = ps.stage
+    const regionals = ps.national?.regionals || []
+    if (regionals.length === 0) return
+    const userInRegionals = regionals.some(r => r.isUser || (r.seeds || []).includes(uid))
+    // The corruption pattern: regionals exist + user not in them + user is
+    // still in (or hasn't been eliminated from) the conf round.
+    const stillInConf = stage === 'CONF' && !ps.rounds?.CONF?.resolved
+    const aliveButOut = ps.userAlive && !userInRegionals
+    const eligibleButOut = ps.userQualified
+      && (!ps.userEliminatedAt || ps.userEliminatedAt === 'REG_SEASON')
+      && !userInRegionals
+    if (stillInConf && (aliveButOut || eligibleButOut)) {
+      try {
+        // Clear the corrupt bracket so the next legitimate advance to
+        // REGIONAL rebuilds it with the user properly included.
+        delete ps.national.regionals
+        // Also wipe REGIONAL round if it was set up against the bad field.
+        if (ps.rounds?.REGIONAL) ps.rounds.REGIONAL = null
+        // Keep the stage at CONF so the user finishes their conf tournament.
+        if (stage !== 'CONF') ps.stage = 'CONF'
+        saveDynasty(save)
+        // eslint-disable-next-line no-console
+        console.info('Postseason self-heal: cleared stale national regionals (user was missing from field while still in conf).')
+      } catch (e) { console.warn('postseason regional self-heal failed:', e) }
+    }
+  }, [save])
+
   // Championship-won celebration popup. Fires once per championship year
   // when ps.userNatChamp becomes true and we haven't shown it yet. The
   // shown-year flag dedupes against reloads + repeated Dashboard mounts so

@@ -579,6 +579,52 @@ export function advanceInteractivePostseasonNAIA(state, leavingWeek) {
   // exact bug where a CCC champion got no regional game and was dropped from
   // the World Series.
   if (leavingWeek === 40) {
+    // Force-resolve CONF before advancing to REGIONAL. Friend's bug
+    // (Bushnell, year 1): CONF round was still pending when the advance
+    // fired, which built regionals without the user. Now we ALWAYS run
+    // the bracket to completion first — using the user's actual results
+    // for played games + sim-filling any unplayed games — so userAlive
+    // reflects their real outcome before regionals are constructed.
+    const confRound = ps.rounds?.CONF
+    if (confRound && !confRound.resolved) {
+      try {
+        const userId = state.userSchoolId
+        const sim = makeNonUserSim(ratings)
+        const year = state.calendar.year
+        const realResult = getUserResultFromSchedule(state, year, 'CONF')
+        // For unplayed user games, fall back to a sim outcome between the
+        // matchup's two teams. This collapses any remaining bracket to a
+        // single resolved result in one runMatchGraph call.
+        const simFilled = {}
+        const getUserResult = (gameKey) => {
+          const real = realResult(gameKey)
+          if (real) return real
+          if (simFilled[gameKey]) return simFilled[gameKey]
+          return null   // first call: tell runMatchGraph this is pending
+        }
+        // Run iteratively: each iteration that returns pending → fill that
+        // pending match with a sim result and try again. makeNonUserSim
+        // only returns a winner id, not a score — so we call fastSimGame
+        // directly to get the {homeRuns, awayRuns} shape getUserResult
+        // expects. Caps prevent any infinite loop in a malformed bracket.
+        for (let i = 0; i < 20 && !confRound.resolved; i++) {
+          const res = runMatchGraph(confRound.seeds, confRound.spec, userId, getUserResult, sim, confRound.seedKey)
+          if (res.pending) {
+            const { gameKey, homeId, awayId } = res.pending
+            const hr = ratingOf(ratings, homeId)
+            const ar = ratingOf(ratings, awayId)
+            const r = fastSimGame(hr, ar, `psconf_${confRound.seedKey}_${gameKey}`)
+            simFilled[gameKey] = {
+              homeRuns: r.homeRuns, awayRuns: r.awayRuns,
+              homeId, awayId,
+            }
+          } else {
+            applyDeResult(state, ps, 'CONF', confRound, res)
+            break
+          }
+        }
+      } catch (e) { console.warn('CONF auto-resolve failed:', e) }
+    }
     ps.stage = 'REGIONAL'
     setupRegional(state, ratings)
   } else if (leavingWeek === 41) {
@@ -599,7 +645,18 @@ function buildNationalRegionals(state, ratings) {
   const year = state.calendar.year
   const sim = makeNonUserSim(ratings)
   let field = nationalField(state, ratings)
-  if (ps.userAlive && !field.includes(userId)) field = [userId, ...field]
+  // User inclusion guard. Per friend-of-Nate's report (Bushnell, CCC, year
+  // 1): user got dropped from regionals entirely while still alive in
+  // their conference tournament. Root cause was buildNationalRegionals
+  // running at a moment when ps.userAlive was momentarily false. Be
+  // PLURAL about when to force-include: alive, OR qualified for conf
+  // tourney and not explicitly eliminated, OR they actually won their
+  // CONF round but the flag didn't propagate.
+  const userWonConf = ps.rounds?.CONF?.resolved && ps.rounds.CONF.userWon
+  const userInConfBracket = ps.userQualified
+    && (!ps.userEliminatedAt || ps.userEliminatedAt === 'REG_SEASON')
+  const userShouldBeIn = ps.userAlive || userWonConf || userInConfBracket
+  if (userShouldBeIn && !field.includes(userId)) field = [userId, ...field]
   field = field.slice(0, 46)
   const sizes = [5, 5, 5, 5, 5, 5, 4, 4, 4, 4]   // 6×5 + 4×4 = 46
   const regionals = sizes.map((sz, i) => ({ idx: i, hostId: field[i], seeds: [field[i]], target: sz, champion: null }))
