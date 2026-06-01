@@ -511,7 +511,7 @@ function SpotlightCard({ eyebrow, eyebrowAccent, player, stats }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">
             <Link
-              to={`/players/${player.id || player.player_id}`}
+              to={`/player/${player.id || player.player_id}`}
               className="text-base sm:text-lg font-bold text-portal-purple-dark dark:text-gray-100 hover:underline truncate"
             >
               {player.name || `${player.first_name} ${player.last_name}`}
@@ -599,7 +599,7 @@ function TopHittersBoard({ ig }) {
                 className="border-b border-gray-50 dark:border-gray-700/50 last:border-0 hover:bg-portal-purple/5 dark:hover:bg-gray-700/40 transition-colors">
               <td className="py-1.5">
                 <Link
-                  to={`/players/${p.id || p.player_id}`}
+                  to={`/player/${p.id || p.player_id}`}
                   className="text-portal-purple-dark dark:text-gray-100 hover:underline font-medium"
                 >
                   {p.name || `${p.first_name} ${p.last_name}`}
@@ -652,7 +652,7 @@ function TopPitchersBoard({ ig }) {
                 className="border-b border-gray-50 dark:border-gray-700/50 last:border-0 hover:bg-portal-purple/5 dark:hover:bg-gray-700/40 transition-colors">
               <td className="py-1.5">
                 <Link
-                  to={`/players/${p.id || p.player_id}`}
+                  to={`/player/${p.id || p.player_id}`}
                   className="text-portal-purple-dark dark:text-gray-100 hover:underline font-medium"
                 >
                   {p.name || `${p.first_name} ${p.last_name}`}
@@ -753,7 +753,7 @@ function ClutchColumn({ title, rows, unit }) {
             return (
               <li key={p.player_id} className="flex items-center justify-between gap-2">
                 <Link
-                  to={`/players/${p.player_id}`}
+                  to={`/player/${p.player_id}`}
                   className="text-sm font-medium text-portal-purple-dark dark:text-gray-100 hover:underline truncate"
                 >
                   {p.name}
@@ -823,7 +823,7 @@ function TopMomentsForTeam({ teamId }) {
               </span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-portal-purple-dark dark:text-gray-100 truncate">
-                  <Link to={`/players/${featured.id}`} className="hover:underline">
+                  <Link to={`/player/${featured.id}`} className="hover:underline">
                     {featured.name}
                   </Link>
                   <span className="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1.5">

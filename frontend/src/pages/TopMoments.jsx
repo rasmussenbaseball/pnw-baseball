@@ -144,7 +144,7 @@ function HeroMoment({ moment, rank, perspective }) {
 
       <div className="flex flex-wrap items-baseline gap-2 mb-2">
         <Link
-          to={`/players/${featured.id}`}
+          to={`/player/${featured.id}`}
           className="text-xl sm:text-2xl font-bold text-white hover:underline"
         >
           {featured.name}
@@ -237,7 +237,7 @@ function MomentCard({ moment, rank, perspective }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
             <Link
-              to={`/players/${featured.id}`}
+              to={`/player/${featured.id}`}
               onClick={(e) => e.stopPropagation()}
               className="text-sm font-semibold text-gray-900 hover:underline truncate"
             >
@@ -246,7 +246,7 @@ function MomentCard({ moment, rank, perspective }) {
             <span className="text-xs text-gray-500 truncate">{result.toLowerCase()}</span>
             <span className="text-xs text-gray-400">vs</span>
             <Link
-              to={`/players/${opposing.id}`}
+              to={`/player/${opposing.id}`}
               onClick={(e) => e.stopPropagation()}
               className="text-xs text-gray-600 hover:underline truncate"
             >
@@ -362,7 +362,7 @@ function LeaderboardRow({ row: r, unit }) {
       </td>
       <td className="py-1.5">
         <Link
-          to={`/players/${r.player_id}`}
+          to={`/player/${r.player_id}`}
           className="text-sm font-semibold text-gray-900 hover:underline"
         >
           {r.name}

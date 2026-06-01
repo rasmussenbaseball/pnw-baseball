@@ -83,7 +83,7 @@ export default function SummerPlayerDetail() {
             )}
             {spring_link && (
               <Link
-                to={`/players/${spring_link.spring_player_id}`}
+                to={`/player/${spring_link.spring_player_id}`}
                 className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-teal-50 dark:bg-teal-900/30 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900/50"
               >
                 {spring_link.spring_team_logo && <img src={spring_link.spring_team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />}

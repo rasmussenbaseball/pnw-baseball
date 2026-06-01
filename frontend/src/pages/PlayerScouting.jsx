@@ -196,7 +196,7 @@ function PlayerHeader({ player }) {
             {player.first_name} {player.last_name}
           </h2>
           <Link
-            to={`/players/${player.id}`}
+            to={`/player/${player.id}`}
             className="text-xs text-pnw-sky hover:underline"
           >
             full profile →

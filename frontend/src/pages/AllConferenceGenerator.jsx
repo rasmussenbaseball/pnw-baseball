@@ -84,7 +84,7 @@ function PlayerCard({ player, kind, rateMode, compact }) {
             {player.slot}
           </div>
           <Link
-            to={`/players/${player.player_id}`}
+            to={`/player/${player.player_id}`}
             className="text-sm font-bold text-pnw-slate hover:text-nw-teal block truncate"
           >
             {player.name}
