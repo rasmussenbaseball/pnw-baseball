@@ -57,7 +57,7 @@ export default function TransferPortalTracker() {
   const [bats, setBats] = usePersistedState('tp_bats', '')
   const [throws_, setThrows] = usePersistedState('tp_throws', '')
 
-  const { data, loading } = useApi('/players/transfer-portal', {
+  const { data, loading } = useApi('/transfer-portal', {
     season,
     position: position || undefined,
     sort_by: sortBy,

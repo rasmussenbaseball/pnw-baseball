@@ -9053,7 +9053,10 @@ def uncommitted_juco_players(
         return [_add_era_plus(dict(r)) for r in rows]
 
 
-@router.get("/players/transfer-portal")
+# NOTE: top-level path (not /players/transfer-portal) to avoid being
+# shadowed by the /players/{player_id} route, which would try to parse
+# "transfer-portal" as an int player id (422).
+@router.get("/transfer-portal")
 def transfer_portal_players(
     season: int = Query(2026),
     position: Optional[str] = None,
