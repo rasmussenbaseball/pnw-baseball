@@ -1,20 +1,21 @@
 // WclGameRecapGraphic — canvas-based SINGLE-game WCL recap card.
-//   /summer/game-recap   (optionally ?game=<id> to preselect)
+//   /summer/game-recap   (listed under the Graphics hub; ?game=<id> preselects)
 //
-// Sister to WclRecapGraphic (which renders a whole day's slate in a
-// grid). This one zooms in on ONE game and renders a detailed,
-// share-ready 1080×1350 PNG: centered final, full R/H/E line score,
-// pitching decisions (W / L / S), and each side's top hitters.
+// Zooms in on ONE game and renders a FIXED 1080×1350 (Instagram 4:5) PNG:
+// centered final, full R/H/E line score, pitching decisions, and each
+// side's top hitters. Sections are distributed to fill the canvas so the
+// card always uses the full Instagram frame with even spacing.
 //
-// Pick any final WCL game from the dropdown to make its graphic.
 // Download button writes wcl-game-<away>-<home>-<date>.png.
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 const API_BASE = '/api/v1'
+const W = 1080
+const H = 1350
 
-// ── Colors (WCL navy + gold theme, matches WclRecapGraphic) ────
+// ── Colors (WCL navy + gold theme) ─────────────────────────────
 const C = {
   navy:       '#14365c',
   navy_dark:  '#0d2240',
@@ -39,14 +40,12 @@ const fmtDateLong = (iso) => {
     weekday: 'long', month: 'long', day: 'numeric',
   })
 }
-// Line-score cell: numbers as-is, "X" (didn't bat) preserved, else blank.
 const fmtCell = (v) => {
   if (v == null || v === '') return ''
   if (typeof v === 'string' && v.toUpperCase() === 'X') return 'X'
   return String(v)
 }
 
-// Image cache so the same logo isn't fetched twice across redraws.
 const imgCache = {}
 function loadImage(src) {
   if (!src) return Promise.reject('no-src')
@@ -76,8 +75,20 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.quadraticCurveTo(x, y, x + r, y)
   ctx.closePath()
 }
+function drawContain(ctx, img, x, y, box) {
+  const ar = img.width / img.height
+  let dw = box, dh = box
+  if (ar > 1) dh = box / ar
+  else dw = box * ar
+  ctx.drawImage(img, x + (box - dw) / 2, y + (box - dh) / 2, dw, dh)
+}
+function truncate(ctx, text, maxW) {
+  let s = text || ''
+  while (s.length > 3 && ctx.measureText(s).width > maxW) s = s.slice(0, -1)
+  return s === (text || '') ? s : s.replace(/…?$/, '…')
+}
 
-// ── Star derivation (no per-game WPA, so simple box-score math) ─
+// ── Star derivation (no per-game WPA → simple box-score math) ──
 function scoreHitter(b) {
   return (b.h || 0) * 1
        + (b['2b'] || 0) * 1
@@ -88,7 +99,7 @@ function scoreHitter(b) {
        + (b.r  || 0) * 0.3
        - (b.so || 0) * 0.3
 }
-function topHitters(rows, sideIsHome, n = 2) {
+function topHitters(rows, sideIsHome, n = 3) {
   return (rows || [])
     .filter(r => r.is_home === sideIsHome && (r.ab || r.bb) && (r.h || r.rbi || r.bb || r.hr))
     .sort((a, b) => scoreHitter(b) - scoreHitter(a))
@@ -109,7 +120,6 @@ function pitcherLine(p) {
   if (!p) return ''
   return `${fmtIP(p.ip)} IP, ${p.h || 0} H, ${p.er || 0} ER, ${p.bb || 0} BB, ${p.so || 0} K`
 }
-// Decisions in display order: W, L, S.
 function decisions(pitching) {
   const order = { W: 0, L: 1, S: 2 }
   return (pitching || [])
@@ -117,15 +127,8 @@ function decisions(pitching) {
     .sort((a, b) => order[a.decision] - order[b.decision])
 }
 
-// Truncate text to a max pixel width given the current ctx font.
-function truncate(ctx, text, maxW) {
-  let s = text || ''
-  while (s.length > 3 && ctx.measureText(s).width > maxW) s = s.slice(0, -1)
-  return s === text ? s : s.replace(/…?$/, '…')
-}
-
-// ── Card sections ──────────────────────────────────────────────
-function drawHeader(ctx, dateIso, innings, W) {
+// ── Sections (each takes a TOP edge, returns its BOTTOM edge) ──
+function drawHeader(ctx, dateIso, innings) {
   const grad = ctx.createLinearGradient(0, 0, W, 150)
   grad.addColorStop(0, C.navy)
   grad.addColorStop(0.55, C.blue)
@@ -136,120 +139,103 @@ function drawHeader(ctx, dateIso, innings, W) {
   ctx.fillStyle = C.gold_light
   ctx.font = '900 14px -apple-system, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText('WEST COAST LEAGUE · GAME RECAP', 40, 46)
+  ctx.fillText('WEST COAST LEAGUE · GAME RECAP', 40, 48)
 
   ctx.fillStyle = '#fff'
-  ctx.font = '900 40px -apple-system, sans-serif'
-  ctx.fillText(fmtDateLong(dateIso), 40, 96)
+  ctx.font = '900 44px -apple-system, sans-serif'
+  ctx.fillText(fmtDateLong(dateIso), 40, 100)
 
-  const innTxt = innings && innings !== 9 ? `FINAL · ${innings} INN` : 'FINAL'
+  const innTxt = innings && innings !== 9 ? `FINAL · ${innings} INNINGS` : 'FINAL'
   ctx.fillStyle = 'rgba(255,255,255,0.85)'
   ctx.font = '700 15px -apple-system, sans-serif'
-  ctx.fillText(innTxt, 40, 126)
+  ctx.fillText(innTxt, 40, 128)
+  return 150
 }
 
-// Centered head-to-head final: [logo] score  —  score [logo], names below.
-async function drawScoreBlock(ctx, game, W, top) {
+// Centered head-to-head final: [logo] score – score [logo], names below.
+async function drawScoreBlock(ctx, game, top) {
   const cx = W / 2
-  const logoSize = 110
+  const logoSize = 124
   const awayWon = (game.away_score ?? 0) > (game.home_score ?? 0)
   const homeWon = (game.home_score ?? 0) > (game.away_score ?? 0)
-
-  // Logos
-  const [awayImg, homeImg] = await Promise.all([
-    tryLoad(game.away_logo), tryLoad(game.home_logo),
-  ])
+  const [awayImg, homeImg] = await Promise.all([tryLoad(game.away_logo), tryLoad(game.home_logo)])
+  const logoY = top
   const drawLogo = (img, x) => {
-    const y = top + 10
-    if (img) {
-      ctx.drawImage(img, x - logoSize / 2, y, logoSize, logoSize)
-    } else {
-      ctx.fillStyle = '#e5e5e5'
-      ctx.beginPath()
-      ctx.arc(x, y + logoSize / 2, logoSize / 2, 0, Math.PI * 2)
-      ctx.fill()
-    }
+    if (img) drawContain(ctx, img, x - logoSize / 2, logoY, logoSize)
+    else { ctx.fillStyle = '#e8e4d6'; roundRect(ctx, x - logoSize / 2, logoY, logoSize, logoSize, 12); ctx.fill() }
   }
-  drawLogo(awayImg, 180)
-  drawLogo(homeImg, W - 180)
+  drawLogo(awayImg, 175)
+  drawLogo(homeImg, W - 175)
 
-  // Scores flanking center
   ctx.textAlign = 'center'
-  ctx.font = '900 88px -apple-system, sans-serif'
+  ctx.font = '900 96px -apple-system, sans-serif'
   ctx.fillStyle = awayWon ? C.win : C.loss
-  ctx.fillText(String(game.away_score ?? '—'), cx - 95, top + 95)
+  ctx.fillText(String(game.away_score ?? '—'), cx - 100, logoY + 92)
   ctx.fillStyle = homeWon ? C.win : C.loss
-  ctx.fillText(String(game.home_score ?? '—'), cx + 95, top + 95)
-
-  // Center dash
+  ctx.fillText(String(game.home_score ?? '—'), cx + 100, logoY + 92)
   ctx.fillStyle = C.text_gray
-  ctx.font = '700 40px -apple-system, sans-serif'
-  ctx.fillText('–', cx, top + 88)
+  ctx.font = '700 44px -apple-system, sans-serif'
+  ctx.fillText('–', cx, logoY + 84)
 
-  // Team names below logos
-  ctx.font = '800 22px -apple-system, sans-serif'
-  const nameY = top + 10 + logoSize + 30
-  const awayName = truncate(ctx, game.away_short || game.away_team_name || '—', 300)
-  const homeName = truncate(ctx, game.home_short || game.home_team_name || '—', 300)
+  ctx.font = '800 24px -apple-system, sans-serif'
+  const nameY = logoY + logoSize + 34
   ctx.fillStyle = awayWon ? C.navy : C.text_muted
-  ctx.fillText(awayName, 180, nameY)
+  ctx.fillText(truncate(ctx, game.away_short || game.away_team_name || '—', 320), 175, nameY)
   ctx.fillStyle = homeWon ? C.navy : C.text_muted
-  ctx.fillText(homeName, W - 180, nameY)
+  ctx.fillText(truncate(ctx, game.home_short || game.home_team_name || '—', 320), W - 175, nameY)
+  return nameY + 16
 }
 
-// R/H/E line score grid centered in a white card.
-function drawLineScore(ctx, game, W, top) {
+// R/H/E line score grid in a white card.
+function drawLineScore(ctx, game, top) {
   const awayLine = game.away_line_score || []
   const homeLine = game.home_line_score || []
-  const innings = Math.max(awayLine.length, homeLine.length, game.innings || 9)
+  const innCols = Math.max(awayLine.length, homeLine.length, game.innings || 9)
 
   const padX = 40
   const cardX = padX
   const cardW = W - padX * 2
-  const labelW = 150
-  const rheW = 56
-  const innCols = innings
+  const labelW = 170
+  const rheW = 60
   const gridW = cardW - labelW - rheW * 3 - 24
   const colW = gridW / innCols
-  const rowH = 40
-  const cardH = rowH * 3 + 20
+  const rowH = 46
+  const cardH = rowH * 3 + 22
 
-  // Card bg
   ctx.fillStyle = C.card
-  roundRect(ctx, cardX, top, cardW, cardH, 12)
+  roundRect(ctx, cardX, top, cardW, cardH, 14)
   ctx.fill()
   ctx.strokeStyle = 'rgba(20,54,92,0.15)'
   ctx.lineWidth = 1
   ctx.stroke()
 
-  const colX = (i) => cardX + 12 + labelW + i * colW + colW / 2
-  const rheX = (k) => cardX + 12 + labelW + gridW + 12 + k * rheW + rheW / 2
-  const headY = top + 28
+  const colX = (i) => cardX + 14 + labelW + i * colW + colW / 2
+  const rheX = (k) => cardX + 14 + labelW + gridW + 12 + k * rheW + rheW / 2
+  const headY = top + 32
   const r1Y = headY + rowH
   const r2Y = r1Y + rowH
 
-  // Header row
   ctx.textAlign = 'center'
-  ctx.font = '800 15px -apple-system, sans-serif'
+  ctx.font = '800 16px -apple-system, sans-serif'
   ctx.fillStyle = C.text_gray
   for (let i = 0; i < innCols; i++) ctx.fillText(String(i + 1), colX(i), headY)
   ctx.fillStyle = C.navy
-  ctx.font = '900 15px -apple-system, sans-serif'
+  ctx.font = '900 16px -apple-system, sans-serif'
   ;['R', 'H', 'E'].forEach((h, k) => ctx.fillText(h, rheX(k), headY))
 
   const drawRow = (label, line, r, h, e, y, won) => {
     ctx.textAlign = 'left'
-    ctx.font = (won ? '900 ' : '700 ') + '17px -apple-system, sans-serif'
+    ctx.font = (won ? '900 ' : '700 ') + '18px -apple-system, sans-serif'
     ctx.fillStyle = won ? C.navy : C.text_muted
-    ctx.fillText(truncate(ctx, label || '—', labelW - 6), cardX + 14, y)
+    ctx.fillText(truncate(ctx, label || '—', labelW - 6), cardX + 16, y)
     ctx.textAlign = 'center'
-    ctx.font = '600 16px -apple-system, sans-serif'
+    ctx.font = '600 17px -apple-system, sans-serif'
     ctx.fillStyle = C.text
     for (let i = 0; i < innCols; i++) ctx.fillText(fmtCell(line[i]), colX(i), y)
-    ctx.font = '800 17px -apple-system, sans-serif'
+    ctx.font = '800 18px -apple-system, sans-serif'
     ctx.fillStyle = won ? C.navy : C.text
     ctx.fillText(String(r ?? '—'), rheX(0), y)
-    ctx.font = '600 16px -apple-system, sans-serif'
+    ctx.font = '600 17px -apple-system, sans-serif'
     ctx.fillStyle = C.text_muted
     ctx.fillText(String(h ?? '—'), rheX(1), y)
     ctx.fillText(String(e ?? '—'), rheX(2), y)
@@ -258,48 +244,50 @@ function drawLineScore(ctx, game, W, top) {
   const homeWon = (game.home_score ?? 0) > (game.away_score ?? 0)
   drawRow(game.away_short || game.away_team_name, awayLine,
           game.away_score, game.away_hits, game.away_errors, r1Y, awayWon)
-  // divider
   ctx.strokeStyle = 'rgba(0,0,0,0.08)'
-  ctx.beginPath(); ctx.moveTo(cardX + 14, r1Y + 12); ctx.lineTo(cardX + cardW - 14, r1Y + 12); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(cardX + 16, r1Y + 13); ctx.lineTo(cardX + cardW - 16, r1Y + 13); ctx.stroke()
   drawRow(game.home_short || game.home_team_name, homeLine,
           game.home_score, game.home_hits, game.home_errors, r2Y, homeWon)
-
   return top + cardH
 }
 
-// Section title with a small gold rule under it.
-function sectionTitle(ctx, text, x, y) {
+function sectionTitle(ctx, text, x, baseY) {
   ctx.textAlign = 'left'
-  ctx.font = '900 16px -apple-system, sans-serif'
+  ctx.font = '900 17px -apple-system, sans-serif'
   ctx.fillStyle = C.gold
-  ctx.fillText(text, x, y)
+  ctx.fillText(text, x, baseY)
+  // small gold rule under the title
+  const w = ctx.measureText(text).width
+  ctx.strokeStyle = 'rgba(201,164,76,0.45)'
+  ctx.lineWidth = 1
+  ctx.beginPath(); ctx.moveTo(x, baseY + 7); ctx.lineTo(x + w, baseY + 7); ctx.stroke()
 }
 
-function drawDecisions(ctx, decs, W, top) {
+function drawDecisions(ctx, decs, top) {
   const padX = 40
-  sectionTitle(ctx, 'PITCHING DECISIONS', padX, top)
-  let y = top + 30
+  sectionTitle(ctx, 'PITCHING DECISIONS', padX, top + 18)
+  let y = top + 18 + 34
   const labelFor = { W: 'W', L: 'L', S: 'SV' }
   decs.forEach((p) => {
     ctx.textAlign = 'left'
-    ctx.font = '900 16px -apple-system, sans-serif'
+    ctx.font = '900 17px -apple-system, sans-serif'
     ctx.fillStyle = p.decision === 'W' ? C.win : (p.decision === 'L' ? C.loss : C.gold)
     ctx.fillText(labelFor[p.decision], padX, y)
-    ctx.font = '700 16px -apple-system, sans-serif'
+    ctx.font = '700 17px -apple-system, sans-serif'
     ctx.fillStyle = C.text
-    ctx.fillText(truncate(ctx, p.player_name || '', 360), padX + 44, y)
-    ctx.font = '500 14px -apple-system, sans-serif'
+    ctx.fillText(truncate(ctx, p.player_name || '', 360), padX + 46, y)
+    ctx.font = '500 15px -apple-system, sans-serif'
     ctx.fillStyle = C.text_muted
     ctx.textAlign = 'right'
     ctx.fillText(pitcherLine(p), W - padX, y)
-    y += 30
+    y += 32
   })
-  return y
+  return y - 12
 }
 
-function drawHitters(ctx, game, away, home, W, top) {
+function drawHitters(ctx, game, away, home, top) {
   const padX = 40
-  sectionTitle(ctx, 'TOP HITTERS', padX, top)
+  sectionTitle(ctx, 'TOP HITTERS', padX, top + 18)
   const colW = (W - padX * 2 - 30) / 2
   const colX = [padX, padX + colW + 30]
   const cols = [
@@ -309,70 +297,58 @@ function drawHitters(ctx, game, away, home, W, top) {
   let maxY = top
   cols.forEach((col, ci) => {
     const x = colX[ci]
-    let y = top + 30
+    let y = top + 18 + 34
     ctx.textAlign = 'left'
-    ctx.font = '800 15px -apple-system, sans-serif'
+    ctx.font = '800 16px -apple-system, sans-serif'
     ctx.fillStyle = C.navy
     ctx.fillText(truncate(ctx, col.name || '—', colW), x, y)
-    y += 28
+    y += 30
     if (!col.hitters.length) {
-      ctx.font = '500 14px -apple-system, sans-serif'
+      ctx.font = '500 15px -apple-system, sans-serif'
       ctx.fillStyle = C.text_gray
       ctx.fillText('—', x, y)
-      y += 26
+      y += 28
     }
     col.hitters.forEach((b) => {
-      ctx.font = '700 16px -apple-system, sans-serif'
+      ctx.font = '700 17px -apple-system, sans-serif'
       ctx.fillStyle = C.text
       const nm = b.position ? `${b.player_name} · ${String(b.position).toUpperCase()}` : b.player_name
       ctx.fillText(truncate(ctx, nm || '', colW), x, y)
-      y += 22
-      ctx.font = '500 14px -apple-system, sans-serif'
+      y += 23
+      ctx.font = '500 15px -apple-system, sans-serif'
       ctx.fillStyle = C.text_muted
       ctx.fillText(truncate(ctx, hitterLine(b), colW), x, y)
-      y += 32
+      y += 33
     })
     maxY = Math.max(maxY, y)
   })
   return maxY
 }
 
-function drawFooter(ctx, W, H) {
+function drawFooter(ctx) {
   ctx.fillStyle = C.navy_dark
-  ctx.fillRect(0, H - 60, W, 60)
+  ctx.fillRect(0, H - 64, W, 64)
   ctx.fillStyle = '#fff'
   ctx.font = '700 15px -apple-system, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText('nwbaseballstats.com/summer', 40, H - 24)
+  ctx.fillText('nwbaseballstats.com/summer', 40, H - 26)
   ctx.font = '500 13px -apple-system, sans-serif'
   ctx.fillStyle = 'rgba(255,255,255,0.7)'
   ctx.textAlign = 'right'
-  ctx.fillText('@nwbaseballstats', W - 40, H - 24)
+  ctx.fillText('@nwbaseballstats', W - 40, H - 26)
 }
 
-// ── Main renderer ──────────────────────────────────────────────
+// ── Main renderer (fixed 1080×1350, sections distributed to fill) ─
 async function renderGameCard(canvas, data) {
   const game = data.game
   const decs = decisions(data.pitching)
-  const awayHit = topHitters(data.batting, false, 2)
-  const homeHit = topHitters(data.batting, true, 2)
+  const awayHit = topHitters(data.batting, false, 3)
+  const homeHit = topHitters(data.batting, true, 3)
   const innings = Math.max(
     (game.away_line_score || []).length,
     (game.home_line_score || []).length,
     game.innings || 9,
   )
-
-  // Height: fixed sections + variable decisions/hitters.
-  const W = 1080
-  const HEADER_H = 150
-  const SCORE_H = 230
-  const lineCardH = 40 * 3 + 20
-  const decsH = 30 + decs.length * 30 + 10
-  const hitRows = Math.max(awayHit.length, homeHit.length, 1)
-  const hittersH = 30 + 28 + hitRows * 54 + 10
-  const FOOTER_H = 60
-  const GAP = 34
-  const H = HEADER_H + SCORE_H + lineCardH + GAP + decsH + GAP + hittersH + GAP + FOOTER_H
 
   canvas.width = W
   canvas.height = H
@@ -380,13 +356,25 @@ async function renderGameCard(canvas, data) {
   ctx.fillStyle = C.bg
   ctx.fillRect(0, 0, W, H)
 
-  drawHeader(ctx, game.game_date, innings, W)
-  await drawScoreBlock(ctx, game, W, HEADER_H + 10)
-  let y = HEADER_H + SCORE_H
-  y = drawLineScore(ctx, game, W, y) + GAP
-  y = drawDecisions(ctx, decs, W, y) + GAP
-  drawHitters(ctx, game, awayHit, homeHit, W, y)
-  drawFooter(ctx, W, H)
+  const HEADER_H = 150
+  const FOOTER_H = 64
+  // Natural heights of the four middle sections.
+  const SCORE_H = 124 + 34 + 16 + 16          // logo + name + padding
+  const LINE_H = 46 * 3 + 22
+  const DECS_H = 18 + 34 + Math.max(1, decs.length) * 32
+  const hitRows = Math.max(awayHit.length, homeHit.length, 1)
+  const HIT_H = 18 + 34 + 30 + hitRows * 56
+  const content = SCORE_H + LINE_H + DECS_H + HIT_H
+  // Distribute leftover space across 5 gaps (top, 3 between, bottom).
+  const gap = Math.max(26, Math.min(90, (H - HEADER_H - FOOTER_H - content) / 5))
+
+  drawHeader(ctx, game.game_date, innings)
+  let y = HEADER_H + gap
+  y = await drawScoreBlock(ctx, game, y) + gap
+  y = drawLineScore(ctx, game, y) + gap
+  y = drawDecisions(ctx, decs, y) + gap
+  drawHitters(ctx, game, awayHit, homeHit, y)
+  drawFooter(ctx)
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -402,7 +390,6 @@ export default function WclGameRecapGraphic() {
   const [error, setError] = useState(null)
   const canvasRef = useRef(null)
 
-  // Load the list of final WCL games (most recent first).
   useEffect(() => {
     let cancelled = false
     setLoadingList(true)
@@ -416,7 +403,6 @@ export default function WclGameRecapGraphic() {
           .sort((a, b) => (b.game_date || '').localeCompare(a.game_date || '') || b.id - a.id)
         if (cancelled) return
         setGames(finals)
-        // Preselect: ?game=, else most recent final.
         if (!selectedId && finals.length) setSelectedId(String(finals[0].id))
       } catch (e) {
         if (!cancelled) setError(e.message || 'fetch failed')
@@ -428,7 +414,6 @@ export default function WclGameRecapGraphic() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Load the selected game's box score.
   useEffect(() => {
     if (!selectedId) return
     let cancelled = false
@@ -448,7 +433,6 @@ export default function WclGameRecapGraphic() {
     return () => { cancelled = true }
   }, [selectedId])
 
-  // Render after data ready.
   useEffect(() => {
     if (loadingGame || !data?.game || !canvasRef.current) return
     renderGameCard(canvasRef.current, data).catch(e => setError(e.message))
@@ -479,7 +463,7 @@ export default function WclGameRecapGraphic() {
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4">
       <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">WCL Game Recap Graphic</h1>
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        Pick any final WCL game and download a share-ready 1080-wide recap card with the full line score, pitching decisions, and top hitters.
+        Pick any final WCL game and download a share-ready 1080×1350 (Instagram) card with the full line score, runs / hits / errors, pitching decisions, and top hitters.
       </p>
 
       <div className="flex flex-wrap items-end gap-3 mb-4">

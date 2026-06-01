@@ -87,8 +87,6 @@ const NAV = [
       { to: '/summer/teams',       label: 'Teams',          desc: 'Browse every WCL club, grouped by division', requires: 'free' },
       { to: '/summer/pnw-alumni',  label: 'PNW Alumni',     desc: 'PNW college players on WCL rosters this summer', requires: 'free' },
       { to: '/summer/college-mix', label: 'College Mix',    desc: 'Most-represented schools in the WCL', requires: 'free' },
-      { to: '/summer/recap',       label: 'Daily Recap Graphic', desc: 'Shareable PNG of a full day\'s WCL slate', requires: 'free' },
-      { to: '/summer/game-recap',  label: 'Game Recap Graphic',  desc: 'Shareable PNG for any single WCL game', requires: 'free' },
     ],
   },
   // Tab is open so anonymous can browse; each item enforces its own

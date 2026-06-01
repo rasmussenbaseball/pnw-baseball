@@ -18,6 +18,8 @@ const GRAPHICS = [
   { to: '/top-performers-graphic',  label: 'Top Performers',        desc: 'Weekly top 10 hitters and pitchers.' },
   { to: '/team-info-graphic',       label: 'Team Info',             desc: 'Full team overview graphic.' },
   { to: '/team-season-recap',       label: 'Team Season Recap',     desc: 'End-of-year highlights: record, WAR leaders, clutch moment.' },
+  { to: '/summer/recap',            label: 'WCL Daily Recap',       desc: 'A full WCL slate: scores with R/H/E and each game\'s standouts.' },
+  { to: '/summer/game-recap',       label: 'WCL Game Recap',        desc: 'One WCL game: line score, pitching decisions, and top hitters.' },
 ]
 
 export default function GraphicsHub() {

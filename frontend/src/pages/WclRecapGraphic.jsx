@@ -1,18 +1,21 @@
 // WclRecapGraphic — canvas-based daily WCL recap card.
-//   /summer/recap
+//   /summer/recap  (listed under the Graphics hub)
 //
 // Pulls /summer/scoreboard for the chosen date, then per-game
-// /summer/games/{id} to find each side's top hitter + winning
-// pitcher, and renders a 1080×1350 (Instagram-friendly) PNG card.
-// Mirrors the spring DailyRecapGraphic pattern but leaner — summer
-// data doesn't have per-game WPA so we derive top performers via
-// simple box-score math.
+// /summer/games/{id} for each side's standout + R/H/E, and renders a
+// FIXED 1080×1350 (Instagram 4:5) PNG. Game cards fill the middle so
+// the card never has a runaway height. Each game shows the score with
+// runs / hits / errors plus a compact winning-pitcher + top-hitter strip.
 //
 // Download button writes a PNG named wcl-recap-YYYY-MM-DD.png.
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 
 const API_BASE = '/api/v1'
+
+// Fixed Instagram-portrait canvas.
+const W = 1080
+const H = 1350
 
 // ── Colors (WCL navy + gold theme) ─────────────────────────────
 const C = {
@@ -26,15 +29,10 @@ const C = {
   text:       '#1a1a1a',
   text_muted: '#5a5a5a',
   text_gray:  '#8a8a8a',
-  win:        '#1b5e20',
-  loss:       '#b71c1c',
 }
 
 // ── Tiny helpers ───────────────────────────────────────────────
-const fmtIP = (ip) => {
-  if (ip == null) return '0.0'
-  return Number(ip).toFixed(1)
-}
+const fmtIP = (ip) => (ip == null ? '0.0' : Number(ip).toFixed(1))
 const fmtDateLong = (iso) => {
   if (!iso) return ''
   const [y, m, d] = iso.split('-').map(Number)
@@ -62,9 +60,6 @@ function loadImage(src) {
   imgCache[src] = p
   return p
 }
-
-// Tries to load. Returns null if it errors out (keeps the canvas
-// draw resilient against a single missing logo).
 const tryLoad = (src) => loadImage(src).catch(() => null)
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -81,12 +76,22 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-// ── Derive each game's stars from /summer/games/{id} payload ───
-//
-// Without per-game WPA we score hitters with a simple linear weight:
-//   H + 2B + 2*3B + 3*HR + 0.5*BB + 0.4*RBI + 0.3*R - 0.3*K
-// And pick the winning pitcher first via the decision tag, falling
-// back to the most-IP pitcher with the fewest ER on the winning side.
+// Draw an image contained (no crop) within a box, centered.
+function drawContain(ctx, img, x, y, box) {
+  const ar = img.width / img.height
+  let dw = box, dh = box
+  if (ar > 1) dh = box / ar
+  else dw = box * ar
+  ctx.drawImage(img, x + (box - dw) / 2, y + (box - dh) / 2, dw, dh)
+}
+
+function truncate(ctx, text, maxW) {
+  let s = text || ''
+  while (s.length > 3 && ctx.measureText(s).width > maxW) s = s.slice(0, -1)
+  return s
+}
+
+// ── Star derivation (no per-game WPA, so simple box-score math) ─
 function scoreHitter(b) {
   return (b.h || 0) * 1
        + (b['2b'] || 0) * 1
@@ -97,27 +102,21 @@ function scoreHitter(b) {
        + (b.r  || 0) * 0.3
        - (b.so || 0) * 0.3
 }
-
 function pickTopHitter(rows, sideIsHome) {
-  const filtered = (rows || []).filter(r => r.is_home === sideIsHome && (r.ab || r.bb))
+  const filtered = (rows || []).filter(r => r.is_home === sideIsHome && (r.ab || r.bb) && (r.h || r.rbi || r.bb || r.hr))
   if (!filtered.length) return null
   return filtered.sort((a, b) => scoreHitter(b) - scoreHitter(a))[0]
 }
-
-function pickWinningPitcher(pitchers, sideIsHome, winnerIsHome) {
-  if (winnerIsHome !== sideIsHome) return null
-  const side = (pitchers || []).filter(p => p.is_home === sideIsHome)
-  // Explicit W decision wins
+function pickWinningPitcher(pitchers, winnerIsHome) {
+  const side = (pitchers || []).filter(p => p.is_home === winnerIsHome)
   const tagged = side.find(p => p.decision === 'W')
   if (tagged) return tagged
-  // Fall back to longest outing with fewest earned runs
   return side.slice().sort((a, b) => {
     const ipA = a.ip || 0, ipB = b.ip || 0
     if (ipA !== ipB) return ipB - ipA
     return (a.er || 0) - (b.er || 0)
   })[0]
 }
-
 function hitterLine(b) {
   if (!b) return ''
   const parts = [`${b.h ?? 0}-${b.ab ?? 0}`]
@@ -128,203 +127,180 @@ function hitterLine(b) {
   if (b.bb) parts.push(`${b.bb} BB`)
   return parts.join(', ')
 }
-
 function pitcherLine(p) {
   if (!p) return ''
-  return `${fmtIP(p.ip)} IP, ${p.h || 0} H, ${p.er || 0} ER, ${p.so || 0} K`
+  return `${fmtIP(p.ip)} IP, ${p.er || 0} ER, ${p.so || 0} K`
 }
 
-// ── Per-game card drawer ───────────────────────────────────────
-async function drawGameCard(ctx, game, hitterAway, hitterHome, winPitcher, x, y, w, h) {
-  // Card background
-  ctx.fillStyle = C.card
-  roundRect(ctx, x, y, w, h, 14)
-  ctx.fill()
-  ctx.strokeStyle = 'rgba(20,54,92,0.18)'
-  ctx.lineWidth = 1
-  ctx.stroke()
-
-  const padX = 18
-  const innerY = y + 16
-  const logoSize = 56
-  const teamColX = x + padX + logoSize + 14
-  const scoreColX = x + w - padX
-
-  const isFinal = game.status === 'final'
-  const awayWon = isFinal && (game.away_score ?? 0) > (game.home_score ?? 0)
-  const homeWon = isFinal && (game.home_score ?? 0) > (game.away_score ?? 0)
-
-  // Status pill
-  ctx.fillStyle = isFinal ? C.text_gray : C.gold
-  ctx.font = '600 12px -apple-system, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.fillText(isFinal ? 'FINAL' : game.status?.toUpperCase() || '—', x + padX, innerY)
-
-  // Away row
-  const rowH = 56
-  const awayY = innerY + 12
-  await drawTeamRow(ctx,
-    x + padX, awayY, w - 2*padX, rowH,
-    game.away_logo, game.away_short || game.away_team_name,
-    game.away_score, awayWon, !awayWon && isFinal,
-    teamColX, scoreColX,
-    logoSize)
-
-  // Home row
-  const homeY = awayY + rowH + 4
-  await drawTeamRow(ctx,
-    x + padX, homeY, w - 2*padX, rowH,
-    game.home_logo, game.home_short || game.home_team_name,
-    game.home_score, homeWon, !homeWon && isFinal,
-    teamColX, scoreColX,
-    logoSize)
-
-  // Stars line (winning pitcher + top hitter from winning side)
-  const starsY = homeY + rowH + 18
-  ctx.font = '700 11px -apple-system, sans-serif'
-  ctx.fillStyle = C.gold
-  ctx.textAlign = 'left'
-  ctx.fillText('STARS', x + padX, starsY)
-
-  ctx.font = '500 13px -apple-system, sans-serif'
-  ctx.fillStyle = C.text
-  let cursor = starsY + 18
-
-  if (winPitcher) {
-    ctx.fillStyle = C.text
-    ctx.font = '700 13px -apple-system, sans-serif'
-    ctx.fillText(`W: ${winPitcher.player_name}`, x + padX, cursor)
-    cursor += 16
-    ctx.font = '500 12px -apple-system, sans-serif'
-    ctx.fillStyle = C.text_muted
-    ctx.fillText(pitcherLine(winPitcher), x + padX, cursor)
-    cursor += 18
-  }
-  // Top hitter from the winning side (or away if tied/exhibition)
-  const winnerHitter = homeWon ? hitterHome : hitterAway
-  if (winnerHitter) {
-    ctx.fillStyle = C.text
-    ctx.font = '700 13px -apple-system, sans-serif'
-    ctx.fillText(`Hit: ${winnerHitter.player_name}`, x + padX, cursor)
-    cursor += 16
-    ctx.font = '500 12px -apple-system, sans-serif'
-    ctx.fillStyle = C.text_muted
-    ctx.fillText(hitterLine(winnerHitter), x + padX, cursor)
-  }
-}
-
-async function drawTeamRow(ctx, x, y, w, h, logoUrl, name, score, won, lost, teamColX, scoreColX, logoSize) {
+// ── One team's scoreline: logo, name, then right-aligned R / H / E ─
+async function drawScoreline(ctx, x, baseY, logoUrl, name, r, h, e, won, lost, cols) {
+  const box = 38
   const logo = logoUrl ? await tryLoad(logoUrl) : null
-  // Logo (logoUrl is absolute path under /logos/summer/...)
-  if (logo) {
-    ctx.save()
-    ctx.beginPath()
-    ctx.arc(x + logoSize / 2, y + h / 2, logoSize / 2, 0, Math.PI * 2)
-    ctx.closePath()
-    ctx.clip()
-    ctx.drawImage(logo, x, y + (h - logoSize) / 2, logoSize, logoSize)
-    ctx.restore()
-  } else {
-    ctx.fillStyle = '#e5e5e5'
-    ctx.beginPath()
-    ctx.arc(x + logoSize / 2, y + h / 2, logoSize / 2, 0, Math.PI * 2)
-    ctx.fill()
-  }
+  if (logo) drawContain(ctx, logo, x, baseY - box / 2, box)
+  else { ctx.fillStyle = '#e8e4d6'; roundRect(ctx, x, baseY - box / 2, box, box, 6); ctx.fill() }
 
-  // Team name
   ctx.textAlign = 'left'
-  ctx.font = (won ? '800' : '600') + ' 22px -apple-system, sans-serif'
-  ctx.fillStyle = lost ? C.text_gray : C.text
-  // Truncate long names
-  let display = name || '—'
-  const maxW = scoreColX - teamColX - 70
-  while (ctx.measureText(display).width > maxW && display.length > 4) {
-    display = display.slice(0, -1)
-  }
-  ctx.fillText(display, teamColX, y + h / 2 + 8)
+  ctx.font = (won ? '800 ' : '600 ') + '21px -apple-system, sans-serif'
+  ctx.fillStyle = lost ? C.text_gray : (won ? C.navy : C.text)
+  const nameX = x + box + 12
+  ctx.fillText(truncate(ctx, name || '—', cols.r - 34 - nameX), nameX, baseY + 7)
 
-  // Score
   ctx.textAlign = 'right'
-  ctx.font = (won ? '900' : '700') + ' 34px -apple-system, sans-serif'
+  ctx.font = (won ? '900 ' : '800 ') + '26px -apple-system, sans-serif'
   ctx.fillStyle = won ? C.navy : (lost ? C.text_gray : C.text)
-  ctx.fillText(String(score ?? '—'), scoreColX, y + h / 2 + 11)
+  ctx.fillText(String(r ?? '—'), cols.r, baseY + 9)
+  ctx.font = '600 19px -apple-system, sans-serif'
+  ctx.fillStyle = C.text_muted
+  ctx.fillText(String(h ?? '—'), cols.h, baseY + 8)
+  ctx.fillText(String(e ?? '—'), cols.e, baseY + 8)
+}
+
+// ── Per-game card ──────────────────────────────────────────────
+async function drawGameCard(ctx, game, det, x, y, w, h) {
+  ctx.fillStyle = C.card
+  roundRect(ctx, x, y, w, h, 16); ctx.fill()
+  ctx.strokeStyle = 'rgba(20,54,92,0.16)'; ctx.lineWidth = 1; ctx.stroke()
+  // navy accent strip across the top
+  ctx.save(); roundRect(ctx, x, y, w, h, 16); ctx.clip()
+  ctx.fillStyle = C.navy; ctx.fillRect(x, y, w, 5); ctx.restore()
+
+  const pad = 20
+  const g = det.game || game
+  const isFinal = game.status === 'final'
+  const awayWon = isFinal && (g.away_score ?? 0) > (g.home_score ?? 0)
+  const homeWon = isFinal && (g.home_score ?? 0) > (g.away_score ?? 0)
+
+  const cols = { r: x + w - pad - 96, h: x + w - pad - 46, e: x + w - pad }
+
+  // Performers (winning pitcher + winning side's top hitter)
+  const winHitter = homeWon ? pickTopHitter(det.batting, true)
+                  : awayWon ? pickTopHitter(det.batting, false)
+                  : pickTopHitter(det.batting, false)
+  const winPitcher = isFinal ? pickWinningPitcher(det.pitching, homeWon) : null
+  const perfs = []
+  if (winPitcher) perfs.push({ tag: 'WP',  bg: C.gold, name: winPitcher.player_name, line: pitcherLine(winPitcher) })
+  if (winHitter)  perfs.push({ tag: 'BAT', bg: C.navy, name: winHitter.player_name,  line: hitterLine(winHitter) })
+
+  // Content block height → vertically center within the (possibly tall) card.
+  const rowH = 44
+  const dividerH = perfs.length ? 16 : 0
+  const perfH = perfs.length * 34
+  const contentH = 18 + rowH * 2 + dividerH + perfH
+  let cy = y + Math.max(20, (h - contentH) / 2) + 8
+
+  // status (left) + R/H/E header (right)
+  ctx.textAlign = 'left'
+  ctx.font = '800 11px -apple-system, sans-serif'
+  ctx.fillStyle = isFinal ? C.text_gray : C.gold
+  ctx.fillText(isFinal ? (g.innings && g.innings !== 9 ? `FINAL / ${g.innings}` : 'FINAL')
+                       : (game.status || '').toUpperCase(), x + pad, cy)
+  ctx.textAlign = 'right'
+  ctx.font = '800 11px -apple-system, sans-serif'
+  ctx.fillStyle = C.gold
+  ctx.fillText('R', cols.r, cy); ctx.fillText('H', cols.h, cy); ctx.fillText('E', cols.e, cy)
+  cy += 22
+
+  await drawScoreline(ctx, x + pad, cy + rowH / 2 - 6,
+    g.away_logo, g.away_short || g.away_team_name,
+    g.away_score, g.away_hits, g.away_errors, awayWon, homeWon, cols)
+  cy += rowH
+  await drawScoreline(ctx, x + pad, cy + rowH / 2 - 6,
+    g.home_logo, g.home_short || g.home_team_name,
+    g.home_score, g.home_hits, g.home_errors, homeWon, awayWon, cols)
+  cy += rowH
+
+  if (perfs.length) {
+    cy += 4
+    ctx.strokeStyle = 'rgba(201,164,76,0.55)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(x + pad, cy); ctx.lineTo(x + w - pad, cy); ctx.stroke()
+    cy += 20
+    for (const p of perfs) {
+      const tagW = 32
+      ctx.fillStyle = p.bg; roundRect(ctx, x + pad, cy - 12, tagW, 16, 4); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '800 10px -apple-system, sans-serif'
+      ctx.fillText(p.tag, x + pad + tagW / 2, cy)
+      const tx = x + pad + tagW + 9
+      ctx.textAlign = 'left'; ctx.font = '700 13px -apple-system, sans-serif'; ctx.fillStyle = C.text
+      const nm = truncate(ctx, p.name || '', w - 2 * pad - tagW - 120)
+      ctx.fillText(nm, tx, cy)
+      const nameW = ctx.measureText(nm).width
+      ctx.font = '500 12px -apple-system, sans-serif'; ctx.fillStyle = C.text_muted
+      const lnX = tx + nameW + 8
+      ctx.fillText(truncate(ctx, p.line || '', x + w - pad - lnX), lnX, cy)
+      cy += 34
+    }
+  }
 }
 
 // ── Header / footer ────────────────────────────────────────────
-function drawHeader(ctx, dateIso, gameCount, w) {
-  // Gradient navy → gold
-  const grad = ctx.createLinearGradient(0, 0, w, 120)
+function drawHeader(ctx, dateIso, gameCount) {
+  const grad = ctx.createLinearGradient(0, 0, W, 150)
   grad.addColorStop(0, C.navy)
   grad.addColorStop(0.55, C.blue)
   grad.addColorStop(1, C.gold)
   ctx.fillStyle = grad
-  ctx.fillRect(0, 0, w, 130)
+  ctx.fillRect(0, 0, W, 150)
 
   ctx.fillStyle = C.gold_light
-  ctx.font = '900 13px -apple-system, sans-serif'
+  ctx.font = '900 14px -apple-system, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText('WEST COAST LEAGUE · RECAP', 40, 42)
+  ctx.fillText('WEST COAST LEAGUE · DAILY RECAP', 40, 48)
 
   ctx.fillStyle = '#fff'
-  ctx.font = '900 40px -apple-system, sans-serif'
-  ctx.fillText(fmtDateLong(dateIso), 40, 86)
+  ctx.font = '900 44px -apple-system, sans-serif'
+  ctx.fillText(fmtDateLong(dateIso), 40, 100)
 
   ctx.fillStyle = 'rgba(255,255,255,0.85)'
-  ctx.font = '600 16px -apple-system, sans-serif'
-  ctx.fillText(`${gameCount} game${gameCount !== 1 ? 's' : ''}`, 40, 112)
+  ctx.font = '600 17px -apple-system, sans-serif'
+  ctx.fillText(`${gameCount} game${gameCount !== 1 ? 's' : ''}`, 40, 128)
 }
 
-function drawFooter(ctx, w, h) {
+function drawFooter(ctx) {
   ctx.fillStyle = C.navy_dark
-  ctx.fillRect(0, h - 60, w, 60)
+  ctx.fillRect(0, H - 64, W, 64)
   ctx.fillStyle = '#fff'
-  ctx.font = '700 14px -apple-system, sans-serif'
+  ctx.font = '700 15px -apple-system, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText('nwbaseballstats.com/summer', 40, h - 26)
-  ctx.font = '500 12px -apple-system, sans-serif'
+  ctx.fillText('nwbaseballstats.com/summer', 40, H - 26)
+  ctx.font = '500 13px -apple-system, sans-serif'
   ctx.fillStyle = 'rgba(255,255,255,0.7)'
   ctx.textAlign = 'right'
-  ctx.fillText('@nwbaseballstats', w - 40, h - 26)
+  ctx.fillText('@nwbaseballstats', W - 40, H - 26)
 }
 
-// ── Main canvas drawer ─────────────────────────────────────────
+// ── Main canvas drawer (fixed 1080×1350) ───────────────────────
 async function renderRecap(canvas, dateIso, games, gameDetails) {
-  const COLS = 2
-  const W = 1080
-  const CARD_H = 280
-  const CARD_GAP = 14
-  const HEADER_H = 130
-  const FOOTER_H = 60
-  const PADDING = 30
-  const rows = Math.ceil(games.length / COLS)
-  const H = HEADER_H + rows * (CARD_H + CARD_GAP) + PADDING + FOOTER_H
-
   canvas.width = W
   canvas.height = H
-
   const ctx = canvas.getContext('2d')
   ctx.fillStyle = C.bg
   ctx.fillRect(0, 0, W, H)
 
-  drawHeader(ctx, dateIso, games.length, W)
+  drawHeader(ctx, dateIso, games.length)
+  drawFooter(ctx)
 
-  const cardW = (W - PADDING * 2 - CARD_GAP) / COLS
+  const n = games.length
+  if (!n) return
+  const HEADER_H = 150, FOOTER_H = 64, PAD = 30, GAP = 16
+  const COLS = n === 1 ? 1 : 2
+  const rows = Math.ceil(n / COLS)
+  const top = HEADER_H + 18
+  const availH = (H - FOOTER_H - 18) - top
+  const cardW = (W - PAD * 2 - (COLS - 1) * GAP) / COLS
+  // Cap card height so a sparse slate doesn't blow up to full height;
+  // center the grid block vertically in the leftover space.
+  const cardH = Math.min(360, (availH - (rows - 1) * GAP) / rows)
+  const gridH = rows * cardH + (rows - 1) * GAP
+  const startY = top + Math.max(0, (availH - gridH) / 2)
 
-  for (let i = 0; i < games.length; i++) {
+  for (let i = 0; i < n; i++) {
     const game = games[i]
     const col = i % COLS
     const row = Math.floor(i / COLS)
-    const x = PADDING + col * (cardW + CARD_GAP)
-    const y = HEADER_H + 14 + row * (CARD_H + CARD_GAP)
-    const det = gameDetails[game.id] || {}
-    const awayHitter = pickTopHitter(det.batting, false)
-    const homeHitter = pickTopHitter(det.batting, true)
-    const winnerIsHome = (game.home_score ?? 0) > (game.away_score ?? 0)
-    const winPitcher = pickWinningPitcher(det.pitching, winnerIsHome, winnerIsHome)
-    await drawGameCard(ctx, game, awayHitter, homeHitter, winPitcher, x, y, cardW, CARD_H)
+    const x = PAD + col * (cardW + GAP)
+    const y = startY + row * (cardH + GAP)
+    await drawGameCard(ctx, game, gameDetails[game.id] || {}, x, y, cardW, cardH)
   }
-
-  drawFooter(ctx, W, H)
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -332,7 +308,6 @@ async function renderRecap(canvas, dateIso, games, gameDetails) {
 // ───────────────────────────────────────────────────────────────
 export default function WclRecapGraphic() {
   const [date, setDate] = useState(() => {
-    // Default to yesterday (most-recent completed slate)
     const d = new Date()
     d.setDate(d.getDate() - 1)
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -343,15 +318,11 @@ export default function WclRecapGraphic() {
   const [error, setError] = useState(null)
   const canvasRef = useRef(null)
 
-  // Fetch games for the chosen date + box scores for each
   useEffect(() => {
     let cancelled = false
     setLoading(true); setError(null); setGames([]); setDetails({})
     ;(async () => {
       try {
-        // Calculate the exact window we need for the chosen date — picks
-        // either the today + 0 ahead path (if date is in the past) or
-        // a one-day-ahead window.
         const target = new Date(date + 'T00:00:00')
         const today = new Date()
         today.setHours(0, 0, 0, 0)
@@ -364,7 +335,6 @@ export default function WclRecapGraphic() {
         const onDate = all.filter(g => g.game_date === date)
         if (cancelled) return
         setGames(onDate)
-        // Pull box scores in parallel
         const dets = {}
         await Promise.all(onDate.map(async g => {
           try {
@@ -382,7 +352,6 @@ export default function WclRecapGraphic() {
     return () => { cancelled = true }
   }, [date])
 
-  // Render after data ready
   useEffect(() => {
     if (loading || !games.length || !canvasRef.current) return
     renderRecap(canvasRef.current, date, games, details).catch(e => setError(e.message))
@@ -400,7 +369,7 @@ export default function WclRecapGraphic() {
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4">
       <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">WCL Daily Recap Graphic</h1>
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        Pick a date, pull the slate, download a shareable 1080-wide PNG. Built for Twitter / IG.
+        Pick a date and download a shareable 1080×1350 (Instagram) PNG with every game's score, runs / hits / errors, and standouts.
       </p>
 
       <div className="flex flex-wrap items-end gap-3 mb-4">
