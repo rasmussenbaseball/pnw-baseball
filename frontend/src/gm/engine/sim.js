@@ -257,6 +257,73 @@ function lightTeamKBB(battingLineup, oppLineup, rng) {
   }
 }
 
+/**
+ * Approximate per-pitcher handedness splits for fast-simmed games. We don't
+ * simulate PA-by-PA so we have to distribute the pitcher's totals between
+ * vsL and vsR buckets based on (a) the opposing lineup's hand mix and
+ * (b) a small platoon bump in the SAME-side matchup. Used so the league's
+ * opposing pitchers have non-zero split lines for the bullpen UI.
+ *
+ * handMix:    { lShare: 0..1, rShare: 0..1 }
+ * platoonHand: 'L' or 'R' (the pitcher's throwing hand)
+ *
+ * Returns: { vsL: {pa,ab,h,hr,bb,k}, vsR: {...} }
+ */
+function approxSplitsForOuting(outs, totalK, totalBB, totalHr, handMix, platoonHand) {
+  const lShare = handMix?.lShare ?? 0.30
+  const rShare = handMix?.rShare ?? 0.70
+  // Same-side hitters strike out a bit more, walk + HR a bit less.
+  const sameK = platoonHand === 'L' ? 1.10 : 1.05
+  const oppK  = platoonHand === 'L' ? 0.92 : 0.96
+  // PA estimate from outs (~1.3 PA per out is typical with hits + walks)
+  const pa = Math.max(0, Math.round(outs * 1.3))
+  const lPA = Math.round(pa * lShare)
+  const rPA = pa - lPA
+  // K distribution with a platoon bump on the same-side bucket.
+  const lKShare = lShare * (platoonHand === 'L' ? sameK : oppK)
+  const rKShare = rShare * (platoonHand === 'R' ? sameK : oppK)
+  const sum = lKShare + rKShare || 1
+  const lK = Math.round(totalK * lKShare / sum)
+  const rK = Math.max(0, totalK - lK)
+  // BB + HR distribute proportionally to PA share with a small inverse
+  // platoon bias (less HR/BB allowed to same-side hitters).
+  const lBB = Math.round(totalBB * lShare * (platoonHand === 'L' ? 0.95 : 1.0))
+  const rBB = Math.max(0, totalBB - lBB)
+  const lHR = Math.round(totalHr * lShare * (platoonHand === 'L' ? 0.90 : 1.0))
+  const rHR = Math.max(0, totalHr - lHR)
+  // AB = PA minus walks (we don't track HBP at fast-sim grain).
+  const lAB = Math.max(0, lPA - lBB)
+  const rAB = Math.max(0, rPA - rBB)
+  // Hits per side — roughly K-adjusted; coarse but trends in the right
+  // direction. Sum of hits == totalH isn't enforced (this is a per-side
+  // breakdown that doesn't need to reconcile to the row's totals).
+  const lH = Math.max(lHR, Math.round((lAB - lK) * 0.25))
+  const rH = Math.max(rHR, Math.round((rAB - rK) * 0.25))
+  return {
+    vsL: { pa: lPA, ab: lAB, h: lH, hr: lHR, bb: lBB, k: lK },
+    vsR: { pa: rPA, ab: rAB, h: rH, hr: rHR, bb: rBB, k: rK },
+  }
+}
+
+/**
+ * Hand-mix of an opposing batting order. Switch hitters count as 0.5/0.5
+ * because they'll bat opposite the pitcher (so they're effectively whichever
+ * side is opposite — averaged out across the lineup that's roughly half).
+ */
+function computeOppHandShare(lineup) {
+  const batters = (lineup?.batters || []).filter(Boolean)
+  if (batters.length === 0) return { lShare: 0.30, rShare: 0.70 }
+  let l = 0, r = 0
+  for (const b of batters) {
+    const bats = b?.bats || 'R'
+    if (bats === 'L') l++
+    else if (bats === 'R') r++
+    else { l += 0.5; r += 0.5 }
+  }
+  const total = l + r || 1
+  return { lShare: l / total, rShare: r / total }
+}
+
 function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gameIdx = 0, isMidweek = false) {
   const batterStats = {}
   const pitcherStats = {}
@@ -350,7 +417,10 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
   // oppK / oppBB = the K + BB the OPPOSING batters recorded — i.e. exactly the
   // strikeouts + walks THIS staff produced. Passing them in keeps pitcher K/9
   // and BB/9 consistent with the hitters' K%/BB%.
-  function distributePitchers(lineup, runsAllowed, oppHits, oppK, oppBB) {
+  // oppLineup gives us the actual hand mix of opposing batters so we can
+  // distribute the pitcher's K/BB/HR/AB between vsL and vsR buckets (Zack's
+  // request: bullpen handedness splits).
+  function distributePitchers(lineup, runsAllowed, oppHits, oppK, oppBB, oppLineup) {
     const allP = (lineup.pitcherRotation || lineup.pitchers || []).filter(Boolean)
     if (allP.length === 0) return
     // MIDWEEK pitching (per Nate): the top 4 arms by skill (weekend SPs +
@@ -407,6 +477,15 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
     let kLeft = Math.max(0, (oppK || 0) - sK)
     let bbLeft = Math.max(0, (oppBB || 0) - sBB)
     const sHr = Math.max(0, Math.round(starterRuns * 0.20 + rng.gaussian(0, 0.5)))
+    // Opposing-lineup handedness mix. Same-side matchups (LHP vs LHB,
+    // RHP vs RHB) get a small K bump + a small HR shave to roughly mirror
+    // real platoon splits; the rest of K/BB/HR/AB is distributed by share
+    // of opposing PAs.
+    const handMix = computeOppHandShare(oppLineup)
+    const platoonHand = starter?.throws === 'L' ? 'L' : 'R'
+    const sStarterApp = approxSplitsForOuting(
+      starterOuts, sK, sBB, sHr, handMix, platoonHand,
+    )
     pitcherStats[starter.id] = {
       ip: starterOuts / 3,
       outs: starterOuts,
@@ -414,6 +493,8 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
       bb: sBB, hbp: 0, k: sK, hr: sHr,
       er: starterRuns,
       pa: Math.max(starterOuts + starterHits + sBB, 0),
+      vsL: sStarterApp.vsL,
+      vsR: sStarterApp.vsR,
     }
     // Bullpen — distribute remaining outs (+ remaining K/BB) among up to 3 arms
     if (bullpen.length > 0 && relieverOuts > 0) {
@@ -435,6 +516,11 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
         kLeft -= kk
         const bw = isLast ? bbLeft : Math.round((oppBB || 0) * (o / Math.max(1, totalOuts)))
         bbLeft -= bw
+        const relHr = Math.max(0, Math.round(r * 0.2))
+        const relPlatoonHand = p?.throws === 'L' ? 'L' : 'R'
+        const relSplits = approxSplitsForOuting(
+          o, Math.max(0, kk), Math.max(0, bw), relHr, handMix, relPlatoonHand,
+        )
         pitcherStats[p.id] = {
           ip: o / 3,
           outs: o,
@@ -442,9 +528,11 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
           bb: Math.max(0, bw),
           hbp: 0,
           k: Math.max(0, kk),
-          hr: Math.max(0, Math.round(r * 0.2)),
+          hr: relHr,
           er: r,
           pa: Math.max(o + h, 0),
+          vsL: relSplits.vsL,
+          vsR: relSplits.vsR,
         }
       }
     }
@@ -461,9 +549,10 @@ function buildLightBoxscore(homeLineup, awayLineup, homeRuns, awayRuns, rng, gam
   distributeBatters(homeLineup, homeRuns, homeKBB.totalK, homeKBB.totalBB)
   distributeBatters(awayLineup, awayRuns, awayKBB.totalK, awayKBB.totalBB)
   // Home pitchers faced the away batters → away batters' K/BB are the home
-  // staff's K/BB (and vice-versa).
-  distributePitchers(homeLineup, awayRuns, awayHits, awayKBB.totalK, awayKBB.totalBB)
-  distributePitchers(awayLineup, homeRuns, homeHits, homeKBB.totalK, homeKBB.totalBB)
+  // staff's K/BB (and vice-versa). Pass the opposing lineup so we can
+  // distribute approximate handedness splits per pitcher.
+  distributePitchers(homeLineup, awayRuns, awayHits, awayKBB.totalK, awayKBB.totalBB, awayLineup)
+  distributePitchers(awayLineup, homeRuns, homeHits, homeKBB.totalK, homeKBB.totalBB, homeLineup)
   return { batterStats, pitcherStats }
 }
 
@@ -682,7 +771,24 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
   /** @type {Object<string, {ip:number,h:number,bb:number,k:number,er:number,outs:number,pa:number}>} */
   const pitcherStats = {}
   function bStat(id) { if (!batterStats[id]) batterStats[id] = {ab:0,h:0,d:0,t:0,hr:0,bb:0,k:0,rbi:0,pa:0,hbp:0,sf:0,sac:0,gidp:0,roe:0,sb:0,cs:0}; return batterStats[id] }
-  function pStat(id) { if (!pitcherStats[id]) pitcherStats[id] = {ip:0,h:0,bb:0,k:0,er:0,outs:0,pa:0,hbp:0,hr:0}; return pitcherStats[id] }
+  function pStat(id) {
+    if (!pitcherStats[id]) pitcherStats[id] = {
+      ip:0, h:0, bb:0, k:0, er:0, outs:0, pa:0, hbp:0, hr:0,
+      vsL: { pa:0, ab:0, h:0, hr:0, bb:0, k:0 },
+      vsR: { pa:0, ab:0, h:0, hr:0, bb:0, k:0 },
+    }
+    return pitcherStats[id]
+  }
+  // Resolve a batter's EFFECTIVE handedness against a given pitcher. Switch
+  // hitters bat opposite the pitcher's throwing hand (the matchup advantage
+  // they exist to get). Treat unknown hands as R to avoid skewing the split
+  // toward one side via missing data.
+  function effectiveBatHand(batter, pitcher) {
+    const bats = batter?.bats || 'R'
+    const throws = pitcher?.throws || 'R'
+    if (bats === 'S') return throws === 'L' ? 'R' : 'L'
+    return bats === 'L' ? 'L' : 'R'
+  }
 
   while (state.inning <= 9 || state.homeRuns === state.awayRuns) {
     // No real inning cap — baseball plays until a winner. The 30-inning bound
@@ -733,18 +839,45 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     // Track per-player stats
     const b = bStat(batter.id)
     const p = pStat(pitcher.id)
-    b.pa++; p.pa++
-    if (result.outcome === 'K') { b.ab++; b.k++; p.k++; p.outs++ }
-    else if (result.outcome === 'OUT') { b.ab++; p.outs++ }
-    else if (result.outcome === 'BB') { b.bb++; p.bb++ }
+    // Handedness split bucket — every K/BB/AB/HR also goes into p.vsL or
+    // p.vsR so PlayerDetail can render a real vs-L / vs-R slash line.
+    const handBucket = effectiveBatHand(batter, pitcher) === 'L' ? p.vsL : p.vsR
+    b.pa++; p.pa++; if (handBucket) handBucket.pa++
+    if (result.outcome === 'K') {
+      b.ab++; b.k++; p.k++; p.outs++
+      if (handBucket) { handBucket.ab++; handBucket.k++ }
+    }
+    else if (result.outcome === 'OUT') {
+      b.ab++; p.outs++
+      if (handBucket) handBucket.ab++
+    }
+    else if (result.outcome === 'BB') {
+      b.bb++; p.bb++
+      if (handBucket) handBucket.bb++
+    }
     else if (result.outcome === 'HBP') { b.hbp++; p.hbp++ }
-    else if (result.outcome === 'SINGLE') { b.ab++; b.h++; p.h++ }
-    else if (result.outcome === 'DOUBLE')  { b.ab++; b.h++; b.d++; p.h++ }
-    else if (result.outcome === 'TRIPLE')  { b.ab++; b.h++; b.t++; p.h++ }
-    else if (result.outcome === 'HR')      { b.ab++; b.h++; b.hr++; p.h++; p.hr++ }
+    else if (result.outcome === 'SINGLE') {
+      b.ab++; b.h++; p.h++
+      if (handBucket) { handBucket.ab++; handBucket.h++ }
+    }
+    else if (result.outcome === 'DOUBLE')  {
+      b.ab++; b.h++; b.d++; p.h++
+      if (handBucket) { handBucket.ab++; handBucket.h++ }
+    }
+    else if (result.outcome === 'TRIPLE')  {
+      b.ab++; b.h++; b.t++; p.h++
+      if (handBucket) { handBucket.ab++; handBucket.h++ }
+    }
+    else if (result.outcome === 'HR')      {
+      b.ab++; b.h++; b.hr++; p.h++; p.hr++
+      if (handBucket) { handBucket.ab++; handBucket.h++; handBucket.hr++ }
+    }
     else if (result.outcome === 'SAC_FLY') { b.sf++; p.outs++ }   // SF not an AB
     else if (result.outcome === 'SAC_BUNT'){ b.sac++; p.outs++ }  // SH not an AB
-    else if (result.outcome === 'GIDP')    { b.ab++; b.gidp++; p.outs += 2 }
+    else if (result.outcome === 'GIDP')    {
+      b.ab++; b.gidp++; p.outs += 2
+      if (handBucket) handBucket.ab++
+    }
     else if (result.outcome === 'ERROR')   { b.ab++; b.roe++ }    // reaches on error
 
     applyOutcome(state, result)

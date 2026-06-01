@@ -555,6 +555,9 @@ function PitchingStatsLine({ stats, save }) {
           <Stat label="pWAR" value={fmtWar(adv.pWAR)} />
         </div>
       </div>
+      {/* Handedness splits — vsL / vsR. Added per Zack's note: "bullpen
+          pitcher stats to see handedness splits." */}
+      <HandednessSplits stats={stats} />
     </div>
   )
 }
@@ -564,6 +567,76 @@ function Stat({ label, value }) {
     <div className="flex justify-between">
       <span className="text-gray-500">{label}</span>
       <span className="font-mono">{value}</span>
+    </div>
+  )
+}
+
+/**
+ * vs-L / vs-R splits for a pitcher. Reads stats.vsL and stats.vsR (filled
+ * by simPA and the fastSim approx). Each bucket is {pa,ab,h,hr,bb,k} —
+ * just enough to compute AVG / OBP / SLG / K% / BB%. Hides itself if
+ * neither side has enough plate appearances to be meaningful (< 15 PA).
+ */
+function HandednessSplits({ stats }) {
+  const vsL = stats?.vsL || {}
+  const vsR = stats?.vsR || {}
+  const lPA = vsL.pa || 0
+  const rPA = vsR.pa || 0
+  if (lPA + rPA < 15) return null
+  const slash = (b) => {
+    const ab = b.ab || 0
+    const h = b.h || 0
+    const hr = b.hr || 0
+    const bb = b.bb || 0
+    const k = b.k || 0
+    const pa = b.pa || (ab + bb)
+    const avg = ab > 0 ? h / ab : 0
+    const obp = (ab + bb) > 0 ? (h + bb) / (ab + bb) : 0
+    // Coarse SLG — we only know H and HR, so we proxy 2B/3B as 0 (h - hr
+    // are all singles for splits purposes). It's a floor estimate, not
+    // a precise number.
+    const tb = Math.max(0, h - hr) + 4 * hr
+    const slg = ab > 0 ? tb / ab : 0
+    const kPct = pa > 0 ? k / pa : 0
+    const bbPct = pa > 0 ? bb / pa : 0
+    return { avg, obp, slg, kPct, bbPct, pa, ab, h, hr, bb, k }
+  }
+  const lLine = slash(vsL)
+  const rLine = slash(vsR)
+  const fmtAvg = (v) => v.toFixed(3).replace(/^0\./, '.')
+  const fmtPct = (v) => (v * 100).toFixed(1) + '%'
+  const Row = ({ label, line }) => (
+    <div className="grid grid-cols-8 gap-1 text-xs items-center">
+      <span className="font-bold text-gray-700 col-span-1">{label}</span>
+      <span className="font-mono text-gray-500 col-span-1">{line.pa} PA</span>
+      <span className="font-mono col-span-1">{fmtAvg(line.avg)}</span>
+      <span className="font-mono col-span-1">{fmtAvg(line.obp)}</span>
+      <span className="font-mono col-span-1">{fmtAvg(line.slg)}</span>
+      <span className="font-mono col-span-1">{line.hr} HR</span>
+      <span className="font-mono col-span-1">{fmtPct(line.kPct)} K</span>
+      <span className="font-mono col-span-1">{fmtPct(line.bbPct)} BB</span>
+    </div>
+  )
+  return (
+    <div className="border-t pt-2 mt-2">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">
+        Handedness splits
+        <span className="text-gray-400 normal-case font-normal ml-2">
+          (AVG / OBP / SLG · opposing-bat side)
+        </span>
+      </div>
+      <div className="grid grid-cols-8 gap-1 text-[9px] uppercase tracking-wider text-gray-400 mb-1">
+        <span className="col-span-1">Hand</span>
+        <span className="col-span-1">PA</span>
+        <span className="col-span-1">AVG</span>
+        <span className="col-span-1">OBP</span>
+        <span className="col-span-1">SLG</span>
+        <span className="col-span-1">HR</span>
+        <span className="col-span-1">K%</span>
+        <span className="col-span-1">BB%</span>
+      </div>
+      <Row label="vs L" line={lLine} />
+      <Row label="vs R" line={rLine} />
     </div>
   )
 }

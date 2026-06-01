@@ -1435,17 +1435,43 @@ function LiveGameView({ save, slot: slotProp, game, onExit }) {
                 <div className="text-[#a8a8c8] italic">Empty.</div>
               ) : (
                 <ul className="space-y-0.5">
-                  {oppBullpen.slice(0, 8).map(p => (
-                    <li key={p.id} className="flex justify-between gap-2 px-1.5 py-0.5 font-pixel text-[#e8e8e8]">
-                      <span className="truncate">
-                        {p.firstName} {p.lastName}
-                        {p.throws ? <span className="text-[#a8a8c8] font-mono ml-1">({p.throws}HP)</span> : null}
-                      </span>
-                      <span className="text-[#a8a8c8] font-mono shrink-0">
-                        {(p.pitcher?.stamina ?? 50) >= 65 ? 'SP' : 'RP'}
-                      </span>
-                    </li>
-                  ))}
+                  {oppBullpen.slice(0, 8).map(p => {
+                    // Pull the season splits row for this opp pitcher. fastSim
+                    // distributes approximate handedness splits per game, so
+                    // by midseason there's enough data to show a vs-L / vs-R
+                    // line. If the player has < 15 PA total we just hide the
+                    // splits to avoid showing noise. Per Zack's request:
+                    // "see bullpen pitcher stats to see handedness splits."
+                    const row = save.playerStats?.[`p_${p.id}`]
+                    const lPa = row?.vsL?.pa || 0
+                    const rPa = row?.vsR?.pa || 0
+                    const showSplits = lPa + rPa >= 15
+                    const splitAvg = (b) => {
+                      const ab = b?.ab || 0
+                      const h = b?.h || 0
+                      if (ab === 0) return '—'
+                      return (h / ab).toFixed(3).replace(/^0\./, '.')
+                    }
+                    return (
+                      <li key={p.id} className="px-1.5 py-0.5 font-pixel text-[#e8e8e8]">
+                        <div className="flex justify-between gap-2">
+                          <span className="truncate">
+                            {p.firstName} {p.lastName}
+                            {p.throws ? <span className="text-[#a8a8c8] font-mono ml-1">({p.throws}HP)</span> : null}
+                          </span>
+                          <span className="text-[#a8a8c8] font-mono shrink-0">
+                            {(p.pitcher?.stamina ?? 50) >= 65 ? 'SP' : 'RP'}
+                          </span>
+                        </div>
+                        {showSplits && (
+                          <div className="text-[10px] text-[#a8a8c8] font-mono flex gap-3 pl-2">
+                            <span>vs L {splitAvg(row.vsL)}</span>
+                            <span>vs R {splitAvg(row.vsR)}</span>
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>

@@ -138,11 +138,25 @@ export function leagueAverages(state) {
   const leagueObp = safeDiv(h + bb + hbp, ab + bb + hbp + sf, 0.340)
 
   // FIP constant: lgERA - ((13*lgHR + 3*(lgBB+lgHBP) - 2*lgK) / lgIP)
+  //
+  // Zack Ahn reported (May 2026): elite per-9 lines (K/9 10.2, BB/9 1.1, HR/9
+  // 1.1) were showing FIP of 5.68 — clearly above the per-9 numbers would
+  // suggest. Root cause: most non-user games go through fastSim (sim.js
+  // distributePitchers), which derives HR from runs * 0.20 and splits K/BB
+  // by an outs-proportional fudge factor. That skews the league-wide
+  // K/BB/HR aggregate enough that lgERA - lgFIPraw can land far outside
+  // the MLB-typical [2.9, 3.3] band. When the dynamic constant goes
+  // negative or above ~5, individual FIPs become uninterpretable.
+  //
+  // Fix: compute the raw constant, then clamp to a sane window so FIP
+  // values stay on a scale users recognize. The clamp loses some of the
+  // "FIP averages to lgERA" purity but keeps the stat actionable.
   const lgIp = outsToDecimalIp(pOuts)
   const leagueEra = safeDiv(pER * 9, lgIp, 4.50)
-  const fipConstant = lgIp > 0
+  const rawFipConstant = lgIp > 0
     ? leagueEra - (13 * pHR + 3 * (pBB + pHBP) - 2 * pK) / lgIp
     : 3.10
+  const fipConstant = Math.max(2.5, Math.min(4.5, rawFipConstant))
   const leagueFip = leagueEra   // by construction FIP averages to ERA league-wide
   // HR/FB estimate — fall back to the 0.10 default if we have no signal
   const estimatedFb = (pBF - pK - pBB - pHBP) * 0.35

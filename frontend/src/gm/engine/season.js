@@ -108,7 +108,15 @@ function isSecondGameOfDay(schedule, game, userSchoolId) {
 }
 
 function zeroStats(isPitcher) {
-  if (isPitcher) return { ip: 0, h: 0, bb: 0, k: 0, er: 0, outs: 0, pa: 0, hbp: 0, hr: 0, gamesPlayed: 0 }
+  if (isPitcher) return {
+    ip: 0, h: 0, bb: 0, k: 0, er: 0, outs: 0, pa: 0, hbp: 0, hr: 0, gamesPlayed: 0,
+    // Handedness splits — per Zack's note: "Helpful to be able to see bullpen
+    // pitcher stats to see handedness splits." Accumulated by simPA and fastSim
+    // and rendered on PlayerDetail. Each bucket is a thin slash-line subset
+    // (ab/h/hr/bb/k/pa) — enough for AVG, OPS, K-rate, BB-rate vs each hand.
+    vsL: { pa: 0, ab: 0, h: 0, hr: 0, bb: 0, k: 0 },
+    vsR: { pa: 0, ab: 0, h: 0, hr: 0, bb: 0, k: 0 },
+  }
   return { ab: 0, h: 0, d: 0, t: 0, hr: 0, bb: 0, k: 0, rbi: 0, pa: 0, hbp: 0, sf: 0, sac: 0, gidp: 0, roe: 0, sb: 0, cs: 0, gamesPlayed: 0 }
 }
 
@@ -459,6 +467,21 @@ export function simWeek(state, schedule, ratings) {
     // single state.playerStats bucket. Spring scrimmages still count.
     if (result.boxscore?.batterStats) {
       if (!state.playerStats) state.playerStats = {}
+      // Merge a per-game stat row INTO a season accumulator. Most fields are
+      // plain numbers, but pitcher rows now also carry nested split buckets
+      // (vsL, vsR) — those need a recursive sum, not `(num || 0) + obj`
+      // which silently produced NaN before splits were introduced.
+      const mergeStat = (target, source) => {
+        for (const k of Object.keys(source)) {
+          const sv = source[k]
+          if (sv && typeof sv === 'object') {
+            if (!target[k] || typeof target[k] !== 'object') target[k] = {}
+            mergeStat(target[k], sv)
+          } else {
+            target[k] = (target[k] || 0) + (sv || 0)
+          }
+        }
+      }
       const accumulate = (statsObj, isPitcher) => {
         for (const [pid, s] of Object.entries(statsObj)) {
           // Skip synthetic opponents — they aren't in save.players so they'd
@@ -469,7 +492,7 @@ export function simWeek(state, schedule, ratings) {
           const key = isPitcher ? `p_${pid}` : `b_${pid}`
           if (!state.playerStats[key]) state.playerStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
           const target = state.playerStats[key]
-          for (const k of Object.keys(s)) target[k] = (target[k] || 0) + s[k]
+          mergeStat(target, s)
           // gamesPlayed: a single appearance in this game counts as 1.
           target.gamesPlayed = (target.gamesPlayed || 0) + 1
           // Mirror into weeklyStats for weekly awards — exclude spring
@@ -480,7 +503,7 @@ export function simWeek(state, schedule, ratings) {
               state.weeklyStats[key] = { playerId: pid, isPitcher, ...zeroStats(isPitcher) }
             }
             const wkTarget = state.weeklyStats[key]
-            for (const k of Object.keys(s)) wkTarget[k] = (wkTarget[k] || 0) + s[k]
+            mergeStat(wkTarget, s)
             wkTarget.gamesPlayed = (wkTarget.gamesPlayed || 0) + 1
           }
         }

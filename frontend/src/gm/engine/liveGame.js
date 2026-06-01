@@ -122,8 +122,20 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey, restore = n
     return batterStats[id]
   }
   function pStat(id) {
-    if (!pitcherStats[id]) pitcherStats[id] = { ip:0,h:0,bb:0,k:0,er:0,outs:0,pa:0,hbp:0,hr:0 }
+    if (!pitcherStats[id]) pitcherStats[id] = {
+      ip:0, h:0, bb:0, k:0, er:0, outs:0, pa:0, hbp:0, hr:0,
+      vsL: { pa:0, ab:0, h:0, hr:0, bb:0, k:0 },
+      vsR: { pa:0, ab:0, h:0, hr:0, bb:0, k:0 },
+    }
     return pitcherStats[id]
+  }
+  // Resolve a batter's effective handedness against this pitcher (switch
+  // hitters bat opposite the pitcher's throwing hand). Mirrors sim.js.
+  function effectiveBatHand(batter, pitcher) {
+    const bats = batter?.bats || 'R'
+    const throws = pitcher?.throws || 'R'
+    if (bats === 'S') return throws === 'L' ? 'R' : 'L'
+    return bats === 'L' ? 'L' : 'R'
   }
 
   function pushEvent(ev) { state.events.push(ev) }
@@ -420,7 +432,10 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey, restore = n
     // Stats
     const b = bStat(batter.id)
     const p = pStat(pitcher.id)
-    b.pa++; p.pa++
+    // Per Zack's note: track handedness splits on every PA so PlayerDetail
+    // can render a real vs-L / vs-R slash line for the user's pitchers.
+    const handBucket = effectiveBatHand(batter, pitcher) === 'L' ? p.vsL : p.vsR
+    b.pa++; p.pa++; if (handBucket) handBucket.pa++
     state[state.top ? 'awayPAs' : 'homePAs']++
     if (state.top) state.homePitcherBF++; else state.awayPitcherBF++
     // Pitch count, fatigue, confidence — applied to the CURRENT pitcher on
@@ -437,17 +452,41 @@ export function createLiveGame(homeLineup, awayLineup, ctx, seedKey, restore = n
     const pLine = state[`${sideKey}PitcherLine`]
     pLine.bf++
     pLine.pitches = state[`${sideKey}Pitches`]
-    if (result.outcome === 'K') { b.ab++; b.k++; p.k++; p.outs++; pLine.k++; pLine.outs++ }
-    else if (result.outcome === 'OUT') { b.ab++; p.outs++; pLine.outs++ }
-    else if (result.outcome === 'BB') { b.bb++; p.bb++; pLine.bb++ }
+    if (result.outcome === 'K') {
+      b.ab++; b.k++; p.k++; p.outs++; pLine.k++; pLine.outs++
+      if (handBucket) { handBucket.ab++; handBucket.k++ }
+    }
+    else if (result.outcome === 'OUT') {
+      b.ab++; p.outs++; pLine.outs++
+      if (handBucket) handBucket.ab++
+    }
+    else if (result.outcome === 'BB') {
+      b.bb++; p.bb++; pLine.bb++
+      if (handBucket) handBucket.bb++
+    }
     else if (result.outcome === 'HBP') { b.hbp++; p.hbp++; pLine.hbp++ }
-    else if (result.outcome === 'SINGLE') { b.ab++; b.h++; p.h++; pLine.h++; bumpHits(state) }
-    else if (result.outcome === 'DOUBLE') { b.ab++; b.h++; b.d++; p.h++; pLine.h++; bumpHits(state) }
-    else if (result.outcome === 'TRIPLE') { b.ab++; b.h++; b.t++; p.h++; pLine.h++; bumpHits(state) }
-    else if (result.outcome === 'HR') { b.ab++; b.h++; b.hr++; p.h++; p.hr++; pLine.h++; pLine.hr++; bumpHits(state) }
+    else if (result.outcome === 'SINGLE') {
+      b.ab++; b.h++; p.h++; pLine.h++; bumpHits(state)
+      if (handBucket) { handBucket.ab++; handBucket.h++ }
+    }
+    else if (result.outcome === 'DOUBLE') {
+      b.ab++; b.h++; b.d++; p.h++; pLine.h++; bumpHits(state)
+      if (handBucket) { handBucket.ab++; handBucket.h++ }
+    }
+    else if (result.outcome === 'TRIPLE') {
+      b.ab++; b.h++; b.t++; p.h++; pLine.h++; bumpHits(state)
+      if (handBucket) { handBucket.ab++; handBucket.h++ }
+    }
+    else if (result.outcome === 'HR') {
+      b.ab++; b.h++; b.hr++; p.h++; p.hr++; pLine.h++; pLine.hr++; bumpHits(state)
+      if (handBucket) { handBucket.ab++; handBucket.h++; handBucket.hr++ }
+    }
     else if (result.outcome === 'SAC_FLY') { b.sf++; p.outs++; pLine.outs++ }
     else if (result.outcome === 'SAC_BUNT') { b.sac++; p.outs++; pLine.outs++ }
-    else if (result.outcome === 'GIDP') { b.ab++; b.gidp++; p.outs += 2; pLine.outs += 2 }
+    else if (result.outcome === 'GIDP') {
+      b.ab++; b.gidp++; p.outs += 2; pLine.outs += 2
+      if (handBucket) handBucket.ab++
+    }
     else if (result.outcome === 'ERROR') {
       b.ab++; b.roe++
       // Charge an error to the FIELDING side
