@@ -1,12 +1,13 @@
 {
-  "generated_at": "2026-05-31T19:33:27.740502+00:00",
-  "source": "Pro alumni.xlsx",
+  "generated_at": "2026-06-01T19:19:14.518023+00:00",
+  "source": "Pro alumni (1).xlsx",
   "players": [
     {
       "name": "Riley O'Brien",
-      "college_raw": "College of Idaho",
+      "college_raw": "College of Idaho and Everett Community College",
       "college_team_ids": [
-        21
+        21,
+        28
       ],
       "player_id": null,
       "drafted_by": "Tampa Bay Rays",
@@ -365,9 +366,10 @@
     },
     {
       "name": "Brandon Eisert",
-      "college_raw": "Oregon State University",
+      "college_raw": "Oregon State University and  Linn-Benton Community College",
       "college_team_ids": [
-        3
+        3,
+        44
       ],
       "player_id": 7973,
       "drafted_by": "Toronto Blue Jays",
@@ -590,9 +592,10 @@
     },
     {
       "name": "Gavin Logan",
-      "college_raw": "Oregon State University",
+      "college_raw": "Oregon State University and  Linn-Benton Community College",
       "college_team_ids": [
-        3
+        3,
+        44
       ],
       "player_id": 6482,
       "drafted_by": "Arizona Diamondbacks",
@@ -785,9 +788,10 @@
     },
     {
       "name": "Kellan Oakes",
-      "college_raw": "Oregon State University",
+      "college_raw": "Oregon State University and  Linn-Benton Community College",
       "college_team_ids": [
-        3
+        3,
+        44
       ],
       "player_id": 3757,
       "drafted_by": "Houston Astros",
@@ -876,11 +880,12 @@
     },
     {
       "name": "Trent Sellers",
-      "college_raw": "Oregon State University and Lewis and Clarke State and Washington State University",
+      "college_raw": "Oregon State University and Lewis and Clarke State and Washington State University and Columbia Basin College",
       "college_team_ids": [
         3,
         22,
-        4
+        4,
+        34
       ],
       "player_id": 5533,
       "drafted_by": "New York Yankees",
@@ -1960,9 +1965,10 @@
     },
     {
       "name": "Dakota Hawkins",
-      "college_raw": "Washington State University",
+      "college_raw": "Washington State University and Lower Columbia College",
       "college_team_ids": [
-        4
+        4,
+        52
       ],
       "player_id": 5551,
       "drafted_by": "New York Mets",
@@ -2032,6 +2038,217 @@
       "level": "A+",
       "affiliate": "San Francisco Giants",
       "stats_url": "https://www.milb.com/player/hunter-dryden-827500"
+    },
+    {
+      "name": "Seth Brown",
+      "college_raw": "Lewis-Clark State College and Linn-Benton Community College",
+      "college_team_ids": [
+        22,
+        44
+      ],
+      "player_id": null,
+      "drafted_by": "Oakland Athletics",
+      "year_drafted": 2015,
+      "pick": "578",
+      "current_team": "Scranton/Wilkes-Barre RailRiders",
+      "level": "AAA",
+      "affiliate": "New York Yankees",
+      "stats_url": "https://www.milb.com/player/seth-brown-664913"
+    },
+    {
+      "name": "Jadon Williamson",
+      "college_raw": "Lewis-Clark State College",
+      "college_team_ids": [
+        22
+      ],
+      "player_id": 3823,
+      "drafted_by": "Miami Marlins",
+      "year_drafted": 2025,
+      "pick": "318",
+      "current_team": "Jupiter Hammerheads",
+      "level": "A",
+      "affiliate": "Miami Marlins",
+      "stats_url": "https://www.milb.com/player/jadon-williamson-836056"
+    },
+    {
+      "name": "Drake George",
+      "college_raw": "Lewis-Clark State College",
+      "college_team_ids": [
+        22
+      ],
+      "player_id": 4708,
+      "drafted_by": "San Francisco Giants",
+      "year_drafted": 2024,
+      "pick": "388",
+      "current_team": "San Jose Giants",
+      "level": "A",
+      "affiliate": "San Francisco Giants",
+      "stats_url": "https://www.milb.com/player/drake-george-825095"
+    },
+    {
+      "name": "Hunter Kublick",
+      "college_raw": "Umpqua Community College",
+      "college_team_ids": [
+        47
+      ],
+      "player_id": 6377,
+      "drafted_by": "St. Louis Cardinals",
+      "year_drafted": 2023,
+      "pick": "545",
+      "current_team": "Palm Beach Cardinals",
+      "level": "A",
+      "affiliate": "St. Louis Cardinals",
+      "stats_url": "https://www.milb.com/player/hunter-kublick-815047"
+    },
+    {
+      "name": "Hunter Alberini",
+      "college_raw": "Umpqua Community College",
+      "college_team_ids": [
+        47
+      ],
+      "player_id": 7280,
+      "drafted_by": "Kansas City Royals",
+      "year_drafted": 2025,
+      "pick": "338",
+      "current_team": "Columbia Fireflies",
+      "level": "A",
+      "affiliate": "Kansas City Royals",
+      "stats_url": "https://www.milb.com/player/hunter-alberini-828043"
+    },
+    {
+      "name": "Trent Buchanan",
+      "college_raw": "Tacoma Community College",
+      "college_team_ids": [
+        53
+      ],
+      "player_id": 7230,
+      "drafted_by": "Atlanta Braves",
+      "year_drafted": 2023,
+      "pick": "NDFA",
+      "current_team": "Rome Emperors",
+      "level": "A",
+      "affiliate": "Atlanta Braves",
+      "stats_url": "https://www.milb.com/player/trent-buchanan-830485"
+    },
+    {
+      "name": "Tayler Saucedo",
+      "college_raw": "Tacoma Community College",
+      "college_team_ids": [
+        53
+      ],
+      "player_id": null,
+      "drafted_by": "Toronto Blue Jays",
+      "year_drafted": 2015,
+      "pick": "632",
+      "current_team": "Salt Lake Bees",
+      "level": "AAA",
+      "affiliate": "Los Angeles Angels",
+      "stats_url": "https://www.milb.com/player/tayler-saucedo-642048"
+    },
+    {
+      "name": "Dylan Watts",
+      "college_raw": "Tacoma Community College",
+      "college_team_ids": [
+        53
+      ],
+      "player_id": 6322,
+      "drafted_by": "Toronto Blue Jays",
+      "year_drafted": 2025,
+      "pick": "202",
+      "current_team": "Dunedin Blue Jays",
+      "level": "A",
+      "affiliate": "Toronto Blue Jays",
+      "stats_url": "https://www.milb.com/player/dylan-watts-814346"
+    },
+    {
+      "name": "Ryan Thompson",
+      "college_raw": "Chemeketa Community College",
+      "college_team_ids": [
+        41
+      ],
+      "player_id": 9157,
+      "drafted_by": "Houston Astros",
+      "year_drafted": 2014,
+      "pick": "676",
+      "current_team": "Arizona Diamondbacks",
+      "level": "MLB",
+      "affiliate": "Arizona Diamondbacks",
+      "stats_url": "https://www.mlb.com/player/ryan-thompson-657044"
+    },
+    {
+      "name": "Ocean Gabonia",
+      "college_raw": "Everett Community College",
+      "college_team_ids": [
+        28
+      ],
+      "player_id": 9939,
+      "drafted_by": "New York Yankees",
+      "year_drafted": 2020,
+      "pick": "NDFA",
+      "current_team": "Hudson Valley Renegades",
+      "level": "A+",
+      "affiliate": "New York Yankees",
+      "stats_url": "https://www.milb.com/player/ocean-gabonia-695589"
+    },
+    {
+      "name": "Kellen Strahm",
+      "college_raw": "Lane Community College",
+      "college_team_ids": [
+        43
+      ],
+      "player_id": null,
+      "drafted_by": "Texas Rangers",
+      "year_drafted": 2019,
+      "pick": "145",
+      "current_team": "Sugar Land Space Cowboys",
+      "level": "AAA",
+      "affiliate": "Houston Astros",
+      "stats_url": "https://www.milb.com/player/kellen-strahm-687005"
+    },
+    {
+      "name": "Keynan Middleton",
+      "college_raw": "Lane Community College",
+      "college_team_ids": [
+        43
+      ],
+      "player_id": null,
+      "drafted_by": "Los Angeles Angels",
+      "year_drafted": 2013,
+      "pick": "95",
+      "current_team": "Oklahoma City Comets",
+      "level": "AAA",
+      "affiliate": "Los Angeles Dodgers",
+      "stats_url": "https://www.milb.com/player/keynan-middleton-641871"
+    },
+    {
+      "name": "Titus Dumitru",
+      "college_raw": "Linn-Benton Community College",
+      "college_team_ids": [
+        44
+      ],
+      "player_id": 6145,
+      "drafted_by": "Atlanta Braves",
+      "year_drafted": 2024,
+      "pick": "491",
+      "current_team": "Altoona Curve",
+      "level": "AA",
+      "affiliate": "Pittsburgh Pirates",
+      "stats_url": "https://www.milb.com/player/titus-dumitru-828335"
+    },
+    {
+      "name": "Justin Stransky",
+      "college_raw": "Lower Columbia College",
+      "college_team_ids": [
+        52
+      ],
+      "player_id": 6162,
+      "drafted_by": "Chicago Cubs",
+      "year_drafted": 2025,
+      "pick": "301",
+      "current_team": "South Bend Cubs",
+      "level": "A+",
+      "affiliate": "Chicago Cubs",
+      "stats_url": "https://www.milb.com/player/justin-stransky-833458"
     }
   ]
 }

@@ -35,11 +35,21 @@ COLLEGE_TEAM_IDS = {
     "The University of British Columbia": 5720,
     "Seattle University": 484,
     "College of Idaho": 21,
-    "Lewis and Clarke State": 22,        # LCSC (NAIA), not D3 Lewis & Clark
+    "Lewis-Clark State College": 22,     # LCSC (NAIA), not D3 Lewis & Clark
+    "Lewis and Clarke State": 22,        # alt spelling seen in the sheet
     "Northwest Nazarene University": 9,
     "Corban University": 23,
     "Pacific Lutheran University": 11,
     "Whitworth University": 13,
+    # NWAC (JUCO) programs — added as alumni from these schools appear.
+    "Tacoma Community College": 53,
+    "Linn-Benton Community College": 44,
+    "Columbia Basin College": 34,
+    "Umpqua Community College": 47,
+    "Lane Community College": 43,
+    "Chemeketa Community College": 41,
+    "Everett Community College": 28,
+    "Lower Columbia College": 52,
 }
 
 
@@ -163,18 +173,40 @@ def main():
                 "stats_url": clean(row[8]),
             })
 
+    # De-duplicate. The same player sometimes appears in multiple rows when
+    # a college is added later (e.g. a row "Oregon State" plus a newer row
+    # "Oregon State and Linn-Benton CC"). Key on the stats-page URL (unique
+    # per player) and keep the most complete row — the one credited to the
+    # most colleges, then the longest raw college string.
+    def dedup_key(p):
+        url = (p.get("stats_url") or "").strip().lower()
+        return url or f"{p['name'].lower()}|{p.get('year_drafted')}|{p.get('pick')}"
+
+    best = {}
+    for p in players:
+        k = dedup_key(p)
+        cur_best = best.get(k)
+        if cur_best is None or (
+            (len(p["college_team_ids"]), len(p["college_raw"]))
+            > (len(cur_best["college_team_ids"]), len(cur_best["college_raw"]))
+        ):
+            best[k] = p
+    deduped = list(best.values())
+    dropped = len(players) - len(deduped)
+
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": os.path.basename(args.xlsx),
-        "players": players,
+        "players": deduped,
     }
+    players = deduped
     out = os.path.abspath(args.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w") as f:
         json.dump(payload, f, indent=2)
 
     linked = sum(1 for p in players if p["player_id"])
-    print(f"Wrote {len(players)} players to {out}")
+    print(f"Wrote {len(players)} players to {out}  (dropped {dropped} duplicate rows)")
     print(f"  linked to a player page: {linked}")
     print(f"  unlinked (pre-2018 / not in DB): {len(players) - linked}")
     if unmapped_colleges:
