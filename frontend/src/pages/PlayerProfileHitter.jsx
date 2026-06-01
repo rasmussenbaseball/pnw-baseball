@@ -217,6 +217,7 @@ export default function PlayerProfileHitter({ playerId, data, sideToggle = null 
   const currSeason = springRows.slice(-1)[0]
   const seasonWobaVal = currSeason?.woba
   const divLabel = currSeason?.division_level || player.division_level || 'LEAGUE'
+  const lgWoba = data?.league_context?.woba
 
   // Render only metrics the API actually returned (non-null percentile).
   const pctMetrics = PCT_METRICS.filter(m => batting_percentiles?.[m.key]?.percentile != null)
@@ -320,12 +321,11 @@ export default function PlayerProfileHitter({ playerId, data, sideToggle = null 
                 <div className="flex-1 max-w-[340px] mx-auto w-full">
                   <RollingLineChart
                     series={rolling}
-                    yMin={0.300} yMax={0.600}
-                    yTicks={[0.350, 0.400, 0.450, 0.500, 0.550]}
+                    floorZero
                     fmtTick={v => `.${Math.round(v * 1000)}`}
                     refLines={[
-                      { v: 0.330, label: 'LG .330', color: T.poor },
-                      ...(seasonWobaVal != null ? [{ v: seasonWobaVal, label: `season`, color: T.gold }] : []),
+                      ...(lgWoba != null ? [{ v: lgWoba, label: `LG ${formatPct('avg', lgWoba)}`, color: T.poor }] : []),
+                      ...(seasonWobaVal != null ? [{ v: seasonWobaVal, label: 'season', color: T.gold }] : []),
                     ]}
                     lineColor={T.great}
                   />
@@ -337,8 +337,8 @@ export default function PlayerProfileHitter({ playerId, data, sideToggle = null 
             <table className="w-full mt-2 text-[11px] border-collapse">
               <thead>
                 <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                  {['Year', 'Lvl', 'PA', 'AVG', 'OBP', 'SLG', 'HR', 'wRC+'].map(h => (
-                    <th key={h} className={`px-1.5 py-1 font-bold tracking-wide ${h === 'Year' || h === 'Lvl' ? 'text-left' : 'text-right'}`} style={{ color: T.textLight }}>{h}</th>
+                  {['Year', 'Lvl', 'Team', 'PA', 'AVG', 'OBP', 'SLG', 'HR', 'wRC+'].map(h => (
+                    <th key={h} className={`px-1.5 py-1 font-bold tracking-wide ${h === 'Year' || h === 'Lvl' || h === 'Team' ? 'text-left' : 'text-right'}`} style={{ color: T.textLight }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -351,6 +351,7 @@ export default function PlayerProfileHitter({ playerId, data, sideToggle = null 
                     <tr key={`${s.season}-${s._kind}-${s._team}-${i}`} className={`${isCurrent ? 'font-bold' : ''} ${isSummer ? 'italic' : ''}`} style={rowStyle}>
                       <td className="px-1.5 py-1 text-left" style={{ color: T.textMuted }}>{s.season}</td>
                       <td className="px-1.5 py-1 text-left" style={{ color: isSummer ? T.textLight : T.textMuted }}>{s._typeLabel}</td>
+                      <td className="px-1.5 py-1 text-left" style={{ color: T.textMuted }}>{s._team}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.plate_appearances ?? '—'}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.batting_avg != null ? formatPct('avg', s.batting_avg) : '—'}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.on_base_pct != null ? formatPct('avg', s.on_base_pct) : '—'}</td>
@@ -364,6 +365,7 @@ export default function PlayerProfileHitter({ playerId, data, sideToggle = null 
                   <tr style={{ borderTop: `1px solid ${T.border}` }}>
                     <td className="px-1.5 py-1 text-left" style={{ color: T.textMuted }}>Career</td>
                     <td className="px-1.5 py-1 text-left" style={{ color: T.textLight }}>Spring</td>
+                    <td className="px-1.5 py-1 text-left" style={{ color: T.textLight }}>—</td>
                     <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{career.pa}</td>
                     <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{formatPct('avg', careerAvg)}</td>
                     <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{formatPct('avg', careerOBP)}</td>

@@ -7765,6 +7765,64 @@ def _compute_2026_pbp_pitching_percentiles(conn, division_level, season, player_
     return out
 
 
+def _league_rate_avgs(conn, division_level: str, season):
+    """Average rate stats across the qualified division pool (batters
+    PA>=10, pitchers IP>=20) for a season. Powers the reference lines on
+    the rolling wOBA / FIP charts so they reflect the real league average
+    for the player's division, not a hardcoded guess. Matches the same
+    qualified pool used for the savant percentiles."""
+    out = {"woba": None, "era": None, "fip": None}
+    if not division_level or not season:
+        return out
+    # innings_pitched is baseball notation (6.2 = 6 and 2/3); convert to
+    # true innings for run-environment weighting.
+    true_ip = "(FLOOR(ps.innings_pitched) + (ps.innings_pitched - FLOOR(ps.innings_pitched)) * (10.0/3.0))"
+    try:
+        cur = conn.cursor()
+        # PA-weighted league wOBA (the offensive run environment).
+        cur.execute(
+            """
+            SELECT SUM(bs.woba * bs.plate_appearances) / NULLIF(SUM(bs.plate_appearances), 0) AS woba
+            FROM batting_stats bs
+            JOIN players p ON bs.player_id = p.id
+            JOIN teams t ON bs.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE d.level = %s AND bs.season = %s
+              AND bs.plate_appearances >= 1 AND bs.woba IS NOT NULL
+            """,
+            (division_level, season),
+        )
+        r = cur.fetchone()
+        if r and r["woba"] is not None:
+            out["woba"] = round(float(r["woba"]), 3)
+        # True league ERA (total ER*9 / total IP) and IP-weighted league FIP.
+        cur.execute(
+            f"""
+            SELECT
+              SUM(ps.earned_runs) * 9.0 / NULLIF(SUM({true_ip}), 0) AS era,
+              SUM(ps.fip * {true_ip}) FILTER (WHERE ps.fip IS NOT NULL)
+                / NULLIF(SUM({true_ip}) FILTER (WHERE ps.fip IS NOT NULL), 0) AS fip
+            FROM pitching_stats ps
+            JOIN players p ON ps.player_id = p.id
+            JOIN teams t ON ps.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE d.level = %s AND ps.season = %s AND ps.innings_pitched >= 1
+            """,
+            (division_level, season),
+        )
+        r = cur.fetchone()
+        if r:
+            if r["era"] is not None:
+                out["era"] = round(float(r["era"]), 2)
+            if r["fip"] is not None:
+                out["fip"] = round(float(r["fip"]), 2)
+    except Exception:
+        pass
+    return out
+
+
 def _compute_percentiles(conn, division_level: str, season: int, player_stats: dict, stat_type: str):
     """
     Compute Baseball Savant-style percentiles for a player within their division.
@@ -8849,6 +8907,15 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         )
         fielding_list = [dict(r) for r in cur.fetchall()]
 
+        # League reference averages for the rolling-chart reference lines,
+        # over the qualified division pool for the displayed season.
+        _all_seasons = [r["season"] for r in batting_list] + [r["season"] for r in pitching_list]
+        _lg_season = (
+            int(percentile_label) if (percentile_label and percentile_label.isdigit())
+            else (max(_all_seasons) if _all_seasons else None)
+        )
+        league_context = _league_rate_avgs(conn, player_dict.get("division_level"), _lg_season)
+
         return {
             "player": player_dict,
             "batting_stats": batting_list,
@@ -8858,6 +8925,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             "batting_percentiles": batting_percentiles,
             "pitching_percentiles": pitching_percentiles,
             "percentile_season": percentile_label,
+            "league_context": league_context,
             "awards": all_awards["season_awards"],
             "career_rankings": all_awards["career_rankings"],
             "pnw_rankings": pnw_rankings,

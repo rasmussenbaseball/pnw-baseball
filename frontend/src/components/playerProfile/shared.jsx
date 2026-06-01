@@ -199,8 +199,8 @@ export function PctRow({ stat, pct, raw, tip }) {
   const color = pctColor(pct || 0)
   const t = tip || { what: '', why: '', range: '' }
   return (
-    <div className="grid items-center gap-3 py-1" style={{ gridTemplateColumns: '100px 1fr 70px' }}>
-      <div className="flex items-center justify-end gap-1 text-[12.5px] font-medium" style={{ color: T.textMuted }}>
+    <div className="grid items-center gap-2.5 py-1" style={{ gridTemplateColumns: '116px 1fr 58px' }}>
+      <div className="flex items-center justify-end gap-1 text-[11.5px] font-medium whitespace-nowrap" style={{ color: T.textMuted }}>
         <span>{stat}</span>
         <button
           onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
@@ -240,7 +240,7 @@ export function PercentilePanel({ title, scopeLabel, metrics, percentiles, toolt
         <h3 className="text-base font-bold tracking-tight" style={{ color: T.text }}>Percentile Rankings</h3>
         {scopeLabel && <span className="ml-auto text-[11px] tracking-widest font-semibold" style={{ color: T.textLight }}>{scopeLabel}</span>}
       </div>
-      <div className="grid items-end gap-3 text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ gridTemplateColumns: '100px 1fr 70px' }}>
+      <div className="grid items-end gap-2.5 text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ gridTemplateColumns: '116px 1fr 58px' }}>
         <span />
         <div className="flex justify-between">
           <span style={{ color: T.poor }}>▲ POOR</span>
@@ -261,16 +261,45 @@ export function PercentilePanel({ title, scopeLabel, metrics, percentiles, toolt
   )
 }
 
-// ── Rolling line chart (generic) ───────────────────────────────
-// series: number[]; refLines: [{ v, label, color }]; fmtTick: (v)=>string
-export function RollingLineChart({ series, yMin, yMax, yTicks, fmtTick, refLines = [], lineColor }) {
+// Nice axis range + ticks for an arbitrary value spread (so low-wOBA or
+// high-ERA lines are never clipped — the axis adapts to the data).
+function niceNum(x, round) {
+  const exp = Math.floor(Math.log10(x || 1))
+  const f = (x || 1) / Math.pow(10, exp)
+  let nf
+  if (round) nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10
+  else nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10
+  return nf * Math.pow(10, exp)
+}
+function niceRange(lo, hi, tickCount = 4, floorZero = false) {
+  if (!(hi > lo)) { hi = lo + 1 }
+  const range = niceNum(hi - lo, false)
+  const step = niceNum(range / tickCount, true)
+  let niceLo = Math.floor(lo / step) * step
+  let niceHi = Math.ceil(hi / step) * step
+  if (floorZero) niceLo = Math.max(0, niceLo)
+  const ticks = []
+  for (let v = niceLo; v <= niceHi + step * 1e-6; v += step) ticks.push(+v.toFixed(6))
+  return { min: niceLo, max: niceHi, ticks }
+}
+
+// ── Rolling line chart (generic, auto-ranging y-axis) ──────────
+// series: number[]; refLines: [{ v, label, color }]; fmtTick: (v)=>string.
+// The y-axis is derived from the data + reference lines so every player's
+// line is visible (no fixed floor that clips below-average seasons).
+export function RollingLineChart({ series, fmtTick, refLines = [], lineColor, floorZero = false }) {
   const T = usePlayerProfileTheme()
   const line = lineColor || T.great
   if (!series || series.length < 2) {
     return <div className="text-xs" style={{ color: T.textMuted }}>Not enough games yet</div>
   }
+  // Derive bounds from the series + any reference lines, with a little pad.
+  const vals = [...series, ...refLines.map(r => r.v)].filter(v => v != null && isFinite(v))
+  let lo = Math.min(...vals), hi = Math.max(...vals)
+  const pad = ((hi - lo) || 1) * 0.12
+  const { min: yMin, max: yMax, ticks: yTicks } = niceRange(lo - pad, hi + pad, 4, floorZero)
   const w = 340, h = 195
-  const pl = 30, pr = 64, pt = 12, pb = 22
+  const pl = 34, pr = 64, pt = 12, pb = 22
   const cw = w - pl - pr
   const ch = h - pt - pb
   const clamp = v => Math.max(yMin, Math.min(yMax, v))

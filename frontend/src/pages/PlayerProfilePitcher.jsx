@@ -29,8 +29,6 @@ const PCT_METRICS_ALL = [
   { key: 'siera',                  label: 'SIERA',        fmt: 'era' },
   { key: 'xfip',                   label: 'xFIP',         fmt: 'era' },
   { key: 'baa',                    label: 'BAA',          fmt: 'avg' },
-  { key: 'hr_per_9',               label: 'HR/9',         fmt: 'era' },
-  { key: 'h_per_9',                label: 'H/9',          fmt: 'era' },
   { key: 'lob_pct',                label: 'LOB%',         fmt: 'pct' },
   { key: 'strike_pct',             label: 'Strike%',      fmt: 'pct' },
   { key: 'first_pitch_strike_pct', label: 'FPS%',         fmt: 'pct' },
@@ -126,17 +124,28 @@ function ipNotation(trueIP) {
   return `${Math.floor(outs / 3)}.${outs % 3}`
 }
 
-// 10-outing rolling ERA series from pitching game logs.
-function rollingEra(games, window = 10) {
+// 10-outing rolling FIP from pitching game logs. FIP needs a per-league
+// constant; rather than guess it, we anchor to the player's authoritative
+// season FIP — constant = seasonFIP − (season FIP-core rate). Each window's
+// FIP = (windowed 13*HR + 3*(BB+HBP) − 2*K) / windowed IP + that constant.
+function rollingFipSeries(games, seasonFip, window = 10) {
   const outings = games
-    .map(g => ({ ip: ipToTrue(g.ip), er: g.er || 0 }))
+    .map(g => ({
+      ip: ipToTrue(g.ip),
+      core: 13 * (g.hr || 0) + 3 * ((g.bb || 0) + (g.hbp || 0)) - 2 * (g.k || 0),
+    }))
     .filter(o => o.ip > 0)
+  if (!outings.length) return []
+  const totIp = outings.reduce((s, o) => s + o.ip, 0)
+  const totCore = outings.reduce((s, o) => s + o.core, 0)
+  const seasonRaw = totIp > 0 ? totCore / totIp : 0
+  const constant = (seasonFip != null ? seasonFip : 3.10) - seasonRaw
   const out = []
   for (let i = 0; i < outings.length; i++) {
     const slice = outings.slice(Math.max(0, i - window + 1), i + 1)
-    const ipSum = slice.reduce((s, o) => s + o.ip, 0)
-    const erSum = slice.reduce((s, o) => s + o.er, 0)
-    out.push(ipSum > 0 ? (erSum * 9) / ipSum : 0)
+    const ip = slice.reduce((s, o) => s + o.ip, 0)
+    const core = slice.reduce((s, o) => s + o.core, 0)
+    out.push((ip > 0 ? core / ip : 0) + constant)
   }
   return out
 }
@@ -174,8 +183,13 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
     .map(rk => ({ label: rk.label, pct: pitching_percentiles[rk.key].percentile }))
 
   const pitchingGames = gameLogs?.pitching || []
-  const rolling = rollingEra(pitchingGames, 10)
+  const seasonFip = currSeason?.fip
+  const rolling = rollingFipSeries(pitchingGames, seasonFip, 10)
   const seasonEra = currSeason?.era
+  // League FIP reference: prefer the authoritative run-environment value;
+  // fall back to deriving from the player's FIP+ (lgFIP = FIP * FIP+/100).
+  const lgFip = data?.league_context?.fip
+    ?? (seasonFip != null && currSeason?.fip_plus != null ? +(seasonFip * currSeason.fip_plus / 100).toFixed(2) : null)
 
   // Per-outing game-score chart inputs
   const gsRows = pitchingGames.map(g => ({ g, val: g.game_score }))
@@ -245,20 +259,19 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
               </div>
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center justify-center gap-2 mb-0.5">
-                  <span className="text-[9.5px] font-bold tracking-widest uppercase" style={{ color: T.textLight }}>10-Game Rolling ERA</span>
-                  {seasonEra != null && (
-                    <span className="px-1.5 py-px rounded-md text-[9.5px] font-bold tabular-nums tracking-wide text-white" style={{ background: T.accent }}>SEASON {fmtEra(seasonEra)}</span>
+                  <span className="text-[9.5px] font-bold tracking-widest uppercase" style={{ color: T.textLight }}>10-Game Rolling FIP</span>
+                  {seasonFip != null && (
+                    <span className="px-1.5 py-px rounded-md text-[9.5px] font-bold tabular-nums tracking-wide text-white" style={{ background: T.accent }}>SEASON {fmtEra(seasonFip)}</span>
                   )}
                 </div>
                 <div className="flex-1 max-w-[340px] mx-auto w-full">
                   <RollingLineChart
                     series={rolling}
-                    yMin={0} yMax={9}
-                    yTicks={[2, 4, 6, 8]}
+                    floorZero
                     fmtTick={v => v.toFixed(2)}
                     refLines={[
-                      { v: 5.0, label: 'LG 5.00', color: T.poor },
-                      ...(seasonEra != null ? [{ v: seasonEra, label: 'season', color: T.gold }] : []),
+                      ...(lgFip != null ? [{ v: lgFip, label: `LG ${fmtEra(lgFip)}`, color: T.poor }] : []),
+                      ...(seasonFip != null ? [{ v: seasonFip, label: 'season', color: T.gold }] : []),
                     ]}
                     lineColor={T.accent}
                   />
@@ -270,8 +283,8 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
             <table className="w-full mt-2 text-[11px] border-collapse">
               <thead>
                 <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                  {['Year', 'Lvl', 'IP', 'ERA', 'WHIP', 'K', 'BB', 'FIP'].map(h => (
-                    <th key={h} className={`px-1.5 py-1 font-bold tracking-wide ${h === 'Year' || h === 'Lvl' ? 'text-left' : 'text-right'}`} style={{ color: T.textLight }}>{h}</th>
+                  {['Year', 'Lvl', 'Team', 'IP', 'ERA', 'WHIP', 'K', 'BB', 'FIP'].map(h => (
+                    <th key={h} className={`px-1.5 py-1 font-bold tracking-wide ${h === 'Year' || h === 'Lvl' || h === 'Team' ? 'text-left' : 'text-right'}`} style={{ color: T.textLight }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -284,6 +297,7 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
                     <tr key={`${s.season}-${s._kind}-${s._team}-${i}`} className={`${isCurrent ? 'font-bold' : ''} ${isSummer ? 'italic' : ''}`} style={rowStyle}>
                       <td className="px-1.5 py-1 text-left" style={{ color: T.textMuted }}>{s.season}</td>
                       <td className="px-1.5 py-1 text-left" style={{ color: isSummer ? T.textLight : T.textMuted }}>{s._typeLabel}</td>
+                      <td className="px-1.5 py-1 text-left" style={{ color: T.textMuted }}>{s._team}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.innings_pitched != null ? Number(s.innings_pitched).toFixed(1) : '—'}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(s.era)}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(s.whip)}</td>
@@ -297,6 +311,7 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
                   <tr style={{ borderTop: `1px solid ${T.border}` }}>
                     <td className="px-1.5 py-1 text-left" style={{ color: T.textMuted }}>Career</td>
                     <td className="px-1.5 py-1 text-left" style={{ color: T.textLight }}>Spring</td>
+                    <td className="px-1.5 py-1 text-left" style={{ color: T.textLight }}>—</td>
                     <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{ipNotation(career.ip)}</td>
                     <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(careerEra)}</td>
                     <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(careerWhip)}</td>
