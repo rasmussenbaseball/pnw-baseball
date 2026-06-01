@@ -2,7 +2,7 @@ import { useApi } from '../hooks/useApi'
 import { usePersistedState } from '../hooks/usePersistedState'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import PlayerTrackerTable, {
-  HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
+  BoardToggle, HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
 
 /**
@@ -22,6 +22,7 @@ export default function JucoTracker() {
   const [minIp, setMinIp] = usePersistedState('juco_minIp', 0)
   const [bats, setBats] = usePersistedState('juco_bats', '')
   const [throws_, setThrows] = usePersistedState('juco_throws', '')
+  const [board, setBoard] = usePersistedState('juco_board', 'hitters')
 
   const { data, loading } = useApi('/players/juco/uncommitted', {
     season,
@@ -125,24 +126,25 @@ export default function JucoTracker() {
         </div>
       </div>
 
-      {/* Results — split into Hitters + Pitchers */}
+      {/* Board selector — choose Hitters or Pitchers */}
+      <BoardToggle
+        board={board}
+        onChange={setBoard}
+        hitterCount={loading ? null : hitters.length}
+        pitcherCount={loading ? null : pitchers.length}
+      />
+
+      {/* Results — one board at a time */}
       {loading ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-8 text-center text-gray-400 dark:text-gray-500 animate-pulse">
           Loading JUCO players...
         </div>
+      ) : board === 'hitters' ? (
+        <PlayerTrackerTable rows={hitters} statCols={HITTER_STAT_COLS} groupLabel="Hitting"
+          sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed" />
       ) : (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-sm font-bold text-pnw-slate dark:text-gray-200 mb-2 uppercase tracking-wide">Hitters</h2>
-            <PlayerTrackerTable rows={hitters} statCols={HITTER_STAT_COLS} groupLabel="Hitting"
-              sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-pnw-slate dark:text-gray-200 mb-2 uppercase tracking-wide">Pitchers</h2>
-            <PlayerTrackerTable rows={pitchers} statCols={PITCHER_STAT_COLS} groupLabel="Pitching"
-              sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed" />
-          </div>
-        </div>
+        <PlayerTrackerTable rows={pitchers} statCols={PITCHER_STAT_COLS} groupLabel="Pitching"
+          sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed" />
       )}
 
       <StatsLastUpdated levels={['JUCO']} className="mt-3" />

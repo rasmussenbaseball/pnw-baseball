@@ -2,7 +2,7 @@ import { useApi } from '../hooks/useApi'
 import { usePersistedState } from '../hooks/usePersistedState'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import PlayerTrackerTable, {
-  HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
+  BoardToggle, HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
 
 /**
@@ -19,6 +19,7 @@ export default function TransferPortalTracker() {
   const [sortDir, setSortDir] = usePersistedState('tp_sortDir', 'desc')
   const [bats, setBats] = usePersistedState('tp_bats', '')
   const [throws_, setThrows] = usePersistedState('tp_throws', '')
+  const [board, setBoard] = usePersistedState('tp_board', 'hitters')
 
   const { data, loading } = useApi('/transfer-portal', {
     season,
@@ -110,24 +111,25 @@ export default function TransferPortalTracker() {
         </div>
       </div>
 
-      {/* Results — split into Hitters + Pitchers */}
+      {/* Board selector — choose Hitters or Pitchers */}
+      <BoardToggle
+        board={board}
+        onChange={setBoard}
+        hitterCount={loading ? null : hitters.length}
+        pitcherCount={loading ? null : pitchers.length}
+      />
+
+      {/* Results — one board at a time */}
       {loading ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-8 text-center text-gray-400 dark:text-gray-500 animate-pulse">
           Loading transfer portal...
         </div>
+      ) : board === 'hitters' ? (
+        <PlayerTrackerTable rows={hitters} statCols={HITTER_STAT_COLS} groupLabel="Hitting"
+          sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="School" committedHeader="Committed To" />
       ) : (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-sm font-bold text-pnw-slate dark:text-gray-200 mb-2 uppercase tracking-wide">Hitters</h2>
-            <PlayerTrackerTable rows={hitters} statCols={HITTER_STAT_COLS} groupLabel="Hitting"
-              sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="School" committedHeader="Committed To" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-pnw-slate dark:text-gray-200 mb-2 uppercase tracking-wide">Pitchers</h2>
-            <PlayerTrackerTable rows={pitchers} statCols={PITCHER_STAT_COLS} groupLabel="Pitching"
-              sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="School" committedHeader="Committed To" />
-          </div>
-        </div>
+        <PlayerTrackerTable rows={pitchers} statCols={PITCHER_STAT_COLS} groupLabel="Pitching"
+          sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="School" committedHeader="Committed To" />
       )}
 
       <StatsLastUpdated levels={['D1', 'D2', 'D3', 'NAIA']} className="mt-3" />

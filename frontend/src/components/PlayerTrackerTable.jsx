@@ -88,6 +88,31 @@ function TwoWayIcon() {
   )
 }
 
+// Segmented Hitters / Pitchers selector shown above the tracker table.
+// Counts are optional (pass null while data is loading).
+export function BoardToggle({ board, onChange, hitterCount = null, pitcherCount = null }) {
+  const tab = (key, label, count) => (
+    <button
+      type="button"
+      onClick={() => onChange(key)}
+      aria-pressed={board === key}
+      className={`px-5 py-1.5 text-sm font-semibold transition-colors ${
+        board === key
+          ? 'bg-nw-teal text-white'
+          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+      }`}
+    >
+      {label}{count != null ? ` (${count})` : ''}
+    </button>
+  )
+  return (
+    <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden mb-4 divide-x divide-gray-300 dark:divide-gray-600">
+      {tab('hitters', 'Hitters', hitterCount)}
+      {tab('pitchers', 'Pitchers', pitcherCount)}
+    </div>
+  )
+}
+
 export default function PlayerTrackerTable({
   rows, statCols, groupLabel, sortBy, sortDir, onSort,
   infoLabel = 'Team', committedHeader = 'Committed',
