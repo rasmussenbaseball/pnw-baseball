@@ -117,6 +117,7 @@ export default function Play() {
     return (
       <LiveGameView
         save={save}
+        slot={slot}
         game={view.game}
         onExit={(result) => {
           // Persist the final score on the schedule row
@@ -1143,7 +1144,7 @@ function buildBestLineup(eligiblePlayers) {
 // LIVE game
 // ────────────────────────────────────────────────────────────────────────────
 
-function LiveGameView({ save, game, onExit }) {
+function LiveGameView({ save, slot, game, onExit }) {
   const userSchoolId = save.userSchoolId
   const isHome = game.homeId === userSchoolId
   const oppId = isHome ? game.awayId : game.homeId
