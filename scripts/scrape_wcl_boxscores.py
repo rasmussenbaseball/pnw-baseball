@@ -40,6 +40,7 @@ import requests
 
 from app.models.database import get_connection
 from parse_nwac_boxscore import parse_presto_xml_boxscore
+from wcl_http import mount_retries
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -59,6 +60,7 @@ def get_session():
         "Accept": "text/html,application/xhtml+xml",
         "Referer": "https://westcoastleague.com/",
     })
+    mount_retries(s)
     return s
 
 

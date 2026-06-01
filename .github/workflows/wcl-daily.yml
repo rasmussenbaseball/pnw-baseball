@@ -38,7 +38,17 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 psycopg2-binary python-dotenv
+        run: |
+          # Retry the install so a transient PyPI/network blip doesn't fail
+          # the whole run (and email Nate). pip's own --retries covers most
+          # of it; the loop is a belt-and-suspenders backstop.
+          for attempt in 1 2 3; do
+            pip install --retries 5 --timeout 30 \
+              requests beautifulsoup4 psycopg2-binary python-dotenv && break
+            echo "pip install failed (attempt $attempt) — retrying in 10s"
+            sleep 10
+          done
+          python -c "import requests, bs4, psycopg2, dotenv"
 
       - name: Refresh WCL schedule (picks up new games / status flips)
         env:

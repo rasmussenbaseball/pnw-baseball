@@ -40,6 +40,7 @@ import requests
 from app.models.database import get_connection
 from parse_wcl_pbp import parse_wcl_pbp
 from resolve_summer_game_players import build_lookup, resolve_one, sanitize_player_name
+from wcl_http import mount_retries
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -59,6 +60,7 @@ def get_session():
         "Accept": "text/html,application/xhtml+xml",
         "Referer": "https://westcoastleague.com/",
     })
+    mount_retries(s)
     return s
 
 

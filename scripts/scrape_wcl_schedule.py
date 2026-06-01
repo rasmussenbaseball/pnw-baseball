@@ -41,6 +41,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.models.database import get_connection
+from wcl_http import mount_retries
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -61,6 +62,7 @@ def get_session():
         "Accept": "text/html,application/xhtml+xml",
         "Referer": "https://westcoastleague.com/",
     })
+    mount_retries(s)
     return s
 
 
