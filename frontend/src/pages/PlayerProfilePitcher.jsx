@@ -1,0 +1,395 @@
+// PlayerProfilePitcher — pitcher profile in the same visual language as
+// PlayerProfileHitter. Same shared primitives, pitching metrics. Props:
+//   playerId, data (the /players/:id payload), sideToggle (two-way switch).
+
+import { Link } from 'react-router-dom'
+import { usePlayerGameLogs } from '../hooks/useApi'
+import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
+import WpaByGameChart from '../components/WpaByGameChart'
+import {
+  usePlayerProfileTheme, formatPct,
+  RadarChart, PercentilePanel, RollingLineChart, PerGameBarChart,
+  SectionCard, SeasonStatTable, GameLogTable, CareerPath,
+  ProfileShell, divisionBadge, ipToTrue,
+} from '../components/playerProfile/shared'
+
+const SEASON = 2026
+
+// Right-panel percentile rows. Superset ordered best-first; the page
+// filters to the keys the API actually returns for this player (PBP
+// percentiles like Whiff%/Strike% only exist for some arms; classic
+// rate stats are always there). Same defensive approach the standard
+// page uses — we just render what's present.
+const PCT_METRICS_ALL = [
+  { key: 'pitching_war',           label: 'WAR',          fmt: 'war' },
+  { key: 'k_pct',                  label: 'K%',           fmt: 'pct' },
+  { key: 'bb_pct',                 label: 'BB%',          fmt: 'pct' },
+  { key: 'k_bb_pct',               label: 'K-BB%',        fmt: 'pct' },
+  { key: 'fip',                    label: 'FIP',          fmt: 'era' },
+  { key: 'siera',                  label: 'SIERA',        fmt: 'era' },
+  { key: 'xfip',                   label: 'xFIP',         fmt: 'era' },
+  { key: 'baa',                    label: 'BAA',          fmt: 'avg' },
+  { key: 'hr_per_9',               label: 'HR/9',         fmt: 'era' },
+  { key: 'h_per_9',                label: 'H/9',          fmt: 'era' },
+  { key: 'lob_pct',                label: 'LOB%',         fmt: 'pct' },
+  { key: 'strike_pct',             label: 'Strike%',      fmt: 'pct' },
+  { key: 'first_pitch_strike_pct', label: 'FPS%',         fmt: 'pct' },
+  { key: 'whiff_pct',              label: 'Whiff%',       fmt: 'pct' },
+  { key: 'opp_woba',               label: 'opp wOBA',     fmt: 'avg' },
+  { key: 'opp_air_pull_pct',       label: 'opp AIRPULL%', fmt: 'pct' },
+  { key: 'hr_pa_pct',              label: 'HR/PA',        fmt: 'pct' },
+  { key: 'wpa',                    label: 'WPA',          fmt: 'wpa' },
+]
+// Radar prefers stuff/command shape; falls back to whatever is present.
+const RADAR_PREF = [
+  { key: 'k_pct',      label: 'K%' },
+  { key: 'whiff_pct',  label: 'Whiff%' },
+  { key: 'strike_pct', label: 'Strike%' },
+  { key: 'fip',        label: 'FIP' },
+  { key: 'siera',      label: 'SIERA' },
+  { key: 'k_bb_pct',   label: 'K-BB%' },
+  { key: 'bb_pct',     label: 'BB%' },
+  { key: 'opp_woba',   label: 'opp wOBA' },
+  { key: 'baa',        label: 'BAA' },
+]
+const TOOLTIPS = {
+  WAR:        { what: 'Wins Above Replacement.', why: 'Single best one-number summary.', range: 'Poor <0.5 | Avg ~1.5 | Great 3.0+' },
+  'K%':       { what: 'Strikeout rate (of batters faced).', why: 'Bat-missing ability.', range: 'Poor <18% | Avg ~22% | Great 30%+' },
+  'BB%':      { what: 'Walk rate.', why: 'Command. Lower is better.', range: 'Poor >11% | Avg ~8% | Great <6%' },
+  'K-BB%':    { what: 'Strikeout rate minus walk rate.', why: 'Best simple command-of-stuff number.', range: 'Poor <10% | Avg ~14% | Great 22%+' },
+  FIP:        { what: 'Fielding Independent Pitching.', why: 'ERA estimator on K/BB/HR only.', range: 'Poor >5.50 | Avg ~4.50 | Great <3.50' },
+  SIERA:      { what: 'Skill-Interactive ERA.', why: 'Adds batted-ball context to FIP.', range: 'Poor >5.00 | Avg ~4.20 | Great <3.40' },
+  xFIP:       { what: 'Expected FIP (normalized HR rate).', why: 'Strips out HR/FB luck.', range: 'Poor >5.00 | Avg ~4.30 | Great <3.60' },
+  BAA:        { what: 'Batting average against.', why: 'Raw contact suppression.', range: 'Poor >.290 | Avg ~.250 | Great <.215' },
+  'HR/9':     { what: 'Home runs allowed per 9 IP.', why: 'Damage prevention.', range: 'Poor >1.3 | Avg ~0.9 | Great <0.5' },
+  'H/9':      { what: 'Hits allowed per 9 IP.', why: 'Baserunner suppression.', range: 'Poor >9.5 | Avg ~8.5 | Great <7.0' },
+  'LOB%':     { what: 'Left-on-base / strand rate.', why: 'Pitching out of trouble.', range: 'Poor <68% | Avg ~72% | Great 78%+' },
+  'HR/PA':    { what: 'Home runs allowed per batter faced.', why: 'Damage prevention.', range: 'Poor >3.5% | Avg ~2.5% | Great <1.5%' },
+  'opp wOBA': { what: 'Opponent wOBA allowed.', why: 'Overall contact quality allowed.', range: 'Poor >.360 | Avg ~.330 | Great <.290' },
+  'Strike%':  { what: '% of pitches that are strikes.', why: 'Throwing strikes / efficiency.', range: 'Poor <60% | Avg ~63% | Great 67%+' },
+  'FPS%':     { what: 'First-pitch strike rate.', why: 'Getting ahead in the count.', range: 'Poor <56% | Avg ~60% | Great 65%+' },
+  'Whiff%':   { what: 'Swinging-strike rate per swing.', why: 'Pure swing-and-miss stuff.', range: 'Poor <18% | Avg ~24% | Great 32%+' },
+  'opp AIRPULL%': { what: 'Opponent air-pull contact allowed.', why: 'Hard-contact prevention. Lower better.', range: 'Poor >18% | Avg ~16% | Great <12%' },
+  WPA:        { what: 'Win Probability Added.', why: 'Context-dependent clutch value.', range: 'Poor <0 | Avg ~0 | Great +1.5+' },
+}
+
+const EXTENDED_PITCHING_COLS = [
+  { key: 'season',          label: 'Year', fmt: 'raw', align: 'left' },
+  { key: '_typeLabel',      label: 'Lvl',  fmt: 'raw', align: 'left' },
+  { key: '_team',           label: 'Team', fmt: 'raw', align: 'left' },
+  { key: 'wins',            label: 'W',   fmt: 'int' },
+  { key: 'losses',          label: 'L',   fmt: 'int' },
+  { key: 'saves',           label: 'SV',  fmt: 'int' },
+  { key: 'games',           label: 'G',   fmt: 'int' },
+  { key: 'games_started',   label: 'GS',  fmt: 'int' },
+  { key: 'innings_pitched', label: 'IP',  fmt: 'ip' },
+  { key: 'strikeouts',      label: 'K',   fmt: 'int' },
+  { key: 'walks',           label: 'BB',  fmt: 'int' },
+  { key: 'hits_allowed',    label: 'H',   fmt: 'int' },
+  { key: 'earned_runs',     label: 'ER',  fmt: 'int' },
+  { key: 'era',             label: 'ERA', fmt: 'era' },
+  { key: 'whip',            label: 'WHIP',fmt: 'era' },
+  { key: 'baa',             label: 'BAA', fmt: 'avg' },
+  { key: 'fip',             label: 'FIP', fmt: 'era' },
+  { key: 'k_pct',           label: 'K%',  fmt: 'pct' },
+  { key: 'bb_pct',          label: 'BB%', fmt: 'pct' },
+  { key: 'pitching_war',    label: 'WAR', fmt: 'war' },
+]
+const SUMMER_BLANK_COLS = new Set(['baa', 'fip', 'k_pct', 'bb_pct', 'pitching_war'])
+
+const GAMELOG_PITCHING_COLS = [
+  { key: '_date', label: 'Date', align: 'left' },
+  { key: '_opp',  label: 'Opp',  align: 'left' },
+  { key: 'decision', label: 'Dec', align: 'left' },
+  { key: 'ip', label: 'IP', fmt: 'ip' },
+  { key: 'h', label: 'H' }, { key: 'r', label: 'R' }, { key: 'er', label: 'ER' },
+  { key: 'bb', label: 'BB' }, { key: 'k', label: 'K' }, { key: 'hr', label: 'HR' },
+  { key: 'game_score', label: 'GS' },
+]
+
+const fmtEra = v => (v == null ? '—' : Number(v).toFixed(2))
+const fmtDate = d => { if (!d) return ''; const dt = new Date(d); return `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}` }
+
+// Game-score color tiers (higher is better for pitchers).
+function gsColor(gs) {
+  if (gs == null) return '#d4d4d4'
+  if (gs >= 80) return '#b8302a'
+  if (gs >= 65) return '#5b9d4d'
+  if (gs >= 50) return '#c9a44c'
+  if (gs >= 30) return '#9a9a9a'
+  return '#5d99c6'
+}
+
+// trueIP → baseball notation string (e.g. 31.6667 → "31.2")
+function ipNotation(trueIP) {
+  const outs = Math.round(trueIP * 3)
+  return `${Math.floor(outs / 3)}.${outs % 3}`
+}
+
+// 10-outing rolling ERA series from pitching game logs.
+function rollingEra(games, window = 10) {
+  const outings = games
+    .map(g => ({ ip: ipToTrue(g.ip), er: g.er || 0 }))
+    .filter(o => o.ip > 0)
+  const out = []
+  for (let i = 0; i < outings.length; i++) {
+    const slice = outings.slice(Math.max(0, i - window + 1), i + 1)
+    const ipSum = slice.reduce((s, o) => s + o.ip, 0)
+    const erSum = slice.reduce((s, o) => s + o.er, 0)
+    out.push(ipSum > 0 ? (erSum * 9) / ipSum : 0)
+  }
+  return out
+}
+
+// ───────────────────────────────────────────────────────────────
+export default function PlayerProfilePitcher({ playerId, data, sideToggle = null }) {
+  const T = usePlayerProfileTheme()
+  const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
+
+  const { player, pitching_stats, summer_pitching, pitching_percentiles, awards, pnw_rankings, current_summer_assignment } = data
+
+  const springTagged = (pitching_stats || []).map(s => ({ ...s, _kind: 'spring', _typeLabel: s.division_level || 'College', _team: s.team_short || '—' }))
+  const summerTagged = (summer_pitching || []).map(s => ({ ...s, _kind: 'summer', _typeLabel: s.league_abbrev || 'Summer', _team: s.team_name || '—' }))
+  const allRows = [...springTagged, ...summerTagged].sort((a, b) => (a.season !== b.season ? a.season - b.season : (a._kind === 'spring' ? -1 : 1)))
+  const springRows = springTagged.slice().sort((a, b) => a.season - b.season)
+
+  // Career (spring only)
+  const career = springRows.reduce((acc, s) => {
+    acc.ip += ipToTrue(s.innings_pitched); acc.er += s.earned_runs || 0
+    acc.k += s.strikeouts || 0; acc.bb += s.walks || 0; acc.h += s.hits_allowed || 0
+    acc.w += s.wins || 0; acc.l += s.losses || 0; acc.sv += s.saves || 0
+    return acc
+  }, { ip: 0, er: 0, k: 0, bb: 0, h: 0, w: 0, l: 0, sv: 0 })
+  const careerEra = career.ip > 0 ? (career.er * 9) / career.ip : 0
+  const careerWhip = career.ip > 0 ? (career.bb + career.h) / career.ip : 0
+
+  const currSeason = springRows.slice(-1)[0]
+  const divLabel = currSeason?.division_level || player.division_level || 'LEAGUE'
+
+  // Render only metrics the API actually returned (non-null percentile).
+  const pctMetrics = PCT_METRICS_ALL.filter(m => pitching_percentiles?.[m.key]?.percentile != null)
+  const radarStats = RADAR_PREF
+    .filter(rk => pitching_percentiles?.[rk.key]?.percentile != null)
+    .slice(0, 6)
+    .map(rk => ({ label: rk.label, pct: pitching_percentiles[rk.key].percentile }))
+
+  const pitchingGames = gameLogs?.pitching || []
+  const rolling = rollingEra(pitchingGames, 10)
+  const seasonEra = currSeason?.era
+
+  // Per-outing game-score chart inputs
+  const gsRows = pitchingGames.map(g => ({ g, val: g.game_score }))
+  const withGs = gsRows.filter(r => r.val != null)
+  const bestGs = withGs.reduce((acc, r) => r.val > (acc?.val ?? -1) ? r : acc, null)
+  const mostK = pitchingGames.reduce((acc, g) => (g.k ?? 0) > (acc?.k ?? -1) ? g : acc, null)
+  // Last-5-outing ERA
+  const last5 = pitchingGames.slice(-5).map(g => ({ ip: ipToTrue(g.ip), er: g.er || 0 })).filter(o => o.ip > 0)
+  const last5Ip = last5.reduce((s, o) => s + o.ip, 0)
+  const last5Era = last5Ip > 0 ? (last5.reduce((s, o) => s + o.er, 0) * 9) / last5Ip : null
+  // Hot: recent ERA notably below season ERA
+  const hotFlag = (seasonEra != null && last5Era != null && last5Era < seasonEra * 0.9)
+
+  const seasonRange = springRows.length ? `${springRows[0].season}${springRows.length > 1 ? `–${springRows[springRows.length - 1].season}` : ''}` : null
+  const role = (currSeason?.games_started || 0) >= ((currSeason?.games || 0) - (currSeason?.games_started || 0)) && (currSeason?.games_started || 0) > 0 ? 'Starter' : 'Reliever'
+
+  return (
+    <ProfileShell>
+      {sideToggle}
+
+      {/* Hero */}
+      <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+        {/* LEFT */}
+        <div className="p-5 flex flex-col">
+          <div className="relative h-20 -mx-5 -mt-5" style={{ background: 'linear-gradient(120deg, #14365c 0%, #1f5485 55%, #c9a44c 100%)' }}>
+            <div className="absolute -bottom-7 left-[18px] w-[70px] h-[70px] rounded-full bg-gray-300 border-[3px] border-white flex items-center justify-center text-2xl font-bold text-gray-500 overflow-hidden">
+              {player.headshot_url
+                ? <img src={player.headshot_url} alt="" className="w-full h-full object-cover" />
+                : <span>{player.first_name?.[0]}{player.last_name?.[0]}</span>}
+            </div>
+            {currSeason && (
+              <div className="absolute top-2 right-2.5 rounded-md px-2.5 py-2 text-white" style={{ background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.14)' }}>
+                <div className="text-[8.5px] font-bold tracking-widest opacity-80 mb-1">{SEASON} ROLE</div>
+                <div className="text-[13px] font-bold tracking-wide">{role}</div>
+                <div className="text-[10px] opacity-90 mt-0.5 tabular-nums">{currSeason.games || 0} G · {currSeason.games_started || 0} GS · {currSeason.saves || 0} SV</div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-9">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <h1 className="text-[22px] font-bold tracking-tight" style={{ color: T.text }}>{player.first_name} {player.last_name}</h1>
+              {player.jersey_number && <span className="text-base font-bold" style={{ color: T.textMuted }}>#{player.jersey_number}</span>}
+              {hotFlag && <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold px-2 py-[3px] rounded-full tracking-wide uppercase" style={{ background: 'rgba(255,107,53,0.12)', color: T.hot }}>Hot</span>}
+            </div>
+            <div className="text-[13px] font-semibold mt-1" style={{ color: T.textMuted }}>
+              {player.position} | <Link to={`/team/${player.team_id}`} className="hover:underline">{player.team_name}</Link>
+            </div>
+            <div className="text-[11px] mt-1.5 leading-relaxed" style={{ color: T.textMuted }}>
+              Bats/Throws: {player.bats || '—'}/{player.throws || '—'} &nbsp;|&nbsp; {player.height || '—'} {player.weight ? `${player.weight} lbs` : ''}
+              {player.hometown && <><br />From: {player.hometown}</>}
+              {player.previous_school && <> &nbsp;|&nbsp; Prev: {player.previous_school}</>}
+            </div>
+            {current_summer_assignment && (
+              <Link to={`/summer/teams/${current_summer_assignment.team_id}`} className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50">
+                {current_summer_assignment.team_logo && <img src={current_summer_assignment.team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />}
+                Summer {SEASON}: {current_summer_assignment.team_short || current_summer_assignment.team_name}
+                <span className="text-[10px] opacity-70">· {current_summer_assignment.league_abbrev}</span>
+              </Link>
+            )}
+
+            {/* Radar + rolling ERA */}
+            <div className="grid grid-cols-1 sm:grid-cols-[0.95fr_1.05fr] gap-3.5 items-stretch my-3 py-2 border-y" style={{ borderColor: T.border }}>
+              <div className="flex flex-col min-w-0">
+                <div className="text-[9.5px] font-bold tracking-widest uppercase text-center mb-0.5" style={{ color: T.textLight }}>Skill Profile</div>
+                <div className="flex-1 max-w-[260px] mx-auto w-full"><RadarChart stats={radarStats} /></div>
+              </div>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center justify-center gap-2 mb-0.5">
+                  <span className="text-[9.5px] font-bold tracking-widest uppercase" style={{ color: T.textLight }}>10-Game Rolling ERA</span>
+                  {seasonEra != null && (
+                    <span className="px-1.5 py-px rounded-md text-[9.5px] font-bold tabular-nums tracking-wide text-white" style={{ background: T.accent }}>SEASON {fmtEra(seasonEra)}</span>
+                  )}
+                </div>
+                <div className="flex-1 max-w-[340px] mx-auto w-full">
+                  <RollingLineChart
+                    series={rolling}
+                    yMin={0} yMax={9}
+                    yTicks={[2, 4, 6, 8]}
+                    fmtTick={v => v.toFixed(2)}
+                    refLines={[
+                      { v: 5.0, label: 'LG 5.00', color: T.poor },
+                      ...(seasonEra != null ? [{ v: seasonEra, label: 'season', color: T.gold }] : []),
+                    ]}
+                    lineColor={T.accent}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Year-by-year mini table */}
+            <table className="w-full mt-2 text-[11px] border-collapse">
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                  {['Year', 'Lvl', 'IP', 'ERA', 'WHIP', 'K', 'BB', 'FIP'].map(h => (
+                    <th key={h} className={`px-1.5 py-1 font-bold tracking-wide ${h === 'Year' || h === 'Lvl' ? 'text-left' : 'text-right'}`} style={{ color: T.textLight }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allRows.map((s, i) => {
+                  const isCurrent = s._kind === 'spring' && i === allRows.length - 1
+                  const isSummer = s._kind === 'summer'
+                  const rowStyle = isCurrent ? { background: T.highlight, borderTop: `1px solid ${T.borderStrong}` } : (isSummer ? { background: T.rowAlt } : {})
+                  return (
+                    <tr key={`${s.season}-${s._kind}-${s._team}-${i}`} className={`${isCurrent ? 'font-bold' : ''} ${isSummer ? 'italic' : ''}`} style={rowStyle}>
+                      <td className="px-1.5 py-1 text-left" style={{ color: T.textMuted }}>{s.season}</td>
+                      <td className="px-1.5 py-1 text-left" style={{ color: isSummer ? T.textLight : T.textMuted }}>{s._typeLabel}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.innings_pitched != null ? Number(s.innings_pitched).toFixed(1) : '—'}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(s.era)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(s.whip)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.strikeouts ?? '—'}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.walks ?? '—'}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{isSummer ? '—' : fmtEra(s.fip)}</td>
+                    </tr>
+                  )
+                })}
+                {springRows.length > 1 && (
+                  <tr style={{ borderTop: `1px solid ${T.border}` }}>
+                    <td className="px-1.5 py-1 text-left" style={{ color: T.textMuted }}>Career</td>
+                    <td className="px-1.5 py-1 text-left" style={{ color: T.textLight }}>Spring</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{ipNotation(career.ip)}</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(careerEra)}</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(careerWhip)}</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{career.k}</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{career.bb}</td>
+                    <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>—</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Badges */}
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {(awards || []).map((a, i) => (
+                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
+                  {a.category} leader · {a.season}
+                </span>
+              ))}
+              {(pnw_rankings || []).slice(0, 3).map((r, i) => (
+                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={{ background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd' }}>
+                  {r.rank}{r.rank === 1 ? 'st' : r.rank === 2 ? 'nd' : r.rank === 3 ? 'rd' : 'th'} PNW · {r.category}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: percentiles */}
+        <PercentilePanel title="Percentile Rankings" scopeLabel={`${SEASON} · VS ${divLabel}`} metrics={pctMetrics} percentiles={pitching_percentiles} tooltips={TOOLTIPS} />
+      </div>
+
+      <SectionCard title="Pitching Stats" right="BY SEASON">
+        <SeasonStatTable cols={EXTENDED_PITCHING_COLS} rows={allRows} blankCols={SUMMER_BLANK_COLS} emptyMsg="No pitching stats." minWidth="780px" />
+      </SectionCard>
+
+      <SectionCard title="Pitch Level Stats" right={String(SEASON)}>
+        <div className="-mx-2"><PitcherPitchLevelStatsCard playerId={playerId} season={SEASON} /></div>
+      </SectionCard>
+
+      <SectionCard title="WPA on the Mound" right={String(SEASON)}>
+        <WpaByGameChart playerId={playerId} position="pitcher" />
+      </SectionCard>
+
+      <SectionCard title="Game Log" right={`${SEASON} SEASON`}>
+        <GameLogTable cols={GAMELOG_PITCHING_COLS} games={pitchingGames} minWidth="760px" />
+      </SectionCard>
+
+      <div className="flex items-center gap-3 my-6">
+        <span className="flex-1 h-px" style={{ background: T.borderStrong }} />
+        <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: T.textLight }}>Extended Analytics</span>
+        <span className="flex-1 h-px" style={{ background: T.borderStrong }} />
+      </div>
+
+      <SectionCard title="Per-Outing Game Score" right={`${SEASON} · CHRONOLOGICAL`}>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 mb-3 text-[11px]" style={{ color: T.textMuted }}>
+          <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Season ERA</span><span className="text-base font-bold tabular-nums" style={{ color: T.text }}>{fmtEra(seasonEra)}</span></div>
+          <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Last 5 Outings</span><span className="text-base font-bold tabular-nums" style={{ color: (last5Era != null && seasonEra != null && last5Era <= seasonEra) ? T.great : T.poor }}>{last5Era != null ? fmtEra(last5Era) : '—'}</span></div>
+          {bestGs && <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Best Outing</span><span className="text-base font-bold tabular-nums" style={{ color: T.text }}>{fmtDate(bestGs.g.game_date)} · GS {bestGs.val}</span></div>}
+          {mostK && <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Most K's</span><span className="text-base font-bold tabular-nums" style={{ color: T.text }}>{fmtDate(mostK.game_date)} · {mostK.k} K</span></div>}
+        </div>
+        <PerGameBarChart
+          rows={gsRows}
+          maxVal={100}
+          yTicks={[25, 50, 75, 100]}
+          fmtY={v => String(v)}
+          refLines={[{ v: 50, label: '50 avg', color: T.poor }]}
+          colorFn={gsColor}
+          tooltipFn={(g, gs) => `${fmtDate(g.game_date)} ${g.home_away === '@' ? '@' : 'vs'} ${g.opponent_short}: ${g.ip != null ? Number(g.ip).toFixed(1) : '?'} IP, ${g.h ?? 0}H ${g.er ?? 0}ER ${g.k ?? 0}K ${g.bb ?? 0}BB · GS ${gs ?? '—'}${g.decision ? ` · ${g.decision}` : ''}`}
+          legend={[
+            { color: '#5d99c6', label: '<30' },
+            { color: '#9a9a9a', label: '30–49' },
+            { color: '#c9a44c', label: '50–64' },
+            { color: '#5b9d4d', label: '65–79' },
+            { color: '#b8302a', label: '80+' },
+          ]}
+          note="Each bar = 1 outing · Game Score · hover for line"
+        />
+      </SectionCard>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <div className="rounded-md p-5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+          <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2" style={{ color: T.text, borderColor: T.text }}>
+            <span>Career Path</span><span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: T.textLight }}>SCHOOLS</span>
+          </h2>
+          <CareerPath player={player} divisionBadge={divisionBadge(divLabel)} seasonRange={seasonRange} />
+        </div>
+        <div className="rounded-md p-5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+          <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2" style={{ color: T.text, borderColor: T.text }}>
+            <span>Statistically Similar Pitchers</span><span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: T.textLight }}>{divLabel} · {SEASON}</span>
+          </h2>
+          <div className="text-[12px] py-4 text-center" style={{ color: T.textMuted }}>Similarity engine in development.</div>
+        </div>
+      </div>
+    </ProfileShell>
+  )
+}

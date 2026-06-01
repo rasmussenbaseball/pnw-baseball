@@ -8,12 +8,14 @@ import ExportCSVButton from '../components/ExportCSVButton'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 import WpaByGameChart from '../components/WpaByGameChart'
-// Prototype layout test (intern proposal, 5/28/26) — limited to a
-// single player. Adds new hero (radar + percentile rankings + rolling
-// wOBA) and footer (heatmap, career path, similar players). Existing
-// middle sections (pitch level, splits, WPA, game log) preserved.
-import JasonWrightProfile from './JasonWrightProfile'
-const JASON_WRIGHT_PLAYER_ID = '3078'
+// Redesigned profile (intern proposal, 5/28/26), now the default for
+// every player. PlayerDetail (below) fetches once, picks the hitter or
+// pitcher template by usage, and offers a toggle for two-way players.
+// PlayerDetailStandard is retained as a fallback for players with no
+// stats at all (keeps hook ordering stable across navigations).
+import PlayerProfileHitter from './PlayerProfileHitter'
+import PlayerProfilePitcher from './PlayerProfilePitcher'
+import { SideToggle, ipToTrue } from '../components/playerProfile/shared'
 
 // ── Percentile bubble configs ──────────────────────────────────
 // Pre-2026: original metric set. Kept stable for historic seasons so
@@ -1442,17 +1444,54 @@ function StreaksCard({ playerId, season = 2026 }) {
 
 // ── Main Page ──────────────────────────────────────────────────
 
-// ── PROTOTYPE GATE ─────────────────────────────────────────────
-// Jason Wright (player 3078) renders the new prototype layout per
-// intern proposal (5/28/26). All other players go through the
-// standard component below. The wrapper pattern keeps hook ordering
-// consistent across player navigations.
+// ── Player profile router ──────────────────────────────────────
+// Fetch the player once, then render the redesigned hitter or pitcher
+// template based on which side they're used on more. Two-way players
+// get a toggle. The fetched payload is passed down so the child does
+// not re-fetch. Players with no stats fall back to the standard page.
+// Hooks here always run in the same order regardless of branch.
 export default function PlayerDetail() {
   const { playerId } = useParams()
-  if (String(playerId) === JASON_WRIGHT_PLAYER_ID) {
-    return <JasonWrightProfile />
+  const { data, loading, error } = usePlayer(playerId)
+  const [viewSide, setViewSide] = useState(null)
+
+  // Reset the toggle when navigating to a different player.
+  useEffect(() => { setViewSide(null) }, [playerId])
+
+  if (loading && !data) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <div className="animate-spin h-8 w-8 border-4 border-nw-teal border-t-transparent rounded-full" />
+        <div className="text-xs text-gray-500 dark:text-gray-400">Loading player…</div>
+      </div>
+    )
   }
-  return <PlayerDetailStandard />
+  if (error || !data) {
+    return <div className="text-center py-20 text-gray-500 dark:text-gray-400">{error || 'Player not found.'}</div>
+  }
+
+  const batting = data.batting_stats || []
+  const pitching = data.pitching_stats || []
+  const hasBatting = batting.length > 0
+  const hasPitching = pitching.length > 0
+
+  // No stats at all → keep the standard layout (it handles its own empty state).
+  if (!hasBatting && !hasPitching) return <PlayerDetailStandard />
+
+  // Usage-based default: (career IP x 4) vs career PA. innings_pitched is
+  // baseball notation (6.2 = 6 and 2/3 innings) so convert before comparing.
+  const careerPA = batting.reduce((s, r) => s + (r.plate_appearances || 0), 0)
+  const careerIP = pitching.reduce((s, r) => s + ipToTrue(r.innings_pitched), 0)
+  const isTwoWay = hasBatting && hasPitching
+  const defaultSide = isTwoWay
+    ? ((careerIP * 4) > careerPA ? 'pitching' : 'batting')
+    : (hasPitching ? 'pitching' : 'batting')
+  const activeSide = viewSide || defaultSide
+  const toggle = isTwoWay ? <SideToggle side={activeSide} onChange={setViewSide} /> : null
+
+  return activeSide === 'pitching'
+    ? <PlayerProfilePitcher playerId={playerId} data={data} sideToggle={toggle} />
+    : <PlayerProfileHitter playerId={playerId} data={data} sideToggle={toggle} />
 }
 
 function PlayerDetailStandard() {
