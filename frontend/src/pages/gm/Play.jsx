@@ -1144,7 +1144,13 @@ function buildBestLineup(eligiblePlayers) {
 // LIVE game
 // ────────────────────────────────────────────────────────────────────────────
 
-function LiveGameView({ save, slot, game, onExit }) {
+function LiveGameView({ save, slot: slotProp, game, onExit }) {
+  // Belt-and-suspenders: derive slot from the URL if the parent forgot
+  // to pass it (Sentry caught one such ReferenceError already — keep
+  // this even after the call site is fixed so any future entry point
+  // into the live view doesn't crash on a missing prop).
+  const [_lvgParams] = useSearchParams()
+  const slot = slotProp != null ? slotProp : parseInt(_lvgParams.get('slot') || '1', 10)
   const userSchoolId = save.userSchoolId
   const isHome = game.homeId === userSchoolId
   const oppId = isHome ? game.awayId : game.homeId
