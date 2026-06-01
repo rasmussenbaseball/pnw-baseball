@@ -1,8 +1,39 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
+
+// Sentry sourcemap upload — gated on env vars so local + preview builds
+// never try to upload. Set these in Vercel:
+//   SENTRY_AUTH_TOKEN   — internal-integration token (Sentry → Settings →
+//                         Developer Settings → New Internal Integration with
+//                         "Releases: Admin" + "Issues & Events: Read")
+//   SENTRY_ORG          — your Sentry org slug (NOT the numeric id). Find it
+//                         at https://sentry.io/settings/<slug>/
+//   SENTRY_PROJECT      — your project slug (e.g. "javascript-react")
+const SENTRY_TOKEN = process.env.SENTRY_AUTH_TOKEN
+const SENTRY_ORG = process.env.SENTRY_ORG
+const SENTRY_PROJECT = process.env.SENTRY_PROJECT
+const enableSentryUpload = !!(SENTRY_TOKEN && SENTRY_ORG && SENTRY_PROJECT)
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Upload sourcemaps to Sentry on every prod build. Without this, alerts
+    // arrive with opaque single-letter function names and we burn hours
+    // decoding minified stacks. Wraps Vite, runs after the build.
+    enableSentryUpload && sentryVitePlugin({
+      authToken: SENTRY_TOKEN,
+      org: SENTRY_ORG,
+      project: SENTRY_PROJECT,
+      // Keep sourcemaps available at the deployed URL too — Sentry uses
+      // both the uploaded copy AND the public //# sourceMappingURL fallback.
+      sourcemaps: { assets: './dist/**' },
+      // Disable telemetry — the plugin pings sentry.io for analytics by
+      // default. We don't need that data and it can fail builds in some
+      // network configs.
+      telemetry: false,
+    }),
+  ].filter(Boolean),
   server: {
     port: 3000,
     proxy: {
