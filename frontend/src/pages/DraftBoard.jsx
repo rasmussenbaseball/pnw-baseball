@@ -49,6 +49,33 @@ function MovementArrow({ movement }) {
 }
 
 
+// ─── Class year + commitment meta line ───────────────────────
+// Shows the prospect's class/year ('PREP', 'JR', 'R-SO', 'JC-2', ...)
+// plus, for high schoolers, their college commitment.
+function ProspectMeta({ year, commit }) {
+  if (!year && !commit) return null
+  const committed = commit && commit !== 'Uncommitted'
+  return (
+    <div className="flex items-center gap-1.5 mt-0.5">
+      {year && (
+        <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          {year}
+        </span>
+      )}
+      {commit && (
+        <span className={`inline-flex items-center px-1.5 py-px rounded text-[10px] font-semibold ${
+          committed
+            ? 'bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300'
+            : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'
+        }`}>
+          {committed ? `${commit} commit` : 'Uncommitted'}
+        </span>
+      )}
+    </div>
+  )
+}
+
+
 // ─── Expandable player stats row ──────────────────────────────
 function PlayerStatsDropdown({ playerId, report, reportDate }) {
   const [data, setData] = useState(null)
@@ -282,7 +309,10 @@ export default function DraftBoard({ year }) {
                           {p.pos}
                         </span>
                       </div>
-                      <div className="flex-1 text-sm text-gray-600 dark:text-gray-400">{p.school}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-600 dark:text-gray-400 truncate">{p.school}</div>
+                        <ProspectMeta year={p.year} commit={p.commit} />
+                      </div>
                       <div className="w-8 flex items-center justify-center shrink-0">
                         <svg
                           className={`w-4 h-4 text-gray-400 dark:text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -341,7 +371,8 @@ export default function DraftBoard({ year }) {
                   ) : (
                     <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 block truncate">{p.name}</span>
                   )}
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{p.school}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 block truncate">{p.school}</span>
+                  <ProspectMeta year={p.year} commit={p.commit} />
                 </div>
                 <span className={`inline-block px-2 py-0.5 text-xs font-bold rounded shrink-0 ${posClass}`}>
                   {p.pos}
