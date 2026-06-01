@@ -223,6 +223,7 @@ import GameDetail from './pages/GameDetail'
 import TeamRatings from './pages/TeamRatings'
 import TeamHistory from './pages/TeamHistory'
 import RecruitingClasses from './pages/RecruitingClasses'
+import RecruitQuiz from './pages/RecruitQuiz'
 import RecruitingRankings from './pages/RecruitingRankings'
 import RecruitingMap from './pages/RecruitingMap'
 import AdminRecruitingPlaceholder from './pages/AdminRecruitingPlaceholder'
@@ -381,6 +382,7 @@ export default function App() {
           <Route path="/team-ratings" element={<TeamRatings />} />
           <Route path="/national-rankings" element={<NationalRankings />} />
           <Route path="/team-history" element={<RequireTier minTier="free"><TeamHistory /></RequireTier>} />
+          <Route path="/recruiting/quiz" element={<RequireTier minTier="premium"><RecruitQuiz /></RequireTier>} />
           <Route path="/recruiting-classes" element={<RequireTier minTier="premium"><RecruitingClasses /></RequireTier>} />
           <Route path="/recruiting/breakdown" element={<RequireTier minTier="premium"><RecruitingBreakdown /></RequireTier>} />
           <Route path="/recruiting/hometown" element={<RequireTier minTier="premium"><HometownSearch /></RequireTier>} />
