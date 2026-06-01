@@ -13,6 +13,7 @@ import { Link, useSearchParams, useLocation, useNavigate, matchPath } from 'reac
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../engine/save'
 import { applyTeamTheme, clearTeamTheme } from '../lib/teamTheme'
+import { Sentry } from '../../lib/sentry'
 
 /**
  * Catches render-time crashes on any GM page so the user gets a recoverable
@@ -30,6 +31,23 @@ class GMErrorBoundary extends Component {
   componentDidCatch(error, info) {
     // Surface in the console for debugging.
     console.error('GM page crashed:', error, info?.componentStack)
+    // Also forward to Sentry with the component stack — without this,
+    // the top-level Sentry.ErrorBoundary never sees the error (this
+    // boundary catches first), and Sentry alerts come through with a
+    // useless "Error: No error message". Reported by Zack: the prod
+    // JAVASCRIPT-REACT-8 alert had no actionable detail. Now we attach
+    // the React component stack as Sentry context so future occurrences
+    // pinpoint the failing component.
+    try {
+      Sentry.captureException(error, {
+        contexts: {
+          react: {
+            componentStack: info?.componentStack || '(none)',
+          },
+        },
+        tags: { gmBoundary: 'GMErrorBoundary' },
+      })
+    } catch { /* Sentry no-ops when uninitialized; never let reporting itself throw */ }
   }
   render() {
     if (this.state.error) {

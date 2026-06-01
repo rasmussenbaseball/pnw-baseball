@@ -1909,8 +1909,9 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
         </button>
       )
     }
-    const startersInPen = bullpen.filter(p => (p.pitcher?.stamina ?? 50) >= 65)
-    const relievers = bullpen.filter(p => (p.pitcher?.stamina ?? 50) < 65)
+    const safeBullpen = (bullpen || []).filter(Boolean)
+    const startersInPen = safeBullpen.filter(p => (p?.pitcher?.stamina ?? 50) >= 65)
+    const relievers = safeBullpen.filter(p => (p?.pitcher?.stamina ?? 50) < 65)
     return (
       <SubModal title="Pitching change" onClose={onClose}>
         {bullpen.length === 0 ? (
