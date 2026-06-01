@@ -476,6 +476,55 @@ export function tickInteractivePostseason(state) {
   }
 }
 
+/**
+ * Force-resolve a CONF (double-elim) round before its stage transitions.
+ * Friend-of-Nate's bug (Bushnell, NAIA): if advanceInteractivePostseason
+ * fires while the user's CONF round still has unplayed games, the user
+ * gets dropped from the next round's field because ps.userChamp is false
+ * (round not resolved → applyDeResult never recorded it). Same hazard
+ * exists for D1/D2/D3 (their advance functions also call setupRegional
+ * directly without checking CONF resolution).
+ *
+ * Calls runMatchGraph iteratively, using the user's actual results for
+ * played games and fastSimGame for unplayed ones. When the bracket
+ * resolves, applyDeResult writes ps.userChamp + ps.confChampions correctly
+ * so downstream regional setup sees the right state.
+ *
+ * `ratingFn(id) => {overall_rating, offense_rating, pitching_rating}`
+ * controls the sim engine for unplayed games. Pass d1RatingOf / d2RatingOf
+ * / d3RatingOf wrapped, or ratingOf(ratings, id) for NAIA.
+ */
+function forceResolveConfRoundIfPending(state, ps, sim, ratingFn) {
+  const confRound = ps.rounds?.CONF
+  if (!confRound || confRound.resolved) return
+  try {
+    const userId = state.userSchoolId
+    const year = state.calendar.year
+    const realResult = getUserResultFromSchedule(state, year, 'CONF')
+    const simFilled = {}
+    const getUserResult = (gameKey) => {
+      const real = realResult(gameKey)
+      if (real) return real
+      if (simFilled[gameKey]) return simFilled[gameKey]
+      return null
+    }
+    for (let i = 0; i < 20 && !confRound.resolved; i++) {
+      const res = runMatchGraph(confRound.seeds, confRound.spec, userId, getUserResult, sim, confRound.seedKey)
+      if (res.pending) {
+        const { gameKey, homeId, awayId } = res.pending
+        const r = fastSimGame(ratingFn(homeId), ratingFn(awayId), `psconf_${confRound.seedKey}_${gameKey}`)
+        simFilled[gameKey] = {
+          homeRuns: r.homeRuns, awayRuns: r.awayRuns,
+          homeId, awayId,
+        }
+      } else {
+        applyDeResult(state, ps, 'CONF', confRound, res)
+        break
+      }
+    }
+  } catch (e) { console.warn('CONF force-resolve failed:', e) }
+}
+
 function applyDeResult(state, ps, stage, round, res) {
   const userId = state.userSchoolId
   if (res.pending) {
@@ -579,52 +628,9 @@ export function advanceInteractivePostseasonNAIA(state, leavingWeek) {
   // exact bug where a CCC champion got no regional game and was dropped from
   // the World Series.
   if (leavingWeek === 40) {
-    // Force-resolve CONF before advancing to REGIONAL. Friend's bug
-    // (Bushnell, year 1): CONF round was still pending when the advance
-    // fired, which built regionals without the user. Now we ALWAYS run
-    // the bracket to completion first — using the user's actual results
-    // for played games + sim-filling any unplayed games — so userAlive
-    // reflects their real outcome before regionals are constructed.
-    const confRound = ps.rounds?.CONF
-    if (confRound && !confRound.resolved) {
-      try {
-        const userId = state.userSchoolId
-        const sim = makeNonUserSim(ratings)
-        const year = state.calendar.year
-        const realResult = getUserResultFromSchedule(state, year, 'CONF')
-        // For unplayed user games, fall back to a sim outcome between the
-        // matchup's two teams. This collapses any remaining bracket to a
-        // single resolved result in one runMatchGraph call.
-        const simFilled = {}
-        const getUserResult = (gameKey) => {
-          const real = realResult(gameKey)
-          if (real) return real
-          if (simFilled[gameKey]) return simFilled[gameKey]
-          return null   // first call: tell runMatchGraph this is pending
-        }
-        // Run iteratively: each iteration that returns pending → fill that
-        // pending match with a sim result and try again. makeNonUserSim
-        // only returns a winner id, not a score — so we call fastSimGame
-        // directly to get the {homeRuns, awayRuns} shape getUserResult
-        // expects. Caps prevent any infinite loop in a malformed bracket.
-        for (let i = 0; i < 20 && !confRound.resolved; i++) {
-          const res = runMatchGraph(confRound.seeds, confRound.spec, userId, getUserResult, sim, confRound.seedKey)
-          if (res.pending) {
-            const { gameKey, homeId, awayId } = res.pending
-            const hr = ratingOf(ratings, homeId)
-            const ar = ratingOf(ratings, awayId)
-            const r = fastSimGame(hr, ar, `psconf_${confRound.seedKey}_${gameKey}`)
-            simFilled[gameKey] = {
-              homeRuns: r.homeRuns, awayRuns: r.awayRuns,
-              homeId, awayId,
-            }
-          } else {
-            applyDeResult(state, ps, 'CONF', confRound, res)
-            break
-          }
-        }
-      } catch (e) { console.warn('CONF auto-resolve failed:', e) }
-    }
+    // Force-resolve CONF before advancing to REGIONAL so userChamp +
+    // userAlive correctly reflect the real outcome. Per Bushnell bug.
+    forceResolveConfRoundIfPending(state, ps, makeNonUserSim(ratings), (id) => ratingOf(ratings, id))
     ps.stage = 'REGIONAL'
     setupRegional(state, ratings)
   } else if (leavingWeek === 41) {
@@ -878,7 +884,16 @@ export function setupInteractivePostseasonD2(state) {
 export function advanceInteractivePostseasonD2(state, leavingWeek) {
   const ps = state.postseason
   if (!ps || !ps.interactive || ps.level !== 'D2') return
-  if (leavingWeek === 39) { ps.stage = 'REGIONAL'; setupD2Regional(state) }
+  if (leavingWeek === 39) {
+    // Force-resolve CONF before advancing to REGIONAL so userChamp +
+    // userAlive correctly reflect the real outcome. Same hazard as the
+    // Bushnell NAIA bug — applies to every level with a conf tournament.
+    forceResolveConfRoundIfPending(state, ps, makeD2Sim(state), (id) => {
+      const r = d2RatingOf(state, id)
+      return { overall_rating: (r - 60) / 5, offense_rating: (r - 60) / 10, pitching_rating: (r - 60) / 10 }
+    })
+    ps.stage = 'REGIONAL'; setupD2Regional(state)
+  }
   else if (leavingWeek === 40) { ps.stage = 'SUPER'; setupD2Super(state) }
   else if (leavingWeek === 41) { ps.stage = 'WS'; setupD2WS(state) }
   else if (leavingWeek === 42) { finalizeD2(state) }
@@ -1137,7 +1152,13 @@ export function setupInteractivePostseasonD3(state) {
 export function advanceInteractivePostseasonD3(state, leavingWeek) {
   const ps = state.postseason
   if (!ps || !ps.interactive || ps.level !== 'D3') return
-  if (leavingWeek === 39) { ps.stage = 'REGIONAL'; setupD3Regional(state) }
+  if (leavingWeek === 39) {
+    forceResolveConfRoundIfPending(state, ps, makeD3Sim(state), (id) => {
+      const r = d3RatingOf(state, id)
+      return { overall_rating: (r - 60) / 5, offense_rating: (r - 60) / 10, pitching_rating: (r - 60) / 10 }
+    })
+    ps.stage = 'REGIONAL'; setupD3Regional(state)
+  }
   else if (leavingWeek === 40) { ps.stage = 'SUPER'; setupD3Super(state) }
   else if (leavingWeek === 41) { ps.stage = 'WS'; setupD3WS(state) }
   else if (leavingWeek === 42) { finalizeD3(state) }
@@ -1360,7 +1381,13 @@ export function setupInteractivePostseasonD1(state) {
 export function advanceInteractivePostseasonD1(state, leavingWeek) {
   const ps = state.postseason
   if (!ps || !ps.interactive || ps.level !== 'D1') return
-  if (leavingWeek === 39) { ps.stage = 'REGIONAL'; setupD1Regional(state) }
+  if (leavingWeek === 39) {
+    forceResolveConfRoundIfPending(state, ps, makeD1Sim(state), (id) => {
+      const r = d1RatingOf(state, id)
+      return { overall_rating: (r - 60) / 5, offense_rating: (r - 60) / 10, pitching_rating: (r - 60) / 10 }
+    })
+    ps.stage = 'REGIONAL'; setupD1Regional(state)
+  }
   else if (leavingWeek === 40) { ps.stage = 'SUPER'; setupD1Super(state) }
   else if (leavingWeek === 41) { ps.stage = 'WS'; setupD1WS(state) }
   else if (leavingWeek === 42) { finalizeD1(state) }
