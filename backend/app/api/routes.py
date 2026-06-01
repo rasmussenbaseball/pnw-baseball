@@ -9031,7 +9031,7 @@ def uncommitted_juco_players(
     bats: Optional[str] = Query(None, description="Filter by batting hand: L, R, or S"),
     throws: Optional[str] = Query(None, description="Filter by throwing hand: L or R"),
     limit: int = Query(500),
-    _user: str = Depends(require_tier("premium")),
+    _user: str = Depends(require_tier("recruiting")),
 ):
     """
     Find uncommitted JUCO players - the primary recruiting tool.
@@ -9143,7 +9143,7 @@ def transfer_portal_players(
     sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
     bats: Optional[str] = Query(None),
     throws: Optional[str] = Query(None),
-    _user: str = Depends(require_tier("premium")),
+    _user: str = Depends(require_tier("recruiting")),
 ):
     """
     Transfer Portal Tracker — PNW four-year (non-JUCO) players who have

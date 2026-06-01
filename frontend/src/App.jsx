@@ -9,7 +9,6 @@ import MaintenanceLockout from './components/MaintenanceLockout'
 import GlobalRouteLoader from './components/GlobalRouteLoader'
 import { isDeveloper } from './lib/tiers'
 import Header from './components/Header'
-import SignupPopup from './components/SignupPopup'
 import EmailPrefsPopup from './components/EmailPrefsPopup'
 
 // Auth guard - shows blurred teaser with signup prompt if not signed in
@@ -135,7 +134,7 @@ function RequireGmEarlyAccess({ children }) {
 
   const onAllowlist = GM_EARLY_ACCESS_EMAILS.includes(user.email)
   // Premium, Coach & Scout, and Dev tiers all include the GM game.
-  const hasPaidTier = tier === 'premium' || tier === 'coach' || tier === 'dev'
+  const hasPaidTier = tier === 'premium' || tier === 'recruiting' || tier === 'coach' || tier === 'dev'
   // Launch-week promo: free to play for every signed-in user until the
   // cutoff in lib/gmPromo.js, after which this gate auto-reverts.
   const freePlay = isGmFreePlay()
@@ -334,7 +333,6 @@ export default function App() {
       : 'bg-nw-cream dark:bg-gray-900'
     }`}>
       {!isPortal && !isGm && <Header />}
-      <SignupPopup />
       <EmailPrefsPopup />
       <RouteContainer isPortal={isPortal} isGm={isGm}>
         <Routes>
@@ -399,8 +397,8 @@ export default function App() {
           {/* Coaching (auth required) */}
           {/* JUCO + Transfer Portal trackers live in the main-site Coaching
               tab (premium). Old standalone + portal URLs redirect here. */}
-          <Route path="/coaching/juco-tracker" element={<RequireTier minTier="premium"><JucoTracker /></RequireTier>} />
-          <Route path="/coaching/transfer-portal" element={<RequireTier minTier="premium"><TransferPortalTracker /></RequireTier>} />
+          <Route path="/coaching/juco-tracker" element={<RequireTier minTier="recruiting"><JucoTracker /></RequireTier>} />
+          <Route path="/coaching/transfer-portal" element={<RequireTier minTier="recruiting"><TransferPortalTracker /></RequireTier>} />
           <Route path="/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/portal/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
@@ -456,7 +454,7 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout lightOnly><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
           {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
-          <Route path="/news/commitments" element={<RequireTier minTier="premium"><NewsCommitments /></RequireTier>} />
+          <Route path="/news/commitments" element={<RequireTier minTier="recruiting"><NewsCommitments /></RequireTier>} />
           <Route path="/news/:slug" element={<NewsArticle />} />
           <Route path="/articles" element={<RequireArticleAuthor><ArticlesList /></RequireArticleAuthor>} />
           <Route path="/articles/new" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />

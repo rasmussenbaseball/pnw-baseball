@@ -39,7 +39,7 @@ import { DEVELOPER_EMAILS } from '../lib/tiers'
 export const AUTHOR_EMAILS = DEVELOPER_EMAILS
 
 // Allowed preview values. null = no preview, render normally.
-const VALID = new Set(['anonymous', 'free', 'premium', 'coach'])
+const VALID = new Set(['anonymous', 'free', 'premium', 'recruiting', 'coach'])
 
 const PreviewContext = createContext({
   previewTier: null,

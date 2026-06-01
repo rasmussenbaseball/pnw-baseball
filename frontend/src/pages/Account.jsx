@@ -100,7 +100,7 @@ export default function Account() {
             cancel_at_period_end: !!d.cancel_at_period_end,
           })
           attempts += 1
-          const isPaid = d.tier === 'premium' || d.tier === 'coach' || d.tier === 'paid'
+          const isPaid = d.tier === 'premium' || d.tier === 'recruiting' || d.tier === 'coach' || d.tier === 'paid'
           if (justUpgraded && !isPaid && attempts < maxAttempts) {
             timer = setTimeout(fetchSub, 2000)
           } else if (justUpgraded && isPaid) {
@@ -355,9 +355,10 @@ function ThemeOption({ value, current, onPick, label, desc, icon }) {
 // ─── Upgrade success banner (?upgraded=true) ──────────────────
 function UpgradeBanner({ tier, onClose }) {
   const tierName = tier === 'coach' ? 'Coach & Scout'
+                 : tier === 'recruiting' ? 'Recruiting'
                  : tier === 'premium' ? 'Premium'
                  : 'paid'
-  const isConfirmed = tier === 'premium' || tier === 'coach' || tier === 'paid'
+  const isConfirmed = tier === 'premium' || tier === 'recruiting' || tier === 'coach' || tier === 'paid'
   return (
     <div className="mb-5 bg-gradient-to-r from-emerald-50 to-teal-50
                     dark:from-emerald-900/30 dark:to-teal-900/30
@@ -432,6 +433,7 @@ function TierBadge({ tier }) {
   const palette = {
     free:    { cls: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600',         label: 'Free' },
     premium: { cls: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700', label: 'Premium' },
+    recruiting: { cls: 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-700', label: 'Recruiting' },
     coach:   { cls: 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700', label: 'Coach & Scout' },
     paid:    { cls: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700', label: 'Paid' },
     dev:     { cls: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700', label: 'Developer' },
@@ -457,7 +459,7 @@ function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
   // allowlist) have no Stripe customer to manage. They get a Free
   // Forever badge and skip the billing / portal UI entirely.
   const isComped = !!subInfo?.comped || tier === 'dev'
-  const isPaid = !isComped && (tier === 'premium' || tier === 'coach' || tier === 'paid')
+  const isPaid = !isComped && (tier === 'premium' || tier === 'recruiting' || tier === 'coach' || tier === 'paid')
 
   async function openPortal() {
     if (busy) return
@@ -500,6 +502,7 @@ function SubscriptionDetails({ session, tier, tierStartedAt, subInfo }) {
             <span className="text-sm text-gray-700 dark:text-gray-300">
               {isComped              ? (subInfo?.comped_label || 'Free Forever')
                : tier === 'coach'    ? 'Coach & Scout subscriber'
+               : tier === 'recruiting' ? 'Recruiting subscriber'
                : isPaid              ? 'Premium subscriber'
                                      : 'Free account'}
             </span>

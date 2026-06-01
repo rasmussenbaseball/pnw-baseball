@@ -171,7 +171,7 @@ def require_admin(request: Request) -> str:
 # Mirrors lib/tiers.js TIER_META ranks. 'dev' is the internal top-of-
 # ladder tier site developers + interns are mapped onto; it outranks
 # every paid tier so devs pass every gate.
-_TIER_RANK = {"free": 1, "premium": 2, "coach": 3, "dev": 99}
+_TIER_RANK = {"free": 1, "premium": 2, "recruiting": 3, "coach": 4, "dev": 99}
 
 
 def require_tier(min_tier: str):

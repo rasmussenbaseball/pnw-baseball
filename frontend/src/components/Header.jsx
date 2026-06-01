@@ -70,7 +70,7 @@ const NAV = [
         desc: 'Stories, recaps, and notes from around PNW college baseball' },
       { to: '/news/commitments', label: 'Commitments',
         desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)',
-        requires: 'premium' },
+        requires: 'recruiting' },
     ],
   },
   // Summer baseball — currently WCL, more leagues later. The tab is
@@ -121,10 +121,10 @@ const NAV = [
         requires: 'premium' },
       { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
         desc: 'NWAC players available for transfer to 4-year programs',
-        requires: 'premium' },
+        requires: 'recruiting' },
       { to: '/coaching/transfer-portal', label: 'Transfer Portal Tracker',
         desc: 'PNW four-year players who have entered the transfer portal',
-        requires: 'premium' },
+        requires: 'recruiting' },
     ],
   },
   {

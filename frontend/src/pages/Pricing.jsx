@@ -70,10 +70,23 @@ const TIERS = [
     highlights: [
       'Everything in Free, plus:',
       'NW Coaching Simulator (dynasty mode)',
-      'All Recruiting tools + Commitments tracker',
+      'Recruiting guides, map & hometown search',
       'Draft Board + Park Factors',
       'Premium articles (full season recaps, scouting reads)',
       '7-day free trial on monthly',
+    ],
+  },
+  {
+    slug: 'recruiting',
+    name: 'Recruiting',
+    tagline: 'For college coaches & recruiters',
+    monthlyPrice: 10, yearlyPrice: 100, yearlySaving: 20,
+    highlights: [
+      'Everything in Premium, plus:',
+      'JUCO Tracker (NWAC transfer targets)',
+      'Transfer Portal Tracker (4-year entrants)',
+      'Commitments tracker',
+      'Advanced hitter & pitcher discipline stats',
     ],
   },
   {
@@ -82,11 +95,11 @@ const TIERS = [
     tagline: 'For programs & professional scouts',
     monthlyPrice: 25, yearlyPrice: 250, yearlySaving: 50,
     highlights: [
-      'Everything in Premium, plus:',
+      'Everything in Recruiting, plus:',
       'Full Coach & Scouting Portal',
       'Lineup Helper, Bullpen Sheets, Catcher Cards',
       'Team / Player / Opponent scouting reports',
-      'JUCO Tracker + Historic Matchups',
+      'Historic Matchups',
       'All printable PDFs (player cards, bulk exports)',
       'CSV data exports on every stat table',
       'TrackMan integration (coming soon)',
@@ -106,65 +119,71 @@ const TIERS = [
 // be reflected here so the public-facing tier promises stay accurate.
 const FEATURES = [
   { section: 'Browsing & stats' },
-  { feat: 'Homepage, Scoreboard, Standings',  tiers: { none: true, free: true, premium: true, coach: true } },
+  { feat: 'Homepage, Scoreboard, Standings',  tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
   { feat: 'Stat Leaders + Hitting / Pitching / WAR leaderboards',
-                                               tiers: { none: true, free: true, premium: true, coach: true } },
+                                               tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
   { feat: 'Team pages + PPI + National Rankings',
-                                               tiers: { none: true, free: true, premium: true, coach: true } },
+                                               tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
   { feat: 'Player pages (full profile, splits, percentiles)',
-                                               tiers: { none: true, free: true, premium: true, coach: true } },
-  { feat: 'Team Stats + Team History',         tiers: { none: false, free: true, premium: true, coach: true } },
-  { feat: 'Savant-style Percentiles page',     tiers: { none: false, free: true, premium: true, coach: true } },
-  { feat: 'Summerball Data (WCL, PIL)',        tiers: { none: false, free: true, premium: true, coach: true } },
-  { feat: 'Records + Top Moments',             tiers: { none: false, free: true, premium: true, coach: true } },
+                                               tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
+  { feat: 'Team Stats + Team History',         tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
+  { feat: 'Savant-style Percentiles page',     tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
+  { feat: 'Summerball Data (WCL, PIL)',        tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
+  { feat: 'Records + Top Moments',             tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
 
   { section: 'Content' },
-  { feat: 'Free articles',                     tiers: { none: true, free: true, premium: true, coach: true } },
-  { feat: 'Premium articles (full body)',      tiers: { none: false, free: false, premium: true, coach: true } },
-  { feat: 'Newsletter + site announcements',   tiers: { none: false, free: true, premium: true, coach: true } },
+  { feat: 'Free articles',                     tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
+  { feat: 'Premium articles (full body)',      tiers: { none: false, free: false, premium: true, recruiting: true, coach: true } },
+  { feat: 'Newsletter + site announcements',   tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
   { feat: 'About + Subscriptions + Feature Requests',
-                                               tiers: { none: true, free: true, premium: true, coach: true } },
+                                               tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
 
   { section: 'Games & tools (free)' },
-  { feat: 'PNW Grid + Team Quiz',              tiers: { none: false, free: true, premium: true, coach: true } },
-  { feat: 'Matchup breakdowns',                tiers: { none: false, free: true, premium: true, coach: true } },
+  { feat: 'PNW Grid + Team Quiz',              tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
+  { feat: 'Matchup breakdowns',                tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
   { feat: 'Graphics generator (daily scores, leaderboards, etc.)',
-                                               tiers: { none: false, free: true, premium: true, coach: true } },
+                                               tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
   { feat: 'All-Conference Generator + Playoff Projections',
-                                               tiers: { none: false, free: true, premium: true, coach: true } },
-  { feat: 'Save favorite players & teams',     tiers: { none: false, free: true, premium: true, coach: true } },
+                                               tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
+  { feat: 'Save favorite players & teams',     tiers: { none: false, free: true, premium: true, recruiting: true, coach: true } },
 
   { section: 'Premium ($5/mo)' },
   { feat: 'NW Coaching Simulator (dynasty mode)',
-                                               tiers: { none: false, free: false, premium: true, coach: true } },
+                                               tiers: { none: false, free: false, premium: true, recruiting: true, coach: true } },
   { feat: 'Recruiting Breakdown + Hometown Search',
-                                               tiers: { none: false, free: false, premium: true, coach: true } },
+                                               tiers: { none: false, free: false, premium: true, recruiting: true, coach: true } },
   { feat: 'Recruiting Guide + Map + Class rankings',
-                                               tiers: { none: false, free: false, premium: true, coach: true } },
-  { feat: 'Commitments tracker',               tiers: { none: false, free: false, premium: true, coach: true } },
-  { feat: 'Draft Board',                       tiers: { none: false, free: false, premium: true, coach: true } },
-  { feat: 'Park Factors',                      tiers: { none: false, free: false, premium: true, coach: true } },
-  { feat: '7-day free trial on monthly',       tiers: { none: false, free: false, premium: true, coach: true } },
+                                               tiers: { none: false, free: false, premium: true, recruiting: true, coach: true } },
+  { feat: 'Commitments tracker',               tiers: { none: false, free: false, premium: false, recruiting: true, coach: true } },
+  { feat: 'Draft Board',                       tiers: { none: false, free: false, premium: true, recruiting: true, coach: true } },
+  { feat: 'Park Factors',                      tiers: { none: false, free: false, premium: true, recruiting: true, coach: true } },
+  { feat: '7-day free trial on monthly',       tiers: { none: false, free: false, premium: true, recruiting: false, coach: true } },
+
+  { section: 'Recruiting ($10/mo)' },
+  { feat: 'JUCO Tracker (NWAC transfer targets)',
+                                               tiers: { none: false, free: false, premium: false, recruiting: true, coach: true } },
+  { feat: 'Transfer Portal Tracker (4-year entrants)',
+                                               tiers: { none: false, free: false, premium: false, recruiting: true, coach: true } },
+  { feat: 'Advanced hitter & pitcher discipline stats',
+                                               tiers: { none: false, free: false, premium: false, recruiting: true, coach: true } },
 
   { section: 'Coach & Scout Portal ($25/mo)' },
   { feat: 'Lineup Helper (vs RHP / LHP, bench)',
-                                               tiers: { none: false, free: false, premium: false, coach: true } },
+                                               tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
   { feat: 'Opponent Trends + predicted lineups',
-                                               tiers: { none: false, free: false, premium: false, coach: true } },
+                                               tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
   { feat: 'Team Scouting + Player Scouting reports',
-                                               tiers: { none: false, free: false, premium: false, coach: true } },
+                                               tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
   { feat: 'Historic Matchups (per-PA vs opponent)',
-                                               tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'JUCO Tracker (uncommitted players)',
-                                               tiers: { none: false, free: false, premium: false, coach: true } },
+                                               tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
   { feat: 'Printable Scouting Sheets + Bullpen Sheets',
-                                               tiers: { none: false, free: false, premium: false, coach: true } },
+                                               tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
   { feat: 'Catcher Cards (pocket pitch-calling cards)',
-                                               tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'Player Card PDFs + Bulk export',    tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'NWAC Tournament scouting sheet',    tiers: { none: false, free: false, premium: false, coach: true } },
-  { feat: 'TrackMan integration',              tiers: { none: false, free: false, premium: false, coach: true }, note: 'Coming soon' },
-  { feat: 'Custom tools built on request',     tiers: { none: false, free: false, premium: false, coach: true } },
+                                               tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
+  { feat: 'Player Card PDFs + Bulk export',    tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
+  { feat: 'NWAC Tournament scouting sheet',    tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
+  { feat: 'TrackMan integration',              tiers: { none: false, free: false, premium: false, recruiting: false, coach: true }, note: 'Coming soon' },
+  { feat: 'Custom tools built on request',     tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
 ]
 
 const FAQ = [
@@ -226,6 +245,7 @@ export default function Pricing() {
       .then(d => {
         if (!alive) return
         if (d.tier === 'premium') setCurrentTier('premium')
+        else if (d.tier === 'recruiting') setCurrentTier('recruiting')
         else if (d.tier === 'coach') setCurrentTier('coach')
         else if (d.tier === 'paid') setCurrentTier('premium')  // legacy
         else setCurrentTier('free')
@@ -292,7 +312,7 @@ export default function Pricing() {
       )}
 
       {/* ── Tier cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-12">
         {TIERS.map(tier => (
           <TierCard
             key={tier.slug}
@@ -531,8 +551,8 @@ function Badge({ color, children }) {
 // ─── Comparison table ───────────────────────────────────────────
 
 function ComparisonTable({ currentTier }) {
-  const tierKeys = ['none', 'free', 'premium', 'coach']
-  const tierLabels = { none: 'Anonymous', free: 'Free', premium: 'Premium', coach: 'Coach & Scout' }
+  const tierKeys = ['none', 'free', 'premium', 'recruiting', 'coach']
+  const tierLabels = { none: 'Anonymous', free: 'Free', premium: 'Premium', recruiting: 'Recruiting', coach: 'Coach & Scout' }
 
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
@@ -563,7 +583,7 @@ function ComparisonTable({ currentTier }) {
             {FEATURES.map((row, i) => (
               row.section ? (
                 <tr key={`s-${i}`} className="bg-gray-50/60 dark:bg-gray-900/40 border-t border-gray-200 dark:border-gray-700">
-                  <td colSpan={5} className="px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em]
+                  <td colSpan={6} className="px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em]
                                               text-gray-500 dark:text-gray-400">
                     {row.section}
                   </td>

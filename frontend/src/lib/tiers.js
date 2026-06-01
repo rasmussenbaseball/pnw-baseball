@@ -26,7 +26,7 @@
 // Tier definitions
 // ──────────────────────────────────────────────────────────────
 
-export const TIERS = ['none', 'free', 'premium', 'coach', 'dev']
+export const TIERS = ['none', 'free', 'premium', 'recruiting', 'coach', 'dev']
 
 // Display metadata for each tier.
 // `dev` is a hidden internal tier above coach. It's not sold and is
@@ -35,11 +35,12 @@ export const TIERS = ['none', 'free', 'premium', 'coach', 'dev']
 // gate and preview in-progress features. tierMeets() naturally handles
 // it because dev's rank is the highest.
 export const TIER_META = {
-  none:    { label: 'Anonymous',    short: 'Anon',    rank: 0 },
-  free:    { label: 'Free',         short: 'Free',    rank: 1 },
-  premium: { label: 'Premium',      short: 'Premium', rank: 2 },
-  coach:   { label: 'Coach & Scout', short: 'Coach',  rank: 3 },
-  dev:     { label: 'Developer',    short: 'Dev',    rank: 99 },
+  none:       { label: 'Anonymous',     short: 'Anon',    rank: 0 },
+  free:       { label: 'Free',          short: 'Free',    rank: 1 },
+  premium:    { label: 'Premium',       short: 'Premium', rank: 2 },
+  recruiting: { label: 'Recruiting',    short: 'Recruit', rank: 3 },
+  coach:      { label: 'Coach & Scout', short: 'Coach',   rank: 4 },
+  dev:        { label: 'Developer',     short: 'Dev',     rank: 99 },
 }
 
 
@@ -129,7 +130,6 @@ export const FEATURE_MIN_TIER = {
 
   // ─── PREMIUM ($5/mo) ───────────────────────────────────────
   articles_premium:       'premium',  // paywalled article bodies
-  commitments:            'premium',
   recruiting_classes:     'premium',
   recruiting_breakdown:   'premium',
   recruiting_hometown:    'premium',
@@ -137,6 +137,12 @@ export const FEATURE_MIN_TIER = {
   park_factors:           'premium',
   historic_matchups:      'premium',
   gm_simulator:           'premium',  // /gm/* — coaching simulator
+
+  // ─── RECRUITING ($10/mo) — everything Premium + the recruiting
+  // tools, aimed at college coaches. No Coach & Scout portal. ──
+  commitments:            'recruiting',
+  juco_tracker:           'recruiting',
+  transfer_portal:        'recruiting',
 
   // ─── COACH & SCOUT ($25/mo) — portal + extras ─────────────
   portal_home:            'coach',
@@ -219,6 +225,10 @@ export const ROUTE_FEATURE = [
   ['/historic',                   'historic_matchups'],
   ['/opponent-trends',            'historic_matchups'],
   ['/gm',                         'gm_simulator'],
+
+  // Recruiting tier
+  ['/coaching/juco-tracker',      'juco_tracker'],
+  ['/coaching/transfer-portal',   'transfer_portal'],
 
   // Coach & Scout (portal)
   ['/portal',                     'portal_home'],

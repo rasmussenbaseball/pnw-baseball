@@ -19,10 +19,12 @@ Customer self-service:
 Env vars required:
   STRIPE_API_KEY               — Secret key (sk_test_... or sk_live_...)
   STRIPE_WEBHOOK_SECRET        — From the Stripe webhook config (whsec_...)
-  STRIPE_PRICE_PREMIUM_MONTHLY — Price ID for Premium $5/mo
-  STRIPE_PRICE_PREMIUM_YEARLY  — Price ID for Premium $50/yr
-  STRIPE_PRICE_COACH_MONTHLY   — Price ID for Coach $25/mo
-  STRIPE_PRICE_COACH_YEARLY    — Price ID for Coach $250/yr
+  STRIPE_PRICE_PREMIUM_MONTHLY    — Price ID for Premium $5/mo
+  STRIPE_PRICE_PREMIUM_YEARLY     — Price ID for Premium $50/yr
+  STRIPE_PRICE_RECRUITING_MONTHLY — Price ID for Recruiting $10/mo
+  STRIPE_PRICE_RECRUITING_YEARLY  — Price ID for Recruiting $100/yr
+  STRIPE_PRICE_COACH_MONTHLY      — Price ID for Coach $25/mo
+  STRIPE_PRICE_COACH_YEARLY       — Price ID for Coach $250/yr
   SITE_URL                     — Defaults to https://nwbaseballstats.com
 
 SECURITY NOTE: Like every payment integration, server-side enforcement
@@ -71,10 +73,12 @@ def _set_stripe_key():
 def _price_map() -> dict[str, tuple[str, str]]:
     """price_id → (tier, interval)."""
     raw = {
-        os.getenv("STRIPE_PRICE_PREMIUM_MONTHLY"): ("premium", "monthly"),
-        os.getenv("STRIPE_PRICE_PREMIUM_YEARLY"):  ("premium", "yearly"),
-        os.getenv("STRIPE_PRICE_COACH_MONTHLY"):   ("coach",   "monthly"),
-        os.getenv("STRIPE_PRICE_COACH_YEARLY"):    ("coach",   "yearly"),
+        os.getenv("STRIPE_PRICE_PREMIUM_MONTHLY"):    ("premium",    "monthly"),
+        os.getenv("STRIPE_PRICE_PREMIUM_YEARLY"):     ("premium",    "yearly"),
+        os.getenv("STRIPE_PRICE_RECRUITING_MONTHLY"): ("recruiting", "monthly"),
+        os.getenv("STRIPE_PRICE_RECRUITING_YEARLY"):  ("recruiting", "yearly"),
+        os.getenv("STRIPE_PRICE_COACH_MONTHLY"):      ("coach",      "monthly"),
+        os.getenv("STRIPE_PRICE_COACH_YEARLY"):       ("coach",      "yearly"),
     }
     return {k: v for k, v in raw.items() if k}
 
@@ -156,7 +160,7 @@ def _email_for_user(user_id: str) -> Optional[str]:
 # signature shell (it's transactional, not marketing).
 
 def _tier_display(tier: str) -> str:
-    return {"premium": "Premium", "coach": "Coach & Scout"}.get(tier, tier.title())
+    return {"premium": "Premium", "recruiting": "Recruiting", "coach": "Coach & Scout"}.get(tier, tier.title())
 
 
 def _send_welcome_email(user_id: str, tier: str, is_trial: bool):
@@ -328,7 +332,7 @@ def _send_payment_failed_email(user_id: str):
 # ─────────────────────────────────────────────────────────────────
 
 class CheckoutRequest(BaseModel):
-    tier:     str = Field(..., pattern="^(premium|coach)$")
+    tier:     str = Field(..., pattern="^(premium|recruiting|coach)$")
     interval: str = Field(..., pattern="^(monthly|yearly)$")
 
 

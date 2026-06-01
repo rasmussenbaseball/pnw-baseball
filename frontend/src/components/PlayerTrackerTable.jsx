@@ -1,0 +1,186 @@
+// Shared sticky stat table for the JUCO + Transfer Portal trackers.
+// Renders ONE table (Hitters OR Pitchers). Two-way players appear in
+// both tables and get a small ⇄ icon next to their name.
+//
+// Frozen "Player Info" columns (#, Player, School, Pos, B/T, Yr,
+// Committed) stay pinned on horizontal scroll. The group-header width
+// (458) matches the summed frozen column widths so the stat header
+// never gets painted over.
+
+import { Link } from 'react-router-dom'
+import { formatStat } from '../utils/stats'
+
+export const BATTING_COLS = [
+  { key: 'batting_avg',    label: 'AVG',  format: 'avg',  mono: true },
+  { key: 'on_base_pct',    label: 'OBP',  format: 'avg',  mono: true },
+  { key: 'slugging_pct',   label: 'SLG',  format: 'avg',  mono: true },
+  { key: 'woba',           label: 'wOBA', format: 'avg',  mono: true },
+  { key: 'wrc_plus',       label: 'wRC+', format: 'int',  mono: true },
+  { key: 'home_runs',      label: 'HR',   format: 'int' },
+  { key: 'rbi',            label: 'RBI',  format: 'int' },
+  { key: 'stolen_bases',   label: 'SB',   format: 'int' },
+  { key: 'plate_appearances', label: 'PA', format: 'int' },
+  { key: 'bat_k_pct',      label: 'K%',      format: 'pct', mono: true },
+  { key: 'bat_bb_pct',     label: 'BB%',     format: 'pct', mono: true },
+  { key: 'contact_pct',    label: 'Contact%',format: 'pct', mono: true },
+  { key: 'swing_pct',      label: 'Swing%',  format: 'pct', mono: true },
+  { key: 'air_pull_pct',   label: 'AIRPULL%',format: 'pct', mono: true },
+  { key: 'batter_wpa',     label: 'WPA',     format: 'wpa', mono: true },
+  { key: 'offensive_war',  label: 'oWAR', format: 'war',  mono: true },
+]
+
+export const PITCHING_COLS = [
+  { key: 'era',            label: 'ERA',  format: 'era',  mono: true },
+  { key: 'fip',            label: 'FIP',  format: 'era',  mono: true },
+  { key: 'fip_plus',       label: 'FIP+', format: 'int',  mono: true },
+  { key: 'siera',          label: 'SIERA',format: 'era',  mono: true },
+  { key: 'baa',            label: 'BAA',  format: 'avg',  mono: true },
+  { key: 'pitch_k_pct',    label: 'K%',   format: 'pct',  mono: true },
+  { key: 'pitch_bb_pct',   label: 'BB%',  format: 'pct',  mono: true },
+  { key: 'whiff_pct',      label: 'Whiff%',  format: 'pct', mono: true },
+  { key: 'strike_pct',     label: 'Strike%', format: 'pct', mono: true },
+  { key: 'first_pitch_strike_pct', label: 'FPS%', format: 'pct', mono: true },
+  { key: 'innings_pitched', label: 'IP',   format: 'ip' },
+  { key: 'pitcher_wpa',    label: 'WPA',  format: 'wpa',  mono: true },
+  { key: 'pitching_war',   label: 'pWAR', format: 'war',  mono: true },
+]
+
+export const HITTER_STAT_COLS = [
+  { key: 'total_war', label: 'WAR', format: 'war', mono: true },
+  ...BATTING_COLS,
+]
+export const PITCHER_STAT_COLS = [
+  { key: 'total_war', label: 'WAR', format: 'war', mono: true },
+  ...PITCHING_COLS,
+]
+
+// Columns the API can sort by.
+export const SORTABLE = new Set([
+  'total_war', 'offensive_war', 'pitching_war',
+  'batting_avg', 'on_base_pct', 'slugging_pct', 'ops',
+  'woba', 'wrc_plus', 'home_runs', 'rbi', 'stolen_bases',
+  'plate_appearances', 'era', 'fip', 'fip_plus', 'innings_pitched',
+])
+export const ASC_DEFAULT = new Set(['era', 'fip'])
+
+export function isHitter(row) { return (row.plate_appearances || 0) > 0 }
+export function isPitcher(row) { return (row.innings_pitched || 0) > 0 }
+export function isTwoWay(row) { return isHitter(row) && isPitcher(row) }
+
+function fmtCell(row, col) {
+  const val = row[col.key]
+  if (col.format === 'pct') return val != null ? (Number(val) * 100).toFixed(1) + '%' : '-'
+  if (col.format === 'int') return val != null ? Math.round(val) : '-'
+  if (col.format === 'ip') return val ? formatStat(val, 'ip') : '-'
+  if (col.format === 'wpa') return val != null ? (val >= 0 ? '+' : '') + Number(val).toFixed(2) : '-'
+  if (col.format) return formatStat(val, col.format)
+  return val ?? '-'
+}
+
+function TwoWayIcon() {
+  return (
+    <span
+      title="Two-way player. Appears on both the Hitters and Pitchers tables."
+      className="ml-1 inline-flex items-center justify-center text-[9px] font-bold text-white bg-nw-teal rounded px-1 leading-tight align-middle"
+    >
+      2WAY
+    </span>
+  )
+}
+
+export default function PlayerTrackerTable({
+  rows, statCols, groupLabel, sortBy, sortDir, onSort,
+  infoLabel = 'Team', committedHeader = 'Committed',
+}) {
+  const sortArrow = (key) => {
+    if (!SORTABLE.has(key)) return null
+    if (sortBy !== key) return <span className="text-gray-300 ml-0.5">↕</span>
+    return <span className="text-nw-teal ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border overflow-x-auto relative">
+      <table className="w-full text-[11px] leading-tight border-collapse">
+        <thead>
+          {/* Category header row */}
+          <tr className="sticky top-0 z-20 bg-pnw-slate">
+            <th colSpan={7} style={{width:458,minWidth:458,maxWidth:458}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+              Player Info
+            </th>
+            <th colSpan={statCols.length} className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
+              {groupLabel}
+            </th>
+          </tr>
+          {/* Column header row */}
+          <tr className="sticky top-[25px] z-20 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+            <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-right border-r border-gray-100 dark:border-gray-700">#</th>
+            <th style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Player</th>
+            <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">{infoLabel}</th>
+            <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Pos</th>
+            <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">B/T</th>
+            <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Yr</th>
+            <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left border-r border-gray-200 dark:border-gray-700">{committedHeader}</th>
+            {statCols.map(col => (
+              <th
+                key={col.key}
+                onClick={() => onSort(col.key)}
+                className={`px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-right whitespace-nowrap ${
+                  SORTABLE.has(col.key) ? 'cursor-pointer select-none hover:text-nw-teal' : ''
+                } ${sortBy === col.key ? 'text-nw-teal bg-teal-50/50' : ''}`}
+              >
+                {col.label}{sortArrow(col.key)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={row.id} className={`border-b border-gray-50 hover:bg-teal-50/30 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/40'}`}>
+              <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-10 bg-inherit px-1 py-1 text-gray-400 dark:text-gray-500 text-right text-[10px] border-r border-gray-100 dark:border-gray-700">{i + 1}</td>
+              <td style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-10 bg-inherit px-1.5 py-1 font-medium overflow-hidden">
+                <span className="flex items-center whitespace-nowrap">
+                  <Link to={`/player/${row.id}`} className="text-nw-teal hover:underline truncate">
+                    {row.first_name} {row.last_name}
+                  </Link>
+                  {isTwoWay(row) && <TwoWayIcon />}
+                </span>
+              </td>
+              <td style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-10 bg-inherit px-1.5 py-1 overflow-hidden">
+                <div className="flex items-center gap-1 max-w-full">
+                  {row.logo_url && (
+                    <img src={row.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
+                      onError={(e) => { e.target.style.display = 'none' }} />
+                  )}
+                  <span className="text-gray-600 dark:text-gray-400 truncate">{row.team_short || row.team_name}</span>
+                </div>
+              </td>
+              <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
+              <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
+              <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+              <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
+                {row.committed_to ? (
+                  <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
+                ) : (
+                  <span className="text-gray-400 dark:text-gray-500">-</span>
+                )}
+              </td>
+              {statCols.map(col => (
+                <td
+                  key={col.key}
+                  className={`px-1.5 py-1 text-right whitespace-nowrap ${
+                    col.mono ? 'font-mono' : ''
+                  } ${sortBy === col.key ? 'bg-teal-50/50 font-semibold' : 'text-gray-600 dark:text-gray-400'}`}
+                >
+                  {fmtCell(row, col)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="px-3 py-1.5 text-[11px] text-gray-400 dark:text-gray-500 border-t">
+        Showing {rows.length} {rows.length === 1 ? 'player' : 'players'}
+      </div>
+    </div>
+  )
+}
