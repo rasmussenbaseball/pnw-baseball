@@ -15,11 +15,19 @@ import PlayerTrackerTable, {
 export default function TransferPortalTracker() {
   const [season, setSeason] = usePersistedState('tp_season', 2026)
   const [position, setPosition] = usePersistedState('tp_position', '')
-  const [sortBy, setSortBy] = usePersistedState('tp_sortBy', 'total_war')
-  const [sortDir, setSortDir] = usePersistedState('tp_sortDir', 'desc')
+  const [hitSortBy, setHitSortBy] = usePersistedState('tp_hitSortBy', 'offensive_war')
+  const [hitSortDir, setHitSortDir] = usePersistedState('tp_hitSortDir', 'desc')
+  const [pitSortBy, setPitSortBy] = usePersistedState('tp_pitSortBy', 'pitching_war')
+  const [pitSortDir, setPitSortDir] = usePersistedState('tp_pitSortDir', 'desc')
   const [bats, setBats] = usePersistedState('tp_bats', '')
   const [throws_, setThrows] = usePersistedState('tp_throws', '')
   const [board, setBoard] = usePersistedState('tp_board', 'hitters')
+
+  // Each board keeps its own sort: hitters default to oWAR, pitchers to pWAR.
+  const sortBy = board === 'hitters' ? hitSortBy : pitSortBy
+  const sortDir = board === 'hitters' ? hitSortDir : pitSortDir
+  const setSortBy = board === 'hitters' ? setHitSortBy : setPitSortBy
+  const setSortDir = board === 'hitters' ? setHitSortDir : setPitSortDir
 
   const { data, loading } = useApi('/transfer-portal', {
     season,

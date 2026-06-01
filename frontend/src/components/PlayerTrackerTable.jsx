@@ -46,12 +46,12 @@ export const PITCHING_COLS = [
 ]
 
 export const HITTER_STAT_COLS = [
-  { key: 'total_war', label: 'WAR', format: 'war', mono: true },
   ...BATTING_COLS,
+  { key: 'total_war', label: 'WAR', format: 'war', mono: true },
 ]
 export const PITCHER_STAT_COLS = [
-  { key: 'total_war', label: 'WAR', format: 'war', mono: true },
   ...PITCHING_COLS,
+  { key: 'total_war', label: 'WAR', format: 'war', mono: true },
 ]
 
 // Columns the API can sort by.
@@ -129,7 +129,7 @@ export default function PlayerTrackerTable({
         <thead>
           {/* Category header row */}
           <tr className="sticky top-0 z-20 bg-pnw-slate">
-            <th colSpan={7} style={{width:458,minWidth:458,maxWidth:458}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+            <th colSpan={7} style={{width:488,minWidth:488,maxWidth:488}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
               Player Info
             </th>
             <th colSpan={statCols.length} className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
@@ -139,12 +139,12 @@ export default function PlayerTrackerTable({
           {/* Column header row */}
           <tr className="sticky top-[25px] z-20 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
             <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-right border-r border-gray-100 dark:border-gray-700">#</th>
-            <th style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Player</th>
-            <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">{infoLabel}</th>
-            <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Pos</th>
-            <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">B/T</th>
-            <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Yr</th>
-            <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left border-r border-gray-200 dark:border-gray-700">{committedHeader}</th>
+            <th style={{width:140,minWidth:140,maxWidth:140}} className="sticky left-[28px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Player</th>
+            <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[168px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">{infoLabel}</th>
+            <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[258px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Pos</th>
+            <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[298px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">B/T</th>
+            <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[330px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Yr</th>
+            <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[358px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left border-r border-gray-200 dark:border-gray-700">{committedHeader}</th>
             {statCols.map(col => (
               <th
                 key={col.key}
@@ -162,7 +162,7 @@ export default function PlayerTrackerTable({
           {rows.map((row, i) => (
             <tr key={row.id} className={`border-b border-gray-50 hover:bg-teal-50/30 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/40'}`}>
               <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-10 bg-inherit px-1 py-1 text-gray-400 dark:text-gray-500 text-right text-[10px] border-r border-gray-100 dark:border-gray-700">{i + 1}</td>
-              <td style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-10 bg-inherit px-1.5 py-1 font-medium overflow-hidden">
+              <td style={{width:140,minWidth:140,maxWidth:140}} className="sticky left-[28px] z-10 bg-inherit px-1.5 py-1 font-medium overflow-hidden">
                 <span className="flex items-center whitespace-nowrap">
                   <Link to={`/player/${row.id}`} className="text-nw-teal hover:underline truncate">
                     {row.first_name} {row.last_name}
@@ -170,7 +170,7 @@ export default function PlayerTrackerTable({
                   {isTwoWay(row) && <TwoWayIcon />}
                 </span>
               </td>
-              <td style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-10 bg-inherit px-1.5 py-1 overflow-hidden">
+              <td style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[168px] z-10 bg-inherit px-1.5 py-1 overflow-hidden">
                 <div className="flex items-center gap-1 max-w-full">
                   {row.logo_url && (
                     <img src={row.logo_url} alt="" className="w-4 h-4 object-contain shrink-0"
@@ -179,10 +179,10 @@ export default function PlayerTrackerTable({
                   <span className="text-gray-600 dark:text-gray-400 truncate">{row.team_short || row.team_name}</span>
                 </div>
               </td>
-              <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
-              <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
-              <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
-              <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
+              <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[258px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
+              <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[298px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
+              <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[330px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+              <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[358px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
                 {row.committed_to ? (
                   <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
                 ) : (

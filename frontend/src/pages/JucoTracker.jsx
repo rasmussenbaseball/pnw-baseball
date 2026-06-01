@@ -16,13 +16,21 @@ export default function JucoTracker() {
   const [season, setSeason] = usePersistedState('juco_season', 2026)
   const [position, setPosition] = usePersistedState('juco_position', '')
   const [classYear, setClassYear] = usePersistedState('juco_classYear', 'So')
-  const [sortBy, setSortBy] = usePersistedState('juco_sortBy', 'total_war')
-  const [sortDir, setSortDir] = usePersistedState('juco_sortDir', 'desc')
+  const [hitSortBy, setHitSortBy] = usePersistedState('juco_hitSortBy', 'offensive_war')
+  const [hitSortDir, setHitSortDir] = usePersistedState('juco_hitSortDir', 'desc')
+  const [pitSortBy, setPitSortBy] = usePersistedState('juco_pitSortBy', 'pitching_war')
+  const [pitSortDir, setPitSortDir] = usePersistedState('juco_pitSortDir', 'desc')
   const [minAb, setMinAb] = usePersistedState('juco_minAb', 0)
   const [minIp, setMinIp] = usePersistedState('juco_minIp', 0)
   const [bats, setBats] = usePersistedState('juco_bats', '')
   const [throws_, setThrows] = usePersistedState('juco_throws', '')
   const [board, setBoard] = usePersistedState('juco_board', 'hitters')
+
+  // Each board keeps its own sort: hitters default to oWAR, pitchers to pWAR.
+  const sortBy = board === 'hitters' ? hitSortBy : pitSortBy
+  const sortDir = board === 'hitters' ? hitSortDir : pitSortDir
+  const setSortBy = board === 'hitters' ? setHitSortBy : setPitSortBy
+  const setSortDir = board === 'hitters' ? setHitSortDir : setPitSortDir
 
   const { data, loading } = useApi('/players/juco/uncommitted', {
     season,
