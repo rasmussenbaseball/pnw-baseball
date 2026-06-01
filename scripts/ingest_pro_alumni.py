@@ -41,6 +41,7 @@ COLLEGE_TEAM_IDS = {
     "Corban University": 23,
     "Pacific Lutheran University": 11,
     "Whitworth University": 13,
+    "University of Portland": 482,
     # NWAC (JUCO) programs — added as alumni from these schools appear.
     "Tacoma Community College": 53,
     "Linn-Benton Community College": 44,
@@ -50,6 +51,9 @@ COLLEGE_TEAM_IDS = {
     "Chemeketa Community College": 41,
     "Everett Community College": 28,
     "Lower Columbia College": 52,
+    "Pierce College": 30,
+    "Southwestern Oregon Community College": 46,
+    "Mount Hood Community College": 45,   # sheet spells it "Mount Hood"
 }
 
 
@@ -140,13 +144,19 @@ def main():
     args = ap.parse_args()
 
     wb = openpyxl.load_workbook(args.xlsx, data_only=True)
-    ws = wb.worksheets[0]
+    # Read every sheet — the spreadsheet splits players across tabs
+    # (e.g. Sheet1 + Sheet3). Duplicate players across sheets are collapsed
+    # below (the most-complete row, by college count, wins).
+    all_rows = []
+    for ws in wb.worksheets:
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            all_rows.append(row)
 
     players = []
     unmapped_colleges = set()
     with get_connection() as conn:
         cur = conn.cursor()
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        for row in all_rows:
             name = clean(row[0])
             if not name:
                 continue

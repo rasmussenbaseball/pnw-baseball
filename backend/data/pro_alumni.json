@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-01T19:19:14.518023+00:00",
-  "source": "Pro alumni (1).xlsx",
+  "generated_at": "2026-06-01T19:40:26.204982+00:00",
+  "source": "Pro alumni (2).xlsx",
   "players": [
     {
       "name": "Riley O'Brien",
@@ -834,11 +834,13 @@
     },
     {
       "name": "Sam Stuhr",
-      "college_raw": "Oregon State University",
+      "college_raw": "Oregon State University and University of Portland and Lower Columbia College",
       "college_team_ids": [
-        3
+        3,
+        482,
+        52
       ],
-      "player_id": null,
+      "player_id": 4692,
       "drafted_by": "Oakland Athletics",
       "year_drafted": 2024,
       "pick": "137",
@@ -1125,9 +1127,10 @@
     },
     {
       "name": "Rikuu Nishida",
-      "college_raw": "University of Oregon",
+      "college_raw": "University of Oregon and Mount Hood Community College",
       "college_team_ids": [
-        2
+        2,
+        45
       ],
       "player_id": 5509,
       "drafted_by": "Chicago White Sox",
@@ -1815,11 +1818,12 @@
     },
     {
       "name": "Tommy Takayoshi",
-      "college_raw": "University of Washington",
+      "college_raw": "University of Washington and Pierce College",
       "college_team_ids": [
-        1
+        1,
+        30
       ],
-      "player_id": 7880,
+      "player_id": 7138,
       "drafted_by": "Oakland Athletics",
       "year_drafted": 2024,
       "pick": "NDFA",
@@ -2057,9 +2061,10 @@
     },
     {
       "name": "Jadon Williamson",
-      "college_raw": "Lewis-Clark State College",
+      "college_raw": "Lewis-Clark State College and Lower Columbia College",
       "college_team_ids": [
-        22
+        22,
+        52
       ],
       "player_id": 3823,
       "drafted_by": "Miami Marlins",
@@ -2249,6 +2254,51 @@
       "level": "A+",
       "affiliate": "Chicago Cubs",
       "stats_url": "https://www.milb.com/player/justin-stransky-833458"
+    },
+    {
+      "name": "Tyson Guerrero",
+      "college_raw": "Lower Columbia College",
+      "college_team_ids": [
+        52
+      ],
+      "player_id": null,
+      "drafted_by": "Kansas City Royals",
+      "year_drafted": 2021,
+      "pick": "349",
+      "current_team": "Omaha Storm Chasers",
+      "level": "AAA",
+      "affiliate": "Kansas City Royals",
+      "stats_url": "https://www.milb.com/player/tyson-guerrero-694553"
+    },
+    {
+      "name": "Anthony Hoopii-Tuionetoa",
+      "college_raw": "Pierce College",
+      "college_team_ids": [
+        30
+      ],
+      "player_id": 9511,
+      "drafted_by": "Texas Rangers",
+      "year_drafted": 2019,
+      "pick": "895",
+      "current_team": "Hub City Spartanburgers",
+      "level": "A+",
+      "affiliate": "Texas Rangers",
+      "stats_url": "https://www.milb.com/player/anthony-hoopii-tuionetoa-681896"
+    },
+    {
+      "name": "Jonah Hurney",
+      "college_raw": "Southwestern Oregon Community College",
+      "college_team_ids": [
+        46
+      ],
+      "player_id": 9604,
+      "drafted_by": "Cincinnati Reds",
+      "year_drafted": 2024,
+      "pick": "NDFA",
+      "current_team": "Dayton Dragons",
+      "level": "A+",
+      "affiliate": "Cincinnati Reds",
+      "stats_url": "https://www.milb.com/player/jonah-hurney-802373"
     }
   ]
 }
