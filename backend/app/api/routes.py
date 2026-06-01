@@ -8867,38 +8867,26 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             summer_pitching = [dict(r) for r in cur.fetchall()]
 
         # ── Current summer assignment ──
-        # "Currently with: Yakima Pippins" badge for the spring player
-        # page. Picks the most recent summer team for this player from
-        # summer_players. Independent of summer_batting_stats so it
-        # surfaces a roster spot even before the first game is played.
+        # "Summer 2026: Yakima Pippins" badge for the spring player page.
+        # Only surface it for players who ACTUALLY appeared in a 2026 WCL
+        # game (i.e. have a 2026 WCL stat line) — WCL is the only current
+        # summer data we have. We derive it from the same summer rows shown
+        # in the stat tables rather than from summer_players, because that
+        # roster table holds entries from multiple past seasons (so a guy
+        # who last played WCL in 2023 was wrongly getting a 2026 button).
+        CURRENT_SUMMER_SEASON = 2026
         current_summer_assignment = None
-        if summer_links:
-            cur.execute(
-                f"""SELECT sp.id   AS summer_player_id,
-                           st.id   AS team_id,
-                           st.name AS team_name,
-                           st.short_name AS team_short,
-                           st.logo_url   AS team_logo,
-                           st.division,
-                           sl.abbreviation AS league_abbrev,
-                           sl.name AS league_name
-                    FROM summer_players sp
-                    JOIN summer_teams st ON st.id = sp.team_id
-                    JOIN summer_leagues sl ON sl.id = st.league_id
-                    WHERE sp.id IN ({sp_placeholders})
-                      -- Only surface a "Summer 2026" assignment for players
-                      -- actively on a 2026 WCL roster — that's the only
-                      -- current summer data we have. Excludes PIL and
-                      -- inactive/old WCL teams so stale buttons don't show.
-                      AND sl.abbreviation = 'WCL'
-                      AND st.is_active = TRUE
-                    ORDER BY sp.updated_at DESC NULLS LAST, sp.id DESC
-                    LIMIT 1""",
-                summer_player_ids,
-            )
-            row = cur.fetchone()
-            if row:
-                current_summer_assignment = dict(row)
+        for _sr in (summer_batting + summer_pitching):
+            if _sr.get("season") == CURRENT_SUMMER_SEASON and _sr.get("league_abbrev") == "WCL":
+                current_summer_assignment = {
+                    "team_id": _sr.get("team_id"),
+                    "team_name": _sr.get("team_name"),
+                    "team_short": _sr.get("team_short"),
+                    "team_logo": _sr.get("team_logo"),
+                    "league_abbrev": _sr.get("league_abbrev"),
+                    "league_name": _sr.get("league_name"),
+                }
+                break
 
         # ── Fielding (per-position per-season) ──
         # One row per (season, position) at each team the player has
