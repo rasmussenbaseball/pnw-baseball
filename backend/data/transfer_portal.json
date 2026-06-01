@@ -1,0 +1,15 @@
+{
+  "_comment": "PNW four-year (non-JUCO) players who have entered the transfer portal. Served by /players/transfer-portal and shown on the Transfer Portal Tracker (Coaching tab). Add entries as players enter; set committed_to once a player commits to a new school.",
+  "updated": "2026-06-01",
+  "players": [
+    { "player_id": 2740, "name": "Tyler Logan",       "from": "LC State",   "committed_to": null },
+    { "player_id": 3372, "name": "Nick Saelens",      "from": "Pacific",    "committed_to": null },
+    { "player_id": 3310, "name": "Dillon Hartman",    "from": "Whitworth",  "committed_to": null },
+    { "player_id": 2744, "name": "Jace Nagler",       "from": "Eastern Oregon", "committed_to": null },
+    { "player_id": 3141, "name": "Kyle Becker",       "from": "Northwest Nazarene", "committed_to": null },
+    { "player_id": 3134, "name": "Sam Hall",          "from": "Western Oregon", "committed_to": null },
+    { "player_id": 3052, "name": "Brenden Haverlock", "from": "Saint Martin's", "committed_to": null },
+    { "player_id": 3129, "name": "Devin Bettencourt", "from": "Western Oregon", "committed_to": null },
+    { "player_id": 2716, "name": "Kooper Jones",      "from": "LC State",   "committed_to": null }
+  ]
+}

@@ -119,6 +119,12 @@ const NAV = [
         requires: 'premium' },
       { to: '/draft', label: 'Draft', desc: 'PNW college baseball MLB draft board',
         requires: 'premium' },
+      { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
+        desc: 'NWAC players available for transfer to 4-year programs',
+        requires: 'premium' },
+      { to: '/coaching/transfer-portal', label: 'Transfer Portal Tracker',
+        desc: 'PNW four-year players who have entered the transfer portal',
+        requires: 'premium' },
     ],
   },
   {

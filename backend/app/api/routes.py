@@ -8962,11 +8962,11 @@ def uncommitted_juco_players(
     bats: Optional[str] = Query(None, description="Filter by batting hand: L, R, or S"),
     throws: Optional[str] = Query(None, description="Filter by throwing hand: L or R"),
     limit: int = Query(500),
-    _user: str = Depends(require_tier("coach")),
+    _user: str = Depends(require_tier("premium")),
 ):
     """
     Find uncommitted JUCO players - the primary recruiting tool.
-    Coach-tier gated (the JUCO tracker lives in the Coach & Scout portal).
+    Premium-tier gated (the JUCO tracker lives in the Coaching tab).
     Shows sophomores (or specified class) who haven't committed to a 4-year school.
     Year filter groups: 'So' matches So and R-So, 'Fr' matches Fr and R-Fr.
     """
@@ -9051,6 +9051,108 @@ def uncommitted_juco_players(
         rows = cur.execute(query, params)
         rows = cur.fetchall()
         return [_add_era_plus(dict(r)) for r in rows]
+
+
+@router.get("/players/transfer-portal")
+def transfer_portal_players(
+    season: int = Query(2026),
+    position: Optional[str] = None,
+    sort_by: str = Query("total_war", description="Sort column"),
+    sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
+    bats: Optional[str] = Query(None),
+    throws: Optional[str] = Query(None),
+    _user: str = Depends(require_tier("premium")),
+):
+    """
+    Transfer Portal Tracker — PNW four-year (non-JUCO) players who have
+    entered the transfer portal. Curated list lives in
+    backend/data/transfer_portal.json; this enriches each with the same
+    stat row shape the JUCO tracker uses so the two pages share a table.
+    Premium-tier gated (Coaching tab).
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    data_path = _Path(__file__).parent.parent.parent / "data" / "transfer_portal.json"
+    try:
+        with open(data_path) as f:
+            payload = _json.load(f)
+        entries = payload.get("players", [])
+    except Exception:
+        entries = []
+    ids = [int(e["player_id"]) for e in entries if e.get("player_id")]
+    committed_map = {int(e["player_id"]): e.get("committed_to") for e in entries if e.get("player_id")}
+    if not ids:
+        return []
+
+    allowed_sort = {
+        "total_war", "offensive_war", "pitching_war",
+        "batting_avg", "on_base_pct", "slugging_pct", "ops",
+        "woba", "wrc_plus", "home_runs", "rbi", "stolen_bases",
+        "plate_appearances", "era", "fip", "fip_plus", "era_minus", "era_plus", "innings_pitched",
+    }
+    if sort_by not in allowed_sort:
+        sort_by = "total_war"
+    direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT p.*, t.name as team_name, t.short_name as team_short, t.logo_url,
+                   d.level as division_level,
+                   bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
+                   bs.woba, bs.wrc_plus, bs.offensive_war,
+                   bs.home_runs, bs.rbi, bs.stolen_bases, bs.plate_appearances,
+                   ps2.era, ps2.fip, ps2.fip_plus, ps2.era_minus, ps2.xfip, ps2.strikeouts as pitch_k,
+                   ps2.k_pct as pitch_k_pct, ps2.bb_pct as pitch_bb_pct,
+                   ps2.innings_pitched, ps2.pitching_war,
+                   COALESCE(bs.offensive_war, 0) + COALESCE(ps2.pitching_war, 0) as total_war
+            FROM players p
+            JOIN teams t ON p.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN batting_stats bs ON p.id = bs.player_id AND bs.season = %s
+            LEFT JOIN pitching_stats ps2 ON p.id = ps2.player_id AND ps2.season = %s
+            WHERE p.id = ANY(%s)
+        """
+        params: list = [season, season, ids]
+        if position:
+            if position == 'P':
+                query += " AND (p.position IN ('RHP','LHP') OR p.position LIKE 'RHP/%%' OR p.position LIKE 'LHP/%%')"
+            elif position == 'OF':
+                query += " AND (p.position IN ('OF','LF','CF','RF') OR p.position LIKE '%%/OF' OR p.position LIKE '%%/LF' OR p.position LIKE '%%/CF' OR p.position LIKE '%%/RF')"
+            elif position == 'IF':
+                query += " AND (p.position IN ('IF','1B','2B','3B','SS') OR p.position LIKE '%%/IF' OR p.position LIKE '%%/1B' OR p.position LIKE '%%/2B' OR p.position LIKE '%%/3B' OR p.position LIKE '%%/SS')"
+            else:
+                query += " AND (p.position = %s OR p.position LIKE %s OR p.position LIKE %s)"
+                params.extend([position, f"{position}/%", f"%/{position}"])
+        if bats:
+            query += " AND p.bats = %s"
+            params.append(bats)
+        if throws:
+            query += " AND p.throws = %s"
+            params.append(throws)
+
+        if sort_by == "total_war":
+            query += f" ORDER BY total_war {direction} NULLS LAST"
+        elif sort_by in ("era", "fip", "era_minus", "innings_pitched"):
+            query += f" ORDER BY COALESCE(ps2.{sort_by}, 999) {direction}"
+        elif sort_by == "era_plus":
+            query += f" ORDER BY CASE WHEN ps2.era_minus > 0 THEN 10000.0 / ps2.era_minus END {direction} NULLS LAST"
+        elif sort_by in ("fip_plus", "pitching_war"):
+            query += f" ORDER BY COALESCE(ps2.{sort_by}, 0) {direction}"
+        else:
+            query += f" ORDER BY COALESCE(bs.{sort_by}, 0) {direction} NULLS LAST"
+
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        out = []
+        for r in rows:
+            d = _add_era_plus(dict(r))
+            # "Committed To" reflects the portal destination we track in the
+            # JSON, not the players-table commitment column.
+            d["committed_to"] = committed_map.get(d["id"])
+            out.append(d)
+        return out
 
 
 # ============================================================

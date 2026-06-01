@@ -29,7 +29,7 @@ export default function CoachHomepage() {
 // live uncommitted-JUCO board on the side.
 // ============================================================
 const PORTAL_TOOLS = [
-  { to: '/portal/juco-tracker', label: 'JUCO Tracker',
+  { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
     desc: 'Uncommitted NWAC transfer targets', icon: 'search' },
   { to: '/portal/lineup-helper', label: 'Lineup Helper',
     desc: 'Optimal batting orders vs RHP / LHP', icon: 'lineup' },
@@ -212,7 +212,7 @@ function UncommittedJucoBoard() {
       )}
 
       <Link
-        to="/portal/juco-tracker"
+        to="/coaching/juco-tracker"
         className="mt-auto block px-3 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-portal-purple dark:text-portal-accent border-t border-gray-200 dark:border-gray-700 hover:bg-portal-purple/5 dark:hover:bg-portal-purple/20 transition-colors"
       >
         Open the JUCO Tracker →

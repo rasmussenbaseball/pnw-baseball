@@ -6,9 +6,9 @@ import { formatStat } from '../utils/stats'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 
 /**
- * JUCO Tracker - the recruiting tool.
- * Shows uncommitted NWAC players with their stats,
- * so 4-year schools can identify transfer targets.
+ * Transfer Portal Tracker — PNW four-year (non-JUCO) college players who
+ * have entered the transfer portal. Same look as the JUCO Tracker; the
+ * curated list is served by /players/transfer-portal.
  */
 
 const BATTING_COLS = [
@@ -34,14 +34,12 @@ const PITCHING_COLS = [
   { key: 'pitching_war',   label: 'pWAR', format: 'war',  mono: true },
 ]
 
-// All stat columns in order
 const STAT_COLS = [
   { key: 'total_war', label: 'WAR', format: 'war', mono: true },
   ...BATTING_COLS,
   ...PITCHING_COLS,
 ]
 
-// Columns that can be sorted via the API
 const SORTABLE = new Set([
   'total_war', 'offensive_war', 'pitching_war',
   'batting_avg', 'on_base_pct', 'slugging_pct', 'ops',
@@ -49,32 +47,24 @@ const SORTABLE = new Set([
   'plate_appearances', 'era', 'fip', 'fip_plus', 'innings_pitched',
 ])
 
-// Lower-is-better stats
 const ASC_DEFAULT = new Set(['era', 'fip'])
 
-export default function JucoTracker() {
-  const [season, setSeason] = usePersistedState('juco_season', 2026)
-  const [position, setPosition] = usePersistedState('juco_position', '')
-  const [classYear, setClassYear] = usePersistedState('juco_classYear', 'So')
-  const [sortBy, setSortBy] = usePersistedState('juco_sortBy', 'total_war')
-  const [sortDir, setSortDir] = usePersistedState('juco_sortDir', 'desc')
-  const [minAb, setMinAb] = usePersistedState('juco_minAb', 0)
-  const [minIp, setMinIp] = usePersistedState('juco_minIp', 0)
-  const [bats, setBats] = usePersistedState('juco_bats', '')
-  const [throws_, setThrows] = usePersistedState('juco_throws', '')
+export default function TransferPortalTracker() {
+  const [season, setSeason] = usePersistedState('tp_season', 2026)
+  const [position, setPosition] = usePersistedState('tp_position', '')
+  const [sortBy, setSortBy] = usePersistedState('tp_sortBy', 'total_war')
+  const [sortDir, setSortDir] = usePersistedState('tp_sortDir', 'desc')
+  const [bats, setBats] = usePersistedState('tp_bats', '')
+  const [throws_, setThrows] = usePersistedState('tp_throws', '')
 
-  const { data, loading } = useApi('/players/juco/uncommitted', {
+  const { data, loading } = useApi('/players/transfer-portal', {
     season,
     position: position || undefined,
-    year_in_school: classYear || undefined,
     sort_by: sortBy,
     sort_dir: sortDir,
-    min_ab: minAb || 0,
-    min_ip: minIp || 0,
     bats: bats || undefined,
     throws: throws_ || undefined,
-    limit: 500,
-  }, [season, position, classYear, sortBy, sortDir, minAb, minIp, bats, throws_])
+  }, [season, position, sortBy, sortDir, bats, throws_])
 
   const positions = ['C', 'IF', '1B', '2B', '3B', 'SS', 'OF', 'LF', 'CF', 'RF', 'DH', 'P', 'UT']
 
@@ -105,9 +95,9 @@ export default function JucoTracker() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-2">JUCO Tracker</h1>
+      <h1 className="text-2xl font-bold text-pnw-slate mb-2">Transfer Portal Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        NWAC players available for transfer to 4-year programs.
+        Pacific Northwest four-year college players who have entered the transfer portal.
       </p>
 
       {/* Filters */}
@@ -127,19 +117,6 @@ export default function JucoTracker() {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Class</label>
-            <select
-              value={classYear}
-              onChange={(e) => setClassYear(e.target.value)}
-              className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm"
-            >
-              <option value="So">Sophomores</option>
-              <option value="Fr">Freshmen</option>
-              <option value="">All</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col">
             <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Position</label>
             <select
               value={position}
@@ -151,28 +128,6 @@ export default function JucoTracker() {
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Min AB</label>
-            <input
-              type="number"
-              value={minAb}
-              onChange={(e) => setMinAb(parseInt(e.target.value) || 0)}
-              min={0} max={300} step={10}
-              className="w-16 rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-sm"
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Min IP</label>
-            <input
-              type="number"
-              value={minIp}
-              onChange={(e) => setMinIp(parseInt(e.target.value) || 0)}
-              min={0} max={150} step={5}
-              className="w-16 rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-sm"
-            />
           </div>
 
           <div className="flex flex-col">
@@ -207,7 +162,7 @@ export default function JucoTracker() {
       {/* Results */}
       {loading ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-8 text-center text-gray-400 dark:text-gray-500 animate-pulse">
-          Loading JUCO players...
+          Loading transfer portal...
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border overflow-x-auto relative">
@@ -215,32 +170,26 @@ export default function JucoTracker() {
             <thead>
               {/* Category header row */}
               <tr className="sticky top-0 z-20 bg-pnw-slate">
-                {/* Frozen info columns */}
                 <th colSpan={7} style={{width:398,minWidth:398,maxWidth:398}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
                   Player Info
                 </th>
-                {/* WAR */}
                 <th className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 border-r border-white/10"></th>
-                {/* Batting group */}
                 <th colSpan={BATTING_COLS.length} className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center border-r border-white/10">
                   Batting
                 </th>
-                {/* Pitching group */}
                 <th colSpan={PITCHING_COLS.length} className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
                   Pitching
                 </th>
               </tr>
               {/* Column header row */}
               <tr className="sticky top-[25px] z-20 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
-                {/* Frozen: #, Player, Team, Pos, Yr, Committed */}
                 <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-right border-r border-gray-100 dark:border-gray-700">#</th>
                 <th style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Player</th>
-                <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Team</th>
-                <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[228px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Pos</th>
-                <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[268px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">B/T</th>
-                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[300px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Yr</th>
-                <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left border-r border-gray-200 dark:border-gray-700">Committed</th>
-                {/* Stat columns */}
+                <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[138px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">School</th>
+                <th style={{width:60,minWidth:60,maxWidth:60}} className="sticky left-[228px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Pos</th>
+                <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[288px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">B/T</th>
+                <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[320px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Yr</th>
+                <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[348px] z-30 bg-gray-50 dark:bg-gray-900/40 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left border-r border-gray-200 dark:border-gray-700">Committed To</th>
                 {STAT_COLS.map(col => (
                   <th
                     key={col.key}
@@ -257,7 +206,6 @@ export default function JucoTracker() {
             <tbody>
               {(data || []).map((row, i) => (
                 <tr key={row.id} className={`border-b border-gray-50 hover:bg-teal-50/30 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/40'}`}>
-                  {/* Frozen columns */}
                   <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-10 bg-inherit px-1 py-1 text-gray-400 dark:text-gray-500 text-right text-[10px] border-r border-gray-100 dark:border-gray-700">{i + 1}</td>
                   <td style={{width:110,minWidth:110,maxWidth:110}} className="sticky left-[28px] z-10 bg-inherit px-1.5 py-1 font-medium overflow-hidden">
                     <Link to={`/player/${row.id}`} className="text-nw-teal hover:underline whitespace-nowrap block truncate">
@@ -276,14 +224,13 @@ export default function JucoTracker() {
                   <td style={{width:60,minWidth:60,maxWidth:60}} className="sticky left-[228px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
                   <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[288px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
                   <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[320px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
-                  <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[328px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[348px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
                     {row.committed_to ? (
                       <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
                     ) : (
                       <span className="text-gray-400 dark:text-gray-500">-</span>
                     )}
                   </td>
-                  {/* Stat columns */}
                   {STAT_COLS.map(col => (
                     <td
                       key={col.key}
@@ -306,7 +253,7 @@ export default function JucoTracker() {
         </div>
       )}
 
-      <StatsLastUpdated levels={['JUCO']} className="mt-3" />
+      <StatsLastUpdated levels={['D1', 'D2', 'D3', 'NAIA']} className="mt-3" />
     </div>
   )
 }

@@ -202,6 +202,7 @@ import TeamComparison from './pages/TeamComparison'
 import ScatterPlot from './pages/ScatterPlot'
 import PlayerSearch from './pages/PlayerSearch'
 import JucoTracker from './pages/JucoTracker'
+import TransferPortalTracker from './pages/TransferPortalTracker'
 import PlayerDetail from './pages/PlayerDetail'
 import SocialGraphics from './pages/SocialGraphics'
 import DailyScoresGraphic from './pages/DailyScoresGraphic'
@@ -396,8 +397,12 @@ export default function App() {
           <Route path="/recruiting/field" element={<RequireAdmin><RecruitingField /></RequireAdmin>} />
 
           {/* Coaching (auth required) */}
-          {/* Old standalone JUCO route → redirect to portal-wrapped version. */}
-          <Route path="/juco-tracker" element={<Navigate to="/portal/juco-tracker" replace />} />
+          {/* JUCO + Transfer Portal trackers live in the main-site Coaching
+              tab (premium). Old standalone + portal URLs redirect here. */}
+          <Route path="/coaching/juco-tracker" element={<RequireTier minTier="premium"><JucoTracker /></RequireTier>} />
+          <Route path="/coaching/transfer-portal" element={<RequireTier minTier="premium"><TransferPortalTracker /></RequireTier>} />
+          <Route path="/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
+          <Route path="/portal/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
           <Route path="/park-factors" element={<RequireTier minTier="premium"><ParkFactors /></RequireTier>} />
 
@@ -449,10 +454,6 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout lightOnly><CatcherCards /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/nwac-tournament-sheet"
                  element={<RequirePortalAccess><PortalLayout lightOnly><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
-          {/* JUCO Tracker moved into the Coach & Scout portal (2026-05-25).
-              Old /juco-tracker still works via the redirect above. */}
-          <Route path="/portal/juco-tracker"
-                 element={<RequirePortalAccess><PortalLayout><JucoTracker /></PortalLayout></RequirePortalAccess>} />
           {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
           <Route path="/news/commitments" element={<RequireTier minTier="premium"><NewsCommitments /></RequireTier>} />
