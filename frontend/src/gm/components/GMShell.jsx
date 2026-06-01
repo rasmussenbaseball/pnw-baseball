@@ -35,17 +35,40 @@ class GMErrorBoundary extends Component {
     // the top-level Sentry.ErrorBoundary never sees the error (this
     // boundary catches first), and Sentry alerts come through with a
     // useless "Error: No error message". Reported by Zack: the prod
-    // JAVASCRIPT-REACT-8 alert had no actionable detail. Now we attach
-    // the React component stack as Sentry context so future occurrences
-    // pinpoint the failing component.
+    // JAVASCRIPT-REACT-8/9 alerts had no actionable detail.
     try {
-      Sentry.captureException(error, {
+      // React's componentDidCatch can hand back a non-Error throw (e.g.
+      // `throw undefined`, `throw 'string'`, or a Promise rejection that
+      // bubbled). In that case `error.message` is undefined and Sentry
+      // groups the event with the opaque "No error message" headline.
+      // Wrap non-Error throws in a synthetic Error so the alert always
+      // names a component + value.
+      let reportable = error
+      if (!(error instanceof Error)) {
+        const msg = `Non-Error thrown in GM page: ${
+          error === undefined ? 'undefined' :
+          error === null ? 'null' :
+          (typeof error === 'object' ? JSON.stringify(error).slice(0, 200) : String(error))
+        }`
+        reportable = new Error(msg)
+      }
+      // Pull the deepest component name from the stack — surfaces in
+      // Sentry's fingerprint so issues group per-component instead of
+      // collapsing all GM crashes into one bucket.
+      const compStack = info?.componentStack || ''
+      const firstComp = (compStack.match(/^\s*at\s+(\w+)/m) || compStack.match(/^\s*in\s+(\w+)/m) || [])[1] || 'unknown'
+      Sentry.captureException(reportable, {
         contexts: {
-          react: {
-            componentStack: info?.componentStack || '(none)',
+          react: { componentStack: compStack || '(none)' },
+          gm: {
+            location: typeof window !== 'undefined' ? window.location.pathname + window.location.search : '(ssr)',
+            originalThrowType: error === undefined ? 'undefined' : (error === null ? 'null' : typeof error),
           },
         },
-        tags: { gmBoundary: 'GMErrorBoundary' },
+        tags: {
+          gmBoundary: 'GMErrorBoundary',
+          gmCrashComponent: firstComp,
+        },
       })
     } catch { /* Sentry no-ops when uninitialized; never let reporting itself throw */ }
   }
