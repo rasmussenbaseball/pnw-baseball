@@ -15,6 +15,7 @@ const TIERS = [
   { id: 'anonymous',   label: 'Anonymous',    hint: 'Signed-out visitor' },
   { id: 'free',        label: 'Free',         hint: 'Free account holder' },
   { id: 'premium',     label: 'Premium',      hint: '$5/mo subscriber' },
+  { id: 'recruiting',  label: 'Recruiting',   hint: '$10/mo college coach' },
   { id: 'coach',       label: 'Coach',        hint: '$25/mo Coach & Scout' },
 ]
 
@@ -45,7 +46,7 @@ export default function PreviewTierWidget() {
           </span>
         )}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {TIERS.map((t) => {
           const selected = previewTier === t.id
           return (

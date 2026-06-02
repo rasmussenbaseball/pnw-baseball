@@ -215,6 +215,7 @@ import Homepage from './pages/Homepage'
 import AnonymousHomepage from './pages/AnonymousHomepage'
 import FreeHomepage from './pages/FreeHomepage'
 import PremiumHomepage from './pages/PremiumHomepage'
+import RecruitingHomepage from './pages/RecruitingHomepage'
 import CoachHomepage from './pages/CoachHomepage'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
@@ -611,6 +612,7 @@ export default function App() {
 //   • not signed in        → AnonymousHomepage (signup-focused)
 //   • signed-in free tier  → FreeHomepage (data-rich + premium nudge)
 //   • premium tier         → PremiumHomepage
+//   • recruiting tier      → RecruitingHomepage (premium page + recruiting boards)
 //   • coach tier / dev     → CoachHomepage (premium page + portal showcase)
 // Devs resolve to the 'dev' tier in "My View", so their landing page is
 // the coach homepage too.
@@ -627,6 +629,7 @@ function HomepageRouter() {
   if (!user) return <AnonymousHomepage />
   if (tier === 'free') return <FreeHomepage />
   if (tier === 'premium') return <PremiumHomepage />
+  if (tier === 'recruiting') return <RecruitingHomepage />
   if (tier === 'coach' || tier === 'dev') return <CoachHomepage />
   return <Homepage />
 }
