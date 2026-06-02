@@ -1,22 +1,61 @@
 import { useState, useRef, useEffect, useCallback, forwardRef } from 'react'
 import { useApi, useDivisions, useConferences } from '../hooks/useApi'
+import { SEASONS, CURRENT_SEASON } from '../lib/seasons'
 
 // ─── Fixed 1080x1080 ───
 const SIZE = { w: 1080, h: 1080 }
 
-// ─── Card theme ───
-const THEME = {
-  bg: 'linear-gradient(160deg, #0a1628 0%, #0f2744 35%, #00687a 100%)',
-  accent: '#7dd3fc',
-  accentGlow: 'rgba(125,211,252,0.3)',
-  highlight: 'rgba(0,138,158,',
+// ─── Card themes ───
+// Every scheme is dark (white text). A theme is defined by three gradient
+// stops (160deg, at 0% / 35% / 100%), an accent color used for the top-3
+// highlight + glow, and the RGB triples that drive the decorative orbs and
+// the top-3 row tint. buildTheme() expands a palette into the full object
+// the preview card AND the canvas exporter consume, so both stay in sync.
+const SHARED_TEXT = {
   textPrimary: '#ffffff',
   textSecondary: 'rgba(255,255,255,0.45)',
   textMuted: 'rgba(255,255,255,0.25)',
   border: 'rgba(255,255,255,0.08)',
   rowAlt: 'rgba(255,255,255,0.025)',
-  orb1: 'rgba(0,104,122,0.3)',
-  orb2: 'rgba(0,138,158,0.15)',
+}
+
+const THEMES = [
+  { id: 'teal',     label: 'Midnight Teal', stops: ['#0a1628', '#0f2744', '#00687a'],
+    accent: '#7dd3fc', accentRGB: '125,211,252', highlightRGB: '0,138,158',
+    orb1RGB: '0,104,122', orb2RGB: '0,138,158', mainStat: '#e0f2fe' },
+  { id: 'crimson',  label: 'Crimson Night', stops: ['#1a0a0f', '#2d0f1a', '#7a1f2b'],
+    accent: '#fca5a5', accentRGB: '252,165,165', highlightRGB: '180,40,60',
+    orb1RGB: '122,31,43', orb2RGB: '158,40,55', mainStat: '#fee2e2' },
+  { id: 'forest',   label: 'Forest', stops: ['#07150f', '#0f2a1e', '#1f7a52'],
+    accent: '#6ee7b7', accentRGB: '110,231,183', highlightRGB: '31,122,82',
+    orb1RGB: '15,90,60', orb2RGB: '31,122,82', mainStat: '#d1fae5' },
+  { id: 'royal',    label: 'Royal Purple', stops: ['#140a28', '#241046', '#5b21b6'],
+    accent: '#c4b5fd', accentRGB: '196,181,253', highlightRGB: '91,33,182',
+    orb1RGB: '70,30,130', orb2RGB: '91,33,182', mainStat: '#ede9fe' },
+  { id: 'graphite', label: 'Graphite', stops: ['#0b0e14', '#1a1f2b', '#36404f'],
+    accent: '#cbd5e1', accentRGB: '203,213,225', highlightRGB: '90,104,128',
+    orb1RGB: '54,64,79', orb2RGB: '90,104,128', mainStat: '#e2e8f0' },
+]
+
+function buildTheme(palette) {
+  const [c0, c1, c2] = palette.stops
+  return {
+    ...SHARED_TEXT,
+    id: palette.id,
+    label: palette.label,
+    stops: palette.stops,            // raw, for canvas gradient
+    bg: `linear-gradient(160deg, ${c0} 0%, ${c1} 35%, ${c2} 100%)`,
+    accent: palette.accent,
+    accentRGB: palette.accentRGB,
+    accentGlow: `rgba(${palette.accentRGB},0.3)`,
+    highlightRGB: palette.highlightRGB,
+    highlight: `rgba(${palette.highlightRGB},`,   // suffix `${opacity})`
+    orb1RGB: palette.orb1RGB,
+    orb2RGB: palette.orb2RGB,
+    orb1: `rgba(${palette.orb1RGB},0.3)`,
+    orb2: `rgba(${palette.orb2RGB},0.15)`,
+    mainStat: palette.mainStat,
+  }
 }
 
 // ─── All available stats with metadata ───
@@ -26,6 +65,7 @@ const ALL_BATTING_STATS = [
   { key: 'home_runs',    label: 'HR',     format: 'int',  dir: 'desc' },
   { key: 'stolen_bases', label: 'SB',     format: 'int',  dir: 'desc' },
   { key: 'woba',         label: 'wOBA',   format: 'avg',  dir: 'desc' },
+  { key: 'wobacon',      label: 'wOBACON',format: 'avg',  dir: 'desc' },
   { key: 'offensive_war',label: 'oWAR',   format: 'war',  dir: 'desc' },
   { key: 'on_base_pct',  label: 'OBP',    format: 'avg',  dir: 'desc' },
   { key: 'slugging_pct', label: 'SLG',    format: 'avg',  dir: 'desc' },
@@ -73,6 +113,7 @@ const ALL_PITCHING_STATS = [
   { key: 'hr_per_9',     label: 'HR/9',   format: 'era',  dir: 'asc'  },
   { key: 'k_bb_ratio',   label: 'K/BB',   format: 'era',  dir: 'desc' },
   { key: 'babip_against',label: 'BABIP',  format: 'avg',  dir: 'asc'  },
+  { key: 'baa',          label: 'BAA',    format: 'avg',  dir: 'asc'  },
   { key: 'lob_pct',      label: 'LOB%',   format: 'pct',  dir: 'desc' },
   { key: 'quality_starts',label: 'QS',    format: 'int',  dir: 'desc' },
   { key: 'complete_games',label: 'CG',    format: 'int',  dir: 'desc' },
@@ -117,6 +158,148 @@ const ALL_TEAM_PITCHING_STATS = [
 const ALL_TEAM_COMBINED_STATS = [
   { key: 'total_war',     label: 'WAR',    format: 'war',  dir: 'desc' },
 ]
+
+// WAR leaderboard rows carry both batting and pitching components (a
+// pitcher's hitting fields are null and vice-versa — extra cols render "-").
+const ALL_WAR_STATS = [
+  { key: 'total_war',        label: 'WAR',    format: 'war', dir: 'desc' },
+  { key: 'offensive_war',    label: 'oWAR',   format: 'war', dir: 'desc' },
+  { key: 'pitching_war',     label: 'pWAR',   format: 'war', dir: 'desc' },
+  { key: 'war_per_pa',       label: 'WAR/PA', format: 'avg', dir: 'desc' },
+  { key: 'war_per_ip',       label: 'WAR/IP', format: 'avg', dir: 'desc' },
+  { key: 'wrc_plus',         label: 'wRC+',   format: 'int', dir: 'desc' },
+  { key: 'woba',             label: 'wOBA',   format: 'avg', dir: 'desc' },
+  { key: 'wobacon',          label: 'wOBACON',format: 'avg', dir: 'desc' },
+  { key: 'batting_avg',      label: 'AVG',    format: 'avg', dir: 'desc' },
+  { key: 'plate_appearances',label: 'PA',     format: 'int', dir: 'desc' },
+  { key: 'era',              label: 'ERA',    format: 'era', dir: 'asc'  },
+  { key: 'era_plus',         label: 'ERA+',   format: 'int', dir: 'desc' },
+  { key: 'fip',              label: 'FIP',    format: 'era', dir: 'asc'  },
+  { key: 'fip_plus',         label: 'FIP+',   format: 'int', dir: 'desc' },
+  { key: 'innings_pitched',  label: 'IP',     format: 'ip',  dir: 'desc' },
+  { key: 'k_per_9',          label: 'K/9',    format: 'era', dir: 'desc' },
+  { key: 'whip',             label: 'WHIP',   format: 'era', dir: 'asc'  },
+  { key: 'wins',             label: 'W',      format: 'int', dir: 'desc' },
+]
+
+// ─── Fielding (/leaderboards/fielding) ───
+const ALL_FIELDING_STATS = [
+  { key: 'fielding_pct',          label: 'FLD%',  format: 'avg', dir: 'desc' },
+  { key: 'range_factor',          label: 'RF/9',  format: 'era', dir: 'desc' },
+  { key: 'putouts',               label: 'PO',    format: 'int', dir: 'desc' },
+  { key: 'assists',               label: 'A',     format: 'int', dir: 'desc' },
+  { key: 'errors',                label: 'E',     format: 'int', dir: 'asc'  },
+  { key: 'double_plays',          label: 'DP',    format: 'int', dir: 'desc' },
+  { key: 'triple_plays',          label: 'TP',    format: 'int', dir: 'desc' },
+  { key: 'total_chances',         label: 'TC',    format: 'int', dir: 'desc' },
+  { key: 'innings',               label: 'INN',   format: 'era', dir: 'desc' },
+  { key: 'games',                 label: 'G',     format: 'int', dir: 'desc' },
+  { key: 'games_started',         label: 'GS',    format: 'int', dir: 'desc' },
+  { key: 'pickoffs',              label: 'PK',    format: 'int', dir: 'desc' },
+  // Catcher
+  { key: 'caught_stealing_by',    label: 'CS',    format: 'int', dir: 'desc' },
+  { key: 'stolen_bases_against',  label: 'SBA',   format: 'int', dir: 'asc'  },
+  { key: 'cs_pct',                label: 'CS%',   format: 'avg', dir: 'desc' },
+  { key: 'passed_balls',          label: 'PB',    format: 'int', dir: 'asc'  },
+]
+
+// ─── Relievers / Clutch (/leaderboards/relievers). IP is stored as outs;
+// WPA is signed. Both get bespoke formats. `sort` differs from `key` for IP.
+const ALL_RELIEVER_STATS = [
+  { key: 'wpa',       sort: 'wpa',       label: 'WPA',    format: 'wpa',     dir: 'desc' },
+  { key: 'geg',       label: 'GEG',    format: 'int',     dir: 'desc' },
+  { key: 'goose_pct', label: 'Goose%', format: 'pct',     dir: 'desc' },
+  { key: 'brk',       label: 'BRK',    format: 'int',     dir: 'asc'  },
+  { key: 'opp',       label: 'OPP',    format: 'int',     dir: 'desc' },
+  { key: 'app',       label: 'App',    format: 'int',     dir: 'desc' },
+  { key: 'outs',      sort: 'ip',      label: 'IP',     format: 'outs_ip', dir: 'desc' },
+  { key: 'bf',        label: 'BF',     format: 'int',     dir: 'desc' },
+  { key: 'k_pct',     label: 'K%',     format: 'pct',     dir: 'desc' },
+  { key: 'bb_pct',    label: 'BB%',    format: 'pct',     dir: 'asc'  },
+  { key: 'ra9',       label: 'RA9',    format: 'era',     dir: 'asc'  },
+  { key: 'whip',      label: 'WHIP',   format: 'era',     dir: 'asc'  },
+  { key: 'k',         label: 'K',      format: 'int',     dir: 'desc' },
+  { key: 'bb',        label: 'BB',     format: 'int',     dir: 'asc'  },
+  { key: 'h',         label: 'H',      format: 'int',     dir: 'asc'  },
+  { key: 'r',         label: 'R',      format: 'int',     dir: 'asc'  },
+]
+
+// ─── Hitting PBP (/leaderboards/batting-pbp) ───
+const ALL_BATTING_PBP_STATS = [
+  { key: 'whiff_pct',      label: 'Whiff%',  format: 'pct', dir: 'asc'  },
+  { key: 'contact_pct',    label: 'Contact%',format: 'pct', dir: 'desc' },
+  { key: 'swing_pct',      label: 'Swing%',  format: 'pct', dir: 'desc' },
+  { key: 'fb_pct',         label: 'FB%',     format: 'pct', dir: 'desc' },
+  { key: 'air_pull_pct',   label: 'AirPull%',format: 'pct', dir: 'desc' },
+  { key: 'putaway_pct',    label: 'PA-K%',   format: 'pct', dir: 'asc'  },
+  { key: 'pitches_per_pa', label: 'P/PA',    format: 'era', dir: 'desc' },
+  { key: 'tracked_pa',     label: 'PA',      format: 'int', dir: 'desc' },
+  { key: 'pitches',        label: 'Pit',     format: 'int', dir: 'desc' },
+  { key: 'swings',         label: 'Sw',      format: 'int', dir: 'desc' },
+]
+
+// ─── Pitching PBP (/leaderboards/pitching-pbp). tracked_pa = BF. ───
+const ALL_PITCHING_PBP_STATS = [
+  { key: 'whiff_pct',              label: 'Whiff%', format: 'pct', dir: 'desc' },
+  { key: 'strike_pct',             label: 'Str%',   format: 'pct', dir: 'desc' },
+  { key: 'first_pitch_strike_pct', label: 'F-Str%', format: 'pct', dir: 'desc' },
+  { key: 'called_strike_pct',      label: 'CSt%',   format: 'pct', dir: 'desc' },
+  { key: 'contact_pct',            label: 'Contact%',format:'pct', dir: 'asc'  },
+  { key: 'gb_pct',                 label: 'GB%',    format: 'pct', dir: 'desc' },
+  { key: 'putaway_pct',            label: 'Putaway%',format:'pct', dir: 'desc' },
+  { key: 'on_or_out_3_pct',        label: 'OO3%',   format: 'pct', dir: 'desc' },
+  { key: 'pitches_per_pa',         label: 'P/BF',   format: 'era', dir: 'asc'  },
+  { key: 'tracked_pa',             label: 'BF',     format: 'int', dir: 'desc' },
+  { key: 'pitches',                label: 'Pit',    format: 'int', dir: 'desc' },
+  { key: 'swings',                 label: 'Sw',     format: 'int', dir: 'desc' },
+]
+
+// ─── Category metadata: endpoint + which filters each one supports.
+// Filters that an endpoint doesn't accept are hidden AND never sent, so we
+// never mis-rank by passing an ignored param. sampleParam/sampleLabel drive
+// the "Min ___" input; sampleDefault keeps small-sample noise off boards
+// that have no qualified toggle (PBP / fielding / relievers).
+const CATEGORIES = [
+  { id: 'batting',      label: 'Batting',  endpoint: '/leaderboards/batting',      kind: 'player',
+    division: true, conf: true, state: true, confOnly: true, posGroup: true, qualified: true, year: true,
+    sampleParam: 'min_pa', sampleLabel: 'PA', sampleDefault: 0 },
+  { id: 'pitching',     label: 'Pitching', endpoint: '/leaderboards/pitching',     kind: 'player',
+    division: true, conf: true, state: true, confOnly: true, qualified: true, year: true,
+    sampleParam: 'min_ip', sampleLabel: 'IP', sampleDefault: 0 },
+  { id: 'fielding',     label: 'Fielding', endpoint: '/leaderboards/fielding',     kind: 'player',
+    division: true, conf: true, state: true, posExact: true, year: true,
+    sampleParam: 'min_games', sampleLabel: 'G', sampleDefault: 5 },
+  { id: 'batting_pbp',  label: 'Hit PBP',  endpoint: '/leaderboards/batting-pbp',  kind: 'player',
+    division: true, conf: true, state: true, year: true,
+    sampleParam: 'min_pa', sampleLabel: 'PA', sampleDefault: 30 },
+  { id: 'pitching_pbp', label: 'Pit PBP',  endpoint: '/leaderboards/pitching-pbp', kind: 'player',
+    division: true, conf: true, state: true, year: true,
+    sampleParam: 'min_bf', sampleLabel: 'BF', sampleDefault: 40 },
+  { id: 'relievers',    label: 'Bullpen',  endpoint: '/leaderboards/relievers',    kind: 'player',
+    division: true, conf: true, state: true, year: true,
+    sampleParam: 'min_bf', sampleLabel: 'BF', sampleDefault: 20 },
+  { id: 'war',          label: 'WAR',      endpoint: '/leaderboards/war',          kind: 'player',
+    division: true, conf: true, confOnly: true, posGroup: true, qualified: true, year: true,
+    sampleParam: 'min_pa_ip', sampleLabel: 'PA/IP', sampleDefault: 0 },
+  { id: 'teams',        label: 'Teams',    endpoint: '/leaderboards/teams',        kind: 'team',
+    division: true, sampleParam: null },
+]
+const CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map(c => [c.id, c]))
+
+// Server-side sort whitelists (mirror routes.py). A stat can only be the
+// MAIN (ranked-by) stat if its sort key is here; otherwise the backend would
+// silently fall back to its default sort and the board would be mis-ranked.
+// Extra (display-only) columns can be ANY returned field.
+const SORTABLE = {
+  batting: new Set(['babip','batting_avg','bb_pct','doubles','hits','home_runs','iso','k_pct','offensive_war','on_base_pct','ops','plate_appearances','rbi','runs','slugging_pct','stolen_bases','strikeouts','triples','walks','woba','wobacon','wrc_plus']),
+  pitching: new Set(['baa','babip_against','bb_pct','bb_per_9','era','era_minus','era_plus','fip','fip_plus','hr_per_9','innings_pitched','k_bb_pct','k_bb_ratio','k_pct','k_per_9','kwera','lob_pct','losses','pitching_war','quality_starts','saves','siera','strikeouts','whip','wins','xfip']),
+  war: new Set(['batting_avg','era','era_minus','era_plus','fip','fip_plus','innings_pitched','k_per_9','offensive_war','pitching_war','plate_appearances','total_war','war_per_ip','war_per_pa','whip','wins','woba','wobacon','wrc_plus']),
+  teams: new Set(['avg_bb_pct','avg_era_plus','avg_fip','avg_fip_plus','avg_iso','avg_k_pct','avg_woba','avg_wrc_plus','avg_xfip','pitching_bb_pct','pitching_k_pct','team_avg','team_era','team_obp','team_ops','team_slg','team_whip','total_hits','total_hr','total_ip','total_k','total_owar','total_pwar','total_rbi','total_runs','total_sb','total_war']),
+  fielding: new Set(['assists','caught_stealing_by','cs_pct','double_plays','errors','fielding_pct','games','games_started','innings','passed_balls','pickoffs','putouts','range_factor','stolen_bases_against','total_chances','triple_plays']),
+  relievers: new Set(['app','bb','bb_pct','bf','brk','geg','goose_pct','h','ip','k','k_pct','opp','r','ra9','whip','wpa']),
+  batting_pbp: new Set(['air_pull_pct','contact_pct','fb_pct','pitches','pitches_per_pa','putaway_pct','swing_pct','swings','tracked_pa','whiff_pct']),
+  pitching_pbp: new Set(['called_strike_pct','contact_pct','first_pitch_strike_pct','gb_pct','on_or_out_3_pct','pitches','pitches_per_pa','putaway_pct','strike_pct','swings','tracked_pa','whiff_pct']),
+}
 
 // ─── Stat presets for quick access ───
 const STAT_PRESETS = {
@@ -241,8 +424,22 @@ const STAT_PRESETS = {
       extra: [
         { key: 'offensive_war', label: 'oWAR', format: 'war' },
         { key: 'pitching_war', label: 'pWAR', format: 'war' },
-        { key: 'batting_avg', label: 'AVG', format: 'avg' },
+        { key: 'wrc_plus', label: 'wRC+', format: 'int' },
         { key: 'era', label: 'ERA', format: 'era' },
+      ] },
+    { key: 'offensive_war', label: 'oWAR',  sort: 'offensive_war', dir: 'desc', format: 'war', title: 'Offensive WAR Leaders', endpoint: '/leaderboards/war',
+      extra: [
+        { key: 'wrc_plus', label: 'wRC+', format: 'int' },
+        { key: 'woba', label: 'wOBA', format: 'avg' },
+        { key: 'batting_avg', label: 'AVG', format: 'avg' },
+        { key: 'plate_appearances', label: 'PA', format: 'int' },
+      ] },
+    { key: 'pitching_war',  label: 'pWAR',  sort: 'pitching_war', dir: 'desc', format: 'war', title: 'Pitching WAR Leaders', endpoint: '/leaderboards/war',
+      extra: [
+        { key: 'era', label: 'ERA', format: 'era' },
+        { key: 'fip_plus', label: 'FIP+', format: 'int' },
+        { key: 'innings_pitched', label: 'IP', format: 'ip' },
+        { key: 'whip', label: 'WHIP', format: 'era' },
       ] },
   ],
   teams: [
@@ -289,6 +486,154 @@ const STAT_PRESETS = {
         { key: 'avg_wrc_plus', label: 'wRC+', format: 'int' },
       ] },
   ],
+  fielding: [
+    { key: 'fielding_pct', label: 'FLD%', sort: 'fielding_pct', dir: 'desc', format: 'avg', title: 'Fielding % Leaders', endpoint: '/leaderboards/fielding',
+      extra: [
+        { key: 'total_chances', label: 'TC', format: 'int' },
+        { key: 'putouts', label: 'PO', format: 'int' },
+        { key: 'assists', label: 'A', format: 'int' },
+        { key: 'errors', label: 'E', format: 'int' },
+      ] },
+    { key: 'range_factor', label: 'RF/9', sort: 'range_factor', dir: 'desc', format: 'era', title: 'Range Factor Leaders', endpoint: '/leaderboards/fielding',
+      extra: [
+        { key: 'putouts', label: 'PO', format: 'int' },
+        { key: 'assists', label: 'A', format: 'int' },
+        { key: 'double_plays', label: 'DP', format: 'int' },
+        { key: 'fielding_pct', label: 'FLD%', format: 'avg' },
+      ] },
+    { key: 'double_plays', label: 'DP', sort: 'double_plays', dir: 'desc', format: 'int', title: 'Double Play Leaders', endpoint: '/leaderboards/fielding',
+      extra: [
+        { key: 'putouts', label: 'PO', format: 'int' },
+        { key: 'assists', label: 'A', format: 'int' },
+        { key: 'fielding_pct', label: 'FLD%', format: 'avg' },
+        { key: 'games', label: 'G', format: 'int' },
+      ] },
+    { key: 'assists', label: 'A', sort: 'assists', dir: 'desc', format: 'int', title: 'Assist Leaders', endpoint: '/leaderboards/fielding',
+      extra: [
+        { key: 'putouts', label: 'PO', format: 'int' },
+        { key: 'errors', label: 'E', format: 'int' },
+        { key: 'double_plays', label: 'DP', format: 'int' },
+        { key: 'fielding_pct', label: 'FLD%', format: 'avg' },
+      ] },
+    { key: 'cs_pct', label: 'CS%', sort: 'cs_pct', dir: 'desc', format: 'avg', title: 'Catcher CS% Leaders', endpoint: '/leaderboards/fielding',
+      extra: [
+        { key: 'caught_stealing_by', label: 'CS', format: 'int' },
+        { key: 'stolen_bases_against', label: 'SBA', format: 'int' },
+        { key: 'passed_balls', label: 'PB', format: 'int' },
+        { key: 'fielding_pct', label: 'FLD%', format: 'avg' },
+      ] },
+  ],
+  relievers: [
+    { key: 'wpa', label: 'WPA', sort: 'wpa', dir: 'desc', format: 'wpa', title: 'Relief WPA Leaders', endpoint: '/leaderboards/relievers',
+      extra: [
+        { key: 'outs', label: 'IP', format: 'outs_ip' },
+        { key: 'app', label: 'App', format: 'int' },
+        { key: 'geg', label: 'GEG', format: 'int' },
+        { key: 'goose_pct', label: 'Goose%', format: 'pct' },
+      ] },
+    { key: 'geg', label: 'GEG', sort: 'geg', dir: 'desc', format: 'int', title: 'Goose Egg Leaders', endpoint: '/leaderboards/relievers',
+      extra: [
+        { key: 'opp', label: 'OPP', format: 'int' },
+        { key: 'goose_pct', label: 'Goose%', format: 'pct' },
+        { key: 'brk', label: 'BRK', format: 'int' },
+        { key: 'wpa', label: 'WPA', format: 'wpa' },
+      ] },
+    { key: 'goose_pct', label: 'Goose%', sort: 'goose_pct', dir: 'desc', format: 'pct', title: 'Goose% Leaders', endpoint: '/leaderboards/relievers',
+      extra: [
+        { key: 'geg', label: 'GEG', format: 'int' },
+        { key: 'opp', label: 'OPP', format: 'int' },
+        { key: 'outs', label: 'IP', format: 'outs_ip' },
+        { key: 'wpa', label: 'WPA', format: 'wpa' },
+      ] },
+    { key: 'k_pct', label: 'K%', sort: 'k_pct', dir: 'desc', format: 'pct', title: 'Relief K% Leaders', endpoint: '/leaderboards/relievers',
+      extra: [
+        { key: 'bb_pct', label: 'BB%', format: 'pct' },
+        { key: 'ra9', label: 'RA9', format: 'era' },
+        { key: 'whip', label: 'WHIP', format: 'era' },
+        { key: 'bf', label: 'BF', format: 'int' },
+      ] },
+    { key: 'ra9', label: 'RA9', sort: 'ra9', dir: 'asc', format: 'era', title: 'Lowest Relief RA9', endpoint: '/leaderboards/relievers',
+      extra: [
+        { key: 'whip', label: 'WHIP', format: 'era' },
+        { key: 'k_pct', label: 'K%', format: 'pct' },
+        { key: 'bb_pct', label: 'BB%', format: 'pct' },
+        { key: 'outs', label: 'IP', format: 'outs_ip' },
+      ] },
+  ],
+  batting_pbp: [
+    { key: 'whiff_pct', label: 'Whiff%', sort: 'whiff_pct', dir: 'asc', format: 'pct', title: 'Lowest Whiff% (Best Contact)', endpoint: '/leaderboards/batting-pbp',
+      extra: [
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'swing_pct', label: 'Swing%', format: 'pct' },
+        { key: 'pitches_per_pa', label: 'P/PA', format: 'era' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+      ] },
+    { key: 'contact_pct', label: 'Contact%', sort: 'contact_pct', dir: 'desc', format: 'pct', title: 'Contact% Leaders', endpoint: '/leaderboards/batting-pbp',
+      extra: [
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'swing_pct', label: 'Swing%', format: 'pct' },
+        { key: 'fb_pct', label: 'FB%', format: 'pct' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+      ] },
+    { key: 'air_pull_pct', label: 'AirPull%', sort: 'air_pull_pct', dir: 'desc', format: 'pct', title: 'Air-Pull% Leaders', endpoint: '/leaderboards/batting-pbp',
+      extra: [
+        { key: 'fb_pct', label: 'FB%', format: 'pct' },
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'swing_pct', label: 'Swing%', format: 'pct' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+      ] },
+    { key: 'swing_pct', label: 'Swing%', sort: 'swing_pct', dir: 'desc', format: 'pct', title: 'Most Aggressive (Swing%)', endpoint: '/leaderboards/batting-pbp',
+      extra: [
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'pitches_per_pa', label: 'P/PA', format: 'era' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+      ] },
+    { key: 'pitches_per_pa', label: 'P/PA', sort: 'pitches_per_pa', dir: 'desc', format: 'era', title: 'Most Pitches Seen / PA', endpoint: '/leaderboards/batting-pbp',
+      extra: [
+        { key: 'swing_pct', label: 'Swing%', format: 'pct' },
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+        { key: 'pitches', label: 'Pit', format: 'int' },
+      ] },
+  ],
+  pitching_pbp: [
+    { key: 'whiff_pct', label: 'Whiff%', sort: 'whiff_pct', dir: 'desc', format: 'pct', title: 'Whiff% Leaders', endpoint: '/leaderboards/pitching-pbp',
+      extra: [
+        { key: 'strike_pct', label: 'Str%', format: 'pct' },
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'putaway_pct', label: 'Putaway%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+    { key: 'strike_pct', label: 'Strike%', sort: 'strike_pct', dir: 'desc', format: 'pct', title: 'Strike% Leaders', endpoint: '/leaderboards/pitching-pbp',
+      extra: [
+        { key: 'first_pitch_strike_pct', label: 'F-Str%', format: 'pct' },
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'called_strike_pct', label: 'CSt%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+    { key: 'first_pitch_strike_pct', label: 'F-Str%', sort: 'first_pitch_strike_pct', dir: 'desc', format: 'pct', title: 'First-Pitch Strike% Leaders', endpoint: '/leaderboards/pitching-pbp',
+      extra: [
+        { key: 'strike_pct', label: 'Str%', format: 'pct' },
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'putaway_pct', label: 'Putaway%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+    { key: 'gb_pct', label: 'GB%', sort: 'gb_pct', dir: 'desc', format: 'pct', title: 'Ground-Ball% Leaders', endpoint: '/leaderboards/pitching-pbp',
+      extra: [
+        { key: 'strike_pct', label: 'Str%', format: 'pct' },
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+    { key: 'putaway_pct', label: 'Putaway%', sort: 'putaway_pct', dir: 'desc', format: 'pct', title: 'Putaway% Leaders', endpoint: '/leaderboards/pitching-pbp',
+      extra: [
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'strike_pct', label: 'Str%', format: 'pct' },
+        { key: 'on_or_out_3_pct', label: 'OO3%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+  ],
 }
 
 // ─── Position filter options ───
@@ -319,6 +664,8 @@ function fmt(val, format) {
     case 'pct': return (Number(val) * 100).toFixed(1) + '%'
     case 'ip':  return Number(val).toFixed(1)
     case 'war': return Number(val).toFixed(1)
+    case 'wpa': return (Number(val) >= 0 ? '+' : '') + Number(val).toFixed(2)
+    case 'outs_ip': { const o = Math.round(Number(val)); return `${Math.floor(o / 3)}.${o % 3}` }
     case 'int': return Math.round(Number(val)).toString()
     default: return String(val)
   }
@@ -377,11 +724,27 @@ function truncText(ctx, text, maxW) {
 }
 
 // ─── Helper: get available stats list for custom picker ───
+// (every returned field is fair game as a DISPLAY / extra column)
 function getAvailableStats(category) {
-  if (category === 'batting') return ALL_BATTING_STATS
-  if (category === 'pitching') return ALL_PITCHING_STATS
-  if (category === 'teams') return [...ALL_TEAM_BATTING_STATS, ...ALL_TEAM_PITCHING_STATS, ...ALL_TEAM_COMBINED_STATS]
-  return [] // war uses fixed preset
+  switch (category) {
+    case 'batting':      return ALL_BATTING_STATS
+    case 'pitching':     return ALL_PITCHING_STATS
+    case 'war':          return ALL_WAR_STATS
+    case 'teams':        return [...ALL_TEAM_BATTING_STATS, ...ALL_TEAM_PITCHING_STATS, ...ALL_TEAM_COMBINED_STATS]
+    case 'fielding':     return ALL_FIELDING_STATS
+    case 'relievers':    return ALL_RELIEVER_STATS
+    case 'batting_pbp':  return ALL_BATTING_PBP_STATS
+    case 'pitching_pbp': return ALL_PITCHING_PBP_STATS
+    default:             return []
+  }
+}
+
+// Stats valid as the MAIN (ranked-by) stat — the sort key must be in the
+// endpoint's server-side whitelist or the ranking would silently break.
+function getSortableStats(category) {
+  const allow = SORTABLE[category]
+  if (!allow) return getAvailableStats(category)
+  return getAvailableStats(category).filter(s => allow.has(s.sort || s.key))
 }
 
 // ─── Determine if we should use 2-column layout ───
@@ -400,17 +763,19 @@ export default function SocialGraphics() {
   const [category, setCategory] = useState('batting')
   const [presetIdx, setPresetIdx] = useState(0)
   const [count, setCount] = useState(10)
-  const [season, setSeason] = useState(2026)
+  const [season, setSeason] = useState(CURRENT_SEASON)
   const [divisionId, setDivisionId] = useState(null)
   const [conferenceId, setConferenceId] = useState(null)
   const [conferenceOnly, setConferenceOnly] = useState(false)
   const [positionFilter, setPositionFilter] = useState('')
+  const [stateFilter, setStateFilter] = useState('')
   const [yearFilter, setYearFilter] = useState('')
-  const [minQual, setMinQual] = useState('')
+  const [minSample, setMinSample] = useState('')
   const [customTitle, setCustomTitle] = useState('')
   const [exporting, setExporting] = useState(false)
   const [qualified, setQualified] = useState(true)
   const [mode, setMode] = useState('preset') // 'preset' or 'custom'
+  const [themeId, setThemeId] = useState('teal')
 
   // Custom stat picker state
   const [customMainStat, setCustomMainStat] = useState('')
@@ -418,17 +783,23 @@ export default function SocialGraphics() {
 
   const { data: divisions } = useDivisions()
   const { data: conferences } = useConferences(divisionId)
+  const cat = CATEGORY_BY_ID[category]
   const preset = STAT_PRESETS[category]?.[presetIdx] || STAT_PRESETS[category]?.[0]
-  const theme = THEME
+  const theme = buildTheme(THEMES.find(t => t.id === themeId) || THEMES[0])
   const isTwoCol = useTwoColumns(count)
 
-  // Reset preset index when switching categories
+  // Reset preset index + category-specific filters when switching categories.
   useEffect(() => {
     setPresetIdx(0)
     setCustomMainStat('')
     setCustomExtraCols([])
     setMode('preset')
     setPositionFilter('')
+    // Seed the Min-sample input with this category's sensible default so
+    // boards without a qualified toggle (PBP/fielding/relievers) aren't
+    // flooded with tiny-sample players.
+    const c = CATEGORY_BY_ID[category]
+    setMinSample(c?.sampleDefault ? String(c.sampleDefault) : '')
   }, [category])
 
   // Reset conference when division changes
@@ -443,18 +814,14 @@ export default function SocialGraphics() {
       const allStats = getAvailableStats(category)
       const mainDef = allStats.find(s => s.key === customMainStat)
       if (!mainDef) return preset
-      const endpoint = category === 'teams' ? '/leaderboards/teams'
-        : category === 'batting' ? '/leaderboards/batting'
-        : category === 'pitching' ? '/leaderboards/pitching'
-        : '/leaderboards/war'
       return {
         key: mainDef.key,
         label: mainDef.label,
-        sort: mainDef.key,
+        sort: mainDef.sort || mainDef.key,
         dir: mainDef.dir,
         format: mainDef.format,
         title: `${mainDef.label} Leaders`,
-        endpoint,
+        endpoint: cat.endpoint,
         extra: customExtraCols.map(k => {
           const def = allStats.find(s => s.key === k)
           return def ? { key: def.key, label: def.label, format: def.format } : null
@@ -469,45 +836,35 @@ export default function SocialGraphics() {
     ? { ...activeConfig, extra: [] }
     : activeConfig
 
-  // Build API params
+  // Build API params from the category's capabilities so we never send a
+  // filter the endpoint doesn't accept (which could silently mis-rank).
   const apiParams = {
     season,
     sort_by: activeConfig.sort,
     sort_dir: activeConfig.dir,
     limit: count,
-    ...(divisionId && { division_id: divisionId }),
-    ...(conferenceId && { conference_id: conferenceId }),
-    ...(conferenceOnly && { conference_only: true }),
-    ...(yearFilter && category !== 'teams' && { year_in_school: yearFilter }),
-    ...(positionFilter && (category === 'batting' || category === 'war') && { position_group: positionFilter }),
+    ...(cat.division && divisionId && { division_id: divisionId }),
+    ...(cat.conf && conferenceId && { conference_id: conferenceId }),
+    ...(cat.state && stateFilter && { state: stateFilter }),
+    ...(cat.confOnly && conferenceOnly && { conference_only: true }),
+    ...(cat.year && yearFilter && { year_in_school: yearFilter }),
+    ...(cat.posGroup && positionFilter && { position_group: positionFilter }),
+    ...(cat.posExact && positionFilter && { position: positionFilter }),
   }
 
-  if (category === 'teams') {
-    // team endpoint has no min_pa/min_ip or qualified toggle
-  } else if (activeConfig.endpoint.includes('batting')) {
-    if (qualified) {
-      apiParams.qualified = true
-    } else {
-      apiParams.min_pa = minQual || 1
-    }
-  } else if (activeConfig.endpoint.includes('pitching')) {
-    if (qualified) {
-      apiParams.qualified = true
-    } else {
-      apiParams.min_ip = minQual || 1
-    }
-  } else {
-    // WAR
-    if (qualified) {
-      apiParams.qualified = true
-    } else {
-      apiParams.min_pa = minQual || 1
-      apiParams.min_ip = minQual || 1
-    }
+  // Sample-size floor / qualified toggle.
+  const sampleNum = minSample !== '' && minSample != null ? Number(minSample) : null
+  if (cat.qualified && qualified) {
+    apiParams.qualified = true
+  } else if (cat.sampleParam === 'min_pa_ip') {
+    if (sampleNum != null) { apiParams.min_pa = sampleNum; apiParams.min_ip = sampleNum }
+  } else if (cat.sampleParam) {
+    if (sampleNum != null) apiParams[cat.sampleParam] = sampleNum
   }
 
   const { data: rawData, loading } = useApi(activeConfig.endpoint, apiParams, [
-    season, activeConfig.sort, activeConfig.dir, count, divisionId, conferenceId, conferenceOnly, yearFilter, minQual, activeConfig.endpoint, qualified, positionFilter
+    season, activeConfig.sort, activeConfig.dir, count, divisionId, conferenceId, conferenceOnly,
+    stateFilter, yearFilter, minSample, activeConfig.endpoint, qualified, positionFilter
   ])
 
   const items = Array.isArray(rawData) ? rawData : rawData?.data || []
@@ -522,7 +879,20 @@ export default function SocialGraphics() {
   const posLabel = positionFilter ? ` ${positionFilter}` : ''
   const scopeLabel = confLabel || divLabel
   const titleText = customTitle || `Top ${count} ${scopeLabel}${posLabel} ${activeConfig.title}`
-  const subtitle = `${season} Season${yearFilter && !isTeamMode ? ` · ${yearFilter} Only` : ''}${conferenceOnly ? ' · Conf. Games' : ''}${!qualified && !isTeamMode ? ' · Unqualified' : ''}`
+  const subtitle = `${season} Season`
+    + (cat.year && yearFilter ? ` · ${yearFilter} Only` : '')
+    + (cat.state && stateFilter ? ` · ${stateFilter}` : '')
+    + (cat.confOnly && conferenceOnly ? ' · Conf. Games' : '')
+    + (cat.qualified && !qualified ? ' · Unqualified' : '')
+
+  // Footer note (bottom-right): qualified vs min-sample vs team.
+  const footerNote = isTeamMode
+    ? 'Team Stats'
+    : (cat.qualified && qualified)
+      ? 'Qualified'
+      : (cat.sampleParam && sampleNum != null)
+        ? `Min ${sampleNum} ${cat.sampleLabel}`
+        : 'All players'
 
   // ─── Export handler ───
   const handleExport = useCallback(async () => {
@@ -586,24 +956,24 @@ export default function SocialGraphics() {
         cxG - halfDiag * sinA, cyG + halfDiag * cosA,
         cxG + halfDiag * sinA, cyG - halfDiag * cosA
       )
-      grad.addColorStop(0, '#0a1628')
-      grad.addColorStop(0.35, '#0f2744')
-      grad.addColorStop(1, '#00687a')
+      grad.addColorStop(0, theme.stops[0])
+      grad.addColorStop(0.35, theme.stops[1])
+      grad.addColorStop(1, theme.stops[2])
       ctx.fillStyle = grad
       ctx.fillRect(0, 0, w, h)
 
       // ─── Decorative orbs ───
       const orb1 = ctx.createRadialGradient(w - 80, 80, 0, w - 80, 80, 200)
-      orb1.addColorStop(0, 'rgba(0,104,122,0.3)')
-      orb1.addColorStop(0.7, 'rgba(0,104,122,0)')
-      orb1.addColorStop(1, 'rgba(0,104,122,0)')
+      orb1.addColorStop(0, `rgba(${theme.orb1RGB},0.3)`)
+      orb1.addColorStop(0.7, `rgba(${theme.orb1RGB},0)`)
+      orb1.addColorStop(1, `rgba(${theme.orb1RGB},0)`)
       ctx.fillStyle = orb1
       ctx.fillRect(0, 0, w, h)
 
       const orb2 = ctx.createRadialGradient(70, h - 70, 0, 70, h - 70, 150)
-      orb2.addColorStop(0, 'rgba(0,138,158,0.15)')
-      orb2.addColorStop(0.7, 'rgba(0,138,158,0)')
-      orb2.addColorStop(1, 'rgba(0,138,158,0)')
+      orb2.addColorStop(0, `rgba(${theme.orb2RGB},0.15)`)
+      orb2.addColorStop(0.7, `rgba(${theme.orb2RGB},0)`)
+      orb2.addColorStop(1, `rgba(${theme.orb2RGB},0)`)
       ctx.fillStyle = orb2
       ctx.fillRect(0, 0, w, h)
 
@@ -635,7 +1005,7 @@ export default function SocialGraphics() {
       ctx.font = `900 ${titleSize}px ${font}`
       ctx.fillStyle = '#ffffff'
       ctx.textBaseline = 'top'
-      ctx.shadowColor = 'rgba(125,211,252,0.3)'
+      ctx.shadowColor = theme.accentGlow
       ctx.shadowBlur = 40
       ctx.fillText(titleText, headerPadX, curY)
       ctx.shadowBlur = 0
@@ -708,10 +1078,10 @@ export default function SocialGraphics() {
         // Row background
         if (isTop3 && !twoCol) {
           const opacity = (0.22 - i * 0.05)
-          ctx.fillStyle = `rgba(0,138,158,${opacity})`
+          ctx.fillStyle = `${theme.highlight}${opacity})`
           canvasRoundRect(ctx, rowLeft, rowY, rowWidth, rowH, 6)
           ctx.fill()
-          ctx.fillStyle = '#7dd3fc'
+          ctx.fillStyle = theme.accent
           ctx.fillRect(rowLeft, rowY + 2, 3, rowH - 4)
         } else if (rowInCol % 2 === 0) {
           ctx.fillStyle = 'rgba(255,255,255,0.025)'
@@ -724,7 +1094,7 @@ export default function SocialGraphics() {
 
         // Rank
         ctx.font = `900 ${rankSize}px ${font}`
-        ctx.fillStyle = (isTop3 && !twoCol) ? '#7dd3fc' : theme.textMuted
+        ctx.fillStyle = (isTop3 && !twoCol) ? theme.accent : theme.textMuted
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.fillText(String(i + 1), cellX + rankW / 2, cellCY)
@@ -802,9 +1172,9 @@ export default function SocialGraphics() {
         // Main stat
         const mainFontSize = twoCol ? Math.floor(fontSize * 1.1) : Math.floor(fontSize * 1.25)
         ctx.font = `900 ${mainFontSize}px ${font}`
-        ctx.fillStyle = (isTop3 && !twoCol) ? '#7dd3fc' : '#e0f2fe'
+        ctx.fillStyle = (isTop3 && !twoCol) ? theme.accent : theme.mainStat
         ctx.textAlign = 'right'
-        if (isTop3 && !twoCol) { ctx.shadowColor = 'rgba(125,211,252,0.3)'; ctx.shadowBlur = 20 }
+        if (isTop3 && !twoCol) { ctx.shadowColor = theme.accentGlow; ctx.shadowBlur = 20 }
         ctx.fillText(fmt(mainVal, config.format), sX, cellCY)
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
         sX -= mainStatW
@@ -835,8 +1205,7 @@ export default function SocialGraphics() {
 
       ctx.textAlign = 'right'
       ctx.font = `400 ${Math.floor(fontSize * 0.52)}px ${font}`
-      const qualText = isTeamMode ? 'Team Stats' : qualified ? 'Qualified' : `Min ${config.endpoint.includes('batting') ? '1 PA' : '1 IP'}`
-      ctx.fillText(qualText, w - headerPadX, footerY + footerH / 2)
+      ctx.fillText(footerNote, w - headerPadX, footerY + footerH / 2)
 
       // ─── Download ───
       const link = document.createElement('a')
@@ -849,7 +1218,7 @@ export default function SocialGraphics() {
     } finally {
       setExporting(false)
     }
-  }, [items, effectiveConfig, activeConfig, count, season, theme, isTeamMode, qualified, titleText, subtitle, isTwoCol])
+  }, [items, effectiveConfig, activeConfig, count, season, theme, isTeamMode, footerNote, titleText, subtitle, isTwoCol])
 
   const scale = Math.min(600 / SIZE.w, 800 / SIZE.h)
 
@@ -875,31 +1244,29 @@ export default function SocialGraphics() {
           {/* Category */}
           <div className="bg-white rounded-lg shadow-sm border p-4">
             <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Category</label>
-            <div className="flex gap-1">
-              {['batting', 'pitching', 'war', 'teams'].map(c => (
-                <button key={c} onClick={() => setCategory(c)}
-                  className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
-                    ${category === c ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                >{c === 'war' ? 'WAR' : c === 'teams' ? 'Teams' : c.charAt(0).toUpperCase() + c.slice(1)}</button>
+            <div className="grid grid-cols-3 gap-1">
+              {CATEGORIES.map(c => (
+                <button key={c.id} onClick={() => setCategory(c.id)}
+                  className={`px-2 py-1.5 text-xs font-semibold rounded transition-all
+                    ${category === c.id ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >{c.label}</button>
               ))}
             </div>
 
             {/* Mode toggle (preset vs custom) */}
-            {category !== 'war' && (
-              <>
-                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Mode</label>
-                <div className="flex gap-1">
-                  <button onClick={() => setMode('preset')}
-                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
-                      ${mode === 'preset' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                  >Presets</button>
-                  <button onClick={() => setMode('custom')}
-                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
-                      ${mode === 'custom' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                  >Custom</button>
-                </div>
-              </>
-            )}
+            <>
+              <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Mode</label>
+              <div className="flex gap-1">
+                <button onClick={() => setMode('preset')}
+                  className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
+                    ${mode === 'preset' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >Presets</button>
+                <button onClick={() => setMode('custom')}
+                  className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
+                    ${mode === 'custom' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >Custom</button>
+              </div>
+            </>
 
             {/* Preset stat buttons */}
             {mode === 'preset' && (
@@ -923,7 +1290,7 @@ export default function SocialGraphics() {
                 <select value={customMainStat} onChange={e => setCustomMainStat(e.target.value)}
                   className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm">
                   <option value="">Select stat...</option>
-                  {getAvailableStats(category).map(s => (
+                  {getSortableStats(category).map(s => (
                     <option key={s.key} value={s.key}>{s.label}</option>
                   ))}
                 </select>
@@ -953,6 +1320,23 @@ export default function SocialGraphics() {
             )}
           </div>
 
+          {/* Color scheme */}
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Color Scheme</label>
+            <div className="grid grid-cols-5 gap-2">
+              {THEMES.map(t => {
+                const [a, b, c] = t.stops
+                return (
+                  <button key={t.id} onClick={() => setThemeId(t.id)} title={t.label}
+                    className={`h-9 rounded-md border-2 transition-all ${themeId === t.id ? 'border-nw-teal ring-2 ring-nw-teal/30 scale-105' : 'border-gray-200 hover:border-gray-300'}`}
+                    style={{ background: `linear-gradient(135deg, ${a} 0%, ${b} 45%, ${c} 100%)` }}
+                  />
+                )
+              })}
+            </div>
+            <div className="text-[11px] text-gray-400 mt-1.5">{(THEMES.find(t => t.id === themeId) || THEMES[0]).label}</div>
+          </div>
+
           {/* Filters */}
           <div className="bg-white rounded-lg shadow-sm border p-4 space-y-3">
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Filters</label>
@@ -961,31 +1345,47 @@ export default function SocialGraphics() {
               <label className="text-xs text-gray-500">Season</label>
               <select value={season} onChange={e => setSeason(+e.target.value)}
                 className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
-                {[2026, 2025, 2024].map(y => <option key={y} value={y}>{y}</option>)}
+                {SEASONS.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
 
-            <div>
-              <label className="text-xs text-gray-500">Division</label>
-              <select value={divisionId || ''} onChange={e => setDivisionId(e.target.value || null)}
-                className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
-                <option value="">All Divisions</option>
-                {(divisions || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
+            {cat.division && (
+              <div>
+                <label className="text-xs text-gray-500">Division</label>
+                <select value={divisionId || ''} onChange={e => setDivisionId(e.target.value || null)}
+                  className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
+                  <option value="">All Divisions</option>
+                  {(divisions || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Conference filter */}
-            <div>
-              <label className="text-xs text-gray-500">Conference</label>
-              <select value={conferenceId || ''} onChange={e => setConferenceId(e.target.value || null)}
-                className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
-                <option value="">All Conferences</option>
-                {(conferences || []).map(c => <option key={c.id} value={c.id}>{c.abbreviation || c.name}</option>)}
-              </select>
-            </div>
+            {cat.conf && (
+              <div>
+                <label className="text-xs text-gray-500">Conference</label>
+                <select value={conferenceId || ''} onChange={e => setConferenceId(e.target.value || null)}
+                  className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
+                  <option value="">All Conferences</option>
+                  {(conferences || []).map(c => <option key={c.id} value={c.id}>{c.abbreviation || c.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            {/* State filter */}
+            {cat.state && (
+              <div>
+                <label className="text-xs text-gray-500">State</label>
+                <select value={stateFilter} onChange={e => setStateFilter(e.target.value)}
+                  className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
+                  <option value="">All States</option>
+                  {['WA', 'OR', 'ID', 'MT', 'BC'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Conference games only toggle */}
-            {!isTeamMode && (
+            {cat.confOnly && (
               <div className="flex items-center justify-between">
                 <label className="text-xs text-gray-500">Conference Games Only</label>
                 <button
@@ -997,24 +1397,31 @@ export default function SocialGraphics() {
               </div>
             )}
 
-            {/* Position filter (batting/war only) */}
-            {(category === 'batting' || category === 'war') && !isTeamMode && (
+            {/* Position filter — group (batting/war) or exact (fielding) */}
+            {(cat.posGroup || cat.posExact) && (
               <div>
                 <label className="text-xs text-gray-500">Position</label>
                 <select value={positionFilter} onChange={e => setPositionFilter(e.target.value)}
                   className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
                   <option value="">All Positions</option>
-                  <optgroup label="Position Groups">
-                    {POSITION_GROUPS.map(pg => <option key={pg.value} value={pg.value}>{pg.label}</option>)}
-                  </optgroup>
-                  <optgroup label="Individual Positions">
-                    {INDIVIDUAL_POSITIONS.map(pos => <option key={pos.value} value={pos.value}>{pos.label}</option>)}
-                  </optgroup>
+                  {cat.posGroup && (
+                    <>
+                      <optgroup label="Position Groups">
+                        {POSITION_GROUPS.map(pg => <option key={pg.value} value={pg.value}>{pg.label}</option>)}
+                      </optgroup>
+                      <optgroup label="Individual Positions">
+                        {INDIVIDUAL_POSITIONS.map(pos => <option key={pos.value} value={pos.value}>{pos.label}</option>)}
+                      </optgroup>
+                    </>
+                  )}
+                  {cat.posExact && ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'].map(pos => (
+                    <option key={pos} value={pos}>{pos}</option>
+                  ))}
                 </select>
               </div>
             )}
 
-            {!isTeamMode && (
+            {cat.year && (
               <div>
                 <label className="text-xs text-gray-500">Class Year</label>
                 <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
@@ -1026,7 +1433,7 @@ export default function SocialGraphics() {
             )}
 
             {/* Qualified toggle */}
-            {!isTeamMode && (
+            {cat.qualified && (
               <div className="flex items-center justify-between">
                 <label className="text-xs text-gray-500">Qualified Only</label>
                 <button
@@ -1038,15 +1445,14 @@ export default function SocialGraphics() {
               </div>
             )}
 
-            {/* Min PA/IP (only when unqualified) */}
-            {!isTeamMode && !qualified && (
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500">Min {activeConfig.endpoint.includes('batting') ? 'PA' : 'IP'}</label>
-                  <input type="number" value={minQual} onChange={e => setMinQual(e.target.value)}
-                    placeholder="1"
-                    className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm" />
-                </div>
+            {/* Min sample — always for boards without a qualified toggle,
+                or when qualified is turned off. */}
+            {cat.sampleParam && !(cat.qualified && qualified) && (
+              <div>
+                <label className="text-xs text-gray-500">Min {cat.sampleLabel}</label>
+                <input type="number" value={minSample} onChange={e => setMinSample(e.target.value)}
+                  placeholder="0"
+                  className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm" />
               </div>
             )}
 
@@ -1120,7 +1526,7 @@ export default function SocialGraphics() {
                 count={count}
                 theme={theme}
                 isTeamMode={isTeamMode}
-                qualified={qualified}
+                footerNote={footerNote}
                 twoCol={isTwoCol}
               />
             </div>
@@ -1136,7 +1542,7 @@ export default function SocialGraphics() {
 // ═══════════════════════════════════════════════════════════
 
 const LeaderCard = forwardRef(function LeaderCard(
-  { items, config, title, subtitle, size, loading, count, theme, isTeamMode, qualified, twoCol },
+  { items, config, title, subtitle, size, loading, count, theme, isTeamMode, footerNote, twoCol },
   ref
 ) {
   const w = size.w
@@ -1434,7 +1840,7 @@ const LeaderCard = forwardRef(function LeaderCard(
                         fontSize: Math.floor(fontSize * (twoCol ? 1.1 : 1.25)),
                         fontWeight: 900,
                         fontFeatureSettings: '"tnum"',
-                        color: isTop3 ? theme.accent : '#e0f2fe',
+                        color: isTop3 ? theme.accent : theme.mainStat,
                         textShadow: isTop3 ? `0 0 20px ${theme.accentGlow}` : 'none',
                         flexShrink: 0,
                       }}>
@@ -1487,7 +1893,7 @@ const LeaderCard = forwardRef(function LeaderCard(
           color: theme.textMuted,
           fontWeight: 400,
         }}>
-          {isTeamMode ? 'Team Stats' : qualified ? 'Qualified' : `Min ${config.endpoint.includes('batting') ? '1 PA' : '1 IP'}`}
+          {footerNote}
         </span>
       </div>
     </div>
