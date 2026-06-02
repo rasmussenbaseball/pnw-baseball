@@ -99,7 +99,7 @@ const GAMELOG_PITCHING_COLS = [
   { key: 'ip', label: 'IP', fmt: 'ip' },
   { key: 'h', label: 'H' }, { key: 'r', label: 'R' }, { key: 'er', label: 'ER' },
   { key: 'bb', label: 'BB' }, { key: 'k', label: 'K' }, { key: 'hr', label: 'HR' },
-  { key: 'game_score', label: 'GS' },
+  { key: 'outing_grade', label: 'Grade' },
 ]
 
 const fmtEra = v => (v == null ? '—' : Number(v).toFixed(2))
@@ -188,8 +188,8 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
   const lgFip = data?.league_context?.fip
     ?? (seasonFip != null && currSeason?.fip_plus != null ? +(seasonFip * currSeason.fip_plus / 100).toFixed(2) : null)
 
-  // Per-outing game-score chart inputs
-  const gsRows = pitchingGames.map(g => ({ g, val: g.game_score }))
+  // Per-outing grade chart inputs (0-100, role-normalized vs same role at level)
+  const gsRows = pitchingGames.map(g => ({ g, val: g.outing_grade }))
   const withGs = gsRows.filter(r => r.val != null)
   const bestGs = withGs.reduce((acc, r) => r.val > (acc?.val ?? -1) ? r : acc, null)
   const mostK = pitchingGames.reduce((acc, g) => (g.k ?? 0) > (acc?.k ?? -1) ? g : acc, null)
@@ -359,11 +359,16 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
         <span className="flex-1 h-px" style={{ background: T.borderStrong }} />
       </div>
 
-      <SectionCard title="Per-Outing Game Score" right={`${SEASON} · CHRONOLOGICAL`}>
+      <SectionCard title="Per-Outing Grade" right={`${SEASON} · CHRONOLOGICAL`}>
+        <p className="text-[11px] mb-3 leading-snug" style={{ color: T.textLight }}>
+          Each outing graded 0 to 100 against other outings in the same role (starter or reliever)
+          at this level. 50 is an average outing for the role, so starter and reliever grades are
+          directly comparable.
+        </p>
         <div className="flex flex-wrap gap-x-6 gap-y-2 mb-3 text-[11px]" style={{ color: T.textMuted }}>
           <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Season ERA</span><span className="text-base font-bold tabular-nums" style={{ color: T.text }}>{fmtEra(seasonEra)}</span></div>
           <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Last 5 Outings</span><span className="text-base font-bold tabular-nums" style={{ color: (last5Era != null && seasonEra != null && last5Era <= seasonEra) ? T.great : T.poor }}>{last5Era != null ? fmtEra(last5Era) : '—'}</span></div>
-          {bestGs && <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Best Outing</span><span className="text-base font-bold tabular-nums" style={{ color: T.text }}>{fmtDate(bestGs.g.game_date)} · GS {bestGs.val}</span></div>}
+          {bestGs && <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Best Outing</span><span className="text-base font-bold tabular-nums" style={{ color: T.text }}>{fmtDate(bestGs.g.game_date)} · {bestGs.val} grade</span></div>}
           {mostK && <div className="flex flex-col"><span className="text-[9.5px] uppercase tracking-wider" style={{ color: T.textLight }}>Most K's</span><span className="text-base font-bold tabular-nums" style={{ color: T.text }}>{fmtDate(mostK.game_date)} · {mostK.k} K</span></div>}
         </div>
         <PerGameBarChart
@@ -373,7 +378,7 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
           fmtY={v => String(v)}
           refLines={[{ v: 50, label: '50 avg', color: T.poor }]}
           colorFn={gsColor}
-          tooltipFn={(g, gs) => `${fmtDate(g.game_date)} ${g.home_away === '@' ? '@' : 'vs'} ${g.opponent_short}: ${g.ip != null ? Number(g.ip).toFixed(1) : '?'} IP, ${g.h ?? 0}H ${g.er ?? 0}ER ${g.k ?? 0}K ${g.bb ?? 0}BB · GS ${gs ?? '—'}${g.decision ? ` · ${g.decision}` : ''}`}
+          tooltipFn={(g, gs) => `${fmtDate(g.game_date)} ${g.home_away === '@' ? '@' : 'vs'} ${g.opponent_short}: ${g.ip != null ? Number(g.ip).toFixed(1) : '?'} IP, ${g.h ?? 0}H ${g.er ?? 0}ER ${g.k ?? 0}K ${g.bb ?? 0}BB · Grade ${gs ?? '—'}${g.is_starter ? ' (SP)' : ' (RP)'}${g.decision ? ` · ${g.decision}` : ''}`}
           legend={[
             { color: '#5d99c6', label: '<30' },
             { color: '#9a9a9a', label: '30–49' },
@@ -381,7 +386,7 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
             { color: '#5b9d4d', label: '65–79' },
             { color: '#b8302a', label: '80+' },
           ]}
-          note="Each bar = 1 outing · Game Score · hover for line"
+          note="Each bar = 1 outing · 0-100 role-normalized grade · hover for line"
         />
       </SectionCard>
 

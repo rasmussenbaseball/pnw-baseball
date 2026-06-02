@@ -14365,6 +14365,82 @@ def get_player_streaks(
 
 # ── Player Game Logs ──────────────────────────────────────────────────
 
+# ── Per-outing Grade (role-normalized, 0-100) ──────────────────────
+# The stored game_score is Bill James v1, which rewards length (bonus
+# points for innings after the 4th) and so compresses relief outings near
+# ~50 — relievers can never post a "high" score. To compare starters and
+# relievers fairly, we grade each outing on a 0-100 curve WITHIN ITS ROLE
+# at the same level + season: the grade is the percentile of that outing's
+# game_score among same-role (starter vs reliever) outings. 50 = a median
+# outing for that role; ~90+ = elite for that role. Distributions are
+# cached per (level, season) since they only shift as new games land.
+_OUTING_DIST_CACHE: dict = {}    # (level, season) -> (built_at, {True:[...], False:[...]})
+_OUTING_DIST_TTL = 1800          # 30 min
+
+
+def _james_game_score(ip, h, er, bb, k, runs=None):
+    """Bill James Game Score from a line. Computed here (not read from the
+    stored column) so the grade works at every level, including NWAC where
+    game_score is not precomputed. IP is baseball notation (6.2 = 6 2/3)."""
+    if ip is None:
+        return None
+    ip = float(ip)
+    if ip <= 0:
+        return None
+    outs = int(ip) * 3 + round((ip % 1) * 10)
+    innings_completed = int(ip)
+    unearned = max(0, (runs or 0) - (er or 0)) if runs is not None else 0
+    return (50 + outs + max(0, innings_completed - 4) * 2 + (k or 0)
+            - (h or 0) * 2 - (er or 0) * 4 - unearned * 2 - (bb or 0))
+
+
+def _outing_score_distributions(cur, level, season):
+    import time
+    key = (level, season)
+    hit = _OUTING_DIST_CACHE.get(key)
+    if hit and (time.time() - hit[0]) < _OUTING_DIST_TTL:
+        return hit[1]
+    cur.execute("""
+        SELECT gp.is_starter, gp.innings_pitched, gp.hits_allowed,
+               gp.runs_allowed, gp.earned_runs, gp.walks, gp.strikeouts
+        FROM game_pitching gp
+        JOIN games g ON g.id = gp.game_id
+        JOIN teams t ON t.id = gp.team_id
+        JOIN conferences c ON c.id = t.conference_id
+        JOIN divisions d ON d.id = c.division_id
+        WHERE g.season = %s AND g.status = 'final' AND d.level = %s
+          AND gp.innings_pitched IS NOT NULL AND gp.innings_pitched > 0
+    """, (season, level))
+    starters, relievers = [], []
+    for r in cur.fetchall():
+        sc = _james_game_score(r["innings_pitched"], r["hits_allowed"],
+                               r["earned_runs"], r["walks"], r["strikeouts"],
+                               r["runs_allowed"])
+        if sc is None:
+            continue
+        (starters if r["is_starter"] else relievers).append(sc)
+    starters.sort()
+    relievers.sort()
+    dist = {True: starters, False: relievers}
+    _OUTING_DIST_CACHE[key] = (time.time(), dist)
+    return dist
+
+
+def _outing_grade(dist, row):
+    """Percentile (1-100) of this outing among same-role outings at its level."""
+    sc = _james_game_score(row["innings_pitched"], row["hits_allowed"],
+                           row["earned_runs"], row["walks"], row["strikeouts"],
+                           row["runs_allowed"])
+    if sc is None:
+        return None
+    import bisect
+    arr = dist.get(bool(row["is_starter"])) or []
+    if len(arr) < 10:            # too few same-role outings to grade fairly
+        return None
+    rank = bisect.bisect_right(arr, sc)
+    return round(100 * rank / len(arr))
+
+
 @router.get("/players/{player_id}/gamelogs")
 def get_player_gamelogs(
     player_id: int,
@@ -14517,6 +14593,23 @@ def get_player_gamelogs(
                 "sh": r["sacrifice_bunts"],
             })
 
+        # Role-normalized outing-grade distribution for this player's
+        # level + season (cached). Used to grade each outing 0-100 on its
+        # own role's curve so starters and relievers are comparable.
+        cur.execute("""
+            SELECT d.level FROM players p
+            JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE p.id = %s
+        """, (player_id,))
+        _lvl_row = cur.fetchone()
+        player_level = _lvl_row["level"] if _lvl_row else None
+        outing_dist = (
+            _outing_score_distributions(cur, player_level, season)
+            if player_level else {True: [], False: []}
+        )
+
         # ── Pitching game logs ──
         cur.execute(f"""
             SELECT
@@ -14577,6 +14670,7 @@ def get_player_gamelogs(
                 "pitches": r["pitches_thrown"],
                 "strikes": r["strikes"],
                 "game_score": r["game_score"],
+                "outing_grade": _outing_grade(outing_dist, r),
                 "is_quality_start": r["is_quality_start"],
             })
 
