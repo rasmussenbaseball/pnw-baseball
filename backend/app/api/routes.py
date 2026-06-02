@@ -5969,12 +5969,23 @@ def pitching_leaderboard(
 # An empty pitch_sequence with was_in_play=true counts as a
 # 1-pitch swing+contact (0-0 ball-in-play).
 
+# The five states (+ BC for UBC) that define our tracked PNW universe.
+# PBP-derived boards read from game_events, which also contains OOC
+# opponents' players (e.g. Santa Clara, San Diego — California teams that
+# are is_active=1 because PNW D1 teams played them). is_active alone is NOT
+# enough to exclude them; scoping by team state is. The season-stat boards
+# don't need this since they read *_stats, which are PNW-roster-only.
+PNW_STATES = ('WA', 'OR', 'ID', 'MT', 'BC')
+
+
 def _pbp_filter_clauses(filters):
-    """Build the WHERE-clause fragment + params list shared by both
-    PBP leaderboards. `filters` is a dict with optional keys:
+    """Build the WHERE-clause fragment + params list shared by the PBP /
+    reliever leaderboards. `filters` is a dict with optional keys:
     division_id, conference_id, state, team_id, year_in_school.
-    Returns (sql, params) where sql starts with ' AND ...' fragments."""
-    sql = ""
+    Always restricts to PNW-state teams so OOC opponents pulled in via
+    game_events never appear. Returns (sql, params); sql starts with ' AND'.
+    Assumes the query aliases teams t, conferences c, divisions d, players p."""
+    sql = " AND t.state IN ('WA','OR','ID','MT','BC')"
     params = []
     if filters.get("division_id"):
         sql += " AND d.id = %s"
@@ -5991,6 +6002,23 @@ def _pbp_filter_clauses(filters):
     if filters.get("year_in_school"):
         sql += " AND p.year_in_school = %s"
         params.append(filters["year_in_school"])
+    return sql, params
+
+
+def _team_pbp_filter_clauses(division_id, conference_id, state, team_id):
+    """Optional filters for the team-level PBP boards. Assumes the query
+    aliases teams t, conferences c, divisions d. PNW-state scope is added
+    separately in each query (teams are grouped, not joined via players)."""
+    sql = ""
+    params = []
+    if division_id:
+        sql += " AND d.id = %s"; params.append(division_id)
+    if conference_id:
+        sql += " AND c.id = %s"; params.append(conference_id)
+    if state:
+        sql += " AND t.state = %s"; params.append(state)
+    if team_id:
+        sql += " AND t.id = %s"; params.append(team_id)
     return sql, params
 
 
@@ -6345,6 +6373,198 @@ def pitching_pbp_leaderboard(
             "offset": offset,
             "season": season,
         }
+
+
+@router.get("/leaderboards/team-batting-pbp")
+@cached_endpoint(ttl_seconds=1800)
+def team_batting_pbp_leaderboard(
+    season: int = Query(..., description="Season year"),
+    division_id: Optional[int] = Query(None),
+    conference_id: Optional[int] = Query(None),
+    state: Optional[str] = Query(None),
+    team_id: Optional[int] = Query(None),
+    min_pa: int = Query(200, description="Minimum tracked plate appearances (team)"),
+    sort_by: str = Query("whiff_pct", description="Sort column"),
+    sort_dir: str = Query("asc", description="Sort direction (asc/desc)"),
+    limit: int = Query(50),
+    offset: int = Query(0),
+):
+    """Team hitting pitch-level board: a club's collective plate discipline
+    (Swing%, Whiff%, Contact%, FB%, AirPull%, Putaway%, P/PA), aggregated
+    over every tracked PA its batters took. Same formulas as the per-hitter
+    board, grouped by batting team. PNW teams only."""
+    allowed_sort = {
+        "tracked_pa", "pitches", "swings", "swing_pct", "whiff_pct",
+        "contact_pct", "fb_pct", "air_pull_pct", "putaway_pct", "pitches_per_pa",
+    }
+    if sort_by not in allowed_sort:
+        sort_by = "whiff_pct"
+    direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
+    tf, tp = _team_pbp_filter_clauses(division_id, conference_id, state, team_id)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = f"""
+            WITH pbp AS (
+                SELECT
+                    ge.batting_team_id AS team_id,
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1) AS tracked_pa,
+                    COALESCE(SUM(ge.pitches_thrown) FILTER (WHERE ge.pitches_thrown >= 1), 0) AS pitches,
+                    COALESCE(SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'K', '')))
+                        FILTER (WHERE ge.pitches_thrown >= 1), 0) AS k_pitches,
+                    COALESCE(SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'F', '')))
+                        FILTER (WHERE ge.pitches_thrown >= 1), 0) AS f_pitches,
+                    COALESCE(SUM(CASE WHEN ge.was_in_play THEN 1 ELSE 0 END)
+                        FILTER (WHERE ge.pitches_thrown >= 1), 0) AS in_play,
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1 AND ge.strikes_before = 2) AS two_strike_pa,
+                    COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1 AND ge.strikes_before = 2
+                                       AND ge.result_type IN ('strikeout_swinging','strikeout_looking')) AS two_strike_k,
+                    COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL) AS bb_total,
+                    COUNT(*) FILTER (WHERE ge.bb_type = 'FB') AS fb_count,
+                    COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL AND UPPER(plyr.bats) IN ('L','R')) AS bb_total_pull,
+                    COUNT(*) FILTER (WHERE ge.bb_type IN ('LD','FB')
+                        AND ((UPPER(plyr.bats) = 'R' AND ge.field_zone = 'LEFT')
+                          OR (UPPER(plyr.bats) = 'L' AND ge.field_zone = 'RIGHT'))) AS air_pull_count
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                LEFT JOIN players plyr ON plyr.id = ge.batter_player_id
+                WHERE g.season = %s AND ge.batting_team_id IS NOT NULL
+                GROUP BY ge.batting_team_id
+            ),
+            scored AS (
+                SELECT pbp.*,
+                    (pbp.k_pitches + pbp.f_pitches + pbp.in_play) AS swings,
+                    CASE WHEN pbp.pitches > 0 THEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches END AS swing_pct,
+                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN pbp.k_pitches::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play) END AS whiff_pct,
+                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play) END AS contact_pct,
+                    CASE WHEN pbp.tracked_pa > 0 THEN pbp.pitches::numeric / pbp.tracked_pa END AS pitches_per_pa,
+                    CASE WHEN pbp.two_strike_pa > 0 THEN pbp.two_strike_k::numeric / pbp.two_strike_pa END AS putaway_pct,
+                    CASE WHEN pbp.bb_total > 0 THEN pbp.fb_count::numeric / pbp.bb_total END AS fb_pct,
+                    CASE WHEN pbp.bb_total_pull > 0 THEN pbp.air_pull_count::numeric / pbp.bb_total_pull END AS air_pull_pct
+                FROM pbp
+            )
+            SELECT
+                t.id AS team_id, t.short_name, t.school_name AS team_name, t.logo_url, t.state,
+                d.level AS division_level, c.id AS conference_id, c.abbreviation AS conference_abbrev,
+                s.tracked_pa, s.pitches, s.swings,
+                s.swing_pct, s.whiff_pct, s.contact_pct, s.fb_pct, s.air_pull_pct,
+                s.putaway_pct, s.pitches_per_pa
+            FROM scored s
+            JOIN teams t ON t.id = s.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE s.tracked_pa >= %s
+              AND t.state IN ('WA','OR','ID','MT','BC')
+              {tf}
+            ORDER BY {sort_by} {direction} NULLS LAST, s.tracked_pa DESC
+            LIMIT %s OFFSET %s
+        """
+        cur.execute(query, [season, min_pa] + tp + [limit, offset])
+        rows = [dict(r) for r in cur.fetchall()]
+        return {"data": rows, "total": len(rows), "limit": limit, "offset": offset, "season": season}
+
+
+@router.get("/leaderboards/team-pitching-pbp")
+@cached_endpoint(ttl_seconds=1800)
+def team_pitching_pbp_leaderboard(
+    season: int = Query(..., description="Season year"),
+    division_id: Optional[int] = Query(None),
+    conference_id: Optional[int] = Query(None),
+    state: Optional[str] = Query(None),
+    team_id: Optional[int] = Query(None),
+    min_bf: int = Query(200, description="Minimum tracked batters faced (team)"),
+    sort_by: str = Query("strike_pct", description="Sort column"),
+    sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
+    limit: int = Query(50),
+    offset: int = Query(0),
+):
+    """Team pitching pitch-level board: a staff's collective strike-throwing
+    and swing-and-miss (Strike%, First-Pitch Strike%, Called-Strike%, Whiff%,
+    Contact%, GB%, Putaway%, OO3%, P/BF). The pitching team is the opponent of
+    the batting team on each event, so this captures every pitch the staff
+    threw (no pitcher-ID resolution needed). PNW teams only."""
+    allowed_sort = {
+        "tracked_pa", "pitches", "swings", "strike_pct", "called_strike_pct",
+        "whiff_pct", "contact_pct", "first_pitch_strike_pct", "putaway_pct",
+        "pitches_per_pa", "on_or_out_3_pct", "gb_pct",
+    }
+    if sort_by not in allowed_sort:
+        sort_by = "strike_pct"
+    direction = "DESC" if sort_dir.lower() == "desc" else "ASC"
+    tf, tp = _team_pbp_filter_clauses(division_id, conference_id, state, team_id)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = f"""
+            WITH ev AS (
+                SELECT ge.*,
+                    (CASE WHEN ge.batting_team_id = g.home_team_id THEN g.away_team_id ELSE g.home_team_id END) AS pitch_team_id
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                WHERE g.season = %s
+            ),
+            pbp AS (
+                SELECT
+                    ev.pitch_team_id AS team_id,
+                    COUNT(*) FILTER (WHERE ev.pitches_thrown >= 1) AS tracked_pa,
+                    COALESCE(SUM(ev.pitches_thrown) FILTER (WHERE ev.pitches_thrown >= 1), 0) AS pitches,
+                    COALESCE(SUM(LENGTH(ev.pitch_sequence) - LENGTH(REPLACE(ev.pitch_sequence, 'K', '')))
+                        FILTER (WHERE ev.pitches_thrown >= 1), 0) AS k_pitches,
+                    COALESCE(SUM(LENGTH(ev.pitch_sequence) - LENGTH(REPLACE(ev.pitch_sequence, 'S', '')))
+                        FILTER (WHERE ev.pitches_thrown >= 1), 0) AS s_pitches,
+                    COALESCE(SUM(LENGTH(ev.pitch_sequence) - LENGTH(REPLACE(ev.pitch_sequence, 'F', '')))
+                        FILTER (WHERE ev.pitches_thrown >= 1), 0) AS f_pitches,
+                    COALESCE(SUM(CASE WHEN ev.was_in_play THEN 1 ELSE 0 END)
+                        FILTER (WHERE ev.pitches_thrown >= 1), 0) AS in_play,
+                    COALESCE(SUM(CASE
+                        WHEN LEFT(ev.pitch_sequence, 1) IN ('K','S','F') THEN 1
+                        WHEN ev.pitch_sequence = '' AND ev.was_in_play THEN 1
+                        ELSE 0 END) FILTER (WHERE ev.pitches_thrown >= 1), 0) AS f1_strikes,
+                    COUNT(*) FILTER (WHERE ev.pitches_thrown >= 1 AND ev.strikes_before = 2) AS two_strike_pa,
+                    COUNT(*) FILTER (WHERE ev.pitches_thrown >= 1 AND ev.strikes_before = 2
+                                       AND ev.result_type IN ('strikeout_swinging','strikeout_looking')) AS two_strike_k,
+                    COUNT(*) FILTER (WHERE ev.pitches_thrown BETWEEN 1 AND 3
+                          AND ev.result_type NOT IN ('walk','intentional_walk','hbp','catcher_interference')) AS on_or_out_3,
+                    COUNT(*) FILTER (WHERE ev.bb_type IS NOT NULL) AS bb_total,
+                    COUNT(*) FILTER (WHERE ev.bb_type = 'GB') AS gb_count
+                FROM ev
+                WHERE ev.pitch_team_id IS NOT NULL
+                GROUP BY ev.pitch_team_id
+            ),
+            scored AS (
+                SELECT pbp.*,
+                    (pbp.k_pitches + pbp.f_pitches + pbp.in_play) AS swings,
+                    CASE WHEN pbp.pitches > 0 THEN (pbp.k_pitches + pbp.s_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches END AS strike_pct,
+                    CASE WHEN pbp.pitches > 0 THEN pbp.s_pitches::numeric / pbp.pitches END AS called_strike_pct,
+                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN pbp.k_pitches::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play) END AS whiff_pct,
+                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play) END AS contact_pct,
+                    CASE WHEN pbp.tracked_pa > 0 THEN pbp.f1_strikes::numeric / pbp.tracked_pa END AS first_pitch_strike_pct,
+                    CASE WHEN pbp.two_strike_pa > 0 THEN pbp.two_strike_k::numeric / pbp.two_strike_pa END AS putaway_pct,
+                    CASE WHEN pbp.tracked_pa > 0 THEN pbp.pitches::numeric / pbp.tracked_pa END AS pitches_per_pa,
+                    CASE WHEN pbp.tracked_pa > 0 THEN pbp.on_or_out_3::numeric / pbp.tracked_pa END AS on_or_out_3_pct,
+                    CASE WHEN pbp.bb_total > 0 THEN pbp.gb_count::numeric / pbp.bb_total END AS gb_pct
+                FROM pbp
+            )
+            SELECT
+                t.id AS team_id, t.short_name, t.school_name AS team_name, t.logo_url, t.state,
+                d.level AS division_level, c.id AS conference_id, c.abbreviation AS conference_abbrev,
+                s.tracked_pa, s.pitches, s.swings,
+                s.strike_pct, s.called_strike_pct, s.whiff_pct, s.contact_pct,
+                s.first_pitch_strike_pct, s.putaway_pct, s.pitches_per_pa,
+                s.on_or_out_3_pct, s.gb_pct
+            FROM scored s
+            JOIN teams t ON t.id = s.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE s.tracked_pa >= %s
+              AND t.state IN ('WA','OR','ID','MT','BC')
+              {tf}
+            ORDER BY {sort_by} {direction} NULLS LAST, s.tracked_pa DESC
+            LIMIT %s OFFSET %s
+        """
+        cur.execute(query, [season, min_bf] + tp + [limit, offset])
+        rows = [dict(r) for r in cur.fetchall()]
+        return {"data": rows, "total": len(rows), "limit": limit, "offset": offset, "season": season}
 
 
 # ============================================================

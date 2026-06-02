@@ -283,6 +283,12 @@ const CATEGORIES = [
     sampleParam: 'min_pa_ip', sampleLabel: 'PA/IP', sampleDefault: 0 },
   { id: 'teams',        label: 'Teams',    endpoint: '/leaderboards/teams',        kind: 'team',
     division: true, sampleParam: null },
+  { id: 'team_batting_pbp',  label: 'Tm Hit PBP', endpoint: '/leaderboards/team-batting-pbp',  kind: 'team',
+    division: true, conf: true, state: true,
+    sampleParam: 'min_pa', sampleLabel: 'PA', sampleDefault: 200 },
+  { id: 'team_pitching_pbp', label: 'Tm Pit PBP', endpoint: '/leaderboards/team-pitching-pbp', kind: 'team',
+    division: true, conf: true, state: true,
+    sampleParam: 'min_bf', sampleLabel: 'BF', sampleDefault: 200 },
 ]
 const CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map(c => [c.id, c]))
 
@@ -300,6 +306,9 @@ const SORTABLE = {
   batting_pbp: new Set(['air_pull_pct','contact_pct','fb_pct','pitches','pitches_per_pa','putaway_pct','swing_pct','swings','tracked_pa','whiff_pct']),
   pitching_pbp: new Set(['called_strike_pct','contact_pct','first_pitch_strike_pct','gb_pct','on_or_out_3_pct','pitches','pitches_per_pa','putaway_pct','strike_pct','swings','tracked_pa','whiff_pct']),
 }
+// Team-PBP boards rank by the same keys as their per-player counterparts.
+SORTABLE.team_batting_pbp = SORTABLE.batting_pbp
+SORTABLE.team_pitching_pbp = SORTABLE.pitching_pbp
 
 // ─── Stat presets for quick access ───
 const STAT_PRESETS = {
@@ -634,6 +643,66 @@ const STAT_PRESETS = {
         { key: 'tracked_pa', label: 'BF', format: 'int' },
       ] },
   ],
+  team_batting_pbp: [
+    { key: 'whiff_pct', label: 'Whiff%', sort: 'whiff_pct', dir: 'asc', format: 'pct', title: 'Best Team Contact (Lowest Whiff%)', endpoint: '/leaderboards/team-batting-pbp',
+      extra: [
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'swing_pct', label: 'Swing%', format: 'pct' },
+        { key: 'pitches_per_pa', label: 'P/PA', format: 'era' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+      ] },
+    { key: 'contact_pct', label: 'Contact%', sort: 'contact_pct', dir: 'desc', format: 'pct', title: 'Team Contact% Leaders', endpoint: '/leaderboards/team-batting-pbp',
+      extra: [
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'swing_pct', label: 'Swing%', format: 'pct' },
+        { key: 'fb_pct', label: 'FB%', format: 'pct' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+      ] },
+    { key: 'swing_pct', label: 'Swing%', sort: 'swing_pct', dir: 'desc', format: 'pct', title: 'Most Aggressive Teams (Swing%)', endpoint: '/leaderboards/team-batting-pbp',
+      extra: [
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'pitches_per_pa', label: 'P/PA', format: 'era' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+      ] },
+    { key: 'air_pull_pct', label: 'AirPull%', sort: 'air_pull_pct', dir: 'desc', format: 'pct', title: 'Team Air-Pull% Leaders', endpoint: '/leaderboards/team-batting-pbp',
+      extra: [
+        { key: 'fb_pct', label: 'FB%', format: 'pct' },
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'swing_pct', label: 'Swing%', format: 'pct' },
+        { key: 'tracked_pa', label: 'PA', format: 'int' },
+      ] },
+  ],
+  team_pitching_pbp: [
+    { key: 'strike_pct', label: 'Strike%', sort: 'strike_pct', dir: 'desc', format: 'pct', title: 'Team Strike% Leaders', endpoint: '/leaderboards/team-pitching-pbp',
+      extra: [
+        { key: 'first_pitch_strike_pct', label: 'F-Str%', format: 'pct' },
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'called_strike_pct', label: 'CSt%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+    { key: 'whiff_pct', label: 'Whiff%', sort: 'whiff_pct', dir: 'desc', format: 'pct', title: 'Team Whiff% Leaders', endpoint: '/leaderboards/team-pitching-pbp',
+      extra: [
+        { key: 'strike_pct', label: 'Str%', format: 'pct' },
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'putaway_pct', label: 'Putaway%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+    { key: 'first_pitch_strike_pct', label: 'F-Str%', sort: 'first_pitch_strike_pct', dir: 'desc', format: 'pct', title: 'Team First-Pitch Strike% Leaders', endpoint: '/leaderboards/team-pitching-pbp',
+      extra: [
+        { key: 'strike_pct', label: 'Str%', format: 'pct' },
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'putaway_pct', label: 'Putaway%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+    { key: 'gb_pct', label: 'GB%', sort: 'gb_pct', dir: 'desc', format: 'pct', title: 'Team Ground-Ball% Leaders', endpoint: '/leaderboards/team-pitching-pbp',
+      extra: [
+        { key: 'strike_pct', label: 'Str%', format: 'pct' },
+        { key: 'whiff_pct', label: 'Whiff%', format: 'pct' },
+        { key: 'contact_pct', label: 'Contact%', format: 'pct' },
+        { key: 'tracked_pa', label: 'BF', format: 'int' },
+      ] },
+  ],
 }
 
 // ─── Position filter options ───
@@ -733,8 +802,10 @@ function getAvailableStats(category) {
     case 'teams':        return [...ALL_TEAM_BATTING_STATS, ...ALL_TEAM_PITCHING_STATS, ...ALL_TEAM_COMBINED_STATS]
     case 'fielding':     return ALL_FIELDING_STATS
     case 'relievers':    return ALL_RELIEVER_STATS
-    case 'batting_pbp':  return ALL_BATTING_PBP_STATS
-    case 'pitching_pbp': return ALL_PITCHING_PBP_STATS
+    case 'batting_pbp':
+    case 'team_batting_pbp':  return ALL_BATTING_PBP_STATS
+    case 'pitching_pbp':
+    case 'team_pitching_pbp': return ALL_PITCHING_PBP_STATS
     default:             return []
   }
 }
@@ -868,7 +939,10 @@ export default function SocialGraphics() {
   ])
 
   const items = Array.isArray(rawData) ? rawData : rawData?.data || []
-  const isTeamMode = category === 'teams'
+  const isTeamMode = cat.kind === 'team'
+  // Only the season-stats Teams board carries W-L; the team-PBP boards
+  // don't, so the record column shows only when rows actually have it.
+  const showRecord = isTeamMode && items.some(p => p.wins != null)
 
   const divLabel = divisionId
     ? (divisions || []).find(d => d.id === Number(divisionId))?.name || ''
@@ -886,12 +960,12 @@ export default function SocialGraphics() {
     + (cat.qualified && !qualified ? ' · Unqualified' : '')
 
   // Footer note (bottom-right): qualified vs min-sample vs team.
-  const footerNote = isTeamMode
-    ? 'Team Stats'
-    : (cat.qualified && qualified)
-      ? 'Qualified'
-      : (cat.sampleParam && sampleNum != null)
-        ? `Min ${sampleNum} ${cat.sampleLabel}`
+  const footerNote = (cat.qualified && qualified)
+    ? 'Qualified'
+    : (cat.sampleParam && sampleNum != null)
+      ? `Min ${sampleNum} ${cat.sampleLabel}`
+      : isTeamMode
+        ? 'Team Stats'
         : 'All players'
 
   // ─── Export handler ───
@@ -928,7 +1002,7 @@ export default function SocialGraphics() {
       const extraW = Math.floor(w * 0.09)
       const rankW = twoCol ? Math.floor(colWidth * 0.07) : Math.floor(w * 0.045)
       const logoW = logoSize + (twoCol ? 4 : 8)
-      const recordW = isTeamMode ? (twoCol ? Math.floor(colWidth * 0.14) : Math.floor(w * 0.08)) : 0
+      const recordW = showRecord ? (twoCol ? Math.floor(colWidth * 0.14) : Math.floor(w * 0.08)) : 0
       const bodyPadX = Math.floor(w * 0.035)
       const rowPadX = Math.floor(w * 0.008)
       const headerPadX = Math.floor(w * 0.04)
@@ -1179,8 +1253,8 @@ export default function SocialGraphics() {
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'
         sX -= mainStatW
 
-        // Record (teams only)
-        if (isTeamMode) {
+        // Record (season-stats Teams board only)
+        if (showRecord) {
           ctx.font = `600 ${Math.floor(fontSize * 0.75)}px ${font}`
           ctx.fillStyle = theme.textSecondary
           ctx.textAlign = 'right'
@@ -1218,7 +1292,7 @@ export default function SocialGraphics() {
     } finally {
       setExporting(false)
     }
-  }, [items, effectiveConfig, activeConfig, count, season, theme, isTeamMode, footerNote, titleText, subtitle, isTwoCol])
+  }, [items, effectiveConfig, activeConfig, count, season, theme, isTeamMode, showRecord, footerNote, titleText, subtitle, isTwoCol])
 
   const scale = Math.min(600 / SIZE.w, 800 / SIZE.h)
 
@@ -1526,6 +1600,7 @@ export default function SocialGraphics() {
                 count={count}
                 theme={theme}
                 isTeamMode={isTeamMode}
+                showRecord={showRecord}
                 footerNote={footerNote}
                 twoCol={isTwoCol}
               />
@@ -1542,7 +1617,7 @@ export default function SocialGraphics() {
 // ═══════════════════════════════════════════════════════════
 
 const LeaderCard = forwardRef(function LeaderCard(
-  { items, config, title, subtitle, size, loading, count, theme, isTeamMode, footerNote, twoCol },
+  { items, config, title, subtitle, size, loading, count, theme, isTeamMode, showRecord, footerNote, twoCol },
   ref
 ) {
   const w = size.w
@@ -1575,7 +1650,7 @@ const LeaderCard = forwardRef(function LeaderCard(
   const extraW = Math.floor(w * 0.09)
   const rankW = twoCol ? Math.floor(colWidth * 0.07) : Math.floor(w * 0.045)
   const logoW = logoSize + (twoCol ? 4 : 8)
-  const recordW = isTeamMode ? (twoCol ? Math.floor(colWidth * 0.14) : Math.floor(w * 0.08)) : 0
+  const recordW = showRecord ? (twoCol ? Math.floor(colWidth * 0.14) : Math.floor(w * 0.08)) : 0
 
   return (
     <div
@@ -1684,7 +1759,7 @@ const LeaderCard = forwardRef(function LeaderCard(
                 textTransform: 'uppercase',
               }}>
                 <span style={{ flex: 1 }}>{isTeamMode ? 'Team' : 'Player'}</span>
-                {isTeamMode && <span style={{ width: recordW, textAlign: 'right' }}>Rec</span>}
+                {showRecord && <span style={{ width: recordW, textAlign: 'right' }}>Rec</span>}
                 <span style={{ width: mainStatW, textAlign: 'right' }}>{config.label}</span>
                 {!twoCol && extraCols.map(col => (
                   <span key={col.key} style={{ width: extraW, textAlign: 'right' }}>{col.label}</span>
@@ -1818,8 +1893,8 @@ const LeaderCard = forwardRef(function LeaderCard(
                         </div>
                       </div>
 
-                      {/* Record (teams only) */}
-                      {isTeamMode && (
+                      {/* Record (season-stats Teams board only) */}
+                      {showRecord && (
                         <div style={{
                           width: recordW,
                           textAlign: 'right',
