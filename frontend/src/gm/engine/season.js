@@ -967,6 +967,12 @@ export function runEndOfYear(state) {
   // postseason's) fatigue into fall. Without this, arms that threw in the WS
   // start the new year gassed and the energy dampener skews early sims.
   state.playerEnergy = {}
+  // Clear any lingering weekly-action temp boosts — they wouldn't expire
+  // correctly across the year rollover (the player's rating drifts from
+  // graduation/transfers/development) and the -5 expirations would land on
+  // randomly-applied ratings, looking like a bug. Fresh slate each year.
+  state.tempBoosts = []
+  state.permanentBumps = []
   // Saved lineups are keyed by game id; the schedule is rebuilt below with NEW
   // ids, so last year's lineups are orphaned dead weight — drop them.
   state.lineups = {}
@@ -1343,12 +1349,47 @@ function tickWeeklyBookkeeping(state) {
       if (next <= 0) expired.push(b)
       else remaining.push({ ...b, weeksRemaining: next })
     }
+    // Tally per-rating-key counts so we can emit a single recap event per
+    // action (rather than spamming the feed with one entry per player).
+    // Per playtester report: "the composure bump hurting players." Root
+    // cause was the rating-change recap silently showing the expiration
+    // delta with no context — now we explicitly call out which weekly
+    // action's 4-week boost just ran out, so the user understands the
+    // negative delta isn't from this week's action.
+    const tallies = {}
     for (const b of expired) {
       const p = state.players[b.playerId]
       if (!p) continue
       const block = b.side === 'pitcher' ? p.pitcher : p.hitter
       if (block && typeof block[b.ratingKey] === 'number') {
         block[b.ratingKey] = Math.max(20, block[b.ratingKey] - b.amount)
+        const key = `${b.ratingKey}:${b.side}`
+        if (!tallies[key]) tallies[key] = { ratingKey: b.ratingKey, side: b.side, count: 0, totalAmount: 0 }
+        tallies[key].count++
+        tallies[key].totalAmount += b.amount
+      }
+    }
+    if (Object.keys(tallies).length > 0 && Array.isArray(state.newsfeed)) {
+      const yr = state.calendar?.year ?? 0
+      const wk = state.calendar?.week ?? 0
+      const ratingLabels = {
+        composure: 'composure', durability: 'durability',
+        contact_l: 'contact (vs LHP)', contact_r: 'contact (vs RHP)',
+        power_l: 'power (vs LHP)', power_r: 'power (vs RHP)',
+        discipline: 'plate discipline', speed: 'speed',
+        fielding: 'fielding', arm: 'arm',
+        stuff: 'stuff', control: 'control', stamina: 'stamina',
+        velocity_avg: 'velocity',
+      }
+      for (const t of Object.values(tallies)) {
+        const label = ratingLabels[t.ratingKey] || t.ratingKey
+        const avg = (t.totalAmount / Math.max(1, t.count)).toFixed(1)
+        state.newsfeed.unshift({
+          id: `boost_expire_${t.ratingKey}_${t.side}_${yr}_${wk}_${Math.random().toString(36).slice(2, 5)}`,
+          year: yr, week: wk, type: 'INFO',
+          headline: `Temp boost expired (${label}) — ${t.count} player${t.count === 1 ? '' : 's'} lost an avg -${avg} bump (4-week temp ran out).`,
+          payload: { ratingKey: t.ratingKey, side: t.side, count: t.count, totalAmount: t.totalAmount },
+        })
       }
     }
     state.tempBoosts = remaining

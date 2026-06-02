@@ -268,6 +268,12 @@ export default function Recruiting() {
     }
     // First offer is free; modifications charged above
     setLiveOffer(save.recruits[recruit.id], save.userSchoolId, amount, nilAmount)
+    // Auto-follow the recruit when you offer them. Per playtester feedback:
+    // "in recruiting there's a following tab but i'm not sure how to put a
+    // player there." Sending an offer is the strongest signal that you
+    // want to track this kid, so just star them automatically. The user
+    // can still un-star via the row's ☆ button to clean up.
+    save.recruits[recruit.id].followed = true
     const signRng = makeRng('sign', recruit.id, save.userSchoolId, save.calendar.week)
     const signed = tryAdvanceRecruit(save.recruits[recruit.id], save.userSchoolId, userSchool, signRng, save)
     if (signed) {

@@ -293,8 +293,16 @@ export function saveLineup(state, gameId, lineup) {
  * pitcher rotates by series-game so it's not part of the default.
  */
 export function saveDefaultLineup(state, lineup) {
+  // Friend report (June 2026): "save default lineup isn't working — saves
+  // for the game but next game the auto-lineup is back." Root cause: this
+  // was storing full Player OBJECTS in defaultLineup.batters, but
+  // resolveLineupForGame reads them as IDs (`def.batters.map(id => byId[id])`).
+  // Every lookup returned undefined → batters.length === 0 → fell through to
+  // autoLineup. Store IDs (matching the saved-lineup shape) so the resolver
+  // can actually rehydrate them next game.
+  const toId = (b) => (typeof b === 'string' ? b : b?.id)
   state.defaultLineup = {
-    batters: [...(lineup.batters || [])],
+    batters: (lineup.batters || []).map(toId).filter(Boolean),
     batterPositions: lineup.batterPositions ? [...lineup.batterPositions] : null,
   }
 }

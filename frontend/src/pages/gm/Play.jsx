@@ -1956,8 +1956,27 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
       )
     }
     const safeBullpen = (bullpen || []).filter(Boolean)
-    const startersInPen = safeBullpen.filter(p => (p?.pitcher?.stamina ?? 50) >= 65)
-    const relievers = safeBullpen.filter(p => (p?.pitcher?.stamina ?? 50) < 65)
+    // Friend report (June 2026): "When I go to my bullpen in-game, it says
+    // I have 4 relievers and 10 starters." Old logic used stamina ≥ 65 as
+    // the SP threshold, which mis-classified anyone with above-average
+    // endurance as a starter. Real college staffs only run 4-5 SPs and
+    // 8-10 RPs. New logic: the user-set rotation top 4 (or override) are
+    // SPs; everyone else in the bullpen is RP. Per-pitcher role overrides
+    // (state.pitcherRoleOverride[id] = 'SP' | 'RP') take precedence so
+    // users can pin specific arms either way.
+    const overrides = save?.pitcherRoleOverride || {}
+    const STARTER_SCORE = (p) => (p?.pitcher?.stuff || 0) * 0.55
+      + (p?.pitcher?.stamina || 0) * 0.30
+      + (p?.pitcher?.control || 0) * 0.15
+    const ranked = [...safeBullpen].sort((a, b) => STARTER_SCORE(b) - STARTER_SCORE(a))
+    const topSpIds = new Set(ranked.slice(0, 4).map(p => p.id))
+    const effectiveRole = (p) => {
+      const o = overrides[p.id]
+      if (o === 'SP' || o === 'RP') return o
+      return topSpIds.has(p.id) ? 'SP' : 'RP'
+    }
+    const startersInPen = safeBullpen.filter(p => effectiveRole(p) === 'SP')
+    const relievers = safeBullpen.filter(p => effectiveRole(p) === 'RP')
     return (
       <SubModal title="Pitching change" onClose={onClose}>
         {bullpen.length === 0 ? (
