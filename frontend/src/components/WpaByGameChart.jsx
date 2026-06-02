@@ -25,22 +25,24 @@ export default function WpaByGameChart({ playerId, position }) {
   const { data, loading } = usePlayerWpaByGame(playerId, SEASON)
   if (loading || !data) return null
 
-  const isPitcher = (position || '').toUpperCase() === 'P'
-  // Show pitcher chart first if the player is primarily a pitcher,
-  // batter first otherwise. Two-way players show both.
-  const sides = isPitcher
-    ? [
-        { key: 'pitcher', label: 'WPA on the mound', series: data.pitcher,
-          unit: 'BF', color: '#0f766e' /* teal-700 */ },
-        { key: 'batter',  label: 'WPA at the plate', series: data.batter,
-          unit: 'PA', color: '#b45309' /* amber-700 */ },
-      ]
-    : [
-        { key: 'batter',  label: 'WPA at the plate', series: data.batter,
-          unit: 'PA', color: '#b45309' /* amber-700 */ },
-        { key: 'pitcher', label: 'WPA on the mound', series: data.pitcher,
-          unit: 'BF', color: '#0f766e' /* teal-700 */ },
-      ]
+  const PITCHER = { key: 'pitcher', label: 'WPA on the mound', series: data.pitcher,
+                    unit: 'BF', color: '#0f766e' /* teal-700 */ }
+  const BATTER  = { key: 'batter',  label: 'WPA at the plate', series: data.batter,
+                    unit: 'PA', color: '#b45309' /* amber-700 */ }
+
+  // The split hitter/pitcher profile pages pass an explicit side ("batter" /
+  // "pitcher") and must show ONLY that side — otherwise a two-way player's
+  // pitching view also renders his "WPA at the plate" series (and vice versa).
+  // The legacy combined PlayerDetail passes the raw position string and keeps
+  // the old behavior: pitcher-first when primarily a pitcher, both for two-way.
+  const pos = (position || '').toLowerCase()
+  let sides
+  if (pos === 'pitcher')      sides = [PITCHER]
+  else if (pos === 'batter')  sides = [BATTER]
+  else {
+    const isP = pos === 'p' || pos.startsWith('rhp') || pos.startsWith('lhp')
+    sides = isP ? [PITCHER, BATTER] : [BATTER, PITCHER]
+  }
   const visible = sides.filter(s => (s.series?.length || 0) > 0)
   if (visible.length === 0) return null
 
