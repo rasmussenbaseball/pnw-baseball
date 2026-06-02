@@ -6,6 +6,8 @@ import StatPresetBar from '../components/StatPresetBar'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
+import SeasonSelect from '../components/SeasonSelect'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 import { BATTING_COLUMNS, PITCHING_COLUMNS,
          formatStat, divisionBadgeClass } from '../utils/stats'
 
@@ -25,8 +27,13 @@ const TEAM_PITCHING_PRESETS = {
 
 export default function TeamDetail() {
   const { teamId } = useParams()
-  const [searchParams] = useSearchParams()
-  const season = 2026
+  const [searchParams, setSearchParams] = useSearchParams()
+  const season = clampSeason(searchParams.get('season') || CURRENT_SEASON)
+  const setSeason = (yr) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('season', String(yr))
+    setSearchParams(next, { replace: true })
+  }
   const initialTab = searchParams.get('tab') === 'history' ? 'history' : 'season'
   const [activeTab, setActiveTab] = useState(initialTab)
 
@@ -141,7 +148,10 @@ export default function TeamDetail() {
         <div>
           {/* Summary row */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
-            <div className="text-xs sm:text-sm text-gray-500 mb-2 sm:mb-3">{season} Season</div>
+            <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+              <div className="text-xs sm:text-sm text-gray-500">{season} Season</div>
+              <SeasonSelect value={season} onChange={setSeason} label="Season" id="team-season" />
+            </div>
             <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm">
               <SummaryCell label="Batters" value={batting.length} />
               <SummaryCell label="Pitchers" value={pitching.length} />
@@ -199,7 +209,7 @@ export default function TeamDetail() {
               <ExportCSVButton
                 data={sortedBatting}
                 columns={TEAM_BAT_COLUMNS}
-                filename={`nwbb_${teamId}_batting_2026`}
+                filename={`nwbb_${teamId}_batting_${season}`}
               />
             </div>
             <StatPresetBar
@@ -226,7 +236,7 @@ export default function TeamDetail() {
               <ExportCSVButton
                 data={sortedPitching}
                 columns={TEAM_PIT_COLUMNS}
-                filename={`nwbb_${teamId}_pitching_2026`}
+                filename={`nwbb_${teamId}_pitching_${season}`}
               />
             </div>
             <StatPresetBar

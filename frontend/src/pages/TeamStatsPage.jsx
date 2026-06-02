@@ -9,6 +9,8 @@ import {
 import StatPresetBar from '../components/StatPresetBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
+import SeasonSelect from '../components/SeasonSelect'
+import { CURRENT_SEASON } from '../lib/seasons'
 import { usePersistedState } from '../hooks/usePersistedState'
 
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'NWAC']
@@ -19,7 +21,7 @@ export default function TeamStatsPage() {
   const [preset, setPreset] = usePersistedState('teamstats_preset', 'Standard')
   const [sortBy, setSortBy] = usePersistedState('teamstats_sortBy', null)
   const [sortDir, setSortDir] = usePersistedState('teamstats_sortDir', 'desc')
-  const season = 2026
+  const [season, setSeason] = usePersistedState('teamstats_season', CURRENT_SEASON)
 
   const params = {
     season,
@@ -156,6 +158,11 @@ export default function TeamStatsPage() {
               {l}
             </button>
           ))}
+        </div>
+
+        {/* Season filter */}
+        <div className="ml-auto self-center">
+          <SeasonSelect value={season} onChange={setSeason} label="Season" id="teamstats-season" />
         </div>
       </div>
 

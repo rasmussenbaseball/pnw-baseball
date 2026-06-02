@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSeasons } from '../hooks/useApi'
+import { SEASONS, CURRENT_SEASON } from '../lib/seasons'
 
 /**
  * FilterBar - the main control panel for the dashboard.
@@ -10,7 +11,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
   const { data: availableSeasons } = useSeasons()
   const seasons = availableSeasons && availableSeasons.length > 0
     ? availableSeasons
-    : [2026, 2025, 2024, 2023, 2022]  // fallback
+    : SEASONS  // fallback (single source of truth: lib/seasons.js)
   const states = ['WA', 'OR', 'ID', 'MT']
   const classYears = [
     { value: 'Fr', label: 'Fr' },
@@ -38,7 +39,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
         <div className="flex flex-col">
           <label className="text-xs font-medium text-gray-500 mb-1">Season</label>
           <select
-            value={filters.season || 2026}
+            value={filters.season || CURRENT_SEASON}
             onChange={(e) => handleChange('season', parseInt(e.target.value))}
             className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky focus:border-transparent"
           >

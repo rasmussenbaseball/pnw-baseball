@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStatLeaders } from '../hooks/useApi'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import SeasonSelect from '../components/SeasonSelect'
+import { CURRENT_SEASON } from '../lib/seasons'
 import { usePersistedState } from '../hooks/usePersistedState'
 
 const BADGE_COLORS = {
@@ -104,7 +106,8 @@ export default function StatLeaders() {
   const [qualified, setQualified] = usePersistedState('statl_qualified', true)
   const [level, setLevel] = usePersistedState('statl_level', 'All')
   const [split, setSplit] = usePersistedState('statl_split', 'All')
-  const { data, loading, error } = useStatLeaders(2026, 10, qualified, level === 'All' ? null : level, split === 'All' ? null : split.toLowerCase())
+  const [season, setSeason] = usePersistedState('statl_season', CURRENT_SEASON)
+  const { data, loading, error } = useStatLeaders(season, 10, qualified, level === 'All' ? null : level, split === 'All' ? null : split.toLowerCase())
 
   if (loading) {
     return (
@@ -126,9 +129,10 @@ export default function StatLeaders() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-pnw-slate mb-1">Stat Leaders</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Top 10 in key categories · 2026 season{split !== 'All' ? ` · ${split} games` : ''}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Top 10 in key categories · {season} season{split !== 'All' ? ` · ${split} games` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <SeasonSelect value={season} onChange={setSeason} label="Season" id="statl-season" />
           <div className="flex items-center gap-1">
             {LEVELS.map(l => (
               <button
