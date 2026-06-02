@@ -7730,6 +7730,7 @@ def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN player_links pl ON p.id = pl.linked_id
             WHERE pl.linked_id IS NULL
+              AND COALESCE(p.is_phantom, FALSE) = FALSE
               AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
                    OR (p.first_name || ' ' || p.last_name) ILIKE %s)
             ORDER BY p.last_name, p.first_name
@@ -7775,6 +7776,7 @@ def search_players(
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN player_links pl ON p.id = pl.linked_id
             WHERE pl.linked_id IS NULL
+              AND COALESCE(p.is_phantom, FALSE) = FALSE
               AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
                    OR (p.first_name || ' ' || p.last_name) ILIKE %s)
         """
@@ -17716,6 +17718,7 @@ def grid_player_search(q: str = Query(..., min_length=2), limit: int = Query(10)
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN player_links pl ON p.id = pl.linked_id
             WHERE pl.linked_id IS NULL
+              AND COALESCE(p.is_phantom, FALSE) = FALSE
               AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
                    OR (p.first_name || ' ' || p.last_name) ILIKE %s)
             ORDER BY p.last_name, p.first_name
