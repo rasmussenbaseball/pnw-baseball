@@ -307,11 +307,16 @@ def compute_pitching(conn, league_id, season, avgs):
         # Always estimate BF from pitching line — Pointstreak BF data is unreliable
         # (often reports per-game appearances or other wrong values)
         # BF ≈ outs + hits + walks + HBP (slightly undercounts due to missing SF/SH)
+        baa_val = None
         if ip_raw > 0:
             ip_full = int(ip_raw)
             ip_partial = round((ip_raw - ip_full) * 10)
             outs = ip_full * 3 + ip_partial
             bf = outs + h + bb + hbp
+            # BAA = hits / at-bats-against. AB-against ≈ outs + hits (walks/HBP
+            # aren't at-bats), the same shape as the BF estimate above.
+            ab_against = outs + h
+            baa_val = round(h / ab_against, 3) if ab_against > 0 else None
 
         line = PitchingLine(
             ip=ip_raw,
@@ -356,7 +361,7 @@ def compute_pitching(conn, league_id, season, avgs):
                 h_per_9 = %s, hr_per_9 = %s,
                 k_bb_ratio = %s, pitching_war = %s,
                 xfip = %s, siera = %s, lob_pct = %s,
-                era_plus = %s, fip_plus = %s, k_bb_pct = %s
+                era_plus = %s, fip_plus = %s, k_bb_pct = %s, baa = %s
             WHERE id = %s
         """, (
             round(adv.fip, 2), round(adv.babip_against, 3),
@@ -365,7 +370,7 @@ def compute_pitching(conn, league_id, season, avgs):
             round(adv.h_per_9, 2), round(adv.hr_per_9, 2),
             round(adv.k_bb_ratio, 2), round(adv.pitching_war, 1),
             round(adv.xfip, 2), round(adv.siera, 2), round(adv.lob_pct, 4),
-            era_plus, fip_plus, k_bb_pct,
+            era_plus, fip_plus, k_bb_pct, baa_val,
             row['id'],
         ))
         updated += 1

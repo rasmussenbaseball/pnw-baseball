@@ -92,9 +92,9 @@ const EXTENDED_PITCHING_COLS = [
   { key: 'bb_pct',          label: 'BB%', fmt: 'pct' },
   { key: 'pitching_war',    label: 'WAR', fmt: 'war' },
 ]
-// Summer (WCL/PIL) now carries FIP, K%, BB%, WAR. Only BAA is unavailable
-// (summer tracks BABIP-against instead), so that's all we blank for summer rows.
-const SUMMER_BLANK_COLS = new Set(['baa'])
+// Summer (WCL/PIL) now carries the full advanced pitching line — FIP, K%,
+// BB%, WAR, and BAA (computed from hits / AB-against) — so nothing is blanked.
+const SUMMER_BLANK_COLS = new Set([])
 
 const GAMELOG_PITCHING_COLS = [
   { key: '_date', label: 'Date', align: 'left' },

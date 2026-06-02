@@ -62,7 +62,8 @@ def load_spring_candidates(cur):
     cur.execute(
         """
         SELECT DISTINCT p.id, p.first_name, p.last_name,
-               p.team_id, t.short_name AS team_short, t.school_name
+               p.team_id, t.short_name AS team_short, t.school_name,
+               p.year_in_school, p.roster_year
         FROM players p
         JOIN teams t ON t.id = p.team_id
         WHERE COALESCE(t.is_active, 1) = 1
@@ -79,8 +80,38 @@ def load_spring_candidates(cur):
             "team_id": row["team_id"],
             "team_short": row["team_short"] or "",
             "school_name": row["school_name"] or "",
+            "year_in_school": row["year_in_school"],
+            "roster_year": row["roster_year"],
         })
     return by_name
+
+
+CLASS_OFFSET = {"fr": 0, "so": 1, "jr": 2, "sr": 3, "gr": 4}
+
+
+def _class_offset(year_in_school):
+    """Years a player is removed from their college-entry year (Fr=0…)."""
+    if not year_in_school:
+        return None
+    s = year_in_school.strip().lower()
+    for key, off in CLASS_OFFSET.items():
+        if s.startswith(key) or re.search(rf"\b{key}", s):
+            return off
+    for word, off in (("fresh", 0), ("soph", 1), ("jun", 2), ("sen", 3), ("grad", 4)):
+        if word in s:
+            return off
+    return None
+
+
+def _timeline_ok(summer_first_season, candidate):
+    """A spring player can't have played collegiate summer ball before
+    (their college-entry year - 1). Guards against linking e.g. a 2026
+    freshman to a same-named 2024 summer player (a different person)."""
+    off = _class_offset(candidate.get("year_in_school"))
+    latest = candidate.get("roster_year")
+    if off is None or latest is None or summer_first_season is None:
+        return True  # not enough info → don't block
+    return summer_first_season >= (latest - off) - 1
 
 
 def load_summer_unlinked(cur, season):
@@ -90,7 +121,11 @@ def load_summer_unlinked(cur, season):
     cur.execute(
         """
         SELECT DISTINCT sp.id, sp.first_name, sp.last_name, sp.college,
-               t.short_name AS team_short, t.name AS team_name
+               t.short_name AS team_short, t.name AS team_name,
+               (SELECT MIN(season) FROM (
+                   SELECT season FROM summer_batting_stats WHERE player_id = sp.id
+                   UNION SELECT season FROM summer_pitching_stats WHERE player_id = sp.id
+                ) z) AS first_season
         FROM summer_players sp
         JOIN summer_teams t ON t.id = sp.team_id
         WHERE NOT EXISTS (
@@ -151,6 +186,12 @@ def run(season, dry_run=False, rescore=False):
         for sp in unlinked:
             key = _norm(f"{sp['first_name']} {sp['last_name']}")
             cands = spring_by_name.get(key, [])
+            if not cands:
+                no_candidate += 1
+                continue
+            # Timeline guard: drop candidates who couldn't have played this
+            # summer season (e.g. a 2026 freshman vs a 2024 summer player).
+            cands = [c for c in cands if _timeline_ok(sp.get("first_season"), c)]
             if not cands:
                 no_candidate += 1
                 continue
