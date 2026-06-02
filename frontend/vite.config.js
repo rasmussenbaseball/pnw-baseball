@@ -52,15 +52,24 @@ export default defineConfig({
         manualChunks(id) {
           // GM data JSONs are large (non_naia_teams.json ~5000 lines,
           // pear_ratings_2026.json ~1500 lines) — pull them into their own
-          // chunk so dynasty creation doesn't blow up the GM engine bundle.
+          // chunk so dynasty creation doesn't blow up the GM bundle.
           if (id.includes('/src/gm/data/')) return 'gm-data'
-          // GM engine modules (sim, rankings, schedule, etc.)
-          if (id.includes('/src/gm/engine/')) return 'gm-engine'
-          // GM page components + GM-only UI components
-          if (id.includes('/src/pages/gm/') || id.includes('/src/gm/components/')) return 'gm-ui'
-          // Heavy 3rd-party chart libs — only used on main-site analytics pages
-          if (id.includes('/node_modules/recharts/')) return 'vendor-charts'
-          if (id.includes('/node_modules/d3-')) return 'vendor-d3'
+          // Everything else GM (engine + components + pages) → one chunk.
+          // Splitting engine from ui produced a gm-engine<->gm-ui circular
+          // chunk warning and bought nothing (the whole game loads together on
+          // first /gm hit), so collapse it.
+          if (id.includes('/src/gm/') || id.includes('/src/pages/gm/')) return 'gm'
+          // ── Vendor splits ──────────────────────────────────────────────
+          // Pull big, stable third-party libs into their own chunks. They
+          // change far less often than app code, so the browser can cache them
+          // across deploys instead of re-downloading them inside index.js.
+          if (id.includes('/node_modules/')) {
+            if (/\/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom)\//.test(id)) return 'vendor-react'
+            if (id.includes('/node_modules/@supabase/')) return 'vendor-supabase'
+            if (id.includes('/node_modules/@sentry')) return 'vendor-sentry'
+            if (id.includes('/node_modules/recharts/') || id.includes('/node_modules/d3-') || id.includes('/node_modules/victory')) return 'vendor-charts'
+            if (/\/node_modules\/(react-markdown|remark|remark-gfm|micromark|mdast|hast|unified|unist|vfile|property-information|space-separated-tokens|comma-separated-tokens|decode-named-character-reference|character-entities|trim-lines|trough|bail|is-plain-obj|mdurl|ccount|markdown-table|escape-string-regexp|zwitch|longest-streak|html-void-elements|web-namespaces)/.test(id)) return 'vendor-markdown'
+          }
         },
       },
     },

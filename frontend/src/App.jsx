@@ -183,8 +183,8 @@ import SummerHub from './pages/SummerHub'
 import SummerGameDetail from './pages/SummerGameDetail'
 import SummerTeamDetail from './pages/SummerTeamDetail'
 import SummerPlayerDetail from './pages/SummerPlayerDetail'
-import WclRecapGraphic from './pages/WclRecapGraphic'
-import WclGameRecapGraphic from './pages/WclGameRecapGraphic'
+const WclRecapGraphic = lazy(() => import('./pages/WclRecapGraphic'))
+const WclGameRecapGraphic = lazy(() => import('./pages/WclGameRecapGraphic'))
 import SummerStatsPage from './pages/summer/SummerStatsPage'
 import SummerScoreboardPage from './pages/summer/SummerScoreboardPage'
 import SummerStandingsPage from './pages/summer/SummerStandingsPage'
@@ -203,12 +203,14 @@ import PlayerSearch from './pages/PlayerSearch'
 import JucoTracker from './pages/JucoTracker'
 import TransferPortalTracker from './pages/TransferPortalTracker'
 import PlayerDetail from './pages/PlayerDetail'
-import SocialGraphics from './pages/SocialGraphics'
-import DailyScoresGraphic from './pages/DailyScoresGraphic'
-import KeyMatchupGraphic from './pages/KeyMatchupGraphic'
-import SeriesRecapGraphic from './pages/SeriesRecapGraphic'
-import TournamentBracketGraphic from './pages/TournamentBracketGraphic'
-import DailyRecapGraphic from './pages/DailyRecapGraphic'
+// Social-graphic generators: admin/author tools (RequireAuth), never on a
+// visitor's path — lazy so their ~8k lines stay out of the main bundle.
+const SocialGraphics = lazy(() => import('./pages/SocialGraphics'))
+const DailyScoresGraphic = lazy(() => import('./pages/DailyScoresGraphic'))
+const KeyMatchupGraphic = lazy(() => import('./pages/KeyMatchupGraphic'))
+const SeriesRecapGraphic = lazy(() => import('./pages/SeriesRecapGraphic'))
+const TournamentBracketGraphic = lazy(() => import('./pages/TournamentBracketGraphic'))
+const DailyRecapGraphic = lazy(() => import('./pages/DailyRecapGraphic'))
 
 // ─── New pages ───
 import Homepage from './pages/Homepage'
@@ -231,31 +233,32 @@ import AdminRecruitingPlaceholder from './pages/AdminRecruitingPlaceholder'
 import RecruitingHistory from './pages/RecruitingHistory'
 import RecruitingField from './pages/RecruitingField'
 import RecruitingGuide from './pages/RecruitingGuide'
-import PlayerScouting from './pages/PlayerScouting'
-import TeamScouting from './pages/TeamScouting'
-import ScoutingSheet from './pages/ScoutingSheet'
-import PlayerCardPDF from './pages/PlayerCardPDF'
-import BulkPlayerCards from './pages/BulkPlayerCards'
-import PortalPDFs from './pages/PortalPDFs'
-import BullpenSheet from './pages/BullpenSheet'
-import CatcherCards from './pages/CatcherCards'
-import NWACTournamentSheet from './pages/NWACTournamentSheet'
+// Coach-portal scouting + print/PDF pages (coach tier only) — lazy.
+const PlayerScouting = lazy(() => import('./pages/PlayerScouting'))
+const TeamScouting = lazy(() => import('./pages/TeamScouting'))
+const ScoutingSheet = lazy(() => import('./pages/ScoutingSheet'))
+const PlayerCardPDF = lazy(() => import('./pages/PlayerCardPDF'))
+const BulkPlayerCards = lazy(() => import('./pages/BulkPlayerCards'))
+const PortalPDFs = lazy(() => import('./pages/PortalPDFs'))
+const BullpenSheet = lazy(() => import('./pages/BullpenSheet'))
+const CatcherCards = lazy(() => import('./pages/CatcherCards'))
+const NWACTournamentSheet = lazy(() => import('./pages/NWACTournamentSheet'))
 import NewsList from './pages/NewsList'
-import NewsArticle from './pages/NewsArticle'
+const NewsArticle = lazy(() => import('./pages/NewsArticle'))  // pulls react-markdown — lazy to split it off the main bundle
 import NewsCommitments from './pages/NewsCommitments'
-import GraphicsHub from './pages/GraphicsHub'
+const GraphicsHub = lazy(() => import('./pages/GraphicsHub'))
 import ArticlesList from './pages/portal/ArticlesList'
-import ArticleEditor from './pages/portal/ArticleEditor'
-import EmailComposer from './pages/portal/EmailComposer'
+const ArticleEditor = lazy(() => import('./pages/portal/ArticleEditor'))  // author-only, react-markdown
+const EmailComposer = lazy(() => import('./pages/portal/EmailComposer'))  // author-only, react-markdown
 import Unsubscribe from './pages/Unsubscribe'
 import Account from './pages/Account'
 import Pricing from './pages/Pricing'
 import RequireTier from './components/RequireTier'
 import { useTier } from './hooks/useTier'
 import { isGmFreePlay } from './lib/gmPromo'
-import OpponentTrends from './pages/OpponentTrends'
-import HistoricMatchups from './pages/HistoricMatchups'
-import LineupHelper from './pages/LineupHelper'
+const OpponentTrends = lazy(() => import('./pages/OpponentTrends'))  // big coach-portal page
+const HistoricMatchups = lazy(() => import('./pages/HistoricMatchups'))
+const LineupHelper = lazy(() => import('./pages/LineupHelper'))  // ~1,150 lines, coach-only
 import ParkFactors from './pages/ParkFactors'
 // Coach & Scouting Portal
 import PortalLayout from './components/PortalLayout'
@@ -265,21 +268,21 @@ import NationalRankings from './pages/NationalRankings'
 import Scoreboard from './pages/Scoreboard'
 import About from './pages/About'
 import RecruitingBreakdown from './pages/RecruitingBreakdown'
-import PnwGrid from './pages/PnwGrid'
+const PnwGrid = lazy(() => import('./pages/PnwGrid'))  // ~1,050 lines, niche game
 import TopMoments from './pages/TopMoments'
-import AllConferenceGenerator from './pages/AllConferenceGenerator'
+const AllConferenceGenerator = lazy(() => import('./pages/AllConferenceGenerator'))
 import AuthPage from './pages/AuthPage'
 import FavoritesPage from './pages/FavoritesPage'
 import FeatureRequest from './pages/FeatureRequest'
-import PlayerGraphic from './pages/PlayerGraphic'
-import ConferenceStandingsGraphic from './pages/ConferenceStandingsGraphic'
-import AllConferenceGraphic from './pages/AllConferenceGraphic'
-import TopPerformersGraphic from './pages/TopPerformersGraphic'
-import TeamInfoGraphic from './pages/TeamInfoGraphic'
-import TeamSeasonRecapGraphic from './pages/TeamSeasonRecapGraphic'
+const PlayerGraphic = lazy(() => import('./pages/PlayerGraphic'))
+const ConferenceStandingsGraphic = lazy(() => import('./pages/ConferenceStandingsGraphic'))
+const AllConferenceGraphic = lazy(() => import('./pages/AllConferenceGraphic'))
+const TopPerformersGraphic = lazy(() => import('./pages/TopPerformersGraphic'))
+const TeamInfoGraphic = lazy(() => import('./pages/TeamInfoGraphic'))
+const TeamSeasonRecapGraphic = lazy(() => import('./pages/TeamSeasonRecapGraphic'))
 import HometownSearch from './pages/HometownSearch'
 import RecordsPage from './pages/RecordsPage'
-import PlayoffProjections from './pages/PlayoffProjections'
+const PlayoffProjections = lazy(() => import('./pages/PlayoffProjections'))  // ~950 lines, recharts
 import Percentiles from './pages/Percentiles'
 import PlayerComps from './pages/PlayerComps'
 import TeamQuiz from './pages/TeamQuiz'
@@ -337,6 +340,7 @@ export default function App() {
       {!isPortal && !isGm && <Header />}
       <EmailPrefsPopup />
       <RouteContainer isPortal={isPortal} isGm={isGm}>
+        <Suspense fallback={<div className="min-h-[60vh]" />}>
         <Routes>
           {/* Homepage */}
           <Route path="/" element={<HomepageRouter />} />
@@ -534,6 +538,7 @@ export default function App() {
           {/* Legacy route: redirect old / batting path */}
           <Route path="/player/:playerId" element={<PlayerDetail />} />
         </Routes>
+        </Suspense>
       </RouteContainer>
 
       {!isPortal && !isGm && (
