@@ -43,6 +43,8 @@ COMMITMENTS = [
     ("Taguchi", "Rylan", "Clark", "Friends University"),
     ("Lee", "Jacob", "Clark", "Warner Pacific"),
     ("Brown", "Seamus", "Olympic", "Saint Martin's"),
+    ("Berens", "Trig", "Clark", "Friends University"),
+    ("Robinson", "Cole", "Clark", "Warner Pacific"),
 ]
 
 # (last_name, first_name, team_short_name) — players to set back to uncommitted.
