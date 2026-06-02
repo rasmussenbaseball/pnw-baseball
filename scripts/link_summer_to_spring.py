@@ -114,10 +114,54 @@ def _timeline_ok(summer_first_season, candidate):
     return summer_first_season >= (latest - off) - 1
 
 
+def _first_initial(name):
+    n = _norm(name)
+    return n[:1] if n else ""
+
+
+def _is_initial_only(name):
+    """True when the first name is a single letter ("T", "T.", "T ")."""
+    return len(_norm(name)) == 1
+
+
+def _initials_unique_match(summer_player, by_lastinitial):
+    """Match a first-initial-only summer player (Pointstreak gives no
+    college for these) to a spring player by LAST NAME + FIRST INITIAL,
+    but ONLY when the match is unambiguous: exactly one timeline-plausible
+    spring player shares that (last name, initial). Rare surnames link;
+    common ones (J Smith) stay ambiguous and are left alone.
+
+    Because there's no college to corroborate, uniqueness IS the guard, so
+    we also require a known roster_year and bound the summer season inside
+    the player's plausible college window:
+      college-entry-1  <=  summer season  <=  last-college-year + 1
+    """
+    ln = _norm(summer_player["last_name"])
+    fi = _first_initial(summer_player["first_name"])
+    if not ln or not fi:
+        return None
+    fs = summer_player.get("first_season")
+    ok = []
+    for c in by_lastinitial.get((ln, fi), []):
+        ry = c.get("roster_year")
+        if ry is None:
+            continue  # need it for the upper bound; too risky without
+        if not _timeline_ok(fs, c):
+            continue  # summer before the player could have entered college
+        if fs is not None and fs > ry + 1:
+            continue  # summer years after the player's last college season
+        ok.append(c)
+    return ok[0] if len(ok) == 1 else None
+
+
 def load_summer_unlinked(cur, season):
-    """Return unlinked summer_players who appear in a game during
-    `season` (so we don't try to link inactive prior-year roster
-    ghosts)."""
+    """Return unlinked summer_players with SEASON STATS for `season`.
+
+    Gated on season-stat presence (not per-game rows): pre-2026 summer
+    seasons were imported as Pointstreak season rollups with no per-game
+    box scores, so a game-data gate would make those players invisible to
+    the linker. Season-stat presence still excludes inactive prior-year
+    roster ghosts."""
     cur.execute(
         """
         SELECT DISTINCT sp.id, sp.first_name, sp.last_name, sp.college,
@@ -133,14 +177,12 @@ def load_summer_unlinked(cur, season):
         )
         AND (
           EXISTS (
-            SELECT 1 FROM summer_game_batting gb
-            JOIN summer_games g ON g.id = gb.game_id
-            WHERE gb.player_id = sp.id AND g.season = %s
+            SELECT 1 FROM summer_batting_stats b
+            WHERE b.player_id = sp.id AND b.season = %s
           )
           OR EXISTS (
-            SELECT 1 FROM summer_game_pitching gp
-            JOIN summer_games g ON g.id = gp.game_id
-            WHERE gp.player_id = sp.id AND g.season = %s
+            SELECT 1 FROM summer_pitching_stats p
+            WHERE p.player_id = sp.id AND p.season = %s
           )
         )
         """,
@@ -175,57 +217,81 @@ def run(season, dry_run=False, rescore=False):
         if rescore:
             logger.info("Rescore mode: clearing existing links before re-linking")
             if not dry_run:
-                cur.execute("DELETE FROM summer_player_links WHERE confidence = 'auto'")
+                cur.execute("DELETE FROM summer_player_links WHERE confidence IN ('auto', 'auto_first_initial')")
+
+        # Secondary index for first-initial-only matching: (last, initial) -> candidates.
+        by_lastinitial = defaultdict(list)
+        for cand_list in spring_by_name.values():
+            for c in cand_list:
+                ln = _norm(c["last"])
+                fi = _first_initial(c["first"])
+                if ln and fi:
+                    by_lastinitial[(ln, fi)].append(c)
 
         unlinked = load_summer_unlinked(cur, season)
         logger.info(f"Unlinked summer_players with {season} game data: {len(unlinked)}")
 
         linked = 0
+        initial_linked = 0
         ambiguous = 0
         no_candidate = 0
         for sp in unlinked:
+            chosen = None
+            confidence = "auto"
             key = _norm(f"{sp['first_name']} {sp['last_name']}")
             cands = spring_by_name.get(key, [])
-            if not cands:
-                no_candidate += 1
-                continue
             # Timeline guard: drop candidates who couldn't have played this
             # summer season (e.g. a 2026 freshman vs a 2024 summer player).
             cands = [c for c in cands if _timeline_ok(sp.get("first_season"), c)]
-            if not cands:
+            if cands:
+                # Full-name path: score every candidate, pick best (tie → skip).
+                scored = [(score_match(dict(sp), c), c) for c in cands]
+                scored.sort(key=lambda x: -x[0])
+                top_score = scored[0][0]
+                top_candidates = [c for s, c in scored if s == top_score]
+                if len(top_candidates) > 1:
+                    ambiguous += 1
+                    continue
+                chosen = top_candidates[0]
+            elif _is_initial_only(sp["first_name"]):
+                # First-initial-only path: link only on a unique last+initial
+                # match within the player's plausible college window.
+                chosen = _initials_unique_match(sp, by_lastinitial)
+                if chosen is None:
+                    no_candidate += 1
+                    continue
+                # Distinct label (NOT the legacy 'auto_initial' the archived
+                # SQL linker used for full-name matches) so these loosest,
+                # college-less first-initial matches stay easy to audit/undo.
+                confidence = "auto_first_initial"
+            else:
                 no_candidate += 1
                 continue
-            # Score every candidate, pick best
-            scored = [(score_match(dict(sp), c), c) for c in cands]
-            scored.sort(key=lambda x: -x[0])
-            top_score = scored[0][0]
-            top_candidates = [c for s, c in scored if s == top_score]
-            if len(top_candidates) > 1:
-                # Tie at the top → ambiguous, skip
-                ambiguous += 1
-                continue
-            chosen = top_candidates[0]
+
+            if confidence == "auto_first_initial":
+                initial_linked += 1
+            else:
+                linked += 1
             logger.debug(
-                f"  link {sp['first_name']} {sp['last_name']} "
-                f"({sp.get('college') or '?'} → {chosen['team_short']}) score={top_score}"
+                f"  link [{confidence}] {sp['first_name']} {sp['last_name']} "
+                f"→ {chosen['first']} {chosen['last']} ({chosen['team_short']})"
             )
-            linked += 1
             if not dry_run:
                 cur.execute(
                     """
                     INSERT INTO summer_player_links (summer_player_id, spring_player_id, confidence)
-                    VALUES (%s, %s, 'auto')
+                    VALUES (%s, %s, %s)
                     ON CONFLICT (summer_player_id) DO NOTHING
                     """,
-                    (sp["id"], chosen["id"]),
+                    (sp["id"], chosen["id"], confidence),
                 )
 
         if not dry_run:
             conn.commit()
 
         logger.info(
-            f"Linked: {linked} · Ambiguous: {ambiguous} · "
-            f"No spring candidate: {no_candidate}"
+            f"Linked (full name): {linked} · Linked (initial): {initial_linked} · "
+            f"Ambiguous: {ambiguous} · No spring candidate: {no_candidate}"
         )
 
 
@@ -234,9 +300,16 @@ def main():
     parser.add_argument("--season", type=int, default=2026)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--rescore", action="store_true",
-                        help="Delete existing 'auto' links and recompute")
+                        help="Delete existing auto links and recompute")
+    parser.add_argument("--all-seasons", action="store_true",
+                        help="Run the linker for every summer season (2022-2026)")
     args = parser.parse_args()
-    run(args.season, dry_run=args.dry_run, rescore=args.rescore)
+    if args.all_seasons:
+        for yr in range(2022, 2027):
+            logger.info(f"===== Season {yr} =====")
+            run(yr, dry_run=args.dry_run, rescore=args.rescore)
+    else:
+        run(args.season, dry_run=args.dry_run, rescore=args.rescore)
 
 
 if __name__ == "__main__":
