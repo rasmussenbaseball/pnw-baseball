@@ -17,8 +17,9 @@ import threading
 from bisect import bisect_left, bisect_right
 from datetime import datetime, date, timedelta
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from fastapi.responses import JSONResponse
+from psycopg2.extras import Json
 from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
@@ -19637,9 +19638,28 @@ def get_recruiting_guide(team_id: int):
                 "competitiveness": None
             }
 
+            # ============ PROGRAM PROFILE (curated recruiting intel) ============
+            # Off-field program data hand-researched into recruiting_programs.
+            # Wrapped in a savepoint so the endpoint still works if the table
+            # hasn't been migrated yet (returns program=None).
+            program = None
+            try:
+                cur.execute("SAVEPOINT prog_sp")
+                cur.execute("""
+                    SELECT school_name, division, conference, profile, updated_at
+                    FROM recruiting_programs WHERE team_id = %s
+                """, (team_id,))
+                prow = cur.fetchone()
+                if prow:
+                    program = dict(prow)
+                cur.execute("RELEASE SAVEPOINT prog_sp")
+            except Exception:
+                cur.execute("ROLLBACK TO SAVEPOINT prog_sp")
+
             # ============ ASSEMBLE RESPONSE ============
             return {
                 "team_info": team_info,
+                "program": program,
                 "season_records": season_records,
                 "season_stats": season_stats,
                 "roster_overview": roster_overview,
@@ -19659,6 +19679,47 @@ def get_recruiting_guide(team_id: int):
         import traceback
         traceback.print_exc()
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@router.put("/recruiting/programs/{team_id}")
+def upsert_recruiting_program(
+    team_id: int,
+    payload: dict = Body(...),
+    _admin: str = Depends(require_admin),
+):
+    """ADMIN: create or update the curated recruiting profile for a team.
+
+    Body: { "profile": { ...all curated fields... } }. Identity columns
+    (school_name / division / conference) are resolved from the teams table when
+    a row is first created; subsequent edits only touch the profile JSONB.
+    """
+    profile = payload.get("profile")
+    if not isinstance(profile, dict):
+        raise HTTPException(status_code=400, detail="Body must include a 'profile' object.")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.school_name, t.name, c.name AS conference, d.name AS division
+            FROM teams t
+            LEFT JOIN conferences c ON c.id = t.conference_id
+            LEFT JOIN divisions d ON d.id = c.division_id
+            WHERE t.id = %s
+        """, (team_id,))
+        trow = cur.fetchone()
+        if not trow:
+            raise HTTPException(status_code=404, detail="Team not found.")
+        cur.execute("""
+            INSERT INTO recruiting_programs
+                (team_id, school_name, division, conference, profile, updated_at)
+            VALUES (%s, %s, %s, %s, %s, now())
+            ON CONFLICT (team_id) DO UPDATE SET
+                profile = EXCLUDED.profile,
+                updated_at = now()
+            RETURNING team_id, school_name, division, conference, profile, updated_at
+        """, (team_id, trow["school_name"] or trow["name"],
+              trow["division"], trow["conference"], Json(profile)))
+        row = dict(cur.fetchone())
+    return {"ok": True, "program": row}
 
 
 # ============================================================
