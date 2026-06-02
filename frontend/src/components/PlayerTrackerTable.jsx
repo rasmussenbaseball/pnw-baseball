@@ -54,14 +54,15 @@ export const PITCHER_STAT_COLS = [
   { key: 'total_war', label: 'WAR', format: 'war', mono: true },
 ]
 
-// Columns the API can sort by.
+// Every displayed stat column is sortable. Derive the set from the column
+// definitions so it can never drift from what's actually shown.
 export const SORTABLE = new Set([
-  'total_war', 'offensive_war', 'pitching_war',
-  'batting_avg', 'on_base_pct', 'slugging_pct', 'ops',
-  'woba', 'wrc_plus', 'home_runs', 'rbi', 'stolen_bases',
-  'plate_appearances', 'era', 'fip', 'fip_plus', 'innings_pitched',
+  'total_war',
+  ...BATTING_COLS.map(c => c.key),
+  ...PITCHING_COLS.map(c => c.key),
 ])
-export const ASC_DEFAULT = new Set(['era', 'fip'])
+// Lower-is-better stats sort ascending by default when first clicked.
+export const ASC_DEFAULT = new Set(['era', 'fip', 'siera', 'baa'])
 
 export function isHitter(row) { return (row.plate_appearances || 0) > 0 }
 export function isPitcher(row) { return (row.innings_pitched || 0) > 0 }

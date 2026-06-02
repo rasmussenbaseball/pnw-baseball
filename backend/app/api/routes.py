@@ -9019,6 +9019,27 @@ def _PLAYER_PBP_CTES(batter_pred: str, pitcher_pred: str, with_juco_ids: bool = 
     """
 
 
+# Every stat column the JUCO + Transfer Portal trackers display, keyed by
+# the SELECT output alias used in the shared query (main SELECT +
+# _PLAYER_PBP_SELECT + the computed total_war). The tracker tables let you
+# sort by any of these; because each is a SELECT output alias, ORDER BY can
+# reference it directly (Postgres resolves a bare name to the output column).
+# "era_plus" is computed in Python after fetch, so it is handled specially in
+# the ORDER BY logic rather than referenced as an alias.
+_TRACKER_SORT_COLUMNS = {
+    # batting
+    "batting_avg", "on_base_pct", "slugging_pct", "ops", "woba", "wrc_plus",
+    "offensive_war", "home_runs", "rbi", "stolen_bases", "plate_appearances",
+    "bat_k_pct", "bat_bb_pct", "contact_pct", "swing_pct", "air_pull_pct", "batter_wpa",
+    # pitching
+    "era", "fip", "fip_plus", "era_minus", "era_plus", "xfip", "siera", "baa",
+    "pitch_k_pct", "pitch_bb_pct", "whiff_pct", "strike_pct", "first_pitch_strike_pct",
+    "innings_pitched", "pitcher_wpa", "pitching_war",
+    # combined
+    "total_war",
+}
+
+
 @router.get("/players/juco/uncommitted")
 def uncommitted_juco_players(
     season: int = Query(...),
@@ -9039,12 +9060,7 @@ def uncommitted_juco_players(
     Shows sophomores (or specified class) who haven't committed to a 4-year school.
     Year filter groups: 'So' matches So and R-So, 'Fr' matches Fr and R-Fr.
     """
-    allowed_sort = {
-        "total_war", "offensive_war", "pitching_war",
-        "batting_avg", "on_base_pct", "slugging_pct", "ops",
-        "woba", "wrc_plus", "home_runs", "rbi", "stolen_bases",
-        "plate_appearances", "era", "fip", "fip_plus", "era_minus", "era_plus", "innings_pitched",
-    }
+    allowed_sort = _TRACKER_SORT_COLUMNS
     if sort_by not in allowed_sort:
         sort_by = "total_war"
     direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
@@ -9111,19 +9127,15 @@ def uncommitted_juco_players(
             query += " AND p.throws = %s"
             params.append(throws)
 
-        # Use the computed total_war alias or COALESCE for other columns
-        if sort_by == "total_war":
-            query += f" ORDER BY total_war {direction} NULLS LAST"
-        elif sort_by in ("era", "fip", "era_minus", "innings_pitched"):
-            # Lower-is-better pitching stats: NULLs → 999 so they sort last in ASC
-            query += f" ORDER BY COALESCE(ps2.{sort_by}, 999) {direction}"
-        elif sort_by == "era_plus":
+        if sort_by == "era_plus":
+            # era_plus is computed in Python (not a SELECT column), so derive it here.
             query += f" ORDER BY CASE WHEN ps2.era_minus > 0 THEN 10000.0 / ps2.era_minus END {direction} NULLS LAST"
-        elif sort_by in ("fip_plus", "pitching_war"):
-            # Higher-is-better pitching stats: NULLs → 0 so they sort last in DESC
-            query += f" ORDER BY COALESCE(ps2.{sort_by}, 0) {direction}"
         else:
-            query += f" ORDER BY COALESCE(bs.{sort_by}, 0) {direction} NULLS LAST"
+            # sort_by is whitelisted to a SELECT output alias above, so it is safe to
+            # interpolate. A bare name in ORDER BY resolves to the output column, which
+            # works for the PBP-derived stats too. NULLS LAST keeps players who are
+            # missing that stat at the bottom regardless of direction.
+            query += f" ORDER BY {sort_by} {direction} NULLS LAST"
         query += " LIMIT %s"
         params.append(limit)
 
@@ -9166,12 +9178,7 @@ def transfer_portal_players(
     if not ids:
         return []
 
-    allowed_sort = {
-        "total_war", "offensive_war", "pitching_war",
-        "batting_avg", "on_base_pct", "slugging_pct", "ops",
-        "woba", "wrc_plus", "home_runs", "rbi", "stolen_bases",
-        "plate_appearances", "era", "fip", "fip_plus", "era_minus", "era_plus", "innings_pitched",
-    }
+    allowed_sort = _TRACKER_SORT_COLUMNS
     if sort_by not in allowed_sort:
         sort_by = "total_war"
     direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
@@ -9223,16 +9230,15 @@ def transfer_portal_players(
             query += " AND p.throws = %s"
             params.append(throws)
 
-        if sort_by == "total_war":
-            query += f" ORDER BY total_war {direction} NULLS LAST"
-        elif sort_by in ("era", "fip", "era_minus", "innings_pitched"):
-            query += f" ORDER BY COALESCE(ps2.{sort_by}, 999) {direction}"
-        elif sort_by == "era_plus":
+        if sort_by == "era_plus":
+            # era_plus is computed in Python (not a SELECT column), so derive it here.
             query += f" ORDER BY CASE WHEN ps2.era_minus > 0 THEN 10000.0 / ps2.era_minus END {direction} NULLS LAST"
-        elif sort_by in ("fip_plus", "pitching_war"):
-            query += f" ORDER BY COALESCE(ps2.{sort_by}, 0) {direction}"
         else:
-            query += f" ORDER BY COALESCE(bs.{sort_by}, 0) {direction} NULLS LAST"
+            # sort_by is whitelisted to a SELECT output alias above, so it is safe to
+            # interpolate. A bare name in ORDER BY resolves to the output column, which
+            # works for the PBP-derived stats too. NULLS LAST keeps players who are
+            # missing that stat at the bottom regardless of direction.
+            query += f" ORDER BY {sort_by} {direction} NULLS LAST"
 
         cur.execute(query, params)
         rows = cur.fetchall()
