@@ -10,6 +10,7 @@ const fmtAvg = v => v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')
 const fmtIp  = v => v == null ? '—' : Number(v).toFixed(1)
 const fmtEra = v => v == null ? '—' : Number(v).toFixed(2)
 const fmtInt = v => v == null ? '—' : Math.round(v)
+const fmtWar = v => v == null ? '—' : Number(v).toFixed(1)
 const fmtPct = v => v == null ? '—' : `${(Number(v) * 100).toFixed(1)}%`
 const fmtDate = d => {
   if (!d) return ''
@@ -103,7 +104,7 @@ export default function SummerPlayerDetail() {
             <table className="w-full text-[12px] tabular-nums">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700">
-                  {['Year','G','PA','AB','H','2B','3B','HR','R','RBI','BB','K','SB','AVG','OBP','SLG','OPS'].map((h, i) => (
+                  {['Year','G','PA','AB','H','2B','3B','HR','R','RBI','BB','K','SB','AVG','OBP','SLG','OPS','wOBA','wRC+','ISO','BB%','K%','oWAR'].map((h, i) => (
                     <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
                   ))}
                 </tr>
@@ -128,6 +129,12 @@ export default function SummerPlayerDetail() {
                     <td className="px-1.5 py-1 text-right">{fmtAvg(r.on_base_pct)}</td>
                     <td className="px-1.5 py-1 text-right">{fmtAvg(r.slugging_pct)}</td>
                     <td className="px-1.5 py-1 text-right font-bold">{fmtAvg(r.ops)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtAvg(r.woba)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtInt(r.wrc_plus)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtAvg(r.iso)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtPct(r.bb_pct)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtPct(r.k_pct)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtWar(r.offensive_war)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -172,7 +179,7 @@ export default function SummerPlayerDetail() {
             <table className="w-full text-[12px] tabular-nums">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700">
-                  {['Year','G','GS','W','L','SV','IP','H','R','ER','BB','K','HR','ERA','WHIP','K/9'].map((h, i) => (
+                  {['Year','G','GS','W','L','SV','IP','H','R','ER','BB','K','HR','ERA','WHIP','K/9','FIP','FIP+','ERA+','xFIP','SIERA','LOB%','K%','BB%','WAR'].map((h, i) => (
                     <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
                   ))}
                 </tr>
@@ -196,6 +203,15 @@ export default function SummerPlayerDetail() {
                     <td className="px-1.5 py-1 text-right font-bold">{fmtEra(r.era)}</td>
                     <td className="px-1.5 py-1 text-right">{fmtEra(r.whip)}</td>
                     <td className="px-1.5 py-1 text-right">{fmtEra(r.k_per_9)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtEra(r.fip)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtInt(r.fip_plus)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtInt(r.era_plus)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtEra(r.xfip)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtEra(r.siera)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtPct(r.lob_pct)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtPct(r.k_pct)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtPct(r.bb_pct)}</td>
+                    <td className="px-1.5 py-1 text-right">{fmtWar(r.pitching_war)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -7738,9 +7738,29 @@ def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
         """, (search, search, search, limit))
         players = cur.fetchall()
 
+        # Summer-only players (no spring-school row in our DB) — e.g. a WCL
+        # player whose college is back east. They live only in summer_players,
+        # so the spring query above misses them. Surface them with their summer
+        # team logo + a 'summer' kind so the frontend routes to /summer/players.
+        cur.execute("""
+            SELECT sp.id, sp.first_name, sp.last_name, sp.position, sp.year_in_school,
+                   st.short_name AS team_short, st.logo_url, st.id AS team_id,
+                   l.abbreviation AS division_level, 'summer' AS kind
+            FROM summer_players sp
+            JOIN summer_teams st ON sp.team_id = st.id
+            JOIN summer_leagues l ON l.id = st.league_id
+            LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
+            WHERE spl.summer_player_id IS NULL
+              AND (sp.first_name ILIKE %s OR sp.last_name ILIKE %s
+                   OR (sp.first_name || ' ' || sp.last_name) ILIKE %s)
+            ORDER BY sp.last_name, sp.first_name
+            LIMIT %s
+        """, (search, search, search, limit))
+        summer = cur.fetchall()
+
         return {
             "teams": [dict(r) for r in teams],
-            "players": [dict(r) for r in players],
+            "players": [dict(r) for r in players] + [dict(r) for r in summer],
         }
 
 

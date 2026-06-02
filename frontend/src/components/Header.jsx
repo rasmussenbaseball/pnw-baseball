@@ -242,7 +242,7 @@ function SearchBar({ mobile = false }) {
     if (item.type === 'team') {
       navigate(`/team/${item.data.id}`)
     } else {
-      navigate(`/player/${item.data.id}`)
+      navigate(item.data.kind === 'summer' ? `/summer/players/${item.data.id}` : `/player/${item.data.id}`)
     }
     setQuery('')
     setResults(null)
@@ -350,7 +350,7 @@ function SearchBar({ mobile = false }) {
                   const idx = results.teams.length + i
                   return (
                     <button
-                      key={`p-${player.id}`}
+                      key={`p-${player.kind || 'spring'}-${player.id}`}
                       onClick={() => { navigateTo({ type: 'player', data: player }); setExpanded(false) }}
                       className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-colors ${selectedIdx === idx ? 'bg-white/10' : 'hover:bg-white/5'}`}
                     >
@@ -457,7 +457,7 @@ function SearchBar({ mobile = false }) {
                 const idx = results.teams.length + i
                 return (
                   <button
-                    key={`p-${player.id}`}
+                    key={`p-${player.kind || 'spring'}-${player.id}`}
                     onClick={() => navigateTo({ type: 'player', data: player })}
                     onMouseEnter={() => setSelectedIdx(idx)}
                     className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
