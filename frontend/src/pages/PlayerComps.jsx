@@ -158,19 +158,25 @@ function CompCard({ rank, result, side, pool, selected }) {
 
   return (
     <div className="rounded-md p-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
-      <div className="flex items-center gap-3">
-        <span className="text-[13px] font-extrabold w-5 text-center shrink-0" style={{ color: T.textLight }}>{rank}</span>
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        <span className="text-[13px] font-extrabold w-4 sm:w-5 text-center shrink-0" style={{ color: T.textLight }}>{rank}</span>
         <ScoreBadge score={result.similarityScore} />
         <div className="min-w-0 flex-1">
-          <div className="text-[15px] font-bold truncate">{nameNode}</div>
-          <div className="text-[11.5px] truncate" style={{ color: T.textMuted }}>{sub}</div>
-        </div>
-        <div className="text-right shrink-0">
-          <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white" style={{ background: relColor(rel.label, T) }}>
-            {rel.label} confidence
-          </span>
-          <div className="text-[10.5px] mt-1 tabular-nums" style={{ color: T.textMuted }}>
-            range {Math.round(rel.lower)}–{Math.round(rel.upper)}
+          {/* Stack name above the confidence chip on mobile so long names never
+              get squeezed; put them side-by-side from sm up. */}
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+            <div className="min-w-0">
+              <div className="text-[15px] font-bold leading-tight">{nameNode}</div>
+              <div className="text-[11.5px] truncate" style={{ color: T.textMuted }}>{sub}</div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 sm:flex-col sm:items-end sm:gap-0.5">
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap" style={{ background: relColor(rel.label, T) }}>
+                {rel.label} confidence
+              </span>
+              <span className="text-[10.5px] tabular-nums whitespace-nowrap" style={{ color: T.textMuted }}>
+                range {Math.round(rel.lower)}–{Math.round(rel.upper)}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -183,10 +189,10 @@ function CompCard({ rank, result, side, pool, selected }) {
           <thead>
             <tr className="text-[9.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>
               <th className="text-left font-bold py-1">Metric</th>
-              <th className="text-right font-bold py-1 truncate">{lastName(selected?.name) || 'Selected'}</th>
-              <th className="text-right font-bold py-1 w-12">pct</th>
-              <th className="text-right font-bold py-1 truncate">{lastName(result.name) || 'Comp'}</th>
-              <th className="text-right font-bold py-1 w-12">pct</th>
+              <th className="text-right font-bold py-1 whitespace-nowrap">{lastName(selected?.name) || 'Selected'}</th>
+              <th className="text-right font-bold py-1 w-10">pct</th>
+              <th className="text-right font-bold py-1 whitespace-nowrap">{lastName(result.name) || 'Comp'}</th>
+              <th className="text-right font-bold py-1 w-10">pct</th>
             </tr>
           </thead>
           <tbody>
@@ -363,7 +369,7 @@ export default function PlayerComps() {
         )}
 
         {selected && (
-          <div className="grid lg:grid-cols-[340px_1fr] gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4 min-w-0">
             {/* Selected player profile */}
             <div>
               <SectionCard title="Selected Player">
@@ -417,7 +423,7 @@ export default function PlayerComps() {
             {/* Results */}
             <div>
               <SectionCard title="Top 5 Comparables"
-                right={pool === 'nw' ? 'NW DATABASE' : 'RECENT MLB SEASONS'}>
+                right={pool === 'nw' ? 'NW DATABASE' : 'MLB SEASONS'}>
                 {!selected.qualified && (
                   <div className="mb-3 px-3 py-2 rounded text-[11.5px]" style={{ background: T.highlight, color: T.text, border: `1px solid ${T.borderStrong}` }}>
                     Small-sample warning: this player is below the {config?.thresholdLabel} qualifier, so these comps
