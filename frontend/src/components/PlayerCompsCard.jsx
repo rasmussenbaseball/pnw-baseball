@@ -1,22 +1,42 @@
 // "Statistically Similar Players" card for the player profile pages.
 //
-// Fetches /players/{id}/comps and shows the player's archetype, their top NW
-// comparables, and their closest recent MLB season, with a link to the full
-// Player Comparison tool. Pass `side` so it matches whichever side the profile
-// page is currently showing (matters for two-way players).
+// Fetches /players/{id}/comps and shows the player's three closest recent-MLB
+// player-seasons plus their single closest NW comparable, with a link to the
+// full Player Comparison tool for the rest. Pass `side` so it matches whichever
+// side the profile page is currently showing (matters for two-way players). The
+// number on each comp is a 0-100 match score (higher = more similar), labeled
+// MATCH so it reads in context.
 //
 // Powered by the comp model built by interns Trevor Kazahaya and Connor Broschard.
 
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import { usePlayerProfileTheme, pctColor, divisionBadge } from './playerProfile/shared'
+import { usePlayerProfileTheme, pctColor } from './playerProfile/shared'
 
 function ScorePill({ score }) {
   return (
-    <span className="inline-flex items-center justify-center rounded-full text-white text-[11px] font-extrabold shrink-0"
-      style={{ background: pctColor(score), width: 30, height: 30 }}>
+    <span className="inline-flex items-center justify-center rounded-full text-white text-[12px] font-extrabold shrink-0"
+      style={{ background: pctColor(score), width: 34, height: 34 }}>
       {Math.round(score)}
     </span>
+  )
+}
+
+function CompRow({ T, r, sub, to }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="min-w-0 flex-1">
+        {to ? (
+          <Link to={to} className="text-[13px] font-semibold hover:underline truncate block" style={{ color: T.accent }}>
+            {r.name}
+          </Link>
+        ) : (
+          <div className="text-[13px] font-semibold truncate" style={{ color: T.text }}>{r.name}</div>
+        )}
+        <div className="text-[10.5px] truncate" style={{ color: T.textMuted }}>{sub}</div>
+      </div>
+      <ScorePill score={r.similarityScore} />
+    </div>
   )
 }
 
@@ -28,9 +48,12 @@ export default function PlayerCompsCard({ playerId, side = 'hitter', divLabel, s
     { side, season }, [playerId, side, season],
   )
 
-  const arche = data?.archetype
-  const nw = data?.nw || []
-  const mlb = data?.mlb || null
+  // mlb is an array (top 3). Tolerate the older single-object shape in case a
+  // stale cached response is served mid-deploy.
+  const mlbRaw = data?.mlb
+  const mlb = Array.isArray(mlbRaw) ? mlbRaw : (mlbRaw ? [mlbRaw] : [])
+  const nwTop = (data?.nw || [])[0] || null
+  const hasComps = mlb.length > 0 || !!nwTop
   const fullLink = `/player-comps?side=${side}&player_id=${playerId}`
 
   return (
@@ -46,49 +69,34 @@ export default function PlayerCompsCard({ playerId, side = 'hitter', divLabel, s
         <div className="text-[12px] py-4 text-center" style={{ color: T.textMuted }}>Finding comparables…</div>
       )}
 
-      {data && nw.length === 0 && (
+      {data && !hasComps && (
         <div className="text-[12px] py-4 text-center" style={{ color: T.textMuted }}>
           Not enough qualifying stats yet to build a comparison.
         </div>
       )}
 
-      {data && nw.length > 0 && (
+      {data && hasComps && (
         <>
-          {arche && (
-            <div className="mb-3">
-              <span className="text-[9.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Archetype</span>
-              <div className="text-[14px] font-extrabold leading-tight" style={{ color: T.gold }}>{arche.title}</div>
+          {mlb.length > 0 && (
+            <div>
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-[9.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>MLB Comparables</span>
+                <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Match</span>
+              </div>
+              <div className="flex flex-col gap-2.5">
+                {mlb.map((r) => (
+                  <CompRow key={r.id} T={T} r={r} sub={`${r.season ? `${r.season} · ` : ''}MLB`} />
+                ))}
+              </div>
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5">
-            {nw.map((r, i) => (
-              <div key={r.id} className="flex items-center gap-2.5">
-                <span className="text-[11px] font-bold w-3 text-center shrink-0" style={{ color: T.textLight }}>{i + 1}</span>
-                <ScorePill score={r.similarityScore} />
-                <div className="min-w-0 flex-1">
-                  <Link to={`/player/${r.id}`} className="text-[13px] font-semibold hover:underline truncate block" style={{ color: T.accent }}>
-                    {r.name}
-                  </Link>
-                  <div className="text-[10.5px] truncate" style={{ color: T.textMuted }}>
-                    {r.team}{r.level ? ` · ${r.level}` : ''}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {mlb && (
+          {nwTop && (
             <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${T.border}` }}>
-              <span className="text-[9.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Closest MLB season</span>
-              <div className="flex items-center gap-2.5 mt-1">
-                <ScorePill score={mlb.similarityScore} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold truncate" style={{ color: T.text }}>{mlb.name}</div>
-                  <div className="text-[10.5px] truncate" style={{ color: T.textMuted }}>
-                    {mlb.team}{mlb.season ? ` · ${mlb.season}` : ''} · MLB
-                  </div>
-                </div>
+              <span className="text-[9.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Closest NW Player</span>
+              <div className="mt-2">
+                <CompRow T={T} r={nwTop} to={`/player/${nwTop.id}`}
+                  sub={`${nwTop.team || ''}${nwTop.level ? ` · ${nwTop.level}` : ''}`} />
               </div>
             </div>
           )}

@@ -751,9 +751,11 @@ def player_comps_widget(
     side: str = Query("auto"),
     season: int = Query(SEASON_DEFAULT),
 ):
-    """Trimmed payload for the on-player-page 'Similar Players' card: top NW comps,
-    the closest MLB season, and the player's archetype. Includes small samples so
-    the card still renders for sub-threshold players (reliability flags it)."""
+    """Trimmed payload for the on-player-page 'Similar Players' card: the three
+    closest recent-MLB player-seasons plus the single closest NW comparable.
+    Includes small samples so the card still renders for sub-threshold players
+    (reliability flags it). `archetype` is returned for compatibility but the
+    card no longer renders it."""
     resolved = side if side in ("hitter", "pitcher") else _resolve_side(player_id, season)
     if not resolved:
         return {"side": None, "nw": [], "mlb": None, "archetype": None, "qualified": False}
@@ -769,7 +771,7 @@ def player_comps_widget(
         nw = compute_comps(player_id, resolved, "nw", season, opts, limit=5)
     if not nw["selectedPlayer"]:
         return {"side": None, "nw": [], "mlb": None, "archetype": None, "qualified": False}
-    mlb = compute_comps(player_id, resolved, "mlb", season, opts, limit=1)
+    mlb = compute_comps(player_id, resolved, "mlb", season, opts, limit=3)
 
     def slim(r):
         out = {"id": r["id"], "name": r["name"], "team": r.get("team"),
@@ -779,7 +781,6 @@ def player_comps_widget(
             out["season"] = r["season"]
         return out
 
-    mlb_top = mlb["results"][0] if mlb["results"] else None
     sel = nw["selectedPlayer"]
     return {
         "side": resolved,
@@ -787,5 +788,5 @@ def player_comps_widget(
         "archetype": sel["archetype"],
         "qualified": sel["qualified"],
         "nw": [slim(r) for r in nw["results"]],
-        "mlb": slim(mlb_top) if mlb_top else None,
+        "mlb": [slim(r) for r in mlb["results"][:3]],
     }
