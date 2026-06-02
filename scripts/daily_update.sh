@@ -126,9 +126,14 @@ run_step "National ratings (Pear + CBR)" \
 
 # ── Step 4b: Scrape future schedules (for playoff projections) ──
 # Pulls remaining schedule data used by the playoff projections page.
-
-run_step "Future schedules (playoff projections)" \
-    python3 scripts/scrape_future_schedules.py --season "$SEASON"
+#
+# DISABLED for the 2026 offseason (championship is over, no upcoming games).
+# This step fetches all 28 NWAC PrestoSports schedule pages via ScraperAPI
+# 4x/day, burning ~1,000 ScraperAPI credits/day finding zero new games.
+# Re-enable by uncommenting when the 2027 season starts.
+#
+# run_step "Future schedules (playoff projections)" \
+#     python3 scripts/scrape_future_schedules.py --season "$SEASON"
 
 # ── Step 4c: Backfill player_id in box score tables ────────
 # Cleans corrupted names (position prefixes like "dhSmith"),
