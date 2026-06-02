@@ -37,6 +37,13 @@ export default function SummerPlayerDetail() {
     seasonParam ? { season: seasonParam } : {},
   )
 
+  // If this summer player is linked to a college (spring) player, pull that
+  // payload too so the profile shows the headshot + college history +
+  // career path (same as the unified player page). Summer-only players have
+  // no link, so springData stays null and the page degrades gracefully.
+  const springId = data?.spring_link?.spring_player_id
+  const { data: springData } = useApi(springId ? `/players/${springId}` : null)
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -66,6 +73,7 @@ export default function SummerPlayerDetail() {
       </Link>
       <SummerPlayerProfile
         data={data}
+        springData={springData || null}
         seasonSelector={<SeasonPills seasons={data.seasons} active={data.season} onSelect={setSeason} />}
       />
     </div>

@@ -1,16 +1,20 @@
-// SummerPlayerProfile — rich summer-league player profile in the same
-// visual language as the spring PlayerProfileHitter / PlayerProfilePitcher.
+// SummerPlayerProfile — a summer-league player profile that is functionally
+// the spring player page with summer data.
 //
-// Summer players (WCL/PIL today) carry the full advanced stat line, so we
-// can give them savant-style percentile bars, a skill radar, rolling and
-// per-game charts, and pitch-level approach cards (the last only where we
-// have tracked play-by-play, i.e. 2026 WCL). Pre-2026 summer has no PBP,
-// so those cards/metrics gracefully hide, but everything derivable from
-// season + box-score data still renders.
+// When rendered for a player who also plays college (spring) ball, the
+// caller passes `springData` (the /players/:id payload). The hero identity
+// (headshot, bio, career path), the year-by-year stat tables (spring +
+// summer interleaved), and the award/ranking badges all come from that —
+// exactly like the spring page. The percentile bars, radar, rolling chart,
+// per-game chart, game log, and pitch-level approach come from the summer
+// payload for the active summer season.
+//
+// For summer-only players (no college link), springData is absent: identity
+// falls back to the summer roster row (initials, no college history), and
+// the tables show summer seasons only.
 //
 // Visual primitives are shared with the spring pages
-// (components/playerProfile/shared.jsx); this file supplies summer data
-// + summer-appropriate metric configs.
+// (components/playerProfile/shared.jsx).
 
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -18,6 +22,7 @@ import {
   usePlayerProfileTheme, formatPct, fmtCell,
   RadarChart, PercentilePanel, RollingLineChart, PerGameBarChart,
   SectionCard, SeasonStatTable, GameLogTable, ProfileShell, SideToggle,
+  CareerPath, divisionBadge,
 } from '../components/playerProfile/shared'
 
 // ── Percentile + radar configs (summer subset of the spring sets) ──
@@ -65,7 +70,7 @@ const TOOLTIPS = {
   ISO:        { what: 'Isolated Power. SLG minus AVG.', why: 'Pure extra-base power.', range: 'Poor <.120 | Avg ~.160 | Great .220+' },
   'HR/PA':    { what: 'Home runs per plate appearance.', why: 'Power frequency.', range: 'Poor <1% | Avg ~2.5% | Great 4%+' },
   'Contact%': { what: '% of swings that make contact.', why: 'Bat-to-ball skill (tracked PBP).', range: 'Poor <72% | Avg ~78% | Great 85%+' },
-  'K%':       { what: 'Strikeout rate.', why: 'Lower is better.', range: 'Poor >25% | Avg ~20% | Great <15%' },
+  'K%':       { what: 'Strikeout rate.', why: 'Lower is better for hitters.', range: 'Poor >25% | Avg ~20% | Great <15%' },
   'BB%':      { what: 'Walk rate.', why: 'Plate discipline.', range: 'Poor <6% | Avg ~9% | Great 13%+' },
   'SB/PA':    { what: 'Stolen-base attempts per PA.', why: 'Speed / aggression.', range: 'Poor 0% | Avg ~3% | Great 8%+' },
   FIP:        { what: 'Fielding Independent Pitching.', why: 'ERA estimator on K/BB/HR.', range: 'Poor >5.5 | Avg ~4.5 | Great <3.5' },
@@ -77,9 +82,12 @@ const TOOLTIPS = {
   'Whiff%':   { what: 'Swinging-strike rate per swing (tracked PBP).', why: 'Swing-and-miss stuff.', range: 'Poor <18% | Avg ~24% | Great 32%+' },
 }
 
-// ── Season-table column sets (summer column names) ─────────────────
+// ── Season-table columns (Lvl + Team like the spring page, so spring and
+//    summer rows interleave with their level/club labels) ─────────────
 const BAT_COLS = [
   { key: 'season', label: 'Year', fmt: 'raw', align: 'left' },
+  { key: '_typeLabel', label: 'Lvl', fmt: 'raw', align: 'left' },
+  { key: '_team', label: 'Team', fmt: 'raw', align: 'left' },
   { key: 'games', label: 'G', fmt: 'int' }, { key: 'plate_appearances', label: 'PA', fmt: 'int' },
   { key: 'at_bats', label: 'AB', fmt: 'int' }, { key: 'hits', label: 'H', fmt: 'int' },
   { key: 'doubles', label: '2B', fmt: 'int' }, { key: 'triples', label: '3B', fmt: 'int' },
@@ -94,6 +102,8 @@ const BAT_COLS = [
 ]
 const PIT_COLS = [
   { key: 'season', label: 'Year', fmt: 'raw', align: 'left' },
+  { key: '_typeLabel', label: 'Lvl', fmt: 'raw', align: 'left' },
+  { key: '_team', label: 'Team', fmt: 'raw', align: 'left' },
   { key: 'wins', label: 'W', fmt: 'int' }, { key: 'losses', label: 'L', fmt: 'int' },
   { key: 'saves', label: 'SV', fmt: 'int' }, { key: 'games', label: 'G', fmt: 'int' },
   { key: 'games_started', label: 'GS', fmt: 'int' }, { key: 'innings_pitched', label: 'IP', fmt: 'ip' },
@@ -101,10 +111,8 @@ const PIT_COLS = [
   { key: 'hits_allowed', label: 'H', fmt: 'int' }, { key: 'earned_runs', label: 'ER', fmt: 'int' },
   { key: 'era', label: 'ERA', fmt: 'era' }, { key: 'whip', label: 'WHIP', fmt: 'era' },
   { key: 'baa', label: 'BAA', fmt: 'avg' }, { key: 'fip', label: 'FIP', fmt: 'era' },
-  { key: 'fip_plus', label: 'FIP+', fmt: 'int' }, { key: 'era_plus', label: 'ERA+', fmt: 'int' },
-  { key: 'xfip', label: 'xFIP', fmt: 'era' }, { key: 'siera', label: 'SIERA', fmt: 'era' },
-  { key: 'lob_pct', label: 'LOB%', fmt: 'pct' }, { key: 'k_pct', label: 'K%', fmt: 'pct' },
-  { key: 'bb_pct', label: 'BB%', fmt: 'pct' }, { key: 'pitching_war', label: 'WAR', fmt: 'war' },
+  { key: 'k_pct', label: 'K%', fmt: 'pct' }, { key: 'bb_pct', label: 'BB%', fmt: 'pct' },
+  { key: 'pitching_war', label: 'WAR', fmt: 'war' },
 ]
 const BAT_GAMELOG = [
   { key: '_date', label: 'Date', align: 'left' }, { key: '_opp', label: 'Opp', align: 'left' },
@@ -118,7 +126,6 @@ const PIT_GAMELOG = [
   { key: 'h', label: 'H' }, { key: 'r', label: 'R' }, { key: 'er', label: 'ER' },
   { key: 'bb', label: 'BB' }, { key: 'so', label: 'K' }, { key: 'hr', label: 'HR' },
 ]
-
 const FIELD_COLS_BASE = [
   { key: 'season', label: 'Year', align: 'left', fmt: 'raw' },
   { key: 'position', label: 'Pos', align: 'left', fmt: 'raw' },
@@ -169,14 +176,16 @@ function opsColor(ops) {
   if (ops >= 0.500) return '#9a9a9a'
   return '#5d99c6'
 }
-// Convert baseball-notation IP (6.2 = 6 and 2/3) to true innings.
 function ipToTrue(ip) {
   if (ip == null) return 0
   const whole = Math.floor(ip)
   const frac = Math.round((ip - whole) * 10)
   return whole + (frac >= 1 ? frac / 3 : 0)
 }
-// 10-outing rolling FIP, anchored to season FIP so the constant matches.
+function ipNotation(trueIP) {
+  const outs = Math.round(trueIP * 3)
+  return `${Math.floor(outs / 3)}.${outs % 3}`
+}
 function rollingFip(games, seasonFip, window = 10) {
   const outings = games
     .map(g => ({ ip: ipToTrue(g.ip), core: 13 * (g.hr || 0) + 3 * ((g.bb || 0) + (g.hbp || 0)) - 2 * (g.so || 0) }))
@@ -207,8 +216,6 @@ function fmtClassYear(y) {
   return rs ? `RS ${label}` : label
 }
 
-// Tag a per-game row with home/away + opponent so it works with the
-// shared GameLogTable / PerGameBarChart (which read home_away + opponent_short).
 function tagGame(g, teamId) {
   const isHome = g.home_team_id === teamId
   return {
@@ -218,89 +225,32 @@ function tagGame(g, teamId) {
   }
 }
 
-// ── Shared hero shell (banner + bio + spring link) ─────────────────
-function SummerHero({ player, springLink, season, contextBox, children, rightPanel }) {
-  const T = usePlayerProfileTheme()
-  return (
-    <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
-      <div className="p-5 flex flex-col">
-        <div className="relative h-20 -mx-5 -mt-5" style={{ background: 'linear-gradient(120deg, #14365c 0%, #1f5485 55%, #c9a44c 100%)' }}>
-          <div className="absolute -bottom-7 left-[18px] w-[70px] h-[70px] rounded-full bg-gray-300 border-[3px] border-white flex items-center justify-center text-2xl font-bold text-gray-500 overflow-hidden">
-            <span>{player.first_name?.[0]}{player.last_name?.[0]}</span>
-          </div>
-          {contextBox}
-        </div>
-
-        <div className="mt-9">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <h1 className="text-[22px] font-bold tracking-tight" style={{ color: T.text }}>{player.first_name} {player.last_name}</h1>
-            {player.jersey_number && <span className="text-base font-bold" style={{ color: T.textMuted }}>#{player.jersey_number}</span>}
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">{player.league_abbr}</span>
-          </div>
-          <div className="text-[13px] font-semibold mt-1 flex items-center gap-1.5 flex-wrap" style={{ color: T.textMuted }}>
-            {player.position && <span>{player.position} |</span>}
-            <Link to={`/summer/teams/${player.team_id}`} className="hover:underline inline-flex items-center gap-1">
-              {player.team_logo && <img src={player.team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />}
-              {player.team_short || player.team_name}
-            </Link>
-            {fmtClassYear(player.year_in_school) && <> | {fmtClassYear(player.year_in_school)}</>}
-          </div>
-          <div className="text-[11px] mt-1.5 leading-relaxed" style={{ color: T.textMuted }}>
-            Bats/Throws: {player.bats || '—'}/{player.throws || '—'}
-            {player.college && <> &nbsp;|&nbsp; College: <span className="font-semibold" style={{ color: T.text }}>{player.college}</span></>}
-            {player.hometown && <><br />From: {player.hometown}</>}
-          </div>
-          {springLink && (
-            <Link
-              to={`/player/${springLink.spring_player_id}`}
-              className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-teal-50 dark:bg-teal-900/30 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900/50">
-              {springLink.spring_team_logo && <img src={springLink.spring_team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />}
-              View college profile: {springLink.spring_first} {springLink.spring_last}
-              {springLink.spring_team_short && <span className="opacity-70"> · {springLink.spring_team_short}</span>}
-            </Link>
-          )}
-
-          {children}
-        </div>
-      </div>
-      {rightPanel}
-    </div>
-  )
+// Spring + summer rows interleaved chronologically (spring before summer
+// within a year), tagged for SeasonStatTable. springData carries summer
+// rows with team_name/league_abbrev; standalone summer falls back to the
+// summer roster row for the club/level label.
+function buildBattingRows(springData, data) {
+  const spring = (springData?.batting_stats || []).map(s => ({ ...s, _kind: 'spring', _typeLabel: s.division_level || 'College', _team: s.team_short || '—' }))
+  const summerSrc = springData ? (springData.summer_batting || []) : (data.batting || [])
+  const summer = summerSrc.map(s => ({
+    ...s, _kind: 'summer',
+    _typeLabel: s.league_abbrev || data.player.league_abbr || 'WCL',
+    _team: s.team_name || s.team_short || data.player.team_short || data.player.team_name || 'Summer',
+  }))
+  return [...spring, ...summer].sort((a, b) => (a.season !== b.season ? a.season - b.season : (a._kind === 'spring' ? -1 : 1)))
+}
+function buildPitchingRows(springData, data) {
+  const spring = (springData?.pitching_stats || []).map(s => ({ ...s, _kind: 'spring', _typeLabel: s.division_level || 'College', _team: s.team_short || '—' }))
+  const summerSrc = springData ? (springData.summer_pitching || []) : (data.pitching || [])
+  const summer = summerSrc.map(s => ({
+    ...s, _kind: 'summer',
+    _typeLabel: s.league_abbrev || data.player.league_abbr || 'WCL',
+    _team: s.team_name || s.team_short || data.player.team_short || data.player.team_name || 'Summer',
+  }))
+  return [...spring, ...summer].sort((a, b) => (a.season !== b.season ? a.season - b.season : (a._kind === 'spring' ? -1 : 1)))
 }
 
-// Year-by-year mini table inside the hero (compact).
-function MiniTable({ rows, cols }) {
-  const T = usePlayerProfileTheme()
-  return (
-    <table className="w-full mt-2 text-[11px] border-collapse">
-      <thead>
-        <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-          {cols.map(c => (
-            <th key={c.label} className={`px-1.5 py-1 font-bold tracking-wide ${c.align === 'left' ? 'text-left' : 'text-right'}`} style={{ color: T.textLight }}>{c.label}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((s, i) => {
-          const isCurrent = i === rows.length - 1
-          return (
-            <tr key={s.season + '-' + i} className={isCurrent ? 'font-bold' : ''} style={isCurrent ? { background: T.highlight, borderTop: `1px solid ${T.borderStrong}` } : {}}>
-              {cols.map(c => (
-                <td key={c.label} className={`px-1.5 py-1 tabular-nums ${c.align === 'left' ? 'text-left' : 'text-right'}`} style={{ color: c.align === 'left' ? T.textMuted : T.text }}>
-                  {c.render ? c.render(s) : fmtCell(c.fmt, s[c.key])}
-                </td>
-              ))}
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
-  )
-}
-
-// Compact season rate-stat tiles — shown in the hero's chart slot when a
-// season predates our per-game tracking (so the panel stays full instead
-// of an empty "not enough games" placeholder).
+// ── Compact season rate tiles (hero chart slot for seasons w/o game logs) ──
 function StatTiles({ tiles }) {
   const T = usePlayerProfileTheme()
   return (
@@ -373,17 +323,149 @@ function FieldingCard({ rows }) {
   )
 }
 
+function Badges({ springData }) {
+  if (!springData) return null
+  const awards = springData.awards || []
+  const ranks = (springData.pnw_rankings || []).slice(0, 3)
+  if (!awards.length && !ranks.length) return null
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-3">
+      {awards.map((a, i) => (
+        <span key={'a' + i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
+          {a.category} leader · {a.season}
+        </span>
+      ))}
+      {ranks.map((r, i) => (
+        <span key={'r' + i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={{ background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd' }}>
+          {r.rank}{r.rank === 1 ? 'st' : r.rank === 2 ? 'nd' : r.rank === 3 ? 'rd' : 'th'} PNW · {r.category}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// ── Shared hero shell (banner + headshot + bio) ────────────────────
+function SummerHero({ identity, summerPlayer, season, contextBox, children, rightPanel }) {
+  const T = usePlayerProfileTheme()
+  const first = identity.first_name || summerPlayer.first_name
+  const last = identity.last_name || summerPlayer.last_name
+  const college = summerPlayer.college || identity.team_name
+  return (
+    <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+      <div className="p-5 flex flex-col">
+        <div className="relative h-20 -mx-5 -mt-5" style={{ background: 'linear-gradient(120deg, #14365c 0%, #1f5485 55%, #c9a44c 100%)' }}>
+          <div className="absolute -bottom-7 left-[18px] w-[70px] h-[70px] rounded-full bg-gray-300 border-[3px] border-white flex items-center justify-center text-2xl font-bold text-gray-500 overflow-hidden">
+            {identity.headshot_url
+              ? <img src={identity.headshot_url} alt="" className="w-full h-full object-cover" />
+              : <span>{first?.[0]}{last?.[0]}</span>}
+          </div>
+          {contextBox}
+        </div>
+
+        <div className="mt-9">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h1 className="text-[22px] font-bold tracking-tight" style={{ color: T.text }}>{first} {last}</h1>
+            {summerPlayer.jersey_number && <span className="text-base font-bold" style={{ color: T.textMuted }}>#{summerPlayer.jersey_number}</span>}
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">{summerPlayer.league_abbr}</span>
+          </div>
+          <div className="text-[13px] font-semibold mt-1 flex items-center gap-1.5 flex-wrap" style={{ color: T.textMuted }}>
+            {(identity.position || summerPlayer.position) && <span>{identity.position || summerPlayer.position} |</span>}
+            <Link to={`/summer/teams/${summerPlayer.team_id}`} className="hover:underline inline-flex items-center gap-1">
+              {summerPlayer.team_logo && <img src={summerPlayer.team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />}
+              {summerPlayer.team_short || summerPlayer.team_name}
+            </Link>
+            {fmtClassYear(identity.year_in_school || summerPlayer.year_in_school) && <> | {fmtClassYear(identity.year_in_school || summerPlayer.year_in_school)}</>}
+          </div>
+          <div className="text-[11px] mt-1.5 leading-relaxed" style={{ color: T.textMuted }}>
+            Bats/Throws: {identity.bats || summerPlayer.bats || '—'}/{identity.throws || summerPlayer.throws || '—'}
+            {(identity.height || identity.weight) && <> &nbsp;|&nbsp; {identity.height || '—'} {identity.weight ? `${identity.weight} lbs` : ''}</>}
+            {college && <> &nbsp;|&nbsp; College: <span className="font-semibold" style={{ color: T.text }}>{college}</span></>}
+            {(identity.hometown || summerPlayer.hometown) && <><br />From: {identity.hometown || summerPlayer.hometown}</>}
+            {identity.previous_school && <> &nbsp;|&nbsp; Prev: {identity.previous_school}</>}
+          </div>
+          {children}
+        </div>
+      </div>
+      {rightPanel}
+    </div>
+  )
+}
+
+// Year-by-year mini table inside the hero (interleaved spring + summer).
+function MiniTable({ rows, cols, careerRow, activeKey }) {
+  const T = usePlayerProfileTheme()
+  return (
+    <table className="w-full mt-2 text-[11px] border-collapse">
+      <thead>
+        <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+          {cols.map(c => (
+            <th key={c.label} className={`px-1.5 py-1 font-bold tracking-wide ${c.align === 'left' ? 'text-left' : 'text-right'}`} style={{ color: T.textLight }}>{c.label}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((s, i) => {
+          const isActive = activeKey && `${s.season}-${s._kind}` === activeKey
+          const isSummer = s._kind === 'summer'
+          const rowStyle = isActive
+            ? { background: T.highlight, borderTop: `1px solid ${T.borderStrong}` }
+            : (isSummer ? { background: T.rowAlt } : {})
+          return (
+            <tr key={`${s.season}-${s._kind}-${i}`} className={`${isActive ? 'font-bold' : ''} ${isSummer ? 'italic' : ''}`} style={rowStyle}>
+              {cols.map(c => (
+                <td key={c.label} className={`px-1.5 py-1 tabular-nums ${c.align === 'left' ? 'text-left' : 'text-right'}`}
+                  style={{ color: c.align === 'left' ? (isSummer && c.label === 'Lvl' ? T.textLight : T.textMuted) : T.text }}>
+                  {c.render ? c.render(s) : (s[c.key] ?? '—')}
+                </td>
+              ))}
+            </tr>
+          )
+        })}
+        {careerRow && (
+          <tr style={{ borderTop: `1px solid ${T.border}` }}>
+            {careerRow.map((cell, i) => (
+              <td key={i} className={`px-1.5 py-1 tabular-nums ${i < 3 ? 'text-left' : 'text-right'}`} style={{ color: i < 3 ? T.textLight : T.text }}>{cell}</td>
+            ))}
+          </tr>
+        )}
+      </tbody>
+    </table>
+  )
+}
+
+function CareerCards({ springData, identity, divLabel, seasonRange, season }) {
+  const T = usePlayerProfileTheme()
+  if (!springData) return null
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      <div className="rounded-md p-5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+        <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2" style={{ color: T.text, borderColor: T.text }}>
+          <span>Career Path</span><span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: T.textLight }}>SCHOOLS</span>
+        </h2>
+        <CareerPath player={identity} divisionBadge={divisionBadge(divLabel)} seasonRange={seasonRange} />
+      </div>
+      <div className="rounded-md p-5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+        <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2" style={{ color: T.text, borderColor: T.text }}>
+          <span>Statistically Similar Players</span><span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: T.textLight }}>WCL · {season}</span>
+        </h2>
+        <div className="text-[12px] py-4 text-center" style={{ color: T.textMuted }}>Similarity engine in development.</div>
+      </div>
+    </div>
+  )
+}
+
 // ════════════════════════════════════════════════════════════════
 // HITTER
 // ════════════════════════════════════════════════════════════════
-function SummerHitterProfile({ data, season }) {
+function SummerHitterProfile({ data, springData, season }) {
   const T = usePlayerProfileTheme()
-  const { player, batting, fielding, game_batting, spring_link, approach, batting_percentiles } = data
+  const { player, fielding, game_batting, approach, batting_percentiles } = data
+  const identity = springData?.player || player
 
-  const rows = (batting || []).slice().sort((a, b) => a.season - b.season)
   const pct = batting_percentiles || {}
   const radarStats = BAT_RADAR.filter(rk => pct?.[rk.key]?.percentile != null).map(rk => ({ label: rk.label, pct: pct[rk.key].percentile }))
-  const seasonRow = rows.find(r => r.season === season) || rows.slice(-1)[0]
+  const rows = buildBattingRows(springData, data)
+  const seasonRow = (data.batting || []).find(r => r.season === season) || (data.batting || []).slice(-1)[0]
   const seasonWoba = seasonRow?.woba != null ? Number(seasonRow.woba) : null
   const lgWoba = pct?.woba?.league_avg
 
@@ -396,8 +478,25 @@ function SummerHitterProfile({ data, season }) {
   const last5Ops = last5.length ? last5.reduce((s, r) => s + r.val, 0) / last5.length : 0
   const best = withOps.reduce((acc, r) => r.val > (acc?.val ?? -1) ? r : acc, null)
 
+  // Spring career totals (for the mini-table Career row)
+  const springRows = (springData?.batting_stats || []).slice().sort((a, b) => a.season - b.season)
+  const c = springRows.reduce((a, s) => {
+    a.pa += s.plate_appearances || 0; a.ab += s.at_bats || 0; a.h += s.hits || 0; a.hr += s.home_runs || 0
+    a.bb += s.walks || 0; a.hbp += s.hit_by_pitch || 0; a.sf += s.sacrifice_flies || 0
+    a.tb += (s.hits || 0) + (s.doubles || 0) + 2 * (s.triples || 0) + 3 * (s.home_runs || 0)
+    return a
+  }, { pa: 0, ab: 0, h: 0, hr: 0, bb: 0, hbp: 0, sf: 0, tb: 0 })
+  const cAvg = c.ab > 0 ? c.h / c.ab : 0
+  const cObp = (c.ab + c.bb + c.hbp + c.sf) > 0 ? (c.h + c.bb + c.hbp) / (c.ab + c.bb + c.hbp + c.sf) : 0
+  const cSlg = c.ab > 0 ? c.tb / c.ab : 0
+  const careerRow = springRows.length > 1
+    ? ['Career', 'Spring', '—', c.pa, formatPct('avg', cAvg), formatPct('avg', cObp), formatPct('avg', cSlg), c.hr, '—']
+    : null
+
   const miniCols = [
     { label: 'Year', align: 'left', render: s => s.season },
+    { label: 'Lvl', align: 'left', render: s => s._typeLabel },
+    { label: 'Team', align: 'left', render: s => s._team },
     { label: 'PA', render: s => s.plate_appearances ?? '—' },
     { label: 'AVG', render: s => s.batting_avg != null ? formatPct('avg', s.batting_avg) : '—' },
     { label: 'OBP', render: s => s.on_base_pct != null ? formatPct('avg', s.on_base_pct) : '—' },
@@ -405,11 +504,13 @@ function SummerHitterProfile({ data, season }) {
     { label: 'HR', render: s => s.home_runs ?? '—' },
     { label: 'wRC+', render: s => s.wrc_plus != null ? Math.round(s.wrc_plus) : '—' },
   ]
+  const divLabel = identity.division_level || (springRows.slice(-1)[0]?.division_level) || 'LEAGUE'
+  const seasonRange = springRows.length ? `${springRows[0].season}${springRows.length > 1 ? `–${springRows[springRows.length - 1].season}` : ''}` : null
 
   return (
     <>
       <SummerHero
-        player={player} springLink={spring_link} season={season}
+        identity={identity} summerPlayer={player} season={season}
         contextBox={seasonRow && (
           <div className="absolute top-2 right-2.5 rounded-md px-2.5 py-2 text-white" style={{ background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.14)' }}>
             <div className="text-[8.5px] font-bold tracking-widest opacity-80 mb-1">{season} HITTING</div>
@@ -449,11 +550,12 @@ function SummerHitterProfile({ data, season }) {
             </div>
           </div>
         </div>
-        <MiniTable rows={rows} cols={miniCols} />
+        <MiniTable rows={rows} cols={miniCols} careerRow={careerRow} activeKey={`${season}-summer`} />
+        <Badges springData={springData} />
       </SummerHero>
 
       <SectionCard title="Batting Stats" right="BY SEASON">
-        <SeasonStatTable cols={BAT_COLS} rows={rows.map(r => ({ ...r, _kind: 'spring' }))} blankCols={new Set([])} emptyMsg="No batting stats." />
+        <SeasonStatTable cols={BAT_COLS} rows={rows} blankCols={new Set([])} emptyMsg="No batting stats." />
       </SectionCard>
 
       <ApproachCard approach={approach} kind="hitter" />
@@ -484,6 +586,8 @@ function SummerHitterProfile({ data, season }) {
             note="Each bar = 1 game · hover for line" />
         </SectionCard>
       )}
+
+      <CareerCards springData={springData} identity={identity} divLabel={divLabel} seasonRange={seasonRange} season={season} />
     </>
   )
 }
@@ -491,14 +595,15 @@ function SummerHitterProfile({ data, season }) {
 // ════════════════════════════════════════════════════════════════
 // PITCHER
 // ════════════════════════════════════════════════════════════════
-function SummerPitcherProfile({ data, season }) {
+function SummerPitcherProfile({ data, springData, season }) {
   const T = usePlayerProfileTheme()
-  const { player, pitching, game_pitching, spring_link, pitch_approach, pitching_percentiles } = data
+  const { player, game_pitching, pitch_approach, pitching_percentiles } = data
+  const identity = springData?.player || player
 
-  const rows = (pitching || []).slice().sort((a, b) => a.season - b.season)
   const pct = pitching_percentiles || {}
   const radarStats = PIT_RADAR.filter(rk => pct?.[rk.key]?.percentile != null).slice(0, 6).map(rk => ({ label: rk.label, pct: pct[rk.key].percentile }))
-  const seasonRow = rows.find(r => r.season === season) || rows.slice(-1)[0]
+  const rows = buildPitchingRows(springData, data)
+  const seasonRow = (data.pitching || []).find(r => r.season === season) || (data.pitching || []).slice(-1)[0]
   const seasonFip = seasonRow?.fip != null ? Number(seasonRow.fip) : null
   const lgFip = pct?.fip?.league_avg
   const role = (seasonRow?.games_started || 0) > 0 && (seasonRow?.games_started || 0) >= ((seasonRow?.games || 0) - (seasonRow?.games_started || 0)) ? 'Starter' : 'Reliever'
@@ -512,8 +617,23 @@ function SummerPitcherProfile({ data, season }) {
   const last5Ip = last5.reduce((s, o) => s + o.ip, 0)
   const last5Era = last5Ip > 0 ? (last5.reduce((s, o) => s + o.er, 0) * 9) / last5Ip : null
 
+  // Spring career totals
+  const springRows = (springData?.pitching_stats || []).slice().sort((a, b) => a.season - b.season)
+  const c = springRows.reduce((a, s) => {
+    a.ip += ipToTrue(s.innings_pitched); a.er += s.earned_runs || 0; a.k += s.strikeouts || 0
+    a.bb += s.walks || 0; a.h += s.hits_allowed || 0
+    return a
+  }, { ip: 0, er: 0, k: 0, bb: 0, h: 0 })
+  const cEra = c.ip > 0 ? (c.er * 9) / c.ip : 0
+  const cWhip = c.ip > 0 ? (c.bb + c.h) / c.ip : 0
+  const careerRow = springRows.length > 1
+    ? ['Career', 'Spring', '—', ipNotation(c.ip), fmtEra(cEra), fmtEra(cWhip), c.k, c.bb, '—']
+    : null
+
   const miniCols = [
     { label: 'Year', align: 'left', render: s => s.season },
+    { label: 'Lvl', align: 'left', render: s => s._typeLabel },
+    { label: 'Team', align: 'left', render: s => s._team },
     { label: 'IP', render: s => s.innings_pitched != null ? Number(s.innings_pitched).toFixed(1) : '—' },
     { label: 'ERA', render: s => fmtEra(s.era) },
     { label: 'WHIP', render: s => fmtEra(s.whip) },
@@ -521,11 +641,13 @@ function SummerPitcherProfile({ data, season }) {
     { label: 'BB', render: s => s.walks ?? '—' },
     { label: 'FIP', render: s => fmtEra(s.fip) },
   ]
+  const divLabel = identity.division_level || (springRows.slice(-1)[0]?.division_level) || 'LEAGUE'
+  const seasonRange = springRows.length ? `${springRows[0].season}${springRows.length > 1 ? `–${springRows[springRows.length - 1].season}` : ''}` : null
 
   return (
     <>
       <SummerHero
-        player={player} springLink={spring_link} season={season}
+        identity={identity} summerPlayer={player} season={season}
         contextBox={seasonRow && (
           <div className="absolute top-2 right-2.5 rounded-md px-2.5 py-2 text-white" style={{ background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.14)' }}>
             <div className="text-[8.5px] font-bold tracking-widest opacity-80 mb-1">{season} ROLE</div>
@@ -565,11 +687,12 @@ function SummerPitcherProfile({ data, season }) {
             </div>
           </div>
         </div>
-        <MiniTable rows={rows} cols={miniCols} />
+        <MiniTable rows={rows} cols={miniCols} careerRow={careerRow} activeKey={`${season}-summer`} />
+        <Badges springData={springData} />
       </SummerHero>
 
       <SectionCard title="Pitching Stats" right="BY SEASON">
-        <SeasonStatTable cols={PIT_COLS} rows={rows.map(r => ({ ...r, _kind: 'spring' }))} blankCols={new Set([])} emptyMsg="No pitching stats." minWidth="820px" />
+        <SeasonStatTable cols={PIT_COLS} rows={rows} blankCols={new Set([])} emptyMsg="No pitching stats." minWidth="820px" />
       </SectionCard>
 
       <ApproachCard approach={pitch_approach} kind="pitcher" />
@@ -597,28 +720,30 @@ function SummerPitcherProfile({ data, season }) {
             note="Each bar = 1 outing · hover for line" />
         </SectionCard>
       )}
+
+      <CareerCards springData={springData} identity={identity} divLabel={divLabel} seasonRange={seasonRange} season={season} />
     </>
   )
 }
 
 // ════════════════════════════════════════════════════════════════
-// Side router (two-way → toggle)
+// Side router (two-way → toggle). Only counts a side the player
+// actually has a sample in for the active season (a 0-PA pitcher
+// gets no Hitting tab).
 // ════════════════════════════════════════════════════════════════
-export default function SummerPlayerProfile({ data, seasonSelector = null }) {
+export default function SummerPlayerProfile({ data, springData = null, seasonSelector = null }) {
   const season = data.season
-  const hasBatting = (data.batting || []).some(r => r.season === season) || (data.batting || []).length > 0
-  const hasPitching = (data.pitching || []).some(r => r.season === season) || (data.pitching || []).length > 0
-  const isTwoWay = hasBatting && hasPitching
-
-  // Default to the side with the bigger sample for the active season.
   const batRow = (data.batting || []).find(r => r.season === season)
   const pitRow = (data.pitching || []).find(r => r.season === season)
+  const hasBat = (batRow?.plate_appearances || 0) > 0
+  const hasPit = (pitRow?.innings_pitched || 0) > 0
+  const isTwoWay = hasBat && hasPit
+
   const defaultSide = (() => {
-    if (hasBatting && !hasPitching) return 'batting'
-    if (hasPitching && !hasBatting) return 'pitching'
-    const pa = batRow?.plate_appearances || 0
-    const ip = pitRow?.innings_pitched || 0
-    return (ip * 4) > pa ? 'pitching' : 'batting'
+    if (hasBat && !hasPit) return 'batting'
+    if (hasPit && !hasBat) return 'pitching'
+    if (!hasBat && !hasPit) return (data.pitching || []).length && !(data.batting || []).length ? 'pitching' : 'batting'
+    return ((pitRow?.innings_pitched || 0) * 4) > (batRow?.plate_appearances || 0) ? 'pitching' : 'batting'
   })()
   const [side, setSide] = useState(defaultSide)
   const activeSide = isTwoWay ? side : defaultSide
@@ -632,8 +757,8 @@ export default function SummerPlayerProfile({ data, seasonSelector = null }) {
         </div>
       )}
       {activeSide === 'pitching'
-        ? <SummerPitcherProfile data={data} season={season} />
-        : <SummerHitterProfile data={data} season={season} />}
+        ? <SummerPitcherProfile data={data} springData={springData} season={season} />
+        : <SummerHitterProfile data={data} springData={springData} season={season} />}
     </ProfileShell>
   )
 }

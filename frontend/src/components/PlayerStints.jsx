@@ -136,5 +136,8 @@ export function SummerStintView({ stint, data: _data, stintRow }) {
     )
   }
 
-  return <SummerPlayerProfile data={summer} seasonSelector={stintRow} />
+  // _data is the spring /players/:id payload — pass it so the summer view
+  // shows the player's headshot, college history, and career path (the
+  // percentile bars + active-season sections stay summer).
+  return <SummerPlayerProfile data={summer} springData={_data} seasonSelector={stintRow} />
 }

@@ -544,7 +544,7 @@ def _rank_pct(values, my_val, higher_is_better=True):
             "league_avg": avg, "comparison": "league"}
 
 
-def _summer_hitter_contact_cohort(cur, league_id, season, min_pa=15):
+def _summer_hitter_contact_cohort(cur, league_id, season, min_pa=8):
     """{batter_player_id: contact%} for the league+season (2026 PBP only)."""
     cur.execute(
         """
@@ -573,7 +573,7 @@ def _summer_hitter_contact_cohort(cur, league_id, season, min_pa=15):
     return out
 
 
-def _summer_pitcher_pbp_cohort(cur, league_id, season, min_pitches=40):
+def _summer_pitcher_pbp_cohort(cur, league_id, season, min_pitches=25):
     """{pitcher_player_id: {strike_pct, fps_pct, whiff_pct}} (2026 PBP only).
 
     Scoped to the league via the pitcher's own summer team (the defending
@@ -633,7 +633,11 @@ def _summer_percentiles(cur, league_id, season, bat_row, pit_row):
     batting_percentiles = {}
     pitching_percentiles = {}
 
-    # ── Batting: peers with a meaningful sample (PA >= 20) ──
+    # ── Batting: peers with a meaningful sample ──
+    # The qualifying floor adapts to how far the season has progressed:
+    # ~20% of the league leader's PA, with an absolute minimum. In a
+    # finished season that's a real qualified bar; in opening week (when
+    # nobody has 20 PA yet) it still ranks everyone who's stepped in.
     if bat_row:
         cur.execute(
             """
@@ -643,11 +647,14 @@ def _summer_percentiles(cur, league_id, season, bat_row, pit_row):
             FROM summer_batting_stats b
             JOIN summer_players p ON p.id = b.player_id
             JOIN summer_teams t ON t.id = p.team_id
-            WHERE t.league_id = %s AND b.season = %s AND b.plate_appearances >= 20
+            WHERE t.league_id = %s AND b.season = %s AND b.plate_appearances >= 1
             """,
             (league_id, season),
         )
-        peers = [dict(r) for r in cur.fetchall()]
+        all_bat = [dict(r) for r in cur.fetchall()]
+        lead_pa = max((r.get("pa") or 0) for r in all_bat) if all_bat else 0
+        bat_floor = max(8, round(0.20 * lead_pa))
+        peers = [r for r in all_bat if (r.get("pa") or 0) >= bat_floor]
 
         def _col(key):
             return [r.get(key) for r in peers]
@@ -677,20 +684,24 @@ def _summer_percentiles(cur, league_id, season, bat_row, pit_row):
             batting_percentiles["contact_pct"] = _rank_pct(
                 list(contact.values()), contact.get(bat_row.get("player_id")), True)
 
-    # ── Pitching: peers with a meaningful sample (IP >= 10) ──
+    # ── Pitching: peers with a meaningful sample (adaptive floor) ──
     if pit_row:
         cur.execute(
             """
-            SELECT pt.player_id, pt.batters_faced AS bf, pt.home_runs_allowed AS hra,
+            SELECT pt.player_id, pt.innings_pitched AS ip,
+                   pt.batters_faced AS bf, pt.home_runs_allowed AS hra,
                    pt.pitching_war, pt.k_pct, pt.bb_pct, pt.fip, pt.siera, pt.xfip, pt.baa
             FROM summer_pitching_stats pt
             JOIN summer_players p ON p.id = pt.player_id
             JOIN summer_teams t ON t.id = p.team_id
-            WHERE t.league_id = %s AND pt.season = %s AND pt.innings_pitched >= 10
+            WHERE t.league_id = %s AND pt.season = %s AND pt.innings_pitched > 0
             """,
             (league_id, season),
         )
-        peers = [dict(r) for r in cur.fetchall()]
+        all_pit = [dict(r) for r in cur.fetchall()]
+        lead_ip = max((float(r.get("ip") or 0)) for r in all_pit) if all_pit else 0
+        pit_floor = max(2.0, 0.20 * lead_ip)
+        peers = [r for r in all_pit if float(r.get("ip") or 0) >= pit_floor]
 
         def _pcol(key):
             return [r.get(key) for r in peers]
