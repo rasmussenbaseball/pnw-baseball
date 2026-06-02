@@ -6533,6 +6533,101 @@ def reliever_leaderboard(
         }
 
 
+@router.get("/players/{player_id}/goose-eggs")
+def player_goose_eggs(player_id: int, season: int = Query(2026)):
+    """One reliever's Goose Egg line (GEG / BRK / OPP / Goose%) from PBP.
+
+    Uses the SAME goose-window rules as /leaderboards/relievers (7th+, team
+    not trailing, lead <= 3 or tying run on/at bat) but scoped to a single
+    player with no minimum-batters-faced cutoff. Spring (D1-NAIA) only;
+    relief events only (the player's own starts never count)."""
+    LEAD_THRESHOLD = 3
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Follow transfer links so a multi-school season aggregates correctly.
+        cur.execute("SELECT canonical_id FROM player_links WHERE linked_id = %s", (player_id,))
+        link = cur.fetchone()
+        if link:
+            player_id = link["canonical_id"]
+        cur.execute("SELECT linked_id FROM player_links WHERE canonical_id = %s", (player_id,))
+        ids = [player_id] + [r["linked_id"] for r in cur.fetchall()]
+
+        query = """
+            WITH pgames AS (
+                SELECT DISTINCT ge.game_id
+                FROM game_events ge JOIN games g ON g.id = ge.game_id
+                WHERE g.season = %s AND ge.pitcher_player_id = ANY(%s)
+            ),
+            starters AS (
+                SELECT DISTINCT ON (ge.game_id, ge.half)
+                       ge.game_id, ge.half, ge.pitcher_player_id AS starter_id
+                FROM game_events ge
+                WHERE ge.game_id IN (SELECT game_id FROM pgames)
+                ORDER BY ge.game_id, ge.half, ge.inning, ge.sequence_idx
+            ),
+            relief_ev AS (
+                SELECT ge.*
+                FROM game_events ge
+                JOIN starters st ON st.game_id = ge.game_id AND st.half = ge.half
+                WHERE ge.pitcher_player_id = ANY(%s)
+                  AND ge.pitcher_player_id <> st.starter_id
+            ),
+            stint AS (
+                SELECT game_id, inning, half, pitcher_player_id,
+                       MIN(sequence_idx) AS first_seq,
+                       COALESCE(SUM(runs_on_play), 0) AS runs_allowed,
+                       SUM(GREATEST(outs_after - outs_before, 0)) AS outs_recorded
+                FROM relief_ev
+                GROUP BY game_id, inning, half, pitcher_player_id
+            ),
+            entry AS (
+                SELECT s.runs_allowed, s.outs_recorded, s.inning,
+                       e.bat_score_before, e.fld_score_before,
+                       (LENGTH(e.bases_before) - LENGTH(REPLACE(e.bases_before, '1', ''))) AS runners_on
+                FROM stint s
+                JOIN relief_ev e
+                  ON e.game_id = s.game_id AND e.inning = s.inning AND e.half = s.half
+                 AND e.pitcher_player_id = s.pitcher_player_id AND e.sequence_idx = s.first_seq
+            ),
+            w AS (
+                SELECT runs_allowed, outs_recorded, runners_on,
+                       (inning >= 7
+                        AND (fld_score_before - bat_score_before) >= 0
+                        AND ((fld_score_before - bat_score_before) <= %s
+                             OR (fld_score_before - bat_score_before) <= runners_on + 1)
+                       ) AS window_ok
+                FROM entry
+            )
+            SELECT
+                COUNT(*) FILTER (WHERE window_ok) AS opp,
+                COUNT(*) FILTER (
+                    WHERE window_ok AND runs_allowed = 0
+                      AND (outs_recorded = 3
+                           OR (outs_recorded >= 1 AND outs_recorded + runners_on >= 3))
+                ) AS geg,
+                COUNT(*) FILTER (WHERE window_ok AND runs_allowed > 0) AS brk,
+                (SELECT COUNT(DISTINCT game_id) FROM relief_ev) AS relief_app,
+                (SELECT COALESCE(SUM(GREATEST(outs_after - outs_before, 0)), 0) FROM relief_ev) AS relief_outs
+            FROM w
+        """
+        cur.execute(query, (season, ids, ids, LEAD_THRESHOLD))
+        r = cur.fetchone() or {}
+        geg = r.get("geg") or 0
+        brk = r.get("brk") or 0
+        opp = r.get("opp") or 0
+        relief_outs = r.get("relief_outs") or 0
+        return {
+            "season": season,
+            "geg": geg,
+            "brk": brk,
+            "opp": opp,
+            "goose_pct": round(geg / (geg + brk), 3) if (geg + brk) > 0 else None,
+            "relief_app": r.get("relief_app") or 0,
+            "relief_ip": round(relief_outs / 3.0, 1),
+            "lead_threshold": LEAD_THRESHOLD,
+        }
+
+
 # ============================================================
 # FIELDING LEADERBOARD
 # ============================================================

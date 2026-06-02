@@ -2,8 +2,9 @@
 // PlayerProfileHitter. Same shared primitives, pitching metrics. Props:
 //   playerId, data (the /players/:id payload), sideToggle (two-way switch).
 
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { usePlayerGameLogs } from '../hooks/useApi'
+import { usePlayerGameLogs, usePlayerGooseEggs } from '../hooks/useApi'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 import WpaByGameChart from '../components/WpaByGameChart'
 import {
@@ -159,6 +160,7 @@ function rollingFipSeries(games, seasonFip, window = 10) {
 export default function PlayerProfilePitcher({ playerId, data, sideToggle = null }) {
   const T = usePlayerProfileTheme()
   const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
+  const { data: goose } = usePlayerGooseEggs(playerId, SEASON)
 
   const { player, pitching_stats, summer_pitching, pitching_percentiles, awards, pnw_rankings, current_summer_assignment } = data
 
@@ -358,6 +360,10 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
         <WpaByGameChart playerId={playerId} position="pitcher" />
       </SectionCard>
 
+      {/* Goose Eggs — clutch relief, shown just before the box scores.
+          Renders only for pitchers with relief appearances. */}
+      <GooseEggCard goose={goose} T={T} />
+
       <SectionCard title="Game Log" right={`${SEASON} SEASON`}>
         <GameLogTable cols={GAMELOG_PITCHING_COLS} games={pitchingGames} minWidth="760px" />
       </SectionCard>
@@ -414,5 +420,71 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
         </div>
       </div>
     </ProfileShell>
+  )
+}
+
+
+// ════════════════════════════════════════════
+// GOOSE EGGS — clutch relief metric (PBP-derived)
+// ════════════════════════════════════════════
+function GooseInfoButton({ T }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative mb-3">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-1.5 text-[11px] font-semibold hover:underline"
+        style={{ color: T.textMuted }}
+      >
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[9px] font-bold"
+          style={{ borderColor: T.border }}>i</span>
+        What do these mean?
+      </button>
+      {open && (
+        <div className="absolute z-30 left-0 mt-2 w-[min(460px,88vw)] rounded-lg p-3 text-[11px] leading-snug shadow-xl"
+          style={{ background: T.card, border: `1px solid ${T.borderStrong}`, color: T.textMuted }}>
+          <p className="mb-2" style={{ color: T.text }}>
+            Goose Eggs reward clutch, scoreless relief. A "goose window" is any 7th inning or later
+            where the pitcher's team is not trailing and the game is within 3 runs (or the tying run
+            is on base or at the plate) when he enters.
+          </p>
+          <ul className="space-y-1">
+            <li><b style={{ color: T.great }}>Goose Egg (GEG)</b> — a goose window where he allowed no runs and either finished the inning or escaped the jam he came into.</li>
+            <li><b style={{ color: T.poor }}>Broken Egg (BRK)</b> — a goose window where a run scored during his stint.</li>
+            <li><b style={{ color: T.text }}>Opportunities (OPP)</b> — total goose windows he pitched in.</li>
+            <li><b style={{ color: T.text }}>Goose %</b> — GEG divided by (GEG + BRK), so it rewards quality, not just usage.</li>
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GooseEggCard({ goose, T }) {
+  if (!goose || !goose.relief_app) return null
+  const pct = goose.goose_pct != null ? `${Math.round(goose.goose_pct * 100)}%` : '—'
+  const tiles = [
+    { label: 'Goose Eggs', val: goose.geg, color: T.great },
+    { label: 'Broken Eggs', val: goose.brk, color: T.poor },
+    { label: 'Opportunities', val: goose.opp, color: T.text },
+    { label: 'Goose %', val: pct, color: T.text },
+  ]
+  return (
+    <SectionCard title="Goose Eggs" right={`${SEASON} · RELIEF`}>
+      <GooseInfoButton T={T} />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {tiles.map(t => (
+          <div key={t.label} className="flex flex-col items-center justify-center rounded-md py-3 px-2"
+            style={{ background: T.card, border: `1px solid ${T.border}` }}>
+            <span className="text-xl font-bold tabular-nums" style={{ color: t.color }}>{t.val}</span>
+            <span className="text-[9.5px] uppercase tracking-wider text-center mt-0.5" style={{ color: T.textLight }}>{t.label}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] mt-2" style={{ color: T.textLight }}>
+        {goose.relief_app} relief appearances · {goose.relief_ip} relief IP · 7th inning or later
+      </p>
+    </SectionCard>
   )
 }

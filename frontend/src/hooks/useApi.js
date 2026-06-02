@@ -241,6 +241,13 @@ export function usePlayerGameLogs(playerId, season = CURRENT_SEASON) {
 }
 
 /**
+ * Fetch a reliever's Goose Egg line (GEG / BRK / OPP / Goose%) for a season.
+ */
+export function usePlayerGooseEggs(playerId, season = CURRENT_SEASON) {
+  return useApi(`/players/${playerId}/goose-eggs`, { season }, [playerId, season])
+}
+
+/**
  * Fetch player home/road splits for a season (or career if season is null).
  */
 export function usePlayerSplits(playerId, season = CURRENT_SEASON) {
