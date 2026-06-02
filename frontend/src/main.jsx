@@ -9,6 +9,27 @@ import { initSentry, Sentry } from './lib/sentry'
 // code that might throw. No-ops in dev and when VITE_SENTRY_DSN is unset.
 initSentry()
 
+// Recover from stale dynamically-imported chunks after a redeploy. Each new
+// frontend build gives every code-split chunk a fresh content-hash filename and
+// the old names stop existing; our SPA host then answers the missing-asset
+// request with index.html (text/html), which the browser can't evaluate as a
+// module. A tab still running the previous build therefore throws
+// "Failed to fetch dynamically imported module" the first time it lazy-loads a
+// route (e.g. /recruiting/guide). Vite dispatches a cancelable vite:preloadError
+// on that failure; reload once to pull the current asset manifest. A timestamp
+// guard keeps a genuinely-broken chunk from looping (the second failure inside
+// the window falls through to the Sentry ErrorBoundary below).
+window.addEventListener('vite:preloadError', (event) => {
+  const KEY = 'nwbb_chunk_reload_ts'
+  let last = 0
+  try { last = Number(sessionStorage.getItem(KEY) || 0) } catch { /* storage blocked */ }
+  if (Date.now() - last > 10000) {
+    try { sessionStorage.setItem(KEY, String(Date.now())) } catch { /* storage blocked */ }
+    event.preventDefault()   // we handle it via reload; skip Vite's default re-throw
+    window.location.reload()
+  }
+})
+
 function CrashFallback() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4">
