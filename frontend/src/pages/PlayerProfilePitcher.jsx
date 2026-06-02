@@ -103,6 +103,14 @@ const GAMELOG_PITCHING_COLS = [
 ]
 
 const fmtEra = v => (v == null ? '—' : Number(v).toFixed(2))
+const CLASS_YEARS = { Fr: 'Freshman', So: 'Sophomore', Jr: 'Junior', Sr: 'Senior', Gr: 'Graduate' }
+function fmtClassYear(y) {
+  if (!y) return null
+  const rs = y.startsWith('R-')
+  const base = rs ? y.slice(2) : y
+  const label = CLASS_YEARS[base] || base
+  return rs ? `RS ${label}` : label
+}
 const fmtDate = d => { if (!d) return ''; const dt = new Date(d); return `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}` }
 
 // Game-score color tiers (higher is better for pitchers).
@@ -231,6 +239,7 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
             </div>
             <div className="text-[13px] font-semibold mt-1" style={{ color: T.textMuted }}>
               {player.position} | <Link to={`/team/${player.team_id}`} className="hover:underline">{player.team_name}</Link>
+              {fmtClassYear(player.year_in_school) && <> | {fmtClassYear(player.year_in_school)}</>}
             </div>
             <div className="text-[11px] mt-1.5 leading-relaxed" style={{ color: T.textMuted }}>
               Bats/Throws: {player.bats || '—'}/{player.throws || '—'} &nbsp;|&nbsp; {player.height || '—'} {player.weight ? `${player.weight} lbs` : ''}

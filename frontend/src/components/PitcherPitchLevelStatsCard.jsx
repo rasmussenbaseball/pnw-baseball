@@ -329,8 +329,24 @@ const SHADE_PALETTE = [
   'bg-red-100  text-gray-900', 'bg-red-300  text-gray-900',
   'bg-red-400  text-white', 'bg-red-500  text-white', 'bg-red-700  text-white',
 ]
-function shadeForValue(metric, value, deciles) {
-  if (value == null || !deciles) return null
+// Metrics whose decile population is contaminated (e.g. P/PA is dragged
+// down by position-players pitching and tiny-sample appearances), so the
+// decile ladder no longer straddles the league mean. Shade these against
+// the league AVERAGE instead: for 'low' metrics, below average = good (red).
+const LEAGUE_ANCHORED = {
+  pitches_per_pa: 'low',
+}
+function shadeForValue(metric, value, deciles, league) {
+  if (value == null) return null
+  const anchored = LEAGUE_ANCHORED[metric]
+  if (anchored && league != null && league > 0) {
+    const dev = (league - value) / league          // >0 means below avg
+    const signed = anchored === 'low' ? dev : -dev  // positive = better
+    // ~4% off the league mean per shade step; idx 5 = average (gray)
+    const idx = 5 + Math.round(signed / 0.04)
+    return Math.max(0, Math.min(10, idx))
+  }
+  if (!deciles) return null
   const dir = METRIC_DIRECTION[metric]
   if (!dir) return null
   const min = deciles[0], max = deciles[deciles.length - 1]
@@ -359,7 +375,7 @@ function ColorCell({ row, metric, formatter, bold = false }) {
   const value = row[metric]
   const lg = row.league || {}
   const decs = (row.deciles || {})[metric]
-  const idx = shadeForValue(metric, value, decs)
+  const idx = shadeForValue(metric, value, decs, lg[metric])
   const shade = idx != null ? SHADE_PALETTE[idx] : ''
   const valueText = formatter(value)
   const leagueValue = lg[metric]
@@ -405,7 +421,7 @@ function Tile({ label, value, sub }) {
 }
 function ColorTile({ label, metric, value, sub, league, deciles, formatter }) {
   const decs = deciles?.[metric]
-  const idx = shadeForValue(metric, value, decs)
+  const idx = shadeForValue(metric, value, decs, league?.[metric])
   const shade = idx != null ? SHADE_PALETTE[idx] : 'bg-gray-50 text-gray-900'
   const leagueText = league?.[metric] != null ? formatter(league[metric]) : '—'
   return (
