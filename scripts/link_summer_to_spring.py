@@ -124,16 +124,14 @@ def _is_initial_only(name):
     return len(_norm(name)) == 1
 
 
-def _initials_unique_match(summer_player, by_lastinitial):
-    """Match a first-initial-only summer player (Pointstreak gives no
-    college for these) to a spring player by LAST NAME + FIRST INITIAL,
-    but ONLY when the match is unambiguous: exactly one timeline-plausible
-    spring player shares that (last name, initial). Rare surnames link;
-    common ones (J Smith) stay ambiguous and are left alone.
+def _unique_li_candidate(summer_player, by_lastinitial):
+    """The single timeline-plausible spring player sharing this summer
+    player's LAST NAME + FIRST INITIAL, or None if zero/ambiguous.
 
-    Because there's no college to corroborate, uniqueness IS the guard, so
-    we also require a known roster_year and bound the summer season inside
-    the player's plausible college window:
+    Uniqueness is the core guard (no college to corroborate): rare surnames
+    resolve to one candidate; common ones (J Smith) stay ambiguous. Requires
+    a known roster_year and bounds the summer season inside the player's
+    plausible college window:
       college-entry-1  <=  summer season  <=  last-college-year + 1
     """
     ln = _norm(summer_player["last_name"])
@@ -152,6 +150,101 @@ def _initials_unique_match(summer_player, by_lastinitial):
             continue  # summer years after the player's last college season
         ok.append(c)
     return ok[0] if len(ok) == 1 else None
+
+
+# Common first-name nickname pairs that share no obvious prefix/spelling.
+# Stored as frozensets of normalized variants; two names are nickname-
+# compatible if they fall in the same set.
+_NICKNAME_GROUPS = [
+    {"daniel", "dan", "danny"}, {"nicholas", "nick", "nik"},
+    {"stephen", "steven", "steve", "stevie"}, {"michael", "mike", "mikey"},
+    {"william", "will", "bill", "billy", "liam"}, {"robert", "rob", "bob", "bobby"},
+    {"anthony", "tony"}, {"thomas", "tom", "tommy"}, {"charles", "charlie", "chuck"},
+    {"richard", "rick", "ricky", "dick"}, {"james", "jim", "jimmy", "jamie"},
+    {"joseph", "joe", "joey"}, {"jacob", "jake"}, {"andrew", "drew", "andy"},
+    {"edward", "ed", "eddie", "ted"}, {"nathaniel", "nathan", "nate"},
+    {"jonathan", "jon", "johnny", "john"}, {"matthew", "matt"},
+    {"zachary", "zach", "zack"}, {"benjamin", "ben", "benji"},
+    {"samuel", "sam", "sammy"}, {"alexander", "alex", "alec", "xander"},
+    {"christopher", "chris"}, {"gabriel", "gabe"}, {"raymond", "ray"},
+    {"patrick", "pat"}, {"timothy", "tim"}, {"gregory", "greg"},
+    {"kenneth", "ken", "kenny"}, {"vincent", "vinny", "vince"},
+    {"maxwell", "max"}, {"dominic", "dom", "nick"}, {"isaiah", "zay"},
+    {"cameron", "cam"}, {"theodore", "theo", "ted"}, {"oliver", "ollie"},
+]
+
+
+def _edit_distance(a, b, cap=3):
+    """Levenshtein, short-circuited once it exceeds `cap`."""
+    if abs(len(a) - len(b)) > cap:
+        return cap + 1
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i] + [0] * len(b)
+        best = cur[0]
+        for j, cb in enumerate(b, 1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb))
+            best = min(best, cur[j])
+        if best > cap:
+            return cap + 1
+        prev = cur
+    return prev[-1]
+
+
+def _is_initialism(orig):
+    """True for genuine initials like 'DJ', 'D.J.', 'JJ', 'A.J.' — an
+    all-uppercase 2-3 letter token. NOT a real short name like 'Ty'/'Jo'
+    (mixed case) or an all-caps full name like 'CAMERON'."""
+    s = re.sub(r"[.\s]", "", orig or "")
+    return s.isalpha() and s.isupper() and 2 <= len(s) <= 3
+
+
+def _names_compatible(summer_orig, spring_orig, strict):
+    """Are two first names plausibly the same person? `strict` (common
+    surname) demands a strong signal; non-strict (rare surname, where
+    last+initial uniqueness is already decisive) allows looser variants.
+
+       both modes:  exact · prefix (len>=3) · known nickname · edit<=1
+       lenient too: edit==2 (spelling variant) · initialism (DJ/Dexter)
+
+    Rejects different names sharing an initial (Jack/Jonah; Conner/Cooper
+    on a common surname; Ty/Tristan)."""
+    a, b = _norm(summer_orig), _norm(spring_orig)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if a[0] != b[0]:
+        return False
+    if a.startswith(b) or b.startswith(a):
+        if min(len(a), len(b)) >= 3:
+            return True
+    for g in _NICKNAME_GROUPS:
+        if a in g and b in g:
+            return True
+    if _edit_distance(a, b) <= 1:
+        return True
+    if not strict:
+        if _is_initialism(summer_orig) or _is_initialism(spring_orig):
+            return True
+        if _edit_distance(a, b) <= 2:
+            return True
+    return False
+
+
+def _nickname_unique_match(summer_player, by_lastinitial, last_total):
+    """For a full-first-name summer player whose exact name didn't match a
+    spring player: accept the UNIQUE last+initial candidate only if the
+    first names are nickname/variant-compatible. Common surnames (>=3 spring
+    players) require a strong match so different people who merely share a
+    rare-ish surname (Conner vs Cooper Smith) are not linked."""
+    c = _unique_li_candidate(summer_player, by_lastinitial)
+    if c is None:
+        return None
+    strict = last_total.get(_norm(c["last"]), 0) >= 3
+    if _names_compatible(summer_player["first_name"], c["first"], strict):
+        return c
+    return None
 
 
 def load_summer_unlinked(cur, season):
@@ -217,22 +310,28 @@ def run(season, dry_run=False, rescore=False):
         if rescore:
             logger.info("Rescore mode: clearing existing links before re-linking")
             if not dry_run:
-                cur.execute("DELETE FROM summer_player_links WHERE confidence IN ('auto', 'auto_first_initial')")
+                cur.execute("DELETE FROM summer_player_links WHERE confidence IN ('auto', 'auto_first_initial', 'auto_nickname')")
 
         # Secondary index for first-initial-only matching: (last, initial) -> candidates.
+        # Plus a per-surname count so the nickname path can be stricter on
+        # common surnames (where a fuzzy first-name match is riskier).
         by_lastinitial = defaultdict(list)
+        last_total = defaultdict(int)
         for cand_list in spring_by_name.values():
             for c in cand_list:
                 ln = _norm(c["last"])
                 fi = _first_initial(c["first"])
                 if ln and fi:
                     by_lastinitial[(ln, fi)].append(c)
+                if ln:
+                    last_total[ln] += 1
 
         unlinked = load_summer_unlinked(cur, season)
         logger.info(f"Unlinked summer_players with {season} game data: {len(unlinked)}")
 
         linked = 0
         initial_linked = 0
+        nickname_linked = 0
         ambiguous = 0
         no_candidate = 0
         for sp in unlinked:
@@ -256,7 +355,7 @@ def run(season, dry_run=False, rescore=False):
             elif _is_initial_only(sp["first_name"]):
                 # First-initial-only path: link only on a unique last+initial
                 # match within the player's plausible college window.
-                chosen = _initials_unique_match(sp, by_lastinitial)
+                chosen = _unique_li_candidate(sp, by_lastinitial)
                 if chosen is None:
                     no_candidate += 1
                     continue
@@ -265,11 +364,21 @@ def run(season, dry_run=False, rescore=False):
                 # college-less first-initial matches stay easy to audit/undo.
                 confidence = "auto_first_initial"
             else:
-                no_candidate += 1
-                continue
+                # Nickname / spelling-variant path: full first name that did
+                # NOT exactly match, but a unique last+initial spring player
+                # whose first name is variant-compatible (DJ/Dexter,
+                # Matt/Matthew, Griffin/Griffen). Rejects different people who
+                # merely share a rare surname (Jack vs Jonah Schroeder).
+                chosen = _nickname_unique_match(sp, by_lastinitial, last_total)
+                if chosen is None:
+                    no_candidate += 1
+                    continue
+                confidence = "auto_nickname"
 
             if confidence == "auto_first_initial":
                 initial_linked += 1
+            elif confidence == "auto_nickname":
+                nickname_linked += 1
             else:
                 linked += 1
             logger.debug(
@@ -291,6 +400,7 @@ def run(season, dry_run=False, rescore=False):
 
         logger.info(
             f"Linked (full name): {linked} · Linked (initial): {initial_linked} · "
+            f"Linked (nickname): {nickname_linked} · "
             f"Ambiguous: {ambiguous} · No spring candidate: {no_candidate}"
         )
 
