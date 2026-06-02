@@ -22,6 +22,37 @@ import re
 logger = logging.getLogger("team_matching")
 
 
+# Cache of lowercased team names, lazily loaded for is_nonperson_name().
+_TEAM_NAME_SET = None
+
+
+def is_nonperson_name(cur, first_name, last_name):
+    """True if a parsed 'player' name is really a team name or a
+    schedule/location fragment ("at Edmonds", "vs Big Bend", "SW Oregon").
+
+    Player-creation paths should call this and skip the row when it returns
+    True. Opponent/schedule strings leaking in as players produced ~351
+    garbage "player" rows (e.g. "at Chemeketa") that cluttered search,
+    cleaned up June 2026 — this is the anti-recurrence guard.
+    """
+    global _TEAM_NAME_SET
+    fn = (first_name or "").strip().lower()
+    full = re.sub(r"\s+", " ", f"{first_name or ''} {last_name or ''}".strip().lower())
+    if not full:
+        return True
+    if fn in ("at", "vs", "@", "at.", "vs.", "the"):
+        return True
+    if _TEAM_NAME_SET is None:
+        cur.execute("SELECT LOWER(short_name) n FROM teams UNION SELECT LOWER(name) FROM teams")
+        _TEAM_NAME_SET = {r["n"] for r in cur.fetchall() if r["n"]}
+    if full in _TEAM_NAME_SET:
+        return True
+    for pre in ("at ", "vs ", "@ "):
+        if full.startswith(pre) and full[len(pre):] in _TEAM_NAME_SET:
+            return True
+    return False
+
+
 # Known aliases for teams whose conventional Sidearm name doesn't match
 # our short_name or school_name via fuzzy lookup. Keep keys lowercase.
 _TEAM_ALIASES = {

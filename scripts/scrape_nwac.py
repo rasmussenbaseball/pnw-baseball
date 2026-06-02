@@ -57,6 +57,7 @@ from app.stats.advanced import (
     normalize_position, DEFAULT_WEIGHTS,
 )
 from record_utils import extract_record_from_html, save_team_record
+from team_matching import is_nonperson_name
 
 logging.basicConfig(
     level=logging.INFO,
@@ -558,6 +559,12 @@ def get_team_id_by_short_name(short_name):
 
 def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
     """Insert or update a player record. Returns player_id."""
+    # Guard: never create a "player" from a team name or schedule/location
+    # fragment ("at Edmonds", "SW Oregon"). These leaked in as ~351 garbage
+    # rows that cluttered search (cleaned up June 2026).
+    if is_nonperson_name(cur, first_name, last_name):
+        logging.warning("Skipping non-person name: %r %r", first_name, last_name)
+        return None
     cur.execute(
         "SELECT id FROM players WHERE first_name = %s AND last_name = %s AND team_id = %s",
         (first_name, last_name, team_id),
