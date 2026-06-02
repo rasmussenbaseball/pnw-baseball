@@ -449,17 +449,292 @@ def _compute_summer_approach(cur, player_id, season):
     }
 
 
+# ── Pitcher pitch-level approach (from summer_game_events PBP) ──────
+
+def _compute_summer_pitch_approach(cur, player_id, season):
+    """Pitcher pitch-level rates from summer_game_events (2026 WCL PBP).
+
+    Mirrors the hitter approach denominator convention: pitches seen =
+    all pitch-sequence letters + balls-in-play (the contacted pitch isn't
+    always logged in the sequence). Strike = called strike (S) + swinging
+    strike (K) + foul (F) + ball in play. Whiff = K / swings. First-pitch
+    strike = PAs whose first logged pitch is S/K/F (or a 0-0 ball in play).
+    Returns None when no tracked PBP PAs.
+    """
+    cur.execute(
+        """
+        SELECT
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS k_p,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_p,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS s_p,
+          COALESCE(SUM(LENGTH(COALESCE(pitch_sequence, ''))), 0) AS seq_total,
+          COUNT(*) FILTER (WHERE was_in_play) AS in_play,
+          COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
+          COUNT(*) FILTER (
+            WHERE pitches_thrown >= 1
+              AND (LEFT(COALESCE(pitch_sequence, ''), 1) IN ('K', 'S', 'F')
+                   OR (COALESCE(pitch_sequence, '') = '' AND was_in_play))
+          ) AS f1_strikes,
+          COUNT(*) AS pa,
+          COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging', 'strikeout_looking')) AS k,
+          COUNT(*) FILTER (WHERE result_type IN ('walk', 'intentional_walk')) AS bb
+        FROM summer_game_events e
+        JOIN summer_games g ON g.id = e.game_id
+        WHERE e.pitcher_player_id = %s
+          AND g.season = %s
+          AND e.result_type = ANY(%s)
+        """,
+        (player_id, season, _PA_RESULT_TYPES),
+    )
+    r = cur.fetchone()
+    if not r or not r["pa"]:
+        return None
+    k_p = r["k_p"] or 0
+    f_p = r["f_p"] or 0
+    s_p = r["s_p"] or 0
+    seq = r["seq_total"] or 0
+    in_play = r["in_play"] or 0
+    pa = r["pa"] or 0
+    swings = k_p + f_p + in_play
+    strikes = k_p + s_p + f_p + in_play
+    pitches_seen = seq + in_play
+
+    def pct(num, den):
+        return round(num / den, 3) if den else None
+
+    return {
+        "season": season,
+        "pa": pa,
+        "pitches_seen": pitches_seen,
+        "strike_pct": pct(strikes, pitches_seen),
+        "whiff_pct": pct(k_p, swings),
+        "first_pitch_strike_pct": pct(r["f1_strikes"] or 0, r["tracked_pa"] or 0),
+        "k_pct": pct(r["k"] or 0, pa),
+        "bb_pct": pct(r["bb"] or 0, pa),
+    }
+
+
+# ── Percentile rankings (savant-style, vs league + season peers) ────
+
+def _rank_pct(values, my_val, higher_is_better=True):
+    """Rank-based percentile (rank 1 -> 99) for my_val within a peer set.
+
+    Mirrors routes.py _rank_block: the best peer reads 99, the worst 1, so
+    a true league leader never caps out at ~95. Needs >= 3 peers for a
+    stable scale (otherwise percentile is None and the row hides on the
+    frontend). Returns the savant payload shape the PercentilePanel reads:
+    {value, percentile, rank, total, league_avg, comparison}.
+    """
+    if my_val is None:
+        return {"value": None, "percentile": None, "rank": None, "total": None,
+                "league_avg": None, "comparison": "league"}
+    my_val = float(my_val)
+    vals = [float(v) for v in values if v is not None]
+    total = len(vals)
+    avg = round(sum(vals) / total, 4) if total else None
+    if total < 3:
+        return {"value": my_val, "percentile": None, "rank": None, "total": total,
+                "league_avg": avg, "comparison": "league"}
+    if higher_is_better:
+        rank = sum(1 for v in vals if v > my_val) + 1
+    else:
+        rank = sum(1 for v in vals if v < my_val) + 1
+    pct = max(1, min(99, round(((total - rank) / (total - 1)) * 100)))
+    return {"value": my_val, "percentile": pct, "rank": rank, "total": total,
+            "league_avg": avg, "comparison": "league"}
+
+
+def _summer_hitter_contact_cohort(cur, league_id, season, min_pa=15):
+    """{batter_player_id: contact%} for the league+season (2026 PBP only)."""
+    cur.execute(
+        """
+        SELECT e.batter_player_id AS pid,
+          COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'K', ''))), 0) AS k_p,
+          COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'F', ''))), 0) AS f_p,
+          COUNT(*) FILTER (WHERE e.was_in_play) AS in_play,
+          COUNT(*) AS pa
+        FROM summer_game_events e
+        JOIN summer_games g ON g.id = e.game_id
+        JOIN summer_players sp ON sp.id = e.batter_player_id
+        JOIN summer_teams t ON t.id = sp.team_id
+        WHERE g.season = %s AND t.league_id = %s
+          AND e.result_type = ANY(%s) AND e.batter_player_id IS NOT NULL
+        GROUP BY e.batter_player_id
+        """,
+        (season, league_id, _PA_RESULT_TYPES),
+    )
+    out = {}
+    for r in cur.fetchall():
+        if (r["pa"] or 0) < min_pa:
+            continue
+        swings = (r["k_p"] or 0) + (r["f_p"] or 0) + (r["in_play"] or 0)
+        if swings > 0:
+            out[r["pid"]] = ((r["f_p"] or 0) + (r["in_play"] or 0)) / swings
+    return out
+
+
+def _summer_pitcher_pbp_cohort(cur, league_id, season, min_pitches=40):
+    """{pitcher_player_id: {strike_pct, fps_pct, whiff_pct}} (2026 PBP only).
+
+    Scoped to the league via the pitcher's own summer team (the defending
+    side), so cross-league exhibition opponents don't leak into the cohort.
+    """
+    cur.execute(
+        """
+        SELECT e.pitcher_player_id AS pid,
+          COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'K', ''))), 0) AS k_p,
+          COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'F', ''))), 0) AS f_p,
+          COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'S', ''))), 0) AS s_p,
+          COALESCE(SUM(LENGTH(COALESCE(e.pitch_sequence, ''))), 0) AS seq_total,
+          COUNT(*) FILTER (WHERE e.was_in_play) AS in_play,
+          COUNT(*) FILTER (WHERE e.pitches_thrown >= 1) AS tracked_pa,
+          COUNT(*) FILTER (
+            WHERE e.pitches_thrown >= 1
+              AND (LEFT(COALESCE(e.pitch_sequence, ''), 1) IN ('K', 'S', 'F')
+                   OR (COALESCE(e.pitch_sequence, '') = '' AND e.was_in_play))
+          ) AS f1_strikes
+        FROM summer_game_events e
+        JOIN summer_games g ON g.id = e.game_id
+        JOIN summer_players sp ON sp.id = e.pitcher_player_id
+        JOIN summer_teams t ON t.id = sp.team_id
+        WHERE g.season = %s AND t.league_id = %s
+          AND e.pitcher_player_id IS NOT NULL
+        GROUP BY e.pitcher_player_id
+        """,
+        (season, league_id),
+    )
+    out = {}
+    for r in cur.fetchall():
+        k_p = r["k_p"] or 0
+        f_p = r["f_p"] or 0
+        s_p = r["s_p"] or 0
+        in_play = r["in_play"] or 0
+        seq = r["seq_total"] or 0
+        pitches_seen = seq + in_play
+        if pitches_seen < min_pitches:
+            continue
+        swings = k_p + f_p + in_play
+        tracked = r["tracked_pa"] or 0
+        out[r["pid"]] = {
+            "strike_pct": ((k_p + s_p + f_p + in_play) / pitches_seen) if pitches_seen else None,
+            "whiff_pct": (k_p / swings) if swings else None,
+            "first_pitch_strike_pct": ((r["f1_strikes"] or 0) / tracked) if tracked else None,
+        }
+    return out
+
+
+def _summer_percentiles(cur, league_id, season, bat_row, pit_row):
+    """Build savant-style percentile payloads for the player's `season`
+    line vs every qualified peer in the same summer league + season.
+
+    Season advanced stats (wOBA, wRC+, FIP, etc.) are computed for every
+    summer season we have; pitch-level rates (Contact%, Strike%, Whiff%)
+    only exist where we have tracked play-by-play (2026 WCL today)."""
+    batting_percentiles = {}
+    pitching_percentiles = {}
+
+    # ── Batting: peers with a meaningful sample (PA >= 20) ──
+    if bat_row:
+        cur.execute(
+            """
+            SELECT b.player_id, b.plate_appearances AS pa, b.home_runs AS hr,
+                   b.stolen_bases AS sb, b.woba, b.wrc_plus, b.wobacon, b.iso,
+                   b.k_pct, b.bb_pct, b.offensive_war
+            FROM summer_batting_stats b
+            JOIN summer_players p ON p.id = b.player_id
+            JOIN summer_teams t ON t.id = p.team_id
+            WHERE t.league_id = %s AND b.season = %s AND b.plate_appearances >= 20
+            """,
+            (league_id, season),
+        )
+        peers = [dict(r) for r in cur.fetchall()]
+
+        def _col(key):
+            return [r.get(key) for r in peers]
+
+        def _rate(numkey, r):
+            pa = r.get("pa") or 0
+            n = r.get(numkey)
+            return (n / pa) if (pa and n is not None) else None
+
+        my_pa = bat_row.get("plate_appearances") or 0
+        my_hrpa = (bat_row["home_runs"] / my_pa) if (my_pa and bat_row.get("home_runs") is not None) else None
+        my_sbpa = (bat_row["stolen_bases"] / my_pa) if (my_pa and bat_row.get("stolen_bases") is not None) else None
+
+        batting_percentiles = {
+            "offensive_war": _rank_pct(_col("offensive_war"), bat_row.get("offensive_war"), True),
+            "wrc_plus":      _rank_pct(_col("wrc_plus"),      bat_row.get("wrc_plus"),      True),
+            "woba":          _rank_pct(_col("woba"),          bat_row.get("woba"),          True),
+            "wobacon":       _rank_pct(_col("wobacon"),       bat_row.get("wobacon"),       True),
+            "iso":           _rank_pct(_col("iso"),           bat_row.get("iso"),           True),
+            "hr_pa_pct":     _rank_pct([_rate("hr", r) for r in peers], my_hrpa, True),
+            "k_pct":         _rank_pct(_col("k_pct"),         bat_row.get("k_pct"),         False),
+            "bb_pct":        _rank_pct(_col("bb_pct"),        bat_row.get("bb_pct"),        True),
+            "sb_per_pa":     _rank_pct([_rate("sb", r) for r in peers], my_sbpa, True),
+        }
+        contact = _summer_hitter_contact_cohort(cur, league_id, season)
+        if contact:
+            batting_percentiles["contact_pct"] = _rank_pct(
+                list(contact.values()), contact.get(bat_row.get("player_id")), True)
+
+    # ── Pitching: peers with a meaningful sample (IP >= 10) ──
+    if pit_row:
+        cur.execute(
+            """
+            SELECT pt.player_id, pt.batters_faced AS bf, pt.home_runs_allowed AS hra,
+                   pt.pitching_war, pt.k_pct, pt.bb_pct, pt.fip, pt.siera, pt.xfip, pt.baa
+            FROM summer_pitching_stats pt
+            JOIN summer_players p ON p.id = pt.player_id
+            JOIN summer_teams t ON t.id = p.team_id
+            WHERE t.league_id = %s AND pt.season = %s AND pt.innings_pitched >= 10
+            """,
+            (league_id, season),
+        )
+        peers = [dict(r) for r in cur.fetchall()]
+
+        def _pcol(key):
+            return [r.get(key) for r in peers]
+
+        def _hrpa(r):
+            bf = r.get("bf") or 0
+            hra = r.get("hra")
+            return (hra / bf) if (bf and hra is not None) else None
+
+        my_bf = pit_row.get("batters_faced") or 0
+        my_hrpa = (pit_row["home_runs_allowed"] / my_bf) if (my_bf and pit_row.get("home_runs_allowed") is not None) else None
+
+        pitching_percentiles = {
+            "pitching_war": _rank_pct(_pcol("pitching_war"), pit_row.get("pitching_war"), True),
+            "k_pct":        _rank_pct(_pcol("k_pct"),        pit_row.get("k_pct"),        True),
+            "bb_pct":       _rank_pct(_pcol("bb_pct"),       pit_row.get("bb_pct"),       False),
+            "fip":          _rank_pct(_pcol("fip"),          pit_row.get("fip"),          False),
+            "siera":        _rank_pct(_pcol("siera"),        pit_row.get("siera"),        False),
+            "xfip":         _rank_pct(_pcol("xfip"),         pit_row.get("xfip"),         False),
+            "baa":          _rank_pct(_pcol("baa"),          pit_row.get("baa"),          False),
+            "hr_pa_pct":    _rank_pct([_hrpa(r) for r in peers], my_hrpa, False),
+        }
+        pbp = _summer_pitcher_pbp_cohort(cur, league_id, season)
+        if pbp:
+            mine = pbp.get(pit_row.get("player_id")) or {}
+            for key in ("strike_pct", "first_pitch_strike_pct", "whiff_pct"):
+                pitching_percentiles[key] = _rank_pct(
+                    [v.get(key) for v in pbp.values()], mine.get(key), True)
+
+    return batting_percentiles, pitching_percentiles
+
+
 # ── /summer/players/{id} ───────────────────────────────────────────
 
 @router.get("/summer/players/{player_id}")
 @cached_endpoint(ttl_seconds=180)
-def summer_player_detail(player_id: int, season: int = Query(2026)):
+def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             """
             SELECT p.*,
                    t.id   AS team_id,
+                   t.league_id AS league_id,
                    t.name AS team_name,
                    t.short_name AS team_short,
                    t.logo_url AS team_logo,
@@ -488,7 +763,21 @@ def summer_player_detail(player_id: int, season: int = Query(2026)):
         )
         pitching = [dict(r) for r in cur.fetchall()]
 
-        # Per-game logs for the requested season
+        # Effective season: honor an explicit ?season=, otherwise default to
+        # the most recent season this player actually has stats for (so the
+        # percentile panel + game logs land on real data instead of an empty
+        # not-yet-started year).
+        seasons_present = sorted(
+            {r["season"] for r in batting} | {r["season"] for r in pitching}
+        )
+        if season is not None and season in seasons_present:
+            eff_season = season
+        elif seasons_present:
+            eff_season = seasons_present[-1]
+        else:
+            eff_season = season if season is not None else 2026
+
+        # Per-game logs for the effective season
         cur.execute(
             """
             SELECT b.*, g.game_date, g.away_team_name, g.home_team_name,
@@ -498,7 +787,7 @@ def summer_player_detail(player_id: int, season: int = Query(2026)):
             WHERE b.player_id = %s AND g.season = %s
             ORDER BY g.game_date
             """,
-            (player_id, season),
+            (player_id, eff_season),
         )
         game_batting = [dict(r) for r in cur.fetchall()]
         cur.execute(
@@ -510,7 +799,7 @@ def summer_player_detail(player_id: int, season: int = Query(2026)):
             WHERE p.player_id = %s AND g.season = %s
             ORDER BY g.game_date
             """,
-            (player_id, season),
+            (player_id, eff_season),
         )
         game_pitching = [dict(r) for r in cur.fetchall()]
 
@@ -544,11 +833,23 @@ def summer_player_detail(player_id: int, season: int = Query(2026)):
         )
         fielding = [dict(r) for r in cur.fetchall()]
 
-        # Hitter approach splits from parsed play-by-play (None if no PBP)
-        approach = _compute_summer_approach(cur, player_id, season)
+        # Pitch-level approach splits from parsed play-by-play (None if no PBP)
+        approach = _compute_summer_approach(cur, player_id, eff_season)
+        pitch_approach = _compute_summer_pitch_approach(cur, player_id, eff_season)
+
+        # Savant-style percentile rankings vs league + season peers, anchored
+        # to the player's effective-season line.
+        bat_row = next((r for r in batting if r["season"] == eff_season), None)
+        pit_row = next((r for r in pitching if r["season"] == eff_season), None)
+        league_id = player["league_id"]
+        batting_percentiles, pitching_percentiles = _summer_percentiles(
+            cur, league_id, eff_season, bat_row, pit_row
+        )
 
     return {
         "player": dict(player),
+        "season": eff_season,
+        "seasons": seasons_present,
         "batting": batting,
         "pitching": pitching,
         "fielding": fielding,
@@ -556,6 +857,9 @@ def summer_player_detail(player_id: int, season: int = Query(2026)):
         "game_pitching": game_pitching,
         "spring_link": dict(spring_link) if spring_link else None,
         "approach": approach,
+        "pitch_approach": pitch_approach,
+        "batting_percentiles": batting_percentiles,
+        "pitching_percentiles": pitching_percentiles,
     }
 
 
