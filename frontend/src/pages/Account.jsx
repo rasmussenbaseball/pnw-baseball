@@ -111,7 +111,23 @@ export default function Account() {
         })
         .catch(() => { if (alive) setTier('free') })
     }
-    fetchSub()
+
+    if (justUpgraded) {
+      // Returned from Stripe Checkout: synchronously pull the subscription
+      // from Stripe and apply it now, so the new tier shows instantly instead
+      // of waiting on the async webhook. The poll below stays as a fallback.
+      const sessionId = searchParams.get('session_id') || null
+      fetch(`${API_BASE}/billing/sync`, {
+        method: 'POST',
+        headers: { ...authHeaders(session), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null)
+        .finally(() => { if (alive) fetchSub() })
+    } else {
+      fetchSub()
+    }
 
     return () => {
       alive = false

@@ -149,8 +149,23 @@ async def add_cache_control_headers(request, call_next):
 
 @app.on_event("startup")
 def startup():
+    import logging
     init_db()
     seed_divisions_and_conferences()
+    # Surface billing-config drift (a sellable tier missing its Stripe price,
+    # or the DB tier constraint rejecting a tier the app can assign) at deploy
+    # time rather than at a customer's first purchase.
+    try:
+        from .api.billing import verify_billing_config
+        problems = verify_billing_config()
+        blog = logging.getLogger("nwbb.billing")
+        if problems:
+            for p in problems:
+                blog.critical("BILLING CONFIG: %s", p)
+        else:
+            blog.info("billing config OK")
+    except Exception:
+        logging.getLogger("nwbb.billing").exception("billing config self-check failed")
 
 
 # ── Serve headshots from a persistent directory (survives deploys) ──

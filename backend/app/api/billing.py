@@ -90,6 +90,66 @@ def _lookup_price(tier: str, interval: str) -> Optional[str]:
     return None
 
 
+# Every (tier, interval) the site offers for sale. Single source of truth:
+# the checkout schema, price map, DB tier constraint, and config self-check
+# all derive from this so a new tier can't be half-wired again.
+SELLABLE = [
+    ("premium", "monthly"), ("premium", "yearly"),
+    ("recruiting", "monthly"), ("recruiting", "yearly"),
+    ("coach", "monthly"), ("coach", "yearly"),
+]
+PAID_TIERS = sorted({t for t, _ in SELLABLE})          # premium, recruiting, coach
+ALL_TIERS = ["free"] + PAID_TIERS
+
+
+def verify_billing_config() -> list[str]:
+    """Return a list of billing-config problems (empty list = healthy).
+
+    Catches the class of bug where a tier is added to the app but not
+    everywhere it needs to be:
+      - a sellable (tier, interval) with no Stripe price env var, and
+      - the DB tier CHECK constraint not allowing a tier the app can assign
+        (which silently rejected a paid 'recruiting' subscriber once).
+    Run at startup and logged CRITICAL, so drift surfaces at deploy time
+    rather than at a customer's first purchase."""
+    issues: list[str] = []
+    have = set(_price_map().values())
+    for ti in SELLABLE:
+        if ti not in have:
+            issues.append(f"no Stripe price configured for {ti[0]}/{ti[1]} (STRIPE_PRICE_* env missing)")
+
+    producible = {"free"} | {t for (t, _i) in _price_map().values()}
+    try:
+        import re as _re
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint "
+                "WHERE conname = 'user_subscriptions_tier_check'"
+            )
+            row = cur.fetchone()
+        if row and row.get("d"):
+            allowed = set(_re.findall(r"'([a-z_]+)'", row["d"]))
+            missing = producible - allowed
+            if missing:
+                issues.append(
+                    f"user_subscriptions tier CHECK constraint is missing {sorted(missing)} "
+                    f"— upgrades to those tiers will be REJECTED by the DB"
+                )
+    except Exception as e:  # pragma: no cover - diagnostics only
+        issues.append(f"could not read user_subscriptions tier constraint: {e}")
+    return issues
+
+
+def _pick_primary_subscription(subs: list) -> Optional[dict]:
+    """Choose the most relevant subscription for a customer: prefer active,
+    then trialing, then past_due, newest first."""
+    if not subs:
+        return None
+    rank = {"active": 0, "trialing": 1, "past_due": 2}
+    return sorted(subs, key=lambda s: (rank.get(s.get("status"), 9), -(s.get("created") or 0)))[0]
+
+
 # ─────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────
@@ -336,6 +396,13 @@ class CheckoutRequest(BaseModel):
     interval: str = Field(..., pattern="^(monthly|yearly)$")
 
 
+class SyncRequest(BaseModel):
+    # The checkout session id from the success_url (optional). When present
+    # we resolve the just-purchased subscription precisely; otherwise we fall
+    # back to the user's Stripe customer.
+    session_id: Optional[str] = None
+
+
 # ─────────────────────────────────────────────────────────────────
 # Endpoints
 # ─────────────────────────────────────────────────────────────────
@@ -409,6 +476,68 @@ def create_checkout_session(
         raise HTTPException(status_code=502, detail=f"Stripe error: {e.user_message or str(e)}")
 
     return {"url": session.url, "session_id": session.id}
+
+
+@router.post("/billing/sync")
+def sync_my_subscription(body: SyncRequest, user_id: str = Depends(get_current_user)):
+    """Authoritatively pull THIS user's subscription from Stripe and apply it
+    to the DB right now — so the tier is correct the instant they return from
+    Checkout, without waiting on the async webhook. Uses the same write path
+    as the webhook, so it's idempotent (whichever runs first wins; the welcome
+    email fires once via the prior-tier check).
+
+    Security: only ever applies the authenticated caller's own subscription —
+    a session is honored only when its client_reference_id/metadata is this
+    user, and the customer fallback is the user's own stored customer_id."""
+    _set_stripe_key()
+    sub = None
+
+    if body.session_id:
+        try:
+            sess = stripe.checkout.Session.retrieve(body.session_id, expand=["subscription"])
+        except stripe.error.StripeError:
+            sess = None
+        if sess and (sess.get("client_reference_id") == user_id
+                     or (sess.get("metadata") or {}).get("user_id") == user_id):
+            # Also performs the customer-link step in case checkout.completed
+            # hasn't arrived yet.
+            try:
+                _handle_checkout_completed(sess)
+            except Exception:
+                log.exception("billing/sync: checkout link failed for %s", user_id)
+            sub = sess.get("subscription")
+
+    if sub is None:
+        customer_id = _get_customer_id(user_id)
+        if customer_id:
+            try:
+                subs = list(stripe.Subscription.list(customer=customer_id, status="all", limit=20).auto_paging_iter())
+                sub = _pick_primary_subscription(subs)
+            except stripe.error.StripeError:
+                log.exception("billing/sync: subscription list failed for %s", user_id)
+
+    if sub is not None:
+        try:
+            _handle_subscription_change(sub)
+        except Exception:
+            log.exception("billing/sync: apply failed for user %s", user_id)
+            raise HTTPException(status_code=500, detail="Could not sync subscription.")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT tier, interval, current_period_end, cancel_at_period_end "
+            "FROM user_subscriptions WHERE user_id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone() or {}
+    return {
+        "tier": row.get("tier") or "free",
+        "interval": row.get("interval"),
+        "current_period_end": row.get("current_period_end"),
+        "cancel_at_period_end": bool(row.get("cancel_at_period_end") or False),
+        "synced": sub is not None,
+    }
 
 
 @router.post("/billing/portal")
@@ -599,7 +728,9 @@ def _handle_subscription_change(sub):
     # subscription.created AND subscription.updated for the initial
     # event in some cases; the prior-tier check prevents duplicates.
     is_trial = status == "trialing"
-    if prior_tier == "free" and new_tier in ("premium", "recruiting", "coach"):
+    # Any first paid activation (free -> any non-free tier). Tier-agnostic so
+    # a newly added tier can never be silently skipped here.
+    if prior_tier == "free" and new_tier != "free":
         _send_welcome_email(user_id, new_tier, is_trial)
 
     # Cancellation — fire when cancel_at_period_end FLIPS from false→true.
