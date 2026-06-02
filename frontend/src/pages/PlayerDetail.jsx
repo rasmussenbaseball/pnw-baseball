@@ -3,6 +3,7 @@ import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
 import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 import SeasonSelect from '../components/SeasonSelect'
+import { buildStints, defaultStint, StintRow, SummerStintView } from '../components/PlayerStints'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
@@ -1462,18 +1463,19 @@ export default function PlayerDetail() {
   // Reset the toggle when navigating to a different player.
   useEffect(() => { setViewSide(null) }, [playerId])
 
-  // Seasons this player actually has stats for (newest first), so the
-  // year selector only offers years with data. Current season always shown.
-  const playerSeasons = useMemo(() => {
-    const ys = new Set([CURRENT_SEASON])
-    ;(data?.batting_stats || []).forEach(r => r.season && ys.add(Number(r.season)))
-    ;(data?.pitching_stats || []).forEach(r => r.season && ys.add(Number(r.season)))
-    return Array.from(ys).sort((a, b) => b - a)
-  }, [data])
+  // Every (season, team) the player has — spring schools AND summer clubs —
+  // as a row of buttons that replaces the old season dropdown.
+  const stints = useMemo(() => buildStints(data), [data])
 
-  const setSeason = (yr) => setSearchParams(prev => {
+  // Selecting a stint: summer → ?summer=<summerPlayerId>; spring → ?season=YYYY.
+  const onSelectStint = (s) => setSearchParams(prev => {
     const p = new URLSearchParams(prev)
-    p.set('season', String(yr))
+    if (s.kind === 'summer') {
+      p.set('summer', String(s.summerId))
+    } else {
+      p.delete('summer')
+      p.set('season', String(s.season))
+    }
     return p
   })
 
@@ -1507,13 +1509,29 @@ export default function PlayerDetail() {
     : (hasPitching ? 'pitching' : 'batting')
   const activeSide = viewSide || defaultSide
   const toggle = isTwoWay ? <SideToggle side={activeSide} onChange={setViewSide} /> : null
-  const seasonSelector = playerSeasons.length > 1
-    ? <SeasonSelect value={season} onChange={setSeason} seasons={playerSeasons} label="Season" />
+
+  // Which stint is active? ?summer=<id> selects a summer club; otherwise the
+  // spring season from ?season (defaulting to the most recent spring season).
+  const summerSel = searchParams.get('summer')
+  const activeStint =
+    (summerSel && stints.find(s => s.kind === 'summer' && String(s.summerId) === String(summerSel)))
+    || stints.find(s => s.kind === 'spring' && s.season === season)
+    || defaultStint(stints)
+
+  const stintRow = stints.length > 1
+    ? <StintRow stints={stints} active={activeStint} onSelect={onSelectStint} />
     : null
 
+  // Summer club selected → show that summer stat line inline (no navigation).
+  if (activeStint && activeStint.kind === 'summer') {
+    return <SummerStintView stint={activeStint} data={data} stintRow={stintRow} />
+  }
+
+  // Spring: render the profile for the active spring season.
+  const displaySeason = (activeStint && activeStint.kind === 'spring') ? activeStint.season : season
   return activeSide === 'pitching'
-    ? <PlayerProfilePitcher playerId={playerId} data={data} season={season} sideToggle={toggle} seasonSelector={seasonSelector} />
-    : <PlayerProfileHitter playerId={playerId} data={data} season={season} sideToggle={toggle} seasonSelector={seasonSelector} />
+    ? <PlayerProfilePitcher playerId={playerId} data={data} season={displaySeason} sideToggle={toggle} seasonSelector={stintRow} />
+    : <PlayerProfileHitter playerId={playerId} data={data} season={displaySeason} sideToggle={toggle} seasonSelector={stintRow} />
 }
 
 function PlayerDetailStandard() {

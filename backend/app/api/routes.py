@@ -9216,6 +9216,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         for _sr in (summer_batting + summer_pitching):
             if _sr.get("season") == CURRENT_SUMMER_SEASON and _sr.get("league_abbrev") == "WCL":
                 current_summer_assignment = {
+                    "summer_player_id": _sr.get("player_id"),
                     "team_id": _sr.get("team_id"),
                     "team_name": _sr.get("team_name"),
                     "team_short": _sr.get("team_short"),

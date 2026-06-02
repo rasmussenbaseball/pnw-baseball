@@ -308,7 +308,7 @@ export default function PlayerProfileHitter({ playerId, data, season = 2026, sid
               {player.previous_school && <> &nbsp;|&nbsp; Prev: {player.previous_school}</>}
             </div>
             {current_summer_assignment && (
-              <Link to={`/summer/teams/${current_summer_assignment.team_id}`} className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50">
+              <Link to={current_summer_assignment.summer_player_id ? `?summer=${current_summer_assignment.summer_player_id}` : `/summer/teams/${current_summer_assignment.team_id}`} className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50">
                 {current_summer_assignment.team_logo && <img src={current_summer_assignment.team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />}
                 Summer {SEASON}: {current_summer_assignment.team_short || current_summer_assignment.team_name}
                 <span className="text-[10px] opacity-70">· {current_summer_assignment.league_abbrev}</span>
