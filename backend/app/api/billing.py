@@ -468,9 +468,13 @@ async def stripe_webhook(request: Request):
         # Other events: 200 OK, ignored (Stripe retries on 4xx/5xx)
     except Exception:
         log.exception("Webhook handler error on event %s", et)
-        # Return 200 so Stripe doesn't pound the webhook on transient DB
-        # errors; the same event can be re-driven from the dashboard.
-        return {"received": True, "error": "handler_failed"}
+        # Return 500 so Stripe RETRIES (exponential backoff, up to ~3 days)
+        # and the failure stays visible in the Stripe dashboard. This used to
+        # return 200, which silently swallowed a permanent failure — e.g. a
+        # paid 'recruiting' subscription whose DB write was rejected by a
+        # stale CHECK constraint — so the customer was charged but never
+        # upgraded and nobody noticed.
+        raise HTTPException(status_code=500, detail="webhook_handler_failed")
 
     return {"received": True}
 
@@ -595,7 +599,7 @@ def _handle_subscription_change(sub):
     # subscription.created AND subscription.updated for the initial
     # event in some cases; the prior-tier check prevents duplicates.
     is_trial = status == "trialing"
-    if prior_tier == "free" and new_tier in ("premium", "coach"):
+    if prior_tier == "free" and new_tier in ("premium", "recruiting", "coach"):
         _send_welcome_email(user_id, new_tier, is_trial)
 
     # Cancellation — fire when cancel_at_period_end FLIPS from false→true.
