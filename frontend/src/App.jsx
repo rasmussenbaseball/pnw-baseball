@@ -215,7 +215,7 @@ const DailyRecapGraphic = lazy(() => import('./pages/DailyRecapGraphic'))
 // ─── New pages ───
 import Homepage from './pages/Homepage'
 import AnonymousHomepage from './pages/AnonymousHomepage'
-import FreeHomepage from './pages/FreeHomepage'
+const FreeHomepage = lazy(() => import('./pages/FreeHomepage'))  // recharts dashboard — lazy so it's off every other page's initial load
 import PremiumHomepage from './pages/PremiumHomepage'
 import RecruitingHomepage from './pages/RecruitingHomepage'
 import CoachHomepage from './pages/CoachHomepage'
@@ -232,7 +232,7 @@ import RecruitingMap from './pages/RecruitingMap'
 import AdminRecruitingPlaceholder from './pages/AdminRecruitingPlaceholder'
 import RecruitingHistory from './pages/RecruitingHistory'
 import RecruitingField from './pages/RecruitingField'
-import RecruitingGuide from './pages/RecruitingGuide'
+const RecruitingGuide = lazy(() => import('./pages/RecruitingGuide'))  // recharts
 // Coach-portal scouting + print/PDF pages (coach tier only) — lazy.
 const PlayerScouting = lazy(() => import('./pages/PlayerScouting'))
 const TeamScouting = lazy(() => import('./pages/TeamScouting'))
@@ -262,11 +262,11 @@ const LineupHelper = lazy(() => import('./pages/LineupHelper'))  // ~1,150 lines
 import ParkFactors from './pages/ParkFactors'
 // Coach & Scouting Portal
 import PortalLayout from './components/PortalLayout'
-import PortalHome from './pages/PortalHome'
+const PortalHome = lazy(() => import('./pages/PortalHome'))  // recharts, coach portal
 import DraftBoard from './pages/DraftBoard'
 import NationalRankings from './pages/NationalRankings'
 import Scoreboard from './pages/Scoreboard'
-import About from './pages/About'
+const About = lazy(() => import('./pages/About'))  // recharts run-environment chart
 import RecruitingBreakdown from './pages/RecruitingBreakdown'
 const PnwGrid = lazy(() => import('./pages/PnwGrid'))  // ~1,050 lines, niche game
 import TopMoments from './pages/TopMoments'

@@ -9,7 +9,7 @@
 import { Link } from 'react-router-dom'
 import { usePlayerGameLogs } from '../hooks/useApi'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
-import WpaByGameChart from '../components/WpaByGameChart'
+import WpaByGameChart from '../components/LazyWpaByGameChart'  // defers recharts off the player page
 import PlayerCompsCard from '../components/PlayerCompsCard'
 import {
   usePlayerProfileTheme, formatPct, fmtCell,

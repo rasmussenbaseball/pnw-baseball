@@ -3677,7 +3677,8 @@ def nwac_mvp_tracker(season: int = Query(2026)):
 
 
 @router.get("/teams/scatter")
-@cached_endpoint(ttl_seconds=1800)  # all-teams fan-out (~340 queries) — cache hard
+@cached_endpoint(ttl_seconds=21600)  # all-teams fan-out (~340 queries); team aggregates
+                                     # only change on the daily scrape, so cache 6h.
 def team_scatter(
     season: int = Query(..., description="Season year"),
     x_stat: str = Query("team_avg", description="X-axis stat"),
@@ -3888,7 +3889,7 @@ def team_scatter(
 
 
 @router.get("/teams/correlations")
-@cached_endpoint(ttl_seconds=1800)  # all-teams fan-out — cache hard
+@cached_endpoint(ttl_seconds=21600)  # all-teams fan-out; 6h (daily-scrape cadence)
 def team_correlations(
     season: int = Query(..., description="Season year"),
     division_id: Optional[int] = Query(None, description="Filter by division"),
@@ -7510,7 +7511,8 @@ def percentile_leaderboard(
 # ============================================================
 
 @router.get("/leaderboards/teams")
-@cached_endpoint(ttl_seconds=1800)
+@cached_endpoint(ttl_seconds=21600)  # all-teams fan-out (get_team_aggregates per team);
+                                     # team aggregates change only on the daily scrape.
 def team_leaderboard(
     season: int = Query(..., description="Season year"),
     sort_by: str = Query("total_hr", description="Stat to rank by"),
@@ -7734,8 +7736,15 @@ def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
             LEFT JOIN player_links pl ON p.id = pl.linked_id
             WHERE pl.linked_id IS NULL
               AND COALESCE(p.is_phantom, FALSE) = FALSE
-              AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
-                   OR (p.first_name || ' ' || p.last_name) ILIKE %s)
+              AND p.id IN (
+                  -- OFFSET 0 optimizer fence: run the name match via the pg_trgm
+                  -- GIN indexes first, instead of the outer ORDER BY tricking the
+                  -- planner into a full name-index scan + filter. Same rows.
+                  SELECT id FROM players
+                  WHERE first_name ILIKE %s OR last_name ILIKE %s
+                     OR (first_name || ' ' || last_name) ILIKE %s
+                  OFFSET 0
+              )
             ORDER BY p.last_name, p.first_name
             LIMIT %s
         """, (search, search, search, limit))
@@ -7754,8 +7763,13 @@ def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
             JOIN summer_leagues l ON l.id = st.league_id
             LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
             WHERE spl.summer_player_id IS NULL
-              AND (sp.first_name ILIKE %s OR sp.last_name ILIKE %s
-                   OR (sp.first_name || ' ' || sp.last_name) ILIKE %s)
+              AND sp.id IN (
+                  -- OFFSET 0 fence → use the sp_*_trgm GIN indexes (see players above)
+                  SELECT id FROM summer_players
+                  WHERE first_name ILIKE %s OR last_name ILIKE %s
+                     OR (first_name || ' ' || last_name) ILIKE %s
+                  OFFSET 0
+              )
             ORDER BY sp.last_name, sp.first_name
             LIMIT %s
         """, (search, search, search, limit))
@@ -17744,8 +17758,15 @@ def grid_player_search(q: str = Query(..., min_length=2), limit: int = Query(10)
             LEFT JOIN player_links pl ON p.id = pl.linked_id
             WHERE pl.linked_id IS NULL
               AND COALESCE(p.is_phantom, FALSE) = FALSE
-              AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
-                   OR (p.first_name || ' ' || p.last_name) ILIKE %s)
+              AND p.id IN (
+                  -- OFFSET 0 optimizer fence: run the name match via the pg_trgm
+                  -- GIN indexes first, instead of the outer ORDER BY tricking the
+                  -- planner into a full name-index scan + filter. Same rows.
+                  SELECT id FROM players
+                  WHERE first_name ILIKE %s OR last_name ILIKE %s
+                     OR (first_name || ' ' || last_name) ILIKE %s
+                  OFFSET 0
+              )
             ORDER BY p.last_name, p.first_name
             LIMIT %s
         """, (search, search, search, limit))

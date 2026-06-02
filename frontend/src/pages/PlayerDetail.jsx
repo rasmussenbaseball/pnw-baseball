@@ -10,7 +10,7 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
-import WpaByGameChart from '../components/WpaByGameChart'
+import WpaByGameChart from '../components/LazyWpaByGameChart'  // defers recharts off the player page
 // Redesigned profile (intern proposal, 5/28/26), now the default for
 // every player. PlayerDetail (below) fetches once, picks the hitter or
 // pitcher template by usage, and offers a toggle for two-way players.

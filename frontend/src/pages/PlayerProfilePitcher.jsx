@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlayerGameLogs, usePlayerGooseEggs } from '../hooks/useApi'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
-import WpaByGameChart from '../components/WpaByGameChart'
+import WpaByGameChart from '../components/LazyWpaByGameChart'  // defers recharts off the player page
 import PlayerCompsCard from '../components/PlayerCompsCard'
 import {
   usePlayerProfileTheme, formatPct,

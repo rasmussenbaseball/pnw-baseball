@@ -44,33 +44,34 @@ export default defineConfig({
     },
   },
   build: {
-    // Code-splitting: separate the GM dynasty game from the main analytics
-    // site so visitors who never hit /gm/* don't download ~1.5MB of game
-    // code. The main bundle stays lean for the public site.
+    // ── Code-splitting ──────────────────────────────────────────────────
+    // manualChunks gives big, stable libs their own content-hashed chunks so
+    // the browser caches them across deploys (app code changes far more often
+    // than React/recharts). The GM dynasty game + recharts + the markdown stack
+    // are LAZY (React.lazy in App.jsx / lazy wrappers), so their chunks must NOT
+    // be preloaded on initial load — that's handled by modulePreload below.
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // GM data JSONs are large (non_naia_teams.json ~5000 lines,
-          // pear_ratings_2026.json ~1500 lines) — pull them into their own
-          // chunk so dynasty creation doesn't blow up the GM bundle.
           if (id.includes('/src/gm/data/')) return 'gm-data'
-          // Everything else GM (engine + components + pages) → one chunk.
-          // Splitting engine from ui produced a gm-engine<->gm-ui circular
-          // chunk warning and bought nothing (the whole game loads together on
-          // first /gm hit), so collapse it.
           if (id.includes('/src/gm/') || id.includes('/src/pages/gm/')) return 'gm'
-          // ── Vendor splits ──────────────────────────────────────────────
-          // Pull big, stable third-party libs into their own chunks. They
-          // change far less often than app code, so the browser can cache them
-          // across deploys instead of re-downloading them inside index.js.
           if (id.includes('/node_modules/')) {
             if (/\/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom)\//.test(id)) return 'vendor-react'
             if (id.includes('/node_modules/@supabase/')) return 'vendor-supabase'
             if (id.includes('/node_modules/@sentry')) return 'vendor-sentry'
             if (id.includes('/node_modules/recharts/') || id.includes('/node_modules/d3-') || id.includes('/node_modules/victory')) return 'vendor-charts'
-            if (/\/node_modules\/(react-markdown|remark|remark-gfm|micromark|mdast|hast|unified|unist|vfile|property-information|space-separated-tokens|comma-separated-tokens|decode-named-character-reference|character-entities|trim-lines|trough|bail|is-plain-obj|mdurl|ccount|markdown-table|escape-string-regexp|zwitch|longest-streak|html-void-elements|web-namespaces)/.test(id)) return 'vendor-markdown'
+            if (/\/node_modules\/(react-markdown|remark|micromark|mdast|hast|unified|unist|vfile|property-information|space-separated-tokens|comma-separated-tokens|decode-named-character-reference|character-entities|trim-lines|trough|bail|is-plain-obj|mdurl|ccount|markdown-table|zwitch|longest-streak|html-void-elements|web-namespaces)/.test(id)) return 'vendor-markdown'
           }
         },
+      },
+    },
+    // Only modulepreload the genuinely-eager vendor chunks. Strip the lazy
+    // feature chunks (GM game, recharts charts, markdown editor) so the browser
+    // doesn't download ~1.9 MB of code that 99% of page views never use.
+    modulePreload: {
+      resolveDependencies(url, deps) {
+        const LAZY = /\/(gm|gm-data|vendor-charts|vendor-markdown)-[A-Za-z0-9_-]+\.js$/
+        return deps.filter((d) => !LAZY.test('/' + d))
       },
     },
     // Bump chunk-size warning threshold from default 500kb to 1mb. The
