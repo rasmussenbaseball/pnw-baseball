@@ -355,10 +355,27 @@ export function simWeek(state, schedule, ratings) {
       const userRating = ratings?.[userSchoolId] ?? { overall_rating: 0, offense_rating: 0, pitching_rating: 0 }
       const nonNaiaId = userIsHome ? g.awayId : g.homeId
       const nonNaiaInfo = NON_NAIA_LOOKUP[nonNaiaId]
+      // Cross-level adjustment. Playtester report (June 2026): "I won OOC
+      // games comfortably against top D2s, swept Gonzaga at Gonzaga with
+      // my worst 9 + 1 pitcher per inning." Root cause: the old code did
+      // `strength * 0.5` on the opp's rating, which artificially weakened
+      // them by half AND mixed cross-level scales (NAIA per-division
+      // z-score vs D1 PEAR raw, which aren't comparable). New approach:
+      // stack a level-base offset onto the opp's PEAR z-score so D1
+      // teams play like D1 against NAIA, D2 plays like D2, etc. Universal
+      // tier bases mirror nwbbRating.nonNaiaToUniversal. The 0.08 divisor
+      // calibrates a 28-univ-point gap (D1 vs NAIA) to a ~3-run-per-game
+      // expected differential through fastSim's 1.3 multiplier.
+      const TIER_BASE = { D1: 78, D2: 55, D3: 40, NAIA: 50, NWAC: 50, JUCO: 48, JUCO_NWAC: 50 }
+      const userLevel = state.level || state.schools?.[userSchoolId]?.level || 'NAIA'
+      const userTierBase = TIER_BASE[userLevel] ?? 50
+      const oppTierBase = TIER_BASE[nonNaiaInfo?.division] ?? 50
+      const crossLevel = (oppTierBase - userTierBase) * 0.08
+      const oppZ = nonNaiaInfo?.strength ?? 0
       const oppRating = {
-        overall_rating: nonNaiaInfo?.strength ?? 0,
-        offense_rating: (nonNaiaInfo?.strength ?? 0) * 0.5,
-        pitching_rating: (nonNaiaInfo?.strength ?? 0) * 0.5,
+        overall_rating: oppZ + crossLevel,
+        offense_rating: oppZ + crossLevel,
+        pitching_rating: oppZ + crossLevel,
       }
       const userLineup = resolveLineupForGame(state, userSchoolId, g.id)
       const synthLineup = makeSynthLineup(nonNaiaId, nonNaiaInfo?.strength ?? 0)
