@@ -36,6 +36,17 @@ function relColor(label, T) {
   return T.poor
 }
 
+// Last name for a compact column header, skipping generational suffixes so
+// "Bobby Witt Jr." shows as "Witt", not "Jr.".
+const NAME_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'])
+function lastName(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return ''
+  let i = parts.length - 1
+  while (i > 0 && NAME_SUFFIXES.has(parts[i].toLowerCase())) i--
+  return parts[i]
+}
+
 // ── Small UI atoms ─────────────────────────────────────────────────────────────
 function Pill({ active, onClick, children }) {
   const T = usePlayerProfileTheme()
@@ -172,9 +183,9 @@ function CompCard({ rank, result, side, pool, selected }) {
           <thead>
             <tr className="text-[9.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>
               <th className="text-left font-bold py-1">Metric</th>
-              <th className="text-right font-bold py-1 truncate">{(selected?.name || 'Selected').split(' ').slice(-1)[0]}</th>
+              <th className="text-right font-bold py-1 truncate">{lastName(selected?.name) || 'Selected'}</th>
               <th className="text-right font-bold py-1 w-12">pct</th>
-              <th className="text-right font-bold py-1 truncate">{(result.name || 'Comp').split(' ').slice(-1)[0]}</th>
+              <th className="text-right font-bold py-1 truncate">{lastName(result.name) || 'Comp'}</th>
               <th className="text-right font-bold py-1 w-12">pct</th>
             </tr>
           </thead>

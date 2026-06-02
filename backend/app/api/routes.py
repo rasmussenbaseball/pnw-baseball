@@ -3677,6 +3677,7 @@ def nwac_mvp_tracker(season: int = Query(2026)):
 
 
 @router.get("/teams/scatter")
+@cached_endpoint(ttl_seconds=1800)  # all-teams fan-out (~340 queries) — cache hard
 def team_scatter(
     season: int = Query(..., description="Season year"),
     x_stat: str = Query("team_avg", description="X-axis stat"),
@@ -3887,6 +3888,7 @@ def team_scatter(
 
 
 @router.get("/teams/correlations")
+@cached_endpoint(ttl_seconds=1800)  # all-teams fan-out — cache hard
 def team_correlations(
     season: int = Query(..., description="Season year"),
     division_id: Optional[int] = Query(None, description="Filter by division"),
@@ -7696,6 +7698,7 @@ def team_leaderboard(
 # ============================================================
 
 @router.get("/search")
+@cached_endpoint(ttl_seconds=300)  # fires on every keystroke; leading-wildcard ILIKE is costly
 def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
     """
     Combined search across players and teams for the header search bar.
@@ -7769,6 +7772,7 @@ def quick_search(q: str = Query(..., min_length=2), limit: int = Query(8)):
 # ============================================================
 
 @router.get("/players/search")
+@cached_endpoint(ttl_seconds=300)
 def search_players(
     q: str = Query(..., min_length=2, description="Search by name"),
     division_id: Optional[int] = None,
@@ -20138,6 +20142,7 @@ def team_stats_agg(
 # ── Opponent Trends (Coaching Tool) ─────────────────────────────────────
 
 @router.get("/opponent-trends/{team_id}")
+@cached_endpoint(ttl_seconds=1800)  # heavy game_events scouting compute
 def opponent_trends(
     team_id: int,
     season: int = Query(2026, description="Season year"),
@@ -22717,6 +22722,7 @@ def _get_league_constants(cur, season: int, division_level: str) -> dict:
 # when you sum across 50+ PAs.
 
 @router.get("/top-moments")
+@cached_endpoint(ttl_seconds=1800)  # WPA + game_events audit (multi-second) — cache hard
 def top_moments(
     season: int = Query(2026, description="Season year"),
     moments_limit: int = Query(25, description="How many top PAs to return"),

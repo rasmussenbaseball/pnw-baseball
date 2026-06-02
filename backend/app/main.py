@@ -170,6 +170,22 @@ def startup():
     except Exception:
         logging.getLogger("nwbb.billing").exception("billing config self-check failed")
 
+    # Warm the player-comparison pools in the background so the first /comps
+    # request after a restart isn't a cold ~5s load. Runs off-thread so it never
+    # delays the server accepting traffic; failures are logged, not fatal.
+    def _warm_player_comps():
+        try:
+            from .api.player_comps import _load_nw_pool, _load_mlb_pool, SEASON_DEFAULT
+            for _side in ("hitter", "pitcher"):
+                _load_nw_pool(_side, SEASON_DEFAULT)
+                _load_mlb_pool(_side)
+            logging.getLogger("nwbb.comps").info("player-comp pools warmed")
+        except Exception:
+            logging.getLogger("nwbb.comps").exception("player-comp pool warm failed")
+
+    import threading
+    threading.Thread(target=_warm_player_comps, daemon=True, name="comp-warm").start()
+
 
 # ── Serve headshots from a persistent directory (survives deploys) ──
 # On the server, headshots live in /opt/headshots/ (outside the git repo).
