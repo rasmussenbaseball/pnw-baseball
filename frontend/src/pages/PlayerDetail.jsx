@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, useLayoutEffect, cloneElement, Fragment } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useEffect, useMemo, useRef, useLayoutEffect, cloneElement, Fragment } from 'react'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
+import SeasonSelect from '../components/SeasonSelect'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
@@ -1452,11 +1454,28 @@ function StreaksCard({ playerId, season = 2026 }) {
 // Hooks here always run in the same order regardless of branch.
 export default function PlayerDetail() {
   const { playerId } = useParams()
-  const { data, loading, error } = usePlayer(playerId)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const season = clampSeason(searchParams.get('season') || CURRENT_SEASON)
+  const { data, loading, error } = usePlayer(playerId, season)
   const [viewSide, setViewSide] = useState(null)
 
   // Reset the toggle when navigating to a different player.
   useEffect(() => { setViewSide(null) }, [playerId])
+
+  // Seasons this player actually has stats for (newest first), so the
+  // year selector only offers years with data. Current season always shown.
+  const playerSeasons = useMemo(() => {
+    const ys = new Set([CURRENT_SEASON])
+    ;(data?.batting_stats || []).forEach(r => r.season && ys.add(Number(r.season)))
+    ;(data?.pitching_stats || []).forEach(r => r.season && ys.add(Number(r.season)))
+    return Array.from(ys).sort((a, b) => b - a)
+  }, [data])
+
+  const setSeason = (yr) => setSearchParams(prev => {
+    const p = new URLSearchParams(prev)
+    p.set('season', String(yr))
+    return p
+  })
 
   if (loading && !data) {
     return (
@@ -1488,10 +1507,13 @@ export default function PlayerDetail() {
     : (hasPitching ? 'pitching' : 'batting')
   const activeSide = viewSide || defaultSide
   const toggle = isTwoWay ? <SideToggle side={activeSide} onChange={setViewSide} /> : null
+  const seasonSelector = playerSeasons.length > 1
+    ? <SeasonSelect value={season} onChange={setSeason} seasons={playerSeasons} label="Season" />
+    : null
 
   return activeSide === 'pitching'
-    ? <PlayerProfilePitcher playerId={playerId} data={data} sideToggle={toggle} />
-    : <PlayerProfileHitter playerId={playerId} data={data} sideToggle={toggle} />
+    ? <PlayerProfilePitcher playerId={playerId} data={data} season={season} sideToggle={toggle} seasonSelector={seasonSelector} />
+    : <PlayerProfileHitter playerId={playerId} data={data} season={season} sideToggle={toggle} seasonSelector={seasonSelector} />
 }
 
 function PlayerDetailStandard() {

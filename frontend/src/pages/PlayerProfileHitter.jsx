@@ -17,7 +17,8 @@ import {
   ProfileShell, divisionBadge,
 } from '../components/playerProfile/shared'
 
-const SEASON = 2026
+// SEASON is derived from the `season` prop inside the component (the year
+// selector / ?season= URL param), so the page can render any season.
 
 // Right-panel percentile rows + radar axes (batting).
 const PCT_METRICS = [
@@ -205,7 +206,8 @@ function DefensiveStats({ rows }) {
 }
 
 // ───────────────────────────────────────────────────────────────
-export default function PlayerProfileHitter({ playerId, data, sideToggle = null }) {
+export default function PlayerProfileHitter({ playerId, data, season = 2026, sideToggle = null, seasonSelector = null }) {
+  const SEASON = season || 2026
   const T = usePlayerProfileTheme()
   const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
 
@@ -257,7 +259,12 @@ export default function PlayerProfileHitter({ playerId, data, sideToggle = null 
 
   return (
     <ProfileShell>
-      {sideToggle}
+      {(sideToggle || seasonSelector) && (
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          {sideToggle}
+          {seasonSelector && <div className="ml-auto">{seasonSelector}</div>}
+        </div>
+      )}
 
       {/* Hero */}
       <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>

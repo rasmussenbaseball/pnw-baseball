@@ -14,7 +14,8 @@ import {
   ProfileShell, divisionBadge, ipToTrue,
 } from '../components/playerProfile/shared'
 
-const SEASON = 2026
+// SEASON is derived from the `season` prop inside the component (the year
+// selector / ?season= URL param), so the page can render any season.
 
 // Right-panel percentile rows. Superset ordered best-first; the page
 // filters to the keys the API actually returns for this player (PBP
@@ -157,7 +158,8 @@ function rollingFipSeries(games, seasonFip, window = 10) {
 }
 
 // ───────────────────────────────────────────────────────────────
-export default function PlayerProfilePitcher({ playerId, data, sideToggle = null }) {
+export default function PlayerProfilePitcher({ playerId, data, season = 2026, sideToggle = null, seasonSelector = null }) {
+  const SEASON = season || 2026
   const T = usePlayerProfileTheme()
   const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
   const { data: goose } = usePlayerGooseEggs(playerId, SEASON)
@@ -213,7 +215,12 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
 
   return (
     <ProfileShell>
-      {sideToggle}
+      {(sideToggle || seasonSelector) && (
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          {sideToggle}
+          {seasonSelector && <div className="ml-auto">{seasonSelector}</div>}
+        </div>
+      )}
 
       {/* Hero */}
       <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
@@ -362,7 +369,7 @@ export default function PlayerProfilePitcher({ playerId, data, sideToggle = null
 
       {/* Goose Eggs — clutch relief, shown just before the box scores.
           Renders only for pitchers with relief appearances. */}
-      <GooseEggCard goose={goose} T={T} />
+      <GooseEggCard goose={goose} T={T} season={SEASON} />
 
       <SectionCard title="Game Log" right={`${SEASON} SEASON`}>
         <GameLogTable cols={GAMELOG_PITCHING_COLS} games={pitchingGames} minWidth="760px" />
@@ -461,7 +468,7 @@ function GooseInfoButton({ T }) {
   )
 }
 
-function GooseEggCard({ goose, T }) {
+function GooseEggCard({ goose, T, season = 2026 }) {
   if (!goose || !goose.relief_app) return null
   const pct = goose.goose_pct != null ? `${Math.round(goose.goose_pct * 100)}%` : '—'
   const tiles = [
@@ -471,7 +478,7 @@ function GooseEggCard({ goose, T }) {
     { label: 'Goose %', val: pct, color: T.text },
   ]
   return (
-    <SectionCard title="Goose Eggs" right={`${SEASON} · RELIEF`}>
+    <SectionCard title="Goose Eggs" right={`${season} · RELIEF`}>
       <GooseInfoButton T={T} />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {tiles.map(t => (
