@@ -37,6 +37,7 @@ from .api.email_broadcasts import router as email_broadcasts_router
 from .api.account import router as account_router
 from .api.billing import router as billing_router
 from .api.summer import router as summer_router
+from .api.player_comps import router as player_comps_router
 from .models.database import init_db, seed_divisions_and_conferences
 
 class DecimalJSONResponse(JSONResponse):
@@ -82,6 +83,7 @@ app.include_router(email_broadcasts_router, prefix="/api/v1")
 app.include_router(account_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
 app.include_router(summer_router, prefix="/api/v1")
+app.include_router(player_comps_router, prefix="/api/v1")
 
 
 # ── Edge cache headers ───────────────────────────────────────────
@@ -124,6 +126,7 @@ CACHE_CONTROL_RULES = [
     ("/api/v1/divisions",               (3600, 600)),
     ("/api/v1/conferences",             (3600, 600)),
     ("/api/v1/teams",                   (1800, 600)),  # also covers /teams/{id}/*
+    ("/api/v1/comps",                   (1800, 600)),  # player comparison tool
     ("/api/v1/players",                 (1800, 600)),  # also covers /players/{id}/*
     ("/api/v1/park-factors",            (3600, 600)),
 ]

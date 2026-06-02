@@ -281,6 +281,7 @@ import HometownSearch from './pages/HometownSearch'
 import RecordsPage from './pages/RecordsPage'
 import PlayoffProjections from './pages/PlayoffProjections'
 import Percentiles from './pages/Percentiles'
+import PlayerComps from './pages/PlayerComps'
 import TeamQuiz from './pages/TeamQuiz'
 
 // ─── GM (new section, isolated from existing site code) ───
@@ -368,6 +369,7 @@ export default function App() {
           <Route path="/summer/game-recap" element={<RequireAuth><WclGameRecapGraphic /></RequireAuth>} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
           <Route path="/percentiles" element={<RequireTier minTier="free"><Percentiles /></RequireTier>} />
+          <Route path="/player-comps" element={<RequireTier minTier="free"><PlayerComps /></RequireTier>} />
           <Route path="/records" element={<RequireTier minTier="free"><RecordsPage /></RequireTier>} />
           <Route path="/playoff-projections" element={<RequireTier minTier="free"><PlayoffProjections /></RequireTier>} />
 

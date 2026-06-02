@@ -31,6 +31,7 @@ const NAV = [
       { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats', requires: 'free' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
       { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings', requires: 'free' },
+      { to: '/player-comps', label: 'Player Comps', desc: "Each player's closest statistical comparables (NW + MLB)", requires: 'free' },
       { to: '/records', label: 'Records', desc: 'Single-season & career record holders', requires: 'free' },
       { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards", requires: 'free' },
     ],

@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { usePlayerGameLogs, usePlayerGooseEggs } from '../hooks/useApi'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 import WpaByGameChart from '../components/WpaByGameChart'
+import PlayerCompsCard from '../components/PlayerCompsCard'
 import {
   usePlayerProfileTheme, formatPct,
   RadarChart, PercentilePanel, RollingLineChart, PerGameBarChart,
@@ -421,12 +422,7 @@ export default function PlayerProfilePitcher({ playerId, data, season = 2026, si
           </h2>
           <CareerPath player={player} divisionBadge={divisionBadge(divLabel)} seasonRange={seasonRange} />
         </div>
-        <div className="rounded-md p-5" style={{ background: T.card, border: `1px solid ${T.border}` }}>
-          <h2 className="font-bold text-[15px] mb-3 pb-1.5 border-b-2 flex items-center gap-2" style={{ color: T.text, borderColor: T.text }}>
-            <span>Statistically Similar Pitchers</span><span className="ml-auto text-[11px] font-semibold tracking-widest" style={{ color: T.textLight }}>{divLabel} · {SEASON}</span>
-          </h2>
-          <div className="text-[12px] py-4 text-center" style={{ color: T.textMuted }}>Similarity engine in development.</div>
-        </div>
+        <PlayerCompsCard playerId={playerId} side="pitcher" divLabel={divLabel} season={SEASON} />
       </div>
     </ProfileShell>
   )
