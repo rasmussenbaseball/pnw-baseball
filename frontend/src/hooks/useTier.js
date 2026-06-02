@@ -76,9 +76,10 @@ export function useTier() {
         let next = 'free'
         // Backend currently only knows 'free' | 'paid'. Map until
         // 'premium' / 'coach' are added explicitly server-side.
-        if (d.tier === 'paid')    next = 'premium'
-        if (d.tier === 'premium') next = 'premium'
-        if (d.tier === 'coach')   next = 'coach'
+        if (d.tier === 'paid')       next = 'premium'
+        if (d.tier === 'premium')    next = 'premium'
+        if (d.tier === 'recruiting') next = 'recruiting'
+        if (d.tier === 'coach')      next = 'coach'
         setTier(next)
         writeCache(user.id, next)
       })
@@ -93,10 +94,11 @@ export function useTier() {
   // so this path is only hit for free/premium/coach previews.
   if (isAuthor && previewTier) {
     const mapped =
-      previewTier === 'anonymous' ? 'none'
-        : previewTier === 'free'     ? 'free'
-        : previewTier === 'premium'  ? 'premium'
-        : previewTier === 'coach'    ? 'coach'
+      previewTier === 'anonymous'  ? 'none'
+        : previewTier === 'free'       ? 'free'
+        : previewTier === 'premium'    ? 'premium'
+        : previewTier === 'recruiting' ? 'recruiting'
+        : previewTier === 'coach'      ? 'coach'
         : tier
     return { tier: mapped, loading: false, user, isPreview: true }
   }
