@@ -90,24 +90,31 @@ def fetch_via_scraper_api(url, premium=True, retries=2):
             logger.error(f"Direct fetch error: {e}")
             return None
 
-    params = {
-        "api_key": SCRAPER_API_KEY,
-        "url": url,
-        "premium": "true" if premium else "false",
-    }
-
-    for attempt in range(retries + 1):
+    # Escalating proxy tiers. NWAC's AWS WAF intermittently returns a ~2 KB
+    # challenge page (status 200 but tiny body); bumping to a bigger proxy pool
+    # gets past it. Try the cheap STANDARD proxy first (+ one quick retry for a
+    # transient block), then premium (residential), then ultra-premium. A clean
+    # NWAC box score returns ~200 KB on standard, so this costs ~1 credit in the
+    # normal case instead of always paying the 10-credit premium rate, while
+    # still recovering from transient WAF challenges.
+    tiers = [
+        ("standard", {}),
+        ("standard", {}),
+        ("premium", {"premium": "true"}),
+        ("ultra_premium", {"ultra_premium": "true"}),
+    ]
+    for tier_name, extra in tiers:
+        params = {"api_key": SCRAPER_API_KEY, "url": url}
+        params.update(extra)
         try:
-            r = requests.get(SCRAPER_API_BASE, params=params, timeout=60)
+            r = requests.get(SCRAPER_API_BASE, params=params, timeout=90)
             if r.status_code == 200 and len(r.text) > 5000:
                 return r.text
-            logger.warning(f"ScraperAPI attempt {attempt + 1}: "
-                          f"status={r.status_code}, size={len(r.text)}")
+            logger.warning(f"ScraperAPI {tier_name}: status={r.status_code}, "
+                           f"size={len(r.text)} — escalating")
         except Exception as e:
-            logger.warning(f"ScraperAPI attempt {attempt + 1} error: {e}")
-
-        if attempt < retries:
-            time.sleep(3 * (attempt + 1))
+            logger.warning(f"ScraperAPI {tier_name} error: {e}")
+        time.sleep(2)
 
     return None
 
