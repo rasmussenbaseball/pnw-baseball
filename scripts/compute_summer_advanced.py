@@ -262,13 +262,13 @@ def compute_batting(conn, league_id, season, avgs):
             UPDATE summer_batting_stats SET
                 woba = %s, wraa = %s, wrc = %s, wrc_plus = %s,
                 iso = %s, babip = %s, bb_pct = %s, k_pct = %s,
-                offensive_war = %s
+                offensive_war = %s, wobacon = %s
             WHERE id = %s
         """, (
             round(adv.woba, 3), round(adv.wraa, 1), round(adv.wrc, 1),
             round(adv.wrc_plus, 0), round(adv.iso, 3), round(adv.babip, 3),
             round(adv.bb_pct, 3), round(adv.k_pct, 3),
-            round(adv.off_war, 1),
+            round(adv.off_war, 1), round(adv.wobacon, 3),
             row['id'],
         ))
         updated += 1
@@ -287,7 +287,7 @@ def compute_pitching(conn, league_id, season, avgs):
                sps.runs_allowed, sps.walks, sps.strikeouts,
                sps.home_runs_allowed, sps.hit_batters, sps.batters_faced,
                sps.wild_pitches, sps.wins, sps.losses, sps.saves,
-               sps.games, sps.games_started
+               sps.games, sps.games_started, sps.era
         FROM summer_pitching_stats sps
         JOIN summer_teams st ON sps.team_id = st.id
         WHERE sps.season = %s AND st.league_id = %s
@@ -341,13 +341,22 @@ def compute_pitching(conn, league_id, season, avgs):
             runs_per_win=avgs['runs_per_win'],
         )
 
+        # League-adjusted (100 = league average, higher is better). Summer has
+        # no park factors, so these are straight league-relative ratios.
+        era_val = row['era']
+        era_plus = round(100.0 * avgs['avg_era'] / era_val) if era_val and era_val > 0 else None
+        fip_plus = round(100.0 * avgs['avg_fip'] / adv.fip) if adv.fip and adv.fip > 0 else None
+        k_bb_pct = round(adv.k_pct - adv.bb_pct, 3)
+
         cur.execute("""
             UPDATE summer_pitching_stats SET
                 fip = %s, babip_against = %s,
                 k_pct = %s, bb_pct = %s,
                 k_per_9 = %s, bb_per_9 = %s,
                 h_per_9 = %s, hr_per_9 = %s,
-                k_bb_ratio = %s, pitching_war = %s
+                k_bb_ratio = %s, pitching_war = %s,
+                xfip = %s, siera = %s, lob_pct = %s,
+                era_plus = %s, fip_plus = %s, k_bb_pct = %s
             WHERE id = %s
         """, (
             round(adv.fip, 2), round(adv.babip_against, 3),
@@ -355,6 +364,8 @@ def compute_pitching(conn, league_id, season, avgs):
             round(adv.k_per_9, 2), round(adv.bb_per_9, 2),
             round(adv.h_per_9, 2), round(adv.hr_per_9, 2),
             round(adv.k_bb_ratio, 2), round(adv.pitching_war, 1),
+            round(adv.xfip, 2), round(adv.siera, 2), round(adv.lob_pct, 4),
+            era_plus, fip_plus, k_bb_pct,
             row['id'],
         ))
         updated += 1
