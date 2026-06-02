@@ -92,7 +92,9 @@ const EXTENDED_PITCHING_COLS = [
   { key: 'bb_pct',          label: 'BB%', fmt: 'pct' },
   { key: 'pitching_war',    label: 'WAR', fmt: 'war' },
 ]
-const SUMMER_BLANK_COLS = new Set(['baa', 'fip', 'k_pct', 'bb_pct', 'pitching_war'])
+// Summer (WCL/PIL) now carries FIP, K%, BB%, WAR. Only BAA is unavailable
+// (summer tracks BABIP-against instead), so that's all we blank for summer rows.
+const SUMMER_BLANK_COLS = new Set(['baa'])
 
 const GAMELOG_PITCHING_COLS = [
   { key: '_date', label: 'Date', align: 'left' },
@@ -315,7 +317,7 @@ export default function PlayerProfilePitcher({ playerId, data, season = 2026, si
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(s.whip)}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.strikeouts ?? '—'}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.walks ?? '—'}</td>
-                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{isSummer ? '—' : fmtEra(s.fip)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{fmtEra(s.fip)}</td>
                     </tr>
                   )
                 })}

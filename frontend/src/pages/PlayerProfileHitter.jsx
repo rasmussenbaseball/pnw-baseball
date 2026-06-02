@@ -89,7 +89,9 @@ const EXTENDED_BATTING_COLS = [
   { key: 'k_pct',             label: 'K%',   fmt: 'pct' },
   { key: 'offensive_war',     label: 'oWAR', fmt: 'war' },
 ]
-const SUMMER_BLANK_COLS = new Set(['woba', 'wrc_plus', 'iso', 'bb_pct', 'k_pct', 'offensive_war'])
+// Summer (WCL/PIL) now carries the full advanced batting line
+// (wOBA/wRC+/ISO/BB%/K%/oWAR), so nothing is blanked for summer rows.
+const SUMMER_BLANK_COLS = new Set([])
 
 const GAMELOG_BATTING_COLS = [
   { key: '_date', label: 'Date', align: 'left' },
@@ -367,7 +369,7 @@ export default function PlayerProfileHitter({ playerId, data, season = 2026, sid
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.on_base_pct != null ? formatPct('avg', s.on_base_pct) : '—'}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.slugging_pct != null ? formatPct('avg', s.slugging_pct) : '—'}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.home_runs ?? '—'}</td>
-                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{isSummer ? '—' : Math.round(s.wrc_plus || 0)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums" style={{ color: T.text }}>{s.wrc_plus != null ? Math.round(s.wrc_plus) : '—'}</td>
                     </tr>
                   )
                 })}
