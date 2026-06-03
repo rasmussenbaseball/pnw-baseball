@@ -8,6 +8,7 @@ import { PreviewProvider } from './context/PreviewContext'
 import PreviewBanner from './components/PreviewBanner'
 import MaintenanceLockout from './components/MaintenanceLockout'
 import GlobalRouteLoader from './components/GlobalRouteLoader'
+import HighTrafficNotice from './components/HighTrafficNotice'
 import { isDeveloper } from './lib/tiers'
 import Header from './components/Header'
 import EmailPrefsPopup from './components/EmailPrefsPopup'
@@ -331,6 +332,7 @@ export default function App() {
     <AuthProvider>
     <AffiliationProvider>
     <MaintenanceLockout>
+    <HighTrafficNotice />
     <PreviewBanner />
     <GlobalRouteLoader />
     <div className={`min-h-screen transition-colors ${
