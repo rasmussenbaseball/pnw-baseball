@@ -51,6 +51,7 @@ export function initSentry() {
       // alerts.)
       'Lock was stolen by another request',
       'was released because another request stole it',
+      'Lock broken by another request',
       'Acquiring an exclusive Navigator LockManager lock',
       'navigatorLock',
 
@@ -65,6 +66,26 @@ export function initSentry() {
       'Unable to preload CSS',
       'Dynamic import resolved without a default export',
       'ChunkLoadError',
+      // React.lazy's resolver reads `payload._result.default`; a tab on an old
+      // bundle that navigates to a lazy route whose chunk 404'd after a redeploy
+      // throws this. lazyWithRetry reloads to recover on current bundles — this
+      // backstops clients still on a pre-fix cached bundle (heavy deploy days).
+      '_result.default',
+
+      // Third-party / in-app-browser injected scripts that throw inside our pages
+      // but are not our code. Instagram's iOS in-app browser injects a native
+      // bridge (window.webkit.messageHandlers / sendDataToNative /
+      // sendPageHideMessage) that errors on some pages. Nothing we can fix.
+      'window.webkit.messageHandlers',
+      'sendDataToNative',
+      'sendPageHideMessage',
+    ],
+    // Drop errors whose stack originates in third-party injected scripts (browser
+    // extensions, in-app browsers, translation proxies) rather than our bundle.
+    // e.g. "jsQuilting" is an injected script we don't ship; its own 404'd file
+    // surfaces as a bogus "Unexpected token '<'" SyntaxError on our pages.
+    denyUrls: [
+      /jsQuilting/,
     ],
   })
 
