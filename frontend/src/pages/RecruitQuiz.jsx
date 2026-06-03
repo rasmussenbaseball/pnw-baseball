@@ -6,6 +6,7 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { RECRUIT_QUESTIONS, RECRUIT_SCHOOLS } from '../data/recruitQuiz'
+import InternCredit from '../components/InternCredit'
 
 const LEVEL_CHIP = {
   D1:   'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
@@ -240,6 +241,7 @@ export default function RecruitQuiz() {
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-md mx-auto">
           Answer what matters to you and we'll rank all 57 college baseball programs across WA, OR, ID, MT &amp; BC.
         </p>
+        <InternCredit names="Luke Malzewski" className="mt-2" />
         <div className="flex items-center justify-center gap-6 mt-4">
           {[['57', 'Programs'], ['5', 'Levels'], ['17', 'Questions']].map(([n, l]) => (
             <div key={l} className="text-center">

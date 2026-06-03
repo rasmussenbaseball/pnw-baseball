@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import InternCredit from '../components/InternCredit'
 
 // Level badge styling, best level first. Tailwind needs literal class strings.
 const LEVEL_STYLE = {
@@ -88,6 +89,7 @@ export default function ProTracker() {
         <p className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-medium text-nw-teal bg-teal-50 dark:bg-teal-900/30 dark:text-teal-300 rounded-full px-3 py-1">
           Only players who have appeared in a game during the 2026 season are included.
         </p>
+        <InternCredit names="Oliver Duthie" className="mt-2" />
       </div>
 
       {/* ── Overview graphic ── */}
