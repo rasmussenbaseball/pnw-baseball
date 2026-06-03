@@ -20,6 +20,7 @@ The MLB pool is a bundled static reference set (recent FanGraphs seasons), parse
 once at import from backend/app/data/.
 """
 
+import bisect
 import csv
 import math
 from functools import lru_cache
@@ -136,16 +137,23 @@ def _group(row, side, mode):
 # ── Percentiles (rank-based, within a pool) ────────────────────────────────────
 def _pct_in_sorted(value, sorted_vals, direction):
     """Percentile of `value` within a pre-sorted ascending list (the prototype's
-    `Du`): empty -> 50, single -> 100, else clamp((count-1)/(n-1)*100, 0, 100)."""
+    `Du`): empty -> 50, single -> 100, else clamp((count-1)/(n-1)*100, 0, 100).
+
+    Uses bisect (O(log n)) instead of a linear scan. This is called for every
+    metric of every candidate (thousands x thousands) when ranking comps, so the
+    old O(n) scan made compute_comps ~O(candidates x metrics x pool) — ~21s per
+    cold comp. bisect on the already-sorted pool gives byte-for-byte identical
+    counts in O(log n): for "higher", count of v <= value == bisect_right; for
+    "lower", count of v >= value == n - bisect_left."""
     if not _finite(value) or not sorted_vals:
         return 50.0
     n = len(sorted_vals)
     if n == 1:
         return 100.0
     if direction == "lower":
-        count = sum(1 for v in sorted_vals if v >= value)
+        count = n - bisect.bisect_left(sorted_vals, value)
     else:
-        count = sum(1 for v in sorted_vals if v <= value)
+        count = bisect.bisect_right(sorted_vals, value)
     return _clamp((count - 1) / (n - 1) * 100.0, 0.0, 100.0)
 
 
