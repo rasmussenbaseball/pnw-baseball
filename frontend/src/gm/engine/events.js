@@ -777,6 +777,78 @@ function ageOpponentRosters(state) {
   }
 }
 
+/**
+ * Self-heal: top-up any team whose roster has decayed below a healthy floor.
+ *
+ * Friend-of-Nate report (June 2026): "Started a new dynasty and it shows
+ * other teams with records changing. But they aren't logging stats and
+ * their pitching probable is always TBA and then the same guy starts
+ * every game." Same root cause as "my friend switched teams in story
+ * mode and his new team had 0 players on their roster." When a team's
+ * rosterPlayerIds is empty (or far below target), autoLineup returns
+ * an empty batters array → fastSim's lightweight boxscore writes zero
+ * batterStats → season-long stats stay 0 for that team. W/L still
+ * updates from the gaussian run-sample, which is why records change
+ * but the leaderboards stay empty.
+ *
+ * This runs on Dashboard mount + after a career-offer team switch +
+ * defensively at the end of dynasty creation. It does NOT advance
+ * class years or graduate anyone; it ONLY adds fresh FR players to
+ * fill thin rosters back up to the level's healthy minimum.
+ *
+ * Threshold (per level): FLOOR is the point below which we refill.
+ * TARGET is what we fill TO. NWAC floors are tighter because their
+ * roster cap is smaller.
+ */
+export function refillThinRosters(state) {
+  if (!state || !state.teams) return { refilled: 0, addedPlayers: 0 }
+  const level = state.level || 'NAIA'
+  const isNwac = level === 'NWAC'
+  const FLOOR = isNwac ? 24 : level === 'NAIA' ? 32 : 30
+  const TARGET = isNwac ? 38 : level === 'NAIA' ? 45 : 42
+  const rng = makeRng('refill', state.rngSeed || 1, state.calendar?.year ?? 0, level)
+  let refilled = 0
+  let addedPlayers = 0
+  for (const team of Object.values(state.teams)) {
+    if (!team) continue
+    const rosterIds = team.rosterPlayerIds || []
+    // Treat eligible-living players only — a roster of 30 stale graduates
+    // isn't healthy.
+    const alive = rosterIds.filter(id => {
+      const p = state.players?.[id]
+      if (!p) return false
+      const s = p.eligibilityStatus
+      return s !== 'graduated' && s !== 'transferred' && s !== 'drafted'
+        && s !== 'cut' && s !== 'dismissed' && s !== 'quit'
+    })
+    if (alive.length >= FLOOR) continue
+    const school = state.schools?.[team.schoolId]
+    if (!school) continue
+    const need = TARGET - alive.length
+    let added = 0
+    for (let i = 0; i < need; i++) {
+      try {
+        const slot = i % 2 === 0 ? 'hitter' : 'pitcher'
+        const newPlayer = generatePlayer(school, slot, rng, state.calendar?.year ?? 0, alive.length + added)
+        newPlayer.classYear = 'FR'
+        newPlayer.seasonsUsed = 0
+        newPlayer.semestersUsed = 0
+        state.players[newPlayer.id] = newPlayer
+        // Don't overwrite the existing roster — append new freshmen so
+        // anyone alive on it stays.
+        if (!team.rosterPlayerIds) team.rosterPlayerIds = []
+        team.rosterPlayerIds.push(newPlayer.id)
+        added++
+      } catch { break }
+    }
+    if (added > 0) {
+      refilled++
+      addedPlayers += added
+    }
+  }
+  return { refilled, addedPlayers }
+}
+
 function runDraft(state) {
   const picks = simMlbDraft(state, state.calendar.year)
   if (!state.draftResults) state.draftResults = {}

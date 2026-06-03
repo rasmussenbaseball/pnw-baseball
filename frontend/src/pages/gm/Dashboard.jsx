@@ -21,7 +21,7 @@ import { isAutoMode, setAutoMode, runAutoActions } from '../../gm/engine/autoMod
 import { teamNameOf, tickInteractivePostseason } from '../../gm/engine/postseasonInteractive'
 import { autoAssignSummerBall } from '../../gm/engine/summerBall'
 import { spendCoachUpgradePoints } from '../../gm/engine/coachProgression'
-import { refitNonUserOvrOffsets } from '../../gm/engine/events'
+import { refitNonUserOvrOffsets, refillThinRosters } from '../../gm/engine/events'
 import { applyTeamTheme, clearTeamTheme } from '../../gm/lib/teamTheme'
 import { resolveEvent } from '../../gm/engine/randomEvents'
 import GMShell, { PixelCard, PixelButton, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
@@ -154,6 +154,30 @@ export default function Dashboard() {
     try { refitNonUserOvrOffsets(save) } catch (e) { console.warn('ovr refit failed:', e) }
     if (!save.flags) save.flags = {}
     save.flags.lastOvrRefitYear = curYear
+    saveDynasty(save)
+  }, [save])
+
+  // Roster self-heal. Friend report (June 2026): non-user teams' season
+  // stats stay 0 even after games are sim'd, "pitching probable always
+  // TBA, same guy starts every game" — root cause is empty (or near-
+  // empty) rosters. autoLineup returns no batters when the roster is
+  // empty, fastSim's lightweight boxscore writes zero per-player stats,
+  // but the run-sample still ticks the W/L. Also handles story-mode
+  // team switches that leave the user on a 0-player team. Runs once
+  // per dynasty-year per save (cached via save.flags.lastRosterRefillYear).
+  useEffect(() => {
+    if (!save) return
+    const curYear = save.calendar?.year ?? 1
+    if (save.flags?.lastRosterRefillYear === curYear) return
+    try {
+      const res = refillThinRosters(save)
+      if (res.refilled > 0) {
+        // eslint-disable-next-line no-console
+        console.info(`Roster self-heal: filled ${res.addedPlayers} freshmen across ${res.refilled} thin rosters.`)
+      }
+    } catch (e) { console.warn('roster refill failed:', e) }
+    if (!save.flags) save.flags = {}
+    save.flags.lastRosterRefillYear = curYear
     saveDynasty(save)
   }, [save])
 

@@ -615,6 +615,17 @@ export function acceptCareerOffer(state, offerId) {
   // Some downstream code reads state.level — keep it in sync.
   state.level = newSchool.level || state.level
 
+  // Friend report (June 2026): switching teams in story mode landed on
+  // a school with 0 players. We can't call refillThinRosters here
+  // because events.js already imports this file (circular dep). Instead,
+  // reset the Dashboard self-heal's per-year flag so its roster-refill
+  // useEffect re-fires on next Dashboard mount — which happens on the
+  // very next navigation after the offer is accepted.
+  if (state.flags) {
+    delete state.flags.lastRosterRefillYear
+    delete state.flags.lastOvrRefitYear
+  }
+
   // Bookkeeping
   state.career.trajectory.push({
     year, schoolId: offer.fromSchoolId, schoolName: offer.fromSchoolName,

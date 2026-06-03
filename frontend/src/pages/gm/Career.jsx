@@ -18,6 +18,7 @@ import { loadDynasty, saveDynasty } from '../../gm/engine/save'
 import {
   acceptCareerOffer, declineAllCareerOffers, roleLabel, DIFFICULTY_TUNING,
 } from '../../gm/engine/storyMode'
+import { refillThinRosters } from '../../gm/engine/events'
 import GMShell, { gmToast } from '../../gm/components/GMShell'
 
 const LEVEL_COLOR = {
@@ -66,6 +67,12 @@ export default function Career() {
     setBusy(true)
     const result = acceptCareerOffer(save, offerId)
     if (!result.ok) { gmToast(result.error, 'error'); setBusy(false); return }
+    // Immediate roster top-up at the new school. acceptCareerOffer can't
+    // call refillThinRosters directly (circular dep with events.js), so we
+    // call it here. The Dashboard self-heal would catch this on next mount
+    // anyway, but doing it now lets the user navigate straight to Roster
+    // / DepthChart and see a populated squad instead of an empty cupboard.
+    try { refillThinRosters(save) } catch (e) { console.warn('roster refill on offer accept failed:', e) }
     saveDynasty(save)
     setSave({ ...save })
     setBusy(false)
