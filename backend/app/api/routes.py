@@ -601,7 +601,8 @@ router.include_router(quiz_router)
 # ============================================================
 
 @router.get("/site-stats")
-@cached_endpoint(ttl_seconds=3600)
+@cached_endpoint(ttl_seconds=21600)  # 6h: heavy full-table aggregations, and the
+                                     # "wow number" totals only move after the daily scrape
 def site_stats():
     """Return aggregate counts and a random player for the About page."""
     with get_connection() as conn:
