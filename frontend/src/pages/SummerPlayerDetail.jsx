@@ -5,7 +5,7 @@
 // delegates the layout to SummerPlayerProfile (which shares the spring
 // profile's visual language: hero, percentile bars, radar, charts).
 
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { usePlayerProfileTheme } from '../components/playerProfile/shared'
 import SummerPlayerProfile from './SummerPlayerProfile'
@@ -50,6 +50,12 @@ export default function SummerPlayerDetail() {
         <div className="animate-spin h-8 w-8 border-4 border-nw-teal border-t-transparent rounded-full" />
       </div>
     )
+  }
+  // PNW players (linked to a spring record) belong on the unified /player page,
+  // which has the full profile + spring/summer stint toggle. Bounce there so the
+  // summer-only page is reserved for players who don't play spring in the PNW.
+  if (springId) {
+    return <Navigate to={`/player/${springId}`} replace />
   }
   if (error || !data?.player) {
     return (
