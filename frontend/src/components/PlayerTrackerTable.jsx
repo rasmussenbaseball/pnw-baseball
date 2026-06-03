@@ -64,8 +64,26 @@ export const SORTABLE = new Set([
 // Lower-is-better stats sort ascending by default when first clicked.
 export const ASC_DEFAULT = new Set(['era', 'fip', 'siera', 'baa'])
 
-export function isHitter(row) { return (row.plate_appearances || 0) > 0 }
-export function isPitcher(row) { return (row.innings_pitched || 0) > 0 }
+// Pitcher position codes (covers two-way labels like "RHP/1B").
+const PITCHER_POS = new Set(['P', 'RHP', 'LHP', 'SP', 'RP'])
+function isPitcherPos(pos) {
+  if (!pos) return false
+  const u = String(pos).toUpperCase()
+  return PITCHER_POS.has(u) || u.startsWith('RHP/') || u.startsWith('LHP/') || u.startsWith('P/')
+}
+// Classify by stats first; for players with no stats yet (e.g. a portal entry
+// who hasn't played, or a redshirt), fall back to position so they still land
+// on the correct Hitters / Pitchers list instead of disappearing from both.
+export function isHitter(row) {
+  if ((row.plate_appearances || 0) > 0) return true
+  if ((row.innings_pitched || 0) > 0) return false
+  return !isPitcherPos(row.position)
+}
+export function isPitcher(row) {
+  if ((row.innings_pitched || 0) > 0) return true
+  if ((row.plate_appearances || 0) > 0) return false
+  return isPitcherPos(row.position)
+}
 export function isTwoWay(row) { return isHitter(row) && isPitcher(row) }
 
 function fmtCell(row, col) {

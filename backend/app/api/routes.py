@@ -9533,6 +9533,10 @@ def transfer_portal_players(
         entries = []
     ids = [int(e["player_id"]) for e in entries if e.get("player_id")]
     committed_map = {int(e["player_id"]): e.get("committed_to") for e in entries if e.get("player_id")}
+    # Optional per-entry position override from the JSON. Used for placeholder
+    # players who have no stats and no position in the DB, so the frontend can
+    # still file them on the correct Hitters/Pitchers list.
+    position_map = {int(e["player_id"]): e.get("position") for e in entries if e.get("player_id") and e.get("position")}
     if not ids:
         return []
 
@@ -9606,6 +9610,9 @@ def transfer_portal_players(
             # "Committed To" reflects the portal destination we track in the
             # JSON, not the players-table commitment column.
             d["committed_to"] = committed_map.get(d["id"])
+            # Position override from the JSON (for placeholders missing a DB position).
+            if position_map.get(d["id"]):
+                d["position"] = position_map[d["id"]]
             out.append(d)
         return out
 

@@ -1,6 +1,6 @@
 {
-  "_comment": "PNW four-year (non-JUCO) players who have entered the transfer portal. Served by /players/transfer-portal and shown on the Transfer Portal Tracker (Coaching tab). Add entries as players enter; set committed_to once a player commits to a new school.",
-  "updated": "2026-06-01",
+  "_comment": "PNW four-year (non-JUCO) players who have entered the transfer portal. Served by /transfer-portal and shown on the Transfer Portal Tracker (Coaching tab). Add entries as players enter; set committed_to once a player commits. Optional 'position' overrides the DB position for placeholder players who have no stats yet, so they still file on the correct Hitters/Pitchers list.",
+  "updated": "2026-06-03",
   "players": [
     {
       "player_id": 2740,
@@ -57,6 +57,12 @@
       "committed_to": null
     },
     {
+      "player_id": 3287,
+      "name": "Kyle Memarian",
+      "from": "Whitworth",
+      "committed_to": null
+    },
+    {
       "name": "Jackson Hotchkiss",
       "player_id": 3492,
       "from": "Washington",
@@ -84,6 +90,7 @@
       "name": "Nate Tichy",
       "player_id": 15474,
       "from": "Washington",
+      "position": "P",
       "committed_to": null
     },
     {
@@ -96,6 +103,7 @@
       "name": "Peyton Robidoux",
       "player_id": 15475,
       "from": "Washington",
+      "position": "P",
       "committed_to": null
     },
     {
@@ -108,12 +116,14 @@
       "name": "Luke Klooster",
       "player_id": 15476,
       "from": "Washington",
+      "position": "C",
       "committed_to": null
     },
     {
       "name": "Will Cahill",
       "player_id": 15477,
       "from": "Washington",
+      "position": "OF",
       "committed_to": null
     },
     {
@@ -144,11 +154,30 @@
       "name": "Cade Gehlen",
       "player_id": 15478,
       "from": "Portland",
+      "position": "OF",
       "committed_to": null
     },
     {
       "name": "Gavin Derr",
       "player_id": 3670,
+      "from": "Wash. St.",
+      "committed_to": null
+    },
+    {
+      "name": "Alexander Giguere",
+      "player_id": 3541,
+      "from": "Wash. St.",
+      "committed_to": null
+    },
+    {
+      "name": "Gabe Schneider",
+      "player_id": 3673,
+      "from": "Wash. St.",
+      "committed_to": null
+    },
+    {
+      "name": "Bryce Chambers",
+      "player_id": 3773,
       "from": "Wash. St.",
       "committed_to": null
     },
@@ -162,12 +191,14 @@
       "name": "Craig Kabat",
       "player_id": 15479,
       "from": "Gonzaga",
+      "position": "P",
       "committed_to": null
     },
     {
       "name": "Brendan Comerford",
       "player_id": 15480,
       "from": "Gonzaga",
+      "position": "INF",
       "committed_to": null
     },
     {
