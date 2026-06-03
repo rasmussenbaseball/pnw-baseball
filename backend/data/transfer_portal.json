@@ -2,14 +2,191 @@
   "_comment": "PNW four-year (non-JUCO) players who have entered the transfer portal. Served by /players/transfer-portal and shown on the Transfer Portal Tracker (Coaching tab). Add entries as players enter; set committed_to once a player commits to a new school.",
   "updated": "2026-06-01",
   "players": [
-    { "player_id": 2740, "name": "Tyler Logan",       "from": "LC State",   "committed_to": null },
-    { "player_id": 3372, "name": "Nick Saelens",      "from": "Pacific",    "committed_to": null },
-    { "player_id": 3310, "name": "Dillon Hartman",    "from": "Whitworth",  "committed_to": null },
-    { "player_id": 2744, "name": "Jace Nagler",       "from": "Eastern Oregon", "committed_to": null },
-    { "player_id": 3141, "name": "Kyle Becker",       "from": "Northwest Nazarene", "committed_to": null },
-    { "player_id": 3134, "name": "Sam Hall",          "from": "Western Oregon", "committed_to": null },
-    { "player_id": 3052, "name": "Brenden Haverlock", "from": "Saint Martin's", "committed_to": null },
-    { "player_id": 3129, "name": "Devin Bettencourt", "from": "Western Oregon", "committed_to": null },
-    { "player_id": 2716, "name": "Kooper Jones",      "from": "LC State",   "committed_to": null }
+    {
+      "player_id": 2740,
+      "name": "Tyler Logan",
+      "from": "LC State",
+      "committed_to": null
+    },
+    {
+      "player_id": 3372,
+      "name": "Nick Saelens",
+      "from": "Pacific",
+      "committed_to": null
+    },
+    {
+      "player_id": 3310,
+      "name": "Dillon Hartman",
+      "from": "Whitworth",
+      "committed_to": null
+    },
+    {
+      "player_id": 2744,
+      "name": "Jace Nagler",
+      "from": "Eastern Oregon",
+      "committed_to": null
+    },
+    {
+      "player_id": 3141,
+      "name": "Kyle Becker",
+      "from": "Northwest Nazarene",
+      "committed_to": null
+    },
+    {
+      "player_id": 3134,
+      "name": "Sam Hall",
+      "from": "Western Oregon",
+      "committed_to": null
+    },
+    {
+      "player_id": 3052,
+      "name": "Brenden Haverlock",
+      "from": "Saint Martin's",
+      "committed_to": null
+    },
+    {
+      "player_id": 3129,
+      "name": "Devin Bettencourt",
+      "from": "Western Oregon",
+      "committed_to": null
+    },
+    {
+      "player_id": 2716,
+      "name": "Kooper Jones",
+      "from": "LC State",
+      "committed_to": null
+    },
+    {
+      "name": "Jackson Hotchkiss",
+      "player_id": 3492,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Noah Kenney",
+      "player_id": 3611,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Jack Wade",
+      "player_id": 3619,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Carson Boesel",
+      "player_id": 3616,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Nate Tichy",
+      "player_id": 15474,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Ian Draper",
+      "player_id": 3495,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Peyton Robidoux",
+      "player_id": 15475,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Drew Johnson",
+      "player_id": 3498,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Luke Klooster",
+      "player_id": 15476,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Will Cahill",
+      "player_id": 15477,
+      "from": "Washington",
+      "committed_to": null
+    },
+    {
+      "name": "Calvin Gregory",
+      "player_id": 3646,
+      "from": "Oregon St.",
+      "committed_to": null
+    },
+    {
+      "name": "Max Fraser",
+      "player_id": 3760,
+      "from": "Oregon St.",
+      "committed_to": null
+    },
+    {
+      "name": "Eli Gries-Smith",
+      "player_id": 3530,
+      "from": "Oregon St.",
+      "committed_to": null
+    },
+    {
+      "name": "Coleman Hollabaugh",
+      "player_id": 3796,
+      "from": "Portland",
+      "committed_to": null
+    },
+    {
+      "name": "Cade Gehlen",
+      "player_id": 15478,
+      "from": "Portland",
+      "committed_to": null
+    },
+    {
+      "name": "Gavin Derr",
+      "player_id": 3670,
+      "from": "Wash. St.",
+      "committed_to": null
+    },
+    {
+      "name": "Mikey Bell",
+      "player_id": 3550,
+      "from": "Gonzaga",
+      "committed_to": null
+    },
+    {
+      "name": "Craig Kabat",
+      "player_id": 15479,
+      "from": "Gonzaga",
+      "committed_to": null
+    },
+    {
+      "name": "Brendan Comerford",
+      "player_id": 15480,
+      "from": "Gonzaga",
+      "committed_to": null
+    },
+    {
+      "name": "Landon Hood",
+      "player_id": 3567,
+      "from": "Gonzaga",
+      "committed_to": null
+    },
+    {
+      "name": "Payton Knowles",
+      "player_id": 3687,
+      "from": "Seattle U",
+      "committed_to": null
+    },
+    {
+      "name": "Royce Hale",
+      "player_id": 3675,
+      "from": "Seattle U",
+      "committed_to": null
+    }
   ]
 }
