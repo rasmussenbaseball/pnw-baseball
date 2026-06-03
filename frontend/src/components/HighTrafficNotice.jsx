@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 // Flip ENABLED to false (one line) to remove it once traffic settles — no other
 // changes needed. Shows once per browser session (sessionStorage), so it doesn't
 // nag on every navigation but reappears for a fresh visit.
-const ENABLED = true
+const ENABLED = false  // Site is healthy again (Supabase upgraded + queries optimized). Flip to true to re-show during a future spike.
 const DISMISS_KEY = 'nwbb_traffic_notice_dismissed'
 
 export default function HighTrafficNotice() {
