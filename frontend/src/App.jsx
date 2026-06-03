@@ -215,7 +215,6 @@ const TournamentBracketGraphic = lazyWithRetry(() => import('./pages/TournamentB
 const DailyRecapGraphic = lazyWithRetry(() => import('./pages/DailyRecapGraphic'))
 
 // ─── New pages ───
-import Homepage from './pages/Homepage'
 import AnonymousHomepage from './pages/AnonymousHomepage'
 const FreeHomepage = lazyWithRetry(() => import('./pages/FreeHomepage'))  // recharts dashboard — lazy so it's off every other page's initial load
 import PremiumHomepage from './pages/PremiumHomepage'
@@ -641,7 +640,11 @@ function HomepageRouter() {
   if (tier === 'premium') return <PremiumHomepage />
   if (tier === 'recruiting') return <RecruitingHomepage />
   if (tier === 'coach' || tier === 'dev') return <CoachHomepage />
-  return <Homepage />
+  // Fallback for any signed-in user with an unexpected/missing tier: the free
+  // experience (every signed-in user is at least 'free'). The old single
+  // "Homepage" that this used to fall back to was retired once per-tier
+  // homepages covered every case.
+  return <FreeHomepage />
 }
 
 
