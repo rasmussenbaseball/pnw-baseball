@@ -75,13 +75,13 @@ jobs:
           echo "→ python3 scripts/scrape_wcl_boxscores.py $ARGS"
           PYTHONPATH=backend python3 scripts/scrape_wcl_boxscores.py $ARGS
 
-      - name: Refresh WCL season aggregates (Pointstreak)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          SEASON="${{ github.event.inputs.season || '2026' }}"
-          echo "→ Refreshing WCL Pointstreak season aggregates for $SEASON"
-          PYTHONPATH=backend python3 scripts/scrape_summer.py --league WCL --season "$SEASON" || true
+      # The old "Refresh WCL season aggregates (Pointstreak)" step was removed
+      # June 2026: Pointstreak/StackSports now 403s (redirects to
+      # https://stacksports.com, Forbidden), and it was redundant anyway. The
+      # roll-up below (aggregate_summer_stats.py) rebuilds summer_batting_stats /
+      # summer_pitching_stats from the wclstats.com box scores and OVERWRITES
+      # whatever Pointstreak wrote, so the box-score pipeline is the source of
+      # truth. scrape_summer.py is kept in the repo for manual/other-league use.
 
       - name: Resolve box-score player names + roll up + advanced stats
         env:
