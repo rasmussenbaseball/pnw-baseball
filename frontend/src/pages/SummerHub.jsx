@@ -273,52 +273,6 @@ function LeaderTopFive({ cat, endpoint }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Hot/Cold trend widget (last-5 OPS vs season OPS)
-// ─────────────────────────────────────────────────────────────
-
-export function TrendsWidget() {
-  const { data, loading } = useApi('/summer/trends', { league: LEAGUE, season: SEASON, window: 5 })
-  if (loading || !data) return null
-  const { hot = [], cold = [] } = data
-  if (!hot.length && !cold.length) return null
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-      <TrendList title="Hot · last 5 games" rows={hot} accent="emerald" />
-      <TrendList title="Cold · last 5 games" rows={cold} accent="rose" />
-    </div>
-  )
-}
-
-function TrendList({ title, rows, accent }) {
-  const headerColor = accent === 'emerald'
-    ? 'text-emerald-700 dark:text-emerald-300'
-    : 'text-rose-700 dark:text-rose-300'
-  const deltaColor = accent === 'emerald'
-    ? 'text-emerald-600 dark:text-emerald-400'
-    : 'text-rose-600 dark:text-rose-400'
-  return (
-    <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-      <div className={`text-[10px] sm:text-xs font-bold tracking-widest uppercase mb-2 ${headerColor}`}>{title}</div>
-      {rows.length === 0
-        ? <div className="text-xs text-gray-500 dark:text-gray-400">No qualifiers yet.</div>
-        : <ul className="flex flex-col gap-1">
-            {rows.slice(0, 5).map(r => (
-              <li key={r.player_id} className="flex items-center justify-between gap-2 text-xs">
-                <Link to={`/summer/players/${r.player_id}`} className="font-semibold text-gray-900 dark:text-gray-100 hover:text-nw-teal truncate">
-                  {r.first_name?.[0]}. {r.last_name}
-                </Link>
-                <span className="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">{r.team_short}</span>
-                <span className={`tabular-nums font-bold ${deltaColor} shrink-0`}>
-                  {r.delta > 0 ? '+' : ''}{Number(r.delta).toFixed(3)} OPS
-                </span>
-              </li>
-            ))}
-          </ul>}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
 // Sub-views
 // ─────────────────────────────────────────────────────────────
 
@@ -524,7 +478,7 @@ export function Standings() {
             {div} {div !== 'Other' && 'Division'}
           </div>
           <div className="overflow-x-auto -mx-3 sm:mx-0">
-            <div className="min-w-[560px] px-3 sm:px-0">
+            <div className="min-w-[620px] px-3 sm:px-0">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700">
@@ -535,7 +489,8 @@ export function Standings() {
                     <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">L10</th>
                     <th className="text-center px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Strk</th>
                     <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RS</th>
-                    <th className="text-right pr-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RA</th>
+                    <th className="text-right px-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">RA</th>
+                    <th className="text-right pr-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Diff</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -557,7 +512,17 @@ export function Standings() {
                         : 'text-rose-600 dark:text-rose-400'
                       }`}>{row.streak || '—'}</td>
                       <td className="text-right px-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_scored}</td>
-                      <td className="text-right pr-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_against}</td>
+                      <td className="text-right px-2 tabular-nums text-gray-600 dark:text-gray-400">{row.runs_against}</td>
+                      {(() => {
+                        const diff = (row.runs_scored ?? 0) - (row.runs_against ?? 0)
+                        return (
+                          <td className={`text-right pr-2 tabular-nums font-bold ${
+                            diff > 0 ? 'text-emerald-600 dark:text-emerald-400'
+                            : diff < 0 ? 'text-rose-600 dark:text-rose-400'
+                            : 'text-gray-500 dark:text-gray-400'
+                          }`}>{diff > 0 ? `+${diff}` : diff}</td>
+                        )
+                      })()}
                     </tr>
                   ))}
                 </tbody>
@@ -984,8 +949,6 @@ const HUB_CARDS = [
   { to: '/summer/teams',       label: 'Teams',         desc: 'Every club, North + South' },
   { to: '/summer/pnw-alumni',  label: 'PNW Alumni',    desc: 'Spring college players in the WCL' },
   { to: '/summer/college-mix', label: 'College Mix',   desc: 'Which colleges are most represented' },
-  { to: '/summer/recap',       label: 'Daily Recap Graphic', desc: 'Shareable PNG of a full day\'s slate' },
-  { to: '/summer/game-recap',  label: 'Game Recap Graphic',  desc: 'Shareable PNG for a single game' },
 ]
 
 export default function SummerHub() {
@@ -1021,14 +984,6 @@ export default function SummerHub() {
             Daily box scores, standings, and player leaderboards across the West Coast League.
             Cross-linked to NWBB Stats spring profiles so you can track college players all year.
           </p>
-          <div className="mt-3">
-            <Link
-              to="/summer/recap"
-              className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wide uppercase px-3 py-1.5 rounded-full bg-amber-200/20 hover:bg-amber-200/30 text-amber-100 border border-amber-200/40 transition"
-            >
-              Daily Recap Graphic →
-            </Link>
-          </div>
         </div>
       </div>
 
@@ -1049,7 +1004,6 @@ export default function SummerHub() {
       )}
 
       <TodaySlate />
-      <TrendsWidget />
       <StatLeaders />
 
       {/* Navigation cards — explorers tap one to land on a dedicated

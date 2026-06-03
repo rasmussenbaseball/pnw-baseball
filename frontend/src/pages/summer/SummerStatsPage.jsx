@@ -80,6 +80,8 @@ const BATTING_PRESETS = {
   Advanced: ['PA','AVG','OBP','SLG','wOBA','wRC+','wRAA','ISO','BABIP','BB%','K%','oWAR'],
   Power:    ['G','PA','AB','2B','3B','HR','RBI','SLG','ISO','wRC+'],
   Discipline: ['PA','BB','K','HBP','BB%','K%','OBP','wOBA'],
+  // Pitch-level plate discipline from PBP (swing/contact/whiff rates).
+  'Pitch-Level': ['PA','Sw%','Con%','Whf%','K%','BB%','OPS'],
   Speed:    ['G','SB','CS','3B','R','AVG','OBP'],
 }
 
@@ -116,6 +118,11 @@ const BATTING_COL_MAP = {
   'BB%':{ key: 'bb_pct', fmt: 'pct' },
   'K%': { key: 'k_pct', fmt: 'pct' },
   oWAR: { key: 'offensive_war', fmt: 'war' },
+  // Plate discipline (PBP). Swing% = swings / pitches, Contact% = contact /
+  // swings, Whiff% = whiffs / swings.
+  'Sw%':  { key: 'swing_pct',   fmt: 'pct' },
+  'Con%': { key: 'contact_pct', fmt: 'pct', bold: true },
+  'Whf%': { key: 'whiff_pct',   fmt: 'pct' },
 }
 
 function fmtCol(p, fmt) {
@@ -170,7 +177,7 @@ function BattingTab({ season }) {
           <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700">
-                <Th left>#</Th><Th left>Player</Th><Th left>Team</Th>
+                <PlayerTh /><Th left>Team</Th>
                 {cols.map(c => {
                   const cfg = BATTING_COL_MAP[c]
                   const apiKey = cfg?.key
@@ -191,8 +198,7 @@ function BattingTab({ season }) {
             <tbody>
               {data.map((p, i) => (
                 <tr key={p.player_id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                  <Rank>{i + 1}</Rank>
-                  <Player p={p} />
+                  <Player p={p} rank={i + 1} />
                   <Team p={p} />
                   {cols.map(c => {
                     const cfg = BATTING_COL_MAP[c]
@@ -216,6 +222,8 @@ const PITCHING_PRESETS = {
   Advanced: ['IP','BF','ERA','WHIP','FIP','K/9','BB/9','HR/9','K%','BB%','BABIP','pWAR'],
   Workload: ['G','GS','CG','SHO','IP','BF','W','L','SV'],
   Discipline:['IP','BF','K','BB','HBP','WP','K/9','BB/9','K%','BB%','K/BB'],
+  // Pitch-level rates from PBP (whiff / called-or-swinging-strike / strike%).
+  'Pitch-Level': ['IP','Whf%','CSW%','Str%','F-Str%','K%','BB%'],
 }
 
 const PITCHING_COL_MAP = {
@@ -248,6 +256,12 @@ const PITCHING_COL_MAP = {
   'BB%':{ key: 'bb_pct', fmt: 'pct' },
   BABIP:{ key: 'babip_against', fmt: 'avg' },
   pWAR: { key: 'pitching_war', fmt: 'war' },
+  // Pitch-level (PBP). CSW% = called+swinging strikes / pitches; Whf% =
+  // whiffs / swings; Str% = strikes / pitches; F-Str% = first-pitch strike%.
+  'Whf%':   { key: 'whiff_pct',    fmt: 'pct', bold: true },
+  'CSW%':   { key: 'csw_pct',      fmt: 'pct', bold: true },
+  'Str%':   { key: 'strike_pct',   fmt: 'pct' },
+  'F-Str%': { key: 'f_strike_pct', fmt: 'pct' },
 }
 
 
@@ -292,7 +306,7 @@ function PitchingTab({ season }) {
           <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700">
-                <Th left>#</Th><Th left>Player</Th><Th left>Team</Th>
+                <PlayerTh /><Th left>Team</Th>
                 {cols.map(c => {
                   const cfg = PITCHING_COL_MAP[c]
                   const apiKey = cfg?.key
@@ -313,8 +327,7 @@ function PitchingTab({ season }) {
             <tbody>
               {data.map((p, i) => (
                 <tr key={p.player_id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                  <Rank>{i + 1}</Rank>
-                  <Player p={p} />
+                  <Player p={p} rank={i + 1} />
                   <Team p={p} />
                   {cols.map(c => {
                     const cfg = PITCHING_COL_MAP[c]
@@ -370,16 +383,16 @@ function FieldingTab({ season }) {
           <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700">
-                {['#','Player','Pos','Team','G','TC','PO','A','E','DP','PB','SBA','CS','FldPct','CS%'].map((h, i) => (
-                  <Th key={h} left={i < 4}>{h}</Th>
+                <PlayerTh /><Th left>Pos</Th><Th left>Team</Th>
+                {['G','TC','PO','A','E','DP','PB','SBA','CS','FldPct','CS%'].map(h => (
+                  <Th key={h}>{h}</Th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {data.map((p, i) => (
                 <tr key={p.player_id + '-' + i} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                  <Rank>{i + 1}</Rank>
-                  <Player p={p} />
+                  <Player p={p} rank={i + 1} />
                   <Td className="text-left text-gray-500 dark:text-gray-400 uppercase">{p.position || ''}</Td>
                   <Team p={p} />
                   <Td num>{fmtInt(p.games)}</Td>
@@ -525,25 +538,51 @@ function Td({ children, num, bold, className = '' }) {
   )
 }
 
-function Rank({ children }) {
-  return <td className="px-1.5 py-1 text-gray-500 dark:text-gray-400 tabular-nums">{children}</td>
+// Sticky header cell for the frozen Player column. z-20 keeps it above the
+// frozen body cells (z-10) where they meet at the top-left.
+function PlayerTh() {
+  return (
+    <th className="sticky left-0 z-20 bg-white dark:bg-gray-900 px-2 py-1.5 text-left text-xs font-bold text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700">
+      Player
+    </th>
+  )
 }
 
-function Player({ p }) {
+// Frozen, compact name column. Sticks to the left edge so the player is always
+// visible while the stat columns scroll on mobile. Rank is merged in (no
+// separate # column), the first name is abbreviated, and long names truncate
+// with the full name in a tooltip + on the linked profile.
+function Player({ p, rank }) {
   return (
-    <td className="px-1.5 py-1 font-semibold text-gray-900 dark:text-gray-100">
-      <Link to={`/summer/players/${p.player_id}`} className="hover:underline">
-        {p.first_name} {p.last_name}
+    <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-2 py-1 border-r border-gray-200 dark:border-gray-700">
+      <Link
+        to={`/summer/players/${p.player_id}`}
+        className="flex items-center gap-1.5 group"
+        title={`${p.first_name} ${p.last_name}`}
+      >
+        {rank != null && (
+          <span className="w-4 shrink-0 text-right text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">{rank}</span>
+        )}
+        <span className="font-semibold text-gray-900 dark:text-gray-100 group-hover:text-nw-teal dark:group-hover:text-teal-300 truncate max-w-[104px] sm:max-w-[150px]">
+          {p.first_name?.[0]}. {p.last_name}
+        </span>
       </Link>
     </td>
   )
 }
 
+// Compact team column: logo always, short code only on sm+ (logo alone on
+// mobile to save width). Full team name in the tooltip.
 function Team({ p }) {
   return (
     <td className="px-1.5 py-1">
-      <Link to={`/summer/teams/${p.team_id}`} className="text-nw-teal dark:text-teal-300 hover:underline">
-        {p.team_short || p.team_name}
+      <Link
+        to={`/summer/teams/${p.team_id}`}
+        className="flex items-center gap-1 text-nw-teal dark:text-teal-300 hover:underline"
+        title={p.team_name}
+      >
+        {p.logo_url && <img src={p.logo_url} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" />}
+        <span className="hidden sm:inline truncate max-w-[72px]">{p.team_short || p.team_name}</span>
       </Link>
     </td>
   )

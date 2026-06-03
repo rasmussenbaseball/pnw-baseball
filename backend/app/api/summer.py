@@ -1043,6 +1043,8 @@ def summer_batting_leaderboard(
         "batting_avg", "on_base_pct", "slugging_pct", "ops",
         "woba", "wrc_plus", "wraa", "wrc", "iso", "babip",
         "k_pct", "bb_pct", "offensive_war",
+        # Plate-discipline rates derived from PBP (summer_game_events).
+        "swing_pct", "contact_pct", "whiff_pct",
     }
     if sort_by not in valid_sorts:
         sort_by = "ops"
@@ -1052,6 +1054,10 @@ def summer_batting_leaderboard(
         direction = sort_dir.upper()
     else:
         direction = "ASC" if sort_by == "k_pct" else "DESC"
+    # PBP-derived columns are computed aliases (not on table `b`), so the
+    # ORDER BY must reference the alias directly for those.
+    PBP_SORTS = {"swing_pct", "contact_pct", "whiff_pct"}
+    sort_col = sort_by if sort_by in PBP_SORTS else f"b.{sort_by}"
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
@@ -1083,6 +1089,10 @@ def summer_batting_leaderboard(
             qual_join = ""
             qual_filter = "AND b.plate_appearances >= %s"
 
+        # Plate-discipline (PBP) aggregate joins next in SQL order, so its
+        # params come before the WHERE league/season placeholders.
+        params.extend([season, _PA_RESULT_TYPES])
+
         # WHERE league_id + season
         params.extend([league_id, season])
         # Inline min_pa AFTER the WHERE league/season placeholders so
@@ -1111,15 +1121,41 @@ def summer_batting_leaderboard(
                    b.batting_avg, b.on_base_pct, b.slugging_pct, b.ops,
                    b.woba, b.wrc_plus, b.wraa, b.wrc,
                    b.iso, b.babip,
-                   b.k_pct, b.bb_pct, b.offensive_war
+                   b.k_pct, b.bb_pct, b.offensive_war,
+                   -- Plate discipline from PBP. Swing = whiffs + fouls +
+                   -- balls in play; contact excludes whiffs (same formula as
+                   -- the per-player approach splits / percentile cohort).
+                   CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
+                        THEN (pbp.k_p + pbp.f_p + pbp.in_play)::real / NULLIF(pbp.seq_total + pbp.in_play, 0)
+                   END AS swing_pct,
+                   CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
+                        THEN (pbp.f_p + pbp.in_play)::real / (pbp.k_p + pbp.f_p + pbp.in_play)
+                   END AS contact_pct,
+                   CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
+                        THEN pbp.k_p::real / (pbp.k_p + pbp.f_p + pbp.in_play)
+                   END AS whiff_pct,
+                   pbp.pa_pbp
             FROM summer_batting_stats b
             JOIN summer_players p ON p.id = b.player_id
             JOIN summer_teams t   ON t.id = b.team_id
             {qual_join}
+            LEFT JOIN (
+              SELECT e.batter_player_id AS pid,
+                COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'K', ''))), 0) AS k_p,
+                COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'F', ''))), 0) AS f_p,
+                COALESCE(SUM(LENGTH(COALESCE(e.pitch_sequence, ''))), 0) AS seq_total,
+                COUNT(*) FILTER (WHERE e.was_in_play) AS in_play,
+                COUNT(*) AS pa_pbp
+              FROM summer_game_events e
+              JOIN summer_games g2 ON g2.id = e.game_id
+              WHERE g2.season = %s AND e.result_type = ANY(%s)
+                AND e.batter_player_id IS NOT NULL
+              GROUP BY e.batter_player_id
+            ) pbp ON pbp.pid = b.player_id
             WHERE t.league_id = %s AND b.season = %s
               {qual_filter}
               {team_clause}
-            ORDER BY b.{sort_by} {direction} NULLS LAST
+            ORDER BY {sort_col} {direction} NULLS LAST
             LIMIT %s
             """,
             tuple(params),
@@ -1416,6 +1452,8 @@ def summer_pitching_leaderboard(
         "era", "whip",
         "k_per_9", "bb_per_9", "h_per_9", "hr_per_9", "k_bb_ratio",
         "fip", "k_pct", "bb_pct", "babip_against", "pitching_war",
+        # Pitch-level rates derived from PBP (summer_game_events).
+        "whiff_pct", "csw_pct", "strike_pct", "f_strike_pct",
     }
     if sort_by not in valid_sorts:
         sort_by = "era"
@@ -1440,7 +1478,13 @@ def summer_pitching_leaderboard(
         # empty. So for counting stats we only require a real appearance (IP>0).
         RATE_SORTS = {"era", "whip", "k_per_9", "bb_per_9", "h_per_9",
                       "hr_per_9", "k_bb_ratio", "fip", "k_pct", "bb_pct",
-                      "babip_against"}
+                      "babip_against",
+                      # PBP rates are also rate stats → keep the IP qualifier.
+                      "whiff_pct", "csw_pct", "strike_pct", "f_strike_pct"}
+        # PBP-derived columns are computed aliases (not on table `pt`), so the
+        # ORDER BY must reference the alias directly for those.
+        PBP_SORTS = {"whiff_pct", "csw_pct", "strike_pct", "f_strike_pct"}
+        sort_col = sort_by if sort_by in PBP_SORTS else f"pt.{sort_by}"
         # Build SQL + params in lockstep. Same pattern as batting.
         params = []
         if qualified and sort_by in RATE_SORTS:
@@ -1471,6 +1515,10 @@ def summer_pitching_leaderboard(
             qual_join = ""
             qual_filter = "AND pt.innings_pitched >= %s"
 
+        # Pitch-level (PBP) aggregate joins next in SQL order, so its params
+        # come before the WHERE league/season placeholders.
+        params.extend([season, _PA_RESULT_TYPES])
+
         params.extend([league_id, season])
         if not qualified:
             params.append(min_ip)
@@ -1500,15 +1548,52 @@ def summer_pitching_leaderboard(
                    pt.hit_batters, pt.wild_pitches,
                    pt.era, pt.whip,
                    pt.k_per_9, pt.bb_per_9, pt.h_per_9, pt.hr_per_9, pt.k_bb_ratio,
-                   pt.fip, pt.k_pct, pt.bb_pct, pt.babip_against, pt.pitching_war
+                   pt.fip, pt.k_pct, pt.bb_pct, pt.babip_against, pt.pitching_war,
+                   -- Pitch-level rates from PBP. Strike = called(S)+swinging(K)
+                   -- +foul(F)+in play; CSW = called+swinging strikes / pitches;
+                   -- whiff = swinging strikes / swings; F-Strike = first-pitch
+                   -- strike rate. Same accounting as the per-player approach.
+                   CASE WHEN (pbp.seq_total + pbp.in_play) > 0
+                        THEN (pbp.k_p + pbp.s_p + pbp.f_p + pbp.in_play)::real / (pbp.seq_total + pbp.in_play)
+                   END AS strike_pct,
+                   CASE WHEN (pbp.seq_total + pbp.in_play) > 0
+                        THEN (pbp.k_p + pbp.s_p)::real / (pbp.seq_total + pbp.in_play)
+                   END AS csw_pct,
+                   CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
+                        THEN pbp.k_p::real / (pbp.k_p + pbp.f_p + pbp.in_play)
+                   END AS whiff_pct,
+                   CASE WHEN pbp.tracked_pa > 0
+                        THEN pbp.f1_strikes::real / pbp.tracked_pa
+                   END AS f_strike_pct,
+                   pbp.pa_pbp
             FROM summer_pitching_stats pt
             JOIN summer_players p ON p.id = pt.player_id
             JOIN summer_teams t   ON t.id = pt.team_id
             {qual_join}
+            LEFT JOIN (
+              SELECT e.pitcher_player_id AS pid,
+                COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'K', ''))), 0) AS k_p,
+                COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'F', ''))), 0) AS f_p,
+                COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'S', ''))), 0) AS s_p,
+                COALESCE(SUM(LENGTH(COALESCE(e.pitch_sequence, ''))), 0) AS seq_total,
+                COUNT(*) FILTER (WHERE e.was_in_play) AS in_play,
+                COUNT(*) FILTER (WHERE e.pitches_thrown >= 1) AS tracked_pa,
+                COUNT(*) FILTER (
+                  WHERE e.pitches_thrown >= 1
+                    AND (LEFT(COALESCE(e.pitch_sequence, ''), 1) IN ('K', 'S', 'F')
+                         OR (COALESCE(e.pitch_sequence, '') = '' AND e.was_in_play))
+                ) AS f1_strikes,
+                COUNT(*) AS pa_pbp
+              FROM summer_game_events e
+              JOIN summer_games g2 ON g2.id = e.game_id
+              WHERE g2.season = %s AND e.result_type = ANY(%s)
+                AND e.pitcher_player_id IS NOT NULL
+              GROUP BY e.pitcher_player_id
+            ) pbp ON pbp.pid = pt.player_id
             WHERE t.league_id = %s AND pt.season = %s
               {qual_filter}
               {team_clause}
-            ORDER BY pt.{sort_by} {direction} NULLS LAST{tiebreak}
+            ORDER BY {sort_col} {direction} NULLS LAST{tiebreak}
             LIMIT %s
             """,
             tuple(params),
