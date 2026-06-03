@@ -1431,9 +1431,19 @@ def summer_pitching_leaderboard(
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = _league_id_for(cur, league)
+        # Rate stats (ERA, WHIP, FIP, K/9, …) need an innings floor to be
+        # meaningful, so the "qualified" gate (IP >= team_games * 0.75) applies.
+        # Counting stats (saves, wins, strikeouts, IP, …) are accumulation
+        # totals — gating them on innings hides the actual leaders. The clearest
+        # case is saves: a save leader is a closer who throws few innings and
+        # would never "qualify", which is exactly why the saves board came up
+        # empty. So for counting stats we only require a real appearance (IP>0).
+        RATE_SORTS = {"era", "whip", "k_per_9", "bb_per_9", "h_per_9",
+                      "hr_per_9", "k_bb_ratio", "fip", "k_pct", "bb_pct",
+                      "babip_against"}
         # Build SQL + params in lockstep. Same pattern as batting.
         params = []
-        if qualified:
+        if qualified and sort_by in RATE_SORTS:
             qual_join = """
                 JOIN (
                   SELECT team_id, COUNT(*)::int AS team_g
@@ -1453,6 +1463,10 @@ def summer_pitching_leaderboard(
             """
             params.extend([league_id, season, league_id, season])
             qual_filter = "AND pt.innings_pitched >= tg.team_g * 0.75"
+        elif qualified:
+            # Counting-stat board: no innings qualifier, just real appearances.
+            qual_join = ""
+            qual_filter = "AND pt.innings_pitched > 0"
         else:
             qual_join = ""
             qual_filter = "AND pt.innings_pitched >= %s"
@@ -1460,6 +1474,10 @@ def summer_pitching_leaderboard(
         params.extend([league_id, season])
         if not qualified:
             params.append(min_ip)
+
+        # Tiebreak by innings pitched so leaders with the same value rank by the
+        # bigger sample (e.g. five pitchers tied at a 0.00 ERA → most IP first).
+        tiebreak = "" if sort_by == "innings_pitched" else ", pt.innings_pitched DESC NULLS LAST"
 
         team_clause = ""
         if team_id:
@@ -1490,7 +1508,7 @@ def summer_pitching_leaderboard(
             WHERE t.league_id = %s AND pt.season = %s
               {qual_filter}
               {team_clause}
-            ORDER BY pt.{sort_by} {direction} NULLS LAST
+            ORDER BY pt.{sort_by} {direction} NULLS LAST{tiebreak}
             LIMIT %s
             """,
             tuple(params),

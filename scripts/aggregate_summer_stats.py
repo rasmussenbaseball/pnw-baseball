@@ -153,9 +153,11 @@ def rollup_pitching(cur, league_id, season):
                 SUM(p.bf)::int       AS bf,
                 SUM(p.wp)::int       AS wp,
                 SUM(p.hbp)::int      AS hbp,
-                SUM(CASE WHEN p.decision = 'W'  THEN 1 ELSE 0 END)::int AS wins,
-                SUM(CASE WHEN p.decision = 'L'  THEN 1 ELSE 0 END)::int AS losses,
-                SUM(CASE WHEN p.decision = 'SV' THEN 1 ELSE 0 END)::int AS saves
+                SUM(CASE WHEN upper(p.decision) = 'W' THEN 1 ELSE 0 END)::int AS wins,
+                SUM(CASE WHEN upper(p.decision) = 'L' THEN 1 ELSE 0 END)::int AS losses,
+                -- The box-score parser stores a save as 'S' (Presto) — older
+                -- Pointstreak data used 'SV'. Accept both so saves roll up.
+                SUM(CASE WHEN upper(p.decision) IN ('S', 'SV') THEN 1 ELSE 0 END)::int AS saves
             FROM summer_game_pitching p
             JOIN summer_games g ON g.id = p.game_id
             WHERE g.league_id = %s AND g.season = %s AND g.status = 'final'
