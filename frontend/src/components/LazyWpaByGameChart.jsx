@@ -6,9 +6,13 @@
 // replacement: profile pages import this instead of WpaByGameChart directly, so
 // recharts no longer rides along in the initial bundle for every player view.
 
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
+import { lazyWithRetry } from '../lib/lazyWithRetry'
 
-const WpaByGameChart = lazy(() => import('./WpaByGameChart'))
+// lazyWithRetry (not bare lazy) so a stale recharts chunk after a redeploy
+// self-heals with a reload instead of crashing the player page — this was the
+// "/player/… _result.default" Sentry error.
+const WpaByGameChart = lazyWithRetry(() => import('./WpaByGameChart'))
 
 export default function LazyWpaByGameChart(props) {
   return (

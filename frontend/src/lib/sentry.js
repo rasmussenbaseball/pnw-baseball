@@ -36,11 +36,35 @@ export function initSentry() {
       }
       return breadcrumb
     },
-    // Ignore noisy browser-extension and third-party errors that aren't ours.
+    // Ignore noisy browser-extension and third-party errors that aren't ours,
+    // plus two classes of known-benign noise we were getting emailed about:
     ignoreErrors: [
       'ResizeObserver loop limit exceeded',
       'ResizeObserver loop completed with undelivered notifications',
       'Non-Error promise rejection captured',
+
+      // Supabase auth-token Web Lock contention. supabase-js uses the browser
+      // Navigator LockManager to serialize token refreshes across tabs; when a
+      // user has two tabs open (or refreshes mid-refresh) one request "steals"
+      // the lock and the loser throws. supabase-js retries and recovers — it's
+      // pure noise, never a real failure. (These were the "/" and "/login"
+      // alerts.)
+      'Lock was stolen by another request',
+      'was released because another request stole it',
+      'Acquiring an exclusive Navigator LockManager lock',
+      'navigatorLock',
+
+      // Stale code-split chunks after a redeploy. lazyWithRetry + the
+      // vite:preloadError handler now auto-reload to recover, so these should
+      // no longer reach an ErrorBoundary — this is just a backstop for the rare
+      // case where reload is blocked (e.g. sessionStorage disabled). (These
+      // were the "/player/…" and "/news/…" _result.default crashes.)
+      'Failed to fetch dynamically imported module',
+      'error loading dynamically imported module',
+      'Importing a module script failed',
+      'Unable to preload CSS',
+      'Dynamic import resolved without a default export',
+      'ChunkLoadError',
     ],
   })
 

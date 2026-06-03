@@ -441,6 +441,26 @@ function Min({ label, value, onChange, steps }) {
   )
 }
 
+// Labeled <select> for the Fielding tab's sort key. `options` is a list of
+// [value, label] pairs; `value` is a plain string. (The Batting/Pitching tabs
+// sort by clicking column headers instead, so this only exists here — it was
+// referenced but never defined, which crashed /summer/stats on the Fielding
+// tab with "Sort is not defined".)
+function Sort({ label, value, onChange, options }) {
+  return (
+    <div>
+      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-0.5">{label}</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+      >
+        {options.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
+      </select>
+    </div>
+  )
+}
+
 function Qualified({ value, onChange, type }) {
   const threshold = type === 'pitching' ? '0.75 IP per team game' : '2.0 PA per team game'
   return (
