@@ -338,23 +338,30 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
         )
         recent = [dict(r) for r in cur.fetchall()]
 
-        # Roster — only players who have ACTUALLY APPEARED for this team
-        # this season. summer_players accumulates every name the roster +
-        # box-score scrapes have ever seen across years (hundreds per team),
-        # so without an accurate live 2026 roster we restrict to anyone with
-        # a batting or pitching line in a {season} game for this team.
+        # Roster — the full {season} roster (scraped from wclstats into
+        # summer_players.roster_year) PLUS anyone with {season} game stats.
+        # Each player gets a `role` (pitcher / hitter / two-way) derived from
+        # PA vs IP (position breaks ties for no-stat bench players), so pitchers
+        # stop showing up as 0-for hitters. Both batting and pitching lines are
+        # attached so the frontend can show the right stat per role.
         cur.execute(
             """
             SELECT p.id, p.first_name, p.last_name, p.jersey_number,
                    p.position, p.bats, p.throws, p.college, p.year_in_school,
-                   b.batting_avg, b.on_base_pct, b.slugging_pct, b.ops,
-                   b.games AS bat_games, b.home_runs, b.rbi
+                   p.hometown, p.roster_year,
+                   b.plate_appearances, b.batting_avg, b.on_base_pct,
+                   b.slugging_pct, b.ops, b.games AS bat_games, b.home_runs, b.rbi,
+                   pt.innings_pitched, pt.era, pt.whip, pt.strikeouts AS p_strikeouts,
+                   pt.wins AS p_wins, pt.losses AS p_losses, pt.saves AS p_saves
             FROM summer_players p
             LEFT JOIN summer_batting_stats b
                    ON b.player_id = p.id AND b.season = %s AND b.team_id = p.team_id
+            LEFT JOIN summer_pitching_stats pt
+                   ON pt.player_id = p.id AND pt.season = %s AND pt.team_id = p.team_id
             WHERE p.team_id = %s
               AND (
-                EXISTS (SELECT 1 FROM summer_game_batting gb
+                p.roster_year = %s
+                OR EXISTS (SELECT 1 FROM summer_game_batting gb
                         JOIN summer_games g ON g.id = gb.game_id
                         WHERE gb.player_id = p.id AND gb.team_id = %s AND g.season = %s)
                 OR EXISTS (SELECT 1 FROM summer_game_pitching gp
@@ -363,9 +370,25 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
               )
             ORDER BY p.last_name, p.first_name
             """,
-            (season, team_id, team_id, season, team_id, season),
+            (season, season, team_id, season, team_id, season, team_id, season),
         )
-        roster = [dict(r) for r in cur.fetchall()]
+        PITCHER_POS = {"P", "RHP", "LHP", "SP", "RP"}
+        roster = []
+        for r in cur.fetchall():
+            row = dict(r)
+            pa = row.get("plate_appearances") or 0
+            ip = float(row.get("innings_pitched") or 0)
+            pos = (row.get("position") or "").upper().strip()
+            if pa > 0 and ip > 0:
+                row["role"] = "two-way"
+            elif ip > 0:
+                row["role"] = "pitcher"
+            elif pa > 0:
+                row["role"] = "hitter"
+            else:
+                row["role"] = "pitcher" if pos in PITCHER_POS else "hitter"
+            row["has_stats"] = bool(pa > 0 or ip > 0)
+            roster.append(row)
 
     return {
         "team": dict(team),

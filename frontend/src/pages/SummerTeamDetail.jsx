@@ -174,43 +174,93 @@ export default function SummerTeamDetail() {
             : <div className="text-xs text-gray-500 dark:text-gray-400">No games yet.</div>}
         </div>
 
-        {/* Roster */}
-        <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4">
-          <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3">Roster</h3>
-          {roster?.length
-            ? <div className="overflow-x-auto -mx-1">
-                <table className="w-full text-[12px]">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      {['Player','Pos','Yr','College','G','AVG','OPS','HR','RBI'].map((h, i) => (
-                        <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i < 4 ? 'text-left' : 'text-right'}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {roster.map(p => (
-                      <tr key={p.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="px-1.5 py-1 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                          <Link to={`/summer/players/${p.id}`} className="hover:underline text-nw-teal dark:text-teal-300">
-                            {p.first_name} {p.last_name}
-                          </Link>
-                          {p.jersey_number && <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">#{p.jersey_number}</span>}
-                        </td>
-                        <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400 uppercase">{p.position || ''}</td>
-                        <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{p.year_in_school || ''}</td>
-                        <td className="px-1.5 py-1 text-left text-gray-600 dark:text-gray-400 truncate max-w-[140px]" title={p.college || ''}>{p.college || ''}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{p.bat_games ?? '—'}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{fmtAvg(p.batting_avg)}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums font-bold">{p.ops != null ? fmtAvg(p.ops) : '—'}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{p.home_runs ?? '—'}</td>
-                        <td className="px-1.5 py-1 text-right tabular-nums">{p.rbi ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            : <div className="text-xs text-gray-500 dark:text-gray-400">No roster on file. Will populate after Pointstreak roster sync.</div>}
-        </div>
+        {/* Roster — full 2026 squad, split by role so pitchers show pitching
+            stats (not 0-for batting) and bench players still appear. */}
+        {(() => {
+          const all = roster || []
+          const num = v => (v == null ? -Infinity : Number(v))
+          const hitters = all.filter(p => p.role === 'hitter' || p.role === 'two-way')
+            .sort((a, b) => (Number(b.has_stats) - Number(a.has_stats)) || (num(b.ops) - num(a.ops)) || (a.last_name || '').localeCompare(b.last_name || ''))
+          const pitchers = all.filter(p => p.role === 'pitcher' || p.role === 'two-way')
+            .sort((a, b) => (Number(b.has_stats) - Number(a.has_stats)) || ((a.era ?? 999) - (b.era ?? 999)) || (a.last_name || '').localeCompare(b.last_name || ''))
+          const nameCell = p => (
+            <td className="px-1.5 py-1 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+              <Link to={`/summer/players/${p.id}`} className="hover:underline text-nw-teal dark:text-teal-300">{p.first_name} {p.last_name}</Link>
+              {p.jersey_number && <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">#{p.jersey_number}</span>}
+            </td>
+          )
+          const home = p => <td className="px-1.5 py-1 text-left text-gray-600 dark:text-gray-400 truncate max-w-[150px]" title={p.hometown || ''}>{p.hometown || ''}</td>
+          const era2 = v => (v != null ? Number(v).toFixed(2) : '—')
+          return (
+            <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3">
+                Roster <span className="font-normal text-gray-400 dark:text-gray-500">({all.length})</span>
+              </h3>
+              {!all.length
+                ? <div className="text-xs text-gray-500 dark:text-gray-400">No roster on file yet.</div>
+                : <div className="space-y-5">
+                    {hitters.length > 0 && (
+                      <div>
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Position Players ({hitters.length})</div>
+                        <div className="overflow-x-auto -mx-1">
+                          <table className="w-full text-[12px]">
+                            <thead><tr className="border-b border-gray-200 dark:border-gray-700">
+                              {['Player','Pos','Yr','Hometown','G','AVG','OBP','OPS','HR','RBI'].map((h, i) => (
+                                <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i < 4 ? 'text-left' : 'text-right'}`}>{h}</th>))}
+                            </tr></thead>
+                            <tbody>
+                              {hitters.map(p => (
+                                <tr key={p.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                  {nameCell(p)}
+                                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400 uppercase">{p.position || ''}</td>
+                                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{p.year_in_school || ''}</td>
+                                  {home(p)}
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{p.bat_games ?? '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{p.batting_avg != null ? fmtAvg(p.batting_avg) : '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{p.on_base_pct != null ? fmtAvg(p.on_base_pct) : '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums font-bold">{p.ops != null ? fmtAvg(p.ops) : '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{p.home_runs ?? '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{p.rbi ?? '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    {pitchers.length > 0 && (
+                      <div>
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Pitchers ({pitchers.length})</div>
+                        <div className="overflow-x-auto -mx-1">
+                          <table className="w-full text-[12px]">
+                            <thead><tr className="border-b border-gray-200 dark:border-gray-700">
+                              {['Pitcher','T','Yr','Hometown','IP','W-L','SV','K','ERA','WHIP'].map((h, i) => (
+                                <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i < 4 ? 'text-left' : 'text-right'}`}>{h}</th>))}
+                            </tr></thead>
+                            <tbody>
+                              {pitchers.map(p => (
+                                <tr key={p.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                  {nameCell(p)}
+                                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{p.throws || ''}</td>
+                                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{p.year_in_school || ''}</td>
+                                  {home(p)}
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{p.innings_pitched ?? '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{(p.p_wins != null || p.p_losses != null) ? `${p.p_wins ?? 0}-${p.p_losses ?? 0}` : '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{p.p_saves ?? '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{p.p_strikeouts ?? '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums font-bold">{era2(p.era)}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums">{era2(p.whip)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )
