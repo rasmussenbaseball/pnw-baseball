@@ -352,12 +352,18 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
                    b.plate_appearances, b.batting_avg, b.on_base_pct,
                    b.slugging_pct, b.ops, b.games AS bat_games, b.home_runs, b.rbi,
                    pt.innings_pitched, pt.era, pt.whip, pt.strikeouts AS p_strikeouts,
-                   pt.wins AS p_wins, pt.losses AS p_losses, pt.saves AS p_saves
+                   pt.wins AS p_wins, pt.losses AS p_losses, pt.saves AS p_saves,
+                   spl.spring_player_id,
+                   (EXISTS (SELECT 1 FROM batting_stats bs
+                            WHERE bs.player_id = spl.spring_player_id AND bs.season = %s)
+                    OR EXISTS (SELECT 1 FROM pitching_stats ps2
+                            WHERE ps2.player_id = spl.spring_player_id AND ps2.season = %s)) AS pnw_spring
             FROM summer_players p
             LEFT JOIN summer_batting_stats b
                    ON b.player_id = p.id AND b.season = %s AND b.team_id = p.team_id
             LEFT JOIN summer_pitching_stats pt
                    ON pt.player_id = p.id AND pt.season = %s AND pt.team_id = p.team_id
+            LEFT JOIN summer_player_links spl ON spl.summer_player_id = p.id
             WHERE p.team_id = %s
               AND (
                 p.roster_year = %s
@@ -370,7 +376,7 @@ def summer_team_detail(team_id: int, season: int = Query(2026)):
               )
             ORDER BY p.last_name, p.first_name
             """,
-            (season, season, team_id, season, team_id, season, team_id, season),
+            (season, season, season, season, team_id, season, team_id, season, team_id, season),
         )
         PITCHER_POS = {"P", "RHP", "LHP", "SP", "RP"}
         roster = []

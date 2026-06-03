@@ -183,12 +183,26 @@ export default function SummerTeamDetail() {
             .sort((a, b) => (Number(b.has_stats) - Number(a.has_stats)) || (num(b.ops) - num(a.ops)) || (a.last_name || '').localeCompare(b.last_name || ''))
           const pitchers = all.filter(p => p.role === 'pitcher' || p.role === 'two-way')
             .sort((a, b) => (Number(b.has_stats) - Number(a.has_stats)) || ((a.era ?? 999) - (b.era ?? 999)) || (a.last_name || '').localeCompare(b.last_name || ''))
-          const nameCell = p => (
-            <td className="px-1.5 py-1 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-              <Link to={`/summer/players/${p.id}`} className="hover:underline text-nw-teal dark:text-teal-300">{p.first_name} {p.last_name}</Link>
-              {p.jersey_number && <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">#{p.jersey_number}</span>}
-            </td>
-          )
+          const nameCell = p => {
+            // PNW players (linked to a spring record) go to their full profile
+            // with the spring/summer toggle; non-PNW players go to the summer page.
+            const target = p.spring_player_id ? `/player/${p.spring_player_id}` : `/summer/players/${p.id}`
+            return (
+              <td className="px-1.5 py-1 font-semibold whitespace-nowrap">
+                <Link to={target}
+                  className={`hover:underline ${p.has_stats ? 'text-nw-teal dark:text-teal-300' : 'text-gray-400 dark:text-gray-500'}`}>
+                  {p.first_name} {p.last_name}
+                </Link>
+                {p.pnw_spring && (
+                  <span title="Plays 2026 PNW college ball — click for full profile"
+                    className="ml-1 inline-flex items-center justify-center text-[7px] font-black text-white bg-nw-teal rounded-[3px] px-[3px] leading-none align-middle"
+                    style={{ height: '12px' }}>NW</span>
+                )}
+                {p.jersey_number && <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">#{p.jersey_number}</span>}
+                {!p.has_stats && <span className="ml-1.5 text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 italic">roster</span>}
+              </td>
+            )
+          }
           const home = p => <td className="px-1.5 py-1 text-left text-gray-600 dark:text-gray-400 truncate max-w-[150px]" title={p.hometown || ''}>{p.hometown || ''}</td>
           const era2 = v => (v != null ? Number(v).toFixed(2) : '—')
           return (
