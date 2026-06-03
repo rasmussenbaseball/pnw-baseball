@@ -20,7 +20,7 @@ import {
   ProfileShell, SectionCard, usePlayerProfileTheme, divisionBadge,
 } from '../components/playerProfile/shared'
 import {
-  FIELD_GROUPS, META_FIELDS, ALL_EDITABLE_FIELDS,
+  FIELD_GROUPS, ALL_EDITABLE_FIELDS,
 } from '../data/recruitingProgramSchema'
 
 const inchesToFeetStr = (inches) => {
@@ -297,21 +297,44 @@ function RecordTable({ records, T }) {
   )
 }
 
+// Total WAR uses a distinct teal so it reads apart from oWAR (navy) / pWAR (gold).
+const TOTAL_WAR_COLOR = '#0d9488'
+
 function TrendCharts({ records, warBySeason, T }) {
   const cp = chartProps(T)
   const recData = (records || []).map((r) => {
     const tot = (r.wins || 0) + (r.losses || 0)
     return { season: r.season, winPct: tot ? +(100 * r.wins / tot).toFixed(1) : 0 }
   })
-  const warData = (warBySeason || []).map((w) => ({
-    season: w.season, owar: +parseFloat(w.total_owar || 0).toFixed(1), pwar: +parseFloat(w.total_pwar || 0).toFixed(1),
-  }))
+  const warData = (warBySeason || []).map((w) => {
+    const o = +parseFloat(w.total_owar || 0).toFixed(1)
+    const p = +parseFloat(w.total_pwar || 0).toFixed(1)
+    return { season: w.season, owar: o, pwar: p, total: +(o + p).toFixed(1) }
+  })
   if (!recData.length && !warData.length) return null
+
+  // One WAR metric per chart (oWAR / pWAR / total) — clearer than a stacked bar,
+  // especially when a season's WAR is negative. No bar radius so negative bars
+  // (which point downward) render cleanly.
+  const WarChart = ({ title, field, color }) => (
+    <SectionCard title={title}>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={warData}>
+          <CartesianGrid {...cp.grid} />
+          <XAxis dataKey="season" {...cp.axis} />
+          <YAxis {...cp.axis} />
+          <Tooltip {...cp.tooltip} cursor={{ fill: T.track, opacity: 0.4 }} />
+          <Bar dataKey={field} fill={color} name={title} />
+        </BarChart>
+      </ResponsiveContainer>
+    </SectionCard>
+  )
+
   return (
     <div className="grid lg:grid-cols-2 gap-4">
       {recData.length > 0 && (
         <SectionCard title="Win % by Season">
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={240}>
             <BarChart data={recData}>
               <CartesianGrid {...cp.grid} />
               <XAxis dataKey="season" {...cp.axis} />
@@ -322,21 +345,9 @@ function TrendCharts({ records, warBySeason, T }) {
           </ResponsiveContainer>
         </SectionCard>
       )}
-      {warData.length > 0 && (
-        <SectionCard title="Total WAR by Season">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={warData}>
-              <CartesianGrid {...cp.grid} />
-              <XAxis dataKey="season" {...cp.axis} />
-              <YAxis {...cp.axis} />
-              <Tooltip {...cp.tooltip} cursor={{ fill: T.track, opacity: 0.4 }} />
-              <Legend wrapperStyle={{ fontSize: 12, color: T.textMuted }} />
-              <Bar dataKey="owar" stackId="war" fill={T.accent} name="Offensive WAR" />
-              <Bar dataKey="pwar" stackId="war" fill={T.gold} name="Pitching WAR" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </SectionCard>
-      )}
+      {warData.length > 0 && <WarChart title="Offensive WAR by Season" field="owar" color={T.accent} />}
+      {warData.length > 0 && <WarChart title="Pitching WAR by Season" field="pwar" color={T.gold} />}
+      {warData.length > 0 && <WarChart title="Total WAR by Season" field="total" color={TOTAL_WAR_COLOR} />}
     </div>
   )
 }
@@ -560,11 +571,6 @@ export default function RecruitingGuide() {
                 <FreshmanProd fresh={guide.freshman_production} T={T} />
                 <Hometowns breakdown={guide.hometown_breakdown} T={T} />
                 <BestPlayers best={guide.best_players} T={T} />
-
-                {/* Internal meta (admin) */}
-                {(profile.researchStatus || profile.notes) && (
-                  <ProgramGroup title="Internal" fields={META_FIELDS} profile={profile} T={T} />
-                )}
               </>
             )}
           </>
