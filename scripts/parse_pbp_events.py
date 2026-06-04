@@ -319,6 +319,147 @@ def parse_rbi(text):
 # Main parser
 # ─────────────────────────────────────────────────────────────────
 
+def _process_pbp_row(txt, first_td, inning, half, batting_team, defending_team,
+                     current_pitcher, sequence_idx):
+    """Classify one play-by-play row and return (event_or_None, new_sequence_idx,
+    skipped_delta). Shared by the live and archived-layout parsers so the
+    per-row logic lives in exactly one place. Pitching changes mutate
+    `current_pitcher` in place and return (None, sequence_idx, 0)."""
+    # ── Pitching change (modern or legacy) — update state, no event ──
+    pc_modern = PITCH_CHANGE_MODERN_RE.match(txt)
+    if pc_modern:
+        new_p, old_p = pc_modern.group(2).strip(), pc_modern.group(3).strip()
+        current_pitcher.setdefault(defending_team, old_p)
+        current_pitcher[defending_team] = new_p
+        return None, sequence_idx, 0
+
+    classes = first_td.get("class") or []
+    is_italic = ("text-italic" in classes) or bool(first_td.find(["em", "i"]))
+    pc_legacy = PITCH_CHANGE_LEGACY_RE.match(txt)
+    if pc_legacy and (is_italic or " to p for " in txt):
+        new_p, old_p = pc_legacy.group(1).strip(), pc_legacy.group(2).strip()
+        current_pitcher.setdefault(defending_team, old_p)
+        current_pitcher[defending_team] = new_p
+        return None, sequence_idx, 0
+
+    if is_italic:
+        sub = classify_substitution(txt)
+        if sub:
+            sub_type = sub[0]
+            sequence_idx += 1
+            return ({
+                "inning": inning, "half": half, "sequence_idx": sequence_idx,
+                "batting_team_name": batting_team, "defending_team_name": defending_team,
+                "batter_name": None,
+                "pitcher_name": current_pitcher.get(defending_team, "<UNKNOWN STARTER>"),
+                "balls_before": 0, "strikes_before": 0, "pitch_sequence": "",
+                "pitches_thrown": 0, "was_in_play": False,
+                "result_type": sub_type, "result_text": txt, "rbi": 0,
+            }, sequence_idx, 0)
+        return None, sequence_idx, 1  # defensive sub / pinch hitter / mound visit
+
+    result_type, was_in_play = classify_result(txt)
+    if not result_type:
+        sub = classify_subevent(txt)
+        if sub:
+            sequence_idx += 1
+            return ({
+                "inning": inning, "half": half, "sequence_idx": sequence_idx,
+                "batting_team_name": batting_team, "defending_team_name": defending_team,
+                "batter_name": None,
+                "pitcher_name": current_pitcher.get(defending_team, "<UNKNOWN STARTER>"),
+                "balls_before": 0, "strikes_before": 0, "pitch_sequence": "",
+                "pitches_thrown": 0, "was_in_play": False,
+                "result_type": sub, "result_text": txt, "rbi": 0,
+            }, sequence_idx, 0)
+        return None, sequence_idx, 1  # inning summary, mound visit, etc.
+
+    balls, strikes, seq = parse_count_seq(txt)
+    sequence_idx += 1
+    pitches_thrown = (len(seq or "") + (1 if was_in_play else 0)) if seq is not None else None
+    return ({
+        "inning": inning, "half": half, "sequence_idx": sequence_idx,
+        "batting_team_name": batting_team, "defending_team_name": defending_team,
+        "batter_name": extract_batter_name(txt, result_type),
+        "pitcher_name": current_pitcher.get(defending_team, "<UNKNOWN STARTER>"),
+        "balls_before": balls or 0, "strikes_before": strikes or 0,
+        "pitch_sequence": seq or "", "pitches_thrown": pitches_thrown,
+        "was_in_play": was_in_play, "result_type": result_type,
+        "result_text": txt, "rbi": parse_rbi(txt),
+    }, sequence_idx, 0)
+
+
+def _parse_archived_pbp(soup, starters=None):
+    """Fallback for archived Sidearm box-score pages (older seasons re-fetched
+    now). These drop the <section id="play-by-play"> wrapper and render each
+    half-inning as a <table> whose <thead> starts with 'Plays', preceded by a
+    heading like 'Oregon - Top of 1st'. The page duplicates every half-inning
+    across two tab panels, so we de-dupe by heading text (unique per game).
+    Per-row classification is shared with the live parser via _process_pbp_row.
+    """
+    meta = {"has_pbp": False, "all_team_names": [], "skipped_rows": 0}
+    pbp_tables = [
+        t for t in soup.find_all("table")
+        if t.find("thead") and t.find("thead").get_text(" ", strip=True).startswith("Plays")
+    ]
+    if not pbp_tables:
+        return [], meta
+
+    # Pair each table to its preceding inning heading; collect team names;
+    # de-dupe the duplicated tab panel by heading text.
+    paired, seen, team_names = [], set(), set()
+    for t in pbp_tables:
+        h = t.find_previous(string=CAPTION_RE)
+        if not h:
+            continue
+        htext = h.strip()
+        m = CAPTION_RE.match(htext)
+        if not m:
+            continue
+        team_names.add(m.group(1).strip())
+        if htext in seen:
+            continue
+        seen.add(htext)
+        paired.append((htext, t))
+    if not paired:
+        return [], meta
+
+    meta["has_pbp"] = True
+    meta["all_team_names"] = sorted(team_names)
+
+    current_pitcher = dict(starters or {})
+    events, skipped = [], 0
+    for htext, table in paired:
+        m = CAPTION_RE.match(htext)
+        batting_team = m.group(1).strip()
+        half = "top" if m.group(2).lower() == "top" else "bottom"
+        defending_candidates = team_names - {batting_team}
+        if len(defending_candidates) != 1:
+            continue
+        defending_team = next(iter(defending_candidates))
+        inning_match = re.search(r"of\s+(\d+)", htext, flags=re.IGNORECASE)
+        inning = int(inning_match.group(1)) if inning_match else 0
+
+        body = table.find("tbody") or table
+        sequence_idx = 0
+        for tr in body.find_all("tr"):
+            first_td = tr.find("td")
+            if not first_td:
+                continue
+            txt = first_td.get_text(" ", strip=True)
+            if not txt:
+                continue
+            event, sequence_idx, skip_delta = _process_pbp_row(
+                txt, first_td, inning, half, batting_team, defending_team,
+                current_pitcher, sequence_idx)
+            if event:
+                events.append(event)
+            skipped += skip_delta
+
+    meta["skipped_rows"] = skipped
+    return events, meta
+
+
 def parse_pbp_events(html, starters=None):
     """Parse a Sidearm box-score HTML page into per-PA events.
 
@@ -336,7 +477,9 @@ def parse_pbp_events(html, starters=None):
     pbp_section = soup.find("section", id="play-by-play")
     meta = {"has_pbp": False, "all_team_names": [], "skipped_rows": 0}
     if not pbp_section:
-        return [], meta
+        # Archived pages (older seasons) drop the section wrapper and use the
+        # "Plays" table layout — parse that instead of bailing out.
+        return _parse_archived_pbp(soup, starters=starters)
 
     all_div = pbp_section.find("div", id="inning-all")
     target = all_div if all_div else pbp_section
