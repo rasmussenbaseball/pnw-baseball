@@ -17,7 +17,7 @@ export const DEFAULT_SEASON = CURRENT_SEASON
 // Newest-first so dropdowns list the current year at the top.
 export const SEASONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018]
 
-export const PBP_SEASONS = [2026, 2025]
+export const PBP_SEASONS = [2026, 2025, 2024]
 
 export function isValidSeason(year) {
   return SEASONS.includes(Number(year))
