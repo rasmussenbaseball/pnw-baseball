@@ -225,9 +225,14 @@ export default function PlayerComps() {
   const T = usePlayerProfileTheme()
   const [sp, setSp] = useSearchParams()
 
+  // direction: 'forward' = pick a NW player, find comps; 'reverse' = pick an MLB
+  // player-season, find the closest NW seasons.
+  const [direction, setDirection] = useState(sp.get('dir') === 'reverse' ? 'reverse' : 'forward')
+  const reverse = direction === 'reverse'
   const [side, setSide] = useState(sp.get('side') === 'pitcher' ? 'pitcher' : 'hitter')
-  const [pool, setPool] = useState(sp.get('pool') === 'mlb' ? 'mlb' : 'nw')
-  const [playerId, setPlayerId] = useState(sp.get('player_id') || '')
+  const [pool, setPool] = useState(sp.get('pool') === 'mlb' ? 'mlb' : 'nw')   // forward only
+  const [playerId, setPlayerId] = useState(sp.get('player_id') || '')         // forward: NW selected
+  const [mlbId, setMlbId] = useState(sp.get('mlb_id') || '')                  // reverse: MLB selected
   const [posMatch, setPosMatch] = useState('any')
   const [matchHand, setMatchHand] = useState(false)
   const [includeSmall, setIncludeSmall] = useState(false)
@@ -236,34 +241,59 @@ export default function PlayerComps() {
   const [classYear, setClassYear] = useState('')
   const [showSettings, setShowSettings] = useState(false)
 
+  // Switching side or direction invalidates the current selection (ids are
+  // side-specific, and the two directions use different id spaces).
+  const switchSide = (s) => { setSide(s); setPlayerId(''); setMlbId('') }
+  const switchDirection = (d) => { setDirection(d); setPlayerId(''); setMlbId('') }
+
   // Keep the URL in sync so comparisons are shareable / deep-linkable.
   useEffect(() => {
     const next = {}
     if (side !== 'hitter') next.side = side
-    if (pool !== 'nw') next.pool = pool
-    if (playerId) next.player_id = String(playerId)
+    if (reverse) {
+      next.dir = 'reverse'
+      if (mlbId) next.mlb_id = mlbId
+    } else {
+      if (pool !== 'nw') next.pool = pool
+      if (playerId) next.player_id = String(playerId)
+    }
     setSp(next, { replace: true })
-  }, [side, pool, playerId]) // eslint-disable-line
+  }, [side, pool, playerId, direction, mlbId]) // eslint-disable-line
 
-  // Selectable players for the chosen side (the selected player is always NW).
+  // Forward picker: NW players. Reverse picker: MLB player-seasons.
   const { data: playersData } = useApi('/comps/players', { side, season: SEASON }, [side])
   const players = playersData?.players || []
+  const { data: mlbData } = useApi(reverse ? '/comps/mlb-players' : null, { side }, [side, reverse])
+  // Map MLB rows into the PlayerPicker's shape; show the season where it shows level.
+  const mlbPlayers = useMemo(() => (mlbData?.players || []).map(p => ({
+    id: p.id, name: p.name, team: p.team, level: p.season ? String(p.season) : '',
+  })), [mlbData])
 
   // Reset filters that don't apply across a side switch.
   useEffect(() => { setLevel(''); setConference(''); setClassYear('') }, [side])
 
-  // Main comp fetch.
-  const compParams = {
-    player_id: playerId || '', side, pool, season: SEASON,
-    position_match: posMatch, match_handedness: matchHand, include_small: includeSmall,
-    level: pool === 'nw' ? level : '', conference: pool === 'nw' ? conference : '',
-    class_year: pool === 'nw' ? classYear : '',
-  }
+  // Main comp fetch — forward hits /comps, reverse hits /comps/reverse.
+  const selectionId = reverse ? mlbId : playerId
+  const endpoint = selectionId ? (reverse ? '/comps/reverse' : '/comps') : null
+  const compParams = reverse
+    ? {
+        mlb_id: mlbId || '', side, season: SEASON,
+        position_match: posMatch, match_handedness: matchHand, include_small: includeSmall,
+        level, conference, class_year: classYear,
+      }
+    : {
+        player_id: playerId || '', side, pool, season: SEASON,
+        position_match: posMatch, match_handedness: matchHand, include_small: includeSmall,
+        level: pool === 'nw' ? level : '', conference: pool === 'nw' ? conference : '',
+        class_year: pool === 'nw' ? classYear : '',
+      }
   const { data, loading } = useApi(
-    playerId ? '/comps' : null, compParams,
-    [playerId, side, pool, posMatch, matchHand, includeSmall, level, conference, classYear],
+    endpoint, compParams,
+    [reverse, playerId, mlbId, side, pool, posMatch, matchHand, includeSmall, level, conference, classYear],
   )
 
+  // Candidate pool: forward respects the pool toggle; reverse is always NW.
+  const candPool = reverse ? 'nw' : pool
   const selected = data?.selectedPlayer || null
   const config = data?.config
   const metricOrder = (config?.metrics || []).map(m => m.key)
@@ -287,9 +317,10 @@ export default function PlayerComps() {
         <div className="mb-4">
           <h1 className="text-[26px] font-extrabold tracking-tight" style={{ color: T.text }}>Player Comparison Tool</h1>
           <p className="text-[13px] mt-1 max-w-3xl" style={{ color: T.textMuted }}>
-            Pick a Northwest player to find their most statistically similar comparables, either across the NW
-            database or among recent MLB player-seasons. Comps are built on percentile-based stat profiles, so two
-            players match when they create value in similar ways, not just when their raw numbers line up.
+            Pick a Northwest player to find their closest comparables across the NW database or among recent MLB
+            player-seasons — or flip it around: pick an MLB player and year to find the Northwest seasons that most
+            resemble it. Comps are built on percentile-based stat profiles, so players match when they create value
+            in similar ways, not just when their raw numbers line up.
           </p>
           <p className="text-[11px] mt-1" style={{ color: T.textLight }}>
             Built by NWBB Stats interns Trevor Kazahaya and Connor Broschard.
@@ -300,23 +331,37 @@ export default function PlayerComps() {
         <SectionCard>
           <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <div className="flex flex-col gap-1">
-              <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Model</span>
+              <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Find</span>
               <div className="flex gap-1.5">
-                <Pill active={side === 'hitter'} onClick={() => { setSide('hitter'); setPlayerId('') }}>Hitters</Pill>
-                <Pill active={side === 'pitcher'} onClick={() => { setSide('pitcher'); setPlayerId('') }}>Pitchers</Pill>
+                <Pill active={!reverse} onClick={() => switchDirection('forward')}>NW player → comps</Pill>
+                <Pill active={reverse} onClick={() => switchDirection('reverse')}>MLB season → NW</Pill>
               </div>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Compare to</span>
+              <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Model</span>
               <div className="flex gap-1.5">
-                <Pill active={pool === 'nw'} onClick={() => setPool('nw')}>NW players</Pill>
-                <Pill active={pool === 'mlb'} onClick={() => setPool('mlb')}>MLB seasons</Pill>
+                <Pill active={side === 'hitter'} onClick={() => switchSide('hitter')}>Hitters</Pill>
+                <Pill active={side === 'pitcher'} onClick={() => switchSide('pitcher')}>Pitchers</Pill>
               </div>
             </div>
+            {!reverse && (
+              <div className="flex flex-col gap-1">
+                <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Compare to</span>
+                <div className="flex gap-1.5">
+                  <Pill active={pool === 'nw'} onClick={() => setPool('nw')}>NW players</Pill>
+                  <Pill active={pool === 'mlb'} onClick={() => setPool('mlb')}>MLB seasons</Pill>
+                </div>
+              </div>
+            )}
             <div className="flex flex-col gap-1 flex-1 min-w-[220px]">
-              <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Player</span>
-              <PlayerPicker players={players} value={playerId} onChange={setPlayerId}
-                placeholder={`Search a NW ${side}…`} />
+              <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>
+                {reverse ? 'MLB player + year' : 'Player'}
+              </span>
+              {reverse
+                ? <PlayerPicker players={mlbPlayers} value={mlbId} onChange={setMlbId}
+                    placeholder={`Search an MLB ${side}…`} />
+                : <PlayerPicker players={players} value={playerId} onChange={setPlayerId}
+                    placeholder={`Search a NW ${side}…`} />}
             </div>
             <button onClick={() => setShowSettings(s => !s)}
               className="text-[12px] font-bold underline self-end pb-1.5" style={{ color: T.accent }}>
@@ -327,7 +372,7 @@ export default function PlayerComps() {
           {showSettings && (
             <div className="mt-4 pt-4 flex flex-wrap items-end gap-x-5 gap-y-3" style={{ borderTop: `1px solid ${T.border}` }}>
               <Select label="Position match" value={posMatch} onChange={setPosMatch} options={posOptions} T={T} />
-              {pool === 'nw' && (
+              {(reverse || pool === 'nw') && (
                 <>
                   <Select label="Level" value={level} onChange={setLevel}
                     options={[{ value: '', label: 'All levels' }, ...levels.map(l => ({ value: l, label: l }))]} T={T} />
@@ -348,22 +393,24 @@ export default function PlayerComps() {
         </SectionCard>
 
         {/* Empty state */}
-        {!playerId && (
+        {!selectionId && (
           <SectionCard>
             <div className="text-center py-10 text-[13px]" style={{ color: T.textMuted }}>
-              Search and select a {side === 'hitter' ? 'hitter' : 'pitcher'} above to see their closest comparables.
+              {reverse
+                ? `Search and select an MLB ${side === 'hitter' ? 'hitter' : 'pitcher'} (and year) above to see the closest Northwest seasons.`
+                : `Search and select a ${side === 'hitter' ? 'hitter' : 'pitcher'} above to see their closest comparables.`}
             </div>
           </SectionCard>
         )}
 
-        {playerId && loading && !data && (
+        {selectionId && loading && !data && (
           <SectionCard><div className="text-center py-10 text-[13px]" style={{ color: T.textMuted }}>Computing comparisons…</div></SectionCard>
         )}
 
-        {playerId && data && !selected && (
+        {selectionId && data && !selected && (
           <SectionCard>
             <div className="text-center py-10 text-[13px]" style={{ color: T.textMuted }}>
-              No comparison available for this player yet. They may not have a complete {config?.thresholdLabel || 'qualified'} stat line.
+              No comparison available yet. {reverse ? 'Try a different MLB season.' : 'They may not have a complete ' + (config?.thresholdLabel || 'qualified') + ' stat line.'}
             </div>
           </SectionCard>
         )}
@@ -380,9 +427,13 @@ export default function PlayerComps() {
                         {(selected.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('')}
                       </div>}
                   <div className="min-w-0">
-                    <Link to={`/player/${selected.id}`} className="text-[16px] font-bold hover:underline truncate block" style={{ color: T.text }}>{selected.name}</Link>
+                    {reverse
+                      ? <span className="text-[16px] font-bold truncate block" style={{ color: T.text }}>{selected.name}</span>
+                      : <Link to={`/player/${selected.id}`} className="text-[16px] font-bold hover:underline truncate block" style={{ color: T.text }}>{selected.name}</Link>}
                     <div className="text-[11.5px]" style={{ color: T.textMuted }}>
-                      {selected.team}{selected.level ? ` · ${selected.level}` : ''}{(side === 'pitcher' && selected.role) ? ` · ${selected.role}` : (selected.position ? ` · ${selected.position}` : '')}
+                      {reverse
+                        ? `${selected.team || ''}${selected.season ? ` · ${selected.season}` : ''} · MLB`
+                        : `${selected.team}${selected.level ? ` · ${selected.level}` : ''}${(side === 'pitcher' && selected.role) ? ` · ${selected.role}` : (selected.position ? ` · ${selected.position}` : '')}`}
                     </div>
                     <div className="text-[11px] mt-0.5" style={{ color: T.textLight }}>
                       {Math.round(selected.sample)} {side === 'hitter' ? 'PA' : 'IP'}
@@ -408,7 +459,7 @@ export default function PlayerComps() {
                 {config && selected.percentiles && (
                   <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${T.border}` }}>
                     <div className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: T.textLight }}>
-                      Profile vs NW {side}s
+                      Profile vs {reverse ? 'MLB' : 'NW'} {side}s
                     </div>
                     {config.metrics.map(m => (
                       <PctRow key={m.key} stat={m.label}
@@ -422,8 +473,8 @@ export default function PlayerComps() {
 
             {/* Results */}
             <div>
-              <SectionCard title="Top 5 Comparables"
-                right={pool === 'nw' ? 'NW DATABASE' : 'MLB SEASONS'}>
+              <SectionCard title={reverse ? 'Closest NW Seasons' : 'Top 5 Comparables'}
+                right={candPool === 'nw' ? 'NW DATABASE' : 'MLB SEASONS'}>
                 {!selected.qualified && (
                   <div className="mb-3 px-3 py-2 rounded text-[11.5px]" style={{ background: T.highlight, color: T.text, border: `1px solid ${T.borderStrong}` }}>
                     Small-sample warning: this player is below the {config?.thresholdLabel} qualifier, so these comps
@@ -432,7 +483,7 @@ export default function PlayerComps() {
                 )}
                 <div className="flex flex-col gap-3">
                   {results.map((r, i) => (
-                    <CompCard key={r.id} rank={i + 1} result={r} side={side} pool={pool} selected={selected} />
+                    <CompCard key={r.id} rank={i + 1} result={r} side={side} pool={candPool} selected={selected} />
                   ))}
                   {results.length === 0 && (
                     <div className="text-center py-8 text-[13px]" style={{ color: T.textMuted }}>

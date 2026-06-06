@@ -798,3 +798,136 @@ def player_comps_widget(
         "nw": [slim(r) for r in nw["results"]],
         "mlb": [slim(r) for r in mlb["results"][:3]],
     }
+
+
+# ── Reverse comps: pick an MLB player-season, find the closest NW seasons ────────
+def compute_reverse_comps(mlb_id, side, season, opts, limit=5):
+    """Reverse of compute_comps: the *selected* player is an MLB player-season and
+    the candidates are NW seasons. Same cross-environment percentile model — the
+    selected is ranked within the MLB pool, each candidate within the NW pool — so
+    the only change is which pool is `sel` vs `cand`."""
+    metrics = METRICS[side]
+    include_small = bool(opts.get("includeSmallSamples"))
+    nw_rows = _load_nw_pool(side, season)
+    mlb_rows = _load_mlb_pool(side)
+
+    sel_pool = _eligible(mlb_rows, side, include_small=True)   # MLB seasons all qualify
+    cand_pool = _eligible(nw_rows, side, include_small)        # NW candidates
+
+    selected = next((r for r in sel_pool if str(r["id"]) == str(mlb_id)), None)
+    if not selected:
+        return {"selectedPlayer": None, "results": [], "eligibleCount": len(cand_pool)}
+
+    mode = opts.get("positionMatchMode", "any")
+    sel_group = _group(selected, side, mode)
+    apply_pos = bool(mode != "any" and sel_group and sel_group != "N/A"
+                     and any(_group(c, side, mode) == sel_group for c in cand_pool))
+    hkey = "bats" if side == "hitter" else "throws"
+    sel_hand = selected.get(hkey)
+    apply_hand = bool(opts.get("matchHandedness") and sel_hand and sel_hand != "N/A"
+                      and any(c.get(hkey) == sel_hand for c in cand_pool))
+    filt = opts.get("filters") or {}  # {level, conference, classYear} on the NW side
+
+    def keep(c):
+        if apply_pos and _group(c, side, mode) != sel_group:
+            return False
+        if apply_hand and c.get(hkey) != sel_hand:
+            return False
+        for fk, fv in filt.items():
+            if fv and c.get(fk) != fv:
+                return False
+        return True
+
+    candidates = [c for c in cand_pool if keep(c)]
+    pools = _metric_pools(sel_pool, cand_pool, metrics)  # sel = MLB, cand = NW
+
+    scored = []
+    for c in candidates:
+        bd = _breakdown(selected, c, metrics, pools)
+        dist = sum(b["weightedDifference"] for b in bd)
+        scored.append((dist, c, bd))
+    scored.sort(key=lambda x: x[0])
+
+    results = []
+    for dist, c, bd in scored[:limit]:
+        score = _clamp(100 - dist, 0, 100)
+        results.append({
+            **_public_row(c, side),
+            "similarityScore": round(score, 1),
+            "whyText": _why_text(bd),
+            "metricBreakdown": [
+                {kk: b[kk] for kk in ("key", "label", "format", "selectedValue",
+                                      "comparedValue", "selectedPercentile", "comparedPercentile")}
+                for b in bd
+            ],
+            "closestMetrics": [b["label"] for b in bd[:3]],
+            # Cross-environment regardless of direction, so flag it like the MLB pool.
+            "reliabilityRange": _reliability(
+                selected, c, side, score,
+                {"candidatePool": "mlb", "positionMatchMode": mode,
+                 "applyHandednessMatch": apply_hand, "includeSmallSamples": include_small},
+            ),
+        })
+
+    sel_public = _public_row(selected, side)
+    sel_public["metrics"] = {m["key"]: selected.get(m["key"]) for m in metrics}
+    sel_public["percentiles"] = {
+        m["key"]: round(_pct_in_sorted(selected.get(m["key"]), pools[m["key"]]["sel"], m["direction"]), 1)
+        for m in metrics
+    }
+    sel_public["qualified"] = True
+    sel_public["archetype"] = _archetype(selected, sel_pool, side)
+    return {"selectedPlayer": sel_public, "results": results, "eligibleCount": len(candidates)}
+
+
+@router.get("/comps/mlb-players")
+@cached_endpoint(ttl_seconds=3600)
+def get_comp_mlb_players(side: str = Query("hitter", pattern="^(hitter|pitcher)$")):
+    """Selectable MLB player-seasons for the reverse-search picker. Returns every
+    bundled MLB season with the full metric set, newest first then by name."""
+    rows = _eligible(_load_mlb_pool(side), side, include_small=True)
+    out = [{
+        "id": r["id"],
+        "name": r["name"],
+        "season": r.get("season"),
+        "team": r.get("team"),
+        "position": r.get("position") if side == "hitter" else (r.get("role") or r.get("position")),
+        "sample": round(r.get("sample") or 0, 1),
+    } for r in rows]
+    out.sort(key=lambda x: (-(x["season"] or 0), x["name"] or ""))
+    return {"side": side, "players": out, "sampleLabel": SAMPLE_LABEL[side]}
+
+
+@router.get("/comps/reverse")
+@cached_endpoint(ttl_seconds=1800)
+def get_reverse_comps(
+    mlb_id: str = Query(..., description="MLB player-season id from /comps/mlb-players"),
+    side: str = Query("hitter", pattern="^(hitter|pitcher)$"),
+    season: int = Query(SEASON_DEFAULT, description="NW season to search within"),
+    position_match: str = Query("any", pattern="^(any|family|exact)$"),
+    match_handedness: bool = Query(False),
+    include_small: bool = Query(False),
+    level: Optional[str] = Query(None),
+    conference: Optional[str] = Query(None),
+    class_year: Optional[str] = Query(None),
+):
+    filters = {}
+    if level:
+        filters["level"] = level
+    if conference:
+        filters["conference"] = conference
+    if class_year:
+        filters["classYear"] = class_year
+    opts = {
+        "positionMatchMode": position_match,
+        "matchHandedness": match_handedness,
+        "includeSmallSamples": include_small,
+        "filters": filters,
+    }
+    out = compute_reverse_comps(mlb_id, side, season, opts)
+    out["side"] = side
+    out["pool"] = "nw"
+    out["direction"] = "reverse"
+    out["season"] = season
+    out["config"] = _config(side)
+    return out
