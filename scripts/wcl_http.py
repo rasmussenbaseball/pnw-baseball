@@ -55,7 +55,7 @@ def mount_retries(session, total=4, backoff_factor=1.5):
     return session
 
 
-def fetch(session, url, timeout=45, min_bytes=500, **kwargs):
+def fetch(session, url, timeout=45, min_bytes=5000, must_contain=None, **kwargs):
     """GET a wclstats.com URL, returning a requests.Response.
 
     wclstats.com's edge (Presto / its CDN) returns HTTP 405 "Not Allowed" to
@@ -63,9 +63,18 @@ def fetch(session, url, timeout=45, min_bytes=500, **kwargs):
     server are blocked, which is why the daily WCL cron silently failed at its
     very first step. The fix mirrors the NWAC scrapers: when SCRAPER_API_KEY is
     set we proxy through ScraperAPI's residential pool (escalating proxy tiers
-    if a request comes back blocked or short); when it isn't set we fetch
-    directly, which still works from a residential IP (a dev's Mac) for local
-    runs and dry-runs.
+    if a request comes back blocked, short, or missing the expected content);
+    when it isn't set we fetch directly, which still works from a residential
+    IP (a dev's Mac) for local runs and dry-runs.
+
+    ScraperAPI's cheaper proxy tiers intermittently return a small shell /
+    challenge page with a 200 status — bigger than a bare error body but with
+    none of the real content. A pure byte threshold isn't enough to catch that
+    (it once let a contentless page through and the schedule parsed 0 games),
+    so `min_bytes` defaults to 5 KB (a real wclstats page is far larger) and
+    callers that know a sentinel substring of the real page (e.g. the schedule's
+    "event-row" cards) can pass `must_contain` to force escalation until the
+    actual content arrives.
 
     The returned object is a normal requests.Response, so existing call sites
     keep working unchanged (.text / .content / .status_code /
@@ -95,10 +104,16 @@ def fetch(session, url, timeout=45, min_bytes=500, **kwargs):
             r = session.get(SCRAPER_API_BASE, params=params,
                             timeout=sa_timeout, **kwargs)
             last = r
-            if r.status_code == 200 and len(r.content) >= min_bytes:
+            ok = r.status_code == 200 and len(r.content) >= min_bytes
+            if ok and must_contain and must_contain not in r.text:
+                ok = False
+                _log.warning("ScraperAPI %s: 200 but missing %r for %s — escalating",
+                             tier_name, must_contain, url)
+            elif not ok:
+                _log.warning("ScraperAPI %s: status=%s size=%sB for %s — escalating",
+                             tier_name, r.status_code, len(r.content), url)
+            if ok:
                 return r
-            _log.warning("ScraperAPI %s: status=%s size=%sB for %s — escalating",
-                         tier_name, r.status_code, len(r.content), url)
         except Exception as e:  # noqa: BLE001 — escalate on any transport error
             _log.warning("ScraperAPI %s error for %s: %s", tier_name, url, e)
         time.sleep(2)

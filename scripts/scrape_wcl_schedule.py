@@ -101,7 +101,10 @@ def _classify_game_type(class_list):
 def fetch_schedule(session, season):
     url = f"{BASE_URL}/sports/bsb/{season}/schedule"
     logger.info(f"GET {url}")
-    r = wcl_fetch(session, url, timeout=30)
+    # ScraperAPI's cheap tiers sometimes 200 with a contentless shell; require
+    # the schedule's game cards so fetch() escalates proxy tiers until the real
+    # page arrives (otherwise we'd parse 0 games and silently no-op).
+    r = wcl_fetch(session, url, timeout=30, must_contain="event-row")
     r.raise_for_status()
     return r.text
 
