@@ -52,6 +52,7 @@ jobs:
 
       - name: Refresh WCL schedule (picks up new games / status flips)
         env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           SEASON="${{ github.event.inputs.season || '2026' }}"
@@ -60,6 +61,7 @@ jobs:
 
       - name: Scrape unfinished box scores
         env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           SEASON="${{ github.event.inputs.season || '2026' }}"
@@ -85,6 +87,7 @@ jobs:
 
       - name: Resolve box-score player names + roll up + advanced stats
         env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           SEASON="${{ github.event.inputs.season || '2026' }}"
@@ -97,6 +100,7 @@ jobs:
 
       - name: Scrape WCL play-by-play (hitter approach splits)
         env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           SEASON="${{ github.event.inputs.season || '2026' }}"
@@ -112,6 +116,7 @@ jobs:
 
       - name: Scrape WCL season fielding
         env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           SEASON="${{ github.event.inputs.season || '2026' }}"
@@ -120,6 +125,7 @@ jobs:
 
       - name: Link summer ↔ spring players
         env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           SEASON="${{ github.event.inputs.season || '2026' }}"
