@@ -41,7 +41,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.models.database import get_connection
-from wcl_http import mount_retries
+from wcl_http import mount_retries, fetch as wcl_fetch
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -101,7 +101,7 @@ def _classify_game_type(class_list):
 def fetch_schedule(session, season):
     url = f"{BASE_URL}/sports/bsb/{season}/schedule"
     logger.info(f"GET {url}")
-    r = session.get(url, timeout=30)
+    r = wcl_fetch(session, url, timeout=30)
     r.raise_for_status()
     return r.text
 

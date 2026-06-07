@@ -40,7 +40,7 @@ import requests
 
 from app.models.database import get_connection
 from parse_nwac_boxscore import parse_presto_xml_boxscore
-from wcl_http import mount_retries
+from wcl_http import mount_retries, fetch as wcl_fetch
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -302,7 +302,7 @@ def scrape_game(session, cur, game):
     """Fetch + parse + write one summer_games row's box score."""
     url = game["source_url"]
     logger.info(f"  → {url}")
-    r = session.get(url, timeout=30)
+    r = wcl_fetch(session, url, timeout=30)
     r.raise_for_status()
 
     parsed = parse_presto_xml_boxscore(r.text, url)

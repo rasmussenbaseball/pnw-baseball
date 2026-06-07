@@ -30,7 +30,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.models.database import get_connection
-from wcl_http import mount_retries
+from wcl_http import mount_retries, fetch as wcl_fetch
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -81,7 +81,7 @@ def fetch(session, season):
     url = (f"https://wclstats.com/sports/bsb/{season}/players"
            f"?sort=fpct&view=&pos=f&r=0")
     logger.info(f"GET {url}")
-    r = session.get(url, timeout=45)
+    r = wcl_fetch(session, url, timeout=45)
     r.raise_for_status()
     return r.text
 

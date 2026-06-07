@@ -40,7 +40,7 @@ import requests
 from app.models.database import get_connection
 from parse_wcl_pbp import parse_wcl_pbp
 from resolve_summer_game_players import build_lookup, resolve_one, sanitize_player_name
-from wcl_http import mount_retries
+from wcl_http import mount_retries, fetch as wcl_fetch
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -119,7 +119,7 @@ def seed_starters(cur, game_id, away_name, home_name):
 def ingest_game(cur, session, game, exact, by_last, dry_run=False):
     """Parse + resolve + write one game's events. Returns (n_events, n_batter_resolved, n_pitcher_resolved)."""
     gid = game["id"]
-    html = session.get(game["source_url"], timeout=30).text
+    html = wcl_fetch(session, game["source_url"], timeout=30).text
 
     starters = seed_starters(cur, gid, game["away_team_name"], game["home_team_name"])
     events, meta = parse_wcl_pbp(
