@@ -394,7 +394,11 @@ export default function App() {
           <Route path="/recruiting/hometown" element={<RequireTier minTier="premium"><HometownSearch /></RequireTier>} />
 
           {/* Recruiting (admin only) */}
-          <Route path="/recruiting/guide" element={<RequireAdmin><RecruitingGuide /></RequireAdmin>} />
+          {/* Read-only for premium recruits (the matchmaker links here); the
+              in-page editor stays admin-only (gated inside RecruitingGuide + admin PUT). */}
+          {/* Read-only for premium recruits (the matchmaker links here); the
+              in-page editor stays admin-only (gated inside RecruitingGuide + admin PUT). */}
+          <Route path="/recruiting/guide" element={<RequireTier minTier="premium"><RecruitingGuide /></RequireTier>} />
           <Route path="/recruiting/rankings" element={<RequireAdmin><RecruitingRankings /></RequireAdmin>} />
           <Route path="/recruiting/map" element={<RequireAdmin><RecruitingMap /></RequireAdmin>} />
           <Route path="/recruiting/breakdowns" element={<RequireAdmin><AdminRecruitingPlaceholder /></RequireAdmin>} />

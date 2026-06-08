@@ -1,4 +1,5 @@
-// Recruiting Guide — the in-depth, per-program research page (admin-only).
+// Recruiting Guide — the in-depth, per-program research page. Readable by
+// premium subscribers (the Recruit Finder links here); editing is admin-only.
 //
 // One modern page per PNW program: hero + at-a-glance tiles, the hand-researched
 // program profile (coaching, academics, cost, facilities, location, recruiting
@@ -16,6 +17,7 @@ import {
 } from 'recharts'
 import { useApi, useTeams } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
+import { isAdminEmail } from '../lib/tiers'
 import {
   ProfileShell, SectionCard, usePlayerProfileTheme, divisionBadge,
 } from '../components/playerProfile/shared'
@@ -481,6 +483,11 @@ export default function RecruitingGuide() {
   const [editing, setEditing] = useState(false)
   const [localProfile, setLocalProfile] = useState(null) // optimistic after save
 
+  // The page is readable by premium recruits, but only admins can edit (the
+  // editor UI is hidden here; the PUT is admin-gated server-side as a backstop).
+  const { user } = useAuth()
+  const isAdmin = isAdminEmail(user?.email)
+
   const { data: teams = [] } = useTeams()
   const { data: guide, loading } = useApi(teamId ? `/recruiting/guide/${teamId}` : null, {}, [teamId])
 
@@ -514,7 +521,7 @@ export default function RecruitingGuide() {
               <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Program</span>
               <div className="mt-1"><TeamSelect teams={teams} value={teamId} onChange={setTeamId} T={T} /></div>
             </div>
-            {teamId && program && !editing && (
+            {isAdmin && teamId && program && !editing && (
               <button onClick={() => setEditing(true)}
                 className="px-3.5 py-2.5 rounded-md text-[12px] font-bold shrink-0" style={{ background: T.track, color: T.text }}>
                 Edit info
@@ -537,7 +544,7 @@ export default function RecruitingGuide() {
           <>
             <Hero teamInfo={teamInfo} program={program ? { ...program, profile } : null} T={T} />
 
-            {editing && (
+            {isAdmin && editing && (
               <ProgramEditor teamId={teamId} profile={profile}
                 onSaved={(p) => { setLocalProfile(p); setEditing(false) }}
                 onCancel={() => setEditing(false)} T={T} />
@@ -554,7 +561,9 @@ export default function RecruitingGuide() {
                 {!program && (
                   <SectionCard>
                     <div className="text-[12.5px] py-3 text-center" style={{ color: T.textMuted }}>
-                      No program profile yet for this team. Use “Edit info” to add it.
+                      {isAdmin
+                        ? 'No program profile yet for this team. Use “Edit info” to add it.'
+                        : 'Full program profile coming soon for this team.'}
                     </div>
                   </SectionCard>
                 )}

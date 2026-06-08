@@ -70,6 +70,19 @@ export function isDeveloper(email) {
   return DEVELOPER_EMAILS.includes(email.toLowerCase())
 }
 
+// Site admins — full access to admin-only tools (recruiting guide editor, etc.).
+// Mirrors the allowlist in App.jsx's RequireAdmin. Developers are admins too.
+export const ADMIN_EMAILS = [
+  'nate.rasmussen26@gmail.com',
+  'pnwcbr@gmail.com',
+]
+
+export function isAdminEmail(email) {
+  if (!email) return false
+  const e = email.toLowerCase()
+  return ADMIN_EMAILS.includes(e) || isDeveloper(e)
+}
+
 
 /**
  * Compare tiers: returns true if `actual` is at-or-above `required`.

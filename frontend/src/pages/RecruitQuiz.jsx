@@ -193,10 +193,101 @@ function Pill({ children, tone = 'tl' }) {
   return <span className={`text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap ${tones[tone]}`}>{children}</span>
 }
 
+const AID_LABEL = {
+  scholarship: 'Athletic scholarships',
+  needbased: 'Need-based aid',
+  nice: 'Some athletic aid',
+  none: 'No athletic aid',
+}
+const cap = (v) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : v)
+
+// Expanded "everything we know" panel for a matched program. Pulls the curated
+// program data (built from the recruiting-guide spreadsheet) into labeled
+// sections; empty fields are skipped so sparse programs degrade gracefully.
+function ProgramDetail({ s }) {
+  const sections = [
+    ['Baseball Program', [
+      ['Head Coach', s.coach],
+      ['Alma Mater', s.coachAlma],
+      ['Tenure', s.coachYears],
+      ['Coaching Staff', s.staffSizeRaw && s.staffSizeRaw !== '0' ? `${s.staffSizeRaw} coaches` : null],
+      ['Recent Record', s.record],
+      ['Win Profile', WIN_LABEL[s.winProfile]],
+      ['Home Field', s.stadium ? (s.capacity ? `${s.stadium} · seats ${s.capacity}` : s.stadium) : null],
+      ['Surface', s.fieldRaw],
+      ['Indoor Facility', s.indoor === 'yes' ? 'Yes' : s.indoor === 'no' ? 'No' : null],
+      ['Scholarships', s.scholarshipInfo],
+    ]],
+    ['Academics', [
+      ['School Type', s.schoolTypeRaw],
+      ['Undergrad Enrollment', s.enrollRaw && s.enrollRaw !== '0' ? `${Number(s.enrollRaw).toLocaleString()} students` : null],
+      ['Student-to-Faculty', s.sfrRaw],
+      ['Acceptance Rate', s.acceptRaw],
+      ['Graduation Rate', s.gradRate],
+      ['Top Majors', s.majors],
+    ]],
+    ['Cost & Location', [
+      ['Out-of-State Tuition', s.tuitionRaw],
+      ['Financial Aid', AID_LABEL[s.aid]],
+      ['Location', s.location],
+      ['Campus Setting', cap(s.campus)],
+      ['Nearest Airport', s.airportRaw],
+      ['Distance from City', s.distCityRaw],
+    ]],
+  ]
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+      <div className="grid sm:grid-cols-3 gap-x-5 gap-y-4">
+        {sections.map(([title, rows]) => {
+          const filled = rows.filter(([, v]) => v != null && v !== '' && v !== 'unknown')
+          if (!filled.length) return null
+          return (
+            <div key={title}>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1.5">{title}</div>
+              <dl className="space-y-1.5">
+                {filled.map(([label, value]) => (
+                  <div key={label} className="text-[12px] leading-snug">
+                    <dt className="text-gray-400 dark:text-gray-500">{label}</dt>
+                    <dd className="font-semibold text-gray-700 dark:text-gray-200">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* CTAs: deep recruiting guide, team page, recruiting questionnaire */}
+      <div className="flex flex-wrap items-center gap-2.5 mt-4">
+        {s.teamId && (
+          <Link to={`/recruiting/guide?team=${s.teamId}`}
+            className="inline-flex items-center gap-1 text-xs font-bold rounded-lg bg-nw-teal text-white px-3 py-1.5 hover:bg-nw-teal-dark transition-colors">
+            Full recruiting guide →
+          </Link>
+        )}
+        {s.teamId && (
+          <Link to={`/team/${s.teamId}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 py-1.5 hover:border-nw-teal hover:text-nw-teal transition-colors">
+            Team page & stats →
+          </Link>
+        )}
+        {s.recruitURL && (
+          <a href={s.recruitURL} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 py-1.5 hover:border-nw-teal hover:text-nw-teal transition-colors">
+            Recruiting questionnaire →
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function RecruitQuiz() {
   const [step, setStep] = useState(0)
   const [ans, setAns] = useState({})
   const [done, setDone] = useState(false)
+  const [expanded, setExpanded] = useState({}) // program name -> open?
+  const toggleDetail = (name) => setExpanded(p => ({ ...p, [name]: !p[name] }))
 
   const q = RECRUIT_QUESTIONS[step]
   const total = RECRUIT_QUESTIONS.length
@@ -226,7 +317,7 @@ export default function RecruitQuiz() {
 
   const next = () => { if (step < total - 1) setStep(step + 1); else setDone(true) }
   const back = () => { if (done) setDone(false); else if (step > 0) setStep(step - 1) }
-  const restart = () => { setStep(0); setAns({}); setDone(false); window.scrollTo(0, 0) }
+  const restart = () => { setStep(0); setAns({}); setDone(false); setExpanded({}); window.scrollTo(0, 0) }
 
   return (
     <div className="max-w-3xl mx-auto px-3 sm:px-4 py-6">
@@ -315,7 +406,9 @@ export default function RecruitQuiz() {
           </div>
 
           <div className="space-y-2.5">
-            {results.map((s, i) => (
+            {results.map((s, i) => {
+              const open = expanded[s.name] ?? (i === 0)
+              return (
               <div key={s.name}
                 className={`rounded-xl bg-white dark:bg-gray-800 ring-1 p-4 transition-shadow hover:shadow-md
                   ${i === 0 ? 'ring-2 ring-nw-teal' : 'ring-gray-200 dark:ring-gray-700'}`}>
@@ -355,24 +448,23 @@ export default function RecruitQuiz() {
                       {s.stadium && <span className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5">{s.stadium}</span>}
                     </div>
 
-                    <div className="flex items-center gap-4 mt-2.5">
-                      {s.teamId && (
-                        <Link to={`/team/${s.teamId}`} className="text-xs font-semibold text-nw-teal hover:underline">View team page →</Link>
-                      )}
-                      {s.recruitURL && (
-                        <a href={s.recruitURL} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-nw-teal hover:underline">
-                          Recruiting questionnaire →
-                        </a>
-                      )}
-                    </div>
+                    <button onClick={() => toggleDetail(s.name)}
+                      aria-expanded={open}
+                      className="flex items-center gap-1.5 mt-2.5 text-xs font-bold text-nw-teal hover:underline">
+                      {open ? 'Hide full breakdown' : 'View full breakdown'}
+                      <span className={`transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+                    </button>
                   </div>
                   <div className="flex flex-col items-center shrink-0">
                     <div className="text-xl font-black text-nw-teal leading-none">{s.pct}%</div>
                     <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mt-1">match</div>
                   </div>
                 </div>
+
+                {open && <ProgramDetail s={s} />}
               </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="mt-5 rounded-xl bg-gradient-to-br from-pnw-slate to-[#1f3a4d] dark:from-gray-900 dark:to-gray-800 p-5 flex items-center justify-between gap-4 flex-wrap">
