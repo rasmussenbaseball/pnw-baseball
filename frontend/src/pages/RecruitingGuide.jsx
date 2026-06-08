@@ -1,5 +1,5 @@
 // Recruiting Guide — the in-depth, per-program research page. Readable by
-// premium subscribers (the Recruit Finder links here); editing is admin-only.
+// premium subscribers (the Recruit Matchmaker links here); editing is admin-only.
 //
 // One modern page per PNW program: hero + at-a-glance tiles, the hand-researched
 // program profile (coaching, academics, cost, facilities, location, recruiting

@@ -1,7 +1,8 @@
-// Recruit Finder — a matchmaker quiz that ranks all 57 NW college programs
-// (D1/D2/D3/NAIA/NWAC) by fit. Ported from the intern's prototype: same
-// weighted scoring and curated program data, restyled to the site and wired
-// so each match links to its NWBB team page + recruiting questionnaire.
+// Recruit Matchmaker — a quiz that ranks all 57 NW college programs
+// (D1/D2/D3/NAIA/NWAC) by fit. Restyled from the intern's prototype and wired so
+// each match links to its NWBB team page + recruiting questionnaire. Records and
+// win rates come from our real game data; any question can be flagged a
+// "dealbreaker" to hard-filter the results.
 
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
@@ -15,39 +16,46 @@ const LEVEL_CHIP = {
   NAIA: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   NWAC: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
 }
-const WIN_LABEL = { strong: '65%+ win rate', winning: '50-65% win rate', developing: '35-50% win rate', rebuilding: 'under 35% win rate' }
-
-// The curated spreadsheet's 2026 records were stale/partial. Override the 2026
-// segment of each program's record with our real DB result and recompute the
-// win profile from the real 2026 win rate (so scoring + chips stay consistent).
-// 2025/2024 are left as-is — our game coverage for those years is incomplete
-// for the Nuxt D1 schools, so the spreadsheet figures are more reliable there.
-function withRealRecord(s) {
-  const real = REAL_RECORDS_2026[s.teamId]
-  if (!real) return s
-  const [w, l] = real.split('-').map(Number)
-  const tot = w + l
-  const wr = tot > 0 ? w / tot : null
-  const winProfile = wr == null ? s.winProfile
-    : wr >= 0.65 ? 'strong' : wr >= 0.50 ? 'winning' : wr >= 0.35 ? 'developing' : 'rebuilding'
-  const token = `2026: ${w}-${l}`
-  const record = /2026:\s*\d+-\d+/.test(s.record || '')
-    ? s.record.replace(/2026:\s*\d+-\d+/, token)
-    : (s.record ? `${token}; ${s.record}` : token)
-  return { ...s, record, winProfile }
+// Parse a "YEAR: W-L" segment out of a record string into a win rate (0-1).
+function parseWinRate(rec, year) {
+  const m = (rec || '').match(new RegExp(`${year}:\\s*(\\d+)-(\\d+)`))
+  if (!m) return null
+  const w = +m[1], l = +m[2]
+  return (w + l) > 0 ? w / (w + l) : null
 }
 
-// ── Weighted fit scoring (faithful port of the prototype) ──
-// Returns 0-100: earned / possible points. Categories a school has no data
-// for are skipped (don't penalize). Multi-select takes the best match across
-// the user's picks. Fixes the prototype's ID_MT bug so "Idaho or Montana"
-// actually matches ID/MT schools.
+// Records: override the stale spreadsheet 2026 W-L with our real DB result, then
+// compute a "right now" win rate as the average of the 2025 and 2026 win
+// percentages. (2024/2025 are kept from the sheet for display — our older-season
+// game coverage is partial for the Nuxt D1 schools, so the sheet is more reliable.)
+function withRealRecord(s) {
+  let record = s.record
+  const real = REAL_RECORDS_2026[s.teamId]
+  if (real) {
+    const [w, l] = real.split('-').map(Number)
+    const token = `2026: ${w}-${l}`
+    record = /2026:\s*\d+-\d+/.test(s.record || '')
+      ? s.record.replace(/2026:\s*\d+-\d+/, token)
+      : (s.record ? `${token}; ${s.record}` : token)
+  }
+  const rates = [parseWinRate(record, 2025), parseWinRate(record, 2026)].filter(v => v != null)
+  const winRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null
+  const winRatePct = winRate == null ? null : Math.round(winRate * 100)
+  return { ...s, record, winRate, winRatePct }
+}
+
+// ── Weighted fit scoring ──
+// Returns { pct, cats } where cats[questionKey] = { earned, possible }. The
+// per-category breakdown powers both the overall % (sum earned / sum possible,
+// skipping categories a school has no data for) and the dealbreaker filter (a
+// school "satisfies" a dealbreaker question when it earns >= half that
+// category's points). Multi-select takes the best match across the user's picks.
 function scoreSchool(s, a) {
-  let earned = 0, possible = 0
-  const match = (weight, fn) => { possible += weight; earned += fn() }
+  const cats = {}
+  const match = (key, weight, fn) => { cats[key] = { earned: fn(), possible: weight } }
   const arr = v => (Array.isArray(v) ? v : v == null ? [] : [v])
 
-  match(35, () => {
+  match('level', 35, () => {
     const picked = arr(a.level)
     if (picked.includes('ANY')) return 20
     if (picked.includes(s.level)) return 35
@@ -59,7 +67,7 @@ function scoreSchool(s, a) {
     return 0
   })
 
-  match(20, () => {
+  match('state', 20, () => {
     const picked = arr(a.state)
     if (picked.includes('ANY')) return 12
     if (picked.includes(s.state)) return 20
@@ -69,7 +77,7 @@ function scoreSchool(s, a) {
     return 0
   })
 
-  match(12, () => {
+  match('aid', 12, () => {
     const picked = arr(a.aid)
     if (!picked.length) return 0
     const score = v => {
@@ -83,7 +91,7 @@ function scoreSchool(s, a) {
   })
 
   if (s.tuition !== 'unknown') {
-    match(8, () => {
+    match('tuition', 8, () => {
       const picked = arr(a.tuition)
       if (picked.includes('ANY')) return 5
       const tc = ['verylow', 'low', 'moderate', 'high', 'veryhigh']
@@ -91,7 +99,7 @@ function scoreSchool(s, a) {
     })
   }
   if (s.enrollment !== 'unknown') {
-    match(8, () => {
+    match('campus', 8, () => {
       const picked = arr(a.campus)
       if (picked.includes('ANY')) return 5
       const sz = ['small', 'medium', 'large', 'xlarge']
@@ -99,7 +107,7 @@ function scoreSchool(s, a) {
     })
   }
   if (s.campus !== 'unknown') {
-    match(7, () => {
+    match('setting', 7, () => {
       const picked = arr(a.setting)
       if (picked.includes('ANY')) return 4
       if (picked.includes(s.campus)) return 7
@@ -108,7 +116,7 @@ function scoreSchool(s, a) {
     })
   }
   if (s.schoolType !== 'unknown') {
-    match(8, () => {
+    match('schoolType', 8, () => {
       const picked = arr(a.schoolType)
       if (picked.includes('ANY')) return 5
       if (picked.includes(s.schoolType)) return 8
@@ -118,7 +126,7 @@ function scoreSchool(s, a) {
     })
   }
   if (s.accept !== 'unknown') {
-    match(5, () => {
+    match('accept', 5, () => {
       const picked = arr(a.accept)
       if (picked.includes('ANY')) return 3
       const ac = ['open', 'easy', 'moderate', 'selective', 'veryselective']
@@ -126,7 +134,7 @@ function scoreSchool(s, a) {
     })
   }
   if (s.sfr !== 'unknown') {
-    match(7, () => {
+    match('sfrPref', 7, () => {
       const picked = arr(a.sfrPref)
       if (picked.includes('ANY')) return 4
       const sr = ['small', 'medium', 'large']
@@ -134,7 +142,7 @@ function scoreSchool(s, a) {
     })
   }
   if (s.gradProfile !== 'unknown') {
-    match(6, () => {
+    match('gradPref', 6, () => {
       if (a.gradPref === 'ANY') return 3
       if (a.gradPref === 'high' && s.gradProfile === 'high') return 6
       if (a.gradPref === 'high' && s.gradProfile === 'mid') return 2
@@ -143,7 +151,7 @@ function scoreSchool(s, a) {
     })
   }
   if (s.coachTenure !== 'unknown') {
-    match(7, () => {
+    match('coachTenure', 7, () => {
       const picked = arr(a.coachTenure)
       if (picked.includes('ANY')) return 4
       if (picked.includes(s.coachTenure)) return 7
@@ -152,31 +160,29 @@ function scoreSchool(s, a) {
     })
   }
   if (s.staffSize !== 'unknown') {
-    match(6, () => {
+    match('staffSize', 6, () => {
       const picked = arr(a.staffSize)
       if (picked.includes('ANY')) return 3
       const ss = ['small', 'mid', 'large']
       return Math.max(...picked.map(v => { const d = Math.abs(ss.indexOf(v) - ss.indexOf(s.staffSize)); return d === 0 ? 6 : d === 1 ? 3 : 0 }), 0)
     })
   }
-  if (s.winProfile !== 'unknown') {
-    match(7, () => {
-      const picked = arr(a.winProfile)
-      if (picked.includes('ANY')) return 4
-      if (picked.includes(s.winProfile)) return 7
-      const wp = ['rebuilding', 'developing', 'winning', 'strong']
-      return Math.max(...picked.map(v => { const d = Math.abs(wp.indexOf(v) - wp.indexOf(s.winProfile)); return d === 1 ? 3 : d === 2 ? 1 : 0 }), 0)
+  if (s.winRate != null) {
+    match('winProfile', 7, () => {
+      if (a.winProfile === 'contender') return s.winRate >= 0.50 ? 7 : s.winRate >= 0.40 ? 3 : 0
+      if (a.winProfile === 'notbad') return s.winRate >= 0.35 ? 7 : s.winRate >= 0.30 ? 3 : 0
+      return 4 // "doesn't matter" or unanswered
     })
   }
   if (s.airportDist !== 'unknown') {
-    match(7, () => {
+    match('airportPref', 7, () => {
       const picked = arr(a.airportPref)
       if (picked.includes('ANY')) return 4
       const ad = ['close', 'moderate', 'far']
       return Math.max(...picked.map(v => { if (v === s.airportDist) return 7; const d = Math.abs(ad.indexOf(v) - ad.indexOf(s.airportDist)); return d === 1 ? 3 : 0 }), 0)
     })
   }
-  match(7, () => {
+  match('stats', 7, () => {
     const stMap = { D1: ['elite', 'above'], D2: ['above', 'avg'], D3: ['above', 'avg'], NAIA: ['above', 'avg'], NWAC: ['avg', 'project'] }
     const good = stMap[s.level] || []
     const picked = arr(a.stats)
@@ -187,7 +193,21 @@ function scoreSchool(s, a) {
     return 1
   })
 
-  return possible > 0 ? Math.round((earned / possible) * 100) : 0
+  let earned = 0, possible = 0
+  for (const k in cats) { earned += cats[k].earned; possible += cats[k].possible }
+  return { pct: possible > 0 ? Math.round((earned / possible) * 100) : 0, cats }
+}
+
+// Questions that can be toggled into a hard "dealbreaker" filter. (The closing
+// self-assessment 'stats' question is about the player, not the school.)
+const DEALBREAKER_KEYS = new Set([
+  'level', 'state', 'aid', 'tuition', 'campus', 'setting', 'schoolType',
+  'accept', 'sfrPref', 'gradPref', 'coachTenure', 'staffSize', 'winProfile', 'airportPref',
+])
+// A real (non-empty, non-"ANY") answer is required for a dealbreaker to bite.
+function hasRealPick(v) {
+  if (Array.isArray(v)) return v.length > 0 && !v.includes('ANY')
+  return v != null && v !== 'ANY'
 }
 
 function Pill({ children, tone = 'tl' }) {
@@ -220,7 +240,7 @@ function ProgramDetail({ s }) {
       ['Tenure', s.coachYears],
       ['Coaching Staff', s.staffSizeRaw && s.staffSizeRaw !== '0' ? `${s.staffSizeRaw} coaches` : null],
       ['Recent Record', s.record],
-      ['Win Profile', WIN_LABEL[s.winProfile]],
+      ['Win Rate (2025-26 avg)', s.winRatePct != null ? `${s.winRatePct}%` : null],
       ['Home Field', s.stadium ? (s.capacity ? `${s.stadium} · seats ${s.capacity}` : s.stadium) : null],
       ['Scholarships', s.scholarshipInfo],
     ]],
@@ -293,29 +313,46 @@ export default function RecruitQuiz() {
   const [ans, setAns] = useState({})
   const [done, setDone] = useState(false)
   const [expanded, setExpanded] = useState({}) // program name -> open?
+  const [dealbreakers, setDealbreakers] = useState({}) // question key -> bool
   const toggleDetail = (name) => setExpanded(p => ({ ...p, [name]: !p[name] }))
+  const toggleDealbreaker = (key) => setDealbreakers(p => ({ ...p, [key]: !p[key] }))
 
   const q = RECRUIT_QUESTIONS[step]
   const total = RECRUIT_QUESTIONS.length
 
-  const results = useMemo(() => {
-    if (!done) return []
+  // Active dealbreakers = toggled on AND with a real (non-ANY) answer.
+  const activeDealbreakers = useMemo(
+    () => RECRUIT_QUESTIONS.filter(qq => dealbreakers[qq.key] && hasRealPick(ans[qq.key])),
+    [dealbreakers, ans],
+  )
+
+  const { results, dbFellBack } = useMemo(() => {
+    if (!done) return { results: [], dbFellBack: false }
     const scored = RECRUIT_SCHOOLS
       .map(withRealRecord)
-      .map(s => ({ ...s, pct: scoreSchool(s, ans) }))
+      .map(s => { const r = scoreSchool(s, ans); return { ...s, pct: r.pct, cats: r.cats } })
       .sort((a, b) => b.pct - a.pct)
-    // Diversify: a fit quiz shouldn't return an all-D3 list. Guarantee the best
-    // match at every level (D1/D2/D3/NAIA/NWAC) appears, then fill the rest with
-    // the next-highest scorers. Final list is re-sorted by fit for display.
+
+    // Dealbreakers: drop any school that doesn't at least half-satisfy a flagged
+    // question (cats[key].earned >= half its points). Missing data passes.
+    const dbKeys = activeDealbreakers.map(qq => qq.key)
+    const passes = s => dbKeys.every(k => {
+      const c = s.cats[k]
+      return !c || c.possible === 0 || c.earned >= 0.5 * c.possible
+    })
+    let pool = dbKeys.length ? scored.filter(passes) : scored
+    let fellBack = false
+    if (dbKeys.length && pool.length === 0) { pool = scored; fellBack = true } // never show nothing
+
+    // Diversify: guarantee the best match at each surviving level, then fill with
+    // the next-highest scorers. Re-sorted by fit for display.
     const N = 8
     const bestPerLevel = []
     const seen = new Set()
-    for (const s of scored) {
-      if (!seen.has(s.level)) { seen.add(s.level); bestPerLevel.push(s) }
-    }
-    const fillers = scored.filter(s => !bestPerLevel.includes(s)).slice(0, Math.max(0, N - bestPerLevel.length))
-    return [...bestPerLevel, ...fillers].sort((a, b) => b.pct - a.pct)
-  }, [done, ans])
+    for (const s of pool) { if (!seen.has(s.level)) { seen.add(s.level); bestPerLevel.push(s) } }
+    const fillers = pool.filter(s => !bestPerLevel.includes(s)).slice(0, Math.max(0, N - bestPerLevel.length))
+    return { results: [...bestPerLevel, ...fillers].sort((a, b) => b.pct - a.pct), dbFellBack: fellBack }
+  }, [done, ans, activeDealbreakers])
 
   const pick = (question, val) => {
     setAns(prev => {
@@ -334,14 +371,14 @@ export default function RecruitQuiz() {
 
   const next = () => { if (step < total - 1) setStep(step + 1); else setDone(true) }
   const back = () => { if (done) setDone(false); else if (step > 0) setStep(step - 1) }
-  const restart = () => { setStep(0); setAns({}); setDone(false); setExpanded({}); window.scrollTo(0, 0) }
+  const restart = () => { setStep(0); setAns({}); setDone(false); setExpanded({}); setDealbreakers({}); window.scrollTo(0, 0) }
 
   return (
     <div className="max-w-3xl mx-auto px-3 sm:px-4 py-6">
       {/* Hero */}
       <div className="text-center mb-6">
         <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-teal-50 dark:bg-teal-900/30 px-3 py-1 rounded-full mb-3">
-          Recruit Finder
+          Recruit Matchmaker
         </div>
         <h1 className="text-3xl sm:text-4xl font-black text-pnw-slate dark:text-gray-100 leading-tight">
           Find your best-fit <span className="text-nw-teal">NW program</span>
@@ -401,6 +438,27 @@ export default function RecruitQuiz() {
             })}
           </div>
 
+          {DEALBREAKER_KEYS.has(q.key) && (
+            <button
+              type="button"
+              onClick={() => toggleDealbreaker(q.key)}
+              disabled={!hasRealPick(ans[q.key])}
+              className={`flex items-center gap-2.5 mt-3 w-full text-left rounded-lg border px-3 py-2.5 text-[13px] transition-colors
+                ${dealbreakers[q.key]
+                  ? 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-900/30 dark:text-rose-200'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-rose-300 disabled:opacity-50 disabled:hover:border-gray-200'}`}
+            >
+              <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold shrink-0 border
+                ${dealbreakers[q.key] ? 'bg-rose-500 text-white border-rose-500' : 'border-gray-300 dark:border-gray-600'}`}>
+                {dealbreakers[q.key] ? '✓' : ''}
+              </span>
+              <span className="leading-snug">
+                <span className="font-semibold">Dealbreaker</span> · only show schools that match my answer here
+                {!hasRealPick(ans[q.key]) && <span className="opacity-70"> (pick a specific answer first)</span>}
+              </span>
+            </button>
+          )}
+
           <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100 dark:border-gray-700">
             <button onClick={back} disabled={step === 0}
               className="px-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 disabled:opacity-40 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
@@ -420,6 +478,19 @@ export default function RecruitQuiz() {
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               Ranked by fit across all five levels (D1, D2, D3, NAIA, NWAC), including your best option at each. Tap a school to see its full NWBB profile.
             </p>
+            {activeDealbreakers.length > 0 && !dbFellBack && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                <span className="font-semibold">Dealbreakers applied:</span>
+                {activeDealbreakers.map(qq => (
+                  <span key={qq.key} className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800">{qq.cat}</span>
+                ))}
+              </div>
+            )}
+            {dbFellBack && (
+              <div className="mt-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+                No school met every dealbreaker, so we loosened them and ranked your closest fits instead. Try removing one to tighten the list.
+              </div>
+            )}
           </div>
 
           <div className="space-y-2.5">
@@ -447,7 +518,7 @@ export default function RecruitQuiz() {
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {s.enrollRaw && <Pill tone="tl">{s.enrollRaw} students</Pill>}
                       {s.sfrRaw && <Pill tone="bl">{s.sfrRaw} student:faculty</Pill>}
-                      {WIN_LABEL[s.winProfile] && <Pill tone="am">{WIN_LABEL[s.winProfile]}</Pill>}
+                      {s.winRatePct != null && <Pill tone="am">{s.winRatePct}% win rate</Pill>}
                       {s.gradRate && <Pill tone="gr">{s.gradRate} grad rate</Pill>}
                       {s.schoolTypeRaw && <Pill tone="gy">{s.schoolTypeRaw}</Pill>}
                     </div>

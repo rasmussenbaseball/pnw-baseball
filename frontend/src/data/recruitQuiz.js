@@ -71,24 +71,24 @@ export const RECRUIT_QUESTIONS = [
   "id": "q3",
   "cat": "Finances",
   "key": "aid",
-  "text": "How important is athletic scholarship or financial aid?",
-  "hint": "D1, D2, and NAIA offer athletic scholarships. D3 offers academic/need-based aid only. NWAC has no athletic scholarships.",
+  "text": "How are you planning to pay for school?",
+  "hint": "Reality check: only D1, D2, and NAIA offer athletic money, and outside D1 it's usually a small partial split, not a full ride. At D3 and NWAC there's no athletic aid at all, so your package is academic and need-based. At most levels, strong grades help your wallet more than your arm.",
   "multi": true,
   "answers": [
    {
-    "label": "Critical · I need athletic scholarship money",
+    "label": "I'm counting on real athletic scholarship money",
     "value": "scholarship"
    },
    {
-    "label": "Academic or need-based aid is enough",
+    "label": "Academic and need-based aid will do the heavy lifting",
     "value": "needbased"
    },
    {
-    "label": "Nice to have but not a dealbreaker",
+    "label": "A mix · I'll chase academic, need-based, and any athletic aid",
     "value": "nice"
    },
    {
-    "label": "Not a factor in my decision",
+    "label": "Cost isn't the deciding factor for me",
     "value": "none"
    }
   ]
@@ -346,28 +346,19 @@ export const RECRUIT_QUESTIONS = [
   "id": "q13",
   "cat": "Program",
   "key": "winProfile",
-  "text": "What win-loss profile fits your goals?",
-  "hint": "Based on each program's 2026 season record.",
-  "multi": true,
+  "text": "How much does the team's recent success matter to you?",
+  "hint": "Measured by win percentage, averaged across the 2025 and 2026 seasons.",
   "answers": [
    {
-    "label": "Winning consistently (65%+ win rate) · compete for titles",
-    "value": "strong"
+    "label": "I want to play for a contender · a winning program (50%+ win rate)",
+    "value": "contender"
    },
    {
-    "label": "Winning record (50–65%) · solid, competitive program",
-    "value": "winning"
+    "label": "Just not a losing program · somewhere competitive (35%+ win rate)",
+    "value": "notbad"
    },
    {
-    "label": "Developing (35–50%) · rising program, opportunity to contribute early",
-    "value": "developing"
-   },
-   {
-    "label": "Rebuilding (under 35%) · get in on the ground floor",
-    "value": "rebuilding"
-   },
-   {
-    "label": "Win-loss record doesn't matter",
+    "label": "Doesn't matter · I'll go where I fit best",
     "value": "ANY"
    }
   ]
