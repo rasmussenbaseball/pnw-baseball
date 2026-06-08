@@ -19132,32 +19132,32 @@ def get_recruiting_guide(team_id: int):
                 "season": current_season
             }
 
-            # ============ FRESHMAN PRODUCTION ============
-            # Back-calculate each player's freshman year from their current
-            # year_in_school. E.g. a Jr in 2026 was a Fr in 2024.
-            # Offset = how many years ago they were a freshman
+            # ====== CLASS-YEAR SETUP (freshman + transfer production) ======
+            # Prefer TRUE per-season class from player_seasons (scraped from each
+            # year's roster). Fall back to back-calculating from a player's current
+            # year_in_school only where the roster wasn't captured. (Back-calc is
+            # wrong for redshirts, transfers, and players who've left, so the
+            # scraped per-season class is strongly preferred.)
             class_to_offset = {
-                "Fr": 0, "R-Fr": 0,
-                "So": 1, "R-So": 1,
-                "Jr": 2, "R-Jr": 2,
-                "Sr": 3, "R-Sr": 3,
-                "Gr": 4, "GR": 4,
+                "Fr": 0, "R-Fr": 0, "So": 1, "R-So": 1, "Jr": 2, "R-Jr": 2,
+                "Sr": 3, "R-Sr": 3, "Gr": 4, "GR": 4,
             }
+            FRESH_CLASSES = ("Fr", "R-Fr")
 
             cur.execute("""
-                SELECT DISTINCT season FROM batting_stats
-                WHERE team_id = %s
+                SELECT DISTINCT season FROM batting_stats WHERE team_id = %s
                 UNION
-                SELECT DISTINCT season FROM pitching_stats
-                WHERE team_id = %s
-                ORDER BY season DESC
-                LIMIT 5
+                SELECT DISTINCT season FROM pitching_stats WHERE team_id = %s
+                ORDER BY season DESC LIMIT 5
             """, (team_id, team_id))
             seasons = [r['season'] for r in cur.fetchall()]
             seasons.sort()
 
-            # Get all players who've had stats at this team, with their
-            # year_in_school and the most recent season they were active
+            # True per-season class from archived rosters: (season, player_id) -> class
+            cur.execute("SELECT season, player_id, year_in_school FROM player_seasons WHERE team_id = %s", (team_id,))
+            ps_class = {(r['season'], r['player_id']): (r['year_in_school'] or '').strip() for r in cur.fetchall()}
+
+            # Back-calc fallback: player_id -> computed freshman season
             cur.execute("""
                 SELECT p.id, p.year_in_school,
                        COALESCE(p.roster_year, (
@@ -19170,168 +19170,112 @@ def get_recruiting_guide(team_id: int):
                 FROM players p
                 WHERE p.team_id = %s AND p.year_in_school IS NOT NULL
             """, (team_id, team_id, team_id))
-
-            # Build set of freshman player IDs per season
-            freshmen_by_season = {}
+            player_fresh_season = {}
             for r in cur.fetchall():
-                yis = (r['year_in_school'] or '').strip()
-                ref_year = r['ref_year']
-                if not yis or not ref_year or yis not in class_to_offset:
-                    continue
-                fr_year = ref_year - class_to_offset[yis]
-                if fr_year not in freshmen_by_season:
-                    freshmen_by_season[fr_year] = set()
-                freshmen_by_season[fr_year].add(r['id'])
+                off = class_to_offset.get((r['year_in_school'] or '').strip())
+                if off is not None and r['ref_year']:
+                    player_fresh_season[r['id']] = int(r['ref_year']) - off
 
-            freshman_production = []
-            for season in seasons:
-                fresh_ids = freshmen_by_season.get(season, set())
-                if not fresh_ids:
-                    freshman_production.append({
-                        "season": season,
-                        "fresh_pa_pct": 0,
-                        "fresh_ip_pct": 0,
-                        "total_war": 0
-                    })
-                    continue
-
-                id_placeholders = ','.join(['%s'] * len(fresh_ids))
-                fresh_id_list = list(fresh_ids)
-
-                # Freshman PA
-                cur.execute(f"""
-                    SELECT SUM(bs.plate_appearances) as fr_pa
-                    FROM batting_stats bs
-                    WHERE bs.team_id = %s AND bs.season = %s
-                      AND bs.player_id IN ({id_placeholders})
-                """, [team_id, season] + fresh_id_list)
-                fr_pa = (cur.fetchone() or {}).get('fr_pa') or 0
-
-                # Total PA
-                cur.execute("""
-                    SELECT SUM(bs.plate_appearances) as total_pa
-                    FROM batting_stats bs
-                    WHERE bs.team_id = %s AND bs.season = %s
-                """, (team_id, season))
-                total_pa = (cur.fetchone() or {}).get('total_pa') or 0
-
-                fr_pa_pct = (fr_pa / total_pa * 100) if total_pa > 0 else 0
-
-                # Freshman IP (true decimal innings for the share ratio)
-                cur.execute(f"""
-                    SELECT (SUM(ip_outs(ps2.innings_pitched)) / 3.0)::float8 as fr_ip
-                    FROM pitching_stats ps2
-                    WHERE ps2.team_id = %s AND ps2.season = %s
-                      AND ps2.player_id IN ({id_placeholders})
-                """, [team_id, season] + fresh_id_list)
-                fr_ip = (cur.fetchone() or {}).get('fr_ip') or 0
-
-                # Total IP (true decimal innings for the share ratio)
-                cur.execute("""
-                    SELECT (SUM(ip_outs(ps2.innings_pitched)) / 3.0)::float8 as total_ip
-                    FROM pitching_stats ps2
-                    WHERE ps2.team_id = %s AND ps2.season = %s
-                """, (team_id, season))
-                total_ip = (cur.fetchone() or {}).get('total_ip') or 0
-
-                fr_ip_pct = (fr_ip / total_ip * 100) if total_ip > 0 else 0
-
-                # Freshman WAR
-                cur.execute(f"""
-                    SELECT COALESCE(SUM(COALESCE(owar, 0) + COALESCE(pwar, 0)), 0) as fr_war
-                    FROM (
-                        SELECT bs.offensive_war as owar, NULL as pwar
-                        FROM batting_stats bs
-                        WHERE bs.team_id = %s AND bs.season = %s AND bs.player_id IN ({id_placeholders})
-                        UNION ALL
-                        SELECT NULL as owar, ps3.pitching_war as pwar
-                        FROM pitching_stats ps3
-                        WHERE ps3.team_id = %s AND ps3.season = %s AND ps3.player_id IN ({id_placeholders})
-                    ) sub
-                """, [team_id, season] + fresh_id_list + [team_id, season] + fresh_id_list)
-                fr_war = (cur.fetchone() or {}).get('fr_war') or 0
-
-                freshman_production.append({
-                    "season": season,
-                    "fresh_pa_pct": round(fr_pa_pct / 100, 4) if fr_pa_pct else 0,
-                    "fresh_ip_pct": round(fr_ip_pct / 100, 4) if fr_ip_pct else 0,
-                    "total_war": round(fr_war, 2)
-                })
-
-            # ============ ROSTER COMPOSITION ============
-            # Year-by-year: % returners, % freshmen, % transfers
-            # A "returner" was on the same team the previous season.
-            # A "freshman" has year_in_school Fr or R-Fr (back-calculated).
-            # A "transfer" is new to the team and not a freshman.
-            roster_composition = []
-
-            # Build player sets per season (reuse for efficiency)
+            # Players with stats per season (the rows the production charts weight)
             players_by_season = {}
             for s in seasons:
                 cur.execute("""
-                    SELECT DISTINCT player_id FROM batting_stats
-                    WHERE team_id = %s AND season = %s
+                    SELECT DISTINCT player_id FROM batting_stats WHERE team_id = %s AND season = %s
                     UNION
-                    SELECT DISTINCT player_id FROM pitching_stats
-                    WHERE team_id = %s AND season = %s
+                    SELECT DISTINCT player_id FROM pitching_stats WHERE team_id = %s AND season = %s
                 """, (team_id, s, team_id, s))
                 players_by_season[s] = set(r['player_id'] for r in cur.fetchall())
 
-            # Build freshman set per season using back-calculated class year
-            # (reuse class_to_offset from freshman production section above)
-            fresh_by_season = {}
-            for s in seasons:
-                fresh_ids = set()
-                for pid in players_by_season.get(s, set()):
-                    # Look up this player's year_in_school and ref_year
-                    # to back-calculate if they were a freshman in season s
-                    pass
-                fresh_by_season[s] = fresh_ids
+            def _fresh_in(season, pid):
+                cl = ps_class.get((season, pid))
+                if cl:
+                    return cl in FRESH_CLASSES
+                return player_fresh_season.get(pid) == season  # fallback
 
-            # Use the same back-calculation approach as freshman production
-            # Get all players with year_in_school for this team
+            # First season each player appears at this team (for transfer origin)
             cur.execute("""
-                SELECT p.id, p.year_in_school,
-                       COALESCE(p.roster_year, (
-                           SELECT MAX(season) FROM (
-                               SELECT season FROM batting_stats WHERE player_id = p.id AND team_id = %s
-                               UNION
-                               SELECT season FROM pitching_stats WHERE player_id = p.id AND team_id = %s
-                           ) s
-                       )) as ref_year
-                FROM players p
-                WHERE p.team_id = %s AND p.year_in_school IS NOT NULL
-            """, (team_id, team_id, team_id))
+                SELECT player_id, MIN(season) AS fs FROM (
+                    SELECT player_id, season FROM batting_stats WHERE team_id = %s
+                    UNION
+                    SELECT player_id, season FROM pitching_stats WHERE team_id = %s
+                ) x GROUP BY player_id
+            """, (team_id, team_id))
+            first_season = {r['player_id']: r['fs'] for r in cur.fetchall()}
+            # "Homegrown" = ever a Fr/R-Fr here. "Transfer" = arrived as an upperclassman.
+            homegrown_ids = {pid for (s, pid), cl in ps_class.items() if cl in FRESH_CLASSES}
 
-            # Map player_id -> their freshman season
-            player_fresh_season = {}
-            for r in cur.fetchall():
-                offset = class_to_offset.get(r['year_in_school'])
-                if offset is not None and r['ref_year']:
-                    player_fresh_season[r['id']] = int(r['ref_year']) - offset
+            def _is_transfer(pid):
+                if pid in homegrown_ids:
+                    return False
+                fs = first_season.get(pid)
+                cl = ps_class.get((fs, pid)) if fs else None
+                if cl:
+                    return cl not in FRESH_CLASSES
+                fy = player_fresh_season.get(pid)
+                if fy is not None and fs is not None:
+                    return fs > fy  # arrived after their computed freshman year => transfer
+                return False
 
+            freshmen_by_season = {s: {pid for pid in players_by_season.get(s, set()) if _fresh_in(s, pid)} for s in seasons}
+            transfers_by_season = {s: {pid for pid in players_by_season.get(s, set()) if _is_transfer(pid)} for s in seasons}
+
+            # Team PA/IP denominators per season (computed once).
+            team_totals = {}
+            for season in seasons:
+                cur.execute("SELECT SUM(plate_appearances) AS pa FROM batting_stats WHERE team_id = %s AND season = %s", (team_id, season))
+                tpa = (cur.fetchone() or {}).get('pa') or 0
+                cur.execute("SELECT (SUM(ip_outs(innings_pitched)) / 3.0)::float8 AS ip FROM pitching_stats WHERE team_id = %s AND season = %s", (team_id, season))
+                tip = (cur.fetchone() or {}).get('ip') or 0
+                team_totals[season] = (tpa, tip)
+
+            def _cohort_production(season, ids):
+                """Share of team PA, share of team IP, and total WAR for a set of player_ids."""
+                tpa, tip = team_totals.get(season, (0, 0))
+                ids = list(ids)
+                if not ids:
+                    return (0, 0, 0)
+                ph = ','.join(['%s'] * len(ids))
+                cur.execute(f"SELECT SUM(plate_appearances) AS pa FROM batting_stats WHERE team_id = %s AND season = %s AND player_id IN ({ph})", [team_id, season] + ids)
+                pa = (cur.fetchone() or {}).get('pa') or 0
+                cur.execute(f"SELECT (SUM(ip_outs(innings_pitched)) / 3.0)::float8 AS ip FROM pitching_stats WHERE team_id = %s AND season = %s AND player_id IN ({ph})", [team_id, season] + ids)
+                ip = (cur.fetchone() or {}).get('ip') or 0
+                cur.execute(f"""
+                    SELECT COALESCE(SUM(COALESCE(owar,0)+COALESCE(pwar,0)),0) AS war FROM (
+                        SELECT offensive_war AS owar, NULL AS pwar FROM batting_stats WHERE team_id=%s AND season=%s AND player_id IN ({ph})
+                        UNION ALL
+                        SELECT NULL AS owar, pitching_war AS pwar FROM pitching_stats WHERE team_id=%s AND season=%s AND player_id IN ({ph})
+                    ) s
+                """, [team_id, season] + ids + [team_id, season] + ids)
+                war = (cur.fetchone() or {}).get('war') or 0
+                return (
+                    round(pa / tpa, 4) if tpa else 0,
+                    round(ip / tip, 4) if tip else 0,
+                    round(war, 2),
+                )
+
+            freshman_production = []
+            transfer_production = []
+            for season in seasons:
+                f_pa, f_ip, f_war = _cohort_production(season, freshmen_by_season.get(season, set()))
+                freshman_production.append({"season": season, "fresh_pa_pct": f_pa, "fresh_ip_pct": f_ip, "total_war": f_war})
+                t_pa, t_ip, t_war = _cohort_production(season, transfers_by_season.get(season, set()))
+                transfer_production.append({"season": season, "transfer_pa_pct": t_pa, "transfer_ip_pct": t_ip, "total_war": t_war})
+
+            # ============ ROSTER COMPOSITION ============
+            # Per season: returners (on this team last year), freshmen, transfers.
+            # Freshman vs transfer uses true per-season class (player_seasons) via
+            # _fresh_in; players_by_season / player_fresh_season built above.
+            roster_composition = []
             for s in seasons:
                 roster = players_by_season.get(s, set())
                 total = len(roster)
-                if total == 0:
+                if total == 0 or (s - 1) not in players_by_season:
                     continue
-
-                # Skip if no prior season data - can't determine returners vs new
-                if (s - 1) not in players_by_season:
-                    continue
-
                 prev = players_by_season.get(s - 1, set())
                 returners = roster & prev
                 new_players = roster - prev
-
-                freshmen = set()
-                transfers = set()
-                for pid in new_players:
-                    if player_fresh_season.get(pid) == s:
-                        freshmen.add(pid)
-                    else:
-                        transfers.add(pid)
-
+                freshmen = {pid for pid in new_players if _fresh_in(s, pid)}
+                transfers = new_players - freshmen
                 roster_composition.append({
                     "season": s,
                     "total": total,
@@ -19668,6 +19612,7 @@ def get_recruiting_guide(team_id: int):
                 "season_stats": season_stats,
                 "roster_overview": roster_overview,
                 "freshman_production": freshman_production,
+                "transfer_production": transfer_production,
                 "roster_composition": roster_composition,
                 "redshirt_rate": redshirt_rate,
                 "avg_size_by_position": avg_size_by_position,

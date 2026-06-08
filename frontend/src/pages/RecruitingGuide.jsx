@@ -429,6 +429,31 @@ function FreshmanProd({ fresh, T }) {
   )
 }
 
+function TransferProd({ transfers, T }) {
+  if (!transfers?.length) return null
+  const cp = chartProps(T)
+  const data = transfers.map((f) => ({ season: f.season, pa: +(parseFloat(f.transfer_pa_pct || 0) * 100).toFixed(1), ip: +(parseFloat(f.transfer_ip_pct || 0) * 100).toFixed(1) }))
+  // Most recent season's blend, for the one-line "built through" read.
+  const last = data[data.length - 1]
+  const blend = last ? `${last.pa}% of PA · ${last.ip}% of IP from transfers (latest)` : null
+  return (
+    <SectionCard title="Transfer Reliance" right="% PA / % IP BY TRANSFERS">
+      {blend && <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">{blend}</div>}
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={data}>
+          <CartesianGrid {...cp.grid} />
+          <XAxis dataKey="season" {...cp.axis} />
+          <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} {...cp.axis} />
+          <Tooltip {...cp.tooltip} formatter={(v) => `${v}%`} cursor={{ fill: T.track, opacity: 0.4 }} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="pa" fill={T.warn || T.accent} name="Transfer PA %" />
+          <Bar dataKey="ip" fill={T.good || T.poor} name="Transfer IP %" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </SectionCard>
+  )
+}
+
 function Hometowns({ breakdown, T }) {
   const states = breakdown?.by_state?.map((s) => ({ name: s.state, value: s.count })) || []
   if (!states.length) return null
@@ -578,6 +603,7 @@ export default function RecruitingGuide() {
                 <RosterOverview overview={guide.roster_overview} T={T} />
                 <RosterComposition comp={guide.roster_composition} T={T} />
                 <FreshmanProd fresh={guide.freshman_production} T={T} />
+                <TransferProd transfers={guide.transfer_production} T={T} />
                 <Hometowns breakdown={guide.hometown_breakdown} T={T} />
                 <BestPlayers best={guide.best_players} T={T} />
               </>
