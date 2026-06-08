@@ -18,6 +18,7 @@ import { buildAllConferenceSchedules, buildNonConferenceFillers } from './schedu
 import { defaultBudgetForSchool } from './budget'
 import { applyRealFinancials } from './schoolFinancials'
 import { buildInitialCareer } from './storyMode'
+import { refillThinRosters } from './events'
 
 /** @typedef {import('./types.js').SaveState} SaveState */
 
@@ -256,6 +257,19 @@ export function newDynasty(input) {
     })
     state.career.trajectory[0].schoolId = input.userSchoolId
   }
+
+  // Final roster-integrity pass. Per Nate (June 2026): guarantee every
+  // PNW team has a full roster at dynasty start, no exceptions. If
+  // generateRoster threw mid-loop for any school or a school slipped
+  // through somehow, this catches it.
+  try {
+    const heal = refillThinRosters(state)
+    if (heal.rebuilt > 0 || heal.teamsCreated > 0) {
+      // eslint-disable-next-line no-console
+      console.info(`NAIA dynasty creation roster-heal: ${heal.rebuilt} teams rebuilt, ${heal.teamsCreated} teams created, ${heal.addedPlayers} players added.`)
+    }
+  } catch (e) { console.warn('dynasty creation roster-heal failed:', e) }
+
   return state
 }
 

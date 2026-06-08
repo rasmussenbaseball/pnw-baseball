@@ -34,6 +34,7 @@ import {
 import { applyRealFinancials } from './schoolFinancials'
 import { dateForWeek as unifiedDateForWeek, postseasonLayout } from './gameYear'
 import { buildInitialCareer } from './storyMode'
+import { refillThinRosters } from './events'
 import nonNaiaRaw from '../data/non_naia_teams.json'
 
 /**
@@ -401,6 +402,25 @@ export function newDynastyMultiLevel(input) {
     })
     state.career.trajectory[0].schoolId = input.userSchoolId
   }
+
+  // FINAL ROSTER-INTEGRITY PASS. The loop above generated a roster for
+  // every school it iterated, but per Nate's directive (June 2026) we
+  // GUARANTEE every PNW team has a full roster — no exceptions. Catch
+  // any school that:
+  //   - Wasn't iterated above (id missing from the conference's pnwMembers
+  //     but reachable through some other path)
+  //   - Had generateRoster throw silently mid-loop
+  //   - Got an undersize allocation due to rosterCapForLevel mismatch
+  // refillThinRosters builds a full multi-class roster for any team it
+  // finds empty, and tops up any team below the per-level floor.
+  try {
+    const heal = refillThinRosters(state)
+    if (heal.rebuilt > 0 || heal.teamsCreated > 0) {
+      // eslint-disable-next-line no-console
+      console.info(`Dynasty creation roster-heal: ${heal.rebuilt} teams rebuilt, ${heal.teamsCreated} teams created, ${heal.addedPlayers} players added.`)
+    }
+  } catch (e) { console.warn('dynasty-creation roster heal failed:', e) }
+
   return state
 }
 

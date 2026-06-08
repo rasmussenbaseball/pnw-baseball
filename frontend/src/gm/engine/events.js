@@ -24,7 +24,9 @@ import { runOutboundTransfers } from './outboundTransfers'
 import { applyHsAttrition, generatePortalPool, academicRatingToGpa } from './recruits'
 import { simMlbDraft, summarizeDraft } from './draft'
 import { endOfSeasonDevelopment, tickPotentialEOY, tickWeightFluctuation } from './development'
-import { generatePlayer } from './generate'
+import { generatePlayer, generateRoster } from './generate'
+import { classYearsForLevel, rosterCapForLevel } from './levelHelpers'
+import { generateStaff } from './coaches'
 import { expectedTeamOvr } from './programRating'
 import { hitterOverall, pitcherOverall } from './playerRating'
 import { makeRng } from './rng'
@@ -778,42 +780,94 @@ function ageOpponentRosters(state) {
 }
 
 /**
- * Self-heal: top-up any team whose roster has decayed below a healthy floor.
+ * Self-heal: guarantee every PNW team in the dynasty has a FULL, properly-
+ * classed roster (FR/SO/JR/SR mix). Handles three different cases:
  *
- * Friend-of-Nate report (June 2026): "Started a new dynasty and it shows
- * other teams with records changing. But they aren't logging stats and
- * their pitching probable is always TBA and then the same guy starts
- * every game." Same root cause as "my friend switched teams in story
- * mode and his new team had 0 players on their roster." When a team's
- * rosterPlayerIds is empty (or far below target), autoLineup returns
- * an empty batters array → fastSim's lightweight boxscore writes zero
- * batterStats → season-long stats stay 0 for that team. W/L still
- * updates from the gaussian run-sample, which is why records change
- * but the leaderboards stay empty.
+ *   1. NEW DYNASTY MISS — `newDynastyMultiLevel` builds rosters per school
+ *      it iterates, but if any school slipped through (a known issue when
+ *      a particular conference id is missing or generatePlayer threw in
+ *      the original loop), this catches the team here.
+ *   2. STORY-MODE TEAM SWITCH — `acceptCareerOffer` re-points
+ *      `state.userSchoolId` to a school whose team object may not exist
+ *      OR whose roster decayed while it was a non-user team. We rebuild
+ *      it as a full program here so the user lands on a real squad
+ *      instead of an empty cupboard.
+ *   3. YEAR-OVER-YEAR DECAY — when `ageOpponentRosters` silently fails
+ *      for a team (generatePlayer throws, e.g. on a malformed school
+ *      record), the team enters next season short-rostered. Subsequent
+ *      seasons compound the problem. This pass tops up to TARGET.
  *
- * This runs on Dashboard mount + after a career-offer team switch +
- * defensively at the end of dynasty creation. It does NOT advance
- * class years or graduate anyone; it ONLY adds fresh FR players to
- * fill thin rosters back up to the level's healthy minimum.
+ * Friend-of-Nate reports addressed (June 2026):
+ *   - "Other teams' records change but they aren't logging stats."
+ *     Root cause: empty rosterPlayerIds → autoLineup returns no batters
+ *     → fastSim's lightweight boxscore writes zero per-player stats.
+ *     W/L still ticks from the run-sample.
+ *   - "Pitching probable always TBA, same guy starts every game."
+ *     Same root cause: only an emergency arm in the rotation.
+ *   - "Friend switched teams in story mode and new team had 0 players."
+ *     `acceptCareerOffer` switched userSchoolId without verifying the
+ *     destination had a roster.
  *
- * Threshold (per level): FLOOR is the point below which we refill.
- * TARGET is what we fill TO. NWAC floors are tighter because their
- * roster cap is smaller.
+ * For an EMPTY team (no roster at all), uses `generateRoster` to build
+ * a full multi-class roster with the same FR/SO/JR/SR distribution as
+ * the original dynasty creation. For a THIN team (some players left),
+ * adds fresh FR players up to TARGET so existing classes ripen
+ * naturally year-over-year.
+ *
+ * Level-aware: NWAC stays in 28-38 (JUCO floor 28), NAIA 40-50 (floor
+ * 32), D1/D2/D3 40-50 (floor 30). Caps match `rosterCapForLevel`.
+ *
+ * @returns {{ refilled: number, addedPlayers: number, rebuilt: number, teamsCreated: number }}
  */
 export function refillThinRosters(state) {
-  if (!state || !state.teams) return { refilled: 0, addedPlayers: 0 }
-  const level = state.level || 'NAIA'
-  const isNwac = level === 'NWAC'
-  const FLOOR = isNwac ? 24 : level === 'NAIA' ? 32 : 30
-  const TARGET = isNwac ? 38 : level === 'NAIA' ? 45 : 42
-  const rng = makeRng('refill', state.rngSeed || 1, state.calendar?.year ?? 0, level)
+  if (!state || !state.teams || !state.schools) {
+    return { refilled: 0, addedPlayers: 0, rebuilt: 0, teamsCreated: 0 }
+  }
+  const dynastyLevel = state.level || 'NAIA'
+  const rng = makeRng('roster_heal', state.rngSeed || 1, state.calendar?.year ?? 0, dynastyLevel)
   let refilled = 0
   let addedPlayers = 0
-  for (const team of Object.values(state.teams)) {
-    if (!team) continue
+  let rebuilt = 0
+  let teamsCreated = 0
+  // Walk every school the dynasty knows about, even if it doesn't have
+  // a team object yet — that's a likely state.teams gap caught by case #2.
+  for (const schoolId of Object.keys(state.schools)) {
+    const school = state.schools[schoolId]
+    if (!school) continue
+    // Per-school level — teams in story-mode could span multiple levels
+    // (D1, D2, etc.); use the school's level if set, else dynasty default.
+    const level = school.level || dynastyLevel
+    const isNwac = level === 'NWAC'
+    const FLOOR = isNwac ? 24 : level === 'NAIA' ? 32 : 30
+    const cap = rosterCapForLevel(level)
+    const TARGET = Math.min(cap, isNwac ? 38 : level === 'NAIA' ? 45 : 42)
+
+    let team = state.teams[schoolId]
+    if (!team) {
+      // Case #2 (extreme): no team object at all. Build one.
+      team = {
+        schoolId,
+        rosterPlayerIds: [],
+        headCoachId: null,
+        assistantCoachIds: [],
+        wins: 0, losses: 0, confWins: 0, confLosses: 0, runDiff: 0,
+      }
+      state.teams[schoolId] = team
+      teamsCreated++
+      // Also seed a coaching staff so coach-lookups don't crash later.
+      try {
+        const { headCoach, assistants } = generateStaff(school, state.rngSeed || 1)
+        if (!state.coaches) state.coaches = {}
+        state.coaches[headCoach.id] = headCoach
+        for (const a of assistants) state.coaches[a.id] = a
+        team.headCoachId = headCoach.id
+        team.assistantCoachIds = assistants.map(a => a.id)
+      } catch (e) { console.warn(`coach gen failed for ${schoolId}:`, e) }
+    }
+
     const rosterIds = team.rosterPlayerIds || []
-    // Treat eligible-living players only — a roster of 30 stale graduates
-    // isn't healthy.
+    // Count only LIVING-eligible players — graduated/transferred/drafted
+    // shouldn't count toward the floor.
     const alive = rosterIds.filter(id => {
       const p = state.players?.[id]
       if (!p) return false
@@ -821,9 +875,34 @@ export function refillThinRosters(state) {
       return s !== 'graduated' && s !== 'transferred' && s !== 'drafted'
         && s !== 'cut' && s !== 'dismissed' && s !== 'quit'
     })
+
+    if (alive.length === 0) {
+      // EMPTY: rebuild from scratch with proper multi-class distribution.
+      try {
+        const allowedClassYears = classYearsForLevel(level)
+        const fullRoster = generateRoster(
+          school, state.rngSeed || 1, state.calendar?.year ?? 2026,
+          { allowedClassYears, level },
+        )
+        const newIds = []
+        for (const p of fullRoster) {
+          if (!state.players) state.players = {}
+          state.players[p.id] = p
+          newIds.push(p.id)
+        }
+        team.rosterPlayerIds = newIds
+        rebuilt++
+        addedPlayers += newIds.length
+      } catch (e) {
+        console.warn(`full roster rebuild failed for ${schoolId}:`, e)
+      }
+      continue
+    }
+
     if (alive.length >= FLOOR) continue
-    const school = state.schools?.[team.schoolId]
-    if (!school) continue
+    // THIN: top up with freshmen to TARGET. Don't overwrite existing
+    // players — they keep their class so next year's rollover ripens
+    // them naturally.
     const need = TARGET - alive.length
     let added = 0
     for (let i = 0; i < need; i++) {
@@ -833,20 +912,19 @@ export function refillThinRosters(state) {
         newPlayer.classYear = 'FR'
         newPlayer.seasonsUsed = 0
         newPlayer.semestersUsed = 0
+        if (!state.players) state.players = {}
         state.players[newPlayer.id] = newPlayer
-        // Don't overwrite the existing roster — append new freshmen so
-        // anyone alive on it stays.
         if (!team.rosterPlayerIds) team.rosterPlayerIds = []
         team.rosterPlayerIds.push(newPlayer.id)
         added++
-      } catch { break }
+      } catch (e) { console.warn(`refill loop broke for ${schoolId} at ${i}/${need}:`, e); break }
     }
     if (added > 0) {
       refilled++
       addedPlayers += added
     }
   }
-  return { refilled, addedPlayers }
+  return { refilled, addedPlayers, rebuilt, teamsCreated }
 }
 
 function runDraft(state) {
