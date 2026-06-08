@@ -244,7 +244,7 @@ CONF_PITCHING_CTE = """
             g.season,
             COUNT(DISTINCT gp.game_id) as games,
             SUM(CASE WHEN gp.is_starter THEN 1 ELSE 0 END) as games_started,
-            SUM(COALESCE(gp.innings_pitched,0)) as innings_pitched,
+            outs_to_ip(SUM(ip_outs(COALESCE(gp.innings_pitched,0)))) as innings_pitched,
             SUM(COALESCE(gp.hits_allowed,0)) as hits_allowed,
             SUM(COALESCE(gp.runs_allowed,0)) as runs_allowed,
             SUM(COALESCE(gp.earned_runs,0)) as earned_runs,
@@ -263,18 +263,18 @@ CONF_PITCHING_CTE = """
             0 as shutouts,
             SUM(CASE WHEN gp.is_quality_start THEN 1 ELSE 0 END) as quality_starts,
             -- Rate stats
-            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.earned_runs,0))::numeric / SUM(gp.innings_pitched)::numeric, 2) END as era,
-            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND((SUM(COALESCE(gp.walks,0)) + SUM(COALESCE(gp.hits_allowed,0)))::numeric / SUM(gp.innings_pitched)::numeric, 2) END as whip,
-            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.strikeouts,0))::numeric / SUM(gp.innings_pitched)::numeric, 1) END as k_per_9,
-            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.walks,0))::numeric / SUM(gp.innings_pitched)::numeric, 1) END as bb_per_9,
-            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.hits_allowed,0))::numeric / SUM(gp.innings_pitched)::numeric, 1) END as h_per_9,
-            CASE WHEN SUM(COALESCE(gp.innings_pitched,0)) > 0
-                THEN ROUND(9.0 * SUM(COALESCE(gp.home_runs_allowed,0))::numeric / SUM(gp.innings_pitched)::numeric, 1) END as hr_per_9,
+            CASE WHEN SUM(ip_outs(COALESCE(gp.innings_pitched,0))) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.earned_runs,0))::numeric / NULLIF(SUM(ip_outs(gp.innings_pitched)) / 3.0, 0)::numeric, 2) END as era,
+            CASE WHEN SUM(ip_outs(COALESCE(gp.innings_pitched,0))) > 0
+                THEN ROUND((SUM(COALESCE(gp.walks,0)) + SUM(COALESCE(gp.hits_allowed,0)))::numeric / NULLIF(SUM(ip_outs(gp.innings_pitched)) / 3.0, 0)::numeric, 2) END as whip,
+            CASE WHEN SUM(ip_outs(COALESCE(gp.innings_pitched,0))) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.strikeouts,0))::numeric / NULLIF(SUM(ip_outs(gp.innings_pitched)) / 3.0, 0)::numeric, 1) END as k_per_9,
+            CASE WHEN SUM(ip_outs(COALESCE(gp.innings_pitched,0))) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.walks,0))::numeric / NULLIF(SUM(ip_outs(gp.innings_pitched)) / 3.0, 0)::numeric, 1) END as bb_per_9,
+            CASE WHEN SUM(ip_outs(COALESCE(gp.innings_pitched,0))) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.hits_allowed,0))::numeric / NULLIF(SUM(ip_outs(gp.innings_pitched)) / 3.0, 0)::numeric, 1) END as h_per_9,
+            CASE WHEN SUM(ip_outs(COALESCE(gp.innings_pitched,0))) > 0
+                THEN ROUND(9.0 * SUM(COALESCE(gp.home_runs_allowed,0))::numeric / NULLIF(SUM(ip_outs(gp.innings_pitched)) / 3.0, 0)::numeric, 1) END as hr_per_9,
             CASE WHEN SUM(COALESCE(gp.walks,0)) > 0
                 THEN ROUND(SUM(COALESCE(gp.strikeouts,0))::numeric / SUM(gp.walks), 2) END as k_bb_ratio,
             -- K pct and BB pct
@@ -357,7 +357,7 @@ def get_team_aggregates(cur, team_id: int, season: int) -> dict:
     # denominator share the same convention so the bug cancels).
     cur.execute(
         """SELECT
-             SUM(innings_pitched) AS total_ip_decimal,
+             (SUM(ip_outs(innings_pitched)) / 3.0)::float8 AS total_ip_decimal,
              SUM(
                FLOOR(innings_pitched) +
                CASE
@@ -378,21 +378,21 @@ def get_team_aggregates(cur, team_id: int, season: int) -> dict:
              SUM(batters_faced) AS total_bf,
              SUM(pitching_war) AS total_pwar,
              SUM(CASE WHEN innings_pitched >= 3 AND fip IS NOT NULL
-                      THEN fip * innings_pitched ELSE 0 END) AS fip_num,
+                      THEN fip * ip_outs(innings_pitched) ELSE 0 END) AS fip_num,
              SUM(CASE WHEN innings_pitched >= 3 AND fip IS NOT NULL
-                      THEN innings_pitched ELSE 0 END) AS fip_den,
+                      THEN ip_outs(innings_pitched) ELSE 0 END) AS fip_den,
              SUM(CASE WHEN innings_pitched >= 3 AND fip_plus IS NOT NULL
-                      THEN fip_plus * innings_pitched ELSE 0 END) AS fip_plus_num,
+                      THEN fip_plus * ip_outs(innings_pitched) ELSE 0 END) AS fip_plus_num,
              SUM(CASE WHEN innings_pitched >= 3 AND fip_plus IS NOT NULL
-                      THEN innings_pitched ELSE 0 END) AS fip_plus_den,
+                      THEN ip_outs(innings_pitched) ELSE 0 END) AS fip_plus_den,
              SUM(CASE WHEN innings_pitched >= 3 AND xfip IS NOT NULL
-                      THEN xfip * innings_pitched ELSE 0 END) AS xfip_num,
+                      THEN xfip * ip_outs(innings_pitched) ELSE 0 END) AS xfip_num,
              SUM(CASE WHEN innings_pitched >= 3 AND xfip IS NOT NULL
-                      THEN innings_pitched ELSE 0 END) AS xfip_den,
+                      THEN ip_outs(innings_pitched) ELSE 0 END) AS xfip_den,
              SUM(CASE WHEN innings_pitched >= 3 AND era_minus IS NOT NULL
-                      THEN era_minus * innings_pitched ELSE 0 END) AS era_minus_num,
+                      THEN era_minus * ip_outs(innings_pitched) ELSE 0 END) AS era_minus_num,
              SUM(CASE WHEN innings_pitched >= 3 AND era_minus IS NOT NULL
-                      THEN innings_pitched ELSE 0 END) AS era_minus_den
+                      THEN ip_outs(innings_pitched) ELSE 0 END) AS era_minus_den
            FROM pitching_stats WHERE team_id = %s AND season = %s""",
         (team_id, season),
     )
@@ -1060,8 +1060,8 @@ def standings(
             LEFT JOIN (
                 SELECT team_id,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
+                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
@@ -1257,8 +1257,8 @@ def conference_standings_graphic(
                 SELECT team_id,
                     SUM(runs_allowed) as ra,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
+                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             LEFT JOIN composite_rankings cr ON cr.team_id = t.id AND cr.season = %s
@@ -1342,8 +1342,8 @@ def conference_standings_graphic(
             LEFT JOIN (
                 SELECT team_id,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
+                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
@@ -1588,7 +1588,7 @@ def stat_leaders(
                             SUM(CASE WHEN UPPER(gp.decision) = 'W' THEN 1 ELSE 0 END) as w,
                             SUM(CASE WHEN UPPER(gp.decision) = 'L' THEN 1 ELSE 0 END) as l,
                             SUM(CASE WHEN UPPER(gp.decision) IN ('SV', 'S') THEN 1 ELSE 0 END) as sv,
-                            SUM(COALESCE(gp.innings_pitched, 0)) as ip_raw,
+                            outs_to_ip(SUM(ip_outs(COALESCE(gp.innings_pitched, 0)))) as ip_raw,
                             SUM(COALESCE(gp.hits_allowed, 0)) as h,
                             SUM(COALESCE(gp.earned_runs, 0)) as er,
                             SUM(COALESCE(gp.walks, 0)) as bb,
@@ -1986,7 +1986,8 @@ def stat_records(
             SELECT ps.player_id, p.first_name, p.last_name,
                    t.short_name as team_short, t.logo_url,
                    d.level as division_level,
-                   SUM(ps.innings_pitched) as innings_pitched,
+                   outs_to_ip(SUM(ip_outs(ps.innings_pitched))) as innings_pitched,
+                   (SUM(ip_outs(ps.innings_pitched)) / 3.0)::float8 as ip_true,
                    SUM(ps.earned_runs) as earned_runs,
                    SUM(ps.hits_allowed) as hits_allowed,
                    SUM(ps.walks) as walks,
@@ -2002,12 +2003,12 @@ def stat_records(
             JOIN divisions d ON c.division_id = d.id
             GROUP BY ps.player_id, p.first_name, p.last_name,
                      t.short_name, t.logo_url, d.level
-            HAVING SUM(ps.innings_pitched) >= 100
+            HAVING SUM(ip_outs(ps.innings_pitched)) / 3.0 >= 100
         """)
         career_pit_rows = []
         for r in cur.fetchall():
             d = dict(r)
-            ip = d["innings_pitched"] or 0
+            ip = d.pop("ip_true", None) or 0  # true decimal innings for rate math
             er = d["earned_runs"] or 0
             h_a = d["hits_allowed"] or 0
             bb = d["walks"] or 0
@@ -2051,14 +2052,14 @@ def stat_records(
         cur.execute("""
             SELECT ps.team_id, t.short_name as team_short, t.logo_url,
                    d.level as division_level, ps.season,
-                   CASE WHEN SUM(ps.innings_pitched) > 0
-                        THEN ROUND((SUM(ps.earned_runs)::numeric / SUM(ps.innings_pitched)::numeric) * 9, 2) END as team_era,
-                   CASE WHEN SUM(ps.innings_pitched) > 0
-                        THEN ROUND(SUM(ps.walks + ps.hits_allowed)::numeric / SUM(ps.innings_pitched)::numeric, 2) END as team_whip,
-                   CASE WHEN SUM(ps.innings_pitched) FILTER (WHERE ps.fip IS NOT NULL) > 0
+                   CASE WHEN SUM(ip_outs(ps.innings_pitched)) > 0
+                        THEN ROUND((SUM(ps.earned_runs)::numeric / (SUM(ip_outs(ps.innings_pitched))/3.0)) * 9, 2) END as team_era,
+                   CASE WHEN SUM(ip_outs(ps.innings_pitched)) > 0
+                        THEN ROUND(SUM(ps.walks + ps.hits_allowed)::numeric / (SUM(ip_outs(ps.innings_pitched))/3.0), 2) END as team_whip,
+                   CASE WHEN SUM(ip_outs(ps.innings_pitched)) FILTER (WHERE ps.fip IS NOT NULL) > 0
                         THEN ROUND(
-                          SUM(ps.fip * ps.innings_pitched) FILTER (WHERE ps.fip IS NOT NULL)::numeric
-                          / SUM(ps.innings_pitched) FILTER (WHERE ps.fip IS NOT NULL)::numeric, 2)
+                          SUM(ps.fip * ip_outs(ps.innings_pitched)) FILTER (WHERE ps.fip IS NOT NULL)::numeric
+                          / SUM(ip_outs(ps.innings_pitched)) FILTER (WHERE ps.fip IS NOT NULL)::numeric, 2)
                         END as avg_fip,
                    SUM(ps.strikeouts) as total_k,
                    SUM(ps.saves) as total_saves,
@@ -2206,8 +2207,8 @@ def team_ratings(
             LEFT JOIN (
                 SELECT team_id,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
+                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
                 FROM pitching_stats WHERE season = %s
                 GROUP BY team_id
             ) pit ON pit.team_id = t.id
@@ -2455,27 +2456,27 @@ def compare_teams(
             cur.execute(
                 """SELECT
                        COUNT(*) as num_pitchers,
-                       SUM(innings_pitched) as total_ip,
+                       outs_to_ip(SUM(ip_outs(innings_pitched))) as total_ip,
                        SUM(strikeouts) as total_k,
                        SUM(walks) as total_bb,
                        SUM(hits_allowed) as total_h,
                        SUM(earned_runs) as total_er,
                        SUM(home_runs_allowed) as total_hr,
                        SUM(hit_batters) as total_hbp,
-                       CASE WHEN SUM(innings_pitched) > 0
-                            THEN ROUND((SUM(earned_runs) * 9.0 / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_era,
-                       CASE WHEN SUM(innings_pitched) > 0
-                            THEN ROUND(((SUM(walks) + SUM(hits_allowed)) / SUM(innings_pitched))::numeric, 2) ELSE 0 END as team_whip,
+                       CASE WHEN SUM(ip_outs(innings_pitched)) > 0
+                            THEN ROUND((SUM(earned_runs) * 9.0 / NULLIF(SUM(ip_outs(innings_pitched)) / 3.0, 0))::numeric, 2) ELSE 0 END as team_era,
+                       CASE WHEN SUM(ip_outs(innings_pitched)) > 0
+                            THEN ROUND(((SUM(walks) + SUM(hits_allowed)) / NULLIF(SUM(ip_outs(innings_pitched)) / 3.0, 0))::numeric, 2) ELSE 0 END as team_whip,
                        -- Rate stats: IP-weighted with NULL guards.
                        -- k_pct/bb_pct rebuilt from raw totals over batters_faced.
-                       ROUND((SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                              / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0))::numeric, 2) as avg_fip,
-                       ROUND((SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
-                              / NULLIF(SUM(innings_pitched) FILTER (WHERE fip_plus IS NOT NULL), 0))::numeric, 0) as avg_fip_plus,
-                       ROUND((SUM(era_minus * innings_pitched) FILTER (WHERE era_minus IS NOT NULL)
-                              / NULLIF(SUM(innings_pitched) FILTER (WHERE era_minus IS NOT NULL), 0))::numeric, 0) as avg_era_minus,
-                       ROUND((SUM(xfip * innings_pitched) FILTER (WHERE xfip IS NOT NULL)
-                              / NULLIF(SUM(innings_pitched) FILTER (WHERE xfip IS NOT NULL), 0))::numeric, 2) as avg_xfip,
+                       ROUND((SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                              / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0))::numeric, 2) as avg_fip,
+                       ROUND((SUM(fip_plus * ip_outs(innings_pitched)) FILTER (WHERE fip_plus IS NOT NULL)
+                              / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip_plus IS NOT NULL), 0))::numeric, 0) as avg_fip_plus,
+                       ROUND((SUM(era_minus * ip_outs(innings_pitched)) FILTER (WHERE era_minus IS NOT NULL)
+                              / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE era_minus IS NOT NULL), 0))::numeric, 0) as avg_era_minus,
+                       ROUND((SUM(xfip * ip_outs(innings_pitched)) FILTER (WHERE xfip IS NOT NULL)
+                              / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE xfip IS NOT NULL), 0))::numeric, 2) as avg_xfip,
                        ROUND((SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0))::numeric, 3) as avg_k_pct,
                        ROUND((SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0))::numeric, 3) as avg_bb_pct,
                        ROUND(SUM(pitching_war)::numeric, 1) as total_pwar
@@ -2760,14 +2761,14 @@ def team_matchup(
             # Total runs allowed + pitching stats - IP-weighted FIP/FIP+ w/ NULL guard
             cur.execute("""
                 SELECT SUM(earned_runs) as er, SUM(runs_allowed) as ra,
-                       SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
-                       SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
+                       SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+                       SUM(fip_plus * ip_outs(innings_pitched)) FILTER (WHERE fip_plus IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
                        SUM(pitching_war) as total_pwar,
-                       SUM(innings_pitched) as total_ip,
-                       CASE WHEN SUM(innings_pitched) > 0
-                            THEN ROUND((SUM(earned_runs) * 9.0 / SUM(innings_pitched))::numeric, 2)
+                       outs_to_ip(SUM(ip_outs(innings_pitched))) as total_ip,
+                       CASE WHEN SUM(ip_outs(innings_pitched)) > 0
+                            THEN ROUND((SUM(earned_runs) * 9.0 / NULLIF(SUM(ip_outs(innings_pitched)) / 3.0, 0))::numeric, 2)
                             ELSE 0 END as team_era
                 FROM pitching_stats
                 WHERE team_id = %s AND season = %s AND innings_pitched >= 3
@@ -2956,8 +2957,8 @@ def _bulk_power_ratings(cur, season):
     # Batch fetch pitching stats - IP-weighted FIP w/ NULL guard
     cur.execute("""
         SELECT team_id, SUM(runs_allowed) as ra, SUM(earned_runs) as er,
-               SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                 / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+               SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                 / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
                SUM(pitching_war) as total_pwar
         FROM pitching_stats
         WHERE season = %s AND innings_pitched >= 3
@@ -3223,8 +3224,8 @@ def playoff_projections(
                 SELECT team_id,
                     SUM(runs_allowed) as ra,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
+                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
                 FROM pitching_stats WHERE season = %s
                 GROUP BY team_id
             ) pit ON pit.team_id = t.id
@@ -3393,8 +3394,8 @@ def nwac_championship_odds(season: int = Query(2026)):
             LEFT JOIN (
                 SELECT team_id,
                     SUM(pitching_war) as total_pwar,
-                    SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
+                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
                 FROM pitching_stats WHERE season = %s GROUP BY team_id
             ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
@@ -3763,20 +3764,20 @@ def team_scatter(
 
             cur.execute(
                 """SELECT COUNT(*) as n,
-                       SUM(innings_pitched) as ip, SUM(earned_runs) as er,
+                       outs_to_ip(SUM(ip_outs(innings_pitched))) as ip, SUM(earned_runs) as er,
                        SUM(runs_allowed) as ra,
                        SUM(walks) as bb, SUM(hits_allowed) as h,
                        SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
                        -- Rate stats: IP-weighted with NULL guards.
                        -- k_pct/bb_pct rebuilt from raw totals over batters_faced.
-                       SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
-                       SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
-                       SUM(era_minus * innings_pitched) FILTER (WHERE era_minus IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE era_minus IS NOT NULL), 0) as avg_era_minus,
-                       SUM(xfip * innings_pitched) FILTER (WHERE xfip IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
+                       SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+                       SUM(fip_plus * ip_outs(innings_pitched)) FILTER (WHERE fip_plus IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
+                       SUM(era_minus * ip_outs(innings_pitched)) FILTER (WHERE era_minus IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE era_minus IS NOT NULL), 0) as avg_era_minus,
+                       SUM(xfip * ip_outs(innings_pitched)) FILTER (WHERE xfip IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
                        SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0) as avg_k_pct,
                        SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0) as avg_bb_pct,
                        SUM(pitching_war) as total_pwar
@@ -3992,16 +3993,18 @@ def team_correlations(
                 continue
 
             cur.execute(
-                """SELECT SUM(innings_pitched) as ip, SUM(earned_runs) as er,
+                """SELECT outs_to_ip(SUM(ip_outs(innings_pitched))) as ip,
+                       (SUM(ip_outs(innings_pitched)) / 3.0)::float8 as ip_true,
+                       SUM(earned_runs) as er,
                        SUM(runs_allowed) as ra,
                        SUM(walks) as bb, SUM(hits_allowed) as h,
                        SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
                        -- Rate stats: IP-weighted with NULL guards.
                        -- k_pct/bb_pct rebuilt from raw totals over batters_faced.
-                       SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
-                       SUM(xfip * innings_pitched) FILTER (WHERE xfip IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
+                       SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+                       SUM(xfip * ip_outs(innings_pitched)) FILTER (WHERE xfip IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
                        SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0) as avg_k_pct,
                        SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0) as avg_bb_pct,
                        SUM(pitching_war) as total_pwar
@@ -4013,7 +4016,7 @@ def team_correlations(
 
             ab = b["ab"] or 1
             pa = b["pa"] or 1
-            ip = (p["ip"] or 0) if p else 0
+            ip = (p["ip_true"] or 0) if p else 0
 
             vals = {"win_pct": win_pct}
             vals["team_avg"] = b["h"] / ab if ab else None
@@ -5025,8 +5028,8 @@ def team_info_graphic(
         cur.execute("""
             SELECT SUM(runs_allowed) as ra,
                    SUM(pitching_war) as total_pwar,
-                   SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                     / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
+                   SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                     / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
             FROM pitching_stats
             WHERE team_id = %s AND season = %s
         """, (team_id, season))
@@ -5069,8 +5072,8 @@ def team_info_graphic(
                     SELECT team_id,
                            SUM(runs_allowed) as ra,
                            SUM(pitching_war) as total_pwar,
-                           SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                             / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
+                           SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                             / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip
                     FROM pitching_stats WHERE season = %s GROUP BY team_id
                 ) pit ON pit.team_id = t.id
                 LEFT JOIN composite_rankings nr ON nr.team_id = t.id AND nr.season = %s
@@ -5279,10 +5282,10 @@ def team_info_graphic(
         # above: a NULL SIERA must not pull its IP into the denominator.
         cur.execute("""
             SELECT t.id as team_id,
-                   (SUM(ps.earned_runs) * 9.0 / NULLIF(SUM(ps.innings_pitched), 0))::float as era,
-                   (SUM(ps.siera * ps.innings_pitched)
+                   (SUM(ps.earned_runs) * 9.0 / NULLIF(SUM(ip_outs(ps.innings_pitched)) / 3.0, 0))::float as era,
+                   (SUM(ps.siera * ip_outs(ps.innings_pitched))
                       FILTER (WHERE ps.siera IS NOT NULL))::float
-                     / NULLIF(SUM(ps.innings_pitched)
+                     / NULLIF(SUM(ip_outs(ps.innings_pitched))
                               FILTER (WHERE ps.siera IS NOT NULL), 0) as siera,
                    (SUM(ps.strikeouts)::float * 100
                      / NULLIF(SUM(ps.batters_faced), 0))::float as k_pct,
@@ -7598,19 +7601,19 @@ def team_leaderboard(
             # ── pitching aggregates ──
             cur.execute("""
                 SELECT COUNT(*) as n,
-                       SUM(innings_pitched) as ip, SUM(earned_runs) as er,
+                       outs_to_ip(SUM(ip_outs(innings_pitched))) as ip, SUM(earned_runs) as er,
                        SUM(walks) as bb, SUM(hits_allowed) as h,
                        SUM(strikeouts) as k, SUM(home_runs_allowed) as hr,
                        SUM(batters_faced) as bf,
                        -- Rate stats: IP-weighted w/ NULL guards; k and bb rates raw totals.
-                       SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
-                       SUM(fip_plus * innings_pitched) FILTER (WHERE fip_plus IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
-                       SUM(era_minus * innings_pitched) FILTER (WHERE era_minus IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE era_minus IS NOT NULL), 0) as avg_era_minus,
-                       SUM(xfip * innings_pitched) FILTER (WHERE xfip IS NOT NULL)
-                         / NULLIF(SUM(innings_pitched) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
+                       SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as avg_fip,
+                       SUM(fip_plus * ip_outs(innings_pitched)) FILTER (WHERE fip_plus IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip_plus IS NOT NULL), 0) as avg_fip_plus,
+                       SUM(era_minus * ip_outs(innings_pitched)) FILTER (WHERE era_minus IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE era_minus IS NOT NULL), 0) as avg_era_minus,
+                       SUM(xfip * ip_outs(innings_pitched)) FILTER (WHERE xfip IS NOT NULL)
+                         / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE xfip IS NOT NULL), 0) as avg_xfip,
                        SUM(strikeouts)::numeric / NULLIF(SUM(batters_faced), 0) as avg_k_pct,
                        SUM(walks)::numeric / NULLIF(SUM(batters_faced), 0) as avg_bb_pct,
                        SUM(pitching_war) as total_pwar
@@ -8502,7 +8505,9 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
         }
         cur.execute(
             """SELECT ps.player_id,
-                      SUM(ps.innings_pitched) as ip, SUM(ps.earned_runs) as er,
+                      outs_to_ip(SUM(ip_outs(ps.innings_pitched))) as ip,
+                      (SUM(ip_outs(ps.innings_pitched)) / 3.0)::float8 as ip_true,
+                      SUM(ps.earned_runs) as er,
                       SUM(ps.walks) as bb, SUM(ps.hits_allowed) as h,
                       SUM(ps.home_runs_allowed) as hra,
                       SUM(ps.hit_batters) as hbp,
@@ -8516,7 +8521,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
                WHERE d.level = %s
                GROUP BY ps.player_id
                HAVING COUNT(DISTINCT ps.season) >= 2
-                  AND SUM(ps.innings_pitched) >= 20""",
+                  AND SUM(ip_outs(ps.innings_pitched)) / 3.0 >= 20""",
             (division_level,),
         )
         all_players = cur.fetchall()
@@ -8524,7 +8529,7 @@ def _compute_career_percentiles(conn, division_level: str, career_stats: dict, s
         league_stats = []
         for p in all_players:
             pd = dict(p)
-            ip, bb, k, bf = pd["ip"], pd["bb"], pd["k"], pd["bf"]
+            ip, bb, k, bf = pd["ip_true"], pd["bb"], pd["k"], pd["bf"]
             h_a, hra, hbp = pd["h"], pd["hra"], pd["hbp"] or 0
             k_pct = k / bf if bf > 0 else None
             bb_pct = bb / bf if bf > 0 else None
@@ -8727,11 +8732,11 @@ def _compute_player_awards(conn, player_id, team_id, batting_list, pitching_list
     if pitching_list:
         for col, label, desc in pit_career_cats:
             if col == "era":
-                agg_expr = "ROUND((9.0 * SUM(ps.earned_runs) / NULLIF(SUM(ps.innings_pitched), 0))::numeric, 2)"
+                agg_expr = "ROUND((9.0 * SUM(ps.earned_runs) / NULLIF(SUM(ip_outs(ps.innings_pitched)) / 3.0, 0))::numeric, 2)"
             elif col == "pitching_war":
                 agg_expr = "ROUND(SUM(ps.pitching_war)::numeric, 1)"
             elif col == "innings_pitched":
-                agg_expr = "ROUND(SUM(ps.innings_pitched)::numeric, 1)"
+                agg_expr = "ROUND(outs_to_ip(SUM(ip_outs(ps.innings_pitched)))::numeric, 1)"
             else:
                 agg_expr = f"SUM(ps.{col})"
 
@@ -8741,7 +8746,7 @@ def _compute_player_awards(conn, player_id, team_id, batting_list, pitching_list
                     FROM pitching_stats ps
                     WHERE ps.team_id = %s
                     GROUP BY ps.player_id
-                    HAVING SUM(ps.innings_pitched) >= 20
+                    HAVING SUM(ip_outs(ps.innings_pitched)) / 3.0 >= 20
                        AND {agg_expr} IS NOT NULL
                     ORDER BY career_val {direction}""",
                 (team_id,),
@@ -9806,7 +9811,8 @@ def league_environments(
 
         cur.execute(
             """SELECT d.level as division_level,
-                      SUM(ps.innings_pitched) as total_ip,
+                      outs_to_ip(SUM(ip_outs(ps.innings_pitched))) as total_ip,
+                      (SUM(ip_outs(ps.innings_pitched)) / 3.0)::float8 as total_ip_true,
                       SUM(ps.earned_runs) as total_er,
                       SUM(ps.strikeouts) as total_k,
                       SUM(ps.walks) as total_bb,
@@ -9835,6 +9841,7 @@ def league_environments(
             total_pa = r["total_pa"] or 1
             total_games = r["total_games"] or 1
             total_ip = pit.get("total_ip") or 1
+            total_ip_calc = pit.get("total_ip_true") or 1
 
             # Estimate total team-games (each player's games summed / ~9 starters)
             # Better: use total_runs / (total_games / num_teams) but we'll estimate
@@ -9853,8 +9860,8 @@ def league_environments(
             tb = (r["total_h"] - r["total_2b"] - r["total_3b"] - r["total_hr"]) + 2*r["total_2b"] + 3*r["total_3b"] + 4*r["total_hr"]
             league_slg = round(tb / total_ab, 3)
 
-            league_era = round(pit.get("total_er", 0) * 9 / total_ip, 2) if total_ip > 0 else 0
-            league_whip = round((pit.get("total_bb", 0) + pit.get("total_h", 0)) / total_ip, 2) if total_ip > 0 else 0
+            league_era = round(pit.get("total_er", 0) * 9 / total_ip_calc, 2) if total_ip_calc > 0 else 0
+            league_whip = round((pit.get("total_bb", 0) + pit.get("total_h", 0)) / total_ip_calc, 2) if total_ip_calc > 0 else 0
 
             k_pct = round(r["total_k"] / total_pa, 3)
             bb_pct = round(r["total_bb"] / total_pa, 3)
@@ -10547,13 +10554,13 @@ def team_history(team_id: int):
             # Note: innings_pitched is stored in baseball notation (5.2 = 5 2/3),
             # so naive SUM treats 5.2 as a decimal and undercounts. The
             # `total_true_ip` expression converts each row's notation to a
-            # true decimal innings count before summing. `total_ip` (decimal-
-            # summed) is left as-is for the FIP weighting since both
-            # numerator and denominator use the same convention there and
-            # cancel out.
+            # true decimal innings count before summing. `total_ip` is the
+            # baseball-notation display total via outs_to_ip(SUM(ip_outs(...))).
+            # FIP weighting weights by outs (ip_outs) in both numerator and
+            # denominator so the /3 conversion cancels.
             cur.execute(
                 """SELECT COUNT(*) as num_pitchers,
-                          SUM(innings_pitched) as total_ip,
+                          outs_to_ip(SUM(ip_outs(innings_pitched))) as total_ip,
                           SUM(
                             FLOOR(innings_pitched) +
                             CASE
@@ -10573,9 +10580,9 @@ def team_history(team_id: int):
                           SUM(saves) as total_sv,
                           SUM(pitching_war) as total_pwar,
                           SUM(CASE WHEN innings_pitched >= 10 AND fip IS NOT NULL
-                                   THEN fip * innings_pitched ELSE 0 END) as weighted_fip,
+                                   THEN fip * ip_outs(innings_pitched) ELSE 0 END) as weighted_fip,
                           SUM(CASE WHEN innings_pitched >= 10 AND fip IS NOT NULL
-                                   THEN innings_pitched ELSE 0 END) as qualified_ip
+                                   THEN ip_outs(innings_pitched) ELSE 0 END) as qualified_ip
                    FROM pitching_stats WHERE team_id = %s AND season = %s""",
                 (team_id, yr),
             )
@@ -10813,7 +10820,7 @@ def team_history(team_id: int):
             """SELECT p.id as player_id, p.first_name, p.last_name, p.position,
                       COUNT(DISTINCT ps.season) as num_seasons,
                       STRING_AGG(DISTINCT ps.season::text, ', ') as seasons_played,
-                      SUM(ps.innings_pitched) as career_ip,
+                      outs_to_ip(SUM(ip_outs(ps.innings_pitched))) as career_ip,
                       SUM(ps.strikeouts) as career_k,
                       SUM(ps.wins) as career_w,
                       SUM(ps.losses) as career_l,
@@ -10822,17 +10829,17 @@ def team_history(team_id: int):
                       SUM(ps.walks) as career_bb,
                       SUM(ps.hits_allowed) as career_ha,
                       SUM(ps.pitching_war) as career_pwar,
-                      CASE WHEN SUM(ps.innings_pitched) > 0
-                           THEN ROUND((9.0 * SUM(ps.earned_runs)::numeric / SUM(ps.innings_pitched))::numeric, 2)
+                      CASE WHEN SUM(ip_outs(ps.innings_pitched)) > 0
+                           THEN ROUND((9.0 * SUM(ps.earned_runs)::numeric / NULLIF(SUM(ip_outs(ps.innings_pitched)) / 3.0, 0))::numeric, 2)
                            ELSE NULL END as career_era,
-                      CASE WHEN SUM(ps.innings_pitched) > 0
-                           THEN ROUND(((SUM(ps.walks) + SUM(ps.hits_allowed))::numeric / SUM(ps.innings_pitched))::numeric, 2)
+                      CASE WHEN SUM(ip_outs(ps.innings_pitched)) > 0
+                           THEN ROUND(((SUM(ps.walks) + SUM(ps.hits_allowed))::numeric / NULLIF(SUM(ip_outs(ps.innings_pitched)) / 3.0, 0))::numeric, 2)
                            ELSE NULL END as career_whip
                FROM pitching_stats ps
                JOIN players p ON ps.player_id = p.id
                WHERE ps.team_id = %s
                GROUP BY p.id
-               HAVING SUM(ps.innings_pitched) >= 20
+               HAVING SUM(ip_outs(ps.innings_pitched)) / 3.0 >= 20
                ORDER BY career_pwar DESC""",
             (team_id,),
         )
@@ -13597,22 +13604,22 @@ def key_matchup(
             cur.execute("""
                 SELECT
                     ROUND(SUM(COALESCE(pitching_war, 0))::numeric, 1) AS total_pwar,
-                    ROUND((SUM(fip * innings_pitched)
+                    ROUND((SUM(fip * ip_outs(innings_pitched))
                              FILTER (WHERE fip IS NOT NULL AND innings_pitched >= 3)
-                           / NULLIF(SUM(innings_pitched)
+                           / NULLIF(SUM(ip_outs(innings_pitched))
                              FILTER (WHERE fip IS NOT NULL AND innings_pitched >= 3), 0))::numeric, 2) AS avg_fip,
                     ROUND(SUM(COALESCE(strikeouts, 0))::numeric
                           / NULLIF(SUM(COALESCE(batters_faced, 0)), 0), 3) AS avg_k_pct,
                     ROUND(SUM(COALESCE(walks, 0))::numeric
                           / NULLIF(SUM(COALESCE(batters_faced, 0)), 0), 3) AS avg_bb_pct,
-                    CASE WHEN SUM(COALESCE(innings_pitched, 0)) > 0
+                    CASE WHEN SUM(ip_outs(COALESCE(innings_pitched, 0))) > 0
                          THEN ROUND((SUM(COALESCE(earned_runs, 0)) * 9.0
-                                     / SUM(COALESCE(innings_pitched, 0)))::numeric, 2)
+                                     / NULLIF(SUM(ip_outs(COALESCE(innings_pitched, 0))) / 3.0, 0))::numeric, 2)
                          ELSE 0 END AS team_era,
-                    CASE WHEN SUM(COALESCE(innings_pitched, 0)) > 0
+                    CASE WHEN SUM(ip_outs(COALESCE(innings_pitched, 0))) > 0
                          THEN ROUND(((SUM(COALESCE(walks, 0))
                                       + SUM(COALESCE(hits_allowed, 0)))::numeric
-                                     / SUM(COALESCE(innings_pitched, 0)))::numeric, 2)
+                                     / NULLIF(SUM(ip_outs(COALESCE(innings_pitched, 0))) / 3.0, 0))::numeric, 2)
                          ELSE 0 END AS team_whip,
                     CASE WHEN (SUM(COALESCE(batters_faced, 0))
                                - SUM(COALESCE(walks, 0))
@@ -19221,18 +19228,18 @@ def get_recruiting_guide(team_id: int):
 
                 fr_pa_pct = (fr_pa / total_pa * 100) if total_pa > 0 else 0
 
-                # Freshman IP
+                # Freshman IP (true decimal innings for the share ratio)
                 cur.execute(f"""
-                    SELECT SUM(ps2.innings_pitched) as fr_ip
+                    SELECT (SUM(ip_outs(ps2.innings_pitched)) / 3.0)::float8 as fr_ip
                     FROM pitching_stats ps2
                     WHERE ps2.team_id = %s AND ps2.season = %s
                       AND ps2.player_id IN ({id_placeholders})
                 """, [team_id, season] + fresh_id_list)
                 fr_ip = (cur.fetchone() or {}).get('fr_ip') or 0
 
-                # Total IP
+                # Total IP (true decimal innings for the share ratio)
                 cur.execute("""
-                    SELECT SUM(ps2.innings_pitched) as total_ip
+                    SELECT (SUM(ip_outs(ps2.innings_pitched)) / 3.0)::float8 as total_ip
                     FROM pitching_stats ps2
                     WHERE ps2.team_id = %s AND ps2.season = %s
                 """, (team_id, season))
@@ -19805,8 +19812,8 @@ def recruiting_breakdown(
         # 3) Freshman IP% - Fr + R-Fr innings as % of team total
         cur.execute(f"""
             SELECT ps.team_id,
-                   SUM(CASE WHEN p.year_in_school IN ('Fr', 'R-Fr') THEN ps.innings_pitched ELSE 0 END) AS fr_ip,
-                   SUM(ps.innings_pitched) AS total_ip
+                   (SUM(CASE WHEN p.year_in_school IN ('Fr', 'R-Fr') THEN ip_outs(ps.innings_pitched) ELSE 0 END) / 3.0)::float8 AS fr_ip,
+                   (SUM(ip_outs(ps.innings_pitched)) / 3.0)::float8 AS total_ip
             FROM pitching_stats ps
             JOIN players p ON ps.player_id = p.id
             WHERE ps.season = %s AND ps.team_id IN ({placeholders})
@@ -19848,7 +19855,7 @@ def recruiting_breakdown(
         # 6) Team avg FIP (weighted by IP)
         cur.execute(f"""
             SELECT ps.team_id,
-                   SUM(ps.fip * ps.innings_pitched) / NULLIF(SUM(ps.innings_pitched), 0) AS avg_fip
+                   SUM(ps.fip * ip_outs(ps.innings_pitched)) / NULLIF(SUM(ip_outs(ps.innings_pitched)), 0) AS avg_fip
             FROM pitching_stats ps
             WHERE ps.season = %s AND ps.team_id IN ({placeholders})
               AND ps.innings_pitched >= 5
@@ -20084,10 +20091,10 @@ def team_stats_agg(
                            SUM(COALESCE(ps.saves, 0))              AS sv,
                            SUM(COALESCE(ps.complete_games, 0))     AS cg,
                            SUM(COALESCE(ps.shutouts, 0))           AS sho,
-                           -- Decimal-summed IP (kept for FIP/xFIP/SIERA weighting
-                           -- where numerator and denominator share the same
-                           -- convention and the bug cancels out)
-                           SUM(COALESCE(ps.innings_pitched, 0))    AS ip_decimal,
+                           -- True decimal IP (baseball notation 5.2 → 5 2/3)
+                           -- via outs. FIP/xFIP/SIERA weighting below weights
+                           -- by outs in both numerator and denominator.
+                           (SUM(ip_outs(COALESCE(ps.innings_pitched, 0))) / 3.0)::float8 AS ip_decimal,
                            -- True IP (baseball notation 5.2 → 5 2/3 → 5.667)
                            SUM(
                              FLOOR(COALESCE(ps.innings_pitched, 0)) +
@@ -20112,20 +20119,20 @@ def team_stats_agg(
                            SUM(COALESCE(ps.batters_faced, 0))      AS bf,
                            ROUND(SUM(COALESCE(ps.pitching_war, 0))::numeric, 1) AS pwar,
                            -- IP-weighted advanced stat numerators and denominators
-                           -- (uses decimal IP since both numerator and denominator
-                           -- share the same convention)
+                           -- (weights by outs in both numerator and denominator
+                           -- so the /3 conversion cancels in the ratio)
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND ps.fip IS NOT NULL
-                                    THEN ps.fip * ps.innings_pitched ELSE 0 END) AS fip_num,
+                                    THEN ps.fip * ip_outs(ps.innings_pitched) ELSE 0 END) AS fip_num,
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND ps.fip IS NOT NULL
-                                    THEN ps.innings_pitched ELSE 0 END) AS fip_den,
+                                    THEN ip_outs(ps.innings_pitched) ELSE 0 END) AS fip_den,
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND ps.xfip IS NOT NULL
-                                    THEN ps.xfip * ps.innings_pitched ELSE 0 END) AS xfip_num,
+                                    THEN ps.xfip * ip_outs(ps.innings_pitched) ELSE 0 END) AS xfip_num,
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND ps.xfip IS NOT NULL
-                                    THEN ps.innings_pitched ELSE 0 END) AS xfip_den,
+                                    THEN ip_outs(ps.innings_pitched) ELSE 0 END) AS xfip_den,
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND (ps.siera IS NOT NULL OR ps.fip IS NOT NULL)
-                                    THEN COALESCE(ps.siera, ps.fip) * ps.innings_pitched ELSE 0 END) AS siera_num,
+                                    THEN COALESCE(ps.siera, ps.fip) * ip_outs(ps.innings_pitched) ELSE 0 END) AS siera_num,
                            SUM(CASE WHEN ps.innings_pitched >= 3 AND (ps.siera IS NOT NULL OR ps.fip IS NOT NULL)
-                                    THEN ps.innings_pitched ELSE 0 END) AS siera_den
+                                    THEN ip_outs(ps.innings_pitched) ELSE 0 END) AS siera_den
                     FROM pitching_stats ps
                     WHERE ps.season = %s
                     GROUP BY ps.team_id
@@ -23369,7 +23376,8 @@ def historic_matchup(
         if pitcher_player_ids:
             cur.execute("""
                 SELECT ps.player_id,
-                       SUM(ps.innings_pitched)   AS ip,
+                       outs_to_ip(SUM(ip_outs(ps.innings_pitched))) AS ip,
+                       SUM(ip_outs(ps.innings_pitched))             AS ip_outs_total,
                        SUM(ps.strikeouts)        AS k,
                        SUM(ps.walks)             AS bb,
                        SUM(ps.home_runs_allowed) AS hr,
@@ -23398,7 +23406,9 @@ def historic_matchup(
             hr = int(row["hr"] or 0)
             hbp = int(row["hbp"] or 0)
             bf = int(row["bf"] or 0)
-            outs = innings_to_outs(ip)
+            # ip_outs_total is the true total outs from SQL (ip_outs(SUM)); the
+            # display `ip` is baseball notation, so do NOT re-parse it here.
+            outs = int(row["ip_outs_total"] or 0)
             if outs <= 0:
                 return None, None, None, None
             ip_decimal = outs / 3.0

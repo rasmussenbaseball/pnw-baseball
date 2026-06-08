@@ -1820,7 +1820,7 @@ def _division_team_pitching(cur, season, level):
         JOIN divisions d ON c.division_id = d.id
         WHERE ps.season = %s AND d.level = %s
         GROUP BY t.id, t.short_name
-        HAVING SUM(ps.innings_pitched) > 0
+        HAVING SUM(ip_outs(ps.innings_pitched)) / 3.0 > 0
         """,
         (season, level),
     )

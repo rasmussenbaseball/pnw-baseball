@@ -254,7 +254,8 @@ def _aggregate_team_pitching(cur, team_id, season):
     cur.execute("""
         SELECT
           SUM(games)              AS g,
-          SUM(innings_pitched)    AS ip,
+          outs_to_ip(SUM(ip_outs(innings_pitched))) AS ip,
+          (SUM(ip_outs(innings_pitched)) / 3.0)::float8 AS ip_true,
           SUM(earned_runs)        AS er,
           SUM(hits_allowed)       AS h,
           SUM(walks)              AS bb,
@@ -268,16 +269,16 @@ def _aggregate_team_pitching(cur, team_id, season):
     r = cur.fetchone()
     if not r or not r['ip']:
         return None
-    ip, er, h, bb, so, hr, bf = (
-        float(r['ip']), float(r['er'] or 0), float(r['h'] or 0),
+    ip, ip_calc, er, h, bb, so, hr, bf = (
+        float(r['ip']), float(r['ip_true'] or 0), float(r['er'] or 0), float(r['h'] or 0),
         float(r['bb'] or 0), float(r['so'] or 0), float(r['hr'] or 0),
         float(r['bf'] or 0),
     )
-    era = (er * 9 / ip) if ip else 0
-    whip = (h + bb) / ip if ip else 0
-    k_per_9 = (so * 9 / ip) if ip else 0
-    bb_per_9 = (bb * 9 / ip) if ip else 0
-    hr_per_9 = (hr * 9 / ip) if ip else 0
+    era = (er * 9 / ip_calc) if ip_calc else 0
+    whip = (h + bb) / ip_calc if ip_calc else 0
+    k_per_9 = (so * 9 / ip_calc) if ip_calc else 0
+    bb_per_9 = (bb * 9 / ip_calc) if ip_calc else 0
+    hr_per_9 = (hr * 9 / ip_calc) if ip_calc else 0
     k_bb_ratio = (so / bb) if bb else (so if so else 0)
     k_pct = (so / bf) if bf else 0
     bb_pct = (bb / bf) if bf else 0
@@ -286,10 +287,10 @@ def _aggregate_team_pitching(cur, team_id, season):
     # Team-level FIP/SIERA: weighted avg of player FIP / SIERA by IP
     cur.execute("""
         SELECT
-          SUM(fip * innings_pitched) FILTER (WHERE fip IS NOT NULL)
-            / NULLIF(SUM(innings_pitched) FILTER (WHERE fip IS NOT NULL), 0) AS team_fip,
-          SUM(siera * innings_pitched) FILTER (WHERE siera IS NOT NULL)
-            / NULLIF(SUM(innings_pitched) FILTER (WHERE siera IS NOT NULL), 0) AS team_siera
+          SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
+            / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) AS team_fip,
+          SUM(siera * ip_outs(innings_pitched)) FILTER (WHERE siera IS NOT NULL)
+            / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE siera IS NOT NULL), 0) AS team_siera
         FROM pitching_stats
         WHERE team_id = %s AND season = %s
     """, (team_id, season))
