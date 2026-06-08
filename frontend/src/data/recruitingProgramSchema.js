@@ -54,7 +54,6 @@ export const FIELD_GROUPS = [
     fields: [
       { key: 'stadium', label: 'Stadium / Field', format: 'text' },
       { key: 'capacity', label: 'Capacity', format: 'text' },
-      { key: 'fieldSurface', label: 'Field Surface', format: 'text' },
       { key: 'indoorFacility', label: 'Indoor Facility', format: 'text' },
     ],
   },
