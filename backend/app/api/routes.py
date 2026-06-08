@@ -398,17 +398,6 @@ def get_team_aggregates(cur, team_id: int, season: int) -> dict:
     )
     pit = cur.fetchone() or {}
 
-    # ── ER from game_pitching (preferred) with ghost-row guard ──
-    cur.execute(
-        """SELECT SUM(gp.earned_runs) AS er_gp, COUNT(*) AS n
-           FROM game_pitching gp
-           JOIN games g ON g.id = gp.game_id
-           WHERE gp.team_id = %s AND g.season = %s
-             AND gp.team_id IN (g.home_team_id, g.away_team_id)""",
-        (team_id, season),
-    )
-    gp_er = cur.fetchone() or {}
-
     # ── Batting counting + weighted advanced stats from batting_stats ──
     cur.execute(
         """SELECT
@@ -452,15 +441,15 @@ def get_team_aggregates(cur, team_id: int, season: int) -> dict:
     )
     scoring = cur.fetchone() or {}
 
-    # Choose ER source: game_pitching when we have any rows for this season,
-    # else fall back to cumulative pitching_stats (older seasons).
-    gp_n = (gp_er.get("n") or 0) if gp_er else 0
-    if gp_n > 0:
-        total_er = gp_er.get("er_gp") or 0
-        result["er_source"] = "game_pitching"
-    else:
-        total_er = pit.get("total_er_ps") or 0
-        result["er_source"] = "pitching_stats"
+    # ER must come from the SAME full-season source as the IP denominator
+    # (pitching_stats season totals). game_pitching only covers games whose box
+    # scores were scraped, which is PARTIAL for many teams (NWAC, JUCO, and even
+    # some D1 like Seattle U/UW with few scraped games). Dividing a partial ER by
+    # full-season IP produced absurdly low team ERAs (Everett 2025 showed 1.49
+    # instead of ~2.69). pitching_stats is the season source of truth and matches
+    # the official conference team totals.
+    total_er = pit.get("total_er_ps") or 0
+    result["er_source"] = "pitching_stats"
 
     # Convenience locals
     true_ip = float(pit.get("total_true_ip") or 0)
