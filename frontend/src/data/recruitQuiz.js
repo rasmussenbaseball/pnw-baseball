@@ -373,52 +373,6 @@ export const RECRUIT_QUESTIONS = [
   ]
  },
  {
-  "id": "q14",
-  "cat": "Program",
-  "key": "rosterPref",
-  "text": "What roster size feels right for you?",
-  "hint": "Smaller rosters mean more early playing time. Larger rosters mean more depth and competition for your spot.",
-  "answers": [
-   {
-    "label": "Small (under 25 players) · more opportunity right away",
-    "value": "small"
-   },
-   {
-    "label": "Mid-size (25–40 players) · competitive but manageable",
-    "value": "mid"
-   },
-   {
-    "label": "Large (40+ players) · deep program, earn your spot",
-    "value": "large"
-   },
-   {
-    "label": "No preference on roster size",
-    "value": "ANY"
-   }
-  ]
- },
- {
-  "id": "q15",
-  "cat": "Facilities",
-  "key": "indoor",
-  "text": "Does having an indoor practice facility matter?",
-  "hint": "Important in the NW where spring weather is unpredictable.",
-  "answers": [
-   {
-    "label": "Yes · indoor facility is important for year-round development",
-    "value": "yes"
-   },
-   {
-    "label": "No · outdoor only is fine",
-    "value": "no"
-   },
-   {
-    "label": "No preference",
-    "value": "ANY"
-   }
-  ]
- },
- {
   "id": "q16",
   "cat": "Logistics",
   "key": "airportPref",
@@ -2924,3 +2878,63 @@ export const RECRUIT_SCHOOLS = [
   "teamId": 53
  }
 ];
+
+export const REAL_RECORDS_2026 = {
+  1: "26-32",
+  2: "43-17",
+  3: "45-14",
+  4: "31-27",
+  5: "18-26",
+  6: "13-40",
+  7: "26-23",
+  8: "24-27",
+  9: "42-18",
+  10: "23-17",
+  11: "14-24",
+  12: "14-25",
+  13: "31-16",
+  14: "24-18",
+  15: "22-19",
+  16: "9-29",
+  17: "19-26",
+  18: "16-24",
+  19: "14-35",
+  20: "25-28",
+  21: "29-21",
+  22: "45-9",
+  23: "17-33",
+  24: "27-27",
+  25: "22-27",
+  26: "5-34",
+  27: "38-14",
+  28: "42-10",
+  29: "17-30",
+  30: "26-21",
+  31: "16-25",
+  32: "8-30",
+  33: "14-29",
+  34: "28-20",
+  35: "32-14",
+  36: "22-27",
+  37: "13-30",
+  38: "31-19",
+  39: "29-19",
+  40: "17-28",
+  41: "11-34",
+  42: "11-26",
+  43: "39-16",
+  44: "36-11",
+  45: "20-20",
+  46: "23-24",
+  47: "25-17",
+  48: "21-26",
+  49: "15-22",
+  50: "3-44",
+  52: "43-10",
+  53: "20-17",
+  482: "27-25",
+  483: "35-19",
+  484: "18-31",
+  505: "18-32",
+  5720: "40-17",
+}

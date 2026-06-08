@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { RECRUIT_QUESTIONS, RECRUIT_SCHOOLS } from '../data/recruitQuiz'
+import { RECRUIT_QUESTIONS, RECRUIT_SCHOOLS, REAL_RECORDS_2026 } from '../data/recruitQuiz'
 import InternCredit from '../components/InternCredit'
 
 const LEVEL_CHIP = {
@@ -16,6 +16,26 @@ const LEVEL_CHIP = {
   NWAC: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
 }
 const WIN_LABEL = { strong: '65%+ win rate', winning: '50-65% win rate', developing: '35-50% win rate', rebuilding: 'under 35% win rate' }
+
+// The curated spreadsheet's 2026 records were stale/partial. Override the 2026
+// segment of each program's record with our real DB result and recompute the
+// win profile from the real 2026 win rate (so scoring + chips stay consistent).
+// 2025/2024 are left as-is — our game coverage for those years is incomplete
+// for the Nuxt D1 schools, so the spreadsheet figures are more reliable there.
+function withRealRecord(s) {
+  const real = REAL_RECORDS_2026[s.teamId]
+  if (!real) return s
+  const [w, l] = real.split('-').map(Number)
+  const tot = w + l
+  const wr = tot > 0 ? w / tot : null
+  const winProfile = wr == null ? s.winProfile
+    : wr >= 0.65 ? 'strong' : wr >= 0.50 ? 'winning' : wr >= 0.35 ? 'developing' : 'rebuilding'
+  const token = `2026: ${w}-${l}`
+  const record = /2026:\s*\d+-\d+/.test(s.record || '')
+    ? s.record.replace(/2026:\s*\d+-\d+/, token)
+    : (s.record ? `${token}; ${s.record}` : token)
+  return { ...s, record, winProfile }
+}
 
 // ── Weighted fit scoring (faithful port of the prototype) ──
 // Returns 0-100: earned / possible points. Categories a school has no data
@@ -148,18 +168,6 @@ function scoreSchool(s, a) {
       return Math.max(...picked.map(v => { const d = Math.abs(wp.indexOf(v) - wp.indexOf(s.winProfile)); return d === 1 ? 3 : d === 2 ? 1 : 0 }), 0)
     })
   }
-  if (s.rosterSize !== 'unknown') {
-    match(6, () => {
-      if (a.rosterPref === 'ANY') return 3
-      const rs = ['small', 'mid', 'large']
-      const d = Math.abs(rs.indexOf(a.rosterPref) - rs.indexOf(s.rosterSize))
-      return d === 0 ? 6 : d === 1 ? 3 : 0
-    })
-  }
-  match(5, () => {
-    if (a.indoor === 'ANY') return 3
-    return a.indoor === s.indoor ? 5 : 0
-  })
   if (s.airportDist !== 'unknown') {
     match(7, () => {
       const picked = arr(a.airportPref)
@@ -214,8 +222,6 @@ function ProgramDetail({ s }) {
       ['Recent Record', s.record],
       ['Win Profile', WIN_LABEL[s.winProfile]],
       ['Home Field', s.stadium ? (s.capacity ? `${s.stadium} · seats ${s.capacity}` : s.stadium) : null],
-      ['Surface', s.fieldRaw],
-      ['Indoor Facility', s.indoor === 'yes' ? 'Yes' : s.indoor === 'no' ? 'No' : null],
       ['Scholarships', s.scholarshipInfo],
     ]],
     ['Academics', [
@@ -294,10 +300,21 @@ export default function RecruitQuiz() {
 
   const results = useMemo(() => {
     if (!done) return []
-    return RECRUIT_SCHOOLS
+    const scored = RECRUIT_SCHOOLS
+      .map(withRealRecord)
       .map(s => ({ ...s, pct: scoreSchool(s, ans) }))
       .sort((a, b) => b.pct - a.pct)
-      .slice(0, 7)
+    // Diversify: a fit quiz shouldn't return an all-D3 list. Guarantee the best
+    // match at every level (D1/D2/D3/NAIA/NWAC) appears, then fill the rest with
+    // the next-highest scorers. Final list is re-sorted by fit for display.
+    const N = 8
+    const bestPerLevel = []
+    const seen = new Set()
+    for (const s of scored) {
+      if (!seen.has(s.level)) { seen.add(s.level); bestPerLevel.push(s) }
+    }
+    const fillers = scored.filter(s => !bestPerLevel.includes(s)).slice(0, Math.max(0, N - bestPerLevel.length))
+    return [...bestPerLevel, ...fillers].sort((a, b) => b.pct - a.pct)
   }, [done, ans])
 
   const pick = (question, val) => {
@@ -334,7 +351,7 @@ export default function RecruitQuiz() {
         </p>
         <InternCredit names="Luke Malzewski" className="mt-2" />
         <div className="flex items-center justify-center gap-6 mt-4">
-          {[['57', 'Programs'], ['5', 'Levels'], ['17', 'Questions']].map(([n, l]) => (
+          {[['57', 'Programs'], ['5', 'Levels'], ['15', 'Questions']].map(([n, l]) => (
             <div key={l} className="text-center">
               <div className="text-xl font-black text-nw-teal">{n}</div>
               <div className="text-[11px] text-gray-500 dark:text-gray-400">{l}</div>
@@ -401,7 +418,7 @@ export default function RecruitQuiz() {
           <div className="mb-4">
             <h2 className="text-2xl font-black text-pnw-slate dark:text-gray-100">Your top program matches</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              Top 7 of 57 NW programs ranked by fit. Tap a school to see its full NWBB profile.
+              Ranked by fit across all five levels (D1, D2, D3, NAIA, NWAC), including your best option at each. Tap a school to see its full NWBB profile.
             </p>
           </div>
 
@@ -431,7 +448,6 @@ export default function RecruitQuiz() {
                       {s.enrollRaw && <Pill tone="tl">{s.enrollRaw} students</Pill>}
                       {s.sfrRaw && <Pill tone="bl">{s.sfrRaw} student:faculty</Pill>}
                       {WIN_LABEL[s.winProfile] && <Pill tone="am">{WIN_LABEL[s.winProfile]}</Pill>}
-                      {s.indoor === 'yes' && <Pill tone="gr">Indoor facility</Pill>}
                       {s.gradRate && <Pill tone="gr">{s.gradRate} grad rate</Pill>}
                       {s.schoolTypeRaw && <Pill tone="gy">{s.schoolTypeRaw}</Pill>}
                     </div>
