@@ -464,7 +464,7 @@ function Hometowns({ breakdown, T }) {
         <BarChart data={states} layout="vertical" margin={{ left: 70 }}>
           <CartesianGrid {...cp.grid} />
           <XAxis type="number" {...cp.axis} />
-          <YAxis dataKey="name" type="category" width={64} {...cp.axis} />
+          <YAxis dataKey="name" type="category" width={64} interval={0} {...cp.axis} />
           <Tooltip {...cp.tooltip} cursor={{ fill: T.track, opacity: 0.4 }} />
           <Bar dataKey="value" fill={T.accent} name="Players" radius={[0, 4, 4, 0]} />
         </BarChart>
