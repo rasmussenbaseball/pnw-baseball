@@ -97,10 +97,17 @@ function ProgramGroup({ title, fields, profile, T }) {
 }
 
 // ── Hero ────────────────────────────────────────────────────────────────────
-function Hero({ teamInfo, program, T }) {
+function Hero({ teamInfo, program, records, T }) {
   const profile = program?.profile || {}
   const level = program?.division || teamInfo?.division_name
   const loc = [profile.city || teamInfo?.city, profile.state || teamInfo?.state].filter(Boolean).join(', ')
+  // Build the recent-record line from real game results (last 3 seasons); fall
+  // back to the curated profile value only if we have no game records.
+  const realRecord = (records || [])
+    .filter((r) => (r.wins || 0) + (r.losses || 0) > 0)
+    .slice().sort((a, b) => b.season - a.season).slice(0, 3)
+    .map((r) => `${r.season}: ${r.wins}-${r.losses}`).join('; ')
+  const recentRecord = realRecord || profile.recentRecord
   return (
     <div className="rounded-md p-5 mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
       <div className="flex items-center gap-4">
@@ -119,8 +126,8 @@ function Hero({ teamInfo, program, T }) {
             {teamInfo?.conference_name ? ` · ${teamInfo.conference_name}` : (program?.conference ? ` · ${program.conference}` : '')}
             {loc ? ` · ${loc}` : ''}
           </div>
-          {!isEmpty(profile.recentRecord) && (
-            <div className="text-[11.5px] mt-1" style={{ color: T.textLight }}>{profile.recentRecord}</div>
+          {!isEmpty(recentRecord) && (
+            <div className="text-[11.5px] mt-1" style={{ color: T.textLight }}>{recentRecord}</div>
           )}
         </div>
       </div>
@@ -567,7 +574,7 @@ export default function RecruitingGuide() {
 
         {teamId && guide && (
           <>
-            <Hero teamInfo={teamInfo} program={program ? { ...program, profile } : null} T={T} />
+            <Hero teamInfo={teamInfo} program={program ? { ...program, profile } : null} records={guide.season_records} T={T} />
 
             {isAdmin && editing && (
               <ProgramEditor teamId={teamId} profile={profile}
