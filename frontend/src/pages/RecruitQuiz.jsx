@@ -7,6 +7,7 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { RECRUIT_QUESTIONS, RECRUIT_SCHOOLS, REAL_RECORDS_2026 } from '../data/recruitQuiz'
+import { usePersistedState } from '../hooks/usePersistedState'
 import InternCredit from '../components/InternCredit'
 
 const LEVEL_CHIP = {
@@ -309,11 +310,14 @@ function ProgramDetail({ s }) {
 }
 
 export default function RecruitQuiz() {
-  const [step, setStep] = useState(0)
-  const [ans, setAns] = useState({})
-  const [done, setDone] = useState(false)
+  // Answers, dealbreakers, and completion persist to localStorage so returning to
+  // the Matchmaker lands on your saved results until you clear them and retake.
+  const [ans, setAns] = usePersistedState('matchmaker_answers', {}, { storage: 'local' })
+  const [dealbreakers, setDealbreakers] = usePersistedState('matchmaker_dealbreakers', {}, { storage: 'local' })
+  const [done, setDone] = usePersistedState('matchmaker_done', false, { storage: 'local' })
+  // Land on the last question (not Q1) if reopening a completed quiz and hitting Back.
+  const [step, setStep] = useState(done ? RECRUIT_QUESTIONS.length - 1 : 0)
   const [expanded, setExpanded] = useState({}) // program name -> open?
-  const [dealbreakers, setDealbreakers] = useState({}) // question key -> bool
   const toggleDetail = (name) => setExpanded(p => ({ ...p, [name]: !p[name] }))
   const toggleDealbreaker = (key) => setDealbreakers(p => ({ ...p, [key]: !p[key] }))
 
@@ -474,9 +478,15 @@ export default function RecruitQuiz() {
         /* ── Results ── */
         <div>
           <div className="mb-4">
-            <h2 className="text-2xl font-black text-pnw-slate dark:text-gray-100">Your top program matches</h2>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-2xl font-black text-pnw-slate dark:text-gray-100">Your top program matches</h2>
+              <button onClick={restart}
+                className="shrink-0 mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 underline decoration-dotted underline-offset-2 whitespace-nowrap">
+                Clear &amp; retake
+              </button>
+            </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              Ranked by fit across all five levels (D1, D2, D3, NAIA, NWAC), including your best option at each. Tap a school to see its full NWBB profile.
+              Saved from your last quiz, ranked by fit across all five levels (D1, D2, D3, NAIA, NWAC), including your best option at each. Tap a school to see its full NWBB profile.
             </p>
             {activeDealbreakers.length > 0 && !dbFellBack && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -565,8 +575,8 @@ export default function RecruitQuiz() {
           </div>
 
           <button onClick={restart}
-            className="mt-3 w-full py-2.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-            Start over · retake the quiz
+            className="mt-3 w-full py-2.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors">
+            Clear my saved answers and retake the quiz
           </button>
         </div>
       )}
