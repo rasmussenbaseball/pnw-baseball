@@ -486,6 +486,19 @@ def _csv_rows(filename):
         return list(csv.DictReader(fh))
 
 
+def _mlb_team(raw):
+    """Normalize the FanGraphs Team field. Traded players get a "- - -" marker
+    (the only thing the export carries for a multi-team season), which would
+    otherwise render as a bare dash on the comps pages. Show "Multiple Teams"
+    instead. Returns None for a genuinely empty value so the UI can fall back."""
+    t = (raw or "").strip()
+    if not t:
+        return None
+    if set(t) <= {"-", " "}:  # "- - -", "---", "--", etc.
+        return "Multiple Teams"
+    return t
+
+
 @lru_cache(maxsize=2)
 def _load_mlb_pool(side):
     """Recent MLB player-seasons from the bundled reference CSVs. Cached."""
@@ -495,7 +508,7 @@ def _load_mlb_pool(side):
             out.append({
                 "id": f"mlb-h-{r.get('PlayerId','')}-{r.get('Season','')}-{i}",
                 "name": r.get("Name") or r.get("NameASCII"),
-                "team": r.get("Team"),
+                "team": _mlb_team(r.get("Team")),
                 "season": int(r["Season"]) if (r.get("Season") or "").strip().isdigit() else None,
                 "level": "MLB",
                 "position": (r.get("Pos") or "").strip(),
@@ -515,7 +528,7 @@ def _load_mlb_pool(side):
             out.append({
                 "id": f"mlb-p-{r.get('PlayerId','')}-{r.get('Season','')}-{i}",
                 "name": r.get("Name") or r.get("NameASCII"),
-                "team": r.get("Team"),
+                "team": _mlb_team(r.get("Team")),
                 "season": int(r["Season"]) if (r.get("Season") or "").strip().isdigit() else None,
                 "level": "MLB",
                 "position": (r.get("Pos") or "").strip(),
