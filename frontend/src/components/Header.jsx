@@ -58,6 +58,7 @@ const NAV = [
       { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends', requires: 'premium' },
       { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city', requires: 'premium' },
       { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis', requires: 'premium' },
+      { to: '/recruiting/program-guide', label: 'Program Guide (PDF)', desc: 'In-depth PDF book on all 57 PNW programs', requires: 'premium' },
       { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations', requires: 'premium' },
       { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
     ],

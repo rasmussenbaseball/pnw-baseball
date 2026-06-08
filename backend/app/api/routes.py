@@ -18,7 +18,7 @@ from bisect import bisect_left, bisect_right
 from datetime import datetime, date, timedelta
 
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from psycopg2.extras import Json
 from typing import Optional
 from ..models.database import get_connection
@@ -19678,6 +19678,30 @@ def upsert_recruiting_program(
               trow["division"], trow["conference"], Json(profile)))
         row = dict(cur.fetchone())
     return {"ok": True, "program": row}
+
+
+# ============================================================
+# RECRUITING PROGRAM GUIDE (PDF)
+# ============================================================
+# Premium-gated PDF of all 57 PNW program profiles. Served inline (not as an
+# attachment) and only with a valid premium token — the raw URL returns 401
+# without auth, so it can't be opened/downloaded directly. The frontend renders
+# it page-by-page to canvas (no download/print UI, no text layer).
+PROGRAM_GUIDE_PATH = "/opt/program_guide.pdf"
+
+
+@router.get("/recruiting/program-guide")
+def recruiting_program_guide(_user: str = Depends(require_tier("premium"))):
+    if not os.path.exists(PROGRAM_GUIDE_PATH):
+        raise HTTPException(status_code=404, detail="Program guide not available")
+    return FileResponse(
+        PROGRAM_GUIDE_PATH,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "inline; filename=nwbb-program-guide.pdf",
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
 
 
 # ============================================================

@@ -233,6 +233,7 @@ import AdminRecruitingPlaceholder from './pages/AdminRecruitingPlaceholder'
 import RecruitingHistory from './pages/RecruitingHistory'
 import RecruitingField from './pages/RecruitingField'
 const RecruitingGuide = lazyWithRetry(() => import('./pages/RecruitingGuide'))  // recharts
+const RecruitingProgramGuide = lazyWithRetry(() => import('./pages/RecruitingProgramGuide'))  // react-pdf (heavy)
 // Coach-portal scouting + print/PDF pages (coach tier only) — lazy.
 const PlayerScouting = lazyWithRetry(() => import('./pages/PlayerScouting'))
 const TeamScouting = lazyWithRetry(() => import('./pages/TeamScouting'))
@@ -399,8 +400,9 @@ export default function App() {
           {/* Read-only for premium recruits (the matchmaker links here); the
               in-page editor stays admin-only (gated inside RecruitingGuide + admin PUT). */}
           <Route path="/recruiting/guide" element={<RequireTier minTier="premium"><RecruitingGuide /></RequireTier>} />
+          <Route path="/recruiting/program-guide" element={<RequireTier minTier="premium"><RecruitingProgramGuide /></RequireTier>} />
           <Route path="/recruiting/rankings" element={<RequireAdmin><RecruitingRankings /></RequireAdmin>} />
-          <Route path="/recruiting/map" element={<RequireAdmin><RecruitingMap /></RequireAdmin>} />
+          <Route path="/recruiting/map" element={<RequireTier minTier="premium"><RecruitingMap /></RequireTier>} />
           <Route path="/recruiting/breakdowns" element={<RequireAdmin><AdminRecruitingPlaceholder /></RequireAdmin>} />
           <Route path="/recruiting/history" element={<RequireAdmin><RecruitingHistory /></RequireAdmin>} />
           <Route path="/recruiting/field" element={<RequireAdmin><RecruitingField /></RequireAdmin>} />
