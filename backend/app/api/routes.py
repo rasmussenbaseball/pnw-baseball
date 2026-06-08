@@ -22698,7 +22698,7 @@ def _get_league_constants(cur, season: int, division_level: str) -> dict:
     bat = cur.fetchone()
 
     cur.execute("""
-        SELECT SUM(ps.innings_pitched) AS total_ip,
+        SELECT (SUM(ip_outs(ps.innings_pitched)) / 3.0)::float8 AS total_ip,
                SUM(ps.earned_runs) AS total_er,
                SUM(ps.hits_allowed) AS total_h,
                SUM(ps.walks) AS total_bb,

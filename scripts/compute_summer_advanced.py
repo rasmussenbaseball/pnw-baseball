@@ -102,7 +102,9 @@ def compute_league_averages(conn, league_id, season):
     # ----- Pitching league averages -----
     cur.execute("""
         SELECT
-            COALESCE(SUM(innings_pitched), 0) as total_ip,
+            -- True decimal innings (ip_outs converts baseball-notation .1/.2 to
+            -- outs; a plain SUM would undercount). See migrate_ip_helpers.sql.
+            (COALESCE(SUM(ip_outs(innings_pitched)), 0) / 3.0)::float8 as total_ip,
             COALESCE(SUM(earned_runs), 0) as total_er,
             COALESCE(SUM(runs_allowed), 0) as total_r,
             COALESCE(SUM(home_runs_allowed), 0) as total_hr,
@@ -117,19 +119,16 @@ def compute_league_averages(conn, league_id, season):
     """, (season, league_id))
     pit = dict(cur.fetchone())
 
-    # Convert IP to decimal for calculations
-    total_ip_raw = pit['total_ip']
-    ip_full = int(total_ip_raw)
-    ip_partial = round((total_ip_raw - ip_full) * 10)
-    total_outs = ip_full * 3 + ip_partial
-    ip_decimal = total_outs / 3.0 if total_outs > 0 else 1
+    # total_ip is already TRUE decimal innings (ip_outs(...)/3 in the SQL above),
+    # so use it directly — do NOT re-convert baseball notation here.
+    ip_decimal = pit['total_ip'] if pit['total_ip'] and pit['total_ip'] > 0 else 1
 
     lg_era = _safe_div(pit['total_er'] * 9, ip_decimal)
 
-    # Compute FIP constant
+    # Compute FIP constant (compute_fip_constant expects true decimal innings)
     fip_const = compute_fip_constant(
         lg_era, pit['total_hr'], pit['total_bb'],
-        pit['total_hbp'], pit['total_k'], total_ip_raw
+        pit['total_hbp'], pit['total_k'], ip_decimal
     )
 
     # League FIP

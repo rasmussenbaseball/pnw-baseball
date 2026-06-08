@@ -287,8 +287,14 @@ def compute_fip_constant(
     """
     Compute the FIP constant for a league/season.
     FIP constant = lgERA - ((13*lgHR + 3*(lgBB+lgHBP) - 2*lgK) / lgIP)
+
+    `league_ip` must be TRUE decimal innings (e.g. 435.667), NOT baseball
+    notation and NOT a naive SUM of notation values (.1/.2 are outs, not
+    decimals). Callers that sum innings_pitched MUST convert first:
+    SUM(ip_outs(innings_pitched)) / 3.0 in SQL, or sum of PitchingLine.ip_decimal
+    in Python.
     """
-    ip_decimal = innings_to_outs(league_ip) / 3.0 if league_ip else 1
+    ip_decimal = league_ip if league_ip else 1
     return league_era - (
         (13 * league_hr + 3 * (league_bb + league_hbp) - 2 * league_k) / ip_decimal
     )

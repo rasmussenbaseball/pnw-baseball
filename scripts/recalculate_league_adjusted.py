@@ -126,7 +126,10 @@ def compute_league_averages(conn, season, multi_year=True):
     cur.execute(f"""
         SELECT d.level as division_level,
                COUNT(DISTINCT ps.player_id) as num_pitchers,
-               SUM(ps.innings_pitched) as total_ip,
+               -- True decimal innings: innings_pitched is baseball notation
+               -- (.1/.2 = outs), so a plain SUM undercounts. ip_outs() converts
+               -- each line to outs; /3 gives correct league innings.
+               (SUM(ip_outs(ps.innings_pitched)) / 3.0)::float8 as total_ip,
                SUM(ps.earned_runs) as total_er,
                SUM(ps.runs_allowed) as total_r,
                SUM(ps.hits_allowed) as total_h,
@@ -210,8 +213,9 @@ def compute_league_averages(conn, season, multi_year=True):
             league_ip=total_ip,
         )
 
-        # League FIP (for FIP+ calculation)
-        ip_decimal = innings_to_outs(total_ip) / 3.0 if total_ip else 1
+        # League FIP (for FIP+ calculation). total_ip is already true decimal
+        # innings (converted via ip_outs in the SQL above), so use it directly.
+        ip_decimal = total_ip if total_ip else 1
         lg_fip = (
             (13 * pit_hr + 3 * (pit_bb + pit_hbp) - 2 * pit_k) / ip_decimal
         ) + fip_const
