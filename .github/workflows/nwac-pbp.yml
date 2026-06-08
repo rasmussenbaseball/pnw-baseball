@@ -10,6 +10,10 @@ on:
   #   - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
+      season:
+        description: 'Season year (e.g. 2026, 2024)'
+        required: false
+        default: '2026'
       mode:
         description: 'Run mode: daily (default) or backfill'
         required: false
@@ -49,15 +53,16 @@ jobs:
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SEASON_YEAR: '2026'
+          SEASON_YEAR: ${{ github.event.inputs.season || '2026' }}
         run: |
           cd $GITHUB_WORKSPACE
+          SEASON="${{ github.event.inputs.season || '2026' }}"
           MODE="${{ github.event.inputs.mode }}"
           LIMIT="${{ github.event.inputs.limit }}"
           RESCRAPE="${{ github.event.inputs.rescrape }}"
           DRY_RUN="${{ github.event.inputs.dry_run }}"
 
-          ARGS="--season 2026"
+          ARGS="--season $SEASON"
           if [ "$MODE" = "backfill" ]; then
             ARGS="$ARGS --backfill"
           fi

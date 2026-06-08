@@ -15,6 +15,10 @@ on:
   #   - cron: '0 13 * * *'
   workflow_dispatch:  # Allow manual runs
     inputs:
+      season:
+        description: 'Season year (e.g. 2026, 2024). NWAC academic-year is derived (2024 -> 2023-24).'
+        required: false
+        default: '2026'
       mode:
         description: 'Run mode: daily (default), backfill, or recent'
         required: false
@@ -52,7 +56,7 @@ jobs:
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SEASON_YEAR: '2026'
+          SEASON_YEAR: ${{ github.event.inputs.season || '2026' }}
           # Cron expression that triggered this run (empty for manual runs)
           TRIGGER_CRON: ${{ github.event.schedule }}
         run: |
