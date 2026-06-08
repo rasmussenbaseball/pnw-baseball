@@ -1456,7 +1456,12 @@ function StreaksCard({ playerId, season = 2026 }) {
 export default function PlayerDetail() {
   const { playerId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
-  const season = clampSeason(searchParams.get('season') || CURRENT_SEASON)
+  // No explicit ?season= → pass null so the percentile bars resolve to the
+  // player's most recent season (which is also the default stint shown). Forcing
+  // CURRENT_SEASON here meant anyone not active this year (e.g. a 2025 alum)
+  // fetched empty current-year percentiles and saw blank bars on first load.
+  const seasonParam = searchParams.get('season')
+  const season = seasonParam ? clampSeason(seasonParam) : null
   const { data, loading, error } = usePlayer(playerId, season)
   const [viewSide, setViewSide] = useState(null)
 
