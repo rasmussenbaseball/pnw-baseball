@@ -25,6 +25,7 @@ export default function JucoTracker() {
   const [bats, setBats] = usePersistedState('juco_bats', '')
   const [throws_, setThrows] = usePersistedState('juco_throws', '')
   const [board, setBoard] = usePersistedState('juco_board', 'hitters')
+  const [hideCommitted, setHideCommitted] = usePersistedState('juco_hideCommitted', false)
 
   // Each board keeps its own sort: hitters default to oWAR, pitchers to pWAR.
   const sortBy = board === 'hitters' ? hitSortBy : pitSortBy
@@ -57,8 +58,13 @@ export default function JucoTracker() {
     }
   }
 
-  const hitters = (data || []).filter(isHitter)
-  const pitchers = (data || []).filter(isPitcher)
+  // "Hide committed" drops anyone who has committed to a 4-year school, so
+  // the board shows only players still available to recruit.
+  const visibleRows = (data || []).filter(
+    r => !hideCommitted || !(r.is_committed || r.committed_to)
+  )
+  const hitters = visibleRows.filter(isHitter)
+  const pitchers = visibleRows.filter(isPitcher)
 
   return (
     <div>
@@ -130,6 +136,22 @@ export default function JucoTracker() {
               <option value="L">LHP</option>
               <option value="R">RHP</option>
             </select>
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Commitments</label>
+            <button
+              type="button"
+              onClick={() => setHideCommitted(v => !v)}
+              aria-pressed={hideCommitted}
+              className={`rounded border px-2.5 py-1 text-sm font-semibold transition-colors ${
+                hideCommitted
+                  ? 'border-nw-teal bg-nw-teal text-white'
+                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+              }`}
+            >
+              {hideCommitted ? 'Committed hidden' : 'Hide committed'}
+            </button>
           </div>
         </div>
       </div>
