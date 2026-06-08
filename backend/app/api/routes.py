@@ -19448,10 +19448,19 @@ def get_recruiting_guide(team_id: int):
 
             for p in player_hometowns:
                 hometown = p['hometown']
-                # Try to extract state (simple logic - look for ", XX" at end)
+                # Extract the state: the chunk right after the city (first comma),
+                # cut at any parenthetical / transfer chain so hometowns like
+                # "Brentwood, Calif. (Heritage HS/Chabot CC)" reduce to "CALIF."
+                # rather than a unique per-player string.
                 state = None
                 if ", " in hometown:
-                    state = hometown.split(", ")[-1].strip().upper()
+                    after = hometown.split(", ", 1)[1]
+                    for sep in ("(", "/"):
+                        cut = after.find(sep)
+                        if cut != -1:
+                            after = after[:cut]
+                    after = after.split(",")[0].strip().upper()  # drop trailing ", Country" etc.
+                    state = after or None
 
                 # Count by state
                 if state:
