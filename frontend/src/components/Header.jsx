@@ -56,6 +56,7 @@ const NAV = [
     items: [
       { to: '/recruiting', label: 'Recruiting Hub', desc: 'Start here: every recruiting tool, explained. Free to browse.' },
       { to: '/recruiting/tips', label: 'Recruiting Tips', desc: 'How to get recruited + freshman production by level', requires: 'premium' },
+      { to: '/recruiting/advancement', label: 'NWAC Advancement', desc: 'Where NWAC teams send players + 2026 D1 commits', requires: 'premium' },
       { to: '/recruiting/quiz', label: 'Recruit Matchmaker', desc: 'Match yourself to your best-fit NW program', requires: 'premium' },
       { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends', requires: 'premium' },
       { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city', requires: 'premium' },

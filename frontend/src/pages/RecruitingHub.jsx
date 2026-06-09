@@ -24,6 +24,7 @@ const ICONS = {
   swap: ic(<><path d="M4 8h13l-3-3M20 16H7l3 3" /></>),
   portal: ic(<><path d="M7 4 3 8l4 4" /><path d="M3 8h13a5 5 0 0 1 0 10h-3" /></>),
   check: ic(<><circle cx="12" cy="12" r="9" /><path d="m8.5 12 2.5 2.5 4.5-5" /></>),
+  rise: ic(<><path d="M3 17l6-6 4 4 7-7" /><path d="M17 7h4v4" /></>),
 }
 
 // ── tools (recruit-facing unlock at Premium $5/mo) ────────────────
@@ -40,6 +41,9 @@ const RECRUIT_TOOLS = [
   { to: '/recruiting/tips', icon: 'bulb', tier: 'premium', name: 'Recruiting Tips',
     blurb: 'A straight-talk guide to how recruiting really works: how to reach coaches, a copy-paste email template, video and measurables advice, camps, and showcases.',
     why: 'Paired with freshman production by level, so you can see how much players actually play as freshmen at D1, D2, NAIA, D3, and the NWAC before you choose a level.' },
+  { to: '/recruiting/advancement', icon: 'rise', tier: 'premium', name: 'NWAC Advancement',
+    blurb: 'See which NWAC programs move players up to four-year schools, where those players land, and who just committed to a Division I program for 2026.',
+    why: 'The JUCO pipeline laid bare: the NWAC teams that send the most players and the best players, built from our transfer history.' },
   { to: '/recruiting/breakdown', icon: 'chart', tier: 'premium', name: 'Recruiting Breakdown',
     blurb: 'Team-level recruiting metrics and trends: how programs build their rosters, where their production comes from, and how much they lean on transfers.',
     why: 'Know whether a program develops freshmen or reloads through the portal before you commit four years to it.' },

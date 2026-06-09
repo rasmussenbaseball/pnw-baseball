@@ -19795,6 +19795,158 @@ def recruiting_freshman_by_division(season: int = 2026, _user: str = Depends(req
     return {"season": season, "divisions": rows}
 
 
+# NWAC advancement: where JUCO players move on to, from cross-team player_links.
+_ADV_FOUR = ("D1", "D2", "D3", "NAIA")
+_ADV_WEIGHT = {"D1": 4, "D2": 3, "NAIA": 2, "D3": 1}
+
+
+@router.get("/recruiting/nwac-advancement")
+def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require_tier("premium"))):
+    """Where NWAC (JUCO) players advance to, derived from cross-team player_links.
+
+    Captures transfers to the PNW 4-year programs we track: a Bellevue -> Bushnell
+    move shows up; Bellevue -> UCLA does not (UCLA isn't in our DB). A NWAC team's
+    "advancement" = a linked player whose JUCO stint is followed by a stint at a
+    four-year PNW school; the destination is the earliest such four-year stop.
+    Also surfaces NWAC players with a committed school on file (thin data).
+    """
+    from collections import defaultdict
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # union-find clusters from player_links
+        cur.execute("SELECT canonical_id, linked_id FROM player_links")
+        parent = {}
+
+        def find(x):
+            parent.setdefault(x, x)
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        link_ids = set()
+        for r in cur.fetchall():
+            parent[find(r["canonical_id"])] = find(r["linked_id"])
+            link_ids.add(r["canonical_id"])
+            link_ids.add(r["linked_id"])
+
+        members = {}
+        if link_ids:
+            cur.execute(
+                """SELECT p.id, p.first_name, p.last_name, t.short_name AS team,
+                          t.logo_url AS logo, d.level
+                   FROM players p JOIN teams t ON t.id=p.team_id
+                   JOIN conferences c ON t.conference_id=c.id
+                   JOIN divisions d ON c.division_id=d.id
+                   WHERE p.id = ANY(%s) AND COALESCE(p.is_phantom,false)=false""",
+                (list(link_ids),),
+            )
+            members = {r["id"]: dict(r) for r in cur.fetchall()}
+            lo, hi = defaultdict(lambda: 9999), defaultdict(int)
+            for tbl in ("batting_stats", "pitching_stats"):
+                cur.execute(
+                    f"SELECT player_id, MIN(season) lo, MAX(season) hi FROM {tbl} "
+                    "WHERE player_id = ANY(%s) GROUP BY player_id", (list(link_ids),),
+                )
+                for r in cur.fetchall():
+                    lo[r["player_id"]] = min(lo[r["player_id"]], r["lo"])
+                    hi[r["player_id"]] = max(hi[r["player_id"]], r["hi"])
+            for pid, m in members.items():
+                m["hi"] = hi[pid]
+                m["lo"] = lo[pid] if hi[pid] else None
+
+        clusters = defaultdict(list)
+        for pid in members:
+            clusters[find(pid)].append(pid)
+
+        advances = []
+        for root, ids in clusters.items():
+            ms = [members[i] for i in ids]
+            juco = [m for m in ms if m["level"] == "JUCO" and m["hi"]]
+            four = [m for m in ms if m["level"] in _ADV_FOUR and m["hi"]]
+            if not juco or not four:
+                continue
+            juco_last = max(m["hi"] for m in juco)
+            dests = [m for m in four if (m["lo"] or 9999) >= juco_last]
+            if not dests:
+                continue
+            dest = min(dests, key=lambda m: ((m["lo"] or 9999), -_ADV_WEIGHT[m["level"]]))
+            origin = max(juco, key=lambda m: m["hi"])
+            nm = members.get(root, dest)
+            advances.append({
+                "player": f"{nm['first_name']} {nm['last_name']}",
+                "origin_team": origin["team"], "origin_logo": origin["logo"],
+                "dest_team": dest["team"], "dest_logo": dest["logo"],
+                "dest_level": dest["level"], "dest_season": dest["lo"],
+            })
+
+        # per-NWAC-team aggregation (seed with every active NWAC team)
+        cur.execute(
+            """SELECT t.short_name team, t.logo_url logo FROM teams t
+               JOIN conferences c ON t.conference_id=c.id JOIN divisions d ON c.division_id=d.id
+               WHERE d.level='JUCO' AND COALESCE(t.is_active,1)=1""")
+        teams = {}
+        for r in cur.fetchall():
+            teams[r["team"]] = {"team": r["team"], "logo": r["logo"], "total": 0,
+                                "d1": 0, "d2": 0, "naia": 0, "d3": 0, "score": 0,
+                                "dests": {}, "committed": []}
+
+        dest_overall = {}
+        for a in advances:
+            t = teams.setdefault(a["origin_team"], {"team": a["origin_team"], "logo": a["origin_logo"],
+                                                    "total": 0, "d1": 0, "d2": 0, "naia": 0, "d3": 0,
+                                                    "score": 0, "dests": {}, "committed": []})
+            t["total"] += 1
+            t[a["dest_level"].lower()] += 1
+            t["score"] += _ADV_WEIGHT[a["dest_level"]]
+            d = t["dests"].setdefault(a["dest_team"], {"team": a["dest_team"], "logo": a["dest_logo"],
+                                                       "level": a["dest_level"], "count": 0})
+            d["count"] += 1
+            o = dest_overall.setdefault(a["dest_team"], {"team": a["dest_team"], "logo": a["dest_logo"],
+                                                         "level": a["dest_level"], "count": 0})
+            o["count"] += 1
+
+        # committed NWAC players (thin: is_committed + committed_to on file)
+        cur.execute(
+            """SELECT t.short_name team, p.first_name, p.last_name, p.committed_to, p.year_in_school
+               FROM players p JOIN teams t ON t.id=p.team_id JOIN conferences c ON t.conference_id=c.id
+               JOIN divisions d ON c.division_id=d.id
+               WHERE d.level='JUCO' AND COALESCE(p.is_committed,0)=1
+                 AND p.committed_to IS NOT NULL AND p.committed_to <> ''""")
+        for r in cur.fetchall():
+            t = teams.get(r["team"])
+            if t is not None:
+                t["committed"].append({"player": f"{r['first_name']} {r['last_name']}",
+                                       "dest": r["committed_to"], "year": r["year_in_school"]})
+
+    team_rows = []
+    for t in teams.values():
+        t["distinct_dests"] = len(t["dests"])
+        t["destinations"] = sorted(t["dests"].values(),
+                                   key=lambda d: (-_ADV_WEIGHT[d["level"]], -d["count"]))
+        del t["dests"]
+        t["committed_count"] = len(t["committed"])
+        team_rows.append(t)
+    team_rows.sort(key=lambda t: (-t["total"], -t["score"]))
+
+    d1_arrivals = sorted(
+        [a for a in advances if a["dest_level"] == "D1" and a["dest_season"] == season],
+        key=lambda a: a["origin_team"],
+    )
+    totals = {
+        "advanced": len(advances),
+        "d1": sum(1 for a in advances if a["dest_level"] == "D1"),
+        "d2": sum(1 for a in advances if a["dest_level"] == "D2"),
+        "naia": sum(1 for a in advances if a["dest_level"] == "NAIA"),
+        "d3": sum(1 for a in advances if a["dest_level"] == "D3"),
+        "teams_sending": sum(1 for t in team_rows if t["total"] > 0),
+    }
+    top_destinations = sorted(dest_overall.values(),
+                              key=lambda d: (-d["count"], -_ADV_WEIGHT[d["level"]]))[:20]
+    return {"season": season, "totals": totals, "d1_arrivals": d1_arrivals,
+            "teams": team_rows, "top_destinations": top_destinations}
+
+
 @router.get("/recruiting/program-guide")
 def recruiting_program_guide(_user: str = Depends(require_tier("premium"))):
     if not os.path.exists(PROGRAM_GUIDE_PATH):

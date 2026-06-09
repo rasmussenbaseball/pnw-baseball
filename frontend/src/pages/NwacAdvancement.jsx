@@ -1,0 +1,224 @@
+// NWAC Advancement — where NWAC (JUCO) players move on to, built from our
+// cross-team player links. Shows 2026 D1 arrivals, a per-team leaderboard of who
+// sends the most / best, each team's destination breakdown + committed players,
+// and the top landing spots league-wide. Premium page in the Recruiting dropdown.
+// Scope note: only transfers to PNW programs we track are visible (Bellevue ->
+// Bushnell shows; Bellevue -> UCLA does not). Brand rule: no em-dashes.
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+
+const LEVELS = {
+  D1: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
+  D2: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  NAIA: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  D3: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
+}
+const LevelTag = ({ level }) => (
+  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${LEVELS[level] || 'bg-gray-100 text-gray-600'}`}>{level}</span>
+)
+const Logo = ({ src, size = 20 }) =>
+  src ? <img src={src} alt="" style={{ width: size, height: size }} className="inline-block object-contain align-middle" />
+      : <span style={{ width: size, height: size }} className="inline-block rounded bg-gray-200 dark:bg-gray-700 align-middle" />
+
+const SORTS = [
+  { key: 'total', label: 'Total advanced' },
+  { key: 'd1', label: 'To D1' },
+  { key: 'distinct_dests', label: 'Distinct schools' },
+  { key: 'committed_count', label: 'Committed' },
+]
+
+export default function NwacAdvancement() {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState(null)
+  const [sortKey, setSortKey] = useState('total')
+  const [open, setOpen] = useState(null)
+
+  useEffect(() => {
+    let cancel = false
+    ;(async () => {
+      try {
+        const { data: sess } = await supabase.auth.getSession()
+        const token = sess?.session?.access_token
+        const r = await fetch('/api/v1/recruiting/nwac-advancement?season=2026', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'premium' : `HTTP ${r.status}`)
+        const j = await r.json()
+        if (!cancel) setData(j)
+      } catch (e) { if (!cancel) setErr(e.message || 'load') }
+    })()
+    return () => { cancel = true }
+  }, [])
+
+  const teams = (data?.teams || []).slice().sort((a, b) => (b[sortKey] - a[sortKey]) || (b.total - a.total))
+  const t = data?.totals
+
+  if (err === 'premium') return (
+    <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-600 dark:text-gray-300">
+      NWAC Advancement is a premium feature. <a href="/pricing" className="text-nw-teal font-semibold hover:underline">View plans</a>
+    </div>
+  )
+
+  return (
+    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6">
+      {/* Hero */}
+      <section className="text-center rounded-3xl bg-gradient-to-b from-teal-50 to-white dark:from-teal-900/20 dark:to-gray-900 ring-1 ring-gray-200 dark:ring-gray-700 px-5 py-8 sm:py-10 mb-6">
+        <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-white dark:bg-gray-900 px-3 py-1 rounded-full mb-2 ring-1 ring-teal-100 dark:ring-teal-800">
+          Recruiting · NWAC
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-black text-pnw-slate dark:text-gray-100 leading-tight">NWAC Advancement</h1>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
+          Which NWAC programs move players up, and where those players land. Built from our transfer history across PNW college baseball, so it captures moves to the four-year programs we track.
+        </p>
+        {t && (
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-y-4 divide-x divide-gray-200 dark:divide-gray-700">
+            {[[t.advanced, 'players advanced'], [t.d1, 'to Division I'], [t.teams_sending, 'NWAC teams sending']].map(([n, l]) => (
+              <div key={l} className="text-center px-4">
+                <div className="text-2xl sm:text-3xl font-black text-nw-teal">{n}</div>
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-0.5">{l}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {err && err !== 'premium' && <div className="text-sm text-rose-600 dark:text-rose-400 mb-4">Couldn't load advancement data.</div>}
+      {!data && !err && <div className="text-sm text-gray-400 py-10 text-center">Loading…</div>}
+
+      {data && (
+        <>
+          {/* 2026 D1 arrivals */}
+          <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">Headliner</div>
+            <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-1">NWAC to Division I in 2026</h2>
+            <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">Players whose first Division I season is 2026, by the NWAC program they came from.</p>
+            {data.d1_arrivals.length === 0 ? (
+              <div className="text-sm text-gray-400">None on record yet.</div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-2">
+                {data.d1_arrivals.map((a, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+                    <span className="font-bold text-sm text-pnw-slate dark:text-gray-100 truncate">{a.player}</span>
+                    <span className="ml-auto flex items-center gap-1.5 text-[12px] text-gray-500 dark:text-gray-400 shrink-0">
+                      <Logo src={a.origin_logo} size={16} /> {a.origin_team}
+                      <span className="text-nw-teal">&rarr;</span>
+                      <Logo src={a.dest_logo} size={16} /> <span className="font-semibold text-sky-700 dark:text-sky-300">{a.dest_team}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Team leaderboard */}
+          <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100">Who sends the most, and the best</h2>
+              <div className="flex flex-wrap gap-1">
+                {SORTS.map(s => (
+                  <button key={s.key} onClick={() => setSortKey(s.key)}
+                    className={`text-[11px] font-bold px-2.5 py-1 rounded-full transition-colors ${sortKey === s.key ? 'bg-nw-teal text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'}`}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-3">Tap a team to see exactly where their players went and who is committed.</p>
+            <div className="overflow-x-auto -mx-1">
+              <table className="w-full text-[13px] tabular-nums">
+                <thead>
+                  <tr className="text-gray-400 dark:text-gray-500 text-[11px] uppercase tracking-wide border-b border-gray-200 dark:border-gray-700">
+                    <th className="text-left py-2 pl-1 font-semibold">NWAC Team</th>
+                    <th className="text-right px-2" title="Players who advanced to a 4-year PNW program">Advanced</th>
+                    <th className="text-right px-2">D1</th>
+                    <th className="text-right px-2">D2</th>
+                    <th className="text-right px-2">NAIA</th>
+                    <th className="text-right px-2">D3</th>
+                    <th className="text-right px-2" title="Distinct destination schools">Schools</th>
+                    <th className="text-right px-2 pr-1" title="Players with a committed school on file">Committed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teams.map((tm, i) => (
+                    <>
+                      <tr key={tm.team}
+                        onClick={() => setOpen(open === tm.team ? null : tm.team)}
+                        className={`border-b border-gray-100 dark:border-gray-700/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/40 ${i === 0 ? 'bg-teal-50/40 dark:bg-teal-900/10' : ''}`}>
+                        <td className="py-2 pl-1">
+                          <span className="inline-flex items-center gap-2">
+                            <Logo src={tm.logo} size={20} />
+                            <span className="font-bold text-pnw-slate dark:text-gray-100">{tm.team}</span>
+                            {i === 0 && <span className="text-[9px] font-bold uppercase text-nw-teal bg-teal-100 dark:bg-teal-900/40 px-1.5 py-0.5 rounded">Leader</span>}
+                          </span>
+                        </td>
+                        <td className="text-right px-2 font-extrabold text-pnw-slate dark:text-gray-100">{tm.total}</td>
+                        <td className="text-right px-2 font-semibold text-sky-700 dark:text-sky-300">{tm.d1 || ''}</td>
+                        <td className="text-right px-2">{tm.d2 || ''}</td>
+                        <td className="text-right px-2">{tm.naia || ''}</td>
+                        <td className="text-right px-2">{tm.d3 || ''}</td>
+                        <td className="text-right px-2">{tm.distinct_dests || ''}</td>
+                        <td className="text-right px-2 pr-1">{tm.committed_count || ''}</td>
+                      </tr>
+                      {open === tm.team && (
+                        <tr key={tm.team + '-d'} className="border-b border-gray-100 dark:border-gray-700/50 bg-gray-50/60 dark:bg-gray-900/30">
+                          <td colSpan={8} className="px-3 py-3">
+                            {tm.destinations.length > 0 ? (
+                              <>
+                                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Where {tm.team} sends players</div>
+                                <div className="flex flex-wrap gap-1.5 mb-3">
+                                  {tm.destinations.map(d => (
+                                    <span key={d.team} className="inline-flex items-center gap-1.5 text-[12px] bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 rounded-full pl-1.5 pr-2 py-0.5">
+                                      <Logo src={d.logo} size={16} />
+                                      <span className="font-semibold text-gray-700 dark:text-gray-200">{d.team}</span>
+                                      <LevelTag level={d.level} />
+                                      <span className="text-gray-400">x{d.count}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </>
+                            ) : <div className="text-[12px] text-gray-400 mb-2">No tracked advancements yet.</div>}
+                            {tm.committed.length > 0 && (
+                              <>
+                                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">Committed</div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-gray-600 dark:text-gray-300">
+                                  {tm.committed.map((c, j) => (
+                                    <span key={j}><span className="font-semibold text-gray-800 dark:text-gray-100">{c.player}</span> &rarr; {c.dest}{c.year ? ` (${c.year})` : ''}</span>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Top landing spots */}
+          <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
+            <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-1">Top landing spots</h2>
+            <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">The four-year programs that take the most NWAC players (all years on record).</p>
+            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+              {data.top_destinations.map((d, i) => (
+                <div key={d.team} className="flex items-center gap-2 py-1">
+                  <span className="text-[11px] text-gray-400 w-5 text-right tabular-nums">{i + 1}</span>
+                  <Logo src={d.logo} size={20} />
+                  <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">{d.team}</span>
+                  <LevelTag level={d.level} />
+                  <span className="ml-auto font-extrabold text-pnw-slate dark:text-gray-100 tabular-nums">{d.count}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <p className="text-[11px] text-gray-400 dark:text-gray-500">
+            Advancements are reconstructed from players who appear at a NWAC school and later at a four-year PNW program in our database, so a player who transferred to a school we do not track (an out-of-region D1, for example) will not appear. Committed-player data reflects what programs publish on their rosters, which is limited. Includes transfers from past seasons, not just 2026.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
