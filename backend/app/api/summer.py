@@ -17,7 +17,6 @@ up into a college season-stats query. This module exposes:
 """
 
 import math
-import re
 from datetime import date, timedelta
 from itertools import groupby
 from typing import Optional
@@ -268,21 +267,11 @@ def _summer_win_prob(cur, game):
 
 # ── Player college resolution (for recap graphics, "which guys are PNWers") ──
 #
-# Two sources, preferred in order:
-#   1. The spring cross-link (summer_player_links -> players -> teams): gives a
-#      clean PNW school name (team name minus mascot). These ARE the PNW guys.
-#   2. The raw Pointstreak `college` string on summer_players, normalized — the
-#      only source for out-of-region players, but messy ("Oregon St U").
-# Coverage is partial by design; callers show the tag only when present.
-_RAW_COLLEGE_MAP = {
-    "california los angeles (u of)": "UCLA",
-    "southern california (u of)": "USC",
-    "cal poly san luis obispo": "Cal Poly",
-    "cal st northridge": "Cal State Northridge",
-    "cal st fullerton": "Cal State Fullerton",
-    "cal st long beach": "Long Beach State",
-    "loyola marymount u": "Loyola Marymount",
-}
+# We show ONLY a school we can confirm the player played for in the current
+# season, via the spring cross-link (summer_player_links -> players -> teams),
+# resolved to their most-recent-season team. There is intentionally NO raw
+# Pointstreak `college` fallback: that field carries no season and is often
+# stale (an old transfer's school), so an unconfirmable school is left blank.
 
 
 def _school_from_team(name, mascot):
@@ -293,35 +282,21 @@ def _school_from_team(name, mascot):
     return name
 
 
-def _norm_college(raw):
-    if not raw:
-        return None
-    s = raw.strip()
-    if not s:
-        return None
-    if s.lower() in _RAW_COLLEGE_MAP:
-        return _RAW_COLLEGE_MAP[s.lower()]
-    s = re.sub(r"\s*\(u of\)$", "", s, flags=re.I)            # "Portland (U of)" -> "Portland"
-    s = re.sub(r"\bSt\b(?=\s+(?:U|Col|College|University)\b|$)", "State", s)  # "Oregon St U" -> "Oregon State U"
-    s = re.sub(r"\s+Community College$", "", s, flags=re.I)
-    s = re.sub(r"\s+(?:University|College)$", "", s, flags=re.I)  # "Hope International University" -> "Hope International"
-    s = re.sub(r"\s+(?:U|Col|CC)$", "", s)                    # trailing abbrevs " U" / " Col" / " CC"
-    s = re.sub(r"\s+", " ", s).strip()
-    return s or None
+def _resolve_colleges(cur, player_ids, season):
+    """player_id -> CONFIRMED current (>= `season`) school, else None.
 
-
-def _resolve_colleges(cur, player_ids):
-    """player_id -> clean college/school string (None when unknown).
-
-    The spring cross-link can point at a STALE record — players transfer, and our
-    spring DB stores one row per (player, team), so a 2026 summer record may be
-    linked to a 2022 JUCO row. To show the CURRENT school we resolve, among all
-    spring records sharing the linked player's name, the team from the most
-    recent stats season. Falls back to the raw (possibly stale) Pointstreak
-    college string only when there's no usable spring link.
+    We only show a school we can confirm the player played for in the current
+    season. Players transfer, and our spring DB stores one row per (player,
+    team), so a 2026 summer record can be linked to a 2022 JUCO row. So: among
+    all spring records sharing the linked player's name, take the team from the
+    most recent stats season, and emit it ONLY if that season is >= the game's
+    season (i.e. they played there this year). We deliberately do NOT fall back
+    to the raw Pointstreak `college` string — it has no season and is often
+    stale (e.g. an out-of-region school from an old roster), so when we can't
+    confirm the current school we leave it blank rather than show stale data.
     """
     ids = sorted({p for p in player_ids if p})
-    if not ids:
+    if not ids or not season:
         return {}
     out = {}
     cur.execute(
@@ -344,23 +319,18 @@ def _resolve_colleges(cur, player_ids):
             FROM linked l
             JOIN players p ON lower(p.first_name) = l.fn AND lower(p.last_name) = l.ln
         )
-        SELECT DISTINCT ON (c.spid) c.spid, t.name, t.mascot
+        SELECT DISTINCT ON (c.spid) c.spid, t.name, t.mascot, c.last_season
         FROM cand c JOIN teams t ON t.id = c.team_id
         ORDER BY c.spid, c.last_season DESC, c.pid DESC
         """,
         (ids,),
     )
     for r in cur.fetchall():
+        if (r["last_season"] or 0) < season:
+            continue  # can't confirm they played there this season -> leave blank
         sch = _school_from_team(r["name"], r["mascot"])
         if sch:
             out[r["spid"]] = sch
-    missing = [i for i in ids if i not in out]
-    if missing:
-        cur.execute("SELECT id, college FROM summer_players WHERE id = ANY(%s)", (missing,))
-        for r in cur.fetchall():
-            n = _norm_college(r["college"])
-            if n:
-                out[r["id"]] = n
     return out
 
 
@@ -409,10 +379,15 @@ def summer_game_detail(game_id: int):
         )
         pitching = [dict(r) for r in cur.fetchall()]
 
-        # College / school per player (spring cross-link first, raw college
-        # fallback). Shown on recap graphics to flag PNW players.
+        # Confirmed current-season school per player (spring cross-link, most
+        # recent season >= this game's season). Blank when unconfirmable —
+        # never shows a stale/old school. Flags PNW players on recap graphics.
+        _g = dict(game)
+        _season = _g.get("season") or (int(_g["game_date"][:4]) if _g.get("game_date") else None)
         colleges = _resolve_colleges(
-            cur, [r.get("player_id") for r in batting] + [r.get("player_id") for r in pitching]
+            cur,
+            [r.get("player_id") for r in batting] + [r.get("player_id") for r in pitching],
+            _season,
         )
         for r in batting:
             r["college"] = colleges.get(r.get("player_id"))
