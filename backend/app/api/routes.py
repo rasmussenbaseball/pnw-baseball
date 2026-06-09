@@ -19799,6 +19799,24 @@ def recruiting_freshman_by_division(season: int = 2026, _user: str = Depends(req
 _ADV_FOUR = ("D1", "D2", "D3", "NAIA")
 _ADV_WEIGHT = {"D1": 4, "D2": 3, "NAIA": 2, "D3": 1}
 
+# Division level for committed schools we can't resolve from the teams table
+# (out-of-region programs that never played a PNW team, plus a few PNW name
+# variants). Keyed by lowercased committed_to. Add new schools here as commits
+# come in; anything still unresolved shows as a four-year commit without a level.
+_COMMIT_LEVEL_OVERRIDES = {
+    "washington": "D1", "university of pacific": "D1", "bradley": "D1",
+    "east carolina": "D1", "old dominion": "D1", "western kentucky": "D1",
+    "akron": "D1", "saint louis university": "D1",
+    "montana state billings": "D2",
+    "oregon tech": "NAIA", "vanguard university": "NAIA", "tabor college": "NAIA",
+    "freed-hardeman": "NAIA", "ottawa": "NAIA", "missouri baptist": "NAIA",
+    "southwestern christian (oklahoma)": "NAIA", "union commonwealth": "NAIA",
+    "friends university": "NAIA", "bellevue university": "NAIA",
+    # Corrections where our teams table has the destination mis-leveled:
+    "jessup university": "NAIA", "jessup": "NAIA", "tennessee wesleyan": "NAIA",
+    "bethany lutheran": "D3",
+}
+
 
 @router.get("/recruiting/nwac-advancement")
 def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require_tier("premium"))):
@@ -19906,18 +19924,44 @@ def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require
                                                          "level": a["dest_level"], "count": 0})
             o["count"] += 1
 
-        # committed NWAC players (thin: is_committed + committed_to on file)
+        # Committed NWAC players (the current commit class). Resolve each
+        # committed school's level: match a four-year team in our DB, else the
+        # override map. This is the real "to D1 in 2026" cohort.
         cur.execute(
-            """SELECT t.short_name team, p.first_name, p.last_name, p.committed_to, p.year_in_school
+            r"""SELECT t.short_name team, t.logo_url nwac_logo, p.first_name, p.last_name,
+                       p.committed_to, p.year_in_school, dt.level dest_level, dt.logo dest_logo
                FROM players p JOIN teams t ON t.id=p.team_id JOIN conferences c ON t.conference_id=c.id
                JOIN divisions d ON c.division_id=d.id
+               LEFT JOIN LATERAL (
+                 SELECT dd.level, dest.logo_url AS logo FROM teams dest
+                 JOIN conferences cc ON dest.conference_id=cc.id JOIN divisions dd ON cc.division_id=dd.id
+                 WHERE dd.level <> 'JUCO' AND (
+                    lower(dest.school_name)=lower(p.committed_to) OR lower(dest.name)=lower(p.committed_to)
+                    OR lower(dest.short_name)=lower(p.committed_to)
+                    OR regexp_replace(lower(dest.school_name),'\s+(university|college)$','')
+                       = regexp_replace(lower(trim(p.committed_to)),'\s+(university|college|u)$','')
+                    OR lower(dest.short_name)=regexp_replace(lower(trim(p.committed_to)),'\s+(university|college|u)$',''))
+                 LIMIT 1
+               ) dt ON true
                WHERE d.level='JUCO' AND COALESCE(p.is_committed,0)=1
                  AND p.committed_to IS NOT NULL AND p.committed_to <> ''""")
+        commits = []
         for r in cur.fetchall():
+            level = _COMMIT_LEVEL_OVERRIDES.get((r["committed_to"] or "").strip().lower()) or r["dest_level"]
+            entry = {"player": f"{r['first_name']} {r['last_name']}", "nwac_team": r["team"],
+                     "nwac_logo": r["nwac_logo"], "dest": r["committed_to"], "dest_level": level,
+                     "dest_logo": r["dest_logo"], "year": r["year_in_school"]}
+            commits.append(entry)
             t = teams.get(r["team"])
             if t is not None:
-                t["committed"].append({"player": f"{r['first_name']} {r['last_name']}",
-                                       "dest": r["committed_to"], "year": r["year_in_school"]})
+                t["committed"].append({"player": entry["player"], "dest": r["committed_to"],
+                                       "level": level, "year": r["year_in_school"]})
+
+    _lvl_rank = {"D1": 0, "D2": 1, "NAIA": 2, "D3": 3, None: 4}
+    commits.sort(key=lambda c: (_lvl_rank.get(c["dest_level"], 4), c["nwac_team"], c["player"]))
+    commit_counts = {lv: sum(1 for c in commits if c["dest_level"] == lv) for lv in ("D1", "D2", "NAIA", "D3")}
+    commit_counts["other"] = sum(1 for c in commits if not c["dest_level"])
+    commit_counts["total"] = len(commits)
 
     team_rows = []
     for t in teams.values():
@@ -19943,7 +19987,8 @@ def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require
     }
     top_destinations = sorted(dest_overall.values(),
                               key=lambda d: (-d["count"], -_ADV_WEIGHT[d["level"]]))[:20]
-    return {"season": season, "totals": totals, "d1_arrivals": d1_arrivals,
+    return {"season": season, "totals": totals, "commits": commits,
+            "commit_counts": commit_counts, "d1_arrivals": d1_arrivals,
             "teams": team_rows, "top_destinations": top_destinations}
 
 

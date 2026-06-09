@@ -13,6 +13,7 @@ const LEVELS = {
   NAIA: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   D3: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
 }
+const LEVEL_LABEL = { D1: 'Division I', D2: 'Division II', NAIA: 'NAIA', D3: 'Division III' }
 const LevelTag = ({ level }) => (
   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${LEVELS[level] || 'bg-gray-100 text-gray-600'}`}>{level}</span>
 )
@@ -70,9 +71,9 @@ export default function NwacAdvancement() {
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
           Which NWAC programs move players up, and where those players land. Built from our transfer history across PNW college baseball, so it captures moves to the four-year programs we track.
         </p>
-        {t && (
+        {data && (
           <div className="mt-6 flex flex-wrap items-center justify-center gap-y-4 divide-x divide-gray-200 dark:divide-gray-700">
-            {[[t.advanced, 'players advanced'], [t.d1, 'to Division I'], [t.teams_sending, 'NWAC teams sending']].map(([n, l]) => (
+            {[[data.commit_counts.total, '2026 commitments'], [data.commit_counts.D1, 'to Division I'], [t.advanced, 'advanced all-time']].map(([n, l]) => (
               <div key={l} className="text-center px-4">
                 <div className="text-2xl sm:text-3xl font-black text-nw-teal">{n}</div>
                 <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-0.5">{l}</div>
@@ -87,33 +88,44 @@ export default function NwacAdvancement() {
 
       {data && (
         <>
-          {/* 2026 D1 arrivals */}
+          {/* 2026 commitments, grouped by the level committed to */}
           <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">Headliner</div>
-            <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-1">NWAC to Division I in 2026</h2>
-            <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">Players whose first Division I season is 2026, by the NWAC program they came from.</p>
-            {data.d1_arrivals.length === 0 ? (
-              <div className="text-sm text-gray-400">None on record yet.</div>
-            ) : (
-              <div className="grid sm:grid-cols-2 gap-2">
-                {data.d1_arrivals.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
-                    <span className="font-bold text-sm text-pnw-slate dark:text-gray-100 truncate">{a.player}</span>
-                    <span className="ml-auto flex items-center gap-1.5 text-[12px] text-gray-500 dark:text-gray-400 shrink-0">
-                      <Logo src={a.origin_logo} size={16} /> {a.origin_team}
-                      <span className="text-nw-teal">&rarr;</span>
-                      <Logo src={a.dest_logo} size={16} /> <span className="font-semibold text-sky-700 dark:text-sky-300">{a.dest_team}</span>
-                    </span>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">Headliner · the 2026 class</div>
+            <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-1">Where this year's NWAC players committed</h2>
+            <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">Every NWAC player with a commitment on file, grouped by the level of the school they chose. Division I first.</p>
+            {data.commits.length === 0 ? (
+              <div className="text-sm text-gray-400">No commitments on record yet.</div>
+            ) : ['D1', 'D2', 'NAIA', 'D3'].map(lv => {
+              const list = data.commits.filter(c => c.dest_level === lv)
+              if (!list.length) return null
+              return (
+                <div key={lv} className="mb-4 last:mb-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <LevelTag level={lv} />
+                    <span className="text-[12px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{LEVEL_LABEL[lv]} · {list.length}</span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                    {list.map((c, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[13px] py-0.5">
+                        <span className="font-bold text-pnw-slate dark:text-gray-100 truncate">{c.player}</span>
+                        <span className="ml-auto flex items-center gap-1.5 text-[12px] text-gray-500 dark:text-gray-400 shrink-0">
+                          <Logo src={c.nwac_logo} size={15} /> {c.nwac_team}
+                          <span className="text-nw-teal">&rarr;</span>
+                          {c.dest_logo && <Logo src={c.dest_logo} size={15} />}
+                          <span className={`font-semibold ${lv === 'D1' ? 'text-sky-700 dark:text-sky-300' : 'text-gray-700 dark:text-gray-200'}`}>{c.dest}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </section>
 
           {/* Team leaderboard */}
           <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-              <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100">Who sends the most, and the best</h2>
+              <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100">Who sends the most, and the best (all-time)</h2>
               <div className="flex flex-wrap gap-1">
                 {SORTS.map(s => (
                   <button key={s.key} onClick={() => setSortKey(s.key)}
