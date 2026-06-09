@@ -16,7 +16,9 @@ up into a college season-stats query. This module exposes:
   GET /summer/leaderboards/pitching    season pitching leaders
 """
 
+import math
 from datetime import date, timedelta
+from itertools import groupby
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -153,6 +155,116 @@ def summer_games(
     return [dict(r) for r in rows]
 
 
+# ── Win-probability curve (PA-by-PA, from summer_game_events) ──────
+#
+# Summer games have play-by-play (summer_game_events: one row per plate
+# appearance with count, pitch sequence, and outcome) but NOT the derived
+# base/out/score game state the spring `game_events` carry. So we reconstruct
+# what a win-expectancy model needs directly from the events: walk every PA in
+# order, count outs from the result type, and tally the running score from the
+# narrative (reconciled to the authoritative line score at each half-inning).
+# Win expectancy uses (run lead, outs remaining) via a normal approximation of
+# the remaining run differential. It is NOT full WPA — it has no baserunner
+# leverage, since the events don't store base state.
+_OUT_PLAIN = {"ground_out", "fly_out", "pop_out", "line_out", "sac_fly",
+              "caught_stealing", "pickoff"}
+
+
+def _se_outs(rt, text):
+    t = (text or "").lower()
+    if rt and rt.startswith("strikeout"):
+        return 0 if "reached" in t else 1   # K + WP/PB/dropped 3rd = batter safe
+    if rt == "double_play":
+        return 2
+    if rt in _OUT_PLAIN:
+        return 1
+    if rt in ("fielders_choice", "runner_other"):
+        return 1 if "out" in t else 0
+    return 0
+
+
+def _se_runs(rt, text):
+    # The narrative always names a scorer ("... scored"), except the batter on a
+    # home run, so count "scored" and add the HR hitter.
+    r = (text or "").lower().count("scored")
+    if rt == "home_run":
+        r += 1
+    return r
+
+
+def _se_we_home(lead, outs_remaining):
+    if outs_remaining <= 0:
+        return 1.0 if lead > 0 else 0.0 if lead < 0 else 0.5
+    inn_rem = max(0.12, outs_remaining / 6.0)          # 6 outs per full inning
+    sd = 1.65 * math.sqrt(inn_rem) + 0.45
+    z = (lead + (0.2 if lead == 0 else 0)) / sd
+    return max(0.02, min(0.98, 0.5 * (1 + math.erf(z / math.sqrt(2)))))
+
+
+def _summer_win_prob(cur, game):
+    """Return {pts:[{x,wp}], innings} of HOME win probability, or None."""
+    cur.execute(
+        """
+        SELECT inning, half, sequence_idx, result_type, result_text, rbi
+        FROM summer_game_events
+        WHERE game_id = %s
+        ORDER BY inning, (half <> 'top'), sequence_idx
+        """,
+        (game["id"],),
+    )
+    evs = cur.fetchall()
+    if len(evs) < 3:
+        return None
+
+    def line_cum(line, upto):
+        s = 0
+        for i in range(min(upto, len(line or []))):
+            v = line[i]
+            if isinstance(v, str) or v is None:
+                continue
+            try:
+                s += int(v)
+            except (TypeError, ValueError):
+                pass
+        return s
+
+    away_line = game.get("away_line_score") or []
+    home_line = game.get("home_line_score") or []
+    TOTAL_OUTS = 54  # 27 per side, regulation
+    away_score = home_score = away_outs = home_outs = 0
+    max_inn = max(e["inning"] for e in evs)
+
+    pts = [{"x": 0.0, "wp": round(_se_we_home(0, TOTAL_OUTS), 4)}]
+    for (inning, half), grp in groupby(evs, key=lambda e: (e["inning"], e["half"])):
+        grp = list(grp)
+        is_top = half == "top"
+        m = len(grp)
+        half_outs = 0
+        for j, e in enumerate(grp):
+            runs = _se_runs(e["result_type"], e["result_text"])
+            if is_top:
+                away_score += runs
+            else:
+                home_score += runs
+            half_outs = min(3, half_outs + _se_outs(e["result_type"], e["result_text"]))
+            outs_remaining = max(0, TOTAL_OUTS - (away_outs + home_outs) - half_outs)
+            x = (inning - 1) + (0.0 if is_top else 0.5) + 0.5 * ((j + 1) / m)
+            pts.append({"x": round(x, 4),
+                        "wp": round(_se_we_home(home_score - away_score, outs_remaining), 4)})
+        # snap the running score to the authoritative line score for this inning
+        if is_top:
+            away_score = line_cum(away_line, inning)
+            away_outs += half_outs
+        else:
+            home_score = line_cum(home_line, inning)
+            home_outs += half_outs
+
+    fa = game.get("away_score") or 0
+    fh = game.get("home_score") or 0
+    pts[-1] = {"x": pts[-1]["x"], "wp": 1.0 if fh > fa else 0.0 if fa > fh else 0.5}
+    return {"pts": pts, "innings": max_inn}
+
+
 # ── /summer/games/{id} ─────────────────────────────────────────────
 
 @router.get("/summer/games/{game_id}")
@@ -198,10 +310,13 @@ def summer_game_detail(game_id: int):
         )
         pitching = [dict(r) for r in cur.fetchall()]
 
+        win_prob = _summer_win_prob(cur, dict(game))
+
     return {
         "game": dict(game),
         "batting": batting,
         "pitching": pitching,
+        "win_prob": win_prob,
     }
 
 

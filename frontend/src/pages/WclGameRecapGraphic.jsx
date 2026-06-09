@@ -2,8 +2,9 @@
 //   /summer/game-recap   (listed under the Graphics hub; ?game=<id> preselects)
 //
 // Renders a FIXED 1080×1350 (Instagram 4:5) PNG: centered final, full R/H/E
-// line score, a modeled win-probability chart (built from the inning-by-inning
-// line score, since summer games have no pitch-by-pitch data), and each side's
+// line score, a play-by-play win-probability chart (the server builds the
+// curve from the actual WCL plate-appearance events; this card falls back to an
+// inning-level line-score model only if a game has no events), and each side's
 // TOP PERFORMERS as large, readable cards — top hitters PLUS top pitchers
 // (decision pitchers always shown with a W/L/SV badge, then the best remaining
 // arms). Sections use fixed, generous heights so the card fills the frame
@@ -568,7 +569,13 @@ function drawFooter(ctx) {
 // ── Main renderer (fixed 1080×1350) ────────────────────────────
 async function renderGameCard(canvas, data) {
   const game = data.game
-  const series = winProbSeries(game)
+  // Prefer the server's PA-by-PA win-probability curve (built from the actual
+  // WCL play-by-play events). Fall back to the inning-level line-score model
+  // only for games that have no events.
+  const sw = data.win_prob
+  const series = (sw && Array.isArray(sw.pts) && sw.pts.length > 2)
+    ? { pts: sw.pts, N: sw.innings || Math.max(9, ...sw.pts.map(p => Math.ceil(p.x))) }
+    : winProbSeries(game)
   const innings = Math.max(
     (game.away_line_score || []).length,
     (game.home_line_score || []).length,
@@ -684,7 +691,7 @@ export default function WclGameRecapGraphic() {
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4">
       <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">WCL Game Recap Graphic</h1>
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        Pick any final WCL game and download a share-ready 1080×1350 (Instagram) card with the full line score, a modeled win-probability chart, and each side's top performers (hitters and pitchers).
+        Pick any final WCL game and download a share-ready 1080×1350 (Instagram) card with the full line score, a play-by-play win-probability chart, and each side's top performers (hitters and pitchers).
       </p>
 
       <div className="flex flex-wrap items-end gap-3 mb-4">
