@@ -22,34 +22,115 @@ import re
 logger = logging.getLogger("team_matching")
 
 
-# Cache of lowercased team names, lazily loaded for is_nonperson_name().
+# Cache of normalized team-name variants, lazily loaded for is_nonperson_name().
 _TEAM_NAME_SET = None
 
+# A roster cell whose "jersey number" is actually a date (e.g. "Apr 11",
+# "May 6") is a misparsed schedule fragment, never a real player. This single
+# signal accounts for every one of the 30 team/showcase rows cleaned in
+# June 2026 (Mt Hood, Skagit Valley, Utah Yaks, "NW Scout", ...).
+_MONTH_RE = re.compile(
+    r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b", re.I
+)
 
-def is_nonperson_name(cur, first_name, last_name):
-    """True if a parsed 'player' name is really a team name or a
-    schedule/location fragment ("at Edmonds", "vs Big Bend", "SW Oregon").
+# Tokens that essentially never appear in a real person's name but are dead
+# giveaways for a team / showcase org / scout service / JV squad that leaked
+# in as a "player" (e.g. "Pacific University JV", "Idaho Prospects Baseball",
+# "Spokane Crew Scout", "Western Washington University"). Kept deliberately to
+# unambiguous organizational words so a real surname is never rejected.
+_NONPERSON_TOKENS = {
+    "university", "college", "collegiate", "juco", "academy", "showcase",
+    "scout", "scouts", "prospects", "athletics", "baseball", "softball",
+    "sports",
+}
+
+# Institution suffixes stripped when deriving a bare team name from school_name,
+# so "Skagit Valley College" yields the variant "skagit valley".
+_SCHOOL_SUFFIXES = (
+    "community college", "state university", "college", "university",
+    "cc", "jc", "juco",
+)
+
+
+def _norm_person_name(s):
+    """Lowercase, drop punctuation (periods, apostrophes), collapse whitespace.
+    'Mt. Hood' -> 'mt hood', "O'Neill" -> 'oneill'. Used so a team name still
+    matches regardless of how the source punctuated it."""
+    if not s:
+        return ""
+    s = s.lower().replace(".", " ").replace("'", "").replace("’", "")
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _load_team_name_set(cur):
+    """Lazily build the set of punctuation-normalized team-name variants:
+    short_name, name, school_name, name-minus-mascot, and school-minus-suffix.
+    The last two catch cases like 'Blue Mountain' (from 'Blue Mountain
+    Timberwolves' / 'Blue Mountain Community College') that an exact short_name
+    match misses."""
+    global _TEAM_NAME_SET
+    if _TEAM_NAME_SET is not None:
+        return _TEAM_NAME_SET
+    variants = set()
+    cur.execute("SELECT name, school_name, short_name FROM teams")
+    for r in cur.fetchall():
+        for fld in ("name", "school_name", "short_name"):
+            v = _norm_person_name(r[fld])
+            if v:
+                variants.add(v)
+        # name minus trailing mascot word: 'blue mountain timberwolves' -> 'blue mountain'
+        nm = _norm_person_name(r["name"]).split()
+        if len(nm) >= 3:
+            variants.add(" ".join(nm[:-1]))
+        # school_name minus an institution suffix: 'skagit valley college' -> 'skagit valley'
+        sc = _norm_person_name(r["school_name"])
+        for suf in _SCHOOL_SUFFIXES:
+            if sc.endswith(" " + suf):
+                variants.add(sc[: -(len(suf) + 1)].strip())
+    _TEAM_NAME_SET = {v for v in variants if v}
+    return _TEAM_NAME_SET
+
+
+def is_nonperson_name(cur, first_name, last_name, jersey_number=None):
+    """True if a parsed 'player' is really a team name, showcase org, scout
+    service, JV squad, or a schedule/location fragment ("at Edmonds",
+    "vs Big Bend") rather than a person.
 
     Player-creation paths should call this and skip the row when it returns
-    True. Opponent/schedule strings leaking in as players produced ~351
-    garbage "player" rows (e.g. "at Chemeketa") that cluttered search,
-    cleaned up June 2026 — this is the anti-recurrence guard.
+    True. Opponent / schedule strings leaking in as players produced ~351 (and
+    a further 30) garbage "player" rows that cluttered search, cleaned up
+    June 2026 — this is the anti-recurrence guard.
+
+    Pass jersey_number when available: a roster row whose jersey is actually a
+    date ("Apr 11") is a misparsed schedule cell, never a real player.
     """
-    global _TEAM_NAME_SET
-    fn = (first_name or "").strip().lower()
-    full = re.sub(r"\s+", " ", f"{first_name or ''} {last_name or ''}".strip().lower())
+    full = _norm_person_name(f"{first_name or ''} {last_name or ''}")
     if not full:
         return True
-    if fn in ("at", "vs", "@", "at.", "vs.", "the"):
+
+    # 1) Leading schedule/location fragment: "at Edmonds", "vs Big Bend"
+    #    ('@'/punctuation already stripped by _norm_person_name).
+    if full.split(" ", 1)[0] in ("at", "vs", "the"):
         return True
-    if _TEAM_NAME_SET is None:
-        cur.execute("SELECT LOWER(short_name) n FROM teams UNION SELECT LOWER(name) FROM teams")
-        _TEAM_NAME_SET = {r["n"] for r in cur.fetchall() if r["n"]}
-    if full in _TEAM_NAME_SET:
+
+    # 2) Date-shaped jersey number => misparsed schedule cell, not a player.
+    if jersey_number and _MONTH_RE.search(str(jersey_number)):
         return True
-    for pre in ("at ", "vs ", "@ "):
-        if full.startswith(pre) and full[len(pre):] in _TEAM_NAME_SET:
+
+    # 3) Unambiguous organization / showcase / scout / JV tokens.
+    if _NONPERSON_TOKENS & set(full.split()):
+        return True
+
+    # 4) Exact (punctuation-normalized) match to a team-name variant, incl.
+    #    "at X" / "vs X" prefixed forms.
+    team_set = _load_team_name_set(cur)
+    if full in team_set:
+        return True
+    for pre in ("at ", "vs "):
+        if full.startswith(pre) and full[len(pre):] in team_set:
             return True
+
     return False
 
 

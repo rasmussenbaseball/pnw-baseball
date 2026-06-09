@@ -560,9 +560,10 @@ def get_team_id_by_short_name(short_name):
 def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
     """Insert or update a player record. Returns player_id."""
     # Guard: never create a "player" from a team name or schedule/location
-    # fragment ("at Edmonds", "SW Oregon"). These leaked in as ~351 garbage
-    # rows that cluttered search (cleaned up June 2026).
-    if is_nonperson_name(cur, first_name, last_name):
+    # fragment ("at Edmonds", "SW Oregon"), nor a roster row whose jersey is
+    # actually a date. These leaked in as garbage rows that cluttered search
+    # (cleaned up June 2026).
+    if is_nonperson_name(cur, first_name, last_name, kwargs.get("jersey_number")):
         logging.warning("Skipping non-person name: %r %r", first_name, last_name)
         return None
     cur.execute(

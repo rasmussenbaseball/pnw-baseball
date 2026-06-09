@@ -43,6 +43,7 @@ from app.stats.advanced import (
     normalize_position, DEFAULT_WEIGHTS,
 )
 from record_utils import extract_record_from_html, save_team_record
+from team_matching import is_nonperson_name
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1119,6 +1120,13 @@ def get_d3_team_id_map():
 
 def insert_or_update_player(cur, first_name, last_name, team_id, **kwargs):
     """Insert or update a player record. Returns player_id."""
+    # Guard: never create a "player" from a team name, showcase org, or a
+    # schedule/location fragment ("at Edmonds", "Skagit Valley", a date in the
+    # jersey column). See team_matching.is_nonperson_name (anti-recurrence
+    # guard for the garbage rows cleaned up June 2026).
+    if is_nonperson_name(cur, first_name, last_name, kwargs.get("jersey_number")):
+        logger.warning("Skipping non-person name: %r %r", first_name, last_name)
+        return None
     cur.execute(
         "SELECT id FROM players WHERE first_name = %s AND last_name = %s AND team_id = %s",
         (first_name, last_name, team_id),
