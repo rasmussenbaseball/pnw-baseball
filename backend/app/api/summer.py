@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..cache import cached_endpoint
 from ..models.database import get_connection
+from ..stats.cpi import compute_cpi
 
 
 router = APIRouter()
@@ -402,6 +403,62 @@ def summer_game_detail(game_id: int):
         "pitching": pitching,
         "win_prob": win_prob,
     }
+
+
+# ── /summer/cpi — Composite Power Index (predictive team rating) ────
+
+@router.get("/summer/cpi")
+@cached_endpoint(ttl_seconds=600)
+def summer_cpi(league: str = Query(DEFAULT_LEAGUE), season: int = Query(2026)):
+    """Composite Power Index: a predictive, SoS-adjusted power rating built from
+    underlying performance (team wRC+ / FIP) blended with regressed results.
+    Engine in app.stats.cpi (reused for spring later)."""
+    from collections import defaultdict
+    with get_connection() as conn:
+        cur = conn.cursor()
+        league_id = _league_id_for(cur, league)
+        cur.execute(
+            """SELECT home_team_id h, away_team_id a, home_score hs, away_score a_s
+               FROM summer_games
+               WHERE league_id=%s AND season=%s AND status='final'
+                 AND home_score IS NOT NULL AND away_score IS NOT NULL
+                 AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL""",
+            (league_id, season),
+        )
+        games_by_team = defaultdict(list)
+        for g in cur.fetchall():
+            games_by_team[g["h"]].append((g["a"], g["hs"] - g["a_s"]))
+            games_by_team[g["a"]].append((g["h"], g["a_s"] - g["hs"]))
+        team_ids = list(games_by_team)
+        if not team_ids:
+            return {"league": league, "season": season, "teams": []}
+
+        cur.execute(
+            """SELECT team_id, SUM(plate_appearances) pa, SUM(wrc_plus*plate_appearances) wsum
+               FROM summer_batting_stats WHERE season=%s AND plate_appearances>0
+               GROUP BY team_id""", (season,))
+        offense = {r["team_id"]: {"pa": r["pa"], "wrc_sum": float(r["wsum"])} for r in cur.fetchall()}
+        # innings_pitched is only a weighting term here; small notation error is fine.
+        cur.execute(
+            """SELECT team_id, SUM(innings_pitched) ip, SUM(fip*innings_pitched) fsum
+               FROM summer_pitching_stats WHERE season=%s AND innings_pitched>0
+               GROUP BY team_id""", (season,))
+        pitching = {r["team_id"]: {"ip": float(r["ip"]), "fip_sum": float(r["fsum"])} for r in cur.fetchall()}
+
+        cur.execute("SELECT id, name, short_name, logo_url, division FROM summer_teams WHERE id = ANY(%s)", (team_ids,))
+        meta = {r["id"]: dict(r) for r in cur.fetchall()}
+
+    ratings = compute_cpi(team_ids, games_by_team, offense, pitching)
+    rows = []
+    for tid, r in ratings.items():
+        m = meta.get(tid, {})
+        rows.append({**r, "team_id": tid, "team": m.get("short_name") or m.get("name"),
+                     "team_name": m.get("name"), "logo": m.get("logo_url"),
+                     "division": m.get("division")})
+    rows.sort(key=lambda x: -x["cpi_raw"])
+    for i, row in enumerate(rows, 1):
+        row["rank"] = i
+    return {"league": league, "season": season, "teams": rows}
 
 
 # ── /summer/teams ──────────────────────────────────────────────────
