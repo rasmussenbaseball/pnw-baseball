@@ -9493,7 +9493,17 @@ def uncommitted_juco_players(
 
         rows = cur.execute(query, params)
         rows = cur.fetchall()
-        return [_add_era_plus(dict(r)) for r in rows]
+        out = [_add_era_plus(dict(r)) for r in rows]
+        # Tag each committed player's destination with its division level, using
+        # the same resolver as the NWAC advancement graphic so the level shown on
+        # the tracker matches the graphic and updates with every new commitment.
+        names = [r["committed_to"] for r in out if r.get("committed_to")]
+        if names:
+            levels = _resolve_committed_levels(cur, names)
+            for r in out:
+                if r.get("committed_to"):
+                    r["committed_level"] = levels.get(r["committed_to"].strip().lower())
+        return out
 
 
 # NOTE: top-level path (not /players/transfer-portal) to avoid being
@@ -19816,6 +19826,44 @@ _COMMIT_LEVEL_OVERRIDES = {
     "jessup university": "NAIA", "jessup": "NAIA", "tennessee wesleyan": "NAIA",
     "bethany lutheran": "D3",
 }
+
+
+def _resolve_committed_levels(cur, names):
+    """committed_to school string -> division level. Override map first, then a
+    four-year team match in our DB. Returns {lower(stripped name): level|None}.
+    Shared by the JUCO tracker and the NWAC advancement graphic so a commitment
+    shows the same level in both, and any new commitment resolves automatically."""
+    out, todo = {}, []
+    for n in names:
+        if not n:
+            continue
+        key = n.strip().lower()
+        if key in out:
+            continue
+        ov = _COMMIT_LEVEL_OVERRIDES.get(key)
+        if ov:
+            out[key] = ov
+        else:
+            out[key] = None
+            todo.append(n)
+    if todo:
+        cur.execute(
+            r"""SELECT lower(trim(x.name)) AS key, dd.level
+                FROM unnest(%s::text[]) AS x(name)
+                JOIN teams dest ON (
+                   lower(dest.school_name)=lower(x.name) OR lower(dest.name)=lower(x.name)
+                   OR lower(dest.short_name)=lower(x.name)
+                   OR regexp_replace(lower(dest.school_name),'\s+(university|college)$','')
+                      = regexp_replace(lower(trim(x.name)),'\s+(university|college|u)$','')
+                   OR lower(dest.short_name)=regexp_replace(lower(trim(x.name)),'\s+(university|college|u)$',''))
+                JOIN conferences cc ON dest.conference_id=cc.id JOIN divisions dd ON cc.division_id=dd.id
+                WHERE dd.level <> 'JUCO'""",
+            (todo,),
+        )
+        for r in cur.fetchall():
+            if not out.get(r["key"]):
+                out[r["key"]] = r["level"]
+    return out
 
 
 @router.get("/recruiting/nwac-advancement")

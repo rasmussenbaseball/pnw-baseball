@@ -95,14 +95,16 @@ export default function NwacAdvancement() {
             <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">Every NWAC player with a commitment on file, grouped by the level of the school they chose. Division I first.</p>
             {data.commits.length === 0 ? (
               <div className="text-sm text-gray-400">No commitments on record yet.</div>
-            ) : ['D1', 'D2', 'NAIA', 'D3'].map(lv => {
-              const list = data.commits.filter(c => c.dest_level === lv)
+            ) : ['D1', 'D2', 'NAIA', 'D3', null].map(lv => {
+              const list = data.commits.filter(c => (lv ? c.dest_level === lv : !c.dest_level))
               if (!list.length) return null
               return (
-                <div key={lv} className="mb-4 last:mb-0">
+                <div key={lv || 'other'} className="mb-4 last:mb-0">
                   <div className="flex items-center gap-2 mb-2">
-                    <LevelTag level={lv} />
-                    <span className="text-[12px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{LEVEL_LABEL[lv]} · {list.length}</span>
+                    {lv
+                      ? <LevelTag level={lv} />
+                      : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300">4-YR</span>}
+                    <span className="text-[12px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{(lv ? LEVEL_LABEL[lv] : 'Other four-year') + ' · ' + list.length}</span>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
                     {list.map((c, i) => (

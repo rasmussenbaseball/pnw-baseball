@@ -10,6 +10,14 @@
 import { Link } from 'react-router-dom'
 import { formatStat } from '../utils/stats'
 
+// Division-level chip colors for a committed school (resolved server-side).
+const COMMIT_LVL = {
+  D1: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
+  D2: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  NAIA: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  D3: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
+}
+
 export const BATTING_COLS = [
   { key: 'batting_avg',    label: 'AVG',  format: 'avg',  mono: true },
   { key: 'on_base_pct',    label: 'OBP',  format: 'avg',  mono: true },
@@ -203,7 +211,12 @@ export default function PlayerTrackerTable({
               <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[330px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
               <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[358px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
                 {row.committed_to ? (
-                  <span title={row.committed_to} className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded truncate max-w-full">{row.committed_to}</span>
+                  <span title={`${row.committed_to}${row.committed_level ? ' (' + row.committed_level + ')' : ''}`} className="inline-flex items-center gap-1 max-w-full align-middle">
+                    {row.committed_level && (
+                      <span className={`shrink-0 text-[8px] font-extrabold px-1 py-0.5 rounded ${COMMIT_LVL[row.committed_level] || 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>{row.committed_level}</span>
+                    )}
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 rounded truncate">{row.committed_to}</span>
+                  </span>
                 ) : (
                   <span className="text-gray-400 dark:text-gray-500">-</span>
                 )}
