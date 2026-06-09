@@ -19690,6 +19690,78 @@ def upsert_recruiting_program(
 PROGRAM_GUIDE_PATH = "/opt/program_guide.pdf"
 
 
+@router.get("/recruiting/freshman-by-division")
+def recruiting_freshman_by_division(season: int = 2026, _user: str = Depends(require_tier("premium"))):
+    """Average freshman batting + pitching line per division (D1/D2/NAIA/D3/JUCO).
+    Freshman = true Fr/R-Fr class from player_seasons at four-year schools; for
+    NWAC (JUCO, where we lack reliable class data) a freshman is a player whose
+    first season in our data is this one (a debut/first-year). Playing-time
+    averages (PA/AB/IP) use everyone who appeared; rate stats (AVG/OPS/wRC+/ERA)
+    use a reps floor so they're meaningful."""
+    order = ['D1', 'D2', 'NAIA', 'D3', 'JUCO']
+    fresh_cte = """
+      WITH fresh AS (
+        SELECT ps.player_id FROM player_seasons ps WHERE ps.season=%s AND ps.year_in_school IN ('Fr','R-Fr')
+        UNION
+        SELECT b.player_id FROM batting_stats b
+          JOIN teams t ON b.team_id=t.id JOIN conferences c ON t.conference_id=c.id JOIN divisions d ON c.division_id=d.id
+          WHERE b.season=%s AND d.level='JUCO' AND NOT EXISTS (SELECT 1 FROM batting_stats b2 WHERE b2.player_id=b.player_id AND b2.season<%s)
+        UNION
+        SELECT p.player_id FROM pitching_stats p
+          JOIN teams t ON p.team_id=t.id JOIN conferences c ON t.conference_id=c.id JOIN divisions d ON c.division_id=d.id
+          WHERE p.season=%s AND d.level='JUCO' AND NOT EXISTS (SELECT 1 FROM pitching_stats p2 WHERE p2.player_id=p.player_id AND p2.season<%s)
+      )"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(fresh_cte + """
+          SELECT d.level,
+            COUNT(*) FILTER (WHERE bs.plate_appearances>=1) n_hitters,
+            ROUND(AVG(bs.plate_appearances) FILTER (WHERE bs.plate_appearances>=1),1) avg_pa,
+            ROUND(AVG(bs.at_bats) FILTER (WHERE bs.plate_appearances>=1),1) avg_ab,
+            COUNT(*) FILTER (WHERE bs.plate_appearances>=25) n_reps,
+            ROUND(AVG(bs.hits::numeric/NULLIF(bs.at_bats,0)) FILTER (WHERE bs.plate_appearances>=25),3) avg_avg,
+            ROUND(AVG(bs.ops) FILTER (WHERE bs.plate_appearances>=25)::numeric,3) avg_ops,
+            ROUND(AVG(bs.wrc_plus) FILTER (WHERE bs.plate_appearances>=25)) avg_wrc
+          FROM batting_stats bs JOIN fresh f ON bs.player_id=f.player_id AND bs.season=%s
+          JOIN teams t ON bs.team_id=t.id JOIN conferences c ON t.conference_id=c.id JOIN divisions d ON c.division_id=d.id
+          GROUP BY d.level
+        """, (season, season, season, season, season, season))
+        bat = {r['level']: r for r in cur.fetchall()}
+
+        cur.execute(fresh_cte + """
+          SELECT d.level,
+            COUNT(*) FILTER (WHERE ip_outs(ps.innings_pitched)>=3) n_pitchers,
+            ROUND((AVG(ip_outs(ps.innings_pitched)/3.0) FILTER (WHERE ip_outs(ps.innings_pitched)>=3))::numeric,1) avg_ip,
+            ROUND((SUM(ps.earned_runs) FILTER (WHERE ip_outs(ps.innings_pitched)>=30)*9.0
+                   / NULLIF(SUM(ip_outs(ps.innings_pitched)/3.0) FILTER (WHERE ip_outs(ps.innings_pitched)>=30),0))::numeric,2) avg_era
+          FROM pitching_stats ps JOIN fresh f ON ps.player_id=f.player_id AND ps.season=%s
+          JOIN teams t ON ps.team_id=t.id JOIN conferences c ON t.conference_id=c.id JOIN divisions d ON c.division_id=d.id
+          GROUP BY d.level
+        """, (season, season, season, season, season, season))
+        pit = {r['level']: r for r in cur.fetchall()}
+
+    def f(v):
+        return float(v) if v is not None else None
+    rows = []
+    for lvl in order:
+        b, p = bat.get(lvl), pit.get(lvl)
+        if not b and not p:
+            continue
+        rows.append({
+            "level": lvl,
+            "hitters": (b or {}).get('n_hitters') or 0,
+            "avg_pa": f((b or {}).get('avg_pa')),
+            "avg_ab": f((b or {}).get('avg_ab')),
+            "avg_avg": f((b or {}).get('avg_avg')),
+            "avg_ops": f((b or {}).get('avg_ops')),
+            "avg_wrc": (int(b['avg_wrc']) if b and b.get('avg_wrc') is not None else None),
+            "pitchers": (p or {}).get('n_pitchers') or 0,
+            "avg_ip": f((p or {}).get('avg_ip')),
+            "avg_era": f((p or {}).get('avg_era')),
+        })
+    return {"season": season, "divisions": rows}
+
+
 @router.get("/recruiting/program-guide")
 def recruiting_program_guide(_user: str = Depends(require_tier("premium"))):
     if not os.path.exists(PROGRAM_GUIDE_PATH):

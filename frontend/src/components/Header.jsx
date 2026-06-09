@@ -54,6 +54,7 @@ const NAV = [
     // clicking sends them to the upsell card.
     label: 'Recruiting',
     items: [
+      { to: '/recruiting/tips', label: 'Recruiting Tips', desc: 'How to get recruited + freshman production by level', requires: 'premium' },
       { to: '/recruiting/quiz', label: 'Recruit Matchmaker', desc: 'Match yourself to your best-fit NW program', requires: 'premium' },
       { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends', requires: 'premium' },
       { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city', requires: 'premium' },
