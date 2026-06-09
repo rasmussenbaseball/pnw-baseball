@@ -266,6 +266,23 @@ export default function RecruitingHub() {
         </div>
       </section>
 
+      {/* Group rates */}
+      <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+        <span className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 shrink-0">
+          {ICONS.users}
+        </span>
+        <div className="flex-1">
+          <h3 className="text-base sm:text-lg font-extrabold text-pnw-slate dark:text-gray-100">Coaching a team or running a facility?</h3>
+          <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
+            High school programs, travel organizations, and baseball facilities can get group rates for their players and families. Email us to set it up.
+          </p>
+        </div>
+        <a href="mailto:info@nwbaseballstats.com?subject=Group%20rates%20inquiry"
+           className="shrink-0 px-5 py-2.5 rounded-lg bg-nw-teal text-white text-sm font-bold hover:bg-teal-700 transition-colors whitespace-nowrap">
+          Email about group rates
+        </a>
+      </section>
+
       {/* Final CTA */}
       <section className="text-center rounded-2xl bg-teal-50 dark:bg-teal-900/20 ring-1 ring-teal-100 dark:ring-teal-800 px-5 py-8">
         <h2 className="text-xl sm:text-2xl font-black text-pnw-slate dark:text-gray-100">Not sure where to start?</h2>
