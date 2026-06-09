@@ -482,14 +482,22 @@ function drawPerformerCard(ctx, x, y, w, h, item, accent) {
   if (item.kind === 'pitcher' && p.decision) {
     nx += badge(ctx, nx, nameY - 7, p.decision)
   }
-  ctx.textAlign = 'left'
-  ctx.font = '900 22px -apple-system, sans-serif'
-  ctx.fillStyle = C.navy
   const role = item.kind === 'pitcher'
     ? (p.is_starter ? 'SP' : 'RP')
     : (p.position ? String(p.position).toUpperCase() : '')
-  // measure name to place the small role tag after it
-  const nameMax = w - (nx - x) - 70
+  // College / school, shown right-aligned on the name line when known. Clean
+  // PNW names come from the spring cross-link, so this naturally flags PNWers.
+  const college = p.college || ''
+  ctx.font = '700 14px -apple-system, sans-serif'
+  const collegeW = college ? ctx.measureText(college).width : 0
+  const rightLimit = x + w - 16 - (college ? collegeW + 14 : 0)
+  ctx.font = '800 14px -apple-system, sans-serif'
+  const roleW = role ? ctx.measureText(role).width : 0
+
+  ctx.textAlign = 'left'
+  ctx.font = '900 22px -apple-system, sans-serif'
+  ctx.fillStyle = C.navy
+  const nameMax = Math.max(40, rightLimit - nx - (role ? roleW + 10 : 0))
   const nm = truncate(ctx, p.player_name || '', nameMax)
   ctx.fillText(nm, nx, nameY)
   if (role) {
@@ -498,11 +506,18 @@ function drawPerformerCard(ctx, x, y, w, h, item, accent) {
     ctx.fillStyle = C.text_gray
     ctx.fillText(role, nx + nw + 10, nameY)
   }
+  if (college) {
+    ctx.font = '700 14px -apple-system, sans-serif'
+    ctx.fillStyle = C.blue
+    ctx.textAlign = 'right'
+    ctx.fillText(college, x + w - 16, nameY)
+    ctx.textAlign = 'left'
+  }
   // stat line
   ctx.font = '600 17px -apple-system, sans-serif'
   ctx.fillStyle = C.text_muted
   const stat = item.kind === 'pitcher' ? pitcherLine(p) : hitterLine(p)
-  ctx.fillText(truncate(ctx, stat, w - (x + 20 - x) - 26), x + 20, y + h - 18)
+  ctx.fillText(truncate(ctx, stat, w - 26), x + 20, y + h - 18)
 }
 
 async function drawPerformers(ctx, game, data, top, bottomLimit) {

@@ -17,6 +17,7 @@ up into a college season-stats query. This module exposes:
 """
 
 import math
+import re
 from datetime import date, timedelta
 from itertools import groupby
 from typing import Optional
@@ -265,6 +266,81 @@ def _summer_win_prob(cur, game):
     return {"pts": pts, "innings": max_inn}
 
 
+# ── Player college resolution (for recap graphics, "which guys are PNWers") ──
+#
+# Two sources, preferred in order:
+#   1. The spring cross-link (summer_player_links -> players -> teams): gives a
+#      clean PNW school name (team name minus mascot). These ARE the PNW guys.
+#   2. The raw Pointstreak `college` string on summer_players, normalized — the
+#      only source for out-of-region players, but messy ("Oregon St U").
+# Coverage is partial by design; callers show the tag only when present.
+_RAW_COLLEGE_MAP = {
+    "california los angeles (u of)": "UCLA",
+    "southern california (u of)": "USC",
+    "cal poly san luis obispo": "Cal Poly",
+    "cal st northridge": "Cal State Northridge",
+    "cal st fullerton": "Cal State Fullerton",
+    "cal st long beach": "Long Beach State",
+    "loyola marymount u": "Loyola Marymount",
+}
+
+
+def _school_from_team(name, mascot):
+    if not name:
+        return None
+    if mascot and name.endswith(mascot):
+        return name[:-len(mascot)].strip() or name
+    return name
+
+
+def _norm_college(raw):
+    if not raw:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    if s.lower() in _RAW_COLLEGE_MAP:
+        return _RAW_COLLEGE_MAP[s.lower()]
+    s = re.sub(r"\s*\(u of\)$", "", s, flags=re.I)            # "Portland (U of)" -> "Portland"
+    s = re.sub(r"\bSt\b(?=\s+(?:U|Col|College|University)\b|$)", "State", s)  # "Oregon St U" -> "Oregon State U"
+    s = re.sub(r"\s+Community College$", "", s, flags=re.I)
+    s = re.sub(r"\s+(?:University|College)$", "", s, flags=re.I)  # "Hope International University" -> "Hope International"
+    s = re.sub(r"\s+(?:U|Col|CC)$", "", s)                    # trailing abbrevs " U" / " Col" / " CC"
+    s = re.sub(r"\s+", " ", s).strip()
+    return s or None
+
+
+def _resolve_colleges(cur, player_ids):
+    """player_id -> clean college/school string (None when unknown)."""
+    ids = sorted({p for p in player_ids if p})
+    if not ids:
+        return {}
+    out = {}
+    cur.execute(
+        """
+        SELECT DISTINCT ON (lk.summer_player_id) lk.summer_player_id AS spid, t.name, t.mascot
+        FROM summer_player_links lk
+        JOIN players p ON p.id = lk.spring_player_id
+        JOIN teams t ON t.id = p.team_id
+        WHERE lk.summer_player_id = ANY(%s)
+        ORDER BY lk.summer_player_id, lk.confidence DESC NULLS LAST
+        """,
+        (ids,),
+    )
+    for r in cur.fetchall():
+        sch = _school_from_team(r["name"], r["mascot"])
+        if sch:
+            out[r["spid"]] = sch
+    missing = [i for i in ids if i not in out]
+    if missing:
+        cur.execute("SELECT id, college FROM summer_players WHERE id = ANY(%s)", (missing,))
+        for r in cur.fetchall():
+            n = _norm_college(r["college"])
+            if n:
+                out[r["id"]] = n
+    return out
+
+
 # ── /summer/games/{id} ─────────────────────────────────────────────
 
 @router.get("/summer/games/{game_id}")
@@ -309,6 +385,16 @@ def summer_game_detail(game_id: int):
             (game_id,),
         )
         pitching = [dict(r) for r in cur.fetchall()]
+
+        # College / school per player (spring cross-link first, raw college
+        # fallback). Shown on recap graphics to flag PNW players.
+        colleges = _resolve_colleges(
+            cur, [r.get("player_id") for r in batting] + [r.get("player_id") for r in pitching]
+        )
+        for r in batting:
+            r["college"] = colleges.get(r.get("player_id"))
+        for r in pitching:
+            r["college"] = colleges.get(r.get("player_id"))
 
         win_prob = _summer_win_prob(cur, dict(game))
 
