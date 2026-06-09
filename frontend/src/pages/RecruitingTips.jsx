@@ -47,6 +47,7 @@ function FreshmanByDivision() {
 
   const rows = data?.divisions || []
   const juco = rows.find(r => r.level === 'JUCO')
+  const d1 = rows.find(r => r.level === 'D1')
   const fmt = (v, d = 0) => (v == null ? '—' : Number(v).toFixed(d))
 
   return (
@@ -54,7 +55,7 @@ function FreshmanByDivision() {
       <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">By the numbers</div>
       <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100">Freshman production by level ({data?.season || 2026})</h2>
       <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-1 mb-4">
-        Where do PNW players land, and how much do they actually play as freshmen? This is the average first-year line at each level of PNW college baseball. Playing time (PA, IP) counts every freshman who appeared; rate stats (AVG, OPS, wRC+, ERA) use freshmen who got real reps.
+        Where do PNW players land, and how much do they actually play as freshmen? This is the average first-year line at each level of PNW college baseball. Rostered is every freshman on the roster and DNP is how many never appeared in a game; playing time (PA, IP) counts every freshman who did appear, and rate stats (AVG, OPS, wRC+, ERA) use freshmen who got real reps.
       </p>
       {err ? (
         <div className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">Stats are unavailable right now.</div>
@@ -67,7 +68,9 @@ function FreshmanByDivision() {
               <thead>
                 <tr className="text-gray-400 dark:text-gray-500 text-[11px] uppercase tracking-wide border-b border-gray-200 dark:border-gray-700">
                   <th className="text-left py-2 pl-1 font-semibold">Level</th>
-                  <th className="text-right px-2" title="Freshman hitters who appeared">Hitters</th>
+                  <th className="text-right px-2" title="Total freshmen on the roster (four-year schools)">Rostered</th>
+                  <th className="text-right px-2" title="Rostered freshmen who did not appear in a game (redshirt / bench)">DNP</th>
+                  <th className="text-right px-2 border-l border-gray-200 dark:border-gray-700" title="Freshman hitters who appeared">Hitters</th>
                   <th className="text-right px-2">Avg PA</th>
                   <th className="text-right px-2">Avg AB</th>
                   <th className="text-right px-2">AVG</th>
@@ -82,7 +85,9 @@ function FreshmanByDivision() {
                 {rows.map(r => (
                   <tr key={r.level} className="border-b border-gray-100 dark:border-gray-700/50">
                     <td className="py-2 pl-1"><span className={`text-[10px] font-bold px-2 py-0.5 rounded ${LEVELS[r.level] || ''}`}>{LEVEL_LABEL[r.level] || r.level}</span></td>
-                    <td className="text-right px-2 font-semibold text-gray-800 dark:text-gray-100">{r.hitters}</td>
+                    <td className="text-right px-2 text-gray-700 dark:text-gray-300">{r.rostered ?? '—'}</td>
+                    <td className={`text-right px-2 font-semibold ${r.didnt_play ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-gray-300'}`}>{r.didnt_play ?? '—'}</td>
+                    <td className="text-right px-2 border-l border-gray-200 dark:border-gray-700 font-semibold text-gray-800 dark:text-gray-100">{r.hitters}</td>
                     <td className="text-right px-2">{fmt(r.avg_pa, 1)}</td>
                     <td className="text-right px-2">{fmt(r.avg_ab, 1)}</td>
                     <td className="text-right px-2">{r.avg_avg == null ? '—' : Number(r.avg_avg).toFixed(3).replace(/^0/, '')}</td>
@@ -98,11 +103,15 @@ function FreshmanByDivision() {
           </div>
           {juco && (
             <div className="mt-4 text-[13px] rounded-lg bg-teal-50/70 dark:bg-teal-900/20 border-l-2 border-teal-300 dark:border-teal-700 px-3 py-2.5 text-gray-700 dark:text-gray-300">
-              <span className="font-semibold">The opportunity gap:</span> {juco.hitters} NWAC freshmen took at-bats this year, many times more than any four-year level. If a freshman would sit behind upperclassmen at a four-year school, junior college is usually the fastest path to real reps, and the numbers above show it.
+              <span className="font-semibold">The opportunity gap:</span>{' '}
+              {d1 && d1.didnt_play != null && (
+                <>at Division I, {d1.didnt_play} of {d1.rostered} rostered freshmen ({Math.round(100 * d1.didnt_play / d1.rostered)}%) did not appear in a single game. </>
+              )}
+              Meanwhile {juco.hitters} NWAC freshmen took at-bats this year, many times more than any four-year level. If a freshman would sit behind upperclassmen at a four-year school, junior college is usually the fastest path to real reps.
             </div>
           )}
           <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-3">
-            Freshmen at four-year schools are identified by their true class from that year's roster. At the NWAC level (where class is not consistently published) a freshman is a player in their first season in our data. wRC+ of 100 equals the league average that year, so freshmen sitting below 100 is normal.
+            Freshmen at four-year schools are identified by their true class from that year's roster, and Rostered / DNP are counted from those rosters. The NWAC does not publish class consistently, so there a freshman is a player in their first season in our data and Rostered / DNP are not shown. wRC+ of 100 equals the league average that year, so freshmen sitting below 100 is normal.
           </p>
         </>
       )}

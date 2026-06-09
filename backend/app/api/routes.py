@@ -19690,6 +19690,17 @@ def upsert_recruiting_program(
 PROGRAM_GUIDE_PATH = "/opt/program_guide.pdf"
 
 
+# Total freshmen (Fr / R-Fr) ON each four-year program's roster for a season,
+# counted from the archived roster pages. This is a curated constant on purpose:
+# rostered-but-didn't-play freshmen (redshirts, deep bench) never get a row in our
+# stats DB, so "how many were rostered" can't be derived from a live query — it has
+# to come from the roster text. Regenerate with scripts/count_rostered_freshmen.py
+# when a season's rosters finalize. NWAC is absent (its rosters don't publish class).
+FRESHMAN_ROSTERED = {
+    2026: {"D1": 74, "D2": 59, "NAIA": 98, "D3": 50},
+}
+
+
 @router.get("/recruiting/freshman-by-division")
 def recruiting_freshman_by_division(season: int = 2026, _user: str = Depends(require_tier("premium"))):
     """Average freshman batting + pitching line per division (D1/D2/NAIA/D3/JUCO).
@@ -19740,6 +19751,21 @@ def recruiting_freshman_by_division(season: int = 2026, _user: str = Depends(req
         """, (season, season, season, season, season, season))
         pit = {r['level']: r for r in cur.fetchall()}
 
+        # Freshmen who actually appeared (batted OR pitched) — the union, so a
+        # two-way player counts once. Lets us report rostered - played = sat.
+        cur.execute(fresh_cte + """, played AS (
+            SELECT bs.player_id, d.level FROM batting_stats bs JOIN fresh f ON bs.player_id=f.player_id
+              JOIN teams t ON bs.team_id=t.id JOIN conferences c ON t.conference_id=c.id JOIN divisions d ON c.division_id=d.id
+              WHERE bs.season=%s AND bs.plate_appearances>=1
+            UNION
+            SELECT ps.player_id, d.level FROM pitching_stats ps JOIN fresh f ON ps.player_id=f.player_id
+              JOIN teams t ON ps.team_id=t.id JOIN conferences c ON t.conference_id=c.id JOIN divisions d ON c.division_id=d.id
+              WHERE ps.season=%s AND ip_outs(ps.innings_pitched)>=1
+          )
+          SELECT level, COUNT(DISTINCT player_id) n_played FROM played GROUP BY level
+        """, (season, season, season, season, season, season, season))
+        played = {r['level']: r['n_played'] for r in cur.fetchall()}
+
     def f(v):
         return float(v) if v is not None else None
     rows = []
@@ -19747,8 +19773,15 @@ def recruiting_freshman_by_division(season: int = 2026, _user: str = Depends(req
         b, p = bat.get(lvl), pit.get(lvl)
         if not b and not p:
             continue
+        rostered = (FRESHMAN_ROSTERED.get(season) or {}).get(lvl)
+        played_n = played.get(lvl)
+        didnt = (max(0, rostered - played_n)
+                 if (rostered is not None and played_n is not None) else None)
         rows.append({
             "level": lvl,
+            "rostered": rostered,          # total Fr on rosters (4-year only; None for NWAC)
+            "played": played_n,            # freshmen who batted or pitched
+            "didnt_play": didnt,           # rostered - played (None where rostered unknown)
             "hitters": (b or {}).get('n_hitters') or 0,
             "avg_pa": f((b or {}).get('avg_pa')),
             "avg_ab": f((b or {}).get('avg_ab')),
