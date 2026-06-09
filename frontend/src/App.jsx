@@ -225,6 +225,7 @@ import StandingsPage from './pages/StandingsPage'
 import GameDetail from './pages/GameDetail'
 import TeamRatings from './pages/TeamRatings'
 import TeamHistory from './pages/TeamHistory'
+import RecruitingHub from './pages/RecruitingHub'  // public landing page (all tiers)
 import RecruitingClasses from './pages/RecruitingClasses'
 import RecruitQuiz from './pages/RecruitQuiz'
 import RecruitingRankings from './pages/RecruitingRankings'
@@ -390,6 +391,8 @@ export default function App() {
           <Route path="/team-ratings" element={<TeamRatings />} />
           <Route path="/national-rankings" element={<NationalRankings />} />
           <Route path="/team-history" element={<RequireTier minTier="free"><TeamHistory /></RequireTier>} />
+          {/* Public landing page for the whole Recruiting tab (all tiers, no gate) */}
+          <Route path="/recruiting" element={<RecruitingHub />} />
           <Route path="/recruiting/quiz" element={<RequireTier minTier="premium"><RecruitQuiz /></RequireTier>} />
           <Route path="/recruiting-classes" element={<RequireTier minTier="premium"><RecruitingClasses /></RequireTier>} />
           <Route path="/recruiting/breakdown" element={<RequireTier minTier="premium"><RecruitingBreakdown /></RequireTier>} />
