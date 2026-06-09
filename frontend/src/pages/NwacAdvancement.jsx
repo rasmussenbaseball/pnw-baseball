@@ -88,6 +88,11 @@ export default function NwacAdvancement() {
 
       {data && (
         <>
+          {/* Scope disclaimer — this data is PNW-only and tracking has a start year */}
+          <div className="rounded-xl bg-amber-50/70 dark:bg-amber-900/15 ring-1 ring-amber-200/70 dark:ring-amber-800/40 px-4 py-3 mb-6 text-[12.5px] leading-relaxed text-amber-900 dark:text-amber-200/90">
+            <span className="font-bold">How to read this:</span> "Advanced" and the landing-spot counts only include players who moved on to a <span className="font-semibold">Pacific Northwest four-year program we track</span> (Division I through NAIA in WA, OR, ID, MT, plus UBC), using data since <span className="font-semibold">{data.tracking_since}</span>. A player who transferred to a school outside the region (a California D1, say) will not appear here. Commitment data reflects publicly known commitments, so the 2026 percentages below are a floor, not the full picture.
+          </div>
+
           {/* 2026 commitments, grouped by the level committed to */}
           <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
             <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">Headliner · the 2026 class</div>
@@ -124,10 +129,76 @@ export default function NwacAdvancement() {
             })}
           </section>
 
+          {/* 2026 sophomore movement — % of each team's sophomores with a known commitment */}
+          {(() => {
+            const SO = new Set(['So', 'R-So'])
+            const rows = data.teams
+              .filter(t => t.soph_count > 0)
+              .map(t => {
+                const committed = (t.committed || []).filter(c => SO.has(c.year))
+                const schools = {}
+                committed.forEach(c => {
+                  const k = c.dest
+                  if (!schools[k]) schools[k] = { dest: c.dest, level: c.dest_level || c.level, count: 0 }
+                  schools[k].count += 1
+                })
+                return {
+                  team: t.team, logo: t.logo, soph: t.soph_count, committed: committed.length,
+                  pct: Math.round((committed.length / t.soph_count) * 100),
+                  schools: Object.values(schools).sort((a, b) => b.count - a.count),
+                }
+              })
+              .sort((a, b) => b.pct - a.pct || b.committed - a.committed || b.soph - a.soph)
+            return (
+              <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">The 2026 class</div>
+                <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-1">How much of each team's sophomore class is moving on</h2>
+                <p className="text-[13px] text-gray-500 dark:text-gray-400">Sophomores are NWAC players in their final junior-college year. "Moving on" counts those with a known commitment to a four-year school, and lists where. Because commitments are only as complete as what programs publish, these percentages are a floor, not the full picture.</p>
+                <div className="overflow-x-auto -mx-1 mt-3">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="text-gray-400 dark:text-gray-500 text-[11px] uppercase tracking-wide border-b border-gray-200 dark:border-gray-700">
+                        <th className="text-left py-2 pl-1 font-semibold">NWAC Team</th>
+                        <th className="text-right px-2 tabular-nums" title="2026 sophomores on the roster">Soph</th>
+                        <th className="text-right px-2 tabular-nums">Moving on</th>
+                        <th className="text-right px-2 tabular-nums">%</th>
+                        <th className="text-left px-2">Committed to</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(r => (
+                        <tr key={r.team} className="border-b border-gray-100 dark:border-gray-700/50 align-top">
+                          <td className="py-2 pl-1">
+                            <span className="inline-flex items-center gap-2"><Logo src={r.logo} size={18} /><span className="font-bold text-pnw-slate dark:text-gray-100">{r.team}</span></span>
+                          </td>
+                          <td className="text-right px-2 tabular-nums text-gray-600 dark:text-gray-300">{r.soph}</td>
+                          <td className="text-right px-2 tabular-nums font-semibold text-pnw-slate dark:text-gray-100">{r.committed || ''}</td>
+                          <td className="text-right px-2 tabular-nums font-extrabold text-nw-teal">{r.committed ? r.pct + '%' : ''}</td>
+                          <td className="px-2 py-1.5">
+                            {r.schools.length ? (
+                              <span className="flex flex-wrap gap-1">
+                                {r.schools.map(s => (
+                                  <span key={s.dest} className="inline-flex items-center gap-1 text-[11.5px] bg-gray-50 dark:bg-gray-900/40 ring-1 ring-gray-200 dark:ring-gray-700 rounded-full px-2 py-0.5">
+                                    {s.level && <LevelTag level={s.level} />}
+                                    <span className="text-gray-700 dark:text-gray-200">{s.dest}{s.count > 1 ? ` x${s.count}` : ''}</span>
+                                  </span>
+                                ))}
+                              </span>
+                            ) : <span className="text-gray-400 dark:text-gray-500">none recorded yet</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )
+          })()}
+
           {/* Team leaderboard */}
           <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-              <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100">Who sends the most, and the best (all-time)</h2>
+              <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100">Who sends the most to PNW four-year schools</h2>
               <div className="flex flex-wrap gap-1">
                 {SORTS.map(s => (
                   <button key={s.key} onClick={() => setSortKey(s.key)}
@@ -137,7 +208,7 @@ export default function NwacAdvancement() {
                 ))}
               </div>
             </div>
-            <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-3">Tap a team to see exactly where their players went and who is committed.</p>
+            <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-3">Every player who advanced to a four-year program in our PNW database, {data.tracking_since} to present (out-of-region transfers not included). Tap a team to see exactly where their players went.</p>
             <div className="overflow-x-auto -mx-1">
               <table className="w-full text-[13px] tabular-nums">
                 <thead>

@@ -19955,13 +19955,13 @@ def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require
         for r in cur.fetchall():
             teams[r["team"]] = {"team": r["team"], "logo": r["logo"], "total": 0,
                                 "d1": 0, "d2": 0, "naia": 0, "d3": 0, "score": 0,
-                                "dests": {}, "committed": []}
+                                "soph_count": 0, "dests": {}, "committed": []}
 
         dest_overall = {}
         for a in advances:
             t = teams.setdefault(a["origin_team"], {"team": a["origin_team"], "logo": a["origin_logo"],
                                                     "total": 0, "d1": 0, "d2": 0, "naia": 0, "d3": 0,
-                                                    "score": 0, "dests": {}, "committed": []})
+                                                    "score": 0, "soph_count": 0, "dests": {}, "committed": []})
             t["total"] += 1
             t[a["dest_level"].lower()] += 1
             t["score"] += _ADV_WEIGHT[a["dest_level"]]
@@ -20005,6 +20005,26 @@ def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require
                 t["committed"].append({"player": entry["player"], "dest": r["committed_to"],
                                        "level": level, "year": r["year_in_school"]})
 
+        # Current (2026) sophomore counts per team — the denominator for "what
+        # share of this year's sophomores are moving on."
+        cur.execute(
+            """SELECT t.short_name team, COUNT(*) soph
+               FROM players p JOIN teams t ON t.id=p.team_id JOIN conferences c ON t.conference_id=c.id
+               JOIN divisions d ON c.division_id=d.id
+               WHERE d.level='JUCO' AND COALESCE(p.is_phantom,false)=false
+                 AND p.year_in_school IN ('So','R-So')
+                 AND (p.roster_year=2026
+                      OR EXISTS(SELECT 1 FROM batting_stats b WHERE b.player_id=p.id AND b.season=2026)
+                      OR EXISTS(SELECT 1 FROM pitching_stats ps WHERE ps.player_id=p.id AND ps.season=2026))
+               GROUP BY t.short_name""")
+        for r in cur.fetchall():
+            if r["team"] in teams:
+                teams[r["team"]]["soph_count"] = r["soph"]
+
+        cur.execute("SELECT LEAST((SELECT MIN(season) FROM batting_stats),"
+                    "(SELECT MIN(season) FROM pitching_stats)) AS earliest")
+        tracking_since = cur.fetchone()["earliest"]
+
     _lvl_rank = {"D1": 0, "D2": 1, "NAIA": 2, "D3": 3, None: 4}
     commits.sort(key=lambda c: (_lvl_rank.get(c["dest_level"], 4), c["nwac_team"], c["player"]))
     commit_counts = {lv: sum(1 for c in commits if c["dest_level"] == lv) for lv in ("D1", "D2", "NAIA", "D3")}
@@ -20035,8 +20055,8 @@ def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require
     }
     top_destinations = sorted(dest_overall.values(),
                               key=lambda d: (-d["count"], -_ADV_WEIGHT[d["level"]]))[:20]
-    return {"season": season, "totals": totals, "commits": commits,
-            "commit_counts": commit_counts, "d1_arrivals": d1_arrivals,
+    return {"season": season, "tracking_since": tracking_since, "totals": totals,
+            "commits": commits, "commit_counts": commit_counts, "d1_arrivals": d1_arrivals,
             "teams": team_rows, "top_destinations": top_destinations}
 
 
