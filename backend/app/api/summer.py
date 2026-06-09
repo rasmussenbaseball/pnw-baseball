@@ -311,19 +311,42 @@ def _norm_college(raw):
 
 
 def _resolve_colleges(cur, player_ids):
-    """player_id -> clean college/school string (None when unknown)."""
+    """player_id -> clean college/school string (None when unknown).
+
+    The spring cross-link can point at a STALE record — players transfer, and our
+    spring DB stores one row per (player, team), so a 2026 summer record may be
+    linked to a 2022 JUCO row. To show the CURRENT school we resolve, among all
+    spring records sharing the linked player's name, the team from the most
+    recent stats season. Falls back to the raw (possibly stale) Pointstreak
+    college string only when there's no usable spring link.
+    """
     ids = sorted({p for p in player_ids if p})
     if not ids:
         return {}
     out = {}
     cur.execute(
         """
-        SELECT DISTINCT ON (lk.summer_player_id) lk.summer_player_id AS spid, t.name, t.mascot
-        FROM summer_player_links lk
-        JOIN players p ON p.id = lk.spring_player_id
-        JOIN teams t ON t.id = p.team_id
-        WHERE lk.summer_player_id = ANY(%s)
-        ORDER BY lk.summer_player_id, lk.confidence DESC NULLS LAST
+        WITH linked AS (
+            SELECT DISTINCT ON (lk.summer_player_id)
+                   lk.summer_player_id AS spid,
+                   lower(spr.first_name) AS fn, lower(spr.last_name) AS ln
+            FROM summer_player_links lk
+            JOIN players spr ON spr.id = lk.spring_player_id
+            WHERE lk.summer_player_id = ANY(%s)
+            ORDER BY lk.summer_player_id, lk.confidence DESC NULLS LAST
+        ),
+        cand AS (
+            SELECT l.spid, p.id AS pid, p.team_id,
+                   GREATEST(
+                     COALESCE((SELECT MAX(season) FROM batting_stats b WHERE b.player_id = p.id), 0),
+                     COALESCE((SELECT MAX(season) FROM pitching_stats pt WHERE pt.player_id = p.id), 0)
+                   ) AS last_season
+            FROM linked l
+            JOIN players p ON lower(p.first_name) = l.fn AND lower(p.last_name) = l.ln
+        )
+        SELECT DISTINCT ON (c.spid) c.spid, t.name, t.mascot
+        FROM cand c JOIN teams t ON t.id = c.team_id
+        ORDER BY c.spid, c.last_season DESC, c.pid DESC
         """,
         (ids,),
     )
