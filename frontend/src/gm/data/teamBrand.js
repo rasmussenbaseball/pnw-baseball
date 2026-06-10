@@ -87,16 +87,33 @@ export function isPnwProgram(schoolId) {
   return schoolId in TEAM_BRAND
 }
 
-/** Get the 2-letter abbr for a PNW team, else fall back to first letter of name. */
+/** Get the 2-letter abbr for a PNW team, else derive 2-3 letters from the name.
+ *  Per Nate (June 2026): expansion teams need a real logo-grade abbreviation,
+ *  not a single letter. Multi-word names take initials (Cascade Mariners → CM,
+ *  Eastern Oregon University → EOU); single-word names take the first 2-3
+ *  consonant-leading letters (Mariners → MR, Hawks → HK).
+ */
 export function brandAbbr(schoolId, schoolName) {
   const b = TEAM_BRAND[schoolId]
   if (b) return b.abbr
   if (!schoolName) return '?'
-  // Non-PNW fallback — single uppercase first letter (skip articles).
   const cleaned = String(schoolName)
     .replace(/\([^)]*\)/g, '')
-    .replace(/\b(the|of|at|in|st\.?|saint|university|college|state)\b/gi, '')
+    .replace(/\b(the|of|at|in|st\.?|saint|university|college)\b/gi, '')
     .trim()
-  const firstWord = cleaned.split(/\s+/).filter(Boolean)[0] || schoolName
-  return (firstWord[0] || '?').toUpperCase()
+  const words = cleaned.split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  // Multi-word: take first letters (up to 3). Skip 'state' if it's the LAST
+  // word to keep e.g. "Oregon State" → "OS" not "OSS".
+  if (words.length >= 2) {
+    const useWords = words[words.length - 1].toLowerCase() === 'state' && words.length > 2
+      ? words.slice(0, -1)
+      : words
+    const initials = useWords.slice(0, 3).map(w => (w[0] || '').toUpperCase()).join('')
+    return initials || '?'
+  }
+  // Single word: first 2 letters, uppercased. "Mariners" → "MA". Avoids the
+  // single-letter dot the old fallback produced.
+  const w = words[0]
+  return (w.slice(0, 2) || '?').toUpperCase()
 }

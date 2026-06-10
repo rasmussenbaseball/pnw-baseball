@@ -29,9 +29,20 @@ export default function TeamLogo({ school, size = 32, className = '' }) {
 
   const brand = TEAM_BRAND[school.id]
   const isPnw = !!brand
+  // EXPANSION TEAMS (per Nate, June 2026): user-defined schools carry
+  // colors directly on school.colors. TEAM_BRAND lookup won't have them,
+  // so honor the user's pick instead of falling back to the neutral
+  // white-on-slate template. Same logic for any custom school added at
+  // runtime that includes a colors block.
+  const userColors = school.colors
+  const hasCustomColors = !!(userColors && (userColors.primary || userColors.secondary))
   const abbr = isPnw ? brand.abbr : brandAbbr(school.id, school.name || school.nickname)
-  const fill = isPnw ? brand.primary : NON_PNW_FILL
-  const stroke = isPnw ? brand.secondary : NON_PNW_STROKE
+  const fill = isPnw
+    ? brand.primary
+    : (hasCustomColors ? (userColors.primary || NON_PNW_FILL) : NON_PNW_FILL)
+  const stroke = isPnw
+    ? brand.secondary
+    : (hasCustomColors ? (userColors.secondary || NON_PNW_STROKE) : NON_PNW_STROKE)
 
   // Letter sizing — pixel fonts are wide, longer abbrs need a smaller
   // glyph so the logo lands at roughly the same visual footprint

@@ -30,16 +30,70 @@
 
 import { generateStaff } from './coaches'
 
-/** Funding tier → resource tier + scholarship pool (in $1000s). */
-const FUNDING_PRESETS = {
-  // Expansion teams are by definition NEW programs — even "ELITE" can't
-  // touch the budgets of historical power programs. These tiers reflect
-  // what a new program could realistically pull together year 1.
-  STARTUP:      { resourceTier: 'SHOESTRING',  scholarshipPool:      0, totalBudget:   180000, ph: 18, label: 'Startup (bootstrap, no scholarships)' },
-  GRASSROOTS:   { resourceTier: 'SHOESTRING',  scholarshipPool:  40000, totalBudget:   320000, ph: 24, label: 'Grassroots (donor-funded, minimal aid)' },
-  MID:          { resourceTier: 'MID',         scholarshipPool: 120000, totalBudget:   650000, ph: 38, label: 'Mid-Major (solid base, partial scholarships)' },
-  WELL_FUNDED:  { resourceTier: 'WELL_FUNDED', scholarshipPool: 280000, totalBudget:  1200000, ph: 52, label: 'Well-Funded (alumni support, full slate)' },
-  ELITE:        { resourceTier: 'D1_LITE',     scholarshipPool: 520000, totalBudget:  2200000, ph: 65, label: 'Elite (deep-pocketed, NCAA scholarships)' },
+/**
+ * Funding tier → resource tier + scholarship pool + budget. LEVEL-AWARE —
+ * Nate's audit: an NWAC junior college can't have a $2M athletic budget
+ * the way a D1 powerhouse does. Each tier is realistic to its level.
+ *
+ *   NWAC (JUCO): $0 scholarships ALWAYS (no athletic aid at JUCO).
+ *                Budgets $80K-300K — operations + travel + equipment only.
+ *   D3:          $0 scholarships ALWAYS (NCAA rule). Budgets $150K-600K.
+ *                Spend goes to facilities + coaching + travel.
+ *   NAIA:        Some athletic aid allowed but small. $0-200K pool,
+ *                $150K-800K budgets.
+ *   D2:          Moderate scholarships ($30K-300K), $400K-1.5M budgets.
+ *   D1:          The full range — $50K-1M scholarship pool,
+ *                $400K-3M budgets.
+ *
+ * Per Nate (June 2026): tier numbers must match how real programs at
+ * that level actually operate. An "Elite" NWAC team is still capped by
+ * what NWAC budgets look like in the real world.
+ */
+const FUNDING_BY_LEVEL = {
+  NWAC: {
+    STARTUP:    { resourceTier: 'SHOESTRING',  scholarshipPool: 0, totalBudget:  60000, ph: 16, label: 'Startup ($60K budget — JUCO bootstrap)' },
+    GRASSROOTS: { resourceTier: 'SHOESTRING',  scholarshipPool: 0, totalBudget: 110000, ph: 22, label: 'Community-Funded ($110K — basic operations)' },
+    MID:        { resourceTier: 'SHOESTRING',  scholarshipPool: 0, totalBudget: 180000, ph: 32, label: 'Established JUCO ($180K — solid program)' },
+    WELL_FUNDED:{ resourceTier: 'MID',         scholarshipPool: 0, totalBudget: 260000, ph: 44, label: 'Top NWAC ($260K — facility upgrades)' },
+    ELITE:      { resourceTier: 'MID',         scholarshipPool: 0, totalBudget: 320000, ph: 52, label: 'Flagship NWAC ($320K — max realistic JUCO)' },
+  },
+  D3: {
+    STARTUP:    { resourceTier: 'SHOESTRING',  scholarshipPool: 0, totalBudget: 120000, ph: 18, label: 'Startup ($120K — DIY operation)' },
+    GRASSROOTS: { resourceTier: 'SHOESTRING',  scholarshipPool: 0, totalBudget: 220000, ph: 26, label: 'Grassroots ($220K — small private LAC)' },
+    MID:        { resourceTier: 'MID',         scholarshipPool: 0, totalBudget: 360000, ph: 38, label: 'Mid-Major ($360K — solid D3 program)' },
+    WELL_FUNDED:{ resourceTier: 'WELL_FUNDED', scholarshipPool: 0, totalBudget: 520000, ph: 52, label: 'Well-Funded ($520K — strong alumni support)' },
+    ELITE:      { resourceTier: 'WELL_FUNDED', scholarshipPool: 0, totalBudget: 720000, ph: 64, label: 'Elite ($720K — top D3 program)' },
+  },
+  NAIA: {
+    STARTUP:    { resourceTier: 'SHOESTRING',  scholarshipPool:      0, totalBudget: 140000, ph: 18, label: 'Startup ($140K, no scholarships)' },
+    GRASSROOTS: { resourceTier: 'SHOESTRING',  scholarshipPool:  35000, totalBudget: 240000, ph: 26, label: 'Grassroots ($240K, $35K pool)' },
+    MID:        { resourceTier: 'MID',         scholarshipPool:  85000, totalBudget: 420000, ph: 38, label: 'Mid-Major ($420K, $85K pool)' },
+    WELL_FUNDED:{ resourceTier: 'WELL_FUNDED', scholarshipPool: 150000, totalBudget: 620000, ph: 52, label: 'Well-Funded ($620K, $150K pool)' },
+    ELITE:      { resourceTier: 'WELL_FUNDED', scholarshipPool: 220000, totalBudget: 850000, ph: 64, label: 'Elite ($850K, $220K pool)' },
+  },
+  D2: {
+    STARTUP:    { resourceTier: 'SHOESTRING',  scholarshipPool:  30000, totalBudget: 280000, ph: 18, label: 'Startup ($280K, $30K pool)' },
+    GRASSROOTS: { resourceTier: 'SHOESTRING',  scholarshipPool:  75000, totalBudget: 460000, ph: 26, label: 'Grassroots ($460K, $75K pool)' },
+    MID:        { resourceTier: 'MID',         scholarshipPool: 150000, totalBudget: 720000, ph: 38, label: 'Mid-Major ($720K, $150K pool)' },
+    WELL_FUNDED:{ resourceTier: 'WELL_FUNDED', scholarshipPool: 240000, totalBudget: 1100000, ph: 52, label: 'Well-Funded ($1.1M, $240K pool)' },
+    ELITE:      { resourceTier: 'WELL_FUNDED', scholarshipPool: 320000, totalBudget: 1500000, ph: 64, label: 'Elite ($1.5M, $320K pool)' },
+  },
+  D1: {
+    STARTUP:    { resourceTier: 'SHOESTRING',  scholarshipPool:  60000, totalBudget: 380000, ph: 18, label: 'Startup ($380K, $60K pool)' },
+    GRASSROOTS: { resourceTier: 'MID',         scholarshipPool: 180000, totalBudget: 700000, ph: 26, label: 'Grassroots ($700K, $180K pool)' },
+    MID:        { resourceTier: 'WELL_FUNDED', scholarshipPool: 350000, totalBudget: 1100000, ph: 38, label: 'Mid-Major ($1.1M, $350K pool)' },
+    WELL_FUNDED:{ resourceTier: 'WELL_FUNDED', scholarshipPool: 580000, totalBudget: 1700000, ph: 52, label: 'Well-Funded ($1.7M, $580K pool)' },
+    ELITE:      { resourceTier: 'D1_LITE',     scholarshipPool: 850000, totalBudget: 2600000, ph: 65, label: 'Elite ($2.6M, $850K pool)' },
+  },
+}
+
+/** Backward-compatible default for callers that didn't pass a level. */
+const FUNDING_PRESETS = FUNDING_BY_LEVEL.NAIA
+
+/** Look up funding preset for a level. Falls back to NAIA if level is unknown. */
+function fundingForLevel(level, tier) {
+  const table = FUNDING_BY_LEVEL[level] || FUNDING_BY_LEVEL.NAIA
+  return table[tier] || table.GRASSROOTS
 }
 
 /** Default tuition by level — match the buildSyntheticSchool defaults. */
@@ -95,8 +149,8 @@ export function buildExpansionSchool(input) {
   if (!input.level) throw new Error('Expansion team requires a level.')
   if (!input.conferenceId) throw new Error('Expansion team requires a conference.')
   const tier = input.storyMode ? 'STARTUP' : (input.fundingTier || 'GRASSROOTS')
-  const funding = FUNDING_PRESETS[tier] || FUNDING_PRESETS.GRASSROOTS
   const level = input.level
+  const funding = fundingForLevel(level, tier)
   const id = `exp_${slug(input.name)}_${Math.floor(Math.random() * 1e6).toString(36)}`
 
   // Tuition + scholarships scale to level + funding tier.
@@ -190,8 +244,22 @@ export function attachExpansionStaff(state, school, seed) {
   }
 }
 
-/** Re-export the preset map for UI consumption. */
-export { FUNDING_PRESETS }
+/** Re-export the preset maps for UI consumption.
+ *  FUNDING_BY_LEVEL is the canonical source of truth — each level has its
+ *  own tier scale (NWAC budgets are way smaller than D1). FUNDING_PRESETS
+ *  stays exported for backward compatibility but reflects the NAIA scale. */
+export { FUNDING_PRESETS, FUNDING_BY_LEVEL, fundingForLevel }
+
+/** PNW states. Used by validation hints — D2/D3/NAIA/NWAC conferences are
+ *  all PNW-local, so an expansion team based outside the PNW would face
+ *  unrealistic travel costs every series. D1 is national and can geo-spread.
+ *  British Columbia (BC) included for UBC parity. */
+export const PNW_STATES = ['WA', 'OR', 'ID', 'MT', 'BC']
+
+/** Recommended state set per level. D1 is national; everything else is PNW. */
+export function recommendedStatesForLevel(level) {
+  return level === 'D1' ? null : PNW_STATES
+}
 
 /** Validation helper for UI — returns null if input is valid, otherwise an
  *  error string suitable for a toast. */
@@ -203,6 +271,22 @@ export function validateExpansionInput(input) {
   if (!input.state || input.state.trim().length !== 2) return 'State must be a 2-letter code (e.g. WA).'
   if (!input.level) return 'Pick a level (D1, D2, D3, NAIA, or NWAC).'
   if (!input.conferenceId) return 'Pick a conference / region to join.'
-  if (input.fundingTier && !FUNDING_PRESETS[input.fundingTier]) return 'Invalid funding tier.'
+  if (input.fundingTier) {
+    const table = FUNDING_BY_LEVEL[input.level]
+    if (table && !table[input.fundingTier]) return 'Invalid funding tier for this level.'
+  }
   return null
+}
+
+/** Non-blocking advisory check — returns a friendly warning string if the
+ *  user picked a state outside the recommended set for their level. The UI
+ *  surfaces this as a hint, not an error (the dynasty CAN still be built;
+ *  travel just gets brutal). */
+export function expansionStateWarning(input) {
+  if (!input || !input.level || !input.state) return null
+  const recommended = recommendedStatesForLevel(input.level)
+  if (!recommended) return null
+  const s = input.state.trim().toUpperCase()
+  if (recommended.includes(s)) return null
+  return `Heads up: ${input.level} conferences are PNW-regional (${recommended.join(', ')}). A ${s}-based team will face very high travel costs every series.`
 }

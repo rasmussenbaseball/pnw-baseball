@@ -15,7 +15,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadSchools } from '../../gm/engine/loadSchools'
 import { newDynasty } from '../../gm/engine/newDynasty'
 import { newDynastyMultiLevel } from '../../gm/engine/newDynastyMultiLevel'
-import { buildExpansionSchool, validateExpansionInput, FUNDING_PRESETS } from '../../gm/engine/expansionTeam'
+import { buildExpansionSchool, validateExpansionInput, FUNDING_BY_LEVEL, expansionStateWarning, PNW_STATES } from '../../gm/engine/expansionTeam'
 import { getLevelForSchool, isPreviewLevel } from '../../gm/engine/levelHelpers'
 import { saveDynasty, listDynasties } from '../../gm/engine/save'
 import { buildProgramRatings, starsToBar, expectedTeamOvr, teamOvrToStars } from '../../gm/engine/programRating'
@@ -738,6 +738,12 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
   // Auto-select first conference if current pick isn't valid for the level
   const currentConfValid = confOpts.some(o => o.key === input.conferenceId)
   const effectiveConfId = currentConfValid ? input.conferenceId : (confOpts[0]?.key || '')
+  // Level-aware funding tiers (NWAC budgets are way smaller than D1 etc.)
+  const fundingTiers = FUNDING_BY_LEVEL[lvl] || FUNDING_BY_LEVEL.NAIA
+  // Travel warning — surfaces when user picks a state outside the
+  // recommended PNW set for their level. Non-blocking (the engine can
+  // still simulate it, but travel costs will be brutal every series).
+  const stateWarning = expansionStateWarning({ level: lvl, state: input.state })
 
   return (
     <PixelCard accent="#c084fc" title="STEP 2 · YOUR EXPANSION TEAM">
@@ -778,12 +784,12 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
             className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm focus:border-amber-400 outline-none"
           />
         </Field>
-        <Field label="State *  (2-letter code)">
+        <Field label={`State *  (${lvl === 'D1' ? '2-letter code, any US state' : 'PNW recommended: ' + PNW_STATES.join(', ')})`}>
           <input
             type="text"
             value={input.state}
             onChange={(e) => set('state', e.target.value.toUpperCase().slice(0, 2))}
-            placeholder="OR"
+            placeholder={lvl === 'D1' ? 'CA' : 'OR'}
             maxLength={2}
             className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm uppercase focus:border-amber-400 outline-none"
           />
@@ -862,12 +868,20 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
         </div>
       </div>
 
+      {stateWarning && (
+        <div className="mb-3 p-2 rounded border border-amber-500/40 bg-amber-900/20 text-[11px] text-amber-200 font-pixel">
+          ⚠ {stateWarning}
+        </div>
+      )}
+
       <div className="mb-4">
         <div className="text-white font-pixel uppercase tracking-widest text-xs mb-2">
-          Funding Tier {isStory && <span className="text-amber-300 normal-case ml-2">(locked to Startup in Story Mode)</span>}
+          Funding Tier
+          {isStory && <span className="text-amber-300 normal-case ml-2">(locked to Startup in Story Mode)</span>}
+          {!isStory && <span className="text-[#a8a8c8] normal-case ml-2">— numbers scaled to {lvl} reality</span>}
         </div>
         <div className="grid grid-cols-1 gap-2">
-          {Object.entries(FUNDING_PRESETS).map(([key, preset]) => {
+          {Object.entries(fundingTiers).map(([key, preset]) => {
             const active = (isStory ? 'STARTUP' : input.fundingTier) === key
             const disabled = isStory && key !== 'STARTUP'
             return (
@@ -883,9 +897,6 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
                 }
               >
                 <span className="text-white text-sm font-bold">{preset.label}</span>
-                <span className="text-[11px] text-[#a8a8c8] font-mono ml-3">
-                  Pool ${(preset.scholarshipPool / 1000).toFixed(0)}K · Budget ${(preset.totalBudget / 1000).toFixed(0)}K
-                </span>
               </button>
             )
           })}
