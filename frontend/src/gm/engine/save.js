@@ -14,6 +14,7 @@
  */
 
 import LZString from 'lz-string'
+import { normalizeExpansionSchool } from './expansionTeam'
 
 export const SAVE_VERSION = 1
 
@@ -73,13 +74,18 @@ export function saveDynasty(state) {
     return { ok: true, sizeKb: Math.round(compressed.length / 1024) }
   } catch (err) {
     console.error('[gm/save] saveDynasty failed', err)
-    if (err.name === 'QuotaExceededError') {
-      return {
-        ok: false,
-        error: `Save quota exceeded (${err.message}). Try deleting one of your other dynasties.`,
+    const error = err.name === 'QuotaExceededError'
+      ? `Save quota exceeded (${err.message}). Try deleting one of your other dynasties.`
+      : err.message
+    // Almost every caller fires saveDynasty(save) and discards the result —
+    // a quota failure used to mean playing for hours with nothing persisting
+    // and zero warning. Broadcast so GMShell can toast it globally.
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('gm:save-failed', { detail: { error } }))
       }
-    }
-    return { ok: false, error: err.message }
+    } catch { /* never let the notifier throw */ }
+    return { ok: false, error }
   }
 }
 
@@ -194,6 +200,16 @@ function migrateSave(data) {
   // so guards like `save.flags?.lastShownChampYear === ps.year` don't trip
   // on undefined when the very first read happens.
   if (data.flags == null) data.flags = {}
+
+  // Expansion-team schools saved by the first builder (June 8-9 2026) used
+  // field names the engine doesn't read (tuition, academicRating, region
+  // 'NORTHWEST'). Normalize them to the School contract so recruiting math
+  // stops producing NaN/dead proximity on those saves.
+  if (data.schools) {
+    for (const school of Object.values(data.schools)) {
+      try { normalizeExpansionSchool(school) } catch { /* never block a load */ }
+    }
+  }
 
   return data
 }

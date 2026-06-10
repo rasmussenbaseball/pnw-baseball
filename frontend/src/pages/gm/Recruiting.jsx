@@ -100,7 +100,9 @@ export default function Recruiting() {
   if (!save) return <Navigate to="/gm" replace />
 
   const phase = recruitingPhase(save.calendar)
-  const userHC = save.coaches[save.teams[save.userSchoolId].headCoachId]
+  // userHC can be null mid-career-swap / post-firing (storyMode clears
+  // headCoachId); generateRecruitPool already defaults coach = null.
+  const userHC = save.coaches?.[save.teams?.[save.userSchoolId]?.headCoachId] || null
   const userSchool = save.schools[save.userSchoolId]
 
   // Lazy-generate recruit pool on first visit, biased by coach
@@ -314,7 +316,7 @@ export default function Recruiting() {
           <p className="text-sm text-gray-600">
             <span className="font-semibold">Class of {save.calendar.year + 1}–{String((save.calendar.year + 2) % 100).padStart(2, '0')}</span> ({save.calendar.year + 1} enrollees, play {save.calendar.year + 2} season) • {visible.length} on board • {phaseLabel}
           </p>
-          {(userHC.pipelines?.length > 0 || userHC.regions?.length > 0) && (
+          {(userHC?.pipelines?.length > 0 || userHC?.regions?.length > 0) && (
             <p className="text-xs text-gray-500 mt-1">
               Pipelines: {(userHC.pipelines || []).map(p => p.replace(/_/g, ' ')).join(', ') || 'none'}
               {' '}• Regions: {(userHC.regions || []).join(', ') || 'none'}

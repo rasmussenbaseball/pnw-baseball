@@ -157,11 +157,26 @@ export default function GMShell({ children, schoolName, schoolColors }) {
   useEffect(() => {
     try {
       const save = loadDynasty(user?.id || 'guest', parseInt(slot, 10))
-      if (save?.userSchoolId) applyTeamTheme(save.userSchoolId)
+      if (save?.userSchoolId) applyTeamTheme(save.userSchoolId, save.schools?.[save.userSchoolId])
       else clearTeamTheme()
     } catch (e) { clearTeamTheme() }
     return () => clearTeamTheme()
   }, [user?.id, slot])
+  // Surface save failures globally. saveDynasty broadcasts 'gm:save-failed'
+  // (quota exceeded etc.); without this, callers that discard the return
+  // value let players keep playing for hours with nothing persisting.
+  // Throttled to once per 30s so a failing autosave doesn't spam toasts.
+  useEffect(() => {
+    let lastToastAt = 0
+    function onSaveFailed(e) {
+      const now = Date.now()
+      if (now - lastToastAt < 30_000) return
+      lastToastAt = now
+      gmToast(`SAVE FAILED — progress is NOT being stored. ${e.detail?.error || ''}`, 'error')
+    }
+    window.addEventListener('gm:save-failed', onSaveFailed)
+    return () => window.removeEventListener('gm:save-failed', onSaveFailed)
+  }, [])
   // Hide the back-strip on the dashboard (it IS the home) and on the
   // top-level GM landing. Everywhere else it gives a 1-tap escape.
   const showBackStrip = location.pathname !== '/gm' && !location.pathname.startsWith('/gm/dashboard')

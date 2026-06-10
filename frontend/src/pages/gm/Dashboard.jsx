@@ -135,7 +135,7 @@ export default function Dashboard() {
   // via the rewired pnw-green / pnw-slate / team-accent Tailwind aliases.
   // Falls back to the NW teal palette when no team is loaded.
   useEffect(() => {
-    if (save?.userSchoolId) applyTeamTheme(save.userSchoolId)
+    if (save?.userSchoolId) applyTeamTheme(save.userSchoolId, save.schools?.[save.userSchoolId])
     return () => clearTeamTheme()
   }, [save?.userSchoolId])
 
@@ -168,7 +168,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (!save) return
     const curYear = save.calendar?.year ?? 1
-    if (save.flags?.lastRosterRefillYear === curYear) return
+    // V2 flag: renamed after the June 2026 string-slot fix so every existing
+    // save re-runs the heal once with the corrected player generator (the
+    // old heal filled rosters with position-less players that need purging).
+    if (save.flags?.lastRosterRefillYearV2 === curYear) return
     try {
       const res = refillThinRosters(save)
       if (res.refilled > 0) {
@@ -177,7 +180,7 @@ export default function Dashboard() {
       }
     } catch (e) { console.warn('roster refill failed:', e) }
     if (!save.flags) save.flags = {}
-    save.flags.lastRosterRefillYear = curYear
+    save.flags.lastRosterRefillYearV2 = curYear
     saveDynasty(save)
   }, [save])
 
@@ -388,6 +391,24 @@ export default function Dashboard() {
     setSave({ ...save })
   }
 
+  // A failed simWeek/advanceWeek throw leaves the in-memory save HALF-MUTATED.
+  // Deliberately not saving it isn't enough: the next unrelated interaction
+  // (auto-mode toggle, tutorial dismiss, any self-heal effect) calls
+  // saveDynasty(save) and persists the corruption — the likely mechanism
+  // behind the "corrupt postseason" reports. Reload from disk so memory
+  // matches the last good save.
+  function recoverFromFailedTick(err, label) {
+    console.error(`${label} failed:`, err)
+    try {
+      const fresh = loadDynasty(userId, slot)
+      if (fresh) {
+        ensureUnifiedCalendar(fresh)
+        setSave(fresh)
+      }
+    } catch (e) { console.warn('reload after failed tick failed:', e) }
+    gmToast(`${label} failed — see console. Your dynasty was restored to its last saved state.`, 'warn')
+  }
+
   // ─── Sim actions ───────────────────────────────────────────────────────────
   function simNextWeek(opts = {}) {
     // Story mode pending event blocks every advance until the user makes a
@@ -503,8 +524,7 @@ export default function Dashboard() {
             autoActions: autoActionsThisAdvance,
           })
         } catch (err) {
-          console.error('offseason advance failed:', err)
-          gmToast('Advance failed — see console for details.', 'warn')
+          recoverFromFailedTick(err, 'Offseason advance')
         }
         setBusy(false)
       }, 30)
@@ -551,8 +571,7 @@ export default function Dashboard() {
               })
             }
           } catch (err) {
-            console.error('postseason failed:', err)
-            gmToast('Postseason sim failed — see console. State was not saved.', 'warn')
+            recoverFromFailedTick(err, 'Postseason sim')
           }
           setProgress(null)
           setBusy(false)
@@ -579,8 +598,7 @@ export default function Dashboard() {
           const diff = diffSnapshots(beforeSnap, afterSnap)
           setLastWeekRecap({ kind: 'season', results: summary.userResults, diff, autoActions: autoActionsThisAdvance })
         } catch (err) {
-          console.error('advanceWeek failed:', err)
-          gmToast('Sim failed — see console for details. State was not saved.', 'warn')
+          recoverFromFailedTick(err, 'Week sim')
         }
         setBusy(false)
       }, 30)
@@ -615,8 +633,7 @@ export default function Dashboard() {
           if (_nwacDepartures.length) setNwacDeparturesModal(_nwacDepartures)
           setLastWeekRecap({ kind: 'season', results: [] })
         } catch (err) {
-          console.error('postseason advance failed:', err)
-          gmToast('Advance failed — see console for details.', 'warn')
+          recoverFromFailedTick(err, 'Postseason advance')
         }
         setBusy(false)
       }, 30)
@@ -1109,7 +1126,9 @@ export default function Dashboard() {
           <CareerOffersWidget save={save} slot={slot} />
           <CoachUpgradeWidget save={save} onChange={() => { saveDynasty(save); setSave({ ...save }) }} />
           <ConferenceStandingsWidget save={save} slot={slot} />
-          <PostseasonBracketWidget save={save} slot={slot} />
+          {/* During the playoffs the bracket is already pinned to the very
+              top of the page — don't render it twice. */}
+          {mode !== 'POSTSEASON' && <PostseasonBracketWidget save={save} slot={slot} />}
           <WeeklyAwardsWidget save={save} />
           <NwacAlumniWidget save={save} />
         </div>
@@ -2462,6 +2481,17 @@ function UpcomingGameRow({ game, save }) {
 
 function CoachingStaffCard({ headCoach, assistants, totalPayroll }) {
   const staff = useMemo(() => staffRatings(headCoach, assistants), [headCoach, assistants])
+  // Story-mode career moves legitimately leave the team HC-less for a bit
+  // (storyMode.js sets headCoachId = null). Render a vacancy card instead of
+  // crashing the whole Dashboard.
+  if (!headCoach) {
+    return (
+      <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-center">
+        <div className="text-[10px] uppercase tracking-wider text-amber-800 font-bold">Head Coach Vacancy</div>
+        <div className="text-xs text-amber-700 mt-1">No head coach on staff. Visit the Coaches page to hire one.</div>
+      </div>
+    )
+  }
   const hcArc = ARCHETYPES[headCoach.archetype || inferArchetype(headCoach)] || ARCHETYPES.GENERALIST
   const synergyColor = staff.synergy > 1.03 ? 'text-green-700 bg-green-50'
     : staff.synergy > 1.0 ? 'text-pnw-green bg-pnw-cream'

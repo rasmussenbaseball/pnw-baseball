@@ -423,6 +423,11 @@ function makeRosterPositionList(rng) {
  * @returns {Player}
  */
 export function generatePlayer(school, slot, rng, currentYear, idx) {
+  if (!slot || typeof slot !== 'object' || !slot.position) {
+    // Guard against the string-slot regression class: a bad slot silently
+    // produced position-less non-pitchers that rotted opponent rosters.
+    throw new Error(`generatePlayer: slot must be {position, isPitcher, classYear}, got ${JSON.stringify(slot)}`)
+  }
   const region = school.region
   const { first, last } = pickFullName(rng, region)
   const isPitcher = slot.isPitcher

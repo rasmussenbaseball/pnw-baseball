@@ -272,7 +272,10 @@ function generatePendingGame(state, stage, pending, hostId = null) {
     g.type === 'POSTSEASON' && g.postseasonStage === stage && g.year === year,
   ).length
   // Base date = Monday-ish of the stage week. Month index 4 = May.
-  const base = new Date(Date.UTC(year, 4, 5 + (woy - 39) * 7))
+  // year is state.calendar.year (the AUGUST year the dynasty-year starts in);
+  // the spring postseason lands in the FOLLOWING calendar year, so +1 —
+  // otherwise every playoff game is date-stamped a year early.
+  const base = new Date(Date.UTC(year + 1, 4, 5 + (woy - 39) * 7))
   base.setUTCDate(base.getUTCDate() + existingInStage)
   const date = base.toISOString().slice(0, 10)
   state.schedule.push({

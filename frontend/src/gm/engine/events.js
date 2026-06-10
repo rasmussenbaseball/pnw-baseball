@@ -681,6 +681,30 @@ export function refitNonUserOvrOffsets(state) {
 }
 
 /**
+ * Build a proper slot object for a backfill freshman. generatePlayer expects
+ * { position, isPitcher, classYear, slotTier }; the old code passed the
+ * strings 'hitter'/'pitcher', so every field read as undefined and every
+ * backfilled player came out a position-less non-pitcher. That silently
+ * starved opponent pitching staffs over multi-year saves ("probable always
+ * TBA, same guy starts every game").
+ *
+ * Alternates hitter / SP / hitter / RP so even a small refill always lands
+ * real rotation arms.
+ */
+const BACKFILL_HITTER_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF']
+function makeFreshmanSlot(i, rng) {
+  const isPitcher = i % 2 === 1
+  return {
+    position: isPitcher
+      ? (i % 4 === 1 ? 'SP' : 'RP')
+      : rng.pick(BACKFILL_HITTER_POSITIONS),
+    isPitcher,
+    classYear: 'FR',
+    slotTier: 'depth',
+  }
+}
+
+/**
  * Year-over-year aging + recruiting for every team that isn't the user's.
  * Each opponent team:
  *  - advances every player's class year (FR→SO→JR→SR→GRAD; NWAC: FR→SO→GRAD)
@@ -752,7 +776,7 @@ function ageOpponentRosters(state) {
       const need = Math.max(0, TARGET_ROSTER - kept.length)
       for (let i = 0; i < need; i++) {
         try {
-          const slot = i % 2 === 0 ? 'hitter' : 'pitcher'
+          const slot = makeFreshmanSlot(i, rng)
           const newPlayer = generatePlayer(school, slot, rng, state.calendar.year, kept.length + i)
           // Mark as freshman recruit
           newPlayer.classYear = 'FR'
@@ -874,7 +898,19 @@ export function refillThinRosters(state) {
       } catch (e) { console.warn(`coach gen failed for ${schoolId}:`, e) }
     }
 
-    const rosterIds = team.rosterPlayerIds || []
+    // Purge corrupt backfills from the old string-slot bug: players with no
+    // primaryPosition can't field, pitch, or be slotted in a lineup. Strip
+    // them from the roster so the rebuild/top-up below replaces them with
+    // real players. (Their stat history stays in state.players.)
+    let rosterIds = team.rosterPlayerIds || []
+    const cleaned = rosterIds.filter(id => {
+      const p = state.players?.[id]
+      return !(p && p.primaryPosition == null)
+    })
+    if (cleaned.length !== rosterIds.length) {
+      team.rosterPlayerIds = cleaned
+      rosterIds = cleaned
+    }
     // Count only LIVING-eligible players — graduated/transferred/drafted
     // shouldn't count toward the floor.
     const alive = rosterIds.filter(id => {
@@ -919,7 +955,7 @@ export function refillThinRosters(state) {
     let added = 0
     for (let i = 0; i < need; i++) {
       try {
-        const slot = i % 2 === 0 ? 'hitter' : 'pitcher'
+        const slot = makeFreshmanSlot(i, rng)
         const newPlayer = generatePlayer(school, slot, rng, state.calendar?.year ?? 0, alive.length + added)
         newPlayer.classYear = 'FR'
         newPlayer.seasonsUsed = 0

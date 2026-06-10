@@ -29,7 +29,7 @@ import { runConferenceTournament, nationalSpecForLevel, qualifierCountForConf, r
 import { runNationalChampionsTracking } from './nationalChampions'
 import nonNaiaTeamsData from '../data/non_naia_teams.json'
 import { buildAllConferenceSchedules, buildNonConferenceFillers, dateToWeekOfYear } from './schedule'
-import { buildFullDivisionSchedule } from './newDynastyMultiLevel'
+import { buildFullDivisionSchedule, buildLevelSchedule } from './newDynastyMultiLevel'
 import { OFFSEASON_WEEKS } from './calendar'
 import { WEEKS_PER_YEAR, modeForWeek, seasonWeekForWeek, ensureUnifiedCalendar, phaseForWeek, postseasonLayout } from './gameYear'
 import { rollGameInjury, rollPracticeInjury, tickInjuries, applyInjury, isInjured, clearAllInjuriesForNewSeason } from './injuries'
@@ -311,8 +311,19 @@ export function simWeek(state, schedule, ratings) {
       // Both signal "no weekend SPs on this Tuesday."
       const isMidweekGame = g.isMidweek === true || g.type === 'D1_MIDWEEK'
       if (isMidweekGame) {
-        homeLineup.pitcherRotation = (homeLineup.pitcherRotation || []).slice(4)
-        awayLineup.pitcherRotation = (awayLineup.pitcherRotation || []).slice(4)
+        const homeFull = homeLineup.pitcherRotation || []
+        const awayFull = awayLineup.pitcherRotation || []
+        homeLineup.pitcherRotation = homeFull.slice(4)
+        awayLineup.pitcherRotation = awayFull.slice(4)
+        // Thin-staff fallback: a team with ≤4 arms would slice to an EMPTY
+        // rotation, and simGame bails at the first PA (coin-flip 1-0 score,
+        // no stats). Spare only the top 3 instead, or use the full staff.
+        if (homeLineup.pitcherRotation.length === 0) {
+          homeLineup.pitcherRotation = homeFull.slice(3).length > 0 ? homeFull.slice(3) : homeFull
+        }
+        if (awayLineup.pitcherRotation.length === 0) {
+          awayLineup.pitcherRotation = awayFull.slice(3).length > 0 ? awayFull.slice(3) : awayFull
+        }
       }
       // ROTATE STARTER BY GAME-IN-SERIES (per Nate, May 2026 — POTW
       // always going to user fix). Parse the _g\d+ suffix on the game id
@@ -1905,6 +1916,19 @@ export function rebuildScheduleForYear(state) {
     state.schedule = capRegularSeasonForLevel(
       buildFullDivisionSchedule(state.conferences, state.schools, level, year, state.rngSeed, state.userSchoolId),
       level,
+    )
+    return
+  }
+  if (level === 'NWAC') {
+    // NWAC keeps its dedicated builder (Fri-DH + Sat-DH weekend series,
+    // NWAC-only opponents, cross-region early weeks). The NAIA path below
+    // used to handle this, but conference_rules.json has no NWAC entries,
+    // so year-2+ schedules silently fell back to the NAIA format.
+    const userConfId = state.schools?.[state.userSchoolId]?.conferenceId
+      || Object.keys(state.conferences || {})[0] || 'NWAC'
+    state.schedule = capRegularSeasonForLevel(
+      buildLevelSchedule(userConfId, state.schools, 'NWAC', year, state.rngSeed),
+      'NWAC',
     )
     return
   }

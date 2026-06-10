@@ -176,7 +176,7 @@ export default function Coaches() {
     setSave({ ...save })
   }
 
-  const totalPayroll = (headCoach.salary || 0) + realAssistants.reduce((s, c) => s + (c.salary || 0), 0)
+  const totalPayroll = (headCoach?.salary || 0) + realAssistants.reduce((s, c) => s + (c.salary || 0), 0)
 
   return (
     <GMShell schoolName={userSchool?.name} schoolColors={userSchool?.colors}>

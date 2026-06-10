@@ -29,6 +29,7 @@
  */
 
 import { generateStaff } from './coaches'
+import { STATE_TO_REGION } from './regions'
 
 /**
  * Funding tier → resource tier + scholarship pool + budget. LEVEL-AWARE —
@@ -164,6 +165,21 @@ export function buildExpansionSchool(input) {
     secondary: input.secondaryColor || '#fbbf24',
   }
 
+  // Coaching budget — mirror buildSyntheticSchool's per-level defaults so
+  // budget screens read a real number instead of undefined.
+  const coachingBudget = level === 'D1' ? (funding.ph >= 75 ? 2_500_000 : 800_000)
+    : level === 'D2' ? 350_000
+    : level === 'D3' ? 200_000
+    : level === 'NWAC' ? 80_000
+    : 150_000   // NAIA
+
+  // IMPORTANT: field names below must match buildSyntheticSchool exactly
+  // (tuitionPerYear, roomAndBoardPerYear, academicReputation, engine region
+  // codes, rank mirrored into pearRank). The first version of this builder
+  // used its own names (tuition, academicRating, region 'NORTHWEST') and the
+  // engine silently read undefined: $NaN scholarships, dead proximity
+  // recruiting, wrong Team OVR. normalizeExpansionSchool() below migrates
+  // saves created during that window.
   return {
     id,
     name: input.name.trim(),
@@ -177,40 +193,72 @@ export function buildExpansionSchool(input) {
     // earn their reputation.
     programHistory: funding.ph,
     strength: 0,  // a neutral z-score; refit each year via the regular cycle.
-    pearRank: level !== 'NWAC' ? startingRank : null,
+    pearRating: 0,
+    // expectedTeamOvr reads `pearRank` for every level (NWAC's ppiRank is
+    // mirrored in, same as buildSyntheticSchool does).
+    pearRank: startingRank,
     ppiRank:  level === 'NWAC' ? startingRank : null,
     // Financials. Override any conf-default with the user's chosen tier.
     resourceTier: funding.resourceTier,
     scholarshipPool: funding.scholarshipPool,
     totalAthleticBudget: funding.totalBudget,
-    tuition,
+    coachingBudget,
+    tuitionPerYear: Math.round(tuition),
     inStateDiscount: level === 'D1' ? 0.5 : 1.0,
-    roomAndBoard: 12000,
+    roomAndBoardPerYear: level === 'NWAC' ? 0 : 12000,   // JUCOs are commuter heavy
     // Facility / culture: low for a startup, scales with tier.
     facilityRating: tier === 'STARTUP' ? 25 : tier === 'GRASSROOTS' ? 38 : tier === 'MID' ? 55 : tier === 'WELL_FUNDED' ? 72 : 85,
-    academicRating: 65,   // neutral middle — academic rep follows different signals
+    academicReputation: 65,   // neutral middle — academic rep follows different signals
     cultureRating: 60,
     nilPotential: tier === 'ELITE' ? 70 : tier === 'WELL_FUNDED' ? 50 : 35,
+    metroSize: 'small',
     // Display flags.
     isExpansion: true,
     isStartupProgram: !!input.storyMode || tier === 'STARTUP',
     colors,
-    // Region for recruiting purposes. We don't auto-detect — just default
-    // to the state's region; user can update later if we surface a UI for it.
-    region: regionForState(input.state),
+    // Recruiting region — engine codes ('NW', 'SW', ...) from regions.js.
+    // Expansion teams are PNW-locked so this is always 'NW' today.
+    region: STATE_TO_REGION[input.state.trim().toUpperCase().slice(0, 2)] || 'NW',
   }
 }
 
-/** State → broad recruiting region. Mirrors the existing region map. */
-function regionForState(state) {
-  const s = (state || '').toUpperCase().slice(0, 2)
-  if (['WA', 'OR', 'ID', 'MT', 'WY', 'AK'].includes(s)) return 'NORTHWEST'
-  if (['CA', 'NV', 'AZ', 'UT', 'HI'].includes(s))       return 'WEST'
-  if (['TX', 'OK', 'NM', 'CO', 'KS', 'NE', 'AR', 'LA'].includes(s)) return 'SOUTHWEST'
-  if (['ND', 'SD', 'MN', 'IA', 'WI', 'IL', 'IN', 'OH', 'MI', 'MO'].includes(s)) return 'MIDWEST'
-  if (['FL', 'GA', 'AL', 'MS', 'TN', 'KY', 'SC', 'NC', 'VA', 'WV'].includes(s)) return 'SOUTHEAST'
-  if (['NY', 'PA', 'NJ', 'CT', 'MA', 'RI', 'NH', 'VT', 'ME', 'MD', 'DE', 'DC'].includes(s)) return 'NORTHEAST'
-  return 'NORTHWEST'   // default — most of the active PNW userbase
+/**
+ * Migrate an expansion school saved by the first (mis-named-fields) version
+ * of buildExpansionSchool to the engine's School contract. Safe to call on
+ * any school object — returns the same reference, mutated only when the old
+ * field names are present. Wired into migrateSave in save.js.
+ */
+export function normalizeExpansionSchool(school) {
+  if (!school || !school.isExpansion) return school
+  if (school.tuitionPerYear == null && school.tuition != null) {
+    school.tuitionPerYear = Math.round(school.tuition)
+    delete school.tuition
+  }
+  if (school.roomAndBoardPerYear == null && school.roomAndBoard != null) {
+    school.roomAndBoardPerYear = school.level === 'NWAC' ? 0 : school.roomAndBoard
+    delete school.roomAndBoard
+  }
+  if (school.academicReputation == null && school.academicRating != null) {
+    school.academicReputation = school.academicRating
+    delete school.academicRating
+  }
+  if (school.pearRank == null && school.ppiRank != null) {
+    school.pearRank = school.ppiRank
+  }
+  if (school.coachingBudget == null) {
+    school.coachingBudget = school.level === 'D1' ? 800_000
+      : school.level === 'D2' ? 350_000
+      : school.level === 'D3' ? 200_000
+      : school.level === 'NWAC' ? 80_000
+      : 150_000
+  }
+  if (school.pearRating == null) school.pearRating = 0
+  if (school.metroSize == null) school.metroSize = 'small'
+  // Old builder wrote long-form regions ('NORTHWEST'); engine uses 'NW' codes.
+  if (school.region && !['NW', 'SW', 'South', 'MW', 'SE', 'NE', 'W'].includes(school.region)) {
+    school.region = STATE_TO_REGION[school.state] || 'NW'
+  }
+  return school
 }
 
 function slug(s) {

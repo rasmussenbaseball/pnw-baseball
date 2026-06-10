@@ -216,8 +216,15 @@ export default function NewDynasty() {
     // Story mode forces NWAC + STARTUP funding (the rags-to-riches climb
     // Nate described); regular mode honors whatever the user picked.
     if (expansionMode) {
+      // Story mode forces NWAC — but the user may have configured the
+      // expansion at another level first (conferenceId 'CCC' etc.), and a
+      // non-NWAC conference id lands the team in no NWAC division: no
+      // conference games, missing from standings. Force a valid NWAC region.
+      const storyConfId = String(expansionInput.conferenceId || '').startsWith('NWAC_')
+        ? expansionInput.conferenceId
+        : 'NWAC_SOUTH'
       const finalInput = isStory
-        ? { ...expansionInput, level: 'NWAC', fundingTier: 'STARTUP', storyMode: true }
+        ? { ...expansionInput, level: 'NWAC', fundingTier: 'STARTUP', storyMode: true, conferenceId: storyConfId }
         : { ...expansionInput, storyMode: false }
       const err = validateExpansionInput(finalInput)
       if (err) { gmToast(err, 'warn'); return }
@@ -315,11 +322,14 @@ export default function NewDynasty() {
           <p className="font-pixel text-base text-[#a8a8c8]">Set up your run, pick your school, build your coach.</p>
         </div>
 
+        {/* Dots only navigate BACKWARD — forward jumps used to skip step
+            validation (blank Confirm with no program picked, stale expansion
+            conference). Going forward always runs through the Next buttons. */}
         <div className="flex gap-2 mb-6 flex-wrap">
-          <StepDot active={step === 1} done={step > 1} num={1} label="Setup" onClick={() => setStep(1)} />
-          <StepDot active={step === 2} done={step > 2} num={2} label="Program" onClick={() => setStep(2)} />
-          <StepDot active={step === 3} done={step > 3} num={3} label="Coach" onClick={() => setStep(3)} />
-          <StepDot active={step === 4} done={step > 4} num={4} label="Confirm" onClick={() => setStep(4)} />
+          <StepDot active={step === 1} done={step > 1} num={1} label="Setup" onClick={() => { if (step > 1) setStep(1) }} />
+          <StepDot active={step === 2} done={step > 2} num={2} label="Program" onClick={() => { if (step > 2) setStep(2) }} />
+          <StepDot active={step === 3} done={step > 3} num={3} label="Coach" onClick={() => { if (step > 3) setStep(3) }} />
+          <StepDot active={step === 4} done={step > 4} num={4} label="Confirm" onClick={() => {}} />
         </div>
 
         {step === 1 && (
@@ -718,6 +728,10 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
       { key: 'NWAC_WEST',  label: 'NWAC West' },
     ],
     NAIA: [
+      // FRONTIER removed: it doesn't sponsor baseball (pnw_playoff_formats
+      // has zero members), so an expansion team there got a one-team league
+      // playing D1 opponents with no postseason. Same exclusion the regular
+      // program picker applies.
       { key: 'CCC', label: 'Cascade Collegiate (CCC)' },
     ],
     D3: [

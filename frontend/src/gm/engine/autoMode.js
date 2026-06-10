@@ -654,13 +654,16 @@ function spendTeamDevBoost(save) {
     .map(id => save.players[id])
     .filter(p => p && !p.isPitcher
       && p.eligibilityStatus !== 'cut' && p.eligibilityStatus !== 'dismissed')
+  // Seeded RNG (not Math.random) — this permanently mutates ratings, and the
+  // engine guarantees same-seed saves replay identically.
+  const rng = makeRng('autoDevHitters', save.calendar?.year, wk, save.seed || 1)
   let bumped = 0
   for (const p of players) {
     if (!p.hitter) continue
     const cur = p.hitter[ratingKey] ?? 50
     if (cur >= 95) continue   // already capped
     // 35% chance per player of a +0.5 bump
-    if (Math.random() < 0.35) {
+    if (rng.chance(0.35)) {
       p.hitter[ratingKey] = Math.min(99, cur + 0.5)
       bumped++
     }

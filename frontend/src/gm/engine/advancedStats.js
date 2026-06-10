@@ -241,7 +241,10 @@ export function computePitching(line, lg) {
   const kPer9 = ip > 0 ? safeDiv(k * 9, ip) : 0
   const bbPer9 = ip > 0 ? safeDiv(bb * 9, ip) : 0
   const hr9 = ip > 0 ? safeDiv(hr * 9, ip) : 0
-  const kbb = bb > 0 ? safeDiv(k, bb) : (k > 0 ? Infinity : 0)
+  // bb === 0 used to return Infinity, which fmt2 passed through and the UI
+  // rendered the literal string "Infinity". Use k as the finite ratio
+  // (12 K / 0 BB displays as 12.00).
+  const kbb = bb > 0 ? safeDiv(k, bb) : k
   const kPct = safeDiv(k, bf)
   const bbPct = safeDiv(bb, bf)
 

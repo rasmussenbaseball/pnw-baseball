@@ -66,7 +66,7 @@ export default function GMHome() {
                 return (
                   <PixelCard
                     key={slot}
-                    accent={school?.colors?.[0] || '#fbbf24'}
+                    accent={school?.colors?.primary || '#fbbf24'}
                     title={`SLOT ${slot}`}
                   >
                     <div className="flex items-center gap-2 mb-2">

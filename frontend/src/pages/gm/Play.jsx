@@ -29,9 +29,28 @@ import {
 import { findBlockingPriorGame } from '../../gm/engine/schedule'
 import TeamLogo from '../../gm/components/TeamLogo'
 import TeamRankChip from '../../gm/components/TeamRankChip'
-import GMShell, { PixelCard, PixelButton, useModalDismiss } from '../../gm/components/GMShell'
+import GMShell, { PixelCard, PixelButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
+import { canAdvanceWeek } from '../../gm/engine/gameYear'
+import { isAutoMode } from '../../gm/engine/autoMode'
 import PixelSelect from '../../gm/components/PixelSelect'
 import nonNaiaRaw from '../../gm/data/non_naia_teams.json'
+
+// Mirror the Dashboard's advance gates. The Play page's advance buttons used
+// to call simWeek/advanceWeek directly, letting players skip blocking story
+// events and required weekly actions the Dashboard treats as hard blocks.
+// Returns a toast message when blocked, or null when clear to advance.
+function advanceGateMessage(save) {
+  if (save.pendingEvent) {
+    return 'A program event is awaiting your decision. Resolve it on the Dashboard first.'
+  }
+  if (!isAutoMode(save)) {
+    const gate = canAdvanceWeek(save)
+    if (!gate.ok) {
+      return `Required action first${gate.reason ? ` — ${gate.reason}` : ''}. Head to the Dashboard.`
+    }
+  }
+  return null
+}
 
 // Was the user's prior game on the same date already played? Used by the
 // live-game exit handler to flag the second game of a doubleheader for
@@ -255,6 +274,8 @@ export default function Play() {
       onEnterGame={(game) => setView({ kind: 'LIVE', game })}
       onAutoSim={() => {
         if (busy) return
+        const blocked = advanceGateMessage(save)
+        if (blocked) { gmToast(blocked, 'warn'); return }
         setBusy(true)
         // Defer so the disabled/busy button paints before simWeek blocks
         // the main thread (full league sim of every team for this week).
@@ -273,6 +294,8 @@ export default function Play() {
       }}
       onAdvanceEmptyWeek={() => {
         if (busy) return
+        const blocked = advanceGateMessage(save)
+        if (blocked) { gmToast(blocked, 'warn'); return }
         setBusy(true)
         setTimeout(() => {
           try {

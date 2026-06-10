@@ -72,11 +72,16 @@ function pickAccent(primary, secondary) {
   return secondary
 }
 
-/** Build the theme object from a school id. */
-export function getTeamTheme(schoolId) {
+/**
+ * Build the theme object from a school id. `school` is an optional school
+ * object from the save — expansion teams (`exp_*` ids) aren't in the static
+ * TEAM_BRAND map, so their user-picked colors come from `school.colors`.
+ */
+export function getTeamTheme(schoolId, school = null) {
   const brand = TEAM_BRAND[schoolId]
-  const primary = brand?.primary || FALLBACK.primary
-  const secondary = brand?.secondary || FALLBACK.secondary
+  const custom = school?.colors
+  const primary = brand?.primary || custom?.primary || FALLBACK.primary
+  const secondary = brand?.secondary || custom?.secondary || FALLBACK.secondary
   const accent = pickAccent(primary, secondary)
   return {
     primary,
@@ -86,7 +91,7 @@ export function getTeamTheme(schoolId) {
     secondaryFg: fgFor(secondary),
     accent,
     accentFg: fgFor(accent),
-    isPnw: !!brand,
+    isPnw: !!brand || !!custom?.primary,
   }
 }
 
@@ -96,9 +101,9 @@ export function getTeamTheme(schoolId) {
  * Tailwind `pnw-green` / `pnw-slate` aliases (rewired to read these vars
  * in tailwind.config.js).
  */
-export function applyTeamTheme(schoolId) {
+export function applyTeamTheme(schoolId, school = null) {
   if (typeof document === 'undefined') return
-  const t = getTeamTheme(schoolId)
+  const t = getTeamTheme(schoolId, school)
   const root = document.documentElement
   root.style.setProperty('--team-primary', t.primary)
   root.style.setProperty('--team-primary-fg', t.primaryFg)

@@ -891,6 +891,12 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
     // Advance batter
     if (state.top) state.awayPAIndex++; else state.homePAIndex++
 
+    // Walk-off: home team takes the lead in the bottom of the 9th or later —
+    // the game ends on the spot. liveGame already enforces this; the sim'd
+    // path used to play the half-inning to 3 outs, so the same matchup
+    // produced different stat totals depending on watched-vs-simmed.
+    if (!state.top && state.inning >= 9 && state.homeRuns > state.awayRuns) break
+
     // ── Bullpen management — leverage + confidence + fatigue ───────────────
     // The defending pitcher just faced a batter; tick their per-outing PA count.
     if (state.top) state.homeCurPAs++; else state.awayCurPAs++
@@ -939,6 +945,9 @@ export function simGame(homeLineup, awayLineup, ctx, seedKey) {
           state.runRule = true
           break
         }
+        // Home already leads after the visitors' 9th (or an extra frame) —
+        // the bottom half is never played. Mirrors liveGame's skip rule.
+        if (state.inning >= 9 && state.homeRuns > state.awayRuns) break
         state.top = false
       } else {
         // Bottom half just ended → a full inning is complete. 10-run rule
