@@ -281,6 +281,10 @@ const CATEGORIES = [
   { id: 'war',          label: 'WAR',      endpoint: '/leaderboards/war',          kind: 'player',
     division: true, conf: true, confOnly: true, posGroup: true, qualified: true, year: true,
     sampleParam: 'min_pa_ip', sampleLabel: 'PA/IP', sampleDefault: 0 },
+  // Clubs are membership boards (every qualifier, not a top-N cut). They
+  // hit /leaderboards/clubs with a `club` id and render ALL members.
+  { id: 'clubs',        label: 'Clubs',    endpoint: '/leaderboards/clubs',        kind: 'player',
+    club: true, division: true, conf: true, state: true, year: true, sampleParam: null },
   { id: 'teams',        label: 'Teams',    endpoint: '/leaderboards/teams',        kind: 'team',
     division: true, sampleParam: null },
   { id: 'team_batting_pbp',  label: 'Tm Hit PBP', endpoint: '/leaderboards/team-batting-pbp',  kind: 'team',
@@ -449,6 +453,31 @@ const STAT_PRESETS = {
         { key: 'fip_plus', label: 'FIP+', format: 'int' },
         { key: 'innings_pitched', label: 'IP', format: 'ip' },
         { key: 'whip', label: 'WHIP', format: 'era' },
+      ] },
+  ],
+  // Membership clubs. `clubId` + threshold fields are sent to /leaderboards/clubs.
+  // `sort` here is only used to vary useApi deps between presets (the server
+  // orders by its own club logic). All members render — no top-N cut.
+  clubs: [
+    { key: 'home_runs', clubId: 'hr_sb', label: 'HR', sort: 'home_runs', dir: 'desc', format: 'int',
+      title: '10/10 Club', endpoint: '/leaderboards/clubs', hrMin: 10, sbMin: 10,
+      criteria: '10+ HR & 10+ SB',
+      extra: [
+        { key: 'stolen_bases', label: 'SB', format: 'int' },
+        { key: 'batting_avg', label: 'AVG', format: 'avg' },
+        { key: 'ops', label: 'OPS', format: 'avg' },
+        { key: 'rbi', label: 'RBI', format: 'int' },
+        { key: 'games', label: 'G', format: 'int' },
+      ] },
+    { key: 'games', clubId: 'ironman', label: 'G', sort: 'games', dir: 'desc', format: 'int',
+      title: 'Baseball Ironmen', endpoint: '/leaderboards/clubs', minTeamGames: 20,
+      criteria: 'Played every team game',
+      extra: [
+        { key: 'batting_avg', label: 'AVG', format: 'avg' },
+        { key: 'ops', label: 'OPS', format: 'avg' },
+        { key: 'home_runs', label: 'HR', format: 'int' },
+        { key: 'rbi', label: 'RBI', format: 'int' },
+        { key: 'stolen_bases', label: 'SB', format: 'int' },
       ] },
   ],
   teams: [
@@ -857,7 +886,6 @@ export default function SocialGraphics() {
   const cat = CATEGORY_BY_ID[category]
   const preset = STAT_PRESETS[category]?.[presetIdx] || STAT_PRESETS[category]?.[0]
   const theme = buildTheme(THEMES.find(t => t.id === themeId) || THEMES[0])
-  const isTwoCol = useTwoColumns(count)
 
   // Reset preset index + category-specific filters when switching categories.
   useEffect(() => {
@@ -902,18 +930,15 @@ export default function SocialGraphics() {
     return preset
   })()
 
-  // For 2-column layouts, strip extra cols (main stat only)
-  const effectiveConfig = isTwoCol
-    ? { ...activeConfig, extra: [] }
-    : activeConfig
-
   // Build API params from the category's capabilities so we never send a
   // filter the endpoint doesn't accept (which could silently mis-rank).
   const apiParams = {
     season,
     sort_by: activeConfig.sort,
     sort_dir: activeConfig.dir,
-    limit: count,
+    // Clubs are membership boards: fetch every member (high cap), then
+    // render all of them. Ranked boards keep the chosen top-N limit.
+    limit: cat.club ? 200 : count,
     ...(cat.division && divisionId && { division_id: divisionId }),
     ...(cat.conf && conferenceId && { conference_id: conferenceId }),
     ...(cat.state && stateFilter && { state: stateFilter }),
@@ -921,6 +946,9 @@ export default function SocialGraphics() {
     ...(cat.year && yearFilter && { year_in_school: yearFilter }),
     ...(cat.posGroup && positionFilter && { position_group: positionFilter }),
     ...(cat.posExact && positionFilter && { position: positionFilter }),
+    ...(cat.club && { club: activeConfig.clubId }),
+    ...(cat.club && activeConfig.clubId === 'hr_sb' && { hr_min: activeConfig.hrMin ?? 10, sb_min: activeConfig.sbMin ?? 10 }),
+    ...(cat.club && activeConfig.clubId === 'ironman' && { min_team_games: activeConfig.minTeamGames ?? 20 }),
   }
 
   // Sample-size floor / qualified toggle.
@@ -935,7 +963,8 @@ export default function SocialGraphics() {
 
   const { data: rawData, loading } = useApi(activeConfig.endpoint, apiParams, [
     season, activeConfig.sort, activeConfig.dir, count, divisionId, conferenceId, conferenceOnly,
-    stateFilter, yearFilter, minSample, activeConfig.endpoint, qualified, positionFilter
+    stateFilter, yearFilter, minSample, activeConfig.endpoint, qualified, positionFilter,
+    category, presetIdx
   ])
 
   const items = Array.isArray(rawData) ? rawData : rawData?.data || []
@@ -943,6 +972,12 @@ export default function SocialGraphics() {
   // Only the season-stats Teams board carries W-L; the team-PBP boards
   // don't, so the record column shows only when rows actually have it.
   const showRecord = isTeamMode && items.some(p => p.wins != null)
+
+  // Clubs show EVERY member (no top-N cut); ranked boards use the chosen count.
+  // The 2-column layout + extra-column stripping derive from this count.
+  const renderCount = cat.club ? items.length : count
+  const isTwoCol = useTwoColumns(renderCount)
+  const effectiveConfig = isTwoCol ? { ...activeConfig, extra: [] } : activeConfig
 
   const divLabel = divisionId
     ? (divisions || []).find(d => d.id === Number(divisionId))?.name || ''
@@ -952,21 +987,27 @@ export default function SocialGraphics() {
     : ''
   const posLabel = positionFilter ? ` ${positionFilter}` : ''
   const scopeLabel = confLabel || divLabel
-  const titleText = customTitle || `Top ${count} ${scopeLabel}${posLabel} ${activeConfig.title}`
+  // Clubs get a clean "<scope> <Club Name>" title (no "Top N"); ranked boards keep "Top N".
+  const titleText = customTitle || (cat.club
+    ? `${scopeLabel} ${activeConfig.title}`
+    : `Top ${count} ${scopeLabel}${posLabel} ${activeConfig.title}`)
   const subtitle = `${season} Season`
+    + (cat.club && activeConfig.criteria ? ` · ${activeConfig.criteria}` : '')
     + (cat.year && yearFilter ? ` · ${yearFilter} Only` : '')
     + (cat.state && stateFilter ? ` · ${stateFilter}` : '')
     + (cat.confOnly && conferenceOnly ? ' · Conf. Games' : '')
     + (cat.qualified && !qualified ? ' · Unqualified' : '')
 
-  // Footer note (bottom-right): qualified vs min-sample vs team.
-  const footerNote = (cat.qualified && qualified)
-    ? 'Qualified'
-    : (cat.sampleParam && sampleNum != null)
-      ? `Min ${sampleNum} ${cat.sampleLabel}`
-      : isTeamMode
-        ? 'Team Stats'
-        : 'All players'
+  // Footer note (bottom-right): club member count vs qualified vs min-sample vs team.
+  const footerNote = cat.club
+    ? `${items.length} ${items.length === 1 ? 'member' : 'members'}`
+    : (cat.qualified && qualified)
+      ? 'Qualified'
+      : (cat.sampleParam && sampleNum != null)
+        ? `Min ${sampleNum} ${cat.sampleLabel}`
+        : isTeamMode
+          ? 'Team Stats'
+          : 'All players'
 
   // ─── Export handler ───
   const handleExport = useCallback(async () => {
@@ -988,7 +1029,7 @@ export default function SocialGraphics() {
       const columns = twoCol ? 2 : 1
       const colGap = twoCol ? 12 : 0
       const colWidth = twoCol ? (w - colGap - Math.floor(w * 0.035) * 2) / 2 : w - Math.floor(w * 0.035) * 2
-      const itemsPerCol = Math.ceil(count / columns)
+      const itemsPerCol = Math.max(1, Math.ceil(renderCount / columns))
       const rowH = Math.floor((bodyH - colHeaderH) / itemsPerCol)
 
       const fontSize = twoCol
@@ -1011,7 +1052,7 @@ export default function SocialGraphics() {
       // Pre-load all images in parallel
       const [faviconImg, ...logoImgs] = await Promise.all([
         loadExportImage('/favicon.png'),
-        ...items.slice(0, count).map(p => loadExportImage(p.logo_url))
+        ...items.slice(0, renderCount).map(p => loadExportImage(p.logo_url))
       ])
 
       // Create canvas
@@ -1130,7 +1171,7 @@ export default function SocialGraphics() {
 
       const rowStartY = bodyStartY + colHeaderH
 
-      for (let i = 0; i < Math.min(count, items.length); i++) {
+      for (let i = 0; i < Math.min(renderCount, items.length); i++) {
         const p = items[i]
         const name = isTeamMode
           ? (p.short_name || p.name || '-')
@@ -1283,7 +1324,9 @@ export default function SocialGraphics() {
 
       // ─── Download ───
       const link = document.createElement('a')
-      link.download = `nwbb-${activeConfig.key}-top${count}-${season}.png`
+      link.download = cat.club
+        ? `nwbb-${activeConfig.clubId}-${season}.png`
+        : `nwbb-${activeConfig.key}-top${renderCount}-${season}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
     } catch (err) {
@@ -1292,7 +1335,7 @@ export default function SocialGraphics() {
     } finally {
       setExporting(false)
     }
-  }, [items, effectiveConfig, activeConfig, count, season, theme, isTeamMode, showRecord, footerNote, titleText, subtitle, isTwoCol])
+  }, [items, effectiveConfig, activeConfig, renderCount, cat.club, season, theme, isTeamMode, showRecord, footerNote, titleText, subtitle, isTwoCol])
 
   const scale = Math.min(600 / SIZE.w, 800 / SIZE.h)
 
@@ -1327,31 +1370,33 @@ export default function SocialGraphics() {
               ))}
             </div>
 
-            {/* Mode toggle (preset vs custom) */}
-            <>
-              <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Mode</label>
-              <div className="flex gap-1">
-                <button onClick={() => setMode('preset')}
-                  className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
-                    ${mode === 'preset' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                >Presets</button>
-                <button onClick={() => setMode('custom')}
-                  className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
-                    ${mode === 'custom' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                >Custom</button>
-              </div>
-            </>
+            {/* Mode toggle (preset vs custom) — clubs are preset-only */}
+            {!cat.club && (
+              <>
+                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Mode</label>
+                <div className="flex gap-1">
+                  <button onClick={() => setMode('preset')}
+                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
+                      ${mode === 'preset' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >Presets</button>
+                  <button onClick={() => setMode('custom')}
+                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded transition-all
+                      ${mode === 'custom' ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >Custom</button>
+                </div>
+              </>
+            )}
 
-            {/* Preset stat buttons */}
+            {/* Preset stat buttons (Club selector for the clubs category) */}
             {mode === 'preset' && (
               <>
-                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">Stat</label>
+                <label className="block text-xs font-semibold text-gray-500 mt-3 mb-2 uppercase tracking-wide">{cat.club ? 'Club' : 'Stat'}</label>
                 <div className="flex flex-wrap gap-1">
                   {STAT_PRESETS[category].map((p, i) => (
                     <button key={p.key} onClick={() => setPresetIdx(i)}
                       className={`px-2.5 py-1 text-xs font-semibold rounded transition-all
                         ${presetIdx === i ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                    >{p.label}</button>
+                    >{cat.club ? p.title : p.label}</button>
                   ))}
                 </div>
               </>
@@ -1530,18 +1575,33 @@ export default function SocialGraphics() {
               </div>
             )}
 
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="text-xs text-gray-500"># {isTeamMode ? 'Teams' : 'Players'}</label>
-                <select value={count} onChange={e => setCount(+e.target.value)}
-                  className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
-                  {COUNT_OPTIONS.map(n => <option key={n} value={n}>Top {n}</option>)}
-                </select>
+            {/* Clubs show every member; ranked boards pick a top-N count. */}
+            {cat.club ? (
+              <div>
+                <label className="text-xs text-gray-500"># Players</label>
+                <div className="w-full mt-0.5 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-600">
+                  All members ({items.length})
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500"># {isTeamMode ? 'Teams' : 'Players'}</label>
+                  <select value={count} onChange={e => setCount(+e.target.value)}
+                    className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
+                    {COUNT_OPTIONS.map(n => <option key={n} value={n}>Top {n}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
 
             {isTwoCol && (
-              <p className="text-xs text-gray-400">Two-column layout active (15+ players). Main stat only.</p>
+              <p className="text-xs text-gray-400">
+                Two-column layout active ({renderCount} {isTeamMode ? 'teams' : 'players'}). Main stat only.
+              </p>
+            )}
+            {cat.club && items.length === 0 && !loading && (
+              <p className="text-xs text-amber-600">No players meet this club's criteria for the current filters.</p>
             )}
           </div>
 
@@ -1597,7 +1657,7 @@ export default function SocialGraphics() {
                 subtitle={subtitle}
                 size={SIZE}
                 loading={loading}
-                count={count}
+                count={renderCount}
                 theme={theme}
                 isTeamMode={isTeamMode}
                 showRecord={showRecord}
@@ -1635,7 +1695,7 @@ const LeaderCard = forwardRef(function LeaderCard(
   const colGap = twoCol ? 12 : 0
   const bodyPadX = Math.floor(w * 0.035)
   const colWidth = twoCol ? (w - colGap - bodyPadX * 2) / 2 : w - bodyPadX * 2
-  const itemsPerCol = Math.ceil(count / columns)
+  const itemsPerCol = Math.max(1, Math.ceil(count / columns))
   const rowH = Math.floor((bodyH - colHeaderH) / itemsPerCol)
 
   const fontSize = twoCol

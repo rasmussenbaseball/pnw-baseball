@@ -5803,6 +5803,132 @@ def batting_leaderboard(
 
 
 # ============================================================
+# LEADERBOARDS: Clubs / Milestones (membership boards)
+# ============================================================
+#
+# Unlike the ranked leaderboards above, these return EVERY player who
+# meets a membership rule (not a top-N cut), so a social graphic can
+# show the full club. Same row shape as /leaderboards/batting so the
+# Social Graphics card renders them with no special-casing.
+#
+#   club=hr_sb   → the "10/10 Club": hitters with >= hr_min HR AND
+#                  >= sb_min SB (defaults 10/10). Ordered by HR+SB.
+#   club=ironman → "Baseball Ironmen": hitters whose games played
+#                  (bs.games) is >= their team's total games for the
+#                  season. Team games comes from team_season_stats
+#                  (wins+losses+ties) — the same official total the
+#                  qualified-player math uses. We use >= (not =) so a
+#                  player credited an extra game (doubleheader / box
+#                  quirk) still counts, and we never miss a true iron
+#                  man when team_season_stats undercounts a tie. The
+#                  `games` table is NOT used as the denominator: it
+#                  undercounts NWAC (schedule-scrape gaps) and would
+#                  falsely flag near-iron-men.
+
+@router.get("/leaderboards/clubs")
+@cached_endpoint(ttl_seconds=1800)
+def clubs_leaderboard(
+    season: int = Query(..., description="Season year"),
+    club: str = Query("hr_sb", description="Club: hr_sb | ironman"),
+    division_id: Optional[int] = Query(None, description="Filter by division"),
+    conference_id: Optional[int] = Query(None, description="Filter by conference"),
+    state: Optional[str] = Query(None, description="Filter by state (WA, OR, ID, MT, BC)"),
+    team_id: Optional[int] = Query(None, description="Filter by team"),
+    year_in_school: Optional[str] = Query(None, description="Filter by class year"),
+    hr_min: int = Query(10, description="Min HR for hr_sb club"),
+    sb_min: int = Query(10, description="Min SB for hr_sb club"),
+    min_team_games: int = Query(20, description="Min team games for ironman club (drops tiny-sample teams)"),
+    limit: int = Query(200, description="Max members returned"),
+):
+    """Membership boards (10/10 Club, Baseball Ironmen). Returns every
+    qualifying hitter, not a top-N cut, in the same shape as the batting
+    leaderboard."""
+    club = (club or "hr_sb").lower()
+    if club not in ("hr_sb", "ironman"):
+        club = "hr_sb"
+
+    select_cols = """
+        SELECT bs.*,
+               p.first_name, p.last_name, p.position, p.year_in_school,
+               p.bats, p.throws, p.hometown, p.previous_school,
+               p.is_committed, p.committed_to,
+               t.name as team_name, t.short_name as team_short, t.logo_url,
+               t.state as team_state,
+               c.name as conference_name, c.abbreviation as conference_abbrev,
+               d.name as division_name, d.level as division_level,
+               (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0)) as team_games
+        FROM batting_stats bs
+        JOIN players p ON bs.player_id = p.id
+        JOIN teams t ON bs.team_id = t.id
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        LEFT JOIN team_season_stats tss
+          ON tss.team_id = bs.team_id AND tss.season = bs.season
+        WHERE bs.season = %s
+    """
+    params: list = [season]
+
+    if club == "ironman":
+        # Played in (at least) every team game. Guard tiny-sample teams.
+        select_cols += (
+            " AND (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0)) >= %s"
+            " AND COALESCE(bs.games,0) >= (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))"
+        )
+        params.append(max(min_team_games, 1))
+        order_by = (
+            " ORDER BY (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0)) DESC,"
+            " bs.batting_avg DESC NULLS LAST"
+        )
+    else:  # hr_sb
+        select_cols += " AND COALESCE(bs.home_runs,0) >= %s AND COALESCE(bs.stolen_bases,0) >= %s"
+        params.extend([max(hr_min, 0), max(sb_min, 0)])
+        order_by = (
+            " ORDER BY (COALESCE(bs.home_runs,0) + COALESCE(bs.stolen_bases,0)) DESC,"
+            " bs.home_runs DESC, bs.stolen_bases DESC"
+        )
+
+    if division_id:
+        select_cols += " AND c.division_id = %s"
+        params.append(division_id)
+    if conference_id:
+        select_cols += " AND t.conference_id = %s"
+        params.append(conference_id)
+    if state:
+        select_cols += " AND t.state = %s"
+        params.append(state.upper())
+    if team_id:
+        select_cols += " AND bs.team_id = %s"
+        params.append(team_id)
+    if year_in_school:
+        select_cols = _apply_year_filter(select_cols, params, year_in_school)
+
+    select_cols += order_by + " LIMIT %s"
+    params.append(limit)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(select_cols, params)
+        rows = [dict(r) for r in cur.fetchall()]
+
+    return {
+        "data": rows,
+        "total": len(rows),
+        "season": season,
+        "club": club,
+        "filters": {
+            "division_id": division_id,
+            "conference_id": conference_id,
+            "state": state,
+            "team_id": team_id,
+            "year_in_school": year_in_school,
+            "hr_min": hr_min,
+            "sb_min": sb_min,
+            "min_team_games": min_team_games,
+        },
+    }
+
+
+# ============================================================
 # LEADERBOARDS: Pitching
 # ============================================================
 
