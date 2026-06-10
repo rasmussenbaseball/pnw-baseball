@@ -63,6 +63,14 @@ export function makePearLookup(pearRaw) {
  */
 export function pearForSchoolWith(school, lookup) {
   if (!school || !lookup) return null
+  // Expansion teams (per Nate, June 2026): synthesize a PEAR row from
+  // school.programHistory so they land near the bottom of their level's
+  // initial rankings instead of defaulting to median.
+  if (school.isExpansion) {
+    const ph = Math.max(0, Math.min(99, school.programHistory ?? 18))
+    const z = (ph - 50) / 25
+    return { oWAR_z: z, pWAR_z: z, fWAR: 0, Rating: z * 5, PRR: null, SOS: 100 }
+  }
   if (PEAR_ALIASES[school.id]) {
     const key = normalize(PEAR_ALIASES[school.id])
     if (lookup[key]) return lookup[key]

@@ -838,9 +838,18 @@ export function refillThinRosters(state) {
     // (D1, D2, etc.); use the school's level if set, else dynasty default.
     const level = school.level || dynastyLevel
     const isNwac = level === 'NWAC'
-    const FLOOR = isNwac ? 24 : level === 'NAIA' ? 32 : 30
+    // Startup expansion programs are INTENTIONALLY thin in year 1 — don't
+    // fatten them up to the standard floor. They get a much lower floor
+    // so we only intervene if attrition takes them below playable size.
+    // Per Nate (June 2026): "it takes time to build up from nothing."
+    const isStartup = !!school.isStartupProgram
+    const FLOOR = isStartup
+      ? (isNwac ? 18 : 22)
+      : (isNwac ? 24 : level === 'NAIA' ? 32 : 30)
     const cap = rosterCapForLevel(level)
-    const TARGET = Math.min(cap, isNwac ? 38 : level === 'NAIA' ? 45 : 42)
+    const TARGET = isStartup
+      ? (isNwac ? 28 : level === 'NAIA' ? 32 : 30)
+      : Math.min(cap, isNwac ? 38 : level === 'NAIA' ? 45 : 42)
 
     let team = state.teams[schoolId]
     if (!team) {
@@ -878,11 +887,14 @@ export function refillThinRosters(state) {
 
     if (alive.length === 0) {
       // EMPTY: rebuild from scratch with proper multi-class distribution.
+      // Startup expansion programs rebuild at slim size, not the full
+      // normal roster — keeps the "build from nothing" arc consistent
+      // even after a catastrophic reset.
       try {
         const allowedClassYears = classYearsForLevel(level)
         const fullRoster = generateRoster(
           school, state.rngSeed || 1, state.calendar?.year ?? 2026,
-          { allowedClassYears, level },
+          { allowedClassYears, level, targetSize: isStartup ? TARGET : undefined },
         )
         const newIds = []
         for (const p of fullRoster) {

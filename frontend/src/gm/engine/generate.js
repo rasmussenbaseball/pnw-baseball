@@ -601,7 +601,12 @@ export function generateRoster(school, seed, currentYear = 2026, opts = {}) {
   // 28-38 band — both sides hard-capped. Was rng.int(24, 30); Everett
   // was generating only 24 players which is short of a real NWAC roster.
   const isJuco = allowedClassYears.length === 2 && !allowedClassYears.includes('JR')
-  const rosterSize = isJuco ? rng.int(28, 38) : rng.int(40, 50)
+  // Caller can pin the size (used by expansion teams to start lean per Nate
+  // June 2026: "it takes time to build up from nothing"). Clamps so we never
+  // generate a roster too thin to play games or too fat for the level.
+  const rosterSize = opts.targetSize
+    ? Math.max(isJuco ? 25 : 28, Math.min(opts.targetSize, isJuco ? 38 : 50))
+    : (isJuco ? rng.int(28, 38) : rng.int(40, 50))
   const positions = makeRosterPositionList(rng)
   let classYears
   if (isJuco) {

@@ -272,7 +272,22 @@ export function newDynastyMultiLevel(input) {
 
     // Roster — respect level eligibility (NWAC = FR/SO only)
     const allowedClassYears = classYearsForLevel(level)
-    const roster = generateRoster(school, seed, 2026, { allowedClassYears, level })
+    // EXPANSION TEAMS start with a SLIM roster. Per Nate (June 2026):
+    // "low rated roster with the minimum amount of players. it takes time
+    // to build up from nothing." STARTUP funding → bare-minimum 25-28
+    // players. Higher funding tiers ramp up modestly. Non-expansion
+    // schools use the normal random range.
+    let targetSize
+    if (school.isExpansion) {
+      const isJuco = level === 'NWAC'
+      const min = isJuco ? 25 : 28
+      const ph = school.programHistory ?? 18
+      // PH 16 → min (25/28). PH 65 → +8 above min (33/36). Caps at the
+      // normal upper bound (38/42) so even an Elite expansion isn't fat.
+      targetSize = Math.round(min + Math.max(0, ph - 16) * 0.16)
+      targetSize = Math.min(targetSize, isJuco ? 38 : 42)
+    }
+    const roster = generateRoster(school, seed, 2026, { allowedClassYears, level, targetSize })
     const rosterIds = []
     const cap = rosterCapForLevel(level)
     for (let i = 0; i < Math.min(roster.length, cap); i++) {

@@ -89,6 +89,25 @@ const PEAR_ALIASES = {
 
 function pearForSchool(school) {
   if (!school) return null
+  // Expansion teams (per Nate, June 2026): user-created programs aren't in
+  // the PEAR dataset. Without this, seedFromPear would default them to
+  // z=0 (median) which would rank them mid-pack at dynasty start — wrong
+  // for a brand-new program. Synthesize a PEAR-shaped rating from
+  // programHistory so startup teams land near the BOTTOM of their level's
+  // initial rankings. PH 16-18 → z≈-1.3 (cellar). PH 60+ → z≈+0.4 (above
+  // median, but still well below historical powers).
+  if (school.isExpansion) {
+    const ph = Math.max(0, Math.min(99, school.programHistory ?? 18))
+    const z = (ph - 50) / 25   // PH=50 → 0, PH=20 → -1.2, PH=65 → +0.6
+    return {
+      oWAR_z: z,
+      pWAR_z: z,
+      fWAR: 0,
+      Rating: z * 5,        // composite rating roughly matching PEAR scale
+      PRR: null,            // no pre-existing PEAR rank
+      SOS: 100,
+    }
+  }
   if (PEAR_ALIASES[school.id]) {
     const key = normalize(PEAR_ALIASES[school.id])
     if (PEAR_BY_NORMALIZED[key]) return PEAR_BY_NORMALIZED[key]

@@ -250,16 +250,9 @@ export function attachExpansionStaff(state, school, seed) {
  *  stays exported for backward compatibility but reflects the NAIA scale. */
 export { FUNDING_PRESETS, FUNDING_BY_LEVEL, fundingForLevel }
 
-/** PNW states. Used by validation hints — D2/D3/NAIA/NWAC conferences are
- *  all PNW-local, so an expansion team based outside the PNW would face
- *  unrealistic travel costs every series. D1 is national and can geo-spread.
- *  British Columbia (BC) included for UBC parity. */
+/** PNW states — the GAME scope. Expansion teams are HARD-LIMITED to these
+ *  (per Nate, June 2026). British Columbia (BC) included for UBC parity. */
 export const PNW_STATES = ['WA', 'OR', 'ID', 'MT', 'BC']
-
-/** Recommended state set per level. D1 is national; everything else is PNW. */
-export function recommendedStatesForLevel(level) {
-  return level === 'D1' ? null : PNW_STATES
-}
 
 /** Validation helper for UI — returns null if input is valid, otherwise an
  *  error string suitable for a toast.

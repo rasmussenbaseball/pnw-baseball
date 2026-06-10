@@ -718,8 +718,7 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
       { key: 'NWAC_WEST',  label: 'NWAC West' },
     ],
     NAIA: [
-      { key: 'CCC',      label: 'Cascade Collegiate (CCC)' },
-      { key: 'FRONTIER', label: 'Frontier' },
+      { key: 'CCC', label: 'Cascade Collegiate (CCC)' },
     ],
     D3: [
       { key: 'NWC', label: 'Northwest Conference (NWC)' },
