@@ -45,6 +45,7 @@ COMPED_COACH_EMAILS = {
     "jawomack@bushnell.edu",
     "pnwcbr@gmail.com",
     "tommy.richards@wsu.edu",
+    "deven@drivelinebaseball.com",
 }
 
 
