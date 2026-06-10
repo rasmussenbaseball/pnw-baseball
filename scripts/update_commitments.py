@@ -48,6 +48,10 @@ COMMITMENTS = [
     ("Maunu", "Garrett", "Clark", "Bellevue University"),
     ("McIntyre", "Jordan", "Treasure Valley", "Saint Martin's"),
     ("Walker", "Jackson", "Yakima Valley", "Saint Louis University"),
+    # June 10, 2026 batch
+    ("Jones", "Dillon", "Wenatchee Valley", "Lewis-Clark State"),
+    ("Furuhata", "Daichi", "SW Oregon", "Northwest Nazarene"),
+    ("Ringrose", "Tristan", "Pierce", "Lewis-Clark State"),
 ]
 
 # (last_name, first_name, team_short_name) — players to set back to uncommitted.
