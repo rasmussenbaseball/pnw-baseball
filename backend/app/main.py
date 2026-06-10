@@ -31,6 +31,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from .api.routes import router
+# June 2026 split: feature blocks extracted from routes.py into their own
+# routers (same /api/v1 prefix, identical paths — verified by route diff).
+from .api.pitch_level import router as pitch_level_router
+from .api.grid import router as grid_router
+from .api.summer_leaderboards import router as summer_leaderboards_router
+from .api.feature_requests import router as feature_requests_router
+from .api.recruiting import router as recruiting_router
+from .api.team_stats import router as team_stats_router
+from .api.all_conference import router as all_conference_router
+from .api.coaching_tools import router as coaching_tools_router
 from .api.articles import router as articles_router
 from .api.email_prefs import router as email_prefs_router
 from .api.email_broadcasts import router as email_broadcasts_router
@@ -79,6 +89,14 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(pitch_level_router, prefix="/api/v1")
+app.include_router(grid_router, prefix="/api/v1")
+app.include_router(summer_leaderboards_router, prefix="/api/v1")
+app.include_router(feature_requests_router, prefix="/api/v1")
+app.include_router(recruiting_router, prefix="/api/v1")
+app.include_router(team_stats_router, prefix="/api/v1")
+app.include_router(all_conference_router, prefix="/api/v1")
+app.include_router(coaching_tools_router, prefix="/api/v1")
 app.include_router(articles_router, prefix="/api/v1")
 app.include_router(email_prefs_router, prefix="/api/v1")
 app.include_router(email_broadcasts_router, prefix="/api/v1")

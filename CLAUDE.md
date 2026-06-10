@@ -55,7 +55,15 @@ pnw-baseball/
 │   ├── app/
 │   │   ├── main.py               # FastAPI app, CORS, static file serving
 │   │   ├── api/
-│   │   │   ├── routes.py         # ~112 endpoints (huge file, ~25k lines — split into routers eventually)
+│   │   │   ├── routes.py         # core endpoints (~15.6k lines; hub for shared helpers)
+│   │   │   ├── pitch_level.py    # PBP-derived player stat cards   (June 2026 split from routes.py —
+│   │   │   ├── grid.py           # image proxy + PNW Grid           these import helpers FROM routes.py;
+│   │   │   ├── summer_leaderboards.py  # summer stat leaders        routes.py never imports them back,
+│   │   │   ├── feature_requests.py     # feedback submit/list       so there are no circular imports)
+│   │   │   ├── recruiting.py     # recruiting guide/breakdown, NWAC advancement
+│   │   │   ├── team_stats.py     # team aggregates + opponent trends
+│   │   │   ├── all_conference.py # all-conference generator + league constants
+│   │   │   ├── coaching_tools.py # top moments, matchups, lineup helper, portal sheets, pro alumni
 │   │   │   ├── auth.py           # Supabase JWT auth
 │   │   │   └── favorites.py      # User favorites endpoints
 │   │   ├── models/
