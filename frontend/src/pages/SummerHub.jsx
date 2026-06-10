@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const TABS = [
   { key: 'scoreboard',  label: 'Scoreboard' },
@@ -27,7 +28,7 @@ const REGULAR_FULL_GO = new Date('2026-06-04T00:00:00-07:00')  // every team in 
 const PLAYOFFS_START  = new Date('2026-08-12T00:00:00-07:00')  // approx
 
 const LEAGUE = 'WCL'
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 const fmtAvg = v => v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')
 const fmtEra = v => v == null ? '—' : Number(v).toFixed(2)

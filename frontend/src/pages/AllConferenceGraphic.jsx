@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // ─── Conference options (mirrors AllConferenceGenerator) ───
 const CONF_OPTIONS = [
@@ -850,7 +851,7 @@ function collectPlayersAndTeams(result) {
 
 // ─── Main component ───
 export default function AllConferenceGraphic() {
-  const [season] = useState(2026)
+  const [season] = useState(CURRENT_SEASON)
   const [conf, setConf] = useState('gnac')
   const [view, setView] = useState('first')  // 'first' | 'second' | 'hm'
   const [exporting, setExporting] = useState(false)
@@ -981,7 +982,7 @@ export default function AllConferenceGraphic() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">All-Conference Graphic</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">All-Conference Graphic</h1>
       <p className="text-sm text-gray-500 mb-5">
         Downloadable first team, second team, and honorable mention graphics for social media.
       </p>
@@ -996,7 +997,7 @@ export default function AllConferenceGraphic() {
             <select
               value={conf}
               onChange={(e) => { setConf(e.target.value); setImages(null) }}
-              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
             >
               {Object.entries(grouped).map(([groupName, options]) => (
                 <optgroup key={groupName} label={groupName}>
@@ -1023,8 +1024,8 @@ export default function AllConferenceGraphic() {
                   onClick={() => setView(opt.key)}
                   className={`px-3 py-2 text-sm rounded border transition-colors ${
                     view === opt.key
-                      ? 'bg-pnw-sky text-white border-pnw-sky'
-                      : 'bg-white text-pnw-slate border-gray-300 hover:bg-gray-50'
+                      ? 'bg-nw-teal-light text-white border-nw-teal-light'
+                      : 'bg-white text-nw-teal border-gray-300 hover:bg-gray-50'
                   }`}
                 >
                   {opt.label}
@@ -1036,7 +1037,7 @@ export default function AllConferenceGraphic() {
           <button
             onClick={handleExport}
             disabled={exporting || !result || !images}
-            className="w-full px-4 py-2.5 bg-pnw-green text-white text-sm font-semibold rounded-lg hover:bg-pnw-forest transition-colors disabled:opacity-50"
+            className="w-full px-4 py-2.5 bg-nw-teal text-white text-sm font-semibold rounded-lg hover:bg-nw-teal-dark transition-colors disabled:opacity-50"
           >
             {exporting ? 'Generating...' : 'Download PNG'}
           </button>

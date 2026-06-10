@@ -1350,7 +1350,7 @@ export default function SocialGraphics() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Social Graphics</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Social Graphics</h1>
       <p className="text-sm text-gray-500 mb-5">
         Create shareable leaderboard images (1080×1080).
       </p>

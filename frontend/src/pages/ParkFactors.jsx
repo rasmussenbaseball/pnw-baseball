@@ -433,7 +433,7 @@ export default function ParkFactors() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Park Factors</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Park Factors</h1>
       <p className="text-sm text-gray-500 mb-4">
         How each PNW ballpark affects run scoring - broken down by elevation, field size, temperature, and actual home/road data.
       </p>

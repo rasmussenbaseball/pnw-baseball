@@ -149,6 +149,21 @@ export function formatStat(value, format) {
 }
 
 /**
+ * Sum innings-pitched values that are stored in BASEBALL notation
+ * (6.2 = 6⅔ innings — the .1/.2 are thirds, not tenths). Naively adding
+ * the floats gives wrong totals; convert each to outs, sum, convert back.
+ * Mirrors the backend's ip_to_outs / outs_to_ip helpers.
+ */
+export function ipSum(values) {
+  let outs = 0
+  for (const v of values || []) {
+    const ip = Number(v) || 0
+    outs += Math.round(Math.floor(ip) * 3 + (ip % 1) * 10)
+  }
+  return Math.floor(outs / 3) + (outs % 3) / 10
+}
+
+/**
  * Division level color classes.
  */
 export function divisionBadgeClass(level) {

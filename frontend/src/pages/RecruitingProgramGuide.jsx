@@ -90,7 +90,7 @@ export default function RecruitingProgramGuide() {
         <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-teal-50 dark:bg-teal-900/30 px-3 py-1 rounded-full mb-2">
           Premium · Program Guide
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black text-pnw-slate dark:text-gray-100">NWBB Program Guide</h1>
+        <h1 className="text-2xl sm:text-3xl font-black text-nw-teal dark:text-gray-100">NWBB Program Guide</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           In-depth profiles on all 57 PNW college baseball programs. Viewing only.
         </p>

@@ -10,8 +10,9 @@ import { useState, useMemo, useEffect } from 'react'
 import { useTeams, useDivisions } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 
 export default function PortalTeamGate({ children }) {

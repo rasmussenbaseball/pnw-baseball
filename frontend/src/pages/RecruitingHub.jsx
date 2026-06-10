@@ -88,7 +88,7 @@ function ToolCard({ tool }) {
         </span>
         <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${pill.cls}`}>{pill.label}</span>
       </div>
-      <h3 className="text-base font-extrabold text-pnw-slate dark:text-gray-100 flex items-center gap-1.5">
+      <h3 className="text-base font-extrabold text-nw-teal dark:text-gray-100 flex items-center gap-1.5">
         {tool.name}
         {!soon && <span className="text-nw-teal text-sm transition-transform group-hover:translate-x-0.5">&rsaquo;</span>}
       </h3>
@@ -114,11 +114,11 @@ function PlanCard({ name, price, per, note, points, highlight, cta, to }) {
   return (
     <div className={`rounded-2xl p-5 ring-1 ${highlight ? 'ring-2 ring-nw-teal bg-teal-50/40 dark:bg-teal-900/20' : 'ring-gray-200 dark:ring-gray-700 bg-white dark:bg-gray-800'}`}>
       <div className="flex items-baseline justify-between">
-        <h3 className="text-lg font-black text-pnw-slate dark:text-gray-100">{name}</h3>
+        <h3 className="text-lg font-black text-nw-teal dark:text-gray-100">{name}</h3>
         {highlight && <span className="text-[10px] font-bold uppercase tracking-wide text-nw-teal bg-white dark:bg-gray-900 px-2 py-0.5 rounded-full">Best for recruits</span>}
       </div>
       <div className="mt-1 mb-1">
-        <span className="text-3xl font-black text-pnw-slate dark:text-gray-100">${price}</span>
+        <span className="text-3xl font-black text-nw-teal dark:text-gray-100">${price}</span>
         <span className="text-sm text-gray-500 dark:text-gray-400">/{per}</span>
       </div>
       {note && <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">{note}</p>}
@@ -143,7 +143,7 @@ export default function RecruitingHub() {
         <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-white dark:bg-gray-900 px-3 py-1 rounded-full mb-3 ring-1 ring-teal-100 dark:ring-teal-800">
           Pacific Northwest College Baseball
         </div>
-        <h1 className="text-3xl sm:text-5xl font-black text-pnw-slate dark:text-gray-100 leading-tight max-w-3xl mx-auto">
+        <h1 className="text-3xl sm:text-5xl font-black text-nw-teal dark:text-gray-100 leading-tight max-w-3xl mx-auto">
           The clearest path to playing college baseball in the Northwest
         </h1>
         <p className="mt-4 text-base sm:text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
@@ -174,7 +174,7 @@ export default function RecruitingHub() {
             { t: 'Use the real numbers', d: 'The same advanced stats analysts and coaches use, from wRC+ and FIP to freshman playing time by level.' },
           ].map((v) => (
             <div key={v.t} className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5">
-              <h3 className="font-extrabold text-pnw-slate dark:text-gray-100">{v.t}</h3>
+              <h3 className="font-extrabold text-nw-teal dark:text-gray-100">{v.t}</h3>
               <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">{v.d}</p>
             </div>
           ))}
@@ -184,7 +184,7 @@ export default function RecruitingHub() {
       {/* Recruit tools */}
       <section className="mb-10">
         <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">For recruits and families</div>
-        <h2 className="text-xl sm:text-2xl font-black text-pnw-slate dark:text-gray-100">Everything you need to get recruited</h2>
+        <h2 className="text-xl sm:text-2xl font-black text-nw-teal dark:text-gray-100">Everything you need to get recruited</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-5">These tools unlock with Premium. Click any one to open it.</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {RECRUIT_TOOLS.map((t) => <ToolCard key={t.name} tool={t} />)}
@@ -194,7 +194,7 @@ export default function RecruitingHub() {
       {/* Coach tools */}
       <section className="mb-10">
         <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 mb-1">For coaches and recruiters</div>
-        <h2 className="text-xl sm:text-2xl font-black text-pnw-slate dark:text-gray-100">Recruit smarter, with live boards</h2>
+        <h2 className="text-xl sm:text-2xl font-black text-nw-teal dark:text-gray-100">Recruit smarter, with live boards</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-5">These tools unlock with the Recruiting plan.</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {COACH_TOOLS.map((t) => <ToolCard key={t.name} tool={t} />)}
@@ -202,7 +202,7 @@ export default function RecruitingHub() {
       </section>
 
       {/* Why our data is different */}
-      <section className="rounded-2xl bg-pnw-slate dark:bg-gray-800 text-white ring-1 ring-gray-700 p-6 sm:p-8 mb-10">
+      <section className="rounded-2xl bg-nw-teal dark:bg-gray-800 text-white ring-1 ring-gray-700 p-6 sm:p-8 mb-10">
         <h2 className="text-xl sm:text-2xl font-black">Why this is different from a spreadsheet</h2>
         <p className="mt-2 text-[14px] text-gray-200 dark:text-gray-300 max-w-2xl leading-relaxed">
           Most recruiting advice is generic and most program lists are out of date. This is built on a live database of Pacific Northwest college baseball, the only one of its kind.
@@ -225,7 +225,7 @@ export default function RecruitingHub() {
 
       {/* Who it's for */}
       <section className="mb-10">
-        <h2 className="text-xl sm:text-2xl font-black text-pnw-slate dark:text-gray-100 mb-4">Who it is for</h2>
+        <h2 className="text-xl sm:text-2xl font-black text-nw-teal dark:text-gray-100 mb-4">Who it is for</h2>
         <div className="grid sm:grid-cols-3 gap-4">
           {[
             { t: 'Recruits and parents', d: 'High school and JUCO players, and the families helping them, who want a clear, honest read on their options and a real plan to reach coaches.' },
@@ -233,7 +233,7 @@ export default function RecruitingHub() {
             { t: 'Coaches and recruiters', d: 'College staffs who need a live view of NWAC and portal talent and the data to evaluate it quickly.' },
           ].map((w) => (
             <div key={w.t} className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5">
-              <h3 className="font-extrabold text-pnw-slate dark:text-gray-100">{w.t}</h3>
+              <h3 className="font-extrabold text-nw-teal dark:text-gray-100">{w.t}</h3>
               <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">{w.d}</p>
             </div>
           ))}
@@ -243,7 +243,7 @@ export default function RecruitingHub() {
       {/* Plans */}
       <section className="mb-10">
         <div className="text-center mb-5">
-          <h2 className="text-xl sm:text-2xl font-black text-pnw-slate dark:text-gray-100">Pick a plan and get started</h2>
+          <h2 className="text-xl sm:text-2xl font-black text-nw-teal dark:text-gray-100">Pick a plan and get started</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Cancel anytime. See the <Link to="/pricing" className="text-nw-teal font-semibold hover:underline">full plan comparison</Link> for everything included.</p>
         </div>
         <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
@@ -276,7 +276,7 @@ export default function RecruitingHub() {
           {ICONS.users}
         </span>
         <div className="flex-1">
-          <h3 className="text-base sm:text-lg font-extrabold text-pnw-slate dark:text-gray-100">Coaching a team or running a facility?</h3>
+          <h3 className="text-base sm:text-lg font-extrabold text-nw-teal dark:text-gray-100">Coaching a team or running a facility?</h3>
           <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
             High school programs, travel organizations, and baseball facilities can get group rates for their players and families. Email us to set it up.
           </p>
@@ -289,7 +289,7 @@ export default function RecruitingHub() {
 
       {/* Final CTA */}
       <section className="text-center rounded-2xl bg-teal-50 dark:bg-teal-900/20 ring-1 ring-teal-100 dark:ring-teal-800 px-5 py-8">
-        <h2 className="text-xl sm:text-2xl font-black text-pnw-slate dark:text-gray-100">Not sure where to start?</h2>
+        <h2 className="text-xl sm:text-2xl font-black text-nw-teal dark:text-gray-100">Not sure where to start?</h2>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 max-w-xl mx-auto">Take the Matchmaker. A few questions and you will have a ranked list of PNW programs that actually fit you.</p>
         <Link to="/recruiting/quiz" className="inline-block mt-4 px-6 py-2.5 rounded-lg bg-nw-teal text-white text-sm font-bold hover:bg-teal-700 transition-colors">
           Take the Recruit Matchmaker

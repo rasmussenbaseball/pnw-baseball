@@ -93,7 +93,7 @@ export default function StatsTable({
 
     if (col.key === 'team_short') {
       const teamContent = (
-        <span className={`flex items-center gap-1.5 ${col.noLink ? 'text-gray-700 dark:text-gray-300' : 'text-gray-700 dark:text-gray-300 hover:text-pnw-sky'}`}>
+        <span className={`flex items-center gap-1.5 ${col.noLink ? 'text-gray-700 dark:text-gray-300' : 'text-gray-700 dark:text-gray-300 hover:text-nw-teal-light'}`}>
           {row.logo_url && (
             <img
               src={row.logo_url}

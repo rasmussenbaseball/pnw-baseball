@@ -10,6 +10,7 @@
 // Download button writes a PNG named wcl-recap-YYYY-MM-DD.png.
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -329,7 +330,7 @@ export default function WclRecapGraphic() {
         const diffDays = Math.round((today - target) / 86400000)
         const back  = Math.max(0, Math.min(120, diffDays))
         const ahead = Math.max(0, Math.min(120, -diffDays))
-        const r = await fetch(`${API_BASE}/summer/scoreboard?league=WCL&season=2026&days_back=${back}&days_ahead=${ahead}`)
+        const r = await fetch(`${API_BASE}/summer/scoreboard?league=WCL&season=${CURRENT_SEASON}&days_back=${back}&days_ahead=${ahead}`)
         if (!r.ok) throw new Error(`scoreboard fetch failed: ${r.status}`)
         const all = await r.json()
         const onDate = all.filter(g => g.game_date === date)

@@ -15,8 +15,9 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import PremiumHomepage from './PremiumHomepage'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 
 export default function CoachHomepage() {

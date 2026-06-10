@@ -65,9 +65,9 @@ export default function NewsList() {
                 />
               </div>
             ) : (
-              <div className="aspect-[16/9] bg-gradient-to-br from-pnw-teal/10 to-pnw-teal/5
-                              dark:from-pnw-teal/20 dark:to-pnw-teal/5
-                              flex items-center justify-center text-pnw-teal/60 text-sm font-bold">
+              <div className="aspect-[16/9] bg-gradient-to-br from-nw-teal-light/10 to-nw-teal-light/5
+                              dark:from-nw-teal-light/20 dark:to-nw-teal-light/5
+                              flex items-center justify-center text-nw-teal-light/60 text-sm font-bold">
                 NW Baseball Stats
               </div>
             )}

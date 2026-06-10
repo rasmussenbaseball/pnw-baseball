@@ -14,6 +14,7 @@ import {
   SectionCard, SeasonStatTable, GameLogTable, CareerPath,
   ProfileShell, divisionBadge, ipToTrue,
 } from '../components/playerProfile/shared'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // SEASON is derived from the `season` prop inside the component (the year
 // selector / ?season= URL param), so the page can render any season.
@@ -161,8 +162,8 @@ function rollingFipSeries(games, seasonFip, window = 10) {
 }
 
 // ───────────────────────────────────────────────────────────────
-export default function PlayerProfilePitcher({ playerId, data, season = 2026, sideToggle = null, seasonSelector = null }) {
-  const SEASON = season || 2026
+export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_SEASON, sideToggle = null, seasonSelector = null }) {
+  const SEASON = season || CURRENT_SEASON
   const T = usePlayerProfileTheme()
   const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
   const { data: goose } = usePlayerGooseEggs(playerId, SEASON)
@@ -466,7 +467,7 @@ function GooseInfoButton({ T }) {
   )
 }
 
-function GooseEggCard({ goose, T, season = 2026 }) {
+function GooseEggCard({ goose, T, season = CURRENT_SEASON }) {
   if (!goose || !goose.relief_app) return null
   const pct = goose.goose_pct != null ? `${Math.round(goose.goose_pct * 100)}%` : '—'
   const tiles = [

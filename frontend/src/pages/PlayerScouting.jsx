@@ -14,8 +14,9 @@ import {
   usePlayerPitchLevelStats,
   usePlayerPitchLevelStatsPitcher,
 } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 export default function PlayerScouting() {
   const [query, setQuery] = useState('')
@@ -56,11 +57,11 @@ export default function PlayerScouting() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search a player by name..."
           className="flex-1 max-w-md rounded border border-gray-300 px-3 py-1.5 text-sm
-                     focus:ring-2 focus:ring-pnw-sky focus:border-transparent"
+                     focus:ring-2 focus:ring-nw-teal-light focus:border-transparent"
         />
         <button
           type="submit"
-          className="px-3 py-1.5 bg-pnw-green text-white rounded text-sm font-medium hover:bg-pnw-forest"
+          className="px-3 py-1.5 bg-nw-teal text-white rounded text-sm font-medium hover:bg-nw-teal-dark"
         >
           Search
         </button>
@@ -197,7 +198,7 @@ function PlayerHeader({ player }) {
           </h2>
           <Link
             to={`/player/${player.id}`}
-            className="text-xs text-pnw-sky hover:underline"
+            className="text-xs text-nw-teal-light hover:underline"
           >
             full profile →
           </Link>

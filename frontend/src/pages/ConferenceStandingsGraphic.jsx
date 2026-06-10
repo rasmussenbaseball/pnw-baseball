@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // ─── Canvas utilities (same as SocialGraphics) ───
 async function loadExportImage(src) {
@@ -331,7 +332,7 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs, isFrozen 
 
 // ─── Main component ───
 export default function ConferenceStandingsGraphic() {
-  const [season] = useState(2026)
+  const [season] = useState(CURRENT_SEASON)
   const [selectedConf, setSelectedConf] = useState(null)
   const [exporting, setExporting] = useState(false)
   const [images, setImages] = useState(null)  // { faviconImg, logoImgs }
@@ -430,7 +431,7 @@ export default function ConferenceStandingsGraphic() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Conference Standings</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Conference Standings</h1>
       <p className="text-sm text-gray-500 mb-5">
         Generate downloadable conference standings graphics for social media.
       </p>
@@ -446,7 +447,7 @@ export default function ConferenceStandingsGraphic() {
               <select
                 value={selectedConf || ''}
                 onChange={(e) => { setSelectedConf(Number(e.target.value)); setImages(null) }}
-                className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+                className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
               >
                 {Object.entries(grouped).map(([divName, confs]) => (
                   <optgroup key={divName} label={divName}>
@@ -464,7 +465,7 @@ export default function ConferenceStandingsGraphic() {
           <button
             onClick={handleExport}
             disabled={exporting || !activeConf}
-            className="w-full px-4 py-2.5 bg-pnw-green text-white text-sm font-semibold rounded-lg hover:bg-pnw-forest transition-colors disabled:opacity-50"
+            className="w-full px-4 py-2.5 bg-nw-teal text-white text-sm font-semibold rounded-lg hover:bg-nw-teal-dark transition-colors disabled:opacity-50"
           >
             {exporting ? 'Generating...' : 'Download PNG'}
           </button>

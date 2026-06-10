@@ -95,7 +95,7 @@ export default function TeamStatsPage() {
           {row.logo_url && (
             <img src={row.logo_url} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
           )}
-          <span className="font-medium text-pnw-slate dark:text-gray-100 hover:text-pnw-green truncate">
+          <span className="font-medium text-nw-teal dark:text-gray-100 hover:text-nw-teal truncate">
             {row.team_name}
           </span>
         </Link>
@@ -119,7 +119,7 @@ export default function TeamStatsPage() {
 
   return (
     <div>
-      <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-3 sm:mb-4">Team Stats</h1>
+      <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100 mb-3 sm:mb-4">Team Stats</h1>
 
       {/* Hitting / Pitching toggle */}
       <div className="flex flex-wrap gap-2 mb-3">
@@ -128,7 +128,7 @@ export default function TeamStatsPage() {
             onClick={() => handleTypeChange('hitting')}
             className={`px-4 py-1.5 text-sm font-medium transition-colors
               ${statType === 'hitting'
-                ? 'bg-pnw-slate text-white'
+                ? 'bg-nw-teal text-white'
                 : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             Hitting
@@ -137,7 +137,7 @@ export default function TeamStatsPage() {
             onClick={() => handleTypeChange('pitching')}
             className={`px-4 py-1.5 text-sm font-medium transition-colors
               ${statType === 'pitching'
-                ? 'bg-pnw-slate text-white'
+                ? 'bg-nw-teal text-white'
                 : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             Pitching
@@ -152,7 +152,7 @@ export default function TeamStatsPage() {
               onClick={() => setLevel(l)}
               className={`px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors
                 ${level === l
-                  ? 'bg-pnw-green text-white'
+                  ? 'bg-nw-teal text-white'
                   : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             >
               {l}
@@ -197,7 +197,7 @@ export default function TeamStatsPage() {
                     onClick={() => handleSort(col)}
                     className={`px-2 py-2 text-left font-semibold whitespace-nowrap
                       ${col.sortable !== false ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700' : ''}
-                      ${isSorted ? 'text-pnw-green dark:text-pnw-green' : 'text-gray-600 dark:text-gray-400'}`}
+                      ${isSorted ? 'text-nw-teal dark:text-nw-teal' : 'text-gray-600 dark:text-gray-400'}`}
                     title={col.tooltip || ''}
                     style={{ minWidth: col.width }}
                   >
@@ -237,7 +237,7 @@ export default function TeamStatsPage() {
                         ${(sortBy === col.key || (!sortBy && (
                           (statType === 'hitting' && col.key === 'avg') ||
                           (statType === 'pitching' && col.key === 'era')
-                        ))) ? 'font-semibold text-pnw-slate dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}`}
+                        ))) ? 'font-semibold text-nw-teal dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}`}
                     >
                       {renderCell(row, col, idx)}
                     </td>

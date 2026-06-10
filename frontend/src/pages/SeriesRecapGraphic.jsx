@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -709,7 +710,7 @@ export default function SeriesRecapGraphic() {
   useEffect(() => {
     async function fetchWeeks() {
       try {
-        const res = await fetch(`${API_BASE}/games/series-weeks?season=2026`)
+        const res = await fetch(`${API_BASE}/games/series-weeks?season=${CURRENT_SEASON}`)
         if (!res.ok) throw new Error(`API error: ${res.status}`)
         const json = await res.json()
         setWeeks(json.weeks || [])
@@ -730,7 +731,7 @@ export default function SeriesRecapGraphic() {
     setRendered(false)
     setSelectedSeriesIdx(0)
     try {
-      const res = await fetch(`${API_BASE}/games/series-recap?week_start=${weekStart}&season=2026`)
+      const res = await fetch(`${API_BASE}/games/series-recap?week_start=${weekStart}&season=${CURRENT_SEASON}`)
       if (!res.ok) throw new Error(`API error: ${res.status}`)
       const json = await res.json()
       setSeriesData(json)
@@ -775,7 +776,7 @@ export default function SeriesRecapGraphic() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Weekly Series Recap</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Weekly Series Recap</h1>
       <p className="text-sm text-gray-500 mb-5">Generate a shareable series recap graphic for any week.</p>
 
       {/* Week selector */}
@@ -817,7 +818,7 @@ export default function SeriesRecapGraphic() {
             <button key={i} onClick={() => setSelectedSeriesIdx(i)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 selectedSeriesIdx === i
-                  ? 'bg-pnw-slate text-white'
+                  ? 'bg-nw-teal text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}>
               {cleanTeamName(s.team_a.short_name)} vs {cleanTeamName(s.team_b.short_name)}

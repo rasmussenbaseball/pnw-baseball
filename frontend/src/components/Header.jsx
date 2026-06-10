@@ -752,7 +752,7 @@ export default function Header() {
               className="h-8 w-8 sm:h-10 sm:w-10 rounded"
             />
             <div className="flex flex-col leading-tight">
-              <span className="text-sm sm:text-xl font-bold tracking-wide font-display">
+              <span className="text-sm sm:text-xl tracking-tight font-sans font-bold">
                 NW BASEBALL STATS
               </span>
             </div>

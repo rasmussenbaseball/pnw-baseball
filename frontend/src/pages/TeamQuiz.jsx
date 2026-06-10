@@ -220,7 +220,7 @@ function SetupScreen({
 }) {
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mb-2">Team Quiz</h1>
+      <h1 className="text-2xl sm:text-3xl font-bold text-nw-teal dark:text-gray-100 mb-2">Team Quiz</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
         Test your knowledge of a Pacific Northwest college baseball team. Pick a team, choose one
         or more seasons, and get a 10 question quiz drawn at random from leaders, statlines, match
@@ -293,7 +293,7 @@ function SetupScreen({
                 onClick={() => toggleYear(y)}
                 className={`px-4 py-2 rounded-lg border-2 text-sm font-semibold transition-colors ${
                   on
-                    ? 'bg-pnw-forest text-white border-pnw-forest shadow-md ring-2 ring-pnw-forest/30'
+                    ? 'bg-nw-teal-dark text-white border-nw-teal-dark shadow-md ring-2 ring-nw-teal-dark/30'
                     : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-nw-teal hover:bg-gray-50 dark:bg-gray-900/40'
                 }`}
               >
@@ -313,7 +313,7 @@ function SetupScreen({
           type="button"
           onClick={startQuiz}
           disabled={!selectedTeamId || selectedYears.length === 0 || quizLoading}
-          className="px-6 py-2.5 bg-pnw-green text-white font-semibold rounded-lg hover:bg-pnw-forest disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          className="px-6 py-2.5 bg-nw-teal text-white font-semibold rounded-lg hover:bg-nw-teal-dark disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
         >
           {quizLoading ? 'Building quiz...' : 'Start Quiz'}
         </button>
@@ -359,13 +359,13 @@ function QuestionScreen({
       {/* Header: progress + score + quit */}
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          <span className="font-semibold text-pnw-slate">{team?.short_name || 'Team'}</span>
+          <span className="font-semibold text-nw-teal dark:text-gray-100">{team?.short_name || 'Team'}</span>
           <span className="mx-2">·</span>
           <span>Question {index + 1} of {total}</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            Score: <span className="font-semibold text-pnw-slate">{score} / {index + (revealed ? 1 : 0)}</span>
+            Score: <span className="font-semibold text-nw-teal dark:text-gray-100">{score} / {index + (revealed ? 1 : 0)}</span>
           </div>
           <button
             type="button"
@@ -387,12 +387,12 @@ function QuestionScreen({
 
       {/* Prompt */}
       <div className="bg-white dark:bg-gray-800 border rounded-xl p-5 mb-4 shadow-sm">
-        <div className="text-base sm:text-lg font-semibold text-pnw-slate">{question.prompt}</div>
+        <div className="text-base sm:text-lg font-semibold text-nw-teal dark:text-gray-100">{question.prompt}</div>
         {question.subtitle && (
           <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{question.subtitle}</div>
         )}
         {question.statline && (
-          <div className="mt-3 px-4 py-3 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg font-mono text-sm sm:text-base text-pnw-slate">
+          <div className="mt-3 px-4 py-3 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg font-mono text-sm sm:text-base text-nw-teal">
             {question.statline}
           </div>
         )}
@@ -450,7 +450,7 @@ function QuestionScreen({
             type="button"
             onClick={submitAnswer}
             disabled={!canSubmit}
-            className="px-6 py-2.5 bg-pnw-green text-white font-semibold rounded-lg hover:bg-pnw-forest disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="px-6 py-2.5 bg-nw-teal text-white font-semibold rounded-lg hover:bg-nw-teal-dark disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
             Submit
           </button>
@@ -522,7 +522,7 @@ function MatchBoard({ question, userAnswer, setMatchValue, revealed }) {
             }
             return (
               <div key={p.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${tone}`}>
-                <div className="flex-1 text-sm font-medium text-pnw-slate truncate">{p.label}</div>
+                <div className="flex-1 text-sm font-medium text-nw-teal dark:text-gray-100 truncate">{p.label}</div>
                 <select
                   value={chosen || ''}
                   onChange={(e) => setMatchValue(p.id, e.target.value)}
@@ -543,7 +543,7 @@ function MatchBoard({ question, userAnswer, setMatchValue, revealed }) {
         <div className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Values (each used once)</div>
         <div className="space-y-2">
           {question.values.map(v => (
-            <div key={v.id} className="bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-pnw-slate">
+            <div key={v.id} className="bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-nw-teal">
               {v.label}
             </div>
           ))}
@@ -566,12 +566,12 @@ function ResultsScreen({ team, seasons, score, total, onRetake }) {
 
   return (
     <div className="max-w-xl mx-auto text-center">
-      <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mb-1">{headline}</h1>
+      <h1 className="text-2xl sm:text-3xl font-bold text-nw-teal dark:text-gray-100 mb-1">{headline}</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
         {team?.short_name || 'Team'} · {Array.isArray(seasons) ? seasons.join(', ') : seasons}
       </p>
       <div className="inline-flex items-baseline gap-2 mb-8">
-        <div className="text-6xl font-bold text-pnw-green">{score}</div>
+        <div className="text-6xl font-bold text-nw-teal dark:text-gray-100">{score}</div>
         <div className="text-2xl text-gray-400 dark:text-gray-500">/ {total}</div>
       </div>
       <div className="text-sm text-gray-500 dark:text-gray-400 mb-8">{pct}% correct</div>
@@ -579,7 +579,7 @@ function ResultsScreen({ team, seasons, score, total, onRetake }) {
         <button
           type="button"
           onClick={onRetake}
-          className="px-6 py-2.5 bg-pnw-green text-white font-semibold rounded-lg hover:bg-pnw-forest transition-colors"
+          className="px-6 py-2.5 bg-nw-teal text-white font-semibold rounded-lg hover:bg-nw-teal-dark transition-colors"
         >
           Play Again
         </button>

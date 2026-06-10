@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -210,7 +211,7 @@ function ProjectedStandingsTable({ conference, playoffTeamCount, frozenInfo }) {
                   <td className="text-center px-1 py-1.5 font-medium">
                     {formatRecord(team.projected_conf_wins, team.projected_conf_losses)}
                   </td>
-                  <td className="text-center px-1 py-1.5 font-bold text-pnw-slate">
+                  <td className="text-center px-1 py-1.5 font-bold text-nw-teal dark:text-gray-100">
                     {formatPct(team.projected_conf_win_pct)}
                   </td>
                   <td className="text-center px-1 py-1.5 font-medium">
@@ -742,15 +743,20 @@ function PlayoffOddsTable({ conferences, playoffCountByConf, frozenByKey }) {
 export default function PlayoffProjections() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [view, setView] = useState('standings') // 'standings', 'brackets', 'odds'
   const [divFilter, setDivFilter] = useState('all')
 
   useEffect(() => {
     setLoading(true)
-    fetch(`${API_BASE}/playoff-projections?season=2026`)
-      .then(r => r.json())
+    setError(null)
+    fetch(`${API_BASE}/playoff-projections?season=${CURRENT_SEASON}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`API error: ${r.status}`)
+        return r.json()
+      })
       .then(d => { setData(d); setLoading(false) })
-      .catch(() => setLoading(false))
+      .catch(err => { setError(err.message || 'Failed to load'); setLoading(false) })
   }, [])
 
   const conferences = data?.conferences || []
@@ -808,11 +814,20 @@ export default function PlayoffProjections() {
     return <NWCBracket key={bracket.conference} bracket={bracket} />
   }
 
+  if (error && !data) {
+    return (
+      <div className="max-w-7xl mx-auto py-12 text-center">
+        <p className="text-red-600 dark:text-red-400 font-semibold">Couldn't load playoff projections.</p>
+        <p className="text-sm text-gray-500 mt-1">Please refresh the page to try again. ({error})</p>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-pnw-slate">Playoff Projections</h1>
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100">Playoff Projections</h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
           Projected end-of-season standings, playoff fields, and tournament odds based on remaining schedules and power ratings
         </p>
@@ -842,7 +857,7 @@ export default function PlayoffProjections() {
                   onClick={() => setView(v.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                     view === v.key
-                      ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                      ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
                       : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                   }`}
                 >
@@ -862,7 +877,7 @@ export default function PlayoffProjections() {
                   onClick={() => setDivFilter(d)}
                   className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                     divFilter === d
-                      ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                      ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
                       : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                   }`}
                 >

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 const PNW_STATES = ['WA', 'OR', 'ID', 'MT', 'BC']
@@ -132,7 +133,7 @@ function PowerGauge({ rating, label, size = 80 }) {
           className="transition-all duration-1000 ease-out" />
       </svg>
       <div className="absolute flex flex-col items-center justify-center" style={{ width: size, height: size }}>
-        <span className="text-xl font-black text-pnw-slate">{pct.toFixed(0)}</span>
+        <span className="text-xl font-black text-nw-teal dark:text-gray-100">{pct.toFixed(0)}</span>
       </div>
       {label && <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase mt-1">{label}</span>}
     </div>
@@ -170,7 +171,7 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
           <div className="flex items-center gap-2">
             {a.logo_url && <img src={a.logo_url} alt="" className="w-8 h-8 object-contain" onError={(e) => { e.target.style.display = 'none' }} />}
             <div>
-              <div className="font-bold text-sm text-pnw-slate">{a.short_name}</div>
+              <div className="font-bold text-sm text-nw-teal dark:text-gray-100">{a.short_name}</div>
               <div className="flex items-center gap-1.5">
                 <span className={`px-1 py-0 rounded text-[9px] font-bold ${divisionBadgeClass(a.division_level)}`}>{a.division_level}</span>
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">{a.record}</span>
@@ -182,7 +183,7 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
         <div className={`p-3 ${colorB.light} border-b-2 text-right`} style={{ borderColor: colorB.bar }}>
           <div className="flex items-center gap-2 justify-end">
             <div>
-              <div className="font-bold text-sm text-pnw-slate">{b.short_name}</div>
+              <div className="font-bold text-sm text-nw-teal dark:text-gray-100">{b.short_name}</div>
               <div className="flex items-center gap-1.5 justify-end">
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">{b.record}</span>
                 <span className={`px-1 py-0 rounded text-[9px] font-bold ${divisionBadgeClass(b.division_level)}`}>{b.division_level}</span>
@@ -220,7 +221,7 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
             <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase">Power Rating</div>
           </div>
           <div className="flex flex-col items-center justify-center">
-            <div className="text-lg font-black text-pnw-slate">
+            <div className="text-lg font-black text-nw-teal dark:text-gray-100">
               {spread > 0 ? `${a.short_name} -${spreadAbs.toFixed(1)}` : spread < 0 ? `${b.short_name} -${spreadAbs.toFixed(1)}` : 'EVEN'}
             </div>
             <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase">Run Spread</div>
@@ -241,7 +242,7 @@ function MatchupCard({ matchup, teamMap, colorMap }) {
                 <div className="text-[10px] text-gray-400 dark:text-gray-500">Proj. Runs</div>
               </div>
               <div>
-                <div className="text-base font-bold text-pnw-slate">O/U {matchup.proj_total}</div>
+                <div className="text-base font-bold text-nw-teal dark:text-gray-100">O/U {matchup.proj_total}</div>
                 <div className="text-[10px] text-gray-400 dark:text-gray-500">Proj. Total</div>
               </div>
               <div>
@@ -306,8 +307,8 @@ export default function TeamComparison() {
 
     // Fetch both endpoints in parallel
     Promise.all([
-      fetch(`${API_BASE}/teams/compare?season=2026&team_ids=${idsStr}`).then(r => r.json()),
-      fetch(`${API_BASE}/teams/matchup?season=2026&team_ids=${idsStr}`).then(r => r.json()),
+      fetch(`${API_BASE}/teams/compare?season=${CURRENT_SEASON}&team_ids=${idsStr}`).then(r => r.json()),
+      fetch(`${API_BASE}/teams/matchup?season=${CURRENT_SEASON}&team_ids=${idsStr}`).then(r => r.json()),
     ])
       .then(([compare, matchup]) => {
         setCompareData(Array.isArray(compare) ? compare : [])
@@ -384,7 +385,7 @@ export default function TeamComparison() {
     <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-pnw-slate">Matchups & Comparison</h1>
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100">Matchups & Comparison</h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Cross-division power ratings, neutral-site projections, and head-to-head stat comparison</p>
       </div>
 
@@ -467,7 +468,7 @@ export default function TeamComparison() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                   activeTab === tab.key
-                    ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                    ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                 }`}
               >
@@ -481,7 +482,7 @@ export default function TeamComparison() {
             <div className="space-y-6">
               {/* Power Rankings Bar */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <div className="px-4 py-3 bg-gradient-to-r from-pnw-slate to-gray-700 border-b border-gray-200 dark:border-gray-700">
+                <div className="px-4 py-3 bg-gradient-to-r from-nw-teal to-gray-700 border-b border-gray-200 dark:border-gray-700">
                   <h2 className="text-sm font-bold uppercase tracking-wider text-white">Cross-Division Power Ratings</h2>
                   <p className="text-[10px] text-gray-300 mt-0.5">Based on Pythagorean win%, wRC+, FIP, WAR, and national rankings</p>
                 </div>
@@ -494,7 +495,7 @@ export default function TeamComparison() {
                         <div className="w-36 flex items-center gap-2 shrink-0">
                           {team.logo_url && <img src={team.logo_url} alt="" className="w-6 h-6 object-contain" onError={(e) => { e.target.style.display = 'none' }} />}
                           <div className="min-w-0">
-                            <div className="text-sm font-bold text-pnw-slate truncate">{team.short_name}</div>
+                            <div className="text-sm font-bold text-nw-teal dark:text-gray-100 truncate">{team.short_name}</div>
                             <div className="flex items-center gap-1">
                               <span className={`px-1 py-0 rounded text-[8px] font-bold ${divisionBadgeClass(team.division_level)}`}>{team.division_level}</span>
                               <span className="text-[10px] text-gray-400 dark:text-gray-500">{team.record}</span>
@@ -552,7 +553,7 @@ export default function TeamComparison() {
                                onError={(e) => { e.target.style.display = 'none' }} />
                         )}
                         <div>
-                          <h3 className="font-bold text-pnw-slate text-lg leading-tight">{team.short_name}</h3>
+                          <h3 className="font-bold text-nw-teal dark:text-gray-100 text-lg leading-tight">{team.short_name}</h3>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${divisionBadgeClass(team.division_level)}`}>
                               {team.division_level}
@@ -563,11 +564,11 @@ export default function TeamComparison() {
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-center">
                         <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg py-2">
-                          <div className="text-lg font-bold text-pnw-slate">{wins}-{losses}</div>
+                          <div className="text-lg font-bold text-nw-teal dark:text-gray-100">{wins}-{losses}</div>
                           <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase">Record</div>
                         </div>
                         <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg py-2">
-                          <div className="text-lg font-bold text-pnw-slate">{winPct}</div>
+                          <div className="text-lg font-bold text-nw-teal dark:text-gray-100">{winPct}</div>
                           <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase">Win%</div>
                         </div>
                         <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg py-2">
@@ -586,7 +587,7 @@ export default function TeamComparison() {
                 return (
                   <div key={section.label} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
-                      <h2 className="text-sm font-bold uppercase tracking-wider text-pnw-slate">{section.label}</h2>
+                      <h2 className="text-sm font-bold uppercase tracking-wider text-nw-teal dark:text-gray-100">{section.label}</h2>
                       <div className="flex items-center gap-3">
                         {compareData.map((team, idx) => {
                           const color = TEAM_COLORS[idx % TEAM_COLORS.length]
@@ -642,7 +643,7 @@ export default function TeamComparison() {
                     {section.label === 'Team Pitching' && (
                       <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900/40 border-t border-gray-200 dark:border-gray-700">
                         <div className="flex items-center">
-                          <div className="w-16 shrink-0 text-xs font-bold text-pnw-slate">Total WAR</div>
+                          <div className="w-16 shrink-0 text-xs font-bold text-nw-teal dark:text-gray-100">Total WAR</div>
                           <div className="flex-1 grid gap-2" style={{ gridTemplateColumns: `repeat(${compareData.length}, 1fr)` }}>
                             {compareData.map((team, i) => {
                               const vals = compareData.map(t => t.total_war || 0)
@@ -674,7 +675,7 @@ export default function TeamComparison() {
 
               {/* Edge Summary */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-pnw-slate mb-3">Edge Summary</h2>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-nw-teal dark:text-gray-100 mb-3">Edge Summary</h2>
                 <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${compareData.length}, 1fr)` }}>
                   {compareData.map((team, idx) => {
                     const color = TEAM_COLORS[idx % TEAM_COLORS.length]
@@ -689,7 +690,7 @@ export default function TeamComparison() {
                             <img src={team.logo_url} alt="" className="w-6 h-6 object-contain"
                                  onError={(e) => { e.target.style.display = 'none' }} />
                           )}
-                          <span className="font-bold text-sm text-pnw-slate">{team.short_name}</span>
+                          <span className="font-bold text-sm text-nw-teal dark:text-gray-100">{team.short_name}</span>
                         </div>
                         <div className={`text-3xl font-black ${color.text}`}>{totalWins}</div>
                         <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase mt-0.5">of {totalCats} categories</div>
@@ -724,7 +725,7 @@ export default function TeamComparison() {
                             <img src={team.logo_url} alt="" className="w-4 h-4 object-contain"
                                  onError={(e) => { e.target.style.display = 'none' }} />
                           )}
-                          <span className="text-xs font-bold text-pnw-slate">{team.short_name}</span>
+                          <span className="text-xs font-bold text-nw-teal dark:text-gray-100">{team.short_name}</span>
                         </div>
                         <div className="space-y-1.5 ml-4">
                           {(team.top_hitters || []).map((p, pi) => (
@@ -756,7 +757,7 @@ export default function TeamComparison() {
                             <img src={team.logo_url} alt="" className="w-4 h-4 object-contain"
                                  onError={(e) => { e.target.style.display = 'none' }} />
                           )}
-                          <span className="text-xs font-bold text-pnw-slate">{team.short_name}</span>
+                          <span className="text-xs font-bold text-nw-teal dark:text-gray-100">{team.short_name}</span>
                         </div>
                         <div className="space-y-1.5 ml-4">
                           {(team.top_pitchers || []).map((p, pi) => (

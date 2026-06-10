@@ -7,7 +7,7 @@ export default function Placeholder({ title, description }) {
             d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
         </svg>
       </div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-2">{title}</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">{title}</h1>
       <p className="text-gray-400 text-sm max-w-md">
         {description || 'This page is under construction. Check back soon!'}
       </p>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // Conference dropdown options (must match backend ALL_CONF_GROUPS keys)
 const CONF_OPTIONS = [
@@ -85,7 +86,7 @@ function PlayerCard({ player, kind, rateMode, compact }) {
           </div>
           <Link
             to={`/player/${player.player_id}`}
-            className="text-sm font-bold text-pnw-slate hover:text-nw-teal block truncate"
+            className="text-sm font-bold text-nw-teal hover:text-nw-teal block truncate"
           >
             {player.name}
           </Link>
@@ -153,7 +154,7 @@ function Stat({ label, value, hideCompact }) {
   return (
     <div className={`text-center ${hideCompact ? 'hidden sm:block' : ''}`}>
       <div className="text-[10px] uppercase text-gray-400 font-medium">{label}</div>
-      <div className="text-sm font-semibold text-pnw-slate tabular-nums">{value ?? '-'}</div>
+      <div className="text-sm font-semibold text-nw-teal dark:text-gray-100 tabular-nums">{value ?? '-'}</div>
     </div>
   )
 }
@@ -322,7 +323,7 @@ function HonorableMentions({ hm, rateMode }) {
 function CriteriaPanel({ rateMode }) {
   return (
     <details className="mb-6 bg-gray-50 border border-gray-200 rounded-lg">
-      <summary className="cursor-pointer px-4 py-2 text-sm font-semibold text-pnw-slate hover:bg-gray-100">
+      <summary className="cursor-pointer px-4 py-2 text-sm font-semibold text-nw-teal dark:text-gray-100 hover:bg-gray-100">
         How players are selected
       </summary>
       <div className="px-4 py-3 text-xs text-gray-700 space-y-2 leading-relaxed">
@@ -389,7 +390,7 @@ function CriteriaPanel({ rateMode }) {
 
 export default function AllConferenceGenerator() {
   const [conf, setConf] = useState('gnac')
-  const [season] = useState(2026)
+  const [season] = useState(CURRENT_SEASON)
   const { data, loading, error } = useApi('/all-conference', { conf, season }, [conf, season])
 
   const rateMode = data?.rate_mode
@@ -397,7 +398,7 @@ export default function AllConferenceGenerator() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-pnw-slate mb-1">All-Conference Generator</h1>
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">All-Conference Generator</h1>
         <p className="text-sm text-gray-500">
           Mock first team, second team, and honorable mentions built from current season stats.
         </p>
@@ -462,13 +463,13 @@ export default function AllConferenceGenerator() {
             title="First Team"
             team={data.first_team}
             rateMode={rateMode}
-            accentColor="text-nw-teal"
+            accentColor="text-nw-teal dark:text-gray-100"
           />
           <TeamSection
             title="Second Team"
             team={data.second_team}
             rateMode={rateMode}
-            accentColor="text-pnw-slate"
+            accentColor="text-nw-teal dark:text-gray-100"
           />
           <HonorableMentions hm={data.honorable_mentions} rateMode={rateMode} />
         </>

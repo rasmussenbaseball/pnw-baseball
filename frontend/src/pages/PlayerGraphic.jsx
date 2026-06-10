@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { usePlayer } from '../hooks/useApi'
 import { formatStat } from '../utils/stats'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // ─── Percentile color (Savant-style blue→gray→red) ────────────
 function percentileColor(pct) {
@@ -429,7 +430,7 @@ export default function PlayerGraphic() {
   const battingSeasons = battingStats.map(s => s.season)
   const pitchingSeasons = pitchingStats.map(s => s.season)
   const allSeasons = [...new Set([...battingSeasons, ...pitchingSeasons])].sort((a, b) => b - a)
-  const latestSeason = allSeasons[0] || 2026
+  const latestSeason = allSeasons[0] || CURRENT_SEASON
 
   const activeSeason = selectedSeason === 'latest' ? latestSeason : selectedSeason === 'career' ? 'career' : Number(selectedSeason)
 
@@ -469,7 +470,7 @@ export default function PlayerGraphic() {
   // Fetch team record + national ranking
   useEffect(() => {
     if (!info.team_id) return
-    const season = activeSeason === 'career' ? 2026 : activeSeason
+    const season = activeSeason === 'career' ? CURRENT_SEASON : activeSeason
     Promise.all([
       fetch(`/api/v1/team-ratings?season=${season}`).then(r => r.json()).catch(() => []),
       fetch(`/api/v1/national-rankings?season=${season}`).then(r => r.json()).catch(() => []),

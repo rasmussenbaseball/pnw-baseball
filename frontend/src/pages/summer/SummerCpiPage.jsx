@@ -3,6 +3,7 @@
 // regressed, schedule-adjusted results, centered at 100 (league average). Data
 // from GET /summer/cpi. Brand rule: no em-dashes in copy.
 import { useState, useEffect } from 'react'
+import { CURRENT_SEASON } from '../../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -41,7 +42,7 @@ export default function SummerCpiPage() {
     let cancel = false
     ;(async () => {
       try {
-        const r = await fetch(`${API_BASE}/summer/cpi?league=WCL&season=2026`)
+        const r = await fetch(`${API_BASE}/summer/cpi?league=WCL&season=${CURRENT_SEASON}`)
         if (!r.ok) throw new Error()
         const j = await r.json()
         if (!cancel) setData(j)
@@ -59,7 +60,7 @@ export default function SummerCpiPage() {
         <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-white dark:bg-gray-900 px-3 py-1 rounded-full mb-2 ring-1 ring-teal-100 dark:ring-teal-800">
           West Coast League · 2026
         </div>
-        <h1 className="text-3xl sm:text-4xl font-black text-pnw-slate dark:text-gray-100 leading-tight">Composite Power Index</h1>
+        <h1 className="text-3xl sm:text-4xl font-black text-nw-teal dark:text-gray-100 leading-tight">Composite Power Index</h1>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
           A predictive power rating. It blends each team's underlying performance with their schedule-adjusted results to estimate true strength, not just the standings. 100 is league average; higher is better.
         </p>
@@ -67,18 +68,18 @@ export default function SummerCpiPage() {
 
       {/* How it works */}
       <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
-        <h2 className="text-base font-black text-pnw-slate dark:text-gray-100 mb-2">How CPI works</h2>
+        <h2 className="text-base font-black text-nw-teal dark:text-gray-100 mb-2">How CPI works</h2>
         <div className="grid sm:grid-cols-3 gap-4 text-[13px] text-gray-600 dark:text-gray-400 leading-relaxed">
           <div>
-            <div className="font-bold text-pnw-slate dark:text-gray-200 mb-0.5">Underlying talent (the core)</div>
+            <div className="font-bold text-nw-teal dark:text-gray-200 mb-0.5">Underlying talent (the core)</div>
             Expected run differential from team wRC+ (offense) and FIP (pitching), which strip out sequencing and clutch luck. This is more stable and more predictive than win-loss in a short season.
           </div>
           <div>
-            <div className="font-bold text-pnw-slate dark:text-gray-200 mb-0.5">Schedule-adjusted results</div>
+            <div className="font-bold text-nw-teal dark:text-gray-200 mb-0.5">Schedule-adjusted results</div>
             A strength-of-schedule rating from game margins, so beating strong opponents counts more. It is regressed hard early in the season, when a small record tells you little.
           </div>
           <div>
-            <div className="font-bold text-pnw-slate dark:text-gray-200 mb-0.5">Projection</div>
+            <div className="font-bold text-nw-teal dark:text-gray-200 mb-0.5">Projection</div>
             The blend becomes a projected win percentage and a full-season expected record. The <span className="font-semibold">vs Record</span> column shows who is over or under their true level (a buy-low or sell-high signal).
           </div>
         </div>
@@ -111,7 +112,7 @@ export default function SummerCpiPage() {
                   <td className="px-2">
                     <span className="inline-flex items-center gap-2">
                       <Logo src={t.logo} />
-                      <span className="font-bold text-pnw-slate dark:text-gray-100">{t.team}</span>
+                      <span className="font-bold text-nw-teal dark:text-gray-100">{t.team}</span>
                     </span>
                   </td>
                   <td className={`text-right px-2 font-black text-base ${cpiColor(t.cpi)}`}>{t.cpi}</td>

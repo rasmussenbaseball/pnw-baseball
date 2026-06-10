@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useStandings } from '../hooks/useApi'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import { usePersistedState } from '../hooks/usePersistedState'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -276,7 +277,7 @@ function OverallTable({ teams, clinchedTeams }) {
 // ─── Main Standings Page ───
 export default function StandingsPage() {
   const [view, setView] = usePersistedState('standings_view', 'conference') // 'conference' | 'overall'
-  const { data, loading, error } = useStandings(2026)
+  const { data, loading, error } = useStandings(CURRENT_SEASON)
 
   // Fetch playoff projections so we can mark mathematically clinched teams.
   // The backend computes `clinched` via a worst-case check (team loses
@@ -284,7 +285,7 @@ export default function StandingsPage() {
   // Failure is non-fatal — standings still render without the badge.
   const [clinchedTeams, setClinchedTeams] = useState(new Set())
   useEffect(() => {
-    fetch(`${API_BASE}/playoff-projections?season=2026`)
+    fetch(`${API_BASE}/playoff-projections?season=${CURRENT_SEASON}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d || !Array.isArray(d.conferences)) return
@@ -343,7 +344,7 @@ export default function StandingsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-pnw-slate">Standings</h1>
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100">Standings</h1>
         <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
           <button
             onClick={() => setView('conference')}

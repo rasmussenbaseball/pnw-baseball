@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useNationalRankings } from '../hooks/useApi'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const BADGE_COLORS = {
   D1: 'bg-red-600 text-white',
@@ -339,7 +340,7 @@ function InfoCard() {
 // ─── Main Page ───
 export default function NationalRankings() {
   const [view, setView] = useState('by-division')
-  const { data, loading, error } = useNationalRankings(2026)
+  const { data, loading, error } = useNationalRankings(CURRENT_SEASON)
 
   if (loading) {
     return (

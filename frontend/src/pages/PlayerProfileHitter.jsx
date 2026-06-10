@@ -17,6 +17,7 @@ import {
   SectionCard, SeasonStatTable, GameLogTable, CareerPath, StreaksCard,
   ProfileShell, divisionBadge,
 } from '../components/playerProfile/shared'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // SEASON is derived from the `season` prop inside the component (the year
 // selector / ?season= URL param), so the page can render any season.
@@ -209,8 +210,8 @@ function DefensiveStats({ rows }) {
 }
 
 // ───────────────────────────────────────────────────────────────
-export default function PlayerProfileHitter({ playerId, data, season = 2026, sideToggle = null, seasonSelector = null }) {
-  const SEASON = season || 2026
+export default function PlayerProfileHitter({ playerId, data, season = CURRENT_SEASON, sideToggle = null, seasonSelector = null }) {
+  const SEASON = season || CURRENT_SEASON
   const T = usePlayerProfileTheme()
   const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
 

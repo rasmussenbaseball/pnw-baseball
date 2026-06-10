@@ -25,9 +25,10 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApi, useTeams } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 
 // ─────────────────────────────────────────────────────────

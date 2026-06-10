@@ -34,18 +34,18 @@ function CrashFallback() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-2xl font-bold text-pnw-slate mb-2">Something went wrong</h1>
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">Something went wrong</h1>
         <p className="text-gray-600 mb-6">
           We hit an unexpected error and have been notified. Try reloading the page.
           If it keeps happening,{' '}
-          <a href="/feature-request" className="text-pnw-green underline hover:text-pnw-forest">
+          <a href="/feature-request" className="text-nw-teal underline hover:text-nw-teal-dark">
             let us know
           </a>{' '}
           so we can take a look.
         </p>
         <button
           onClick={() => window.location.reload()}
-          className="px-5 py-2.5 bg-pnw-green text-white rounded-lg font-semibold hover:bg-pnw-forest transition-colors"
+          className="px-5 py-2.5 bg-nw-teal text-white rounded-lg font-semibold hover:bg-nw-teal-dark transition-colors"
         >
           Reload
         </button>

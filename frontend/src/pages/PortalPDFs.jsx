@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTeams, usePlayerSearch, useApi } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 
 export default function PortalPDFs() {
@@ -53,10 +54,10 @@ export default function PortalPDFs() {
 // ─────────────────────────────────────────────────────────
 function NWACChampBoardCard({ onOpen }) {
   return (
-    <div className="bg-gradient-to-br from-[#04323d] via-[#062f3a] to-[#021b22] border border-pnw-teal/40 rounded-lg shadow-sm p-4 text-white">
+    <div className="bg-gradient-to-br from-[#04323d] via-[#062f3a] to-[#021b22] border border-nw-teal-light/40 rounded-lg shadow-sm p-4 text-white">
       <div className="flex items-baseline justify-between mb-1">
         <h2 className="text-lg font-bold text-white">NWAC Championship Board</h2>
-        <span className="text-[11px] text-pnw-teal/80">all 8 teams · ranked by WAR</span>
+        <span className="text-[11px] text-nw-teal-light/80">all 8 teams · ranked by WAR</span>
       </div>
       <p className="text-xs text-white/70 mb-3">
         The whole championship field on two ranked boards: every pitcher, then every hitter
@@ -67,7 +68,7 @@ function NWACChampBoardCard({ onOpen }) {
         <button
           onClick={onOpen}
           className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
-                     bg-pnw-teal text-white hover:bg-white hover:text-[#04323d] transition-colors"
+                     bg-nw-teal-light text-white hover:bg-white hover:text-[#04323d] transition-colors"
         >
           Open Board
         </button>
@@ -407,7 +408,7 @@ function BulkPlayerCardsCard({ onGenerate }) {
   // Skipped when no team picked yet.
   const { data: sheet, loading: sheetLoading } = useApi(
     teamId ? `/portal/scouting-sheet/${teamId}` : null,
-    { season: 2026 },
+    { season: CURRENT_SEASON },
     [teamId]
   )
 

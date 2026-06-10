@@ -12,6 +12,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTheme } from '../../context/ThemeContext'
+import { CURRENT_SEASON } from '../../lib/seasons'
 
 // ── Palettes ───────────────────────────────────────────────────
 export const THEME_LIGHT = {
@@ -519,7 +520,7 @@ export function CareerPath({ player, divisionBadge, seasonRange }) {
 }
 
 // ── Streaks card (batting; hitter pages only) ──────────────────
-export function StreaksCard({ playerId, season = 2026 }) {
+export function StreaksCard({ playerId, season = CURRENT_SEASON }) {
   const T = usePlayerProfileTheme()
   const [data, setData] = useState(null)
   useEffect(() => {

@@ -155,11 +155,11 @@ export default function PlayerTrackerTable({
       <table className="w-full text-[11px] leading-tight border-collapse">
         <thead>
           {/* Category header row */}
-          <tr className="sticky top-0 z-20 bg-pnw-slate">
-            <th colSpan={7} style={{width:488,minWidth:488,maxWidth:488}} className="sticky left-0 z-30 bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+          <tr className="sticky top-0 z-20 bg-nw-teal">
+            <th colSpan={7} style={{width:488,minWidth:488,maxWidth:488}} className="sticky left-0 z-30 bg-nw-teal text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
               Player Info
             </th>
-            <th colSpan={statCols.length} className="bg-pnw-slate text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
+            <th colSpan={statCols.length} className="bg-nw-teal text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
               {groupLabel}
             </th>
           </tr>

@@ -9,6 +9,7 @@
 // filters to WA/OR/ID/MT/BC).
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 const W = 1080
@@ -486,7 +487,7 @@ async function renderRecap(canvas, data) {
 export default function TeamSeasonRecapGraphic() {
   const [teams, setTeams] = useState([])
   const [selectedTeamId, setSelectedTeamId] = useState('')
-  const [season, setSeason] = useState(2026)
+  const [season, setSeason] = useState(CURRENT_SEASON)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -534,7 +535,7 @@ export default function TeamSeasonRecapGraphic() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-1">Team Season Recap Graphic</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Team Season Recap Graphic</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
         End-of-year, positive-only team snapshot for Instagram/X (1080×1350). Team-colored, with record, win streak,
         WAR leaders, freshman of the year, a conference superlative, and the season's most clutch moment.

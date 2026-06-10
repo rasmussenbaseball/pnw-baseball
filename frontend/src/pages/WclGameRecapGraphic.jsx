@@ -14,6 +14,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 const W = 1080
@@ -638,7 +639,7 @@ export default function WclGameRecapGraphic() {
     setLoadingList(true)
     ;(async () => {
       try {
-        const r = await fetch(`${API_BASE}/summer/scoreboard?league=WCL&season=2026&days_back=120&days_ahead=3`)
+        const r = await fetch(`${API_BASE}/summer/scoreboard?league=WCL&season=${CURRENT_SEASON}&days_back=120&days_ahead=3`)
         if (!r.ok) throw new Error(`scoreboard fetch failed: ${r.status}`)
         const all = await r.json()
         const finals = all

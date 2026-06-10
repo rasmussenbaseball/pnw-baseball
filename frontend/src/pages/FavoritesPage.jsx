@@ -28,7 +28,7 @@ function PlayerCard({ p }) {
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <Link to={`/player/${p.id}`} className="font-bold text-pnw-slate hover:text-nw-teal truncate">
+            <Link to={`/player/${p.id}`} className="font-bold text-nw-teal hover:text-nw-teal truncate">
               {p.first_name} {p.last_name}
             </Link>
             <FavoriteButton type="player" targetId={p.id} size="sm" />
@@ -205,7 +205,7 @@ function TeamCard({ t }) {
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <Link to={`/team/${t.id}`} className="font-bold text-pnw-slate hover:text-nw-teal truncate">
+            <Link to={`/team/${t.id}`} className="font-bold text-nw-teal hover:text-nw-teal truncate">
               {t.name}
             </Link>
             <FavoriteButton type="team" targetId={t.id} size="sm" />
@@ -292,7 +292,7 @@ export default function FavoritesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-6">My Favorites</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-6">My Favorites</h1>
 
       {loading && <div className="text-gray-400 dark:text-gray-500 animate-pulse">Loading...</div>}
 
@@ -312,7 +312,7 @@ export default function FavoritesPage() {
       {/* Teams section */}
       {teams.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-pnw-slate mb-3">
+          <h2 className="text-lg font-semibold text-nw-teal dark:text-gray-100 mb-3">
             Teams ({teams.length})
           </h2>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -324,7 +324,7 @@ export default function FavoritesPage() {
       {/* Players section */}
       {players.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold text-pnw-slate mb-3">
+          <h2 className="text-lg font-semibold text-nw-teal dark:text-gray-100 mb-3">
             Players ({players.length})
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -13,6 +13,7 @@ import {
   PITCHING_PBP_COLUMNS, PITCHING_PBP_PRESETS,
 } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // PBP lives inside the View: pill bar as another preset alongside
 // Standard / Advanced / Strikeouts / Relievers.
@@ -20,7 +21,7 @@ const ALL_PRESETS = { ...PITCHING_PRESETS, PBP: PITCHING_PBP_PRESETS.PBP }
 
 export default function PitchingLeaderboard() {
   const [filters, setFilters] = usePersistedState('pit_lb_filters', {
-    season: 2026,
+    season: CURRENT_SEASON,
     min_ip: 20,
     _type: 'pitching',
   })
@@ -98,7 +99,7 @@ export default function PitchingLeaderboard() {
 
   return (
     <div>
-      <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate mb-3 sm:mb-4">Pitching Leaders</h1>
+      <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100 mb-3 sm:mb-4">Pitching Leaders</h1>
 
       <FilterBar
         filters={filters}

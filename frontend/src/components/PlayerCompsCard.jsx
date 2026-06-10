@@ -12,6 +12,7 @@
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { usePlayerProfileTheme, pctColor } from './playerProfile/shared'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 function ScorePill({ score }) {
   return (
@@ -40,7 +41,7 @@ function CompRow({ T, r, sub, to }) {
   )
 }
 
-export default function PlayerCompsCard({ playerId, side = 'hitter', divLabel, season = 2026 }) {
+export default function PlayerCompsCard({ playerId, side = 'hitter', divLabel, season = CURRENT_SEASON }) {
   const T = usePlayerProfileTheme()
   const titleNoun = side === 'pitcher' ? 'Pitchers' : 'Players'
   const { data, loading } = useApi(

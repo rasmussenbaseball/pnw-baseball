@@ -15,6 +15,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import SummerPageShell from './SummerPageShell'
 import { useApi } from '../../hooks/useApi'
+import { CURRENT_SEASON } from '../../lib/seasons'
 
 const LEAGUE = 'WCL'
 const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2019]
@@ -32,7 +33,7 @@ const fmtPct = (v) => v == null ? '—' : `${(v * 100).toFixed(1)}%`
 
 export default function SummerStatsPage() {
   const [tab,     setTab]     = useState('batting')
-  const [season,  setSeason]  = useState(2026)
+  const [season,  setSeason]  = useState(CURRENT_SEASON)
   return (
     <SummerPageShell
       title="WCL Stats"

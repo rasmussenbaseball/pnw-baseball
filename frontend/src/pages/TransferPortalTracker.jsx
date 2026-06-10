@@ -4,6 +4,7 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 import PlayerTrackerTable, {
   BoardToggle, HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 /**
  * Transfer Portal Tracker — PNW four-year (non-JUCO) college players who
@@ -13,7 +14,7 @@ import PlayerTrackerTable, {
  */
 
 export default function TransferPortalTracker() {
-  const [season, setSeason] = usePersistedState('tp_season', 2026)
+  const [season, setSeason] = usePersistedState('tp_season', CURRENT_SEASON)
   const [position, setPosition] = usePersistedState('tp_position', '')
   const [hitSortBy, setHitSortBy] = usePersistedState('tp_hitSortBy', 'offensive_war')
   const [hitSortDir, setHitSortDir] = usePersistedState('tp_hitSortDir', 'desc')
@@ -55,7 +56,7 @@ export default function TransferPortalTracker() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-2">Transfer Portal Tracker</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">Transfer Portal Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Pacific Northwest four-year college players who have entered the transfer portal. Two-way players appear on both tables.
       </p>

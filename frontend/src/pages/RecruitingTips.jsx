@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const LEVELS = {
   D1: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
@@ -18,7 +19,7 @@ function Card({ title, kicker, children }) {
   return (
     <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-4">
       {kicker && <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">{kicker}</div>}
-      <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-3">{title}</h2>
+      <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100 mb-3">{title}</h2>
       <div className="text-[14px] leading-relaxed text-gray-700 dark:text-gray-300 space-y-3">{children}</div>
     </section>
   )
@@ -34,7 +35,7 @@ function FreshmanByDivision() {
       try {
         const { data: sess } = await supabase.auth.getSession()
         const token = sess?.session?.access_token
-        const r = await fetch('/api/v1/recruiting/freshman-by-division?season=2026', {
+        const r = await fetch(`/api/v1/recruiting/freshman-by-division?season=${CURRENT_SEASON}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!r.ok) throw new Error()
@@ -53,7 +54,7 @@ function FreshmanByDivision() {
   return (
     <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-4">
       <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">By the numbers</div>
-      <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100">Freshman production by level ({data?.season || 2026})</h2>
+      <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100">Freshman production by level ({data?.season || CURRENT_SEASON})</h2>
       <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-1 mb-4">
         Where do PNW players land, and how much do they actually play as freshmen? This is the average first-year line at each level of PNW college baseball. Rostered is every freshman on the roster and DNP is how many never appeared in a game; playing time (PA, IP) counts every freshman who did appear, and rate stats (AVG, OPS, wRC+, ERA) use freshmen who got real reps.
       </p>
@@ -152,7 +153,7 @@ export default function RecruitingTips() {
         <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-teal-50 dark:bg-teal-900/30 px-3 py-1 rounded-full mb-2">
           Recruiting Tips
         </div>
-        <h1 className="text-3xl sm:text-4xl font-black text-pnw-slate dark:text-gray-100 leading-tight">How to get recruited</h1>
+        <h1 className="text-3xl sm:text-4xl font-black text-nw-teal dark:text-gray-100 leading-tight">How to get recruited</h1>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
           A straight-talk guide to how college baseball recruiting really works in the Pacific Northwest, plus the data on where players land and how much they play.
         </p>

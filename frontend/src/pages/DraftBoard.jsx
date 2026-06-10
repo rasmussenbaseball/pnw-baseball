@@ -220,7 +220,7 @@ export default function DraftBoard({ year }) {
     <div>
       {/* Header + Year Tabs */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-pnw-slate mb-1">PNW MLB Draft Board</h1>
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">PNW MLB Draft Board</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Top PNW prospects for the MLB Draft
         </p>
@@ -231,7 +231,7 @@ export default function DraftBoard({ year }) {
               onClick={() => setActiveYear(yr)}
               className={`px-5 py-2 rounded-md text-sm font-bold transition-all ${
                 activeYear === yr
-                  ? 'bg-pnw-teal text-white shadow-md'
+                  ? 'bg-nw-teal-light text-white shadow-md'
                   : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-gray-900/40 shadow-sm'
               }`}
             >

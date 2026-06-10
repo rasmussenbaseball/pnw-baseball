@@ -1,8 +1,9 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useTeams, useDivisions, useOpponentTrends } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 export default function OpponentTrends() {
   // Pre-fill from the portal team if this page is rendered inside the

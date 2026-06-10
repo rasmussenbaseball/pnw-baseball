@@ -28,7 +28,7 @@ export default function TeamHistory() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-2">Program History</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">Program History</h1>
       <p className="text-sm text-gray-500 mb-4">
         Select a team to view year-by-year records, season stat leaders, and all-time career leaders.
       </p>
@@ -39,7 +39,7 @@ export default function TeamHistory() {
         placeholder="Search teams..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="w-full max-w-md px-3 py-2 border rounded-lg text-sm mb-6 focus:outline-none focus:ring-2 focus:ring-pnw-teal/30"
+        className="w-full max-w-md px-3 py-2 border rounded-lg text-sm mb-6 focus:outline-none focus:ring-2 focus:ring-nw-teal-light/30"
       />
 
       {loading && <div className="text-gray-400 animate-pulse">Loading teams...</div>}
@@ -59,7 +59,7 @@ export default function TeamHistory() {
                 <Link
                   key={t.id}
                   to={`/team/${t.id}?tab=history`}
-                  className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border hover:border-pnw-teal/50 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border hover:border-nw-teal-light/50 hover:bg-gray-50 transition-colors"
                 >
                   {t.logo_url && (
                     <img
@@ -69,7 +69,7 @@ export default function TeamHistory() {
                       onError={(e) => { e.target.style.display = 'none' }}
                     />
                   )}
-                  <span className="text-sm font-medium text-pnw-slate">{t.short_name || t.name}</span>
+                  <span className="text-sm font-medium text-nw-teal dark:text-gray-100">{t.short_name || t.name}</span>
                 </Link>
               ))}
             </div>

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // ─── Theme (matches AllConferenceGraphic / ConferenceStandingsGraphic) ───
 const THEME = {
@@ -448,7 +449,7 @@ function collectPlayersAndTeams(hitters, pitchers) {
 
 // ─── Main component ───
 export default function TopPerformersGraphic() {
-  const [season] = useState(2026)
+  const [season] = useState(CURRENT_SEASON)
   const [weekStart, setWeekStart] = useState(null)  // YYYY-MM-DD Monday
   const [divFilter, setDivFilter] = useState('ALL')
   const [exporting, setExporting] = useState(false)
@@ -577,7 +578,7 @@ export default function TopPerformersGraphic() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Top Performers Graphic</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Top Performers Graphic</h1>
       <p className="text-sm text-gray-500 mb-5">
         Weekly top 10 hitters and top 10 pitchers across PNW baseball. Monday to Sunday.
       </p>
@@ -593,7 +594,7 @@ export default function TopPerformersGraphic() {
               value={weekStart || ''}
               onChange={(e) => { setWeekStart(e.target.value); setImages(null) }}
               disabled={!weeksData?.weeks?.length}
-              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
             >
               {(weeksData?.weeks || []).map(w => (
                 <option key={w.week_start} value={w.week_start}>
@@ -614,8 +615,8 @@ export default function TopPerformersGraphic() {
                   onClick={() => setDivFilter(d)}
                   className={`px-2 py-1.5 text-xs font-semibold rounded border transition-colors ${
                     divFilter === d
-                      ? 'bg-pnw-sky text-white border-pnw-sky'
-                      : 'bg-white text-pnw-slate border-gray-300 hover:bg-gray-50'
+                      ? 'bg-nw-teal-light text-white border-nw-teal-light'
+                      : 'bg-white text-nw-teal border-gray-300 hover:bg-gray-50'
                   }`}
                 >
                   {d}
@@ -627,7 +628,7 @@ export default function TopPerformersGraphic() {
           <button
             onClick={handleExport}
             disabled={exporting || !filtered || !images}
-            className="w-full px-4 py-2.5 bg-pnw-green text-white text-sm font-semibold rounded-lg hover:bg-pnw-forest transition-colors disabled:opacity-50"
+            className="w-full px-4 py-2.5 bg-nw-teal text-white text-sm font-semibold rounded-lg hover:bg-nw-teal-dark transition-colors disabled:opacity-50"
           >
             {exporting ? 'Generating...' : 'Download PNG'}
           </button>

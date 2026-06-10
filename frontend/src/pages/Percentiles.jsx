@@ -45,7 +45,7 @@ function PercentileCell({ pct, highlighted }) {
   return (
     <td
       className={`text-center p-0 align-middle ${
-        highlighted ? 'ring-2 ring-inset ring-pnw-slate' : ''
+        highlighted ? 'ring-2 ring-inset ring-nw-teal' : ''
       }`}
     >
       <div
@@ -99,7 +99,7 @@ export default function Percentiles() {
     <div>
       <div className="flex items-start justify-between gap-3 mb-2">
         <div>
-          <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate">Percentile Rankings</h1>
+          <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100">Percentile Rankings</h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">
             Every qualified player ranked against others at their division level.
             Red = best, blue = worst. The Avg column averages all percentiles in
@@ -117,7 +117,7 @@ export default function Percentiles() {
               key={t.key}
               onClick={() => { setType(t.key); setSortKey('avg_pct') }}
               className={`px-4 py-1.5 text-sm font-semibold transition-colors ${
-                type === t.key ? 'bg-pnw-green text-white' : 'text-gray-700 hover:bg-gray-50'
+                type === t.key ? 'bg-nw-teal text-white' : 'text-gray-700 hover:bg-gray-50'
               }`}
             >
               {t.label}
@@ -131,7 +131,7 @@ export default function Percentiles() {
               key={lv}
               onClick={() => setLevel(lv)}
               className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
-                level === lv ? 'bg-pnw-slate text-white' : 'text-gray-700 hover:bg-gray-50'
+                level === lv ? 'bg-nw-teal text-white' : 'text-gray-700 hover:bg-gray-50'
               }`}
             >
               {lv}
@@ -146,7 +146,7 @@ export default function Percentiles() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search player or team..."
-          className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pnw-green/30"
+          className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
         />
       </div>
 
@@ -175,18 +175,18 @@ export default function Percentiles() {
 
       <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
         <table className="w-full border-collapse text-sm">
-          <thead className="bg-pnw-slate text-white sticky top-0 z-10">
+          <thead className="bg-nw-teal text-white sticky top-0 z-10">
             <tr>
               <th className="text-left px-2 py-2 font-semibold uppercase text-[11px] tracking-wider w-10">
                 Rk
               </th>
-              <th className="text-left px-3 py-2 font-semibold uppercase text-[11px] tracking-wider sticky left-0 bg-pnw-slate z-20 min-w-[200px]">
+              <th className="text-left px-3 py-2 font-semibold uppercase text-[11px] tracking-wider sticky left-0 bg-nw-teal z-20 min-w-[200px]">
                 Player
               </th>
               <th
                 onClick={() => setSortKey('avg_pct')}
-                className={`text-center px-2 py-2 font-semibold uppercase text-[11px] tracking-wider min-w-[64px] cursor-pointer hover:bg-pnw-green/30 ${
-                  sortKey === 'avg_pct' ? 'bg-pnw-green' : ''
+                className={`text-center px-2 py-2 font-semibold uppercase text-[11px] tracking-wider min-w-[64px] cursor-pointer hover:bg-nw-teal/30 ${
+                  sortKey === 'avg_pct' ? 'bg-nw-teal' : ''
                 }`}
               >
                 Avg
@@ -195,8 +195,8 @@ export default function Percentiles() {
                 <th
                   key={s.key}
                   onClick={() => setSortKey(s.key)}
-                  className={`text-center px-2 py-2 font-semibold uppercase text-[11px] tracking-wider min-w-[64px] cursor-pointer hover:bg-pnw-green/30 ${
-                    sortKey === s.key ? 'bg-pnw-green' : ''
+                  className={`text-center px-2 py-2 font-semibold uppercase text-[11px] tracking-wider min-w-[64px] cursor-pointer hover:bg-nw-teal/30 ${
+                    sortKey === s.key ? 'bg-nw-teal' : ''
                   }`}
                 >
                   {s.label}
@@ -238,7 +238,7 @@ export default function Percentiles() {
                     <div className="min-w-0">
                       <Link
                         to={`/player/${p.player_id}`}
-                        className="block font-semibold text-pnw-slate hover:text-pnw-green truncate text-sm"
+                        className="block font-semibold text-nw-teal hover:text-nw-teal truncate text-sm"
                       >
                         {p.last_name}, {p.first_name}
                       </Link>

@@ -384,7 +384,7 @@ export default function RecruitQuiz() {
         <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-teal-50 dark:bg-teal-900/30 px-3 py-1 rounded-full mb-3">
           Recruit Matchmaker
         </div>
-        <h1 className="text-3xl sm:text-4xl font-black text-pnw-slate dark:text-gray-100 leading-tight">
+        <h1 className="text-3xl sm:text-4xl font-black text-nw-teal dark:text-gray-100 leading-tight">
           Find your best-fit <span className="text-nw-teal">NW program</span>
         </h1>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-md mx-auto">
@@ -413,7 +413,7 @@ export default function RecruitQuiz() {
           </div>
 
           <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">{q.cat}</div>
-          <div className="text-lg sm:text-xl font-bold text-pnw-slate dark:text-gray-100 leading-snug mb-2">{q.text}</div>
+          <div className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100 leading-snug mb-2">{q.text}</div>
           {q.hint && (
             <div className="text-[13px] text-gray-500 dark:text-gray-400 mb-4 px-3 py-2 bg-teal-50/60 dark:bg-teal-900/20 border-l-2 border-teal-300 dark:border-teal-700 rounded-r">
               {q.hint}
@@ -429,7 +429,7 @@ export default function RecruitQuiz() {
                   onClick={() => pick(q, opt.value)}
                   className={`flex items-center gap-3 text-left rounded-xl border px-3.5 py-3 text-sm transition-colors w-full
                     ${sel
-                      ? 'border-nw-teal bg-teal-50 dark:bg-teal-900/30 text-pnw-slate dark:text-gray-100 ring-2 ring-nw-teal/30'
+                      ? 'border-nw-teal bg-teal-50 dark:bg-teal-900/30 text-nw-teal dark:text-gray-100 ring-2 ring-nw-teal/30'
                       : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-nw-teal hover:bg-teal-50/40 dark:hover:bg-teal-900/20'}`}
                 >
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 border
@@ -479,7 +479,7 @@ export default function RecruitQuiz() {
         <div>
           <div className="mb-4">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-2xl font-black text-pnw-slate dark:text-gray-100">Your top program matches</h2>
+              <h2 className="text-2xl font-black text-nw-teal dark:text-gray-100">Your top program matches</h2>
               <button onClick={restart}
                 className="shrink-0 mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 underline decoration-dotted underline-offset-2 whitespace-nowrap">
                 Clear &amp; retake
@@ -518,8 +518,8 @@ export default function RecruitQuiz() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       {s.teamId
-                        ? <Link to={`/team/${s.teamId}`} className="font-bold text-pnw-slate dark:text-gray-100 hover:text-nw-teal">{s.name}</Link>
-                        : <span className="font-bold text-pnw-slate dark:text-gray-100">{s.name}</span>}
+                        ? <Link to={`/team/${s.teamId}`} className="font-bold text-nw-teal dark:text-gray-100 hover:text-nw-teal">{s.name}</Link>
+                        : <span className="font-bold text-nw-teal dark:text-gray-100">{s.name}</span>}
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${LEVEL_CHIP[s.level] || ''}`}>{s.level}</span>
                       {i === 0 && <span className="text-[10px] font-bold uppercase tracking-wide bg-nw-teal text-white px-2 py-0.5 rounded-full">Best Match</span>}
                     </div>
@@ -564,12 +564,12 @@ export default function RecruitQuiz() {
             })}
           </div>
 
-          <div className="mt-5 rounded-xl bg-gradient-to-br from-pnw-slate to-[#1f3a4d] dark:from-gray-900 dark:to-gray-800 p-5 flex items-center justify-between gap-4 flex-wrap">
+          <div className="mt-5 rounded-xl bg-gradient-to-br from-nw-teal to-[#1f3a4d] dark:from-gray-900 dark:to-gray-800 p-5 flex items-center justify-between gap-4 flex-wrap">
             <div className="text-white">
               <div className="font-bold">Dig deeper on your matches</div>
               <p className="text-sm text-white/70 mt-0.5">Every NW program has full stats, rosters, and analytics on NW Baseball Stats.</p>
             </div>
-            <Link to="/teams" className="bg-white text-pnw-slate font-bold text-sm rounded-lg px-4 py-2 hover:bg-teal-50 transition-colors whitespace-nowrap">
+            <Link to="/teams" className="bg-white text-nw-teal font-bold text-sm rounded-lg px-4 py-2 hover:bg-teal-50 transition-colors whitespace-nowrap">
               Browse all teams →
             </Link>
           </div>

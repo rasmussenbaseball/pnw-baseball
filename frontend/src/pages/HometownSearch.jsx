@@ -62,7 +62,7 @@ export default function HometownSearch() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Hometown Search</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Hometown Search</h1>
       <p className="text-sm text-gray-500 mb-5">
         Search your hometown to see which PNW college programs players from your area have gone to.
       </p>

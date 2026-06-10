@@ -169,7 +169,7 @@ function Formula({ children }) {
 
 function SectionHeading({ id, children }) {
   return (
-    <h2 id={id} className="text-lg font-bold text-pnw-slate dark:text-gray-100 mt-8 mb-3 scroll-mt-20 flex items-center gap-2">
+    <h2 id={id} className="text-lg font-bold text-nw-teal dark:text-gray-100 mt-8 mb-3 scroll-mt-20 flex items-center gap-2">
       {children}
     </h2>
   )
@@ -178,8 +178,7 @@ function SectionHeading({ id, children }) {
 // NOTE: full class names are spelled out here because Tailwind JIT
 // can't see dynamically built class strings (e.g. `text-${color}`).
 const CHIP_COLOR_CLASS = {
-  'nw-teal':    'text-nw-teal',
-  'pnw-slate':  'text-pnw-slate dark:text-gray-100',
+  'nw-teal': 'text-nw-teal dark:text-gray-100',
 }
 
 function StatChip({ label, value, sub, color = 'nw-teal' }) {
@@ -240,24 +239,24 @@ function HeroStats({ siteStats }) {
         <StatChip
           label="Players"
           value={siteStats.total_players?.toLocaleString() ?? '—'}
-          color="pnw-slate"
+          color="nw-teal"
         />
         <StatChip
           label="Games"
           value={siteStats.total_games?.toLocaleString() ?? '—'}
-          color="pnw-slate"
+          color="nw-teal"
         />
         <StatChip
           label="Hours with Claude"
           value={`${CLAUDE_HOURS}+`}
           sub="AI pair-coding sessions"
-          color="pnw-slate"
+          color="nw-teal"
         />
         <StatChip
           label="Lines of Code"
           value={LOC.total.toLocaleString()}
           sub="Frontend + backend + scrapers"
-          color="pnw-slate"
+          color="nw-teal"
         />
       </div>
     </div>
@@ -346,7 +345,7 @@ function TeamSection() {
               className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4 border border-gray-100 dark:border-gray-700"
             >
               <div className="flex items-start gap-3">
-                <div className="shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-nw-teal/30 to-pnw-slate/20 dark:from-nw-teal/40 dark:to-gray-700 flex items-center justify-center">
+                <div className="shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-nw-teal/30 to-nw-teal/20 dark:from-nw-teal/40 dark:to-gray-700 flex items-center justify-center">
                   {intern.headshot ? (
                     <img src={intern.headshot} alt={intern.name} className="w-12 h-12 rounded-full object-cover" />
                   ) : (
@@ -360,7 +359,7 @@ function TeamSection() {
                     {intern.playerId ? (
                       <Link
                         to={`/player/${intern.playerId}`}
-                        className="text-sm font-bold text-nw-teal hover:text-pnw-sky dark:text-nw-teal/90 dark:hover:text-pnw-sky underline-offset-2 hover:underline"
+                        className="text-sm font-bold text-nw-teal hover:text-nw-teal-light dark:text-nw-teal/90 dark:hover:text-nw-teal-light underline-offset-2 hover:underline"
                       >
                         {intern.name}
                       </Link>
@@ -388,7 +387,7 @@ function TeamSection() {
                       <span className="font-bold uppercase tracking-wider text-[9px] text-nw-teal mr-1">Built</span>
                       <Link
                         to={intern.built.to}
-                        className="text-nw-teal hover:text-pnw-sky hover:underline font-medium underline-offset-2"
+                        className="text-nw-teal hover:text-nw-teal-light hover:underline font-medium underline-offset-2"
                       >
                         {intern.built.label} →
                       </Link>
@@ -400,7 +399,7 @@ function TeamSection() {
               {/* 2026 statistical highlight — detached mini-section */}
               {intern.highlight && (
                 <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2.5">
-                  <div className="shrink-0 w-11 h-11 rounded-lg bg-gradient-to-br from-nw-teal to-pnw-sky text-white flex flex-col items-center justify-center leading-none shadow-sm">
+                  <div className="shrink-0 w-11 h-11 rounded-lg bg-gradient-to-br from-nw-teal to-nw-teal-light text-white flex flex-col items-center justify-center leading-none shadow-sm">
                     <span className="text-sm font-extrabold tabular-nums">{intern.highlight.pct}</span>
                     <span className="text-[7px] font-bold uppercase tracking-wider opacity-80">pct</span>
                   </div>
@@ -1249,7 +1248,7 @@ export default function About() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-1">
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">
         About NW Baseball Stats
       </h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">

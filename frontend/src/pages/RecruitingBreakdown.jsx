@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useRecruitingBreakdown } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
 
@@ -66,7 +67,7 @@ function TrendArrow({ trend, prev1, prev2 }) {
 }
 
 export default function RecruitingBreakdown() {
-  const { data, loading, error } = useRecruitingBreakdown(2026)
+  const { data, loading, error } = useRecruitingBreakdown(CURRENT_SEASON)
   const [level, setLevel] = useState('All')
   const [sortKey, setSortKey] = useState('win_pct')
   const [sortDir, setSortDir] = useState('desc')
@@ -112,7 +113,7 @@ export default function RecruitingBreakdown() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Recruiting Breakdown</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Recruiting Breakdown</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Team-level recruiting metrics for the 2026 season. Compare programs side-by-side - who's trending up, who plays freshmen, and where the talent is.
       </p>

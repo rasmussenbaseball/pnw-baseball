@@ -6,8 +6,9 @@ import {
   useHistoricMatchupOpponents,
 } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 export default function HistoricMatchups() {
   // Pre-fill team A from the portal team when rendered inside the
@@ -236,7 +237,7 @@ function MatchupHistorySection({ data, teamA, teamB }) {
 function MatchupColumn({ title, batterTeamLogo, pitcherTeamLogo, matchups }) {
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded">
-      <div className="flex items-center gap-2 px-3 py-2 bg-pnw-forest text-white rounded-t">
+      <div className="flex items-center gap-2 px-3 py-2 bg-nw-teal-dark text-white rounded-t">
         {batterTeamLogo && (
           <img src={batterTeamLogo} alt="" className="h-4 w-4 object-contain" />
         )}
@@ -432,18 +433,18 @@ function GameCard({ game, teamAId }) {
         <span>{locLabel}</span>
       </div>
       <div className="flex items-center justify-between">
-        <span className={`text-sm font-medium ${aWon ? 'text-pnw-forest' : aLost ? 'text-gray-500 dark:text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
+        <span className={`text-sm font-medium ${aWon ? 'text-nw-teal-dark' : aLost ? 'text-gray-500 dark:text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
           {aShort}
         </span>
-        <span className={`text-sm font-bold ${aWon ? 'text-pnw-forest' : 'text-gray-700 dark:text-gray-300'}`}>
+        <span className={`text-sm font-bold ${aWon ? 'text-nw-teal-dark' : 'text-gray-700 dark:text-gray-300'}`}>
           {aScore}
         </span>
       </div>
       <div className="flex items-center justify-between">
-        <span className={`text-sm font-medium ${!aWon && !aLost ? 'text-gray-700 dark:text-gray-300' : aLost ? 'text-pnw-forest' : 'text-gray-500 dark:text-gray-400'}`}>
+        <span className={`text-sm font-medium ${!aWon && !aLost ? 'text-gray-700 dark:text-gray-300' : aLost ? 'text-nw-teal-dark' : 'text-gray-500 dark:text-gray-400'}`}>
           {bShort}
         </span>
-        <span className={`text-sm font-bold ${aLost ? 'text-pnw-forest' : 'text-gray-700 dark:text-gray-300'}`}>
+        <span className={`text-sm font-bold ${aLost ? 'text-nw-teal-dark' : 'text-gray-700 dark:text-gray-300'}`}>
           {bScore}
         </span>
       </div>
@@ -467,7 +468,7 @@ function GameCard({ game, teamAId }) {
 function SideStats({ team, batting, pitching, totals, mode }) {
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded">
-      <div className="flex items-center gap-2 px-3 py-2 bg-pnw-forest text-white rounded-t">
+      <div className="flex items-center gap-2 px-3 py-2 bg-nw-teal-dark text-white rounded-t">
         {team.logo_url && (
           <img src={team.logo_url} alt="" className="w-6 h-6 object-contain bg-white rounded p-0.5" />
         )}
@@ -491,7 +492,7 @@ function SideStats({ team, batting, pitching, totals, mode }) {
 function TeamBattingTotals({ t }) {
   if (!t) return null
   return (
-    <div className="border-b border-gray-200 dark:border-gray-700 bg-pnw-cream/50 dark:bg-gray-900/40 px-3 py-2">
+    <div className="border-b border-gray-200 dark:border-gray-700 bg-nw-cream/50 dark:bg-gray-900/40 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1.5">
         Series Totals
       </div>
@@ -520,7 +521,7 @@ function TeamBattingTotals({ t }) {
 function TeamPitchingTotals({ t }) {
   if (!t) return null
   return (
-    <div className="border-b border-gray-200 dark:border-gray-700 bg-pnw-cream/50 dark:bg-gray-900/40 px-3 py-2">
+    <div className="border-b border-gray-200 dark:border-gray-700 bg-nw-cream/50 dark:bg-gray-900/40 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1.5">
         Series Totals
       </div>
@@ -572,7 +573,7 @@ function BattingTable({ rows }) {
           <th colSpan={16} className="text-center py-1 border-r border-gray-300 font-semibold">
             Matchup
           </th>
-          <th colSpan={6} className="text-center py-1 bg-pnw-cream dark:bg-gray-900/40 text-pnw-forest font-semibold">
+          <th colSpan={6} className="text-center py-1 bg-nw-cream dark:bg-gray-900/40 text-nw-teal-dark font-semibold">
             Season
           </th>
         </tr>
@@ -594,12 +595,12 @@ function BattingTable({ rows }) {
           <th className="px-1 py-1.5">OBP</th>
           <th className="px-1 py-1.5">SLG</th>
           <th className="px-1 py-1.5 border-r border-gray-300">OPS</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">PA</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">AVG</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">OPS</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">HR</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">K%</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">BB%</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">PA</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">AVG</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">OPS</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">HR</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">K%</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">BB%</th>
         </tr>
       </thead>
       <tbody>
@@ -626,12 +627,12 @@ function BattingTable({ rows }) {
               <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{fmtRate(r.obp)}</td>
               <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{fmtRate(r.slg)}</td>
               <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 border-r border-gray-300">{fmtRate(r.ops)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{r.season_pa ?? '-'}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40 font-semibold">{fmtRate(r.season_avg)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtRate(r.season_ops)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{r.season_hr ?? '-'}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_k_pct)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_bb_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40">{r.season_pa ?? '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40 font-semibold">{fmtRate(r.season_avg)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40">{fmtRate(r.season_ops)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40">{r.season_hr ?? '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_k_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_bb_pct)}</td>
             </tr>
           )
         })}
@@ -653,7 +654,7 @@ function PitchingTable({ rows }) {
           <th colSpan={12} className="text-center py-1 border-r border-gray-300 font-semibold">
             Matchup
           </th>
-          <th colSpan={4} className="text-center py-1 bg-pnw-cream dark:bg-gray-900/40 text-pnw-forest font-semibold">
+          <th colSpan={4} className="text-center py-1 bg-nw-cream dark:bg-gray-900/40 text-nw-teal-dark font-semibold">
             Season
           </th>
         </tr>
@@ -671,10 +672,10 @@ function PitchingTable({ rows }) {
           <th className="px-1 py-1.5">ERA</th>
           <th className="px-1 py-1.5">WHIP</th>
           <th className="px-1 py-1.5 border-r border-gray-300">oAVG</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">IP</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">FIP</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">K%</th>
-          <th className="px-1 py-1.5 bg-pnw-cream/50 dark:bg-gray-900/40">BB%</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">IP</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">FIP</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">K%</th>
+          <th className="px-1 py-1.5 bg-nw-cream/50 dark:bg-gray-900/40">BB%</th>
         </tr>
       </thead>
       <tbody>
@@ -699,10 +700,10 @@ function PitchingTable({ rows }) {
               <td className="text-center px-1 py-1.5 font-semibold text-gray-900 dark:text-gray-100">{fmtNum(r.era, 2)}</td>
               <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300">{fmtNum(r.whip, 2)}</td>
               <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 border-r border-gray-300">{fmtRate(r.opp_avg)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{r.season_ip != null ? fmtIp(r.season_ip) : '-'}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40 font-semibold">{fmtNum(r.season_fip, 2)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_k_pct)}</td>
-              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-pnw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_bb_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40">{r.season_ip != null ? fmtIp(r.season_ip) : '-'}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40 font-semibold">{fmtNum(r.season_fip, 2)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_k_pct)}</td>
+              <td className="text-center px-1 py-1.5 text-gray-700 dark:text-gray-300 bg-nw-cream/30 dark:bg-gray-900/40">{fmtPct(r.season_bb_pct)}</td>
             </tr>
           )
         })}

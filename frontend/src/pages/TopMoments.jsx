@@ -15,8 +15,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTopMoments } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 export default function TopMoments() {
   const [tab, setTab] = useState('hitter_moments')
@@ -131,7 +132,7 @@ function HeroMoment({ moment, rank, perspective }) {
     : '#1 · biggest pitcher escape of 2026'
   const wpaLabel = perspective === 'batter' ? 'batter WPA' : 'pitcher WPA'
   return (
-    <div className="bg-gradient-to-br from-pnw-forest to-pnw-green text-white rounded-xl p-5 shadow-md">
+    <div className="bg-gradient-to-br from-nw-teal-dark to-nw-teal text-white rounded-xl p-5 shadow-md">
       <div className="flex items-baseline justify-between mb-3 gap-2">
         <span className="text-[10px] uppercase tracking-widest text-teal-200/70 font-semibold">
           {headlineLabel}

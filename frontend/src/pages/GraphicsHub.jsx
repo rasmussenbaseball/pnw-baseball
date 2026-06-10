@@ -26,7 +26,7 @@ export default function GraphicsHub() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate">Graphics</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-nw-teal dark:text-gray-100">Graphics</h1>
         <p className="text-sm text-gray-600 mt-1">
           Pick a generator. Each one renders a shareable image you can save and post.
         </p>

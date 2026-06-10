@@ -52,7 +52,6 @@ export default {
         'portal-cream':        '#f5f3ef',  // off-white text on dark backgrounds
       },
       fontFamily: {
-        'display': ['"HK Modular"', 'system-ui', 'sans-serif'],
         'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         // Portal-wide typeface — clean modern sans, distinct from
         // Inter without feeling weird. Applied via PortalLayout to

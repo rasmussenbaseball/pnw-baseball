@@ -55,7 +55,7 @@ export default function AuthPage() {
   return (
     <div className="max-w-md mx-auto mt-12">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
-        <h1 className="text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-1 text-center">
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1 text-center">
           {mode === 'login' ? 'Log In' : 'Create Account'}
         </h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 text-center mb-6">

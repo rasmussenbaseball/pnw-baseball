@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -674,7 +675,7 @@ export default function DailyRecapGraphic() {
   useEffect(() => {
     async function fetchDates() {
       try {
-        const res = await fetch(`${API_BASE}/games/daily-recap-dates?season=2026`)
+        const res = await fetch(`${API_BASE}/games/daily-recap-dates?season=${CURRENT_SEASON}`)
         if (!res.ok) throw new Error(`API error: ${res.status}`)
         const json = await res.json()
         setDates(json.dates || [])
@@ -697,7 +698,7 @@ export default function DailyRecapGraphic() {
     setGameData(null)
     setRendered(false)
     try {
-      const res = await fetch(`${API_BASE}/games/daily-recap-matchups?date=${date}&season=2026`)
+      const res = await fetch(`${API_BASE}/games/daily-recap-matchups?date=${date}&season=${CURRENT_SEASON}`)
       if (!res.ok) throw new Error(`API error: ${res.status}`)
       const json = await res.json()
       setMatchups(json.matchups || [])
@@ -720,7 +721,7 @@ export default function DailyRecapGraphic() {
     setRendered(false)
     try {
       const res = await fetch(
-        `${API_BASE}/games/daily-recap?date=${date}&home_team_id=${matchup.home_team_id}&away_team_id=${matchup.away_team_id}&season=2026`
+        `${API_BASE}/games/daily-recap?date=${date}&home_team_id=${matchup.home_team_id}&away_team_id=${matchup.away_team_id}&season=${CURRENT_SEASON}`
       )
       if (!res.ok) throw new Error(`API error: ${res.status}`)
       const json = await res.json()
@@ -772,7 +773,7 @@ export default function DailyRecapGraphic() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Daily Game Recap</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Daily Game Recap</h1>
       <p className="text-sm text-gray-500 mb-5">Generate a shareable game recap graphic for any matchup.</p>
 
       {/* Date selector */}
@@ -804,7 +805,7 @@ export default function DailyRecapGraphic() {
             <button key={i} onClick={() => setSelectedMatchup(m)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 selectedMatchup?.away_team_id === m.away_team_id && selectedMatchup?.home_team_id === m.home_team_id
-                  ? 'bg-pnw-slate text-white'
+                  ? 'bg-nw-teal text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}>
               {cleanTeamName(m.away_short)} vs {cleanTeamName(m.home_short)}

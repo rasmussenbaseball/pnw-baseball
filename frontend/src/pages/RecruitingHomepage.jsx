@@ -13,8 +13,9 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import PremiumHomepage from './PremiumHomepage'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 
 export default function RecruitingHomepage() {
@@ -30,7 +31,7 @@ function RecruitingShowcase() {
   return (
     <section className="rounded-xl overflow-hidden border border-nw-teal/20 dark:border-nw-teal/40 shadow-sm">
       {/* Teal banner ties this block to the recruiting brand */}
-      <div className="bg-gradient-to-r from-pnw-slate via-nw-teal to-pnw-sky text-white px-4 sm:px-5 py-4 flex items-start justify-between gap-3 flex-wrap">
+      <div className="bg-gradient-to-r from-nw-teal via-nw-teal to-nw-teal-light text-white px-4 sm:px-5 py-4 flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <div className="text-[10px] font-bold uppercase tracking-[2px] text-amber-300 mb-0.5">
             Recruiting · Included

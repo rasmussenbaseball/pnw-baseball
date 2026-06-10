@@ -153,7 +153,7 @@ export default function YourTeamSection() {
             onClick={handleSave}
             disabled={saving || !dirty}
             className="px-4 py-2 rounded-lg bg-nw-teal text-white text-sm font-semibold
-                       hover:bg-pnw-forest transition-colors
+                       hover:bg-nw-teal-dark transition-colors
                        disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             {saving ? 'Saving…' : 'Save'}

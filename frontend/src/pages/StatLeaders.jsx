@@ -128,7 +128,7 @@ export default function StatLeaders() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-pnw-slate mb-1">Stat Leaders</h1>
+          <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Stat Leaders</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">Top 10 in key categories · {season} season{split !== 'All' ? ` · ${split} games` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -168,7 +168,7 @@ export default function StatLeaders() {
               type="checkbox"
               checked={qualified}
               onChange={(e) => setQualified(e.target.checked)}
-              className="rounded border-gray-300 dark:border-gray-600 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
+              className="rounded border-gray-300 dark:border-gray-600 text-nw-teal-light focus:ring-nw-teal-light h-4 w-4"
             />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Qualified</span>
           </label>

@@ -57,7 +57,7 @@ export default function GlobalRouteLoader() {
     >
       <span
         className="block h-3.5 w-3.5 rounded-full
-                   border-2 border-pnw-sky border-t-transparent
+                   border-2 border-nw-teal-light border-t-transparent
                    animate-spin"
       />
       Loading...

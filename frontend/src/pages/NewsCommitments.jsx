@@ -39,8 +39,8 @@ function PlayerInitials({ first, last }) {
   const a = (first?.[0] || '').toUpperCase()
   const b = (last?.[0] || '').toUpperCase()
   return (
-    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-pnw-teal/30 to-pnw-teal/10
-                    flex items-center justify-center text-pnw-teal font-bold text-base shrink-0">
+    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-nw-teal-light/30 to-nw-teal-light/10
+                    flex items-center justify-center text-nw-teal-light font-bold text-base shrink-0">
       {a}{b}
     </div>
   )
@@ -103,7 +103,7 @@ export default function NewsCommitments() {
       {!loading && rows.length > 0 && (
         <>
           <div className="flex items-baseline justify-between mb-3">
-            <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-pnw-teal">
+            <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-nw-teal-light">
               NWAC commitments
             </h2>
             <span className="text-xs text-gray-500 dark:text-gray-400">{rows.length} player{rows.length === 1 ? '' : 's'}</span>

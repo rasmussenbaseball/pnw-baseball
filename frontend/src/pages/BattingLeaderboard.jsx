@@ -13,6 +13,7 @@ import {
   BATTING_PBP_COLUMNS, BATTING_PBP_PRESETS,
 } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // PBP lives inside the View: pill bar as another preset alongside
 // Standard / Advanced / Power / Discipline / Speed. When the user
@@ -22,7 +23,7 @@ const ALL_PRESETS = { ...BATTING_PRESETS, PBP: BATTING_PBP_PRESETS.PBP }
 
 export default function BattingLeaderboard() {
   const [filters, setFilters] = usePersistedState('bat_lb_filters', {
-    season: 2026,
+    season: CURRENT_SEASON,
     min_pa: 50,
     _type: 'batting',
   })
@@ -98,7 +99,7 @@ export default function BattingLeaderboard() {
 
   return (
     <div>
-      <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate mb-3 sm:mb-4">Hitting Leaders</h1>
+      <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100 mb-3 sm:mb-4">Hitting Leaders</h1>
 
       <FilterBar
         filters={filters}

@@ -44,7 +44,7 @@ function teamAnchor(id) { return `pro-team-${id}` }
 function StatTile({ value, label, accent }) {
   return (
     <div className="rounded-xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 px-4 py-3 text-center">
-      <div className={`text-3xl font-black tabular-nums ${accent || 'text-pnw-slate dark:text-gray-100'}`}>{value}</div>
+      <div className={`text-3xl font-black tabular-nums ${accent || 'text-nw-teal dark:text-gray-100'}`}>{value}</div>
       <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</div>
     </div>
   )
@@ -81,7 +81,7 @@ export default function ProTracker() {
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6">
       {/* Page header */}
       <div className="mb-5">
-        <h1 className="text-3xl sm:text-4xl font-black text-pnw-slate dark:text-gray-100">Pro Tracker</h1>
+        <h1 className="text-3xl sm:text-4xl font-black text-nw-teal dark:text-gray-100">Pro Tracker</h1>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Pacific Northwest college alumni in affiliated pro baseball (MiLB &amp; MLB). Names link to their
           NWBB profile where we have one.
@@ -93,7 +93,7 @@ export default function ProTracker() {
       </div>
 
       {/* ── Overview graphic ── */}
-      <div className="rounded-2xl bg-gradient-to-br from-pnw-slate to-[#1f3a4d] dark:from-gray-900 dark:to-gray-800 p-4 sm:p-6 shadow-lg mb-8">
+      <div className="rounded-2xl bg-gradient-to-br from-nw-teal to-[#1f3a4d] dark:from-gray-900 dark:to-gray-800 p-4 sm:p-6 shadow-lg mb-8">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           <StatTile value={overview.total_players} label="Total Pros" />
           <StatTile value={overview.total_mlb} label="In the Majors" accent="text-amber-500 dark:text-amber-400" />
@@ -139,7 +139,7 @@ export default function ProTracker() {
                 <img src={t.logo_url} alt="" className="w-9 h-9 object-contain shrink-0" loading="lazy" onError={e => { e.target.style.display = 'none' }} />
               )}
               <div className="min-w-0">
-                <Link to={`/teams?team=${t.team_id}`} className="block text-lg font-extrabold text-pnw-slate dark:text-gray-100 hover:text-nw-teal truncate">
+                <Link to={`/teams?team=${t.team_id}`} className="block text-lg font-extrabold text-nw-teal dark:text-gray-100 hover:text-nw-teal truncate">
                   {t.name}
                 </Link>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -155,8 +155,8 @@ export default function ProTracker() {
                   <LevelBadge level={p.level} />
                   <div className="flex-1 min-w-0">
                     {p.player_id
-                      ? <Link to={`/player/${p.player_id}`} className="font-semibold text-pnw-slate dark:text-gray-100 hover:text-nw-teal truncate block">{p.name}</Link>
-                      : <span className="font-semibold text-pnw-slate dark:text-gray-100 truncate block">{p.name}</span>}
+                      ? <Link to={`/player/${p.player_id}`} className="font-semibold text-nw-teal dark:text-gray-100 hover:text-nw-teal truncate block">{p.name}</Link>
+                      : <span className="font-semibold text-nw-teal dark:text-gray-100 truncate block">{p.name}</span>}
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{draftLine(p)}</div>
                   </div>
                   <div className="hidden sm:block w-44 shrink-0 text-right">

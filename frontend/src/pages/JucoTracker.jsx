@@ -4,6 +4,7 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 import PlayerTrackerTable, {
   BoardToggle, HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 /**
  * JUCO Tracker - the recruiting tool.
@@ -13,7 +14,7 @@ import PlayerTrackerTable, {
  */
 
 export default function JucoTracker() {
-  const [season, setSeason] = usePersistedState('juco_season', 2026)
+  const [season, setSeason] = usePersistedState('juco_season', CURRENT_SEASON)
   const [position, setPosition] = usePersistedState('juco_position', '')
   const [classYear, setClassYear] = usePersistedState('juco_classYear', 'So')
   const [hitSortBy, setHitSortBy] = usePersistedState('juco_hitSortBy', 'offensive_war')
@@ -68,7 +69,7 @@ export default function JucoTracker() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-2">JUCO Tracker</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">JUCO Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         NWAC players available for transfer to 4-year programs. Two-way players appear on both tables.
       </p>

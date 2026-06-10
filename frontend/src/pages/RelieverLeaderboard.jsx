@@ -17,10 +17,11 @@ import InternCredit from '../components/InternCredit'
 import { useRelieverLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { RELIEVER_COLUMNS, RELIEVER_PRESETS } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 export default function RelieverLeaderboard() {
   const [filters, setFilters] = usePersistedState('rel_lb_filters', {
-    season: 2026,
+    season: CURRENT_SEASON,
     min_bf: 20,
     _type: 'pitching',
   })
@@ -58,7 +59,7 @@ export default function RelieverLeaderboard() {
 
   return (
     <div>
-      <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-1">
+      <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">
         Reliever Leaders
       </h1>
       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-3 max-w-3xl">

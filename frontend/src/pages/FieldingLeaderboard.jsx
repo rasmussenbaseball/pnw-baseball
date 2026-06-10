@@ -21,10 +21,11 @@ import {
   FIELDING_COLUMNS, FIELDING_PRESETS, FIELDING_POSITIONS,
 } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 export default function FieldingLeaderboard() {
   const [filters, setFilters] = usePersistedState('fld_lb_filters', {
-    season: 2026,
+    season: CURRENT_SEASON,
     min_games: 10,
     _type: 'fielding',
   })
@@ -89,7 +90,7 @@ export default function FieldingLeaderboard() {
 
   return (
     <div>
-      <h1 className="text-lg sm:text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-3 sm:mb-4">
+      <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100 mb-3 sm:mb-4">
         Fielding Leaders
       </h1>
 

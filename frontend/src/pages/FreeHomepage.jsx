@@ -28,8 +28,9 @@ import { useAffiliatedTeam } from '../context/AffiliationContext'
 import { TEAM_COORDS } from '../lib/teamCoords'
 import PixelHeadshot from '../gm/components/PixelHeadshot'
 import PreviewTierWidget from '../components/PreviewTierWidget'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 const DIV_COLORS = {
   D1: '#2563eb', D2: '#059669', D3: '#d97706', NAIA: '#9333ea', JUCO: '#dc2626',
@@ -75,7 +76,7 @@ function WelcomeStrip() {
   const name = user?.email ? user.email.split('@')[0] : 'there'
 
   return (
-    <div className="rounded-xl bg-gradient-to-r from-nw-teal to-pnw-sky text-white px-5 py-4 sm:px-6 sm:py-5 flex flex-col sm:flex-row sm:items-center gap-3">
+    <div className="rounded-xl bg-gradient-to-r from-nw-teal to-nw-teal-light text-white px-5 py-4 sm:px-6 sm:py-5 flex flex-col sm:flex-row sm:items-center gap-3">
       <div className="flex-1 min-w-0">
         <div className="text-[11px] uppercase tracking-[2px] font-semibold text-white/70">
           Welcome back
@@ -151,7 +152,7 @@ function ScatterWidget() {
           </button>
           <Link
             to="/scatter"
-            className="px-2.5 py-1 rounded-md bg-nw-teal text-white text-xs font-semibold hover:bg-pnw-sky transition-colors"
+            className="px-2.5 py-1 rounded-md bg-nw-teal text-white text-xs font-semibold hover:bg-nw-teal-light transition-colors"
           >
             Build your own
           </Link>
@@ -705,7 +706,7 @@ function LeagueQuizWidget() {
           <div className="flex items-center justify-between mt-4">
             <button
               onClick={load}
-              className="px-3 py-1.5 rounded-lg bg-nw-teal text-white text-xs font-semibold hover:bg-pnw-sky transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-nw-teal text-white text-xs font-semibold hover:bg-nw-teal-light transition-colors"
             >
               {picked != null ? 'Next question' : 'Skip'}
             </button>
@@ -1067,7 +1068,7 @@ function SimPreview() {
 
 function PremiumSimPromo() {
   return (
-    <div className="rounded-xl bg-gradient-to-br from-gray-900 to-pnw-slate dark:from-gray-950 dark:to-pnw-slate text-white p-5 sm:p-6">
+    <div className="rounded-xl bg-gradient-to-br from-gray-900 to-nw-teal dark:from-gray-950 dark:to-nw-teal text-white p-5 sm:p-6">
       <div className="text-[10px] font-semibold uppercase tracking-[2px] text-amber-300 mb-2">
         Premium
       </div>

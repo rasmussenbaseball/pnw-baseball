@@ -47,7 +47,7 @@ function RecordTable({ stat, scope }) {
             {scope === 'single_season' && (
               <td className="py-1 text-center text-gray-500 dark:text-gray-400">{r.season}</td>
             )}
-            <td className="py-1 pr-1 text-right font-bold text-pnw-slate">
+            <td className="py-1 pr-1 text-right font-bold text-nw-teal dark:text-gray-100">
               {formatStat(r.value, stat.format)}
             </td>
           </tr>
@@ -85,7 +85,7 @@ function TeamRecordTable({ stat }) {
               </Link>
             </td>
             <td className="py-1 text-center text-gray-500 dark:text-gray-400">{r.season}</td>
-            <td className="py-1 pr-1 text-right font-bold text-pnw-slate">
+            <td className="py-1 pr-1 text-right font-bold text-nw-teal dark:text-gray-100">
               {formatStat(r.value, stat.format)}
             </td>
           </tr>
@@ -101,7 +101,7 @@ function StatSection({ title, data, scope, isTeam = false }) {
 
   return (
     <div>
-      <h3 className="text-base font-bold text-pnw-slate mb-3 flex items-center gap-2">
+      <h3 className="text-base font-bold text-nw-teal dark:text-gray-100 mb-3 flex items-center gap-2">
         {title}
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -147,7 +147,7 @@ export default function RecordsPage() {
     <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-pnw-slate">PNW Records</h1>
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100">PNW Records</h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
           Single-season and career record holders across all PNW divisions
         </p>
@@ -165,7 +165,7 @@ export default function RecordsPage() {
                 onClick={() => setLevel(l)}
                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                   level === l
-                    ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                    ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                 }`}
               >
@@ -190,7 +190,7 @@ export default function RecordsPage() {
                   onClick={() => setCategory(c.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                     category === c.key
-                      ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                      ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
                       : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                   }`}
                 >
@@ -210,7 +210,7 @@ export default function RecordsPage() {
                     onClick={() => setScope(s.key)}
                     className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                       scope === s.key
-                        ? 'bg-white dark:bg-gray-800 text-pnw-slate shadow-sm'
+                        ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'
                     }`}
                   >

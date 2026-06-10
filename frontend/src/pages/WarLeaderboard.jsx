@@ -7,6 +7,7 @@ import { formatStat, divisionBadgeClass } from '../utils/stats'
 import { Link } from 'react-router-dom'
 import { usePersistedState } from '../hooks/usePersistedState'
 import CommitBadge from '../components/CommitBadge'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const COLUMNS = [
   // WAR cluster
@@ -34,7 +35,7 @@ const COLUMNS = [
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'fip'])
 
 export default function WarLeaderboard() {
-  const [filters, setFilters] = usePersistedState('war_lb_filters', { season: 2026 })
+  const [filters, setFilters] = usePersistedState('war_lb_filters', { season: CURRENT_SEASON })
   const [page, setPage] = useState(0)
   const [sortBy, setSortBy] = usePersistedState('war_lb_sortBy', 'total_war')
   const [sortDir, setSortDir] = usePersistedState('war_lb_sortDir', 'desc')
@@ -104,7 +105,7 @@ export default function WarLeaderboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate dark:text-gray-100 mb-2">WAR Leaderboard</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">WAR Leaderboard</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Custom college WAR combining offensive value (wRAA-based) and pitching value (FIP-based).
         Two-way players have both components summed. Click any stat column to sort.
@@ -199,7 +200,7 @@ export default function WarLeaderboard() {
                     </span>
                   </td>
                   <td>
-                    <Link to={`/team/${row.team_id || ''}`} className="text-gray-700 dark:text-gray-300 hover:text-pnw-sky flex items-center gap-1">
+                    <Link to={`/team/${row.team_id || ''}`} className="text-gray-700 dark:text-gray-300 hover:text-nw-teal-light flex items-center gap-1">
                       {row.logo_url && (
                         <img src={row.logo_url} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy"
                           onError={(e) => { e.target.style.display = 'none' }} />

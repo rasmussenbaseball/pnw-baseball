@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -499,7 +500,7 @@ export default function KeyMatchupGraphic() {
   const fetchData = useCallback(async (d, gid) => {
     setLoading(true); setError(null)
     try {
-      let url = `${API_BASE}/games/key-matchup?date=${d}&season=2026`
+      let url = `${API_BASE}/games/key-matchup?date=${d}&season=${CURRENT_SEASON}`
       if (gid) url += `&game_id=${gid}`
       const resp = await fetch(url)
       if (!resp.ok) throw new Error('Failed to fetch')
@@ -511,7 +512,7 @@ export default function KeyMatchupGraphic() {
         const ids = teams.map(t => t.id).join(',')
         if (ids) {
           try {
-            const pr = await fetch(`${API_BASE}/teams/matchup?season=2026&team_ids=${ids}`)
+            const pr = await fetch(`${API_BASE}/teams/matchup?season=${CURRENT_SEASON}&team_ids=${ids}`)
             if (pr.ok) setPred(await pr.json())
           } catch {}
         }
@@ -523,7 +524,7 @@ export default function KeyMatchupGraphic() {
         if (teams.length === 2) {
           try {
             const [t1, t2] = teams
-            const gr = await fetch(`${API_BASE}/teams/${t1.id}/games?season=2026`)
+            const gr = await fetch(`${API_BASE}/teams/${t1.id}/games?season=${CURRENT_SEASON}`)
             if (gr.ok) {
               const allGames = await gr.json()
               const list = Array.isArray(allGames) ? allGames : (allGames?.games || [])

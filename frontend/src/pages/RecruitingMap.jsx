@@ -232,7 +232,7 @@ export default function RecruitingMap() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-4">Program Map</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-4">Program Map</h1>
       <p className="text-sm text-gray-500 mb-4">
         Every PNW college baseball program across all 5 divisions. Click a logo for team details.
       </p>

@@ -6,6 +6,7 @@
 // Bushnell shows; Bellevue -> UCLA does not). Brand rule: no em-dashes.
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const LEVELS = {
   D1: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
@@ -40,7 +41,7 @@ export default function NwacAdvancement() {
       try {
         const { data: sess } = await supabase.auth.getSession()
         const token = sess?.session?.access_token
-        const r = await fetch('/api/v1/recruiting/nwac-advancement?season=2026', {
+        const r = await fetch(`/api/v1/recruiting/nwac-advancement?season=${CURRENT_SEASON}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'premium' : `HTTP ${r.status}`)
@@ -67,7 +68,7 @@ export default function NwacAdvancement() {
         <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-white dark:bg-gray-900 px-3 py-1 rounded-full mb-2 ring-1 ring-teal-100 dark:ring-teal-800">
           Recruiting · NWAC
         </div>
-        <h1 className="text-3xl sm:text-4xl font-black text-pnw-slate dark:text-gray-100 leading-tight">NWAC Advancement</h1>
+        <h1 className="text-3xl sm:text-4xl font-black text-nw-teal dark:text-gray-100 leading-tight">NWAC Advancement</h1>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
           Which NWAC programs move players up, and where those players land. Built from our transfer history across PNW college baseball, so it captures moves to the four-year programs we track.
         </p>
@@ -96,7 +97,7 @@ export default function NwacAdvancement() {
           {/* 2026 commitments, grouped by the level committed to */}
           <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
             <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">Headliner · the 2026 class</div>
-            <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-1">Where this year's NWAC players committed</h2>
+            <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100 mb-1">Where this year's NWAC players committed</h2>
             <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">Every NWAC player with a commitment on file, grouped by the level of the school they chose. Division I first.</p>
             {data.commits.length === 0 ? (
               <div className="text-sm text-gray-400">No commitments on record yet.</div>
@@ -114,7 +115,7 @@ export default function NwacAdvancement() {
                   <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
                     {list.map((c, i) => (
                       <div key={i} className="flex items-center gap-2 text-[13px] py-0.5">
-                        <span className="font-bold text-pnw-slate dark:text-gray-100 truncate">{c.player}</span>
+                        <span className="font-bold text-nw-teal dark:text-gray-100 truncate">{c.player}</span>
                         <span className="ml-auto flex items-center gap-1.5 text-[12px] text-gray-500 dark:text-gray-400 shrink-0">
                           <Logo src={c.nwac_logo} size={15} /> {c.nwac_team}
                           <span className="text-nw-teal">&rarr;</span>
@@ -152,7 +153,7 @@ export default function NwacAdvancement() {
             return (
               <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">The 2026 class</div>
-                <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-1">How much of each team's sophomore class is moving on</h2>
+                <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100 mb-1">How much of each team's sophomore class is moving on</h2>
                 <p className="text-[13px] text-gray-500 dark:text-gray-400">Sophomores are NWAC players in their final junior-college year. "Moving on" counts those with a known commitment to a four-year school, and lists where. Because commitments are only as complete as what programs publish, these percentages are a floor, not the full picture.</p>
                 <div className="overflow-x-auto -mx-1 mt-3">
                   <table className="w-full text-[13px]">
@@ -169,10 +170,10 @@ export default function NwacAdvancement() {
                       {rows.map(r => (
                         <tr key={r.team} className="border-b border-gray-100 dark:border-gray-700/50 align-top">
                           <td className="py-2 pl-1">
-                            <span className="inline-flex items-center gap-2"><Logo src={r.logo} size={18} /><span className="font-bold text-pnw-slate dark:text-gray-100">{r.team}</span></span>
+                            <span className="inline-flex items-center gap-2"><Logo src={r.logo} size={18} /><span className="font-bold text-nw-teal dark:text-gray-100">{r.team}</span></span>
                           </td>
                           <td className="text-right px-2 tabular-nums text-gray-600 dark:text-gray-300">{r.soph}</td>
-                          <td className="text-right px-2 tabular-nums font-semibold text-pnw-slate dark:text-gray-100">{r.committed || ''}</td>
+                          <td className="text-right px-2 tabular-nums font-semibold text-nw-teal dark:text-gray-100">{r.committed || ''}</td>
                           <td className="text-right px-2 tabular-nums font-extrabold text-nw-teal">{r.committed ? r.pct + '%' : ''}</td>
                           <td className="px-2 py-1.5">
                             {r.schools.length ? (
@@ -198,7 +199,7 @@ export default function NwacAdvancement() {
           {/* Team leaderboard */}
           <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-              <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100">Who sends the most to PNW four-year schools</h2>
+              <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100">Who sends the most to PNW four-year schools</h2>
               <div className="flex flex-wrap gap-1">
                 {SORTS.map(s => (
                   <button key={s.key} onClick={() => setSortKey(s.key)}
@@ -232,11 +233,11 @@ export default function NwacAdvancement() {
                         <td className="py-2 pl-1">
                           <span className="inline-flex items-center gap-2">
                             <Logo src={tm.logo} size={20} />
-                            <span className="font-bold text-pnw-slate dark:text-gray-100">{tm.team}</span>
+                            <span className="font-bold text-nw-teal dark:text-gray-100">{tm.team}</span>
                             {i === 0 && <span className="text-[9px] font-bold uppercase text-nw-teal bg-teal-100 dark:bg-teal-900/40 px-1.5 py-0.5 rounded">Leader</span>}
                           </span>
                         </td>
-                        <td className="text-right px-2 font-extrabold text-pnw-slate dark:text-gray-100">{tm.total}</td>
+                        <td className="text-right px-2 font-extrabold text-nw-teal dark:text-gray-100">{tm.total}</td>
                         <td className="text-right px-2 font-semibold text-sky-700 dark:text-sky-300">{tm.d1 || ''}</td>
                         <td className="text-right px-2">{tm.d2 || ''}</td>
                         <td className="text-right px-2">{tm.naia || ''}</td>
@@ -284,7 +285,7 @@ export default function NwacAdvancement() {
 
           {/* Top landing spots */}
           <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
-            <h2 className="text-lg sm:text-xl font-black text-pnw-slate dark:text-gray-100 mb-1">Top landing spots</h2>
+            <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100 mb-1">Top landing spots</h2>
             <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">The four-year programs that take the most NWAC players (all years on record).</p>
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
               {data.top_destinations.map((d, i) => (
@@ -293,7 +294,7 @@ export default function NwacAdvancement() {
                   <Logo src={d.logo} size={20} />
                   <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">{d.team}</span>
                   <LevelTag level={d.level} />
-                  <span className="ml-auto font-extrabold text-pnw-slate dark:text-gray-100 tabular-nums">{d.count}</span>
+                  <span className="ml-auto font-extrabold text-nw-teal dark:text-gray-100 tabular-nums">{d.count}</span>
                 </div>
               ))}
             </div>

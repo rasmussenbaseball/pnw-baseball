@@ -14,8 +14,9 @@ import {
   ProfileShell, SectionCard, RadarChart, PctRow, pctColor,
   divisionBadge, usePlayerProfileTheme,
 } from '../components/playerProfile/shared'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 // Per-metric value formatting (matches the backend's `format` hints).
 function fmtMetric(format, v) {

@@ -12,7 +12,7 @@ export default function StatPresetBar({ presets, activePreset, onSelect }) {
           onClick={() => onSelect(preset)}
           className={`px-3 py-1 rounded-full text-xs font-medium transition-colors
             ${activePreset === preset
-              ? 'bg-pnw-green text-white'
+              ? 'bg-nw-teal text-white'
               : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
             }`}
         >

@@ -14,8 +14,9 @@ import {
 } from '../hooks/useApi'
 import { usePublishedArticles } from '../hooks/useArticles'
 import PreviewTierWidget from '../components/PreviewTierWidget'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 // Lower Columbia team_id for 2026 NWAC champ card.
 const LCC_TEAM_ID = 52
@@ -398,7 +399,7 @@ function ToolTileLeaderboards() {
       desc="Hitting, pitching, and fielding leaders across every division."
     >
       <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="bg-pnw-slate text-white text-[10px] font-semibold uppercase tracking-wider px-3 py-1.5 flex justify-between">
+        <div className="bg-nw-teal text-white text-[10px] font-semibold uppercase tracking-wider px-3 py-1.5 flex justify-between">
           <span>2026 WAR Leaders</span>
           <span>WAR</span>
         </div>
@@ -446,7 +447,7 @@ function ToolTileFielding() {
       desc="Per-position defense for every level. Filter by position or division."
     >
       <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="bg-pnw-slate text-white text-[10px] font-semibold uppercase tracking-wider px-3 py-1.5 flex justify-between">
+        <div className="bg-nw-teal text-white text-[10px] font-semibold uppercase tracking-wider px-3 py-1.5 flex justify-between">
           <span>NAIA SS by FLD%</span>
           <span>FLD%</span>
         </div>
@@ -601,7 +602,7 @@ function TeamCoverageWall() {
 // ============================================================
 function WhatsNextCard() {
   return (
-    <section className="rounded-xl bg-gradient-to-br from-nw-teal/10 to-pnw-sky/10 dark:from-nw-teal/20 dark:to-pnw-sky/20 border border-nw-teal/20 dark:border-nw-teal/30 p-5 sm:p-7">
+    <section className="rounded-xl bg-gradient-to-br from-nw-teal/10 to-nw-teal-light/10 dark:from-nw-teal/20 dark:to-nw-teal-light/20 border border-nw-teal/20 dark:border-nw-teal/30 p-5 sm:p-7">
       <div className="text-[10px] font-semibold uppercase tracking-[2px] text-nw-teal mb-3">
         Coming up
       </div>
@@ -676,7 +677,7 @@ function LockTeaseCta() {
     },
   ]
   return (
-    <section className="rounded-xl bg-gradient-to-br from-gray-900 to-pnw-slate dark:from-gray-950 dark:to-pnw-slate text-white p-6 sm:p-8">
+    <section className="rounded-xl bg-gradient-to-br from-gray-900 to-nw-teal dark:from-gray-950 dark:to-nw-teal text-white p-6 sm:p-8">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[2px] text-amber-300 mb-3">
@@ -744,7 +745,7 @@ function FeaturedArticles() {
             ) : (
               // No cover image — render a gradient header with the
               // site mark instead of a baseball emoji.
-              <div className="aspect-[16/9] bg-gradient-to-br from-nw-teal/30 to-pnw-sky/30 dark:from-nw-teal/50 dark:to-pnw-sky/50 flex items-center justify-center">
+              <div className="aspect-[16/9] bg-gradient-to-br from-nw-teal/30 to-nw-teal-light/30 dark:from-nw-teal/50 dark:to-nw-teal-light/50 flex items-center justify-center">
                 <div className="text-white/90 font-black text-2xl tracking-tight">
                   NW<span className="text-amber-300">·</span>BB
                 </div>
@@ -786,7 +787,7 @@ function ClosingCtaWithFounder() {
       <div className="flex flex-wrap items-center justify-center gap-3">
         <Link
           to="/auth?mode=signup"
-          className="px-6 py-3 bg-nw-teal text-white rounded-lg font-bold hover:bg-pnw-sky transition-colors"
+          className="px-6 py-3 bg-nw-teal text-white rounded-lg font-bold hover:bg-nw-teal-light transition-colors"
         >
           Create free account
         </Link>

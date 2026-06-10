@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTeamRatings } from '../hooks/useApi'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const BADGE_COLORS = {
   D1: 'bg-red-600 text-white',
@@ -205,7 +206,7 @@ function InfoCard() {
 
 // ─── Main Page ───
 export default function TeamRatings() {
-  const { data, loading, error } = useTeamRatings(2026)
+  const { data, loading, error } = useTeamRatings(CURRENT_SEASON)
 
   if (loading) {
     return (
@@ -223,7 +224,7 @@ export default function TeamRatings() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Team Ratings</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Team Ratings</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">PNW Power Index | within-division talent rankings · 2026</p>
 
       <InfoCard />

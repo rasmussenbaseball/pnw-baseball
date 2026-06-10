@@ -27,7 +27,7 @@ export default function PlayerSearch() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-4">Player Search</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-4">Player Search</h1>
 
       <form onSubmit={handleSearch} className="flex gap-2 mb-4">
         <input
@@ -36,11 +36,11 @@ export default function PlayerSearch() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by player name..."
           className="flex-1 max-w-md rounded border border-gray-300 px-4 py-2 text-sm
-                     focus:ring-2 focus:ring-pnw-sky focus:border-transparent"
+                     focus:ring-2 focus:ring-nw-teal-light focus:border-transparent"
         />
         <button
           type="submit"
-          className="px-4 py-2 bg-pnw-green text-white rounded text-sm font-medium hover:bg-pnw-forest"
+          className="px-4 py-2 bg-nw-teal text-white rounded text-sm font-medium hover:bg-nw-teal-dark"
         >
           Search
         </button>

@@ -19,8 +19,9 @@ import {
   StatLeadersBoard, ScatterWidget, DivisionRunEnvChart,
   PercentilesWidget, LeagueQuizWidget, WpaSwingsBoard, PnwMapWidget,
 } from './FreeHomepage'
+import { CURRENT_SEASON } from '../lib/seasons'
 
-const SEASON = 2026
+const SEASON = CURRENT_SEASON
 
 // `portalShowcase` is an optional slot rendered directly beneath the
 // toolbox. The premium homepage passes nothing (so its output is
@@ -75,7 +76,7 @@ function PremiumWelcome() {
   const { team } = useAffiliatedTeam()
   const name = user?.email ? user.email.split('@')[0] : 'there'
   return (
-    <div className="rounded-xl bg-gradient-to-r from-pnw-slate via-nw-teal to-pnw-sky text-white px-5 py-4 sm:px-6 sm:py-5 flex flex-col sm:flex-row sm:items-center gap-3">
+    <div className="rounded-xl bg-gradient-to-r from-nw-teal via-nw-teal to-nw-teal-light text-white px-5 py-4 sm:px-6 sm:py-5 flex flex-col sm:flex-row sm:items-center gap-3">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold uppercase tracking-[2px] text-amber-300 bg-amber-400/15 px-2 py-0.5 rounded">
@@ -210,7 +211,7 @@ function MockPlayerSpotlight({ mode }) {
         </div>
         <button
           onClick={shuffle}
-          className="px-3 py-1.5 rounded-lg bg-nw-teal text-white text-xs font-semibold hover:bg-pnw-sky transition-colors shrink-0"
+          className="px-3 py-1.5 rounded-lg bg-nw-teal text-white text-xs font-semibold hover:bg-nw-teal-light transition-colors shrink-0"
         >
           {isHitter ? 'Next hitter' : 'Next pitcher'}
         </button>
@@ -298,7 +299,7 @@ function ovrColor(ovr) {
 
 function CoachingSimWidget() {
   return (
-    <section className="rounded-xl overflow-hidden border border-white/10 shadow-lg bg-gradient-to-br from-gray-900 to-pnw-slate text-white">
+    <section className="rounded-xl overflow-hidden border border-white/10 shadow-lg bg-gradient-to-br from-gray-900 to-nw-teal text-white">
       <div className="px-4 sm:px-5 py-4 flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <div className="text-[10px] font-bold uppercase tracking-[2px] text-amber-300 mb-1">

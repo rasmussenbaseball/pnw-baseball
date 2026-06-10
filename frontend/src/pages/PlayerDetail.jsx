@@ -524,7 +524,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
               return (
                 <div key={key} className="flex items-start gap-2">
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-xs font-bold text-pnw-slate bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded w-10 text-center">
+                    <span className="text-xs font-bold text-nw-teal bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded w-10 text-center">
                       {String(group.season).slice(-2)}
                     </span>
                     <TeamLogo logo={group.team_logo} name={group.team_short} />
@@ -1397,7 +1397,7 @@ function SplitsSection({ splits }) {
 // Four-tile compact card: current hit, current on-base, season-best hit,
 // season-best on-base. Fetches /players/{id}/streaks. Hides entirely
 // when all four numbers are zero (e.g. pitcher with no batting line).
-function StreaksCard({ playerId, season = 2026 }) {
+function StreaksCard({ playerId, season = CURRENT_SEASON }) {
   const [data, setData] = useState(null)
   useEffect(() => {
     let alive = true
@@ -1557,8 +1557,8 @@ function PlayerDetailStandard() {
     setViewSide(null)
   }, [playerId])
   const { data, loading, error } = usePlayer(playerId, percentileSeason)
-  const { data: gameLogs } = usePlayerGameLogs(playerId, 2026)
-  const { data: splits } = usePlayerSplits(playerId, 2026)
+  const { data: gameLogs } = usePlayerGameLogs(playerId, CURRENT_SEASON)
+  const { data: splits } = usePlayerSplits(playerId, CURRENT_SEASON)
 
   // ── Bars-height measurement for the 2026 2-col layout ──────────
   // Right column should never exceed the LEFT (bars) column's natural
@@ -1869,7 +1869,7 @@ function PlayerDetailStandard() {
         // the same year as the bars). Default to 2026 most-recent.
         const targetSeason = activePercentileSeason && activePercentileSeason !== 'career'
           ? parseInt(activePercentileSeason, 10)
-          : 2026
+          : CURRENT_SEASON
 
         // Season-filter chip group, embedded inside the bars header
         // (was a standalone row above the cards before).
@@ -2025,8 +2025,8 @@ function PlayerDetailStandard() {
               </div>
             </div>
           </div>
-          <StreaksCard playerId={playerId} season={2026} />
-          <PitchLevelStatsCard playerId={playerId} season={2026} />
+          <StreaksCard playerId={playerId} season={CURRENT_SEASON} />
+          <PitchLevelStatsCard playerId={playerId} season={CURRENT_SEASON} />
         </>
       )}
 
@@ -2043,7 +2043,7 @@ function PlayerDetailStandard() {
               </div>
             </div>
           </div>
-          <PitcherPitchLevelStatsCard playerId={playerId} season={2026} />
+          <PitcherPitchLevelStatsCard playerId={playerId} season={CURRENT_SEASON} />
         </>
       )}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { divisionBadgeClass } from '../utils/stats'
 import StatsLastUpdated from '../components/StatsLastUpdated'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -143,7 +144,7 @@ export default function ScatterPlot() {
   // Fetch scatter data
   useEffect(() => {
     setLoading(true)
-    const params = new URLSearchParams({ season: '2026', x_stat: xStat, y_stat: yStat })
+    const params = new URLSearchParams({ season: String(CURRENT_SEASON), x_stat: xStat, y_stat: yStat })
     if (divisionId) params.set('division_id', divisionId)
     fetch(`${API_BASE}/teams/scatter?${params}`)
       .then(r => r.json())
@@ -290,7 +291,7 @@ export default function ScatterPlot() {
       <select
         value={value}
         onChange={onChange}
-        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-pnw-sky/40 focus:border-pnw-sky transition-all"
+        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-nw-teal-light/40 focus:border-nw-teal-light transition-all"
       >
         {children}
       </select>
@@ -301,7 +302,7 @@ export default function ScatterPlot() {
     <div>
       {/* Page header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-pnw-slate">Team Scatter Plot</h1>
+        <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100">Team Scatter Plot</h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">Compare team performance across any two stats · 2026 Season</p>
       </div>
 
@@ -338,7 +339,7 @@ export default function ScatterPlot() {
           {points.length > 0 && (
             <button
               onClick={handleSaveImage}
-              className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-lg bg-pnw-green text-white text-sm font-semibold hover:bg-pnw-forest shadow-sm transition-all active:scale-95"
+              className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-lg bg-nw-teal text-white text-sm font-semibold hover:bg-nw-teal-dark shadow-sm transition-all active:scale-95"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -358,7 +359,7 @@ export default function ScatterPlot() {
 
       {loading && (
         <div className="flex items-center justify-center py-20">
-          <div className="w-6 h-6 border-2 border-pnw-green border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-nw-teal border-t-transparent rounded-full animate-spin" />
           <span className="ml-3 text-gray-400 dark:text-gray-500 text-sm">Loading data...</span>
         </div>
       )}
@@ -641,7 +642,7 @@ export default function ScatterPlot() {
       )}
 
       {/* ── Correlation to Win% Table ── */}
-      <CorrelationTable season={2026} divisionId={divisionId} />
+      <CorrelationTable season={CURRENT_SEASON} divisionId={divisionId} />
 
       <StatsLastUpdated className="mt-4" />
     </div>

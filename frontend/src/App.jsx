@@ -25,19 +25,19 @@ function RequireAuth({ children }) {
       {/* Overlay prompt */}
       <div className="absolute inset-0 flex items-start justify-center pt-24 bg-white/40 dark:bg-gray-900/40">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 sm:p-8 max-w-sm w-full text-center mx-4">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-pnw-green/10 dark:bg-pnw-green/20 rounded-full mb-3">
-            <svg className="w-6 h-6 text-pnw-green" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-nw-teal/10 dark:bg-nw-teal/20 rounded-full mb-3">
+            <svg className="w-6 h-6 text-nw-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-pnw-slate dark:text-gray-100 mb-1">Free Account Required</h2>
+          <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100 mb-1">Free Account Required</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
             Sign up for a free account to access this feature. It only takes a few seconds.
           </p>
           <div className="space-y-2">
             <a
               href="/login?tab=signup"
-              className="block w-full px-4 py-2.5 bg-pnw-green text-white text-sm font-semibold rounded-lg hover:bg-pnw-forest transition-colors"
+              className="block w-full px-4 py-2.5 bg-nw-teal text-white text-sm font-semibold rounded-lg hover:bg-nw-teal-dark transition-colors"
             >
               Sign Up Free
             </a>
@@ -143,7 +143,7 @@ function RequireGmEarlyAccess({ children }) {
   if (!onAllowlist && !hasPaidTier && !freePlay) {
     return (
       <div className="max-w-xl mx-auto py-16 text-center">
-        <h1 className="text-3xl font-bold text-pnw-slate dark:text-gray-100 mb-4">NW Coaching Simulator</h1>
+        <h1 className="text-3xl font-bold text-nw-teal dark:text-gray-100 mb-4">NW Coaching Simulator</h1>
         <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-6">
           <p className="text-sm text-amber-900 dark:text-amber-200 mb-2">🔒 <strong>Premium feature</strong></p>
           <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -156,7 +156,7 @@ function RequireGmEarlyAccess({ children }) {
             See plans →
           </Link>
         </div>
-        <a href="/" className="mt-6 inline-block text-sm text-pnw-green hover:underline">← Back to NW Baseball Stats</a>
+        <a href="/" className="mt-6 inline-block text-sm text-nw-teal hover:underline">← Back to NW Baseball Stats</a>
       </div>
     )
   }
@@ -557,7 +557,7 @@ export default function App() {
       </RouteContainer>
 
       {!isPortal && !isGm && (
-      <footer className="border-t border-gray-200 mt-12 bg-pnw-slate text-white">
+      <footer className="border-t border-gray-200 mt-12 bg-nw-teal text-white">
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
             {/* Brand */}

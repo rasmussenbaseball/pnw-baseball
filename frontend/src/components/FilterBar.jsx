@@ -41,7 +41,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
           <select
             value={filters.season || CURRENT_SEASON}
             onChange={(e) => handleChange('season', parseInt(e.target.value))}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky focus:border-transparent"
+            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light focus:border-transparent"
           >
             {seasons.map(y => (
               <option key={y} value={y}>{y}</option>
@@ -55,7 +55,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
           <select
             value={filters.division_id || ''}
             onChange={(e) => handleChange('division_id', e.target.value ? parseInt(e.target.value) : null)}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
           >
             <option value="">All Levels</option>
             {divisions?.map(d => (
@@ -70,7 +70,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
           <select
             value={filters.conference_id || ''}
             onChange={(e) => handleChange('conference_id', e.target.value ? parseInt(e.target.value) : null)}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
           >
             <option value="">All Conferences</option>
             {conferences
@@ -87,7 +87,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
           <select
             value={filters.state || ''}
             onChange={(e) => handleChange('state', e.target.value || null)}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
           >
             <option value="">All States</option>
             {states.map(s => (
@@ -102,7 +102,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
           <select
             value={filters.year_in_school || ''}
             onChange={(e) => handleChange('year_in_school', e.target.value || null)}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+            className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
           >
             <option value="">All Classes</option>
             {classYears.map(y => (
@@ -118,7 +118,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
             <select
               value={filters.position_group || ''}
               onChange={(e) => handleChange('position_group', e.target.value || null)}
-              className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+              className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
             >
               <option value="">All Positions</option>
               {positionGroups.map(pg => (
@@ -139,7 +139,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
               min={0}
               max={300}
               step={10}
-              className="w-20 rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+              className="w-20 rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
             />
           </div>
         )}
@@ -155,7 +155,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
               min={0}
               max={150}
               step={5}
-              className="w-20 rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-pnw-sky"
+              className="w-20 rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
             />
           </div>
         )}
@@ -167,7 +167,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
               type="checkbox"
               checked={!!filters.qualified}
               onChange={(e) => handleChange('qualified', e.target.checked)}
-              className="rounded border-gray-300 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
+              className="rounded border-gray-300 text-nw-teal-light focus:ring-nw-teal-light h-4 w-4"
             />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Qualified</span>
           </label>
@@ -180,7 +180,7 @@ export default function FilterBar({ filters, onChange, divisions, conferences })
               type="checkbox"
               checked={!!filters.conference_only}
               onChange={(e) => handleChange('conference_only', e.target.checked)}
-              className="rounded border-gray-300 text-pnw-teal focus:ring-pnw-sky h-4 w-4"
+              className="rounded border-gray-300 text-nw-teal-light focus:ring-nw-teal-light h-4 w-4"
             />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Conf. Only</span>
           </label>

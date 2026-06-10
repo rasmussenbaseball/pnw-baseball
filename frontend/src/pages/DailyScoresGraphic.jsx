@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -531,7 +532,7 @@ export default function DailyScoresGraphic() {
     setError(null)
     setRendered(false)
     try {
-      const res = await fetch(`${API_BASE}/games/daily-performers?date=${d}&season=2026`)
+      const res = await fetch(`${API_BASE}/games/daily-performers?date=${d}&season=${CURRENT_SEASON}`)
       if (!res.ok) throw new Error(`API error: ${res.status}`)
       const json = await res.json()
 
@@ -677,7 +678,7 @@ export default function DailyScoresGraphic() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-pnw-slate mb-1">Daily Scoreboard</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Daily Scoreboard</h1>
       <p className="text-sm text-gray-500 mb-5">Generate a shareable scoreboard image for any game day.</p>
 
       <div className="flex flex-wrap items-center gap-3 mb-3">

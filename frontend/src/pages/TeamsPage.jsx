@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTeamsSummary, useDivisions } from '../hooks/useApi'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 export default function TeamsPage() {
   const [divisionFilter, setDivisionFilter] = usePersistedState('teams_divFilter', null)
@@ -10,7 +11,7 @@ export default function TeamsPage() {
 
   const { data: divisions } = useDivisions()
   const { data: teams, loading } = useTeamsSummary({
-    season: 2026,
+    season: CURRENT_SEASON,
     division_id: divisionFilter,
     state: stateFilter,
   })
@@ -28,7 +29,7 @@ export default function TeamsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-pnw-slate mb-4">Teams</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-4">Teams</h1>
 
       <div className="flex gap-3 mb-4">
         <select
@@ -96,11 +97,11 @@ function TeamCard({ team }) {
           <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${divisionBadgeClass(team.division_level)}`}>
             {team.division_level}
           </span>
-          <span className="font-semibold text-sm text-pnw-slate">{team.name}</span>
+          <span className="font-semibold text-sm text-nw-teal dark:text-gray-100">{team.name}</span>
         </div>
         {team.team_war != null && (
           <div className="text-right">
-            <span className="text-xs font-bold text-pnw-forest font-mono">
+            <span className="text-xs font-bold text-nw-teal-dark font-mono">
               {team.team_war.toFixed(1)} WAR
             </span>
             {(team.team_owar != null || team.team_pwar != null) && (
@@ -114,7 +115,7 @@ function TeamCard({ team }) {
       <div className="text-xs text-gray-500 mb-3 flex items-center justify-between">
         <span>{team.city}, {team.state} · {team.conference_abbrev}</span>
         {team.wins != null && (
-          <span className="font-mono font-semibold text-pnw-slate">
+          <span className="font-mono font-semibold text-nw-teal dark:text-gray-100">
             {team.wins}-{team.losses}
             {team.conf_wins != null && team.conf_wins + team.conf_losses > 0 && (
               <span className="text-gray-400 font-normal"> ({team.conf_wins}-{team.conf_losses})</span>
@@ -128,13 +129,13 @@ function TeamCard({ team }) {
         {h ? (
           <div className="flex items-center justify-between text-xs">
             <div className="text-gray-700 dark:text-gray-300 truncate mr-2">
-              <span className="text-[10px] uppercase font-bold text-pnw-teal mr-1.5">TOP BAT</span>
+              <span className="text-[10px] uppercase font-bold text-nw-teal-light mr-1.5">TOP BAT</span>
               {h.first_name} {h.last_name}
               <span className="text-gray-400 ml-1">{h.position}</span>
             </div>
             <div className="flex gap-2 font-mono text-gray-600 whitespace-nowrap">
               <span>{formatStat(h.woba, 'avg')} wOBA</span>
-              <span className="text-pnw-forest font-semibold">{formatStat(h.offensive_war, 'war')}</span>
+              <span className="text-nw-teal-dark font-semibold">{formatStat(h.offensive_war, 'war')}</span>
             </div>
           </div>
         ) : (
@@ -144,12 +145,12 @@ function TeamCard({ team }) {
         {p ? (
           <div className="flex items-center justify-between text-xs">
             <div className="text-gray-700 dark:text-gray-300 truncate mr-2">
-              <span className="text-[10px] uppercase font-bold text-pnw-teal mr-1.5">TOP ARM</span>
+              <span className="text-[10px] uppercase font-bold text-nw-teal-light mr-1.5">TOP ARM</span>
               {p.first_name} {p.last_name}
             </div>
             <div className="flex gap-2 font-mono text-gray-600 whitespace-nowrap">
               <span>{formatStat(p.fip, 'era')} FIP</span>
-              <span className="text-pnw-forest font-semibold">{formatStat(p.pitching_war, 'war')}</span>
+              <span className="text-nw-teal-dark font-semibold">{formatStat(p.pitching_war, 'war')}</span>
             </div>
           </div>
         ) : (
