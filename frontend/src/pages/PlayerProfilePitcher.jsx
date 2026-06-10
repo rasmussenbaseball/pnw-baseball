@@ -13,6 +13,7 @@ import {
   RadarChart, PercentilePanel, RollingLineChart, PerGameBarChart,
   SectionCard, SeasonStatTable, GameLogTable, CareerPath,
   ProfileShell, divisionBadge, ipToTrue,
+  CHART_TIERS, HERO_GRADIENT, AWARD_BADGE_STYLE, RANK_BADGE_STYLE,
 } from '../components/playerProfile/shared'
 import { CURRENT_SEASON } from '../lib/seasons'
 
@@ -121,12 +122,12 @@ const fmtDate = d => { if (!d) return ''; const dt = new Date(d); return `${dt.g
 
 // Game-score color tiers (higher is better for pitchers).
 function gsColor(gs) {
-  if (gs == null) return '#d4d4d4'
-  if (gs >= 80) return '#b8302a'
-  if (gs >= 65) return '#5b9d4d'
-  if (gs >= 50) return '#c9a44c'
-  if (gs >= 30) return '#9a9a9a'
-  return '#5d99c6'
+  if (gs == null) return CHART_TIERS.none
+  if (gs >= 80) return CHART_TIERS.great
+  if (gs >= 65) return CHART_TIERS.good
+  if (gs >= 50) return CHART_TIERS.solid
+  if (gs >= 30) return CHART_TIERS.below
+  return CHART_TIERS.poor
 }
 
 // trueIP → baseball notation string (e.g. 31.6667 → "31.2")
@@ -230,7 +231,7 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
       <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
         {/* LEFT */}
         <div className="p-5 flex flex-col">
-          <div className="relative h-20 -mx-5 -mt-5" style={{ background: 'linear-gradient(120deg, #14365c 0%, #1f5485 55%, #c9a44c 100%)' }}>
+          <div className="relative h-20 -mx-5 -mt-5" style={{ background: HERO_GRADIENT }}>
             <div className="absolute -bottom-7 left-[18px] w-[70px] h-[70px] rounded-full bg-gray-300 border-[3px] border-white flex items-center justify-center text-2xl font-bold text-gray-500 overflow-hidden">
               {player.headshot_url
                 ? <img src={player.headshot_url} alt="" className="w-full h-full object-cover" />
@@ -342,12 +343,12 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
             {/* Badges */}
             <div className="flex flex-wrap gap-1.5 mt-3">
               {(awards || []).map((a, i) => (
-                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
+                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={AWARD_BADGE_STYLE}>
                   {a.category} leader · {a.season}
                 </span>
               ))}
               {(pnw_rankings || []).slice(0, 3).map((r, i) => (
-                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={{ background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd' }}>
+                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={RANK_BADGE_STYLE}>
                   {r.rank}{r.rank === 1 ? 'st' : r.rank === 2 ? 'nd' : r.rank === 3 ? 'rd' : 'th'} PNW · {r.category}
                 </span>
               ))}
@@ -406,11 +407,11 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
           colorFn={gsColor}
           tooltipFn={(g, gs) => `${fmtDate(g.game_date)} ${g.home_away === '@' ? '@' : 'vs'} ${g.opponent_short}: ${g.ip != null ? Number(g.ip).toFixed(1) : '?'} IP, ${g.h ?? 0}H ${g.er ?? 0}ER ${g.k ?? 0}K ${g.bb ?? 0}BB · Grade ${gs ?? '—'}${g.is_starter ? ' (SP)' : ' (RP)'}${g.decision ? ` · ${g.decision}` : ''}`}
           legend={[
-            { color: '#5d99c6', label: '<30' },
-            { color: '#9a9a9a', label: '30–49' },
-            { color: '#c9a44c', label: '50–64' },
-            { color: '#5b9d4d', label: '65–79' },
-            { color: '#b8302a', label: '80+' },
+            { color: CHART_TIERS.poor, label: '<30' },
+            { color: CHART_TIERS.below, label: '30–49' },
+            { color: CHART_TIERS.solid, label: '50–64' },
+            { color: CHART_TIERS.good, label: '65–79' },
+            { color: CHART_TIERS.great, label: '80+' },
           ]}
           note="Each bar = 1 outing · 0-100 role-normalized grade · hover for line"
         />

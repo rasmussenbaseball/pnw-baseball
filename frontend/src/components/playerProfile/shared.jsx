@@ -15,22 +15,63 @@ import { useTheme } from '../../context/ThemeContext'
 import { CURRENT_SEASON } from '../../lib/seasons'
 
 // ── Palettes ───────────────────────────────────────────────────
+// OFFICIAL player-profile palette (the savant-style cream/navy/maroon
+// look) — per Nate's June 2026 decision, this object is THE single
+// source of truth for the profile pages' colors. Change values here,
+// nowhere else. (Note: it is intentionally separate from the nw-teal
+// site tokens in tailwind.config.js.)
+export const PROFILE_PALETTE = {
+  cream:     '#faf7f1',  // page background (light mode) — NOT the same as site nw-cream #faf8f5
+  ink:       '#1a1a1a',  // primary text (light mode), tooltip background, text-on-gold
+  navy:      '#14365c',  // primary accent — hero gradient start, toggles, pitcher line
+  navyLight: '#1f5485',  // hero gradient midpoint; accent in dark mode
+  maroon:    '#d22d49',  // "great" performance red — bars, radar stroke, hitter line
+  blue:      '#5d99c6',  // "poor" performance blue — savant scale low end
+  gold:      '#c9a44c',  // gold accent — gradient end, ref lines, current-school badge
+  // Derived translucent fills (keep in sync with maroon / gold above).
+  maroonRadarFill: 'rgba(210,45,73,0.22)',  // radar polygon fill (maroon @ 22%)
+  maroonAreaFill:  'rgba(210,45,73,0.10)',  // rolling-chart area fill (maroon @ 10%)
+  goldRing:        'rgba(201,164,76,0.2)',  // current-school halo (gold @ 20%)
+}
+
+// Game-chart tier colors (theme-independent — same in light and dark).
+// Shared by the per-game OPS chart, per-outing grade chart, summer K
+// chart, and their legends. `great` (#b8302a) is deliberately a deeper
+// red than PROFILE_PALETTE.maroon — do not merge them.
+export const CHART_TIERS = {
+  great: '#b8302a',               // top tier (OPS 1.300+ / grade 80+ / 8+ K)
+  good:  '#5b9d4d',               // green
+  solid: PROFILE_PALETTE.gold,    // gold
+  below: '#9a9a9a',               // neutral gray
+  poor:  PROFILE_PALETTE.blue,    // savant blue (bottom tier)
+  none:  '#d4d4d4',               // no data
+}
+
+// Hero banner gradient (navy → lighter navy → gold), shared by the
+// hitter, pitcher, and summer profile heroes.
+export const HERO_GRADIENT = `linear-gradient(120deg, ${PROFILE_PALETTE.navy} 0%, ${PROFILE_PALETTE.navyLight} 55%, ${PROFILE_PALETTE.gold} 100%)`
+
+// Award / PNW-ranking badge styles (Tailwind amber-100/amber-800 and
+// blue-100/blue-800 values; semantic, not part of the savant palette).
+export const AWARD_BADGE_STYLE = { background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }
+export const RANK_BADGE_STYLE  = { background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd' }
+
 export const THEME_LIGHT = {
-  bg: '#faf7f1',
+  bg: PROFILE_PALETTE.cream,
   card: '#ffffff',
   border: '#e5dfd2',
   borderStrong: '#c8bfa8',
-  text: '#1a1a1a',
+  text: PROFILE_PALETTE.ink,
   textMuted: '#6b6b6b',
   textLight: '#9a9a9a',
   track: '#efeadc',       // percentile bar track
   highlight: '#faf6ec',   // current-season row
   rowAlt: '#f7f3ea',      // summer row
   rowBorder: '#f0ebdc',
-  great: '#d22d49',
-  poor: '#5d99c6',
-  accent: '#14365c',
-  gold: '#c9a44c',
+  great: PROFILE_PALETTE.maroon,
+  poor: PROFILE_PALETTE.blue,
+  accent: PROFILE_PALETTE.navy,
+  gold: PROFILE_PALETTE.gold,
   hot: '#ff6b35',
 }
 
@@ -48,7 +89,7 @@ export const THEME_DARK = {
   rowBorder: '#2a3344',
   great: '#f0556e',       // slightly brighter red for dark
   poor: '#6aa9d6',
-  accent: '#1f5485',
+  accent: PROFILE_PALETTE.navyLight,
   gold: '#d8b65f',
   hot: '#ff8a5c',
 }
@@ -60,6 +101,8 @@ export function usePlayerProfileTheme() {
 
 // ── Color + format helpers (theme-independent) ─────────────────
 // Performance color scale (blue → cream → red), like a savant card.
+// Endpoints are PROFILE_PALETTE.blue [93,153,198] and .maroon
+// [210,45,73] as RGB triplets for interpolation — keep in sync.
 export function pctColor(p) {
   const stops = [
     { p: 0,   c: [93, 153, 198] },
@@ -187,7 +230,7 @@ export function RadarChart({ stats }) {
   return (
     <svg viewBox="0 0 320 250" preserveAspectRatio="xMidYMid meet" className="w-full h-auto">
       {grid}{axes}
-      <polygon points={dataPoints} fill="rgba(210,45,73,0.22)" stroke={T.great} strokeWidth="1.6" strokeLinejoin="round" />
+      <polygon points={dataPoints} fill={PROFILE_PALETTE.maroonRadarFill} stroke={T.great} strokeWidth="1.6" strokeLinejoin="round" />
       {dots}{labels}
     </svg>
   )
@@ -209,7 +252,7 @@ export function PctRow({ stat, pct, raw, tip }) {
           title={stat}>
           i
           {open && (
-            <span className="absolute bottom-[calc(100%+8px)] -right-2 z-50 w-60 p-3 rounded-md text-left text-[11.5px] font-normal text-white leading-snug" style={{ background: '#1a1a1a' }}>
+            <span className="absolute bottom-[calc(100%+8px)] -right-2 z-50 w-60 p-3 rounded-md text-left text-[11.5px] font-normal text-white leading-snug" style={{ background: PROFILE_PALETTE.ink }}>
               <strong className="block text-[12.5px] mb-1" style={{ color: T.gold }}>{stat}</strong>
               <span className="block">{t.what}</span>
               <span className="block mt-1.5 text-[10px] uppercase tracking-wider" style={{ color: '#a3a3a3' }}>Why it matters</span>
@@ -323,7 +366,7 @@ export function RollingLineChart({ series, fmtTick, refLines = [], lineColor, fl
           <text x={pl + cw + 6} y={yPos(rl.v) + 3} fontSize="8.5" fill={rl.color} fontWeight="700">{rl.label}</text>
         </g>
       ))}
-      <path d={areaPath} fill="rgba(210,45,73,0.10)" />
+      <path d={areaPath} fill={PROFILE_PALETTE.maroonAreaFill} />
       <path d={path} fill="none" stroke={line} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       <circle cx={xs[xs.length - 1].toFixed(1)} cy={ys[ys.length - 1].toFixed(1)} r="3.8" fill={line} stroke={T.card} strokeWidth="1.5" />
       <text x={pl} y={h - 6} fontSize="9" fill={T.textLight} fontWeight="700">G1</text>
@@ -502,7 +545,7 @@ export function CareerPath({ player, divisionBadge, seasonRange }) {
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[10px] font-bold relative z-10 mb-2.5 leading-none"
             style={{
               background: n.type === 'current' ? T.gold : (n.type === 'prev' ? T.accent : T.borderStrong),
-              boxShadow: n.type === 'current' ? `0 0 0 1px ${T.gold}, 0 0 0 4px rgba(201,164,76,0.2)` : `0 0 0 1px ${T.borderStrong}`,
+              boxShadow: n.type === 'current' ? `0 0 0 1px ${T.gold}, 0 0 0 4px ${PROFILE_PALETTE.goldRing}` : `0 0 0 1px ${T.borderStrong}`,
             }}>
             {n.badge}
           </div>
@@ -510,7 +553,7 @@ export function CareerPath({ player, divisionBadge, seasonRange }) {
           {n.loc && <div className="text-[11px] mt-0.5" style={{ color: T.textMuted }}>{n.loc}</div>}
           {n.years && <div className="text-[10px] uppercase tracking-wider mt-1.5 font-bold" style={{ color: T.textLight }}>{n.years}</div>}
           <span className="inline-block mt-1.5 px-2 py-[2px] rounded-full text-[9px] font-bold tracking-wider"
-            style={n.type === 'current' ? { background: T.gold, color: '#1a1a1a' } : { background: T.border, color: T.textMuted }}>
+            style={n.type === 'current' ? { background: T.gold, color: PROFILE_PALETTE.ink } : { background: T.border, color: T.textMuted }}>
             {n.tag}
           </span>
         </div>

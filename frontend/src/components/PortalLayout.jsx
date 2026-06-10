@@ -13,9 +13,11 @@
 // their own teal/green palette internally — that's by design,
 // the portal "frames" them with the dark theme.
 
+import { useEffect } from 'react'
 import PortalHeader from './PortalHeader'
 import { PortalTeamProvider } from '../context/PortalTeamContext'
 import PortalTeamGate from './PortalTeamGate'
+import { ensureGoogleFonts } from '../lib/loadFonts'
 
 
 // PortalLayout takes its content via the `children` prop now. Each
@@ -28,6 +30,11 @@ import PortalTeamGate from './PortalTeamGate'
 // designed to render as white paper — darkening them would fight the
 // print output.
 export default function PortalLayout({ children, lightOnly = false }) {
+  // Outfit (the portal typeface) loads here, not in index.html — most
+  // site visitors never enter the portal.
+  useEffect(() => {
+    ensureGoogleFonts('portal-fonts', 'family=Outfit:wght@400;500;600;700')
+  }, [])
   return (
     <PortalTeamProvider>
       {/* font-portal cascades the Outfit typeface to everything inside

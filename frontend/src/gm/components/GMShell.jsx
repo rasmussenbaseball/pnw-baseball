@@ -14,6 +14,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../engine/save'
 import { applyTeamTheme, clearTeamTheme } from '../lib/teamTheme'
 import { Sentry } from '../../lib/sentry'
+import { ensureGoogleFonts } from '../../lib/loadFonts'
 
 /**
  * Catches render-time crashes on any GM page so the user gets a recoverable
@@ -148,6 +149,11 @@ export default function GMShell({ children, schoolName, schoolColors }) {
   const [params] = useSearchParams()
   const slot = params.get('slot') || '1'
   const location = useLocation()
+  // GM pixel fonts load here, not in index.html — main-site visitors
+  // shouldn't download fonts only /gm/* uses.
+  useEffect(() => {
+    ensureGoogleFonts('gm-fonts', 'family=VT323&family=Press+Start+2P')
+  }, [])
   const accent = 'var(--team-accent, #fbbf24)'
   const { user } = useAuth()
   // Apply the user's team theme as CSS variables on every GM page so

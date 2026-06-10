@@ -20,6 +20,13 @@ async function _authHeaders() {
 
 /**
  * Generic API hook for fetching data with loading/error states.
+ *
+ * IMPORTANT — `deps` contract: pass PRIMITIVES only (strings, numbers,
+ * booleans), e.g. `[divisionId]`. Param changes are already covered by
+ * JSON.stringify(params) in the fetch callback, so most callers can omit
+ * deps entirely. Passing a fresh object/array literal in deps makes the
+ * effect re-fire on EVERY render — an infinite refetch loop hammering
+ * the API. If you need an object dependency, stringify it first.
  */
 export function useApi(endpoint, params = {}, deps = []) {
   const [data, setData] = useState(null)

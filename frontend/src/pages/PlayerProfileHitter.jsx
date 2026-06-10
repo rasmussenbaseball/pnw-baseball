@@ -16,6 +16,7 @@ import {
   RadarChart, PercentilePanel, RollingLineChart, PerGameBarChart,
   SectionCard, SeasonStatTable, GameLogTable, CareerPath, StreaksCard,
   ProfileShell, divisionBadge,
+  CHART_TIERS, HERO_GRADIENT, AWARD_BADGE_STYLE, RANK_BADGE_STYLE,
 } from '../components/playerProfile/shared'
 import { CURRENT_SEASON } from '../lib/seasons'
 
@@ -151,12 +152,12 @@ function gameOps(g) {
   return (h + bb) / pa + (ab > 0 ? tb / ab : 0)
 }
 function opsColor(ops) {
-  if (ops == null) return '#d4d4d4'
-  if (ops >= 1.300) return '#b8302a'
-  if (ops >= 1.000) return '#5b9d4d'
-  if (ops >= 0.800) return '#c9a44c'
-  if (ops >= 0.500) return '#9a9a9a'
-  return '#5d99c6'
+  if (ops == null) return CHART_TIERS.none
+  if (ops >= 1.300) return CHART_TIERS.great
+  if (ops >= 1.000) return CHART_TIERS.good
+  if (ops >= 0.800) return CHART_TIERS.solid
+  if (ops >= 0.500) return CHART_TIERS.below
+  return CHART_TIERS.poor
 }
 const fmtOps = v => v == null ? '—' : v.toFixed(3).replace(/^0/, '')
 const fmtDate = d => { if (!d) return ''; const dt = new Date(d); return `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}` }
@@ -274,7 +275,7 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
       <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
         {/* LEFT */}
         <div className="p-5 flex flex-col">
-          <div className="relative h-20 -mx-5 -mt-5" style={{ background: 'linear-gradient(120deg, #14365c 0%, #1f5485 55%, #c9a44c 100%)' }}>
+          <div className="relative h-20 -mx-5 -mt-5" style={{ background: HERO_GRADIENT }}>
             <div className="absolute -bottom-7 left-[18px] w-[70px] h-[70px] rounded-full bg-gray-300 border-[3px] border-white flex items-center justify-center text-2xl font-bold text-gray-500 overflow-hidden">
               {player.headshot_url
                 ? <img src={player.headshot_url} alt="" className="w-full h-full object-cover" />
@@ -394,12 +395,12 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
             {/* Badges */}
             <div className="flex flex-wrap gap-1.5 mt-3">
               {(awards || []).map((a, i) => (
-                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
+                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={AWARD_BADGE_STYLE}>
                   {a.category} leader · {a.season}
                 </span>
               ))}
               {(pnw_rankings || []).slice(0, 3).map((r, i) => (
-                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={{ background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd' }}>
+                <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={RANK_BADGE_STYLE}>
                   {r.rank}{r.rank === 1 ? 'st' : r.rank === 2 ? 'nd' : r.rank === 3 ? 'rd' : 'th'} PNW · {r.category}
                 </span>
               ))}
@@ -460,11 +461,11 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
           colorFn={opsColor}
           tooltipFn={(g, ops) => `${fmtDate(g.game_date)} ${g.home_away === '@' ? '@' : 'vs'} ${g.opponent_short}: ${g.h ?? 0}-${g.ab ?? 0}${g.bb ? `, ${g.bb}BB` : ''}${g.hr ? `, ${g.hr}HR` : ''} · OPS ${fmtOps(ops)}`}
           legend={[
-            { color: '#5d99c6', label: 'Below .500' },
-            { color: '#9a9a9a', label: '.500–.799' },
-            { color: '#c9a44c', label: '.800–.999' },
-            { color: '#5b9d4d', label: '1.000–1.299' },
-            { color: '#b8302a', label: '1.300+' },
+            { color: CHART_TIERS.poor, label: 'Below .500' },
+            { color: CHART_TIERS.below, label: '.500–.799' },
+            { color: CHART_TIERS.solid, label: '.800–.999' },
+            { color: CHART_TIERS.good, label: '1.000–1.299' },
+            { color: CHART_TIERS.great, label: '1.300+' },
           ]}
           note="Each bar = 1 game · hover for line"
         />
