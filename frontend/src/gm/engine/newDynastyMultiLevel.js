@@ -163,6 +163,23 @@ export function newDynastyMultiLevel(input) {
     schools[m.id] = synthetic
   }
 
+  // 1.5. EXPANSION TEAM injection. If the caller passed input.expansionSchool,
+  // slot that school directly into the schools map. This bypasses the
+  // buildSyntheticSchool path because the expansion's strength + financials
+  // + identity are all user-provided. After this, the conferences-map step
+  // includes the expansion in its conference's schoolIds, and the dynasty
+  // loop below generates a roster + staff for it like any other team.
+  // The caller (NewDynasty.jsx) must set input.userSchoolId to the
+  // expansion's id so the user actually controls the new program.
+  if (input.expansionSchool) {
+    const exp = input.expansionSchool
+    if (!exp.id) throw new Error('Expansion school missing id')
+    if (!exp.conferenceId) throw new Error('Expansion school missing conferenceId')
+    schools[exp.id] = { ...exp }
+    confNameById[exp.conferenceId] = confNameById[exp.conferenceId]
+      || (CONF_CONFIG[exp.conferenceId]?.name || exp.conferenceId)
+  }
+
   // 2. Build the conferences map. For NWAC we register all 4 divisions
   // (with each division's schoolIds) so the rest of the engine can iterate
   // them. For other levels there's just the user's conference.
@@ -173,6 +190,10 @@ export function newDynastyMultiLevel(input) {
       const divConf = CONF_CONFIG[divId]
       if (!divConf) continue
       const memberIds = (divConf.pnwMembers || []).map(m => m.id).filter(id => schools[id])
+      // EXPANSION: if the new program is joining THIS division, add its id.
+      if (input.expansionSchool?.conferenceId === divId && !memberIds.includes(input.expansionSchool.id)) {
+        memberIds.push(input.expansionSchool.id)
+      }
       conferences[divId] = {
         id: divId,
         name: divConf.name,

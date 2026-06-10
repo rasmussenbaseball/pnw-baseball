@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadSchools } from '../../gm/engine/loadSchools'
 import { newDynasty } from '../../gm/engine/newDynasty'
 import { newDynastyMultiLevel } from '../../gm/engine/newDynastyMultiLevel'
+import { buildExpansionSchool, validateExpansionInput, FUNDING_PRESETS } from '../../gm/engine/expansionTeam'
 import { getLevelForSchool, isPreviewLevel } from '../../gm/engine/levelHelpers'
 import { saveDynasty, listDynasties } from '../../gm/engine/save'
 import { buildProgramRatings, starsToBar, expectedTeamOvr, teamOvrToStars } from '../../gm/engine/programRating'
@@ -103,6 +104,17 @@ export default function NewDynasty() {
   const [modeKey, setModeKey] = useState('TRADITIONAL')
   const [customOptions, setCustomOptions] = useState(GAME_MODE_PRESETS.CUSTOM)
 
+  // Expansion Team mode — build a brand-new program from scratch instead of
+  // picking from the PNW roster. Story mode forces NWAC + STARTUP funding;
+  // regular mode lets the user pick anything.
+  const [expansionMode, setExpansionMode] = useState(false)
+  const [expansionInput, setExpansionInput] = useState({
+    name: '', city: '', state: '', nickname: '',
+    primaryColor: '#1e40af', secondaryColor: '#fbbf24',
+    level: 'NWAC', conferenceId: 'NWAC_SOUTH',
+    fundingTier: 'GRASSROOTS',
+  })
+
   // Story-mode start:
   //   TRADITIONAL → random bottom-tier NWAC school, role driven by difficulty
   //                 (Easy: PitchingCoach, Normal: BenchCoach, Brutal: GA)
@@ -161,8 +173,17 @@ export default function NewDynasty() {
     () => effectiveSchoolId ? getLevelForSchool(effectiveSchoolId, schools) : null,
     [effectiveSchoolId, schools],
   )
-  const canSubmit = effectiveSchoolId && levelInfo
-    && coachFirst && coachLast && primaryRegion && secondaryRegion && archetype
+  const expansionValid = expansionMode
+    ? !validateExpansionInput(
+        storyMode === 'STORY'
+          ? { ...expansionInput, level: 'NWAC', fundingTier: 'STARTUP' }
+          : expansionInput,
+      )
+    : true
+  const canSubmit = (
+    (expansionMode && expansionValid) ||
+    (!expansionMode && effectiveSchoolId && levelInfo)
+  ) && coachFirst && coachLast && primaryRegion && secondaryRegion && archetype
 
   function getGameOptions() {
     const base = modeKey === 'TRADITIONAL'
@@ -189,9 +210,54 @@ export default function NewDynasty() {
       gmToast('All 3 save slots are used. Delete one to start a new dynasty.', 'warn')
       return
     }
+    const isStory = storyMode === 'STORY'
+
+    // EXPANSION TEAM path — bypasses the pre-loaded schools entirely.
+    // Story mode forces NWAC + STARTUP funding (the rags-to-riches climb
+    // Nate described); regular mode honors whatever the user picked.
+    if (expansionMode) {
+      const finalInput = isStory
+        ? { ...expansionInput, level: 'NWAC', fundingTier: 'STARTUP', storyMode: true }
+        : { ...expansionInput, storyMode: false }
+      const err = validateExpansionInput(finalInput)
+      if (err) { gmToast(err, 'warn'); return }
+      let expansionSchool
+      try { expansionSchool = buildExpansionSchool(finalInput) }
+      catch (e) { gmToast('Failed to build expansion team: ' + (e.message || 'unknown'), 'error'); return }
+      const baseInput = {
+        userSupabaseId: userId,
+        saveSlot: slot,
+        dynastyName: isStory
+          ? `${coachFirst} ${coachLast}'s Career`
+          : `${coachFirst} ${coachLast}'s ${expansionSchool.name}`,
+        userSchoolId: expansionSchool.id,
+        gameOptions: getGameOptions(),
+        ...(isStory ? { storyRole: 'HEAD_COACH' } : {}),
+        userCoach: {
+          firstName: coachFirst, lastName: coachLast,
+          lookId: coachLookId, primaryRegion, secondaryRegion,
+          regions: [primaryRegion, secondaryRegion].filter(Boolean),
+          archetype, recruiter_type: 'BALANCED', ...ratings,
+        },
+        level: expansionSchool.level,
+        conferenceId: expansionSchool.conferenceId,
+        expansionSchool,
+      }
+      let state
+      try { state = newDynastyMultiLevel(baseInput) }
+      catch (e) {
+        console.error('Expansion dynasty creation failed:', e)
+        gmToast('Expansion dynasty creation failed: ' + (e.message || 'unknown'), 'error')
+        return
+      }
+      const result = saveDynasty(state)
+      if (!result.ok) { gmToast('Failed to save: ' + result.error, 'error'); return }
+      navigate(`/gm/dashboard?slot=${slot}`)
+      return
+    }
+
     if (!levelInfo) { gmToast('Could not resolve the selected program.', 'error'); return }
     const schoolName = levelInfo.school.name
-    const isStory = storyMode === 'STORY'
     const baseInput = {
       userSupabaseId: userId,
       saveSlot: slot,
@@ -269,11 +335,21 @@ export default function NewDynasty() {
             setModeKey={setModeKey}
             customOptions={customOptions}
             setCustomOptions={setCustomOptions}
+            expansionMode={expansionMode}
+            setExpansionMode={setExpansionMode}
             onNext={() => setStep(2)}
           />
         )}
         {step === 2 && (
-          storyMode === 'STORY' && storyStartMode === 'TRADITIONAL'
+          expansionMode
+            ? <ExpansionTeamStep
+                input={expansionInput}
+                setInput={setExpansionInput}
+                isStory={storyMode === 'STORY'}
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+              />
+            : storyMode === 'STORY' && storyStartMode === 'TRADITIONAL'
             ? <StoryProgramReveal
                 storyStart={storyStart}
                 schools={schools}
@@ -315,7 +391,43 @@ export default function NewDynasty() {
             canNext={!!(coachFirst && coachLast && primaryRegion && secondaryRegion && archetype)}
           />
         )}
-        {step === 4 && effectiveSchoolId && levelInfo && (
+        {step === 4 && expansionMode && (
+          <ConfirmStep
+            school={{
+              id: 'expansion_preview',
+              name: expansionInput.name || '(unnamed expansion)',
+              nickname: expansionInput.nickname || 'Expansion',
+              city: expansionInput.city,
+              state: expansionInput.state,
+              colors: { primary: expansionInput.primaryColor, secondary: expansionInput.secondaryColor },
+              level: storyMode === 'STORY' ? 'NWAC' : expansionInput.level,
+              conferenceId: storyMode === 'STORY' ? 'NWAC_SOUTH' : expansionInput.conferenceId,
+            }}
+            conf={{
+              name: (storyMode === 'STORY' ? 'NWAC_SOUTH' : expansionInput.conferenceId)
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, c => c.toUpperCase())
+                .replace(/Nwac/g, 'NWAC').replace(/Naia/g, 'NAIA'),
+              abbreviation: storyMode === 'STORY' ? 'NWAC_SOUTH' : expansionInput.conferenceId,
+            }}
+            level={storyMode === 'STORY' ? 'NWAC' : expansionInput.level}
+            mode={GAME_MODE_PRESETS[modeKey].label}
+            storyMode={storyMode}
+            difficulty={difficulty}
+            storyRole={storyMode === 'STORY' ? 'HEAD_COACH' : null}
+            coachFirst={coachFirst}
+            coachLast={coachLast}
+            coachLookId={coachLookId}
+            primaryRegion={primaryRegion}
+            secondaryRegion={secondaryRegion}
+            ratings={ratings}
+            archetype={archetype}
+            canSubmit={canSubmit}
+            onBack={() => setStep(3)}
+            onSubmit={handleCreate}
+          />
+        )}
+        {step === 4 && !expansionMode && effectiveSchoolId && levelInfo && (
           <ConfirmStep
             school={levelInfo.school}
             conf={
@@ -362,7 +474,7 @@ export default function NewDynasty() {
 // toggles) into one screen. They overlapped — difficulty was set on both
 // pages, presets duplicated rule defaults. One pane is much clearer.
 
-function SetupStep({ storyMode, setStoryMode, difficulty, setDifficulty, storyStartMode, setStoryStartMode, storyStart, modeKey, setModeKey, customOptions, setCustomOptions, onNext }) {
+function SetupStep({ storyMode, setStoryMode, difficulty, setDifficulty, storyStartMode, setStoryStartMode, storyStart, modeKey, setModeKey, customOptions, setCustomOptions, expansionMode, setExpansionMode, onNext }) {
   return (
     <PixelCard accent="#fbbf24" title="STEP 1 · GAME SETUP">
       <p className="text-[#a8a8c8] text-sm mb-3 font-pixel">
@@ -549,10 +661,261 @@ function SetupStep({ storyMode, setStoryMode, difficulty, setDifficulty, storySt
         )}
       </div>
 
+      {/* EXPANSION TEAM TOGGLE — build a brand-new program from scratch
+          instead of picking from the existing PNW roster. Story mode forces
+          NWAC + STARTUP funding; regular mode unlocks every level + funding
+          tier. Per Nate (June 2026). */}
+      <div className="mb-4 mt-2 p-3 rounded-lg border-2 border-purple-500/50 bg-purple-950/20">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!expansionMode}
+            onChange={(e) => setExpansionMode(e.target.checked)}
+            className="mt-1 w-4 h-4 accent-purple-400"
+          />
+          <div>
+            <div className="text-purple-200 font-bold text-sm">Build an Expansion Team</div>
+            <div className="text-[11px] text-[#a8a8c8] mt-1 leading-snug">
+              Create your own program from scratch — pick the name, city, colors, conference, and
+              funding level. {storyMode === 'STORY'
+                ? <span className="text-amber-200">Story mode locks you into NWAC with no
+                  budget and no history. Build a JUCO from nothing.</span>
+                : <span>Regular mode lets you join any conference at any level with any funding tier.</span>}
+            </div>
+          </div>
+        </label>
+      </div>
+
       <div className="flex justify-end mt-4">
-        <PixelButton onClick={onNext}>Next: Program →</PixelButton>
+        <PixelButton onClick={onNext}>Next: {expansionMode ? 'Expansion Team' : 'Program'} →</PixelButton>
       </div>
     </PixelCard>
+  )
+}
+
+// ─── Expansion Team Step ────────────────────────────────────────────────────
+//
+// Per Nate (June 2026): let the user spin up a brand-new program. Form
+// captures team identity + level + conference + funding. Story mode locks
+// the level/funding fields. Regular mode unlocks them all.
+function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
+  const set = (k, v) => setInput({ ...input, [k]: v })
+  const LEVEL_OPTS = [
+    { key: 'NWAC', label: 'NWAC (JUCO)' },
+    { key: 'NAIA', label: 'NAIA' },
+    { key: 'D3',   label: 'D3 (NCAA)' },
+    { key: 'D2',   label: 'D2 (NCAA)' },
+    { key: 'D1',   label: 'D1 (NCAA)' },
+  ]
+  // Available conferences per level. NWAC has 4 regions. Other levels
+  // expose the PNW conferences we know about; the engine accepts any
+  // conferenceId so power users with a custom save could go further.
+  const CONF_OPTS = {
+    NWAC: [
+      { key: 'NWAC_NORTH', label: 'NWAC North' },
+      { key: 'NWAC_SOUTH', label: 'NWAC South' },
+      { key: 'NWAC_EAST',  label: 'NWAC East' },
+      { key: 'NWAC_WEST',  label: 'NWAC West' },
+    ],
+    NAIA: [
+      { key: 'CCC',      label: 'Cascade Collegiate (CCC)' },
+      { key: 'FRONTIER', label: 'Frontier' },
+    ],
+    D3: [
+      { key: 'NWC', label: 'Northwest Conference (NWC)' },
+    ],
+    D2: [
+      { key: 'GNAC', label: 'Great Northwest Athletic (GNAC)' },
+    ],
+    D1: [
+      { key: 'BIG_TEN', label: 'Big Ten' },
+      { key: 'WCC',     label: 'West Coast Conference' },
+      { key: 'WAC',     label: 'Western Athletic Conference' },
+    ],
+  }
+  const lvl = isStory ? 'NWAC' : input.level
+  const confOpts = CONF_OPTS[lvl] || []
+  // Auto-select first conference if current pick isn't valid for the level
+  const currentConfValid = confOpts.some(o => o.key === input.conferenceId)
+  const effectiveConfId = currentConfValid ? input.conferenceId : (confOpts[0]?.key || '')
+
+  return (
+    <PixelCard accent="#c084fc" title="STEP 2 · YOUR EXPANSION TEAM">
+      <p className="text-[#a8a8c8] text-sm mb-4 font-pixel">
+        {isStory
+          ? 'Story mode: NWAC junior college, no scholarship money, no history. Pick your name + colors and grind from the bottom.'
+          : 'Regular mode: pick everything. Level, conference, funding tier, identity.'}
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <Field label="Team Name *">
+          <input
+            type="text"
+            value={input.name}
+            onChange={(e) => set('name', e.target.value)}
+            placeholder="Cascade Mariners"
+            maxLength={40}
+            className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm focus:border-amber-400 outline-none"
+          />
+        </Field>
+        <Field label="Nickname / Mascot">
+          <input
+            type="text"
+            value={input.nickname}
+            onChange={(e) => set('nickname', e.target.value)}
+            placeholder="Mariners"
+            maxLength={24}
+            className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm focus:border-amber-400 outline-none"
+          />
+        </Field>
+        <Field label="City *">
+          <input
+            type="text"
+            value={input.city}
+            onChange={(e) => set('city', e.target.value)}
+            placeholder="Bend"
+            maxLength={40}
+            className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm focus:border-amber-400 outline-none"
+          />
+        </Field>
+        <Field label="State *  (2-letter code)">
+          <input
+            type="text"
+            value={input.state}
+            onChange={(e) => set('state', e.target.value.toUpperCase().slice(0, 2))}
+            placeholder="OR"
+            maxLength={2}
+            className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm uppercase focus:border-amber-400 outline-none"
+          />
+        </Field>
+        <Field label="Primary Color">
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={input.primaryColor}
+              onChange={(e) => set('primaryColor', e.target.value)}
+              className="w-10 h-10 bg-transparent border-2 border-[#3a3a5e] rounded cursor-pointer"
+            />
+            <span className="text-xs font-mono text-[#a8a8c8]">{input.primaryColor}</span>
+          </div>
+        </Field>
+        <Field label="Secondary Color">
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={input.secondaryColor}
+              onChange={(e) => set('secondaryColor', e.target.value)}
+              className="w-10 h-10 bg-transparent border-2 border-[#3a3a5e] rounded cursor-pointer"
+            />
+            <span className="text-xs font-mono text-[#a8a8c8]">{input.secondaryColor}</span>
+          </div>
+        </Field>
+      </div>
+
+      <div className="mb-4">
+        <div className="text-white font-pixel uppercase tracking-widest text-xs mb-2">
+          Level {isStory && <span className="text-amber-300 normal-case ml-2">(locked to NWAC in Story Mode)</span>}
+        </div>
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+          {LEVEL_OPTS.map(opt => {
+            const active = lvl === opt.key
+            const disabled = isStory && opt.key !== 'NWAC'
+            return (
+              <button
+                key={opt.key}
+                onClick={() => !disabled && set('level', opt.key)}
+                disabled={disabled}
+                className={
+                  'p-2 rounded border-2 text-xs font-bold transition ' +
+                  (active ? 'border-amber-300 bg-[#3a3a5e] text-white'
+                    : disabled ? 'border-[#2a2a44] bg-[#1a1a2e] text-[#5a5a7a] cursor-not-allowed'
+                    : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d] text-white')
+                }
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="text-white font-pixel uppercase tracking-widest text-xs mb-2">Conference / Region</div>
+        <div className="flex flex-wrap gap-2">
+          {confOpts.map(opt => {
+            const active = effectiveConfId === opt.key
+            return (
+              <button
+                key={opt.key}
+                onClick={() => set('conferenceId', opt.key)}
+                className={
+                  'px-3 py-2 rounded border-2 text-xs transition ' +
+                  (active
+                    ? 'border-amber-300 bg-[#3a3a5e] text-white'
+                    : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d] text-[#cbd5e1]')
+                }
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="text-white font-pixel uppercase tracking-widest text-xs mb-2">
+          Funding Tier {isStory && <span className="text-amber-300 normal-case ml-2">(locked to Startup in Story Mode)</span>}
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          {Object.entries(FUNDING_PRESETS).map(([key, preset]) => {
+            const active = (isStory ? 'STARTUP' : input.fundingTier) === key
+            const disabled = isStory && key !== 'STARTUP'
+            return (
+              <button
+                key={key}
+                onClick={() => !disabled && set('fundingTier', key)}
+                disabled={disabled}
+                className={
+                  'p-3 rounded border-2 text-left transition flex items-center justify-between ' +
+                  (active ? 'border-amber-300 bg-[#3a3a5e]'
+                    : disabled ? 'border-[#2a2a44] bg-[#1a1a2e] opacity-50 cursor-not-allowed'
+                    : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+                }
+              >
+                <span className="text-white text-sm font-bold">{preset.label}</span>
+                <span className="text-[11px] text-[#a8a8c8] font-mono ml-3">
+                  Pool ${(preset.scholarshipPool / 1000).toFixed(0)}K · Budget ${(preset.totalBudget / 1000).toFixed(0)}K
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="flex justify-between mt-4">
+        <PixelButton onClick={onBack}>← Back</PixelButton>
+        <PixelButton
+          onClick={() => {
+            // Ensure conferenceId matches the (possibly locked) level before
+            // we proceed — Story mode forces NWAC_SOUTH if user hadn't picked.
+            if (isStory) setInput({ ...input, level: 'NWAC', conferenceId: effectiveConfId || 'NWAC_SOUTH', fundingTier: 'STARTUP' })
+            else if (effectiveConfId !== input.conferenceId) setInput({ ...input, conferenceId: effectiveConfId })
+            onNext()
+          }}
+        >
+          Next: Coach →
+        </PixelButton>
+      </div>
+    </PixelCard>
+  )
+}
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-widest text-[#a8a8c8] mb-1 font-pixel">{label}</div>
+      {children}
+    </div>
   )
 }
 
