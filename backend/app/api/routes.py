@@ -6740,6 +6740,7 @@ def reliever_leaderboard(
         "wpa", "geg", "brk", "opp", "goose_pct",
         "app", "ip", "bf", "k", "bb", "h", "r",
         "k_pct", "bb_pct", "ra9", "whip",
+        "holds", "blown_saves", "saves",
     }
     if sort_by not in allowed_sort:
         sort_by = "wpa"
@@ -6841,6 +6842,9 @@ def reliever_leaderboard(
                 d.level AS division_level,
                 c.id AS conference_id, c.abbreviation AS conference_abbrev,
                 a.app, a.outs, a.bf, a.k, a.bb, a.h, a.r, a.wpa,
+                COALESCE(pst.holds, 0) AS holds,
+                COALESCE(pst.blown_saves, 0) AS blown_saves,
+                COALESCE(pst.saves, 0) AS saves,
                 COALESCE(gz.geg, 0) AS geg,
                 COALESCE(gz.brk, 0) AS brk,
                 COALESCE(gz.opp, 0) AS opp,
@@ -6857,13 +6861,15 @@ def reliever_leaderboard(
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
             LEFT JOIN goose gz ON gz.player_id = a.player_id
+            LEFT JOIN pitching_stats pst
+                   ON pst.player_id = p.id AND pst.team_id = t.id AND pst.season = %s
             WHERE a.bf >= %s
               AND COALESCE(t.is_active, 1) = 1
               {where_sql}
             ORDER BY {sort_by} {direction} NULLS LAST, a.wpa DESC
             LIMIT %s OFFSET %s
         """
-        params = [season, season, lead_threshold] + [min_bf] + where_params + [limit, offset]
+        params = [season, season, lead_threshold] + [season, min_bf] + where_params + [limit, offset]
         cur.execute(query, params)
         rows = [dict(r) for r in cur.fetchall()]
 

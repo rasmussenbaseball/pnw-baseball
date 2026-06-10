@@ -456,6 +456,10 @@ Key files:
 - `scripts/derive_event_state.py` — base/out/score derivation
 - `scripts/derive_batted_ball.py` — bb_type backfill driver
 - `scripts/compute_wpa.py` — WPA computation (run after any PBP re-scrape)
+- `scripts/compute_holds_blown_saves.py` — holds + blown saves derived from
+  game_events score state → `game_pitching.is_hold/is_blown_save` +
+  `pitching_stats.holds/blown_saves` (run after any PBP re-scrape, like WPA;
+  also in daily_update.sh). NULL totals = no PBP coverage, rendered '-'.
 - API endpoints: `/players/{id}/pitch-level-stats` and `/players/{id}/pitch-level-stats-pitcher`
 - Frontend: `PitchLevelStatsCard.jsx`, `PitcherPitchLevelStatsCard.jsx`, `SprayChart.jsx`, `PercentileBars.jsx`
 

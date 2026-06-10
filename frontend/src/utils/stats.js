@@ -303,6 +303,12 @@ export const RELIEVER_COLUMNS = [
     render: (row) => row.wpa == null ? '—' : `${row.wpa >= 0 ? '+' : ''}${Number(row.wpa).toFixed(2)}`,
     tooltip: 'Win Probability Added in relief. Sum of the win-prob swing on every play while pitching. Higher is better.' },
 
+  { key: 'saves', label: 'SV', width: 50, format: 'int', tooltip: 'Saves (from box scores)' },
+  { key: 'holds', label: 'HLD', width: 55, format: 'int',
+    tooltip: 'Holds — entered in a save situation, recorded an out, and left with the lead intact. Derived from play-by-play (PBP-covered games only).' },
+  { key: 'blown_saves', label: 'BS', width: 50, format: 'int',
+    tooltip: 'Blown saves — entered in a save situation and the lead was lost on his watch (inherited runners count). Derived from play-by-play (PBP-covered games only). Lower is better.' },
+
   { key: 'geg', label: 'GEG', width: 55, format: 'int',
     tooltip: 'Goose Eggs — clean high-leverage relief innings (7th+, team not trailing, lead <= 3 or tying run on base/at bat, no runs allowed).' },
   { key: 'brk', label: 'BRK', width: 55, format: 'int',
@@ -314,7 +320,7 @@ export const RELIEVER_COLUMNS = [
 ]
 
 export const RELIEVER_PRESETS = {
-  'Clutch': ['app', 'ip', 'wpa', 'geg', 'brk', 'opp', 'goose_pct'],
+  'Clutch': ['app', 'ip', 'wpa', 'saves', 'holds', 'blown_saves', 'geg', 'brk', 'opp', 'goose_pct'],
   'Rates':  ['app', 'ip', 'bf', 'k_pct', 'bb_pct', 'ra9', 'whip', 'wpa'],
 }
 

@@ -199,3 +199,9 @@ echo "============================================"
 # wpa_derived_at IS NULL get processed). Self-heals when scrape_pbp
 # re-INSERTs game_events rows and clears the wpa_* columns.
 PYTHONPATH=backend python3 scripts/compute_wpa.py --season 2026
+
+# Holds + blown saves — derived from game_events score state, written to
+# game_pitching flags + pitching_stats season totals. Idempotent (full
+# recompute for the season each run). Also run manually after any PBP
+# rescrape, same as compute_wpa.
+PYTHONPATH=backend python3 scripts/compute_holds_blown_saves.py --season 2026

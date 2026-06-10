@@ -80,6 +80,9 @@ const EXTENDED_PITCHING_COLS = [
   { key: 'wins',            label: 'W',   fmt: 'int' },
   { key: 'losses',          label: 'L',   fmt: 'int' },
   { key: 'saves',           label: 'SV',  fmt: 'int' },
+  // PBP-derived (covered games only); null renders '-'
+  { key: 'holds',           label: 'HLD', fmt: 'int' },
+  { key: 'blown_saves',     label: 'BS',  fmt: 'int' },
   { key: 'games',           label: 'G',   fmt: 'int' },
   { key: 'games_started',   label: 'GS',  fmt: 'int' },
   { key: 'innings_pitched', label: 'IP',  fmt: 'ip' },

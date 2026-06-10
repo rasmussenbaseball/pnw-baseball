@@ -116,6 +116,10 @@ const PITCHING_TABLE_COLS = [
   { key: 'wins',         label: 'W',     format: 'int' },
   { key: 'losses',       label: 'L',     format: 'int' },
   { key: 'saves',        label: 'SV',    format: 'int' },
+  // HLD/BS are derived from play-by-play score state (PBP-covered games
+  // only); null = no PBP coverage that season, rendered as '-'.
+  { key: 'holds',        label: 'HLD',   format: 'int' },
+  { key: 'blown_saves',  label: 'BS',    format: 'int' },
   { key: 'games',        label: 'G',     format: 'int' },
   { key: 'games_started', label: 'GS',   format: 'int' },
   { key: 'innings_pitched', label: 'IP', format: 'ip' },
@@ -823,6 +827,10 @@ function SeasonGlance({ bat, pit, season, className = '' }) {
     tiles.push({ label: 'K',   value: pit.strikeouts ?? '-' })
     tiles.push({ label: 'BB',  value: pit.walks ?? '-' })
     tiles.push({ label: 'SV',  value: pit.saves ?? '-' })
+    // Only show HLD/BS tiles when the reliever actually has them — most
+    // pitchers have 0/0 and the tiles row is tight on space.
+    if (pit.holds > 0) tiles.push({ label: 'HLD', value: pit.holds })
+    if (pit.blown_saves > 0) tiles.push({ label: 'BS', value: pit.blown_saves })
     tiles.push({ label: 'G',   value: pit.games ?? '-' })
   }
 
