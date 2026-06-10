@@ -15,7 +15,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadSchools } from '../../gm/engine/loadSchools'
 import { newDynasty } from '../../gm/engine/newDynasty'
 import { newDynastyMultiLevel } from '../../gm/engine/newDynastyMultiLevel'
-import { buildExpansionSchool, validateExpansionInput, FUNDING_BY_LEVEL, expansionStateWarning, PNW_STATES } from '../../gm/engine/expansionTeam'
+import { buildExpansionSchool, validateExpansionInput, FUNDING_BY_LEVEL, PNW_STATE_OPTIONS } from '../../gm/engine/expansionTeam'
 import { getLevelForSchool, isPreviewLevel } from '../../gm/engine/levelHelpers'
 import { saveDynasty, listDynasties } from '../../gm/engine/save'
 import { buildProgramRatings, starsToBar, expectedTeamOvr, teamOvrToStars } from '../../gm/engine/programRating'
@@ -109,7 +109,7 @@ export default function NewDynasty() {
   // regular mode lets the user pick anything.
   const [expansionMode, setExpansionMode] = useState(false)
   const [expansionInput, setExpansionInput] = useState({
-    name: '', city: '', state: '', nickname: '',
+    name: '', city: '', state: 'OR', nickname: '',
     primaryColor: '#1e40af', secondaryColor: '#fbbf24',
     level: 'NWAC', conferenceId: 'NWAC_SOUTH',
     fundingTier: 'GRASSROOTS',
@@ -740,10 +740,6 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
   const effectiveConfId = currentConfValid ? input.conferenceId : (confOpts[0]?.key || '')
   // Level-aware funding tiers (NWAC budgets are way smaller than D1 etc.)
   const fundingTiers = FUNDING_BY_LEVEL[lvl] || FUNDING_BY_LEVEL.NAIA
-  // Travel warning — surfaces when user picks a state outside the
-  // recommended PNW set for their level. Non-blocking (the engine can
-  // still simulate it, but travel costs will be brutal every series).
-  const stateWarning = expansionStateWarning({ level: lvl, state: input.state })
 
   return (
     <PixelCard accent="#c084fc" title="STEP 2 · YOUR EXPANSION TEAM">
@@ -784,15 +780,16 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
             className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm focus:border-amber-400 outline-none"
           />
         </Field>
-        <Field label={`State *  (${lvl === 'D1' ? '2-letter code, any US state' : 'PNW recommended: ' + PNW_STATES.join(', ')})`}>
-          <input
-            type="text"
+        <Field label="State *  (PNW only)">
+          <select
             value={input.state}
-            onChange={(e) => set('state', e.target.value.toUpperCase().slice(0, 2))}
-            placeholder={lvl === 'D1' ? 'CA' : 'OR'}
-            maxLength={2}
-            className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm uppercase focus:border-amber-400 outline-none"
-          />
+            onChange={(e) => set('state', e.target.value)}
+            className="w-full bg-[#1a1a2e] border-2 border-[#3a3a5e] rounded px-3 py-2 text-white text-sm focus:border-amber-400 outline-none"
+          >
+            {PNW_STATE_OPTIONS.map(opt => (
+              <option key={opt.code} value={opt.code}>{opt.code} — {opt.label}</option>
+            ))}
+          </select>
         </Field>
         <Field label="Primary Color">
           <div className="flex items-center gap-2">
@@ -867,12 +864,6 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
           })}
         </div>
       </div>
-
-      {stateWarning && (
-        <div className="mb-3 p-2 rounded border border-amber-500/40 bg-amber-900/20 text-[11px] text-amber-200 font-pixel">
-          ⚠ {stateWarning}
-        </div>
-      )}
 
       <div className="mb-4">
         <div className="text-white font-pixel uppercase tracking-widest text-xs mb-2">

@@ -262,13 +262,22 @@ export function recommendedStatesForLevel(level) {
 }
 
 /** Validation helper for UI — returns null if input is valid, otherwise an
- *  error string suitable for a toast. */
+ *  error string suitable for a toast.
+ *
+ *  Per Nate (June 2026): expansion teams are HARD-LIMITED to PNW states.
+ *  The game's whole scope is PNW + travel costs assume regional play, so
+ *  a team based outside WA/OR/ID/MT/BC isn't allowed regardless of level.
+ *  The city field stays free-text — they can pick any PNW city. */
 export function validateExpansionInput(input) {
   if (!input) return 'Missing expansion form.'
   if (!input.name || input.name.trim().length < 3) return 'Team name needs at least 3 characters.'
   if (input.name.trim().length > 40) return 'Team name is too long (max 40 chars).'
   if (!input.city || input.city.trim().length < 2) return 'City is required.'
-  if (!input.state || input.state.trim().length !== 2) return 'State must be a 2-letter code (e.g. WA).'
+  if (!input.state) return 'Pick a state.'
+  const stateUp = input.state.trim().toUpperCase()
+  if (!PNW_STATES.includes(stateUp)) {
+    return `Expansion teams must be based in the PNW (${PNW_STATES.join(', ')}).`
+  }
   if (!input.level) return 'Pick a level (D1, D2, D3, NAIA, or NWAC).'
   if (!input.conferenceId) return 'Pick a conference / region to join.'
   if (input.fundingTier) {
@@ -278,15 +287,11 @@ export function validateExpansionInput(input) {
   return null
 }
 
-/** Non-blocking advisory check — returns a friendly warning string if the
- *  user picked a state outside the recommended set for their level. The UI
- *  surfaces this as a hint, not an error (the dynasty CAN still be built;
- *  travel just gets brutal). */
-export function expansionStateWarning(input) {
-  if (!input || !input.level || !input.state) return null
-  const recommended = recommendedStatesForLevel(input.level)
-  if (!recommended) return null
-  const s = input.state.trim().toUpperCase()
-  if (recommended.includes(s)) return null
-  return `Heads up: ${input.level} conferences are PNW-regional (${recommended.join(', ')}). A ${s}-based team will face very high travel costs every series.`
-}
+/** Labels for the PNW state dropdown. */
+export const PNW_STATE_OPTIONS = [
+  { code: 'WA', label: 'Washington' },
+  { code: 'OR', label: 'Oregon' },
+  { code: 'ID', label: 'Idaho' },
+  { code: 'MT', label: 'Montana' },
+  { code: 'BC', label: 'British Columbia' },
+]
