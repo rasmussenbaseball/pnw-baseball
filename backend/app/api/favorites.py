@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Literal, Optional
 
 from ..models.database import get_connection
+from ..config import CURRENT_SEASON
 from .auth import get_current_user, get_optional_user
 
 favorites_router = APIRouter(prefix="/favorites", tags=["favorites"])
@@ -101,7 +102,7 @@ def list_favorites(user_id: str = Depends(get_current_user)):
 
 # ── Dashboard: rich data for favorites page ────────────────
 @favorites_router.get("/dashboard")
-def favorites_dashboard(user_id: str = Depends(get_current_user), season: int = 2026):
+def favorites_dashboard(user_id: str = Depends(get_current_user), season: int = CURRENT_SEASON):
     """
     Returns enriched favorites data for the dashboard:
     - Players: season stats, last-5 game trend, headshot

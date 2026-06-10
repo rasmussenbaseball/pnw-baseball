@@ -31,11 +31,12 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..cache import cached_endpoint
 from ..models.database import get_connection
+from ..config import CURRENT_SEASON
 
 router = APIRouter()
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-SEASON_DEFAULT = 2026
+SEASON_DEFAULT = CURRENT_SEASON
 
 # ── Metric configuration (exact mirror of the recovered prototype config) ──────
 # direction "higher" = more is better; "lower" = less is better. Weights sum to 1.

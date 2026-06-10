@@ -23,6 +23,7 @@ from psycopg2.extras import Json
 from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
+from ..config import CURRENT_SEASON
 from .auth import require_admin, require_tier
 from .leverage import compute_li
 from .lineup_helper import (
@@ -689,7 +690,7 @@ def site_stats():
 # ── Stats last-updated timestamps ─────────────────────────────────
 @router.get("/stats/last-updated")
 @cached_endpoint(ttl_seconds=300)
-def stats_last_updated_top(season: int = 2026):
+def stats_last_updated_top(season: int = CURRENT_SEASON):
     """Return the most recent updated_at timestamp per division level."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -2994,7 +2995,7 @@ def _bulk_power_ratings(cur, season):
 @router.get("/games/win-probabilities")
 def game_win_probabilities(
     date: str = Query(..., description="Date (YYYY-MM-DD)"),
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """
     Compute projected win probabilities for all PNW-vs-PNW games on a date.
@@ -3038,7 +3039,7 @@ def game_win_probabilities(
 
 @router.get("/games/upset-of-the-day")
 def upset_of_the_day(
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """
     Find the biggest upset from the most recent day with completed PNW-vs-PNW games.
@@ -4102,7 +4103,7 @@ def get_team(team_id: int):
 @cached_endpoint(ttl_seconds=1800)
 def get_team_rankings(
     team_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """Get national rankings, conference rank, and SOS for a single team."""
     with get_connection() as conn:
@@ -4518,7 +4519,7 @@ def _compute_superlative(cur, team, season, conf_rows, best_hitter, best_pitcher
 @cached_endpoint(ttl_seconds=1800)
 def team_season_recap(
     team_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """Positive-only end-of-year team snapshot for the season-recap social
     graphic: record + conference standing, longest win streak, best hitter
@@ -4892,7 +4893,7 @@ def team_season_recap(
 @router.get("/teams/{team_id}/info-graphic")
 def team_info_graphic(
     team_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """
     Single-payload data for the Team Info social graphic.
@@ -6877,7 +6878,7 @@ def reliever_leaderboard(
 
 
 @router.get("/players/{player_id}/goose-eggs")
-def player_goose_eggs(player_id: int, season: int = Query(2026)):
+def player_goose_eggs(player_id: int, season: int = Query(CURRENT_SEASON)):
     """One reliever's Goose Egg line (GEG / BRK / OPP / Goose%) from PBP.
 
     Uses the SAME goose-window rules as /leaderboards/relievers (7th+, team
@@ -9153,7 +9154,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
 
         # ── PNW Top 10 rankings (qualified, current season) ──
         pnw_rankings = []
-        current_season = 2026
+        current_season = CURRENT_SEASON
         min_pa = 30
         min_ip = 10
 
@@ -9351,7 +9352,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         # in the stat tables rather than from summer_players, because that
         # roster table holds entries from multiple past seasons (so a guy
         # who last played WCL in 2023 was wrongly getting a 2026 button).
-        CURRENT_SUMMER_SEASON = 2026
+        CURRENT_SUMMER_SEASON = CURRENT_SEASON
         current_summer_assignment = None
         for _sr in (summer_batting + summer_pitching):
             if _sr.get("season") == CURRENT_SUMMER_SEASON and _sr.get("league_abbrev") == "WCL":
@@ -9637,7 +9638,7 @@ def uncommitted_juco_players(
 # "transfer-portal" as an int player id (422).
 @router.get("/transfer-portal")
 def transfer_portal_players(
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     position: Optional[str] = None,
     sort_by: str = Query("total_war", description="Sort column"),
     sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
@@ -10241,7 +10242,7 @@ def unmatched_game_batting(
 @router.get("/admin/debug-player-games/{player_id}")
 def debug_player_games(
     player_id: int,
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     _admin: str = Depends(require_admin),
 ):
     """Debug: show all game_batting rows for a player + unmatched rows for their team."""
@@ -10363,7 +10364,7 @@ def debug_player_games(
 @router.get("/admin/team-game-coverage/{team_id}")
 def team_game_coverage(
     team_id: int,
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     _admin: str = Depends(require_admin),
 ):
     """Show which games have box score data and which don't."""
@@ -11194,7 +11195,7 @@ def _dedup_games(games, limit):
 
 @router.get("/games/recent")
 def recent_games(
-    season: int = 2026,
+    season: int = CURRENT_SEASON,
     limit: int = 20,
     team_id: Optional[int] = None,
     division: Optional[str] = None,
@@ -11436,7 +11437,7 @@ def games_by_date(
                             # Build a DB-game-shaped dict from the future schedule entry
                             games.append({
                                 "id": None,
-                                "season": 2026,
+                                "season": CURRENT_SEASON,
                                 "game_date": fg["game_date"],
                                 "game_time": None,
                                 "home_team_id": h,
@@ -11492,7 +11493,7 @@ def games_by_date(
 
         # Attach win probabilities for PNW-vs-PNW games
         try:
-            season_val = games[0]["season"] if games else 2026
+            season_val = games[0]["season"] if games else CURRENT_SEASON
             ratings = _bulk_power_ratings(cur, season_val)
             for g in games:
                 h = g.get("home_team_id")
@@ -11510,7 +11511,7 @@ def games_by_date(
 @router.get("/games/daily-performers")
 def daily_performers(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Return enhanced game data + top performers for the daily scores graphic.
@@ -11812,7 +11813,7 @@ def daily_performers(
 
 @router.get("/games/top-performer-weeks")
 def top_performer_weeks(
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Return list of Monday-to-Sunday week ranges that have at least one final game.
@@ -11862,7 +11863,7 @@ def top_performer_weeks(
 @router.get("/games/weekly-top-performers")
 def weekly_top_performers(
     week_start: str = Query(..., description="Monday start date (YYYY-MM-DD)"),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Aggregate all PNW batting/pitching lines across a Monday-to-Sunday week,
@@ -11907,11 +11908,13 @@ def weekly_top_performers(
                    p.first_name, p.last_name, p.headshot_url,
                    d.level AS division
             FROM game_batting gb
+            JOIN games g ON gb.game_id = g.id
             JOIN teams t ON gb.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN players p ON gb.player_id = p.id
             WHERE gb.game_id IN ({placeholders})
+              AND gb.team_id IN (g.home_team_id, g.away_team_id)
         """, game_ids)
         batting_rows = [dict(r) for r in cur.fetchall()]
 
@@ -11927,11 +11930,13 @@ def weekly_top_performers(
                    p.first_name, p.last_name, p.headshot_url,
                    d.level AS division
             FROM game_pitching gp
+            JOIN games g ON gp.game_id = g.id
             JOIN teams t ON gp.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN players p ON gp.player_id = p.id
             WHERE gp.game_id IN ({placeholders})
+              AND gp.team_id IN (g.home_team_id, g.away_team_id)
         """, game_ids)
         pitching_rows = [dict(r) for r in cur.fetchall()]
 
@@ -12256,7 +12261,7 @@ def weekly_top_performers(
 
 @router.get("/games/series-weeks")
 def series_weeks(
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Return list of week ranges (Tuesday-Monday) that have series data.
@@ -12306,7 +12311,7 @@ def series_weeks(
 @router.get("/games/series-recap")
 def series_recap(
     week_start: str = Query(..., description="Tuesday start date (YYYY-MM-DD)"),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Detect and return series recaps for a given week (Tuesday-Monday).
@@ -12881,7 +12886,7 @@ def daily_recap(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     home_team_id: int = Query(...),
     away_team_id: int = Query(...),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Return all games between two teams on a given date (could be doubleheader).
@@ -13106,9 +13111,11 @@ def daily_recap(
                    p.year_in_school, p.position AS roster_position,
                    p.is_committed, p.committed_to
             FROM game_batting gb
+            JOIN games gg ON gb.game_id = gg.id
             JOIN teams t ON gb.team_id = t.id
             LEFT JOIN players p ON gb.player_id = p.id
             WHERE gb.game_id IN ({placeholders})
+              AND gb.team_id IN (gg.home_team_id, gg.away_team_id)
         """, game_ids)
         batting_rows = [dict(r) for r in cur.fetchall()]
 
@@ -13124,9 +13131,11 @@ def daily_recap(
                    p.year_in_school, p.position AS roster_position,
                    p.is_committed, p.committed_to
             FROM game_pitching gp
+            JOIN games gg ON gp.game_id = gg.id
             JOIN teams t ON gp.team_id = t.id
             LEFT JOIN players p ON gp.player_id = p.id
             WHERE gp.game_id IN ({placeholders})
+              AND gp.team_id IN (gg.home_team_id, gg.away_team_id)
         """, game_ids)
         pitching_rows = [dict(r) for r in cur.fetchall()]
 
@@ -13343,7 +13352,7 @@ def daily_recap(
 
 @router.get("/games/daily-recap-dates")
 def daily_recap_dates(
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Return a list of dates that have completed games, for a date picker.
@@ -13370,7 +13379,7 @@ def daily_recap_dates(
 @router.get("/games/daily-recap-matchups")
 def daily_recap_matchups(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """Return all distinct matchups on a given date for the matchup picker."""
     with get_connection() as conn:
@@ -13415,7 +13424,7 @@ def daily_recap_matchups(
 @router.get("/games/key-matchup")
 def key_matchup(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     game_id: Optional[str] = None,
 ):
     """
@@ -14513,7 +14522,7 @@ def games_live():
 
 @router.get("/games/ticker")
 def games_ticker(
-    season: int = 2026,
+    season: int = CURRENT_SEASON,
     limit: int = 12,
 ):
     """
@@ -14556,7 +14565,7 @@ def games_ticker(
 
 @router.get("/games/quality-starts")
 def quality_starts_leaderboard(
-    season: int = 2026,
+    season: int = CURRENT_SEASON,
     limit: int = 25,
 ):
     """
@@ -14586,6 +14595,7 @@ def quality_starts_leaderboard(
             LEFT JOIN divisions d ON c.division_id = d.id
             WHERE g.season = %s
               AND gp.is_starter = TRUE
+              AND gp.team_id IN (g.home_team_id, g.away_team_id)
             GROUP BY gp.player_id, p.first_name, p.last_name, gp.player_name,
                      t.short_name, t.logo_url, d.level
             HAVING COUNT(*) FILTER (WHERE gp.is_starter = TRUE) >= 3
@@ -14598,7 +14608,7 @@ def quality_starts_leaderboard(
 
 @router.get("/games/game-scores")
 def game_score_leaderboard(
-    season: int = 2026,
+    season: int = CURRENT_SEASON,
     limit: int = 25,
 ):
     """
@@ -14639,6 +14649,7 @@ def game_score_leaderboard(
             WHERE g.season = %s
               AND gp.game_score IS NOT NULL
               AND gp.is_starter = TRUE
+              AND gp.team_id IN (g.home_team_id, g.away_team_id)
             ORDER BY gp.game_score DESC
             LIMIT %s
         """, (season, limit))
@@ -14726,7 +14737,7 @@ def game_detail(game_id: int):
 @router.get("/teams/{team_id}/games")
 def team_games(
     team_id: int,
-    season: int = 2026,
+    season: int = CURRENT_SEASON,
 ):
     """Get all games for a specific team in a season."""
     with get_connection() as conn:
@@ -14764,7 +14775,7 @@ def team_games(
 @router.get("/players/{player_id}/streaks")
 def get_player_streaks(
     player_id: int,
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Per-player hit and on-base streaks for a single season.
@@ -14811,6 +14822,7 @@ def get_player_streaks(
             WHERE gb.player_id IN ({ph})
               AND g.season = %s
               AND g.status = 'final'
+              AND gb.team_id IN (g.home_team_id, g.away_team_id)
             ORDER BY g.game_date ASC, g.id ASC
             """,
             (*all_ids, season),
@@ -14941,7 +14953,7 @@ def _outing_grade(dist, row):
 @router.get("/players/{player_id}/gamelogs")
 def get_player_gamelogs(
     player_id: int,
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """
     Return game-by-game batting and pitching lines for a player,
@@ -15180,7 +15192,7 @@ def get_player_gamelogs(
 @router.get("/players/{player_id}/recent-ks")
 def get_player_recent_ks(
     player_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
     side: str = Query('batting', description="'batting' or 'pitching'"),
     limit: int = Query(20, ge=1, le=50),
     team_id: int | None = Query(None, description="Filter to strikeouts where the opponent is on this team"),
@@ -15270,7 +15282,7 @@ def get_player_recent_ks(
 def get_player_vs_team(
     player_id: int,
     team_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
     side: str = Query('batting', description="'batting' or 'pitching'"),
 ):
     """How this player has performed against a specific opposing team.
@@ -16008,7 +16020,7 @@ def _get_pitch_level_baselines(cur, season: int, division_level: str, weights) -
 @router.get("/players/{player_id}/wpa-by-game")
 def get_player_wpa_by_game(
     player_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """Per-game WPA totals + running cumulative for one player.
 
@@ -16148,7 +16160,7 @@ def get_player_wpa_by_game(
 @router.get("/players/{player_id}/pitch-level-stats")
 def get_player_pitch_level_stats(
     player_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """Hitter pitch-level stats from game_events.
 
@@ -16962,7 +16974,7 @@ def _get_pitcher_pitch_level_baselines(cur, season, division_level, weights):
 @router.get("/players/{player_id}/pitch-level-stats-pitcher")
 def get_player_pitch_level_stats_pitcher(
     player_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """Pitcher pitch-level stats from game_events.
 
@@ -17349,18 +17361,58 @@ def get_player_pitch_level_stats_pitcher(
 # IMAGE PROXY - for canvas export (avoids CORS issues)
 # ============================================================
 import httpx as _httpx
+import ipaddress as _ipaddress
+import socket as _socket
+from urllib.parse import urlparse as _img_urlparse
 from fastapi.responses import Response as _ImgResponse
+
+_PROXY_MAX_BYTES = 10 * 1024 * 1024  # 10 MB cap — logos/headshots are far smaller
+_PROXY_MAX_REDIRECTS = 3
+
+
+def _proxy_target_blocked(target_url: str) -> bool:
+    """SSRF guard: only plain http(s) to PUBLIC addresses.
+
+    The endpoint used to fetch ANY caller-supplied URL, which let an attacker
+    relay requests to internal services (localhost:8000, cloud metadata at
+    169.254.169.254, the droplet's private network). Resolve the hostname and
+    reject every non-global address. Redirects are followed manually so each
+    hop gets re-checked.
+    """
+    try:
+        parsed = _img_urlparse(target_url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return True
+        infos = _socket.getaddrinfo(parsed.hostname, None)
+        for info in infos:
+            ip = _ipaddress.ip_address(info[4][0])
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
+                return True
+        return False
+    except Exception:
+        return True  # unresolvable / malformed → refuse
+
 
 @router.get("/proxy-image")
 async def proxy_image(url: str = Query(...)):
     """Proxy an external image to avoid CORS issues in canvas exports."""
-    if not url.startswith("http"):
-        raise HTTPException(400, "Invalid URL")
     try:
-        async with _httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            resp = await client.get(url)
-        if resp.status_code != 200:
-            raise HTTPException(resp.status_code, "Upstream error")
+        async with _httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+            current = url
+            resp = None
+            for _ in range(_PROXY_MAX_REDIRECTS + 1):
+                if _proxy_target_blocked(current):
+                    raise HTTPException(400, "Invalid URL")
+                resp = await client.get(current)
+                if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("location"):
+                    current = str(resp.next_request.url) if resp.next_request else resp.headers["location"]
+                    continue
+                break
+        if resp is None or resp.status_code != 200:
+            raise HTTPException(resp.status_code if resp is not None else 502, "Upstream error")
+        if len(resp.content) > _PROXY_MAX_BYTES:
+            raise HTTPException(400, "Image too large")
         ct = resp.headers.get("content-type", "image/png")
         if not ct.startswith("image/"):
             raise HTTPException(400, "Not an image")
@@ -19179,7 +19231,7 @@ def get_recruiting_guide(team_id: int):
                 ) s
             """, (team_id, team_id))
             max_season_row = cur.fetchone()
-            current_season = max_season_row['max_season'] if max_season_row else 2026
+            current_season = max_season_row['max_season'] if max_season_row else CURRENT_SEASON
 
             # Use roster_year to identify current roster players.
             # If roster_year is populated, use it; otherwise fall back to
@@ -19838,7 +19890,7 @@ FRESHMAN_ROSTERED = {
 
 
 @router.get("/recruiting/freshman-by-division")
-def recruiting_freshman_by_division(season: int = 2026, _user: str = Depends(require_tier("premium"))):
+def recruiting_freshman_by_division(season: int = CURRENT_SEASON, _user: str = Depends(require_tier("premium"))):
     """Average freshman batting + pitching line per division (D1/D2/NAIA/D3/JUCO).
     Freshman = true Fr/R-Fr class from player_seasons at four-year schools; for
     NWAC (JUCO, where we lack reliable class data) a freshman is a player whose
@@ -19993,7 +20045,7 @@ def _resolve_committed_levels(cur, names):
 
 
 @router.get("/recruiting/nwac-advancement")
-def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require_tier("premium"))):
+def recruiting_nwac_advancement(season: int = CURRENT_SEASON, _user: str = Depends(require_tier("premium"))):
     """Where NWAC (JUCO) players advance to, derived from cross-team player_links.
 
     Captures transfers to the PNW 4-year programs we track: a Bellevue -> Bushnell
@@ -20139,10 +20191,11 @@ def recruiting_nwac_advancement(season: int = 2026, _user: str = Depends(require
                JOIN divisions d ON c.division_id=d.id
                WHERE d.level='JUCO' AND COALESCE(p.is_phantom,false)=false
                  AND p.year_in_school IN ('So','R-So')
-                 AND (p.roster_year=2026
-                      OR EXISTS(SELECT 1 FROM batting_stats b WHERE b.player_id=p.id AND b.season=2026)
-                      OR EXISTS(SELECT 1 FROM pitching_stats ps WHERE ps.player_id=p.id AND ps.season=2026))
-               GROUP BY t.short_name""")
+                 AND (p.roster_year=%s
+                      OR EXISTS(SELECT 1 FROM batting_stats b WHERE b.player_id=p.id AND b.season=%s)
+                      OR EXISTS(SELECT 1 FROM pitching_stats ps WHERE ps.player_id=p.id AND ps.season=%s))
+               GROUP BY t.short_name""",
+            (CURRENT_SEASON, CURRENT_SEASON, CURRENT_SEASON))
         for r in cur.fetchall():
             if r["team"] in teams:
                 teams[r["team"]]["soph_count"] = r["soph"]
@@ -20206,7 +20259,7 @@ def recruiting_program_guide(_user: str = Depends(require_tier("premium"))):
 
 @router.get("/recruiting/breakdown")
 def recruiting_breakdown(
-    season: int = 2026,
+    season: int = CURRENT_SEASON,
     _user: str = Depends(require_tier("premium")),
 ):
     """
@@ -20705,7 +20758,7 @@ def team_stats_agg(
 @cached_endpoint(ttl_seconds=1800)  # heavy game_events scouting compute
 def opponent_trends(
     team_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """
     Comprehensive opponent scouting report.
@@ -20868,12 +20921,16 @@ def opponent_trends(
         # (Deduplication happens after alias resolution below)
 
         # ── Opposing starters (for LHP/RHP) ──
+        # Ghost-row guard matters here: team_id != X can match orphan rows
+        # from teams that weren't either side of the game.
         cur.execute(f"""
             SELECT gp.game_id, gp.player_name, p.throws
             FROM game_pitching gp
+            JOIN games g ON gp.game_id = g.id
             LEFT JOIN players p ON gp.player_id = p.id
             WHERE gp.game_id IN ({ph})
               AND gp.team_id != %s AND gp.is_starter = true
+              AND gp.team_id IN (g.home_team_id, g.away_team_id)
         """, game_ids + [team_id])
         opp_starters = {}
         for r in cur.fetchall():
@@ -22282,7 +22339,7 @@ AC_REL_MAX_GS = 3  # < 4 starts
 @cached_endpoint(ttl_seconds=1800)
 def all_conference(
     conf: str = Query(..., description="Conference group key (e.g. gnac, nwc, ccc, nwac-east, all-nwac, all-pnw)"),
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """
     Build mock first team, second team, and top-3 honorable mentions for
@@ -23284,7 +23341,7 @@ def _get_league_constants(cur, season: int, division_level: str) -> dict:
 @router.get("/top-moments")
 @cached_endpoint(ttl_seconds=1800)  # WPA + game_events audit (multi-second) — cache hard
 def top_moments(
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
     moments_limit: int = Query(25, description="How many top PAs to return"),
     leaderboard_limit: int = Query(25, description="How many leaderboard rows"),
     min_pa: int = Query(50, description="Minimum PAs/BFs for leaderboard inclusion"),
@@ -23521,7 +23578,7 @@ def top_moments(
 def historic_matchup(
     team_a: int = Query(..., description="First team id"),
     team_b: int = Query(..., description="Opponent team id"),
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """Per-player batting and pitching aggregates for the games team_a
     and team_b played each other this season, plus a list of those games.
@@ -24268,7 +24325,7 @@ def historic_matchup(
 @router.get("/coaching/historic-matchup/opponents")
 def historic_matchup_opponents(
     team_a: int = Query(..., description="Team id whose opponents to list"),
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
 ):
     """Distinct opponents team_a played at least one final game against."""
     with get_connection() as conn:
@@ -24323,7 +24380,7 @@ def historic_matchup_opponents(
 @router.get("/coaching/lineup-helper")
 def lineup_helper_auto(
     team_id: int = Query(..., description="Team id to optimize lineup for"),
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
     min_pa: int = Query(30, description="Minimum PA threshold for inclusion"),
     min_position_starts: int = Query(8, description="Min games started at a position to be eligible there"),
     half_life_weeks: float = Query(6.0, description="Recency-decay half-life in weeks"),
@@ -24355,7 +24412,7 @@ class ManualLineupAssignment(BaseModel):
 
 
 class ManualLineupRequest(BaseModel):
-    season: int = 2026
+    season: int = CURRENT_SEASON
     division_level: str = 'NAIA'
     half_life_weeks: float = 6.0
     assignments: list[ManualLineupAssignment]
@@ -24401,7 +24458,7 @@ class OverrideAssignment(BaseModel):
 
 class LineupOverrideRequest(BaseModel):
     team_id: int
-    season: int = 2026
+    season: int = CURRENT_SEASON
     min_pa: int = 30
     min_position_starts: int = 8
     half_life_weeks: float = 6.0
@@ -24411,7 +24468,7 @@ class LineupOverrideRequest(BaseModel):
 
 class BuildLineupRequest(BaseModel):
     team_id: Optional[int] = None
-    season: int = 2026
+    season: int = CURRENT_SEASON
     division_level: Optional[str] = None
     vs_hand: Optional[str] = None  # 'R', 'L', 'unknown', or None for all three
     half_life_weeks: float = 6.0
@@ -24421,7 +24478,7 @@ class BuildLineupRequest(BaseModel):
 @router.get("/portal/team-scouting")
 def portal_team_scouting(
     team_id: int = Query(..., description="Team to scout"),
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
     _user: str = Depends(require_tier("coach")),
 ):
     """Comprehensive team scouting page data: team-level stats with conference
@@ -24437,7 +24494,7 @@ def portal_team_scouting(
 @router.get("/portal/bullpen-sheet/{team_id}")
 def portal_bullpen_sheet(
     team_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
     _user: str = Depends(require_tier("coach")),
 ):
     """Printable Bullpen Sheet for one team — coaching tool for in-game
@@ -24460,7 +24517,7 @@ def list_commitments(
     # (signed-in or not) can view. Do NOT gate this behind require_tier();
     # commitments are a discovery/visibility feature for recruits and
     # belong on the free side of the paywall.
-    season: int = Query(2026, description="Season to pull stats from"),
+    season: int = Query(CURRENT_SEASON, description="Season to pull stats from"),
     level: str = Query("JUCO", description="Division level filter (default JUCO/NWAC)"),
     limit: int = Query(200, ge=1, le=500),
 ):
@@ -24623,7 +24680,7 @@ def list_commitments(
 @router.get("/portal/scouting-sheet/{team_id}")
 def portal_scouting_sheet(
     team_id: int,
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
     _user: str = Depends(require_tier("coach")),
 ):
     """Printable per-team scouting sheet — every hitter on one page,
@@ -24642,7 +24699,7 @@ def portal_scouting_sheet(
 @router.get("/portal/nwac-tournament-sheet")
 @cached_endpoint(ttl_seconds=1800)
 def portal_nwac_tournament_sheet(
-    season: int = Query(2026, description="Season year"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
     _user: str = Depends(require_tier("coach")),
 ):
     """Cross-team scouting board for the 8 NWAC Championship teams.

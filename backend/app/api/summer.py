@@ -24,6 +24,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from ..cache import cached_endpoint
+from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ..stats.cpi import compute_cpi
 
@@ -72,7 +73,7 @@ def summer_leagues():
 @cached_endpoint(ttl_seconds=120)
 def summer_scoreboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     days_back: int = Query(3, ge=0, le=120),
     days_ahead: int = Query(3, ge=0, le=120),
 ):
@@ -120,7 +121,7 @@ def summer_scoreboard(
 @cached_endpoint(ttl_seconds=300)
 def summer_games(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     team_id: Optional[int] = None,
     status: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
@@ -409,7 +410,7 @@ def summer_game_detail(game_id: int):
 
 @router.get("/summer/cpi")
 @cached_endpoint(ttl_seconds=600)
-def summer_cpi(league: str = Query(DEFAULT_LEAGUE), season: int = Query(2026)):
+def summer_cpi(league: str = Query(DEFAULT_LEAGUE), season: int = Query(CURRENT_SEASON)):
     """Composite Power Index: a predictive, SoS-adjusted power rating built from
     underlying performance (team wRC+ / FIP) blended with regressed results.
     Engine in app.stats.cpi (reused for spring later)."""
@@ -484,7 +485,7 @@ def summer_teams(league: str = Query(DEFAULT_LEAGUE)):
 
 @router.get("/summer/teams/{team_id}")
 @cached_endpoint(ttl_seconds=300)
-def summer_team_detail(team_id: int, season: int = Query(2026)):
+def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -1071,7 +1072,7 @@ def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
         elif seasons_present:
             eff_season = seasons_present[-1]
         else:
-            eff_season = season if season is not None else 2026
+            eff_season = season if season is not None else CURRENT_SEASON
 
         # Per-game logs for the effective season
         cur.execute(
@@ -1165,7 +1166,7 @@ def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
 @cached_endpoint(ttl_seconds=600)
 def summer_standings(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
 ):
     """W/L per team plus last-10 record + current win/loss streak."""
     with get_connection() as conn:
@@ -1277,7 +1278,7 @@ def summer_standings(
 @cached_endpoint(ttl_seconds=600)
 def summer_batting_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     # Qualifying. When `qualified=True`, ignores `min_pa` and uses the
     # ratio convention: a hitter is qualified at >= 2.0 PA per team
     # game played (industry standard for summer leagues).
@@ -1428,7 +1429,7 @@ def summer_batting_leaderboard(
 @cached_endpoint(ttl_seconds=600)
 def summer_trends(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     window: int = Query(5, ge=2, le=15),
     min_total_pa: int = Query(15, ge=0),
     min_recent_pa: int = Query(4, ge=0),
@@ -1517,7 +1518,7 @@ def summer_trends(
 @cached_endpoint(ttl_seconds=600)
 def summer_fielding_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     min_chances: int = Query(5, ge=0),
     sort_by: str = Query("fielding_pct"),
     limit: int = Query(100, ge=1, le=500),
@@ -1563,7 +1564,7 @@ def summer_fielding_leaderboard(
 @cached_endpoint(ttl_seconds=900)
 def summer_college_representation(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     limit: int = Query(25, ge=1, le=100),
 ):
     """Top colleges by number of players currently rostered in the
@@ -1624,7 +1625,7 @@ def summer_college_representation(
 @cached_endpoint(ttl_seconds=600)
 def summer_pnw_alumni(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     limit: int = Query(500, ge=1, le=1000),
 ):
     """Spring PNW college players currently rostered in this summer
@@ -1688,7 +1689,7 @@ def summer_pnw_alumni(
 @cached_endpoint(ttl_seconds=600)
 def summer_pitching_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(2026),
+    season: int = Query(CURRENT_SEASON),
     # Qualified pitchers = IP >= team_games * 0.75 (matches MLB
     # convention scaled to short summer seasons).
     qualified: bool = Query(False),

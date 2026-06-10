@@ -72,8 +72,10 @@ app.add_middleware(
         "https://www.nwbaseballstats.com",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Narrowed from ["*"] — with allow_credentials=True a wildcard surface is
+    # broader than the one cross-origin use case (image uploads) needs.
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
 
 app.include_router(router, prefix="/api/v1")
@@ -212,7 +214,14 @@ if FRONTEND_DIR.exists():
     def serve_spa(full_path: str):
         """Serve the React SPA - all non-API routes return index.html."""
         file_path = FRONTEND_DIR / full_path
-        if file_path.exists() and file_path.is_file():
+        # Path-traversal guard: only serve files that resolve INSIDE dist/.
+        # Starlette normalizes most ../ shapes already; this makes the
+        # containment explicit instead of relying on framework behavior.
+        try:
+            inside = file_path.resolve().is_relative_to(FRONTEND_DIR.resolve())
+        except (OSError, ValueError):
+            inside = False
+        if inside and file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
         # For all other routes (React Router), return index.html
         return FileResponse(FRONTEND_DIR / "index.html")

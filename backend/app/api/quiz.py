@@ -26,6 +26,7 @@ from typing import Optional, List, Callable, Dict, Any
 from fastapi import APIRouter, Query, HTTPException
 
 from ..models.database import get_connection
+from ..config import CURRENT_SEASON
 
 quiz_router = APIRouter(prefix="/quiz", tags=["quiz"])
 
@@ -1885,7 +1886,7 @@ def _division_team_leader_question(cur, season):
 
 @quiz_router.get("/league-question")
 def league_question(
-    season: int = Query(2026, description="Season for data-driven questions"),
+    season: int = Query(CURRENT_SEASON, description="Season for data-driven questions"),
 ):
     """One random league-level (non-team) trivia question. Mixes
     data-driven stat-comparison + team-count questions with a bank of
