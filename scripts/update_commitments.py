@@ -69,6 +69,14 @@ def main():
         cur = conn.cursor()
         cur.execute("SET lock_timeout = '5s'")
         cur.execute("SET statement_timeout = '15s'")
+        # Real commitment timestamp (June 2026). The commitments feed used to
+        # sort by players.updated_at, which any scraper write re-stamps —
+        # commitment dates drifted. Backfill existing committed players once.
+        cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS commitment_date TIMESTAMP")
+        cur.execute("""
+            UPDATE players SET commitment_date = updated_at
+            WHERE is_committed = 1 AND committed_to IS NOT NULL AND commitment_date IS NULL
+        """)
         updated = 0
         not_found = []
 
@@ -96,9 +104,12 @@ def main():
                     print(f"  SKIP {first} {last} ({team_short}) — already committed to {committed_to}")
                     continue
 
+                # Stamp commitment_date too — the commitments feed and the
+                # homepage recruiting widget sort by it, and without this the
+                # column kept whatever stale default it had.
                 cur.execute("""
                     UPDATE players
-                    SET is_committed = 1, committed_to = %s
+                    SET is_committed = 1, committed_to = %s, commitment_date = NOW()
                     WHERE id = %s
                 """, (committed_to, pid))
                 print(f"  ✓ {first} {last} ({team_short}) → {committed_to}")

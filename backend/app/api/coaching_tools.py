@@ -1291,7 +1291,10 @@ def list_commitments(
                    p.weight,
                    p.headshot_url,
                    p.committed_to,
-                   p.updated_at     AS commitment_date,
+                   -- Real commitment stamp when present (June 2026 column,
+                   -- set by update_commitments.py); updated_at is the legacy
+                   -- proxy for rows committed before the column existed.
+                   COALESCE(p.commitment_date, p.updated_at) AS commitment_date,
                    t.id             AS team_id,
                    t.short_name     AS team_short,
                    t.name           AS team_name,
@@ -1308,7 +1311,7 @@ def list_commitments(
               AND COALESCE(p.is_phantom, FALSE) = FALSE
               AND t.is_active = 1
               AND d.level = %s
-            ORDER BY p.updated_at DESC, p.last_name ASC
+            ORDER BY COALESCE(p.commitment_date, p.updated_at) DESC, p.last_name ASC
             LIMIT %s
             """,
             (level, limit),

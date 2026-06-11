@@ -214,20 +214,7 @@ export function RecruitingHubWidget() {
   const commits = (data?.commitments || []).slice(0, 3)
 
   const slides = [
-    // Slide 1 — Recruiting Guide
-    <div key="guide" className="min-h-[120px]">
-      <GroupLabel>Recruiting Guide</GroupLabel>
-      <div className="text-xs font-bold text-gray-800 dark:text-gray-100 mb-1">
-        Know the path before you walk it
-      </div>
-      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
-        How PNW recruiting actually works, level by level: timelines, roster math, and what
-        coaches at each division look for.
-      </p>
-      <LinkChip to="/recruiting/guide">Read the guide</LinkChip>
-    </div>,
-
-    // Slide 2 — Commitment Tracker
+    // Slide 1 — Commitment Tracker (leads per Nate: fresh commits are the hook)
     <div key="commits" className="min-h-[120px]">
       <GroupLabel>Commitment Tracker</GroupLabel>
       <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-1.5">
@@ -251,6 +238,19 @@ export function RecruitingHubWidget() {
         </div>
       )}
       <LinkChip to="/news/commitments">Track commitments</LinkChip>
+    </div>,
+
+    // Slide 2 — Recruiting Guide
+    <div key="guide" className="min-h-[120px]">
+      <GroupLabel>Recruiting Guide</GroupLabel>
+      <div className="text-xs font-bold text-gray-800 dark:text-gray-100 mb-1">
+        Know the path before you walk it
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
+        How PNW recruiting actually works, level by level: timelines, roster math, and what
+        coaches at each division look for.
+      </p>
+      <LinkChip to="/recruiting/guide">Read the guide</LinkChip>
     </div>,
 
     // Slide 3 — Rankings & Map
@@ -290,11 +290,26 @@ export function GmPreviewWidget() {
         <div className="text-[11px] text-[#fbbf24] tabular-nums tracking-tight mb-2">
           WK 27 · SEASON OPENS · OVR 74 · BUDGET $180K
         </div>
+        {/* Fake live-game readout — sells the play-by-play mode */}
+        <div className="rounded bg-[#0f0f1e] px-2 py-1.5 mb-2 text-[10px] text-gray-300 tabular-nums">
+          <div className="flex justify-between"><span>▼ 9TH · 2 OUT · RUNNERS ON 1B/2B</span><span className="text-[#fbbf24]">4-3</span></div>
+          <div className="text-gray-500 mt-0.5">Your closer vs their cleanup bat. Pitching change?</div>
+        </div>
         <ul className="space-y-1 text-[11px] text-gray-300">
-          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Run a real PNW program</li>
-          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Recruit, develop, manage the budget</li>
-          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Climb from JUCO to a dynasty</li>
+          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Take over any of 250+ real PNW programs — or build an expansion team from scratch</li>
+          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Recruit HS, JUCO, and portal classes; develop players week by week</li>
+          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Manage budgets, coaching staffs, academics, and summer ball</li>
+          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Play games pitch by pitch or sim whole weeks</li>
+          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Story mode: start as a JUCO assistant and climb to a D1 job</li>
         </ul>
+      </div>
+      <div className="flex justify-around mt-2 text-center">
+        {[['5', 'Levels'], ['250+', 'Programs'], ['52', 'Week seasons'], ['3', 'Save slots']].map(([v, l]) => (
+          <div key={l}>
+            <div className="text-sm font-extrabold text-nw-teal dark:text-nw-teal-light tabular-nums">{v}</div>
+            <div className="text-[8px] uppercase tracking-wider text-gray-400">{l}</div>
+          </div>
+        ))}
       </div>
     </WidgetCard>
   )

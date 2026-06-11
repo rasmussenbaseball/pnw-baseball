@@ -77,7 +77,12 @@ export function StandingsWidget() {
   const { data, loading, error } = useApi('/standings', { season: CURRENT_SEASON })
 
   // Same set StandingsPage renders: every conference that has teams.
-  const conferences = (data?.conferences || []).filter(c => (c.teams || []).length > 0)
+  // Slide order per Nate: the PNW-local conferences lead (D3 first, then
+  // NAIA, D2, NWAC) and the national D1 conferences come last.
+  const LEVEL_ORDER = { D3: 0, NAIA: 1, D2: 2, JUCO: 3, D1: 4 }
+  const conferences = (data?.conferences || [])
+    .filter(c => (c.teams || []).length > 0)
+    .sort((a, b) => (LEVEL_ORDER[a.division_level] ?? 9) - (LEVEL_ORDER[b.division_level] ?? 9))
 
   const slides = conferences.map(conf => (
     <div key={conf.conference_id}>
@@ -88,7 +93,7 @@ export function StandingsWidget() {
         </span>
       </div>
       <div>
-        {conf.teams.slice(0, 6).map((team, i) => {
+        {conf.teams.slice(0, 9).map((team, i) => {
           const conf_rec = (team.conf_wins || team.conf_losses)
             ? `${team.conf_wins}-${team.conf_losses}` : '-'
           const overall = (team.wins || team.losses)
