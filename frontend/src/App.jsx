@@ -215,11 +215,9 @@ const TournamentBracketGraphic = lazyWithRetry(() => import('./pages/TournamentB
 const DailyRecapGraphic = lazyWithRetry(() => import('./pages/DailyRecapGraphic'))
 
 // ─── New pages ───
-import AnonymousHomepage from './pages/AnonymousHomepage'
-const FreeHomepage = lazyWithRetry(() => import('./pages/FreeHomepage'))  // recharts dashboard — lazy so it's off every other page's initial load
-import PremiumHomepage from './pages/PremiumHomepage'
-import RecruitingHomepage from './pages/RecruitingHomepage'
-import CoachHomepage from './pages/CoachHomepage'
+// June 2026: the five per-tier homepages were replaced by the unified
+// Homepage (their files remain on disk as a rollback path, unimported).
+import Homepage from './pages/Homepage'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
 // ResultsPage removed - consolidated into Scoreboard with date picker
@@ -630,34 +628,11 @@ export default function App() {
 // <main> wrapper. The portal pages use the full viewport (their own
 // PortalLayout handles padding internally), so this helper picks the
 // right wrapper based on the current route.
-// HomepageRouter — picks the right homepage per tier:
-//   • not signed in        → AnonymousHomepage (signup-focused)
-//   • signed-in free tier  → FreeHomepage (data-rich + premium nudge)
-//   • premium tier         → PremiumHomepage
-//   • recruiting tier      → RecruitingHomepage (premium page + recruiting boards)
-//   • coach tier / dev     → CoachHomepage (premium page + portal showcase)
-// Devs resolve to the 'dev' tier in "My View", so their landing page is
-// the coach homepage too.
 function HomepageRouter() {
-  const { user, loading: authLoading } = useAuth()
-  const { tier, loading: tierLoading } = useTier()
-  if (authLoading || (user && tierLoading)) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-8 w-8 border-4 border-nw-teal border-t-transparent rounded-full" />
-      </div>
-    )
-  }
-  if (!user) return <AnonymousHomepage />
-  if (tier === 'free') return <FreeHomepage />
-  if (tier === 'premium') return <PremiumHomepage />
-  if (tier === 'recruiting') return <RecruitingHomepage />
-  if (tier === 'coach' || tier === 'dev') return <CoachHomepage />
-  // Fallback for any signed-in user with an unexpected/missing tier: the free
-  // experience (every signed-in user is at least 'free'). The old single
-  // "Homepage" that this used to fall back to was retired once per-tier
-  // homepages covered every case.
-  return <FreeHomepage />
+  // June 2026 redesign: ONE homepage for every tier (per Nate). The five
+  // per-tier homepages (Anonymous/Free/Premium/Recruiting/Coach) are
+  // retired from routing; their files remain for now as a rollback path.
+  return <Homepage />
 }
 
 
