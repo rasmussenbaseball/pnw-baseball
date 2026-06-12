@@ -74,11 +74,12 @@ export function WidgetCard({ title, to, linkLabel = 'View all', accent = 'teal',
 // ─── Auto-advance scheduler ─────────────────────────────────────────
 // One page-global ticker advances the OPTED-IN carousels ROUND-ROBIN,
 // one per slot, so no two ever move at the same instant (per Nate).
-// With the two auto carousels and a 1750ms slot, each advances ~3.5s.
+// With the two auto carousels and a 3500ms slot, each advances every
+// ~7s — slowed from 3.5s on 2026-06-12 ("they scroll too fast").
 // A carousel skips its turn while hovered or within its manual-
 // interaction cooldown; nothing advances while the tab is hidden.
 
-const AUTO_SLOT_MS = 1750
+const AUTO_SLOT_MS = 3500
 const MANUAL_PAUSE_MS = 10_000
 const _autoEntries = []
 let _autoTimer = null
