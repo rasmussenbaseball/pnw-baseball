@@ -131,6 +131,12 @@ CHAIN_SCORED_RE = re.compile(
     r",\s*(?:and\s+)?scored\b(?!\s+from)",  # avoid "scored from X" which is part of HR sub-text
     re.IGNORECASE,
 )
+# Scorers also chain an out inside an advance clause: "advanced to third,
+# out at home rf to c" — the runner was ultimately thrown out.
+CHAIN_OUT_RE = re.compile(
+    r",\s*(?:was\s+)?(?:thrown\s+)?out\s+at\s+(?P<base>first|second|third|home)\b",
+    re.IGNORECASE,
+)
 
 # Reached-on-error: parses where the BATTER ended up
 REACHED_BASE_RE    = re.compile(r"reached\s+(first|second|third)\b", re.IGNORECASE)
@@ -404,19 +410,16 @@ def apply_runner_clause(clause, bases):
             remove_runner(bases, b)
         return 0, 1
 
-    # Scored
-    m = SCORED_RE.match(cl)
-    if m:
-        who = m.group("who")
-        last = _norm_last(who)
-        b = find_runner(bases, last)
-        if b is not None:
-            remove_runner(bases, b)
-        # If not on base, we still credit the run (narrative is authoritative).
-        return 1, 0
-
-    # Stole / advanced (including "advanced to home" = scored)
-    m = ADV_RE.match(cl) or STOLE_RE.match(cl)
+    # Stole / advanced (including "advanced to home" = scored).
+    # Checked BEFORE the scored branch, and STOLE before ADV: a chained
+    # clause like "Evan Burg stole second, advanced to third on the
+    # throw" must anchor on the FIRST verb ("stole second") so the
+    # runner is vacated from his real base — ADV_RE's lazy `who` would
+    # otherwise swallow "stole second," and ghost the runner. Same for
+    # "Sawyer Nelson stole third, scored on a throwing error": the
+    # chain handler removes him from 2B properly, where SCORED_RE
+    # would credit the run but leave a ghost on 2B.
+    m = STOLE_RE.match(cl) or ADV_RE.match(cl)
     if m:
         who = m.group("who")
         base_word = m.group("base").lower()
@@ -430,13 +433,21 @@ def apply_runner_clause(clause, bases):
             return 1, 0
         runs_extra_disp = vacate_to(bases, dest, who)
 
-        # Chained-advance check: same clause has another advance/score
-        # without a runner name. "stole second, advanced to third on the
-        # throw" / "advanced to second on a wild pitch, advanced to third".
+        # Chained moves in the SAME clause without a runner name (implicit
+        # same runner): "stole second, advanced to third on the throw" /
+        # "advanced to third, out at home rf to c" / ", scored".
         # We only honor the LAST chain hit (multiple chains is unusual).
         rest = cl[m.end():]
         runs_extra = 0
-        if CHAIN_SCORED_RE.search(rest):
+        outs_extra = 0
+        chain_out = CHAIN_OUT_RE.search(rest)
+        if chain_out:
+            # Runner kept going and was thrown out — remove + 1 out.
+            b = find_runner(bases, _norm_last(who))
+            if b is not None:
+                remove_runner(bases, b)
+            outs_extra = 1
+        elif CHAIN_SCORED_RE.search(rest):
             # Runner kept going all the way home
             b = find_runner(bases, _norm_last(who))
             if b is not None:
@@ -453,7 +464,18 @@ def apply_runner_clause(clause, bases):
                     runs_extra = 1
                 elif new_base > dest:
                     runs_extra += vacate_to(bases, new_base, who)
-        return runs_extra + runs_extra_disp, 0
+        return runs_extra + runs_extra_disp, outs_extra
+
+    # Scored
+    m = SCORED_RE.match(cl)
+    if m:
+        who = m.group("who")
+        last = _norm_last(who)
+        b = find_runner(bases, last)
+        if b is not None:
+            remove_runner(bases, b)
+        # If not on base, we still credit the run (narrative is authoritative).
+        return 1, 0
 
     # Catcher's interference / "reached on error" already handled at batter
     # level. We could parse other rare clauses here in future iterations.
