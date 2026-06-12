@@ -1,7 +1,13 @@
 {
   "_comment": "PNW four-year (non-JUCO) players who have entered the transfer portal. Served by /transfer-portal and shown on the Transfer Portal Tracker (Coaching tab). Add entries as players enter; set committed_to once a player commits. Optional 'position' overrides the DB position for placeholder players who have no stats yet, so they still file on the correct Hitters/Pitchers list.",
-  "updated": "2026-06-09",
+  "updated": "2026-06-12",
   "players": [
+    {
+      "player_id": 3026,
+      "name": "Austin Cupic",
+      "from": "CWU",
+      "committed_to": "Seattle U"
+    },
     {
       "player_id": 2740,
       "name": "Tyler Logan",

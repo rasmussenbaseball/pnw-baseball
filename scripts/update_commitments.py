@@ -57,6 +57,9 @@ COMMITMENTS = [
     ("Camper", "Jackson", "Edmonds", "Saint Martin's"),
     ("Dyer", "Dylan", "Everett", "Charleston Southern"),
     ("Petty", "Liam", "Chemeketa", "Lewis-Clark State"),
+    # June 12, 2026 batch ("Triston" is the DB/roster spelling)
+    ("Wallace", "Triston", "Umpqua", "Lewis-Clark State"),
+    ("Metzker", "Aiden", "Umpqua", "Western Oregon"),
 ]
 
 # (last_name, first_name, team_short_name) — players to set back to uncommitted.

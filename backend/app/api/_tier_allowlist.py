@@ -46,6 +46,15 @@ COMPED_COACH_EMAILS = {
     "pnwcbr@gmail.com",
     "tommy.richards@wsu.edu",
     "deven@drivelinebaseball.com",
+    # June 12, 2026 batch (per Nate)
+    "eryxawaya@gmail.com",
+    "tdubgreen1024@gmail.com",
+    "broderickbuhr1@gmail.com",
+    "manaheff@gmail.com",
+    "cameronkundig@gmail.com",
+    "aswolfe44@gmail.com",
+    "jtcourt2@centurylink.net",
+    "tyler.baseball2026@gmail.com",
 }
 
 
