@@ -1,5 +1,6 @@
 import { usePlayerPitchLevelStats } from '../hooks/useApi'
 import SprayChart from './SprayChart'
+import { SectionCard } from './playerProfile/shared'
 
 /**
  * Pitch-Level Stats card — Phase G redesign.
@@ -22,8 +23,15 @@ import SprayChart from './SprayChart'
  * situational wRC+ swings around 100 meaningfully (not always = 100).
  */
 
-export default function PitchLevelStatsCard({ playerId, season }) {
-  const { data, loading, error } = usePlayerPitchLevelStats(playerId, season)
+export default function PitchLevelStatsCard({
+  playerId, season,
+  // `endpoint`: override the API path (e.g. summer PBP endpoint with the
+  // same payload shape). `embedded`: render inside a playerProfile
+  // SectionCard (cream theme) instead of the standalone white card —
+  // used by SummerPlayerProfile. Defaults preserve spring behavior.
+  endpoint = null, embedded = false, title = 'Pitch Level Stats', right = null,
+}) {
+  const { data, loading, error } = usePlayerPitchLevelStats(playerId, season, endpoint)
 
   if (loading) return null
   if (error)   return null
@@ -33,15 +41,17 @@ export default function PitchLevelStatsCard({ playerId, season }) {
   const cp = data.contact_profile || {}
   const trackedShare = d.total_pa ? Math.round((d.tracked_pa / d.total_pa) * 100) : 0
 
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mt-6 overflow-hidden">
-      {/* ── Header ── */}
-      <div className="flex items-center gap-2 mb-1">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pitch-Level Stats</h3>
-        <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
-          Beta
-        </span>
-      </div>
+  const content = (
+    <>
+      {/* ── Header (standalone card only — SectionCard provides its own) ── */}
+      {!embedded && (
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pitch-Level Stats</h3>
+          <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+            Beta
+          </span>
+        </div>
+      )}
       <p className="text-[11px] text-gray-500 mb-2">
         {d.total_pa} PA total · {d.tracked_pa} with pitch data ({trackedShare}%) · {d.pitches} pitches seen
       </p>
@@ -88,12 +98,15 @@ export default function PitchLevelStatsCard({ playerId, season }) {
 
           {/* Avg LI + total WPA — paired because they answer adjacent
               questions: "how big were the moments this hitter saw?"
-              and "what did he do with them?" */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
-            <LeverageTile avgLI={d.avg_li} maxLI={d.max_li} pa={d.li_pa} />
-            <WpaTile totalWPA={d.total_wpa} peakWPA={d.peak_wpa}
-              pa={d.wpa_pa} side="batter" />
-          </div>
+              and "what did he do with them?" Hidden entirely when the
+              source PBP has no base/out/score state (summer leagues). */}
+          {(d.avg_li != null || d.total_wpa != null) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
+              <LeverageTile avgLI={d.avg_li} maxLI={d.max_li} pa={d.li_pa} />
+              <WpaTile totalWPA={d.total_wpa} peakWPA={d.peak_wpa}
+                pa={d.wpa_pa} side="batter" />
+            </div>
+          )}
 
           {cp.bb_total > 0 && (
             <>
@@ -266,6 +279,15 @@ export default function PitchLevelStatsCard({ playerId, season }) {
           </p>
         </>
       )}
+    </>
+  )
+
+  if (embedded) {
+    return <SectionCard title={title} right={right}>{content}</SectionCard>
+  }
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mt-6 overflow-hidden">
+      {content}
     </div>
   )
 }

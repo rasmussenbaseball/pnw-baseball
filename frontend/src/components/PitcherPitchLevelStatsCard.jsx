@@ -1,5 +1,6 @@
 import { usePlayerPitchLevelStatsPitcher } from '../hooks/useApi'
 import SprayChart from './SprayChart'
+import { SectionCard } from './playerProfile/shared'
 
 /**
  * Pitcher Pitch-Level Stats — full Phase G/H redesign mirror of the
@@ -16,8 +17,14 @@ import SprayChart from './SprayChart'
  *   4. Batter Hand Splits — color-coded slash
  *   5. Situational Performance — color-coded slash
  */
-export default function PitcherPitchLevelStatsCard({ playerId, season }) {
-  const { data, loading, error } = usePlayerPitchLevelStatsPitcher(playerId, season)
+export default function PitcherPitchLevelStatsCard({
+  playerId, season,
+  // `endpoint`: override the API path (e.g. summer PBP endpoint with the
+  // same payload shape). `embedded`: render inside a playerProfile
+  // SectionCard instead of the standalone white card (SummerPlayerProfile).
+  endpoint = null, embedded = false, title = 'Pitch Level Stats', right = null,
+}) {
+  const { data, loading, error } = usePlayerPitchLevelStatsPitcher(playerId, season, endpoint)
 
   if (loading || error || !data) return null
   const d = data.discipline
@@ -25,14 +32,16 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
   const ocp = data.opp_contact_profile || {}
   const trackedShare = d.tracked_pa > 0 ? Math.round(100 * d.tracked_pa / d.total_pa) : 0
 
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mt-6 overflow-hidden">
-      <div className="flex items-center gap-2 mb-1">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pitch-Level Stats</h3>
-        <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
-          Beta
-        </span>
-      </div>
+  const content = (
+    <>
+      {!embedded && (
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pitch-Level Stats</h3>
+          <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+            Beta
+          </span>
+        </div>
+      )}
       <p className="text-[11px] text-gray-500 mb-2">
         {d.total_pa} PA faced · {d.tracked_pa} with pitch data ({trackedShare}%) · {d.pitches} pitches thrown
       </p>
@@ -79,12 +88,15 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
 
           {/* Avg LI + total WPA — paired because they answer adjacent
               questions: "what leverage moments did this pitcher work?"
-              and "what did he do with them?" */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
-            <LeverageTile avgLI={d.avg_li} maxLI={d.max_li} pa={d.li_pa} />
-            <WpaTile totalWPA={d.total_wpa} peakWPA={d.peak_wpa}
-              pa={d.wpa_pa} side="pitcher" />
-          </div>
+              and "what did he do with them?" Hidden entirely when the
+              source PBP has no base/out/score state (summer leagues). */}
+          {(d.avg_li != null || d.total_wpa != null) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
+              <LeverageTile avgLI={d.avg_li} maxLI={d.max_li} pa={d.li_pa} />
+              <WpaTile totalWPA={d.total_wpa} peakWPA={d.peak_wpa}
+                pa={d.wpa_pa} side="pitcher" />
+            </div>
+          )}
 
           {ocp.bb_total > 0 && (
             <>
@@ -246,6 +258,15 @@ export default function PitcherPitchLevelStatsCard({ playerId, season }) {
           </p>
         </>
       )}
+    </>
+  )
+
+  if (embedded) {
+    return <SectionCard title={title} right={right}>{content}</SectionCard>
+  }
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mt-6 overflow-hidden">
+      {content}
     </div>
   )
 }

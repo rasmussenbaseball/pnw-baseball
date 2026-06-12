@@ -267,11 +267,13 @@ export function usePlayerSplits(playerId, season = CURRENT_SEASON) {
  * count-state slash lines, L/R splits. Returns null discipline.pa
  * when the player has no game_events.
  */
-export function usePlayerPitchLevelStats(playerId, season = CURRENT_SEASON) {
+export function usePlayerPitchLevelStats(playerId, season = CURRENT_SEASON, endpoint = null) {
+  // `endpoint` override lets the summer player profile point the same
+  // card at /summer/players/{id}/pitch-level-stats (same payload shape).
   return useApi(
-    `/players/${playerId}/pitch-level-stats`,
+    endpoint || `/players/${playerId}/pitch-level-stats`,
     { season },
-    [playerId, season]
+    [playerId, season, endpoint]
   )
 }
 
@@ -291,11 +293,12 @@ export function usePlayerWpaByGame(playerId, season = CURRENT_SEASON) {
   )
 }
 
-export function usePlayerPitchLevelStatsPitcher(playerId, season = CURRENT_SEASON) {
+export function usePlayerPitchLevelStatsPitcher(playerId, season = CURRENT_SEASON, endpoint = null) {
+  // `endpoint` override — see usePlayerPitchLevelStats.
   return useApi(
-    `/players/${playerId}/pitch-level-stats-pitcher`,
+    endpoint || `/players/${playerId}/pitch-level-stats-pitcher`,
     { season },
-    [playerId, season]
+    [playerId, season, endpoint]
   )
 }
 

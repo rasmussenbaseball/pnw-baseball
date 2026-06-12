@@ -1871,3 +1871,973 @@ def summer_pitching_leaderboard(
         )
         rows = cur.fetchall()
     return [dict(r) for r in rows]
+
+
+# ════════════════════════════════════════════════════════════════
+# Pitch-Level Stats — full spring-card mirror, from summer PBP
+# ════════════════════════════════════════════════════════════════
+#
+# These two endpoints return the SAME payload shape as the spring
+# /players/{id}/pitch-level-stats and /pitch-level-stats-pitcher so
+# the spring PitchLevelStatsCard / PitcherPitchLevelStatsCard render
+# them unchanged (the cards take an `endpoint` override).
+#
+# What's intentionally different from spring:
+#   - No base/out/score state in summer_game_events, so
+#     situational_splits is ALWAYS [] and the Leverage Index / WPA
+#     fields are null (the cards hide those sections when null).
+#   - Pitch accounting follows the established summer convention:
+#     pitches = pitch-sequence letters + balls in play (the contacted
+#     pitch isn't always logged in the sequence) — same math as the
+#     summer leaderboards / approach splits, so numbers agree across
+#     the site.
+#   - Baselines/deciles rank against the SUMMER league cohort (same
+#     league_id + season), not a college division.
+
+import time as _spl_time
+
+from ..stats.advanced import LinearWeights
+
+_SUMMER_PL_BASELINES_CACHE: dict = {}          # (league_id, season) -> {ts, data}
+_SUMMER_PL_PITCHER_BASELINES_CACHE: dict = {}
+_SUMMER_PL_BASELINES_TTL = 6 * 3600            # seconds
+
+_SUMMER_FINE_ZONES = ["LF", "LC", "CF", "RC", "RF",
+                      "IF_3B", "IF_SS", "IF_MID", "IF_1B", "IF_C"]
+_SUMMER_XBH_TYPES = {"double", "triple", "home_run"}
+
+# Count-state filter SQL (static strings — never user input).
+_SPL_HITTERS_COUNTS  = "(balls_before, strikes_before) IN ((1,0),(2,0),(3,0),(3,1))"
+_SPL_NEUTRAL_COUNTS  = "(balls_before, strikes_before) IN ((0,0),(1,1),(2,1),(2,2),(3,2))"
+_SPL_PITCHERS_COUNTS = "(balls_before, strikes_before) IN ((0,1),(0,2),(1,2))"
+_SPL_TWO_STRIKE      = "strikes_before = 2"
+
+
+def _summer_spray_for(field_zone, bats):
+    """'Pull' / 'Center' / 'Oppo' / None — same rules as the spring
+    classify_batted_ball.spray_for (R pulls LEFT, L pulls RIGHT,
+    switch/unknown handedness -> None)."""
+    if not field_zone or not bats:
+        return None
+    b = bats.upper()
+    if b == "S":
+        return None
+    if field_zone == "CENTER":
+        return "Center"
+    if b == "R":
+        return "Pull" if field_zone == "LEFT" else "Oppo"
+    if b == "L":
+        return "Pull" if field_zone == "RIGHT" else "Oppo"
+    return None
+
+
+def _spl_quantile(sorted_vals, q):
+    """Linear interpolation quantile (matches numpy default)."""
+    if not sorted_vals:
+        return None
+    n = len(sorted_vals)
+    if n == 1:
+        return sorted_vals[0]
+    pos = q * (n - 1)
+    lo = int(pos)
+    hi = min(lo + 1, n - 1)
+    frac = pos - lo
+    return sorted_vals[lo] * (1 - frac) + sorted_vals[hi] * frac
+
+
+_SPL_DECILES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+
+def _spl_decile_thresholds(metrics):
+    out = {}
+    for m, vals in metrics.items():
+        if not vals:
+            out[m] = None
+            continue
+        vs = sorted(vals)
+        out[m] = [_spl_quantile(vs, q) for q in _SPL_DECILES]
+    return out
+
+
+def _summer_pl_weights(cur, league_id, season):
+    """Linear weights for summer wOBA/wRC+. Coefficients match
+    compute_summer_advanced.py (D2-level baseline); woba_scale and
+    runs_per_pa come from summer_league_averages when present."""
+    cur.execute(
+        """SELECT woba_scale, runs_per_pa FROM summer_league_averages
+           WHERE league_id = %s AND season = %s""",
+        (league_id, season),
+    )
+    row = cur.fetchone()
+    woba_scale = float(row["woba_scale"]) if row and row.get("woba_scale") else 1.22
+    runs_per_pa = float(row["runs_per_pa"]) if row and row.get("runs_per_pa") else 0.13
+    return LinearWeights(
+        w_bb=0.69, w_hbp=0.72, w_1b=0.89, w_2b=1.25, w_3b=1.58, w_hr=2.02,
+        woba_scale=woba_scale, runs_per_pa=runs_per_pa, runs_per_win=9.5,
+    )
+
+
+# ── Shared SQL fragments ────────────────────────────────────────────
+# Aggregate columns reused by the player rows, league means, and
+# per-player decile queries (hitter side). `p` is the batter row from
+# summer_players (for bats); only the baseline queries join it, so the
+# air-pull columns live in a separate fragment.
+
+_SPL_HIT_AGG = """
+    COUNT(*) AS pa,
+    COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
+    COALESCE(SUM(LENGTH(COALESCE(pitch_sequence, ''))), 0) AS seq_total,
+    COUNT(*) FILTER (WHERE was_in_play) AS bip,
+    COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown >= 1) AS in_play_tr,
+    SUM(CASE WHEN result_type IN ('walk','intentional_walk','hbp','sac_bunt') THEN 0 ELSE 1 END) AS ab,
+    SUM(CASE WHEN result_type IN ('single','double','triple','home_run') THEN 1 ELSE 0 END) AS h,
+    SUM(CASE WHEN result_type = 'double' THEN 1 ELSE 0 END) AS d2,
+    SUM(CASE WHEN result_type = 'triple' THEN 1 ELSE 0 END) AS d3,
+    SUM(CASE WHEN result_type = 'home_run' THEN 1 ELSE 0 END) AS hr,
+    SUM(CASE WHEN result_type = 'walk' THEN 1 ELSE 0 END) AS ubb,
+    SUM(CASE WHEN result_type IN ('walk','intentional_walk') THEN 1 ELSE 0 END) AS bb,
+    SUM(CASE WHEN result_type = 'hbp' THEN 1 ELSE 0 END) AS hbp,
+    SUM(CASE WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END) AS k,
+    SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
+    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
+    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS f_s,
+    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
+    COUNT(*) FILTER (
+        WHERE pitches_thrown >= 1 AND
+              (LEFT(COALESCE(pitch_sequence, ''), 1) IN ('K', 'F')
+               OR (COALESCE(pitch_sequence, '') = '' AND was_in_play))
+    ) AS f1_swings,
+    COUNT(*) FILTER (
+        WHERE pitches_thrown >= 1 AND
+              (LEFT(COALESCE(pitch_sequence, ''), 1) IN ('K', 'S', 'F')
+               OR (COALESCE(pitch_sequence, '') = '' AND was_in_play))
+    ) AS f1_strikes,
+    COUNT(*) FILTER (
+        WHERE pitches_thrown >= 1
+              AND COALESCE(pitch_sequence, '') = '' AND was_in_play
+    ) AS f1_in_play,
+    COUNT(*) FILTER (WHERE strikes_before = 2) AS two_strike_pa,
+    COUNT(*) FILTER (
+        WHERE strikes_before = 2 AND result_type IN
+        ('strikeout_swinging','strikeout_looking')
+    ) AS two_strike_k,
+    COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb_n,
+    COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb_n,
+    COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld_n,
+    COUNT(*) FILTER (WHERE bb_type = 'PU') AS pu_n,
+    COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total
+"""
+
+_SPL_AIRPULL_AGG = """,
+    COUNT(*) FILTER (
+        WHERE bb_type IN ('LD','FB')
+          AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+            OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
+    ) AS air_pull_n,
+    COUNT(*) FILTER (
+        WHERE bb_type IS NOT NULL
+          AND UPPER(p.bats) IN ('L','R')
+    ) AS air_denom_n
+"""
+
+# "On or Out in 3" (pitcher efficiency): PAs ending in 1-3 pitches with
+# a hit-or-out outcome; walks/IBB/HBP excluded.
+_SPL_ON_OR_OUT_3 = """,
+    COUNT(*) FILTER (
+        WHERE pitches_thrown BETWEEN 1 AND 3
+          AND result_type NOT IN ('walk','intentional_walk','hbp')
+    ) AS on_or_out_3
+"""
+
+
+def _spl_slash_from_row(row, weights):
+    """Common slash-line math from an aggregate row (hitter POV keys)."""
+    n_pa = row["pa"] or 0
+    ab = row["ab"] or 0; h = row["h"] or 0
+    d2 = row["d2"] or 0; d3 = row["d3"] or 0; hr = row["hr"] or 0
+    ubb = row["ubb"] or 0; bb = row["bb"] or 0
+    hbp = row["hbp"] or 0; sf = row["sf"] or 0; kct = row["k"] or 0
+    singles = h - d2 - d3 - hr
+    tb = singles + 2 * d2 + 3 * d3 + 4 * hr
+    obp_denom = ab + bb + hbp + sf
+    ba = (h / ab) if ab > 0 else None
+    obp = ((h + bb + hbp) / obp_denom) if obp_denom > 0 else None
+    slg = (tb / ab) if ab > 0 else None
+    ops = ((obp or 0) + (slg or 0)) if (obp is not None and slg is not None) else None
+    iso = ((slg - ba) if (slg is not None and ba is not None) else None)
+    woba_num = (weights.w_bb * ubb + weights.w_hbp * hbp +
+                weights.w_1b * singles + weights.w_2b * d2 +
+                weights.w_3b * d3 + weights.w_hr * hr)
+    woba_denom = ab + ubb + sf + hbp
+    woba = (woba_num / woba_denom) if woba_denom > 0 else None
+    return {
+        "pa": n_pa, "ab": ab, "h": h, "hr": hr, "bb": bb, "k": kct,
+        "ba": ba, "obp": obp, "slg": slg, "ops": ops, "iso": iso, "woba": woba,
+        "k_pct": (kct / n_pa) if n_pa > 0 else None,
+        "bb_pct": (bb / n_pa) if n_pa > 0 else None,
+    }
+
+
+def _spl_pitch_counts(row):
+    """Summer pitch accounting: pitches = sequence letters + tracked BIP."""
+    f_k = row["f_k"] or 0
+    f_s = row["f_s"] or 0
+    f_f = row["f_f"] or 0
+    in_play = row["in_play_tr"] or 0
+    pitches = (row["seq_total"] or 0) + in_play
+    swings = f_k + f_f + in_play
+    strikes = f_k + f_s + f_f + in_play
+    return pitches, swings, strikes, f_k, f_s
+
+
+# ── League baselines + deciles (hitter) ─────────────────────────────
+
+def _spl_hitter_metrics_from_row(r, weights, league_woba=None):
+    """Per-player metric dict for the decile distribution. Returns only
+    metrics whose sample floor is met (mirrors the spring gating)."""
+    out = {}
+    slash = _spl_slash_from_row(r, weights)
+    pa = r["pa"] or 0
+    tracked = r["tracked_pa"] or 0
+    pitches, swings, _strikes, f_k, _f_s = _spl_pitch_counts(r)
+    if (r["ab"] or 0) > 0:
+        out["ba"] = slash["ba"]; out["slg"] = slash["slg"]; out["iso"] = slash["iso"]
+    if slash["obp"] is not None:
+        out["obp"] = slash["obp"]
+        if slash["ops"] is not None:
+            out["ops"] = slash["ops"]
+    if slash["woba"] is not None:
+        out["woba"] = slash["woba"]
+        if league_woba is not None and weights.woba_scale > 0 and weights.runs_per_pa > 0:
+            out["wrc_plus"] = (((slash["woba"] - league_woba) / weights.woba_scale
+                               + weights.runs_per_pa) / weights.runs_per_pa * 100)
+    if pa > 0:
+        out["k_pct"] = slash["k_pct"]
+        out["bb_pct"] = slash["bb_pct"]
+    if tracked > 0:
+        out["first_pitch_swing_pct"] = (r["f1_swings"] or 0) / tracked
+        out["first_pitch_strike_pct"] = (r["f1_strikes"] or 0) / tracked
+        out["first_pitch_in_play_pct"] = (r["f1_in_play"] or 0) / tracked
+        if pitches > 0:
+            out["pitches_per_pa"] = pitches / tracked
+    if pitches > 0:
+        out["swing_pct"] = swings / pitches
+    if swings > 0:
+        out["contact_pct"] = (swings - f_k) / swings
+        out["whiff_pct"] = f_k / swings
+    ts_pa = r["two_strike_pa"] or 0
+    if ts_pa >= 5:
+        out["putaway_pct"] = (r["two_strike_k"] or 0) / ts_pa
+    bb_total = r["bb_total"] or 0
+    if bb_total >= 5:
+        out["gb_pct"] = (r["gb_n"] or 0) / bb_total
+        out["fb_pct"] = (r["fb_n"] or 0) / bb_total
+        out["ld_pct"] = (r["ld_n"] or 0) / bb_total
+        out["pu_pct"] = (r["pu_n"] or 0) / bb_total
+    air_denom = r["air_denom_n"] or 0
+    if air_denom >= 5:
+        out["air_pull_pct"] = (r["air_pull_n"] or 0) / air_denom
+    return out
+
+
+_SPL_HITTER_METRIC_KEYS = (
+    'ba', 'obp', 'slg', 'ops', 'iso', 'woba', 'wrc_plus', 'k_pct', 'bb_pct',
+    'swing_pct', 'contact_pct', 'whiff_pct',
+    'first_pitch_swing_pct', 'first_pitch_strike_pct', 'first_pitch_in_play_pct',
+    'putaway_pct', 'pitches_per_pa',
+    'gb_pct', 'fb_pct', 'ld_pct', 'pu_pct', 'air_pull_pct',
+)
+
+
+def _compute_summer_pl_baseline(cur, league_id, season, filter_sql, weights):
+    """League-wide hitter means under a filter (summer cohort)."""
+    cur.execute(f"""
+        SELECT {_SPL_HIT_AGG} {_SPL_AIRPULL_AGG}
+        FROM summer_game_events ge
+        JOIN summer_games g ON g.id = ge.game_id
+        JOIN summer_players p ON p.id = ge.batter_player_id
+        JOIN summer_teams t ON t.id = p.team_id
+        WHERE g.season = %s AND t.league_id = %s
+          AND ge.result_type = ANY(%s)
+          AND {filter_sql}
+    """, [season, league_id, _PA_RESULT_TYPES])
+    r = cur.fetchone()
+    slash = _spl_slash_from_row(r, weights)
+    pitches, swings, _strikes, f_k, _f_s = _spl_pitch_counts(r)
+    tracked = r["tracked_pa"] or 0
+    bb_total = r["bb_total"] or 0
+    ts_pa = r["two_strike_pa"] or 0
+    air_denom = r["air_denom_n"] or 0
+    return {
+        "pa": r["pa"] or 0, "tracked_pa": tracked, "pitches": pitches,
+        "ba": slash["ba"], "obp": slash["obp"], "slg": slash["slg"],
+        "ops": slash["ops"], "iso": slash["iso"], "woba": slash["woba"],
+        "k_pct": slash["k_pct"], "bb_pct": slash["bb_pct"],
+        "swing_pct": (swings / pitches) if pitches > 0 else None,
+        "contact_pct": ((swings - f_k) / swings) if swings > 0 else None,
+        "whiff_pct": (f_k / swings) if swings > 0 else None,
+        "first_pitch_swing_pct":   ((r["f1_swings"] or 0) / tracked) if tracked > 0 else None,
+        "first_pitch_strike_pct":  ((r["f1_strikes"] or 0) / tracked) if tracked > 0 else None,
+        "first_pitch_in_play_pct": ((r["f1_in_play"] or 0) / tracked) if tracked > 0 else None,
+        "putaway_pct": ((r["two_strike_k"] or 0) / ts_pa) if ts_pa > 0 else None,
+        "pitches_per_pa": (pitches / tracked) if tracked > 0 else None,
+        "gb_pct": ((r["gb_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "fb_pct": ((r["fb_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "ld_pct": ((r["ld_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "pu_pct": ((r["pu_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "air_pull_pct": ((r["air_pull_n"] or 0) / air_denom) if air_denom > 0 else None,
+    }
+
+
+def _compute_summer_pl_deciles(cur, league_id, season, filter_sql, weights, league_woba=None):
+    """Per-metric decile thresholds across qualifying hitters (>= 5 PA
+    in the filter) in the summer league cohort."""
+    cur.execute(f"""
+        SELECT ge.batter_player_id AS pid, {_SPL_HIT_AGG} {_SPL_AIRPULL_AGG}
+        FROM summer_game_events ge
+        JOIN summer_games g ON g.id = ge.game_id
+        JOIN summer_players p ON p.id = ge.batter_player_id
+        JOIN summer_teams t ON t.id = p.team_id
+        WHERE g.season = %s AND t.league_id = %s
+          AND ge.result_type = ANY(%s)
+          AND {filter_sql}
+        GROUP BY ge.batter_player_id
+        HAVING COUNT(*) >= 5
+    """, [season, league_id, _PA_RESULT_TYPES])
+    rows = cur.fetchall()
+    if not rows:
+        return {}
+    metrics = {k: [] for k in _SPL_HITTER_METRIC_KEYS}
+    for r in rows:
+        for k, v in _spl_hitter_metrics_from_row(r, weights, league_woba).items():
+            if v is not None:
+                metrics[k].append(v)
+    return _spl_decile_thresholds(metrics)
+
+
+def _get_summer_pl_baselines(cur, league_id, season, weights):
+    """Cached league baselines for every filter the hitter card colors
+    against (count states + L/R splits — no situational filters, since
+    summer events carry no base/out/score state)."""
+    key = (league_id, season)
+    now = _spl_time.time()
+    cached = _SUMMER_PL_BASELINES_CACHE.get(key)
+    if cached and (now - cached["ts"]) < _SUMMER_PL_BASELINES_TTL:
+        return cached["data"]
+    filters = {
+        "overall":    "TRUE",
+        "hitters":    _SPL_HITTERS_COUNTS,
+        "neutral":    _SPL_NEUTRAL_COUNTS,
+        "pitchers":   _SPL_PITCHERS_COUNTS,
+        "two_strike": _SPL_TWO_STRIKE,
+        "vs_lhp":     "ge.pitcher_player_id IN (SELECT id FROM summer_players WHERE UPPER(throws) = 'L')",
+        "vs_rhp":     "ge.pitcher_player_id IN (SELECT id FROM summer_players WHERE UPPER(throws) = 'R')",
+    }
+    out = {}
+    for k, fsql in filters.items():
+        mean = _compute_summer_pl_baseline(cur, league_id, season, fsql, weights)
+        mean["wrc_plus"] = 100 if mean.get("woba") is not None else None
+        deciles = _compute_summer_pl_deciles(
+            cur, league_id, season, fsql, weights, league_woba=mean.get("woba"))
+        out[k] = {"mean": mean, "deciles": deciles}
+    _SUMMER_PL_BASELINES_CACHE[key] = {"ts": now, "data": out}
+    return out
+
+
+# ── League baselines + deciles (pitcher) ────────────────────────────
+
+_SPL_PITCHER_METRIC_KEYS = (
+    'opp_ba', 'opp_obp', 'opp_slg', 'opp_ops', 'opp_iso', 'opp_woba',
+    'wrc_plus_against', 'k_pct', 'bb_pct',
+    'strike_pct', 'called_strike_pct', 'whiff_pct',
+    'first_pitch_strike_pct', 'putaway_pct', 'pitches_per_pa',
+    'on_or_out_3_pct',
+    'gb_pct', 'fb_pct', 'ld_pct', 'pu_pct', 'hr_pa_pct', 'opp_air_pull_pct',
+)
+
+
+def _spl_pitcher_metrics_from_row(r, weights, league_woba=None):
+    out = {}
+    slash = _spl_slash_from_row(r, weights)
+    pa = r["pa"] or 0
+    tracked = r["tracked_pa"] or 0
+    pitches, swings, strikes, f_k, f_s = _spl_pitch_counts(r)
+    if (r["ab"] or 0) > 0:
+        out["opp_ba"] = slash["ba"]; out["opp_slg"] = slash["slg"]; out["opp_iso"] = slash["iso"]
+    if slash["obp"] is not None:
+        out["opp_obp"] = slash["obp"]
+        if slash["ops"] is not None:
+            out["opp_ops"] = slash["ops"]
+    if slash["woba"] is not None:
+        out["opp_woba"] = slash["woba"]
+        if league_woba is not None and weights.woba_scale > 0 and weights.runs_per_pa > 0:
+            out["wrc_plus_against"] = (((slash["woba"] - league_woba) / weights.woba_scale
+                                       + weights.runs_per_pa) / weights.runs_per_pa * 100)
+    if pa > 0:
+        out["k_pct"] = slash["k_pct"]
+        out["bb_pct"] = slash["bb_pct"]
+        if pa >= 10:
+            out["hr_pa_pct"] = (r["hr"] or 0) / pa
+    if tracked > 0:
+        out["first_pitch_strike_pct"] = (r["f1_strikes"] or 0) / tracked
+        if pitches > 0:
+            out["pitches_per_pa"] = pitches / tracked
+        if tracked >= 10:
+            out["on_or_out_3_pct"] = (r["on_or_out_3"] or 0) / tracked
+    if pitches > 0:
+        out["strike_pct"] = strikes / pitches
+        out["called_strike_pct"] = f_s / pitches
+    if swings > 0:
+        out["whiff_pct"] = f_k / swings
+    ts_pa = r["two_strike_pa"] or 0
+    if ts_pa >= 5:
+        out["putaway_pct"] = (r["two_strike_k"] or 0) / ts_pa
+    bb_total = r["bb_total"] or 0
+    if bb_total >= 5:
+        out["gb_pct"] = (r["gb_n"] or 0) / bb_total
+        out["fb_pct"] = (r["fb_n"] or 0) / bb_total
+        out["ld_pct"] = (r["ld_n"] or 0) / bb_total
+        out["pu_pct"] = (r["pu_n"] or 0) / bb_total
+        out["opp_air_pull_pct"] = (r["air_pull_n"] or 0) / bb_total
+    return out
+
+
+def _compute_summer_pl_pitcher_baseline(cur, league_id, season, filter_sql, weights):
+    """League average pitcher metrics under a filter. Joined via the
+    pitcher's summer team for league scoping; LEFT JOIN the batter for
+    opponent handedness (air-pull)."""
+    cur.execute(f"""
+        SELECT {_SPL_HIT_AGG} {_SPL_ON_OR_OUT_3},
+        COUNT(*) FILTER (
+            WHERE bb_type IN ('LD','FB')
+              AND ((UPPER(b.bats) = 'R' AND field_zone = 'LEFT')
+                OR (UPPER(b.bats) = 'L' AND field_zone = 'RIGHT'))
+        ) AS air_pull_n
+        FROM summer_game_events ge
+        JOIN summer_games g ON g.id = ge.game_id
+        JOIN summer_players p ON p.id = ge.pitcher_player_id
+        JOIN summer_teams t ON t.id = p.team_id
+        LEFT JOIN summer_players b ON b.id = ge.batter_player_id
+        WHERE g.season = %s AND t.league_id = %s
+          AND ge.result_type = ANY(%s)
+          AND {filter_sql}
+    """, [season, league_id, _PA_RESULT_TYPES])
+    r = cur.fetchone()
+    slash = _spl_slash_from_row(r, weights)
+    pitches, swings, strikes, f_k, f_s = _spl_pitch_counts(r)
+    tracked = r["tracked_pa"] or 0
+    bb_total = r["bb_total"] or 0
+    ts_pa = r["two_strike_pa"] or 0
+    n_pa = r["pa"] or 0
+    return {
+        "pa": n_pa, "tracked_pa": tracked, "pitches": pitches,
+        "opp_ba": slash["ba"], "opp_obp": slash["obp"], "opp_slg": slash["slg"],
+        "opp_ops": slash["ops"], "opp_iso": slash["iso"], "opp_woba": slash["woba"],
+        "k_pct": slash["k_pct"], "bb_pct": slash["bb_pct"],
+        "strike_pct": (strikes / pitches) if pitches > 0 else None,
+        "called_strike_pct": (f_s / pitches) if pitches > 0 else None,
+        "whiff_pct": (f_k / swings) if swings > 0 else None,
+        "first_pitch_strike_pct": ((r["f1_strikes"] or 0) / tracked) if tracked > 0 else None,
+        "putaway_pct": ((r["two_strike_k"] or 0) / ts_pa) if ts_pa > 0 else None,
+        "pitches_per_pa": (pitches / tracked) if tracked > 0 else None,
+        "on_or_out_3_pct": ((r["on_or_out_3"] or 0) / tracked) if tracked > 0 else None,
+        "gb_pct": ((r["gb_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "fb_pct": ((r["fb_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "ld_pct": ((r["ld_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "pu_pct": ((r["pu_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "opp_air_pull_pct": ((r["air_pull_n"] or 0) / bb_total) if bb_total > 0 else None,
+        "hr_pa_pct": ((r["hr"] or 0) / n_pa) if n_pa > 0 else None,
+    }
+
+
+def _compute_summer_pl_pitcher_deciles(cur, league_id, season, filter_sql, weights, league_woba=None):
+    cur.execute(f"""
+        SELECT ge.pitcher_player_id AS pid, {_SPL_HIT_AGG} {_SPL_ON_OR_OUT_3},
+        COUNT(*) FILTER (
+            WHERE bb_type IN ('LD','FB')
+              AND ((UPPER(b.bats) = 'R' AND field_zone = 'LEFT')
+                OR (UPPER(b.bats) = 'L' AND field_zone = 'RIGHT'))
+        ) AS air_pull_n
+        FROM summer_game_events ge
+        JOIN summer_games g ON g.id = ge.game_id
+        JOIN summer_players p ON p.id = ge.pitcher_player_id
+        JOIN summer_teams t ON t.id = p.team_id
+        LEFT JOIN summer_players b ON b.id = ge.batter_player_id
+        WHERE g.season = %s AND t.league_id = %s
+          AND ge.result_type = ANY(%s)
+          AND {filter_sql}
+        GROUP BY ge.pitcher_player_id
+        HAVING COUNT(*) >= 5
+    """, [season, league_id, _PA_RESULT_TYPES])
+    rows = cur.fetchall()
+    if not rows:
+        return {}
+    metrics = {k: [] for k in _SPL_PITCHER_METRIC_KEYS}
+    for r in rows:
+        for k, v in _spl_pitcher_metrics_from_row(r, weights, league_woba).items():
+            if v is not None:
+                metrics[k].append(v)
+    return _spl_decile_thresholds(metrics)
+
+
+def _get_summer_pl_pitcher_baselines(cur, league_id, season, weights):
+    key = (league_id, season)
+    now = _spl_time.time()
+    cached = _SUMMER_PL_PITCHER_BASELINES_CACHE.get(key)
+    if cached and (now - cached["ts"]) < _SUMMER_PL_BASELINES_TTL:
+        return cached["data"]
+    filters = {
+        "overall":    "TRUE",
+        "hitters":    _SPL_HITTERS_COUNTS,
+        "neutral":    _SPL_NEUTRAL_COUNTS,
+        "pitchers":   _SPL_PITCHERS_COUNTS,
+        "two_strike": _SPL_TWO_STRIKE,
+        "vs_lhb":     "ge.batter_player_id IN (SELECT id FROM summer_players WHERE UPPER(bats) = 'L')",
+        "vs_rhb":     "ge.batter_player_id IN (SELECT id FROM summer_players WHERE UPPER(bats) = 'R')",
+    }
+    out = {}
+    for k, fsql in filters.items():
+        mean = _compute_summer_pl_pitcher_baseline(cur, league_id, season, fsql, weights)
+        mean["wrc_plus_against"] = 100 if mean.get("opp_woba") is not None else None
+        deciles = _compute_summer_pl_pitcher_deciles(
+            cur, league_id, season, fsql, weights, league_woba=mean.get("opp_woba"))
+        out[k] = {"mean": mean, "deciles": deciles}
+    _SUMMER_PL_PITCHER_BASELINES_CACHE[key] = {"ts": now, "data": out}
+    return out
+
+
+def _spl_player_meta(cur, player_id):
+    cur.execute(
+        """
+        SELECT p.bats, p.throws, t.league_id, l.abbreviation AS league_abbr
+        FROM summer_players p
+        JOIN summer_teams t   ON t.id = p.team_id
+        JOIN summer_leagues l ON l.id = t.league_id
+        WHERE p.id = %s
+        """,
+        (player_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Summer player not found")
+    return row
+
+
+# ── GET /summer/players/{id}/pitch-level-stats (hitter) ─────────────
+
+@router.get("/summer/players/{player_id}/pitch-level-stats")
+@cached_endpoint(ttl_seconds=600)
+def summer_player_pitch_level_stats(
+    player_id: int,
+    season: int = Query(CURRENT_SEASON, description="Summer season year"),
+):
+    """Hitter pitch-level stats from summer_game_events — spring payload
+    mirror (discipline / count_states / lr_splits / contact_profile /
+    spray_chart). situational_splits is always [] and LI/WPA fields are
+    null: summer events carry no base/out/score state."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        meta = _spl_player_meta(cur, player_id)
+        league_id = meta["league_id"]
+        bats = meta["bats"]
+        weights = _summer_pl_weights(cur, league_id, season)
+
+        # ── Discipline (totals + tracked-pitch subset in one pass) ──
+        cur.execute(f"""
+            SELECT {_SPL_HIT_AGG}
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = %s AND g.season = %s
+              AND ge.result_type = ANY(%s)
+        """, (player_id, season, _PA_RESULT_TYPES))
+        r = cur.fetchone()
+        total_pa = r["pa"] or 0
+        tracked_pa = r["tracked_pa"] or 0
+        pitches, swings, _strikes, f_k, _f_s = _spl_pitch_counts(r)
+        two_strike_pa = r["two_strike_pa"] or 0
+        discipline = {
+            "total_pa": total_pa,
+            "tracked_pa": tracked_pa,
+            "pitches": pitches,
+            "swings": swings,
+            "whiffs": f_k,
+            "swing_pct": (swings / pitches) if pitches > 0 else None,
+            "whiff_pct": (f_k / swings) if swings > 0 else None,
+            "contact_pct": ((swings - f_k) / swings) if swings > 0 else None,
+            "first_pitch_swing_pct":   ((r["f1_swings"] or 0) / tracked_pa) if tracked_pa > 0 else None,
+            "first_pitch_strike_pct":  ((r["f1_strikes"] or 0) / tracked_pa) if tracked_pa > 0 else None,
+            "first_pitch_in_play_pct": ((r["f1_in_play"] or 0) / tracked_pa) if tracked_pa > 0 else None,
+            "two_strike_pa": two_strike_pa,
+            "putaway_pct": ((r["two_strike_k"] or 0) / two_strike_pa) if two_strike_pa > 0 else None,
+            "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
+            # No base/out/score state in summer PBP → no LI / WPA.
+            "avg_li": None, "li_pa": 0, "max_li": None,
+            "total_wpa": None, "wpa_pa": 0, "peak_wpa": None, "mean_abs_wpa": None,
+        }
+
+        # ── Contact profile (bb_type) + spray (Pull/Center/Oppo) ──
+        cur.execute("""
+            SELECT bb_type, field_zone, COUNT(*) AS c
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = %s AND g.season = %s
+              AND (bb_type IS NOT NULL OR field_zone IS NOT NULL)
+            GROUP BY bb_type, field_zone
+        """, (player_id, season))
+        bb_counts = {"GB": 0, "FB": 0, "LD": 0, "PU": 0}
+        zone_counts = {"LEFT": 0, "CENTER": 0, "RIGHT": 0}
+        spray_counts = {"Pull": 0, "Center": 0, "Oppo": 0}
+        bb_total = zone_total = air_pull = 0
+        for row in cur.fetchall():
+            n = row["c"]
+            if row["bb_type"]:
+                bb_counts[row["bb_type"]] = bb_counts.get(row["bb_type"], 0) + n
+                bb_total += n
+            if row["field_zone"]:
+                zone_counts[row["field_zone"]] = zone_counts.get(row["field_zone"], 0) + n
+                zone_total += n
+                spray = _summer_spray_for(row["field_zone"], bats)
+                if spray:
+                    spray_counts[spray] = spray_counts.get(spray, 0) + n
+                if row["bb_type"] in ("LD", "FB") and spray == "Pull":
+                    air_pull += n
+        air_denom = bb_total if bats and bats.upper() in ("L", "R") else 0
+        spray_total = sum(spray_counts.values())
+        contact_profile = {
+            "bb_total": bb_total,
+            "zone_total": zone_total,
+            "spray_total": spray_total,
+            "bats": bats,
+            "gb_pct": (bb_counts["GB"] / bb_total) if bb_total > 0 else None,
+            "fb_pct": (bb_counts["FB"] / bb_total) if bb_total > 0 else None,
+            "ld_pct": (bb_counts["LD"] / bb_total) if bb_total > 0 else None,
+            "pu_pct": (bb_counts["PU"] / bb_total) if bb_total > 0 else None,
+            "gb_count": bb_counts["GB"],
+            "fb_count": bb_counts["FB"],
+            "ld_count": bb_counts["LD"],
+            "pu_count": bb_counts["PU"],
+            "pull_pct":   (spray_counts["Pull"]   / spray_total) if spray_total > 0 else None,
+            "center_pct": (spray_counts["Center"] / spray_total) if spray_total > 0 else None,
+            "oppo_pct":   (spray_counts["Oppo"]   / spray_total) if spray_total > 0 else None,
+            "air_pull_pct": (air_pull / air_denom) if air_denom > 0 else None,
+            "air_pull_count": air_pull,
+            "air_denom": air_denom,
+        }
+
+        # ── Zoned spray chart (fine zones × pitcher hand × xbh/hr) ──
+        cur.execute("""
+            SELECT field_zone_fine,
+                   CASE
+                     WHEN UPPER(sp.throws) = 'L' THEN 'LHP'
+                     WHEN UPPER(sp.throws) = 'R' THEN 'RHP'
+                     ELSE 'UNK'
+                   END AS pitcher_hand,
+                   result_type,
+                   COUNT(*) AS c
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            LEFT JOIN summer_players sp ON sp.id = ge.pitcher_player_id
+            WHERE ge.batter_player_id = %s AND g.season = %s
+              AND ge.field_zone_fine IS NOT NULL
+            GROUP BY field_zone_fine, pitcher_hand, result_type
+        """, (player_id, season))
+        spray_chart = {
+            "all":    {z: 0 for z in _SUMMER_FINE_ZONES},
+            "vs_lhp": {z: 0 for z in _SUMMER_FINE_ZONES},
+            "vs_rhp": {z: 0 for z in _SUMMER_FINE_ZONES},
+            "xbh":    {z: 0 for z in _SUMMER_FINE_ZONES},
+            "hr":     {z: 0 for z in _SUMMER_FINE_ZONES},
+        }
+        for row in cur.fetchall():
+            z = row["field_zone_fine"]
+            if z not in spray_chart["all"]:
+                continue
+            n = row["c"]; rt = row["result_type"]
+            spray_chart["all"][z] += n
+            if row["pitcher_hand"] == "LHP":
+                spray_chart["vs_lhp"][z] += n
+            elif row["pitcher_hand"] == "RHP":
+                spray_chart["vs_rhp"][z] += n
+            if rt in _SUMMER_XBH_TYPES:
+                spray_chart["xbh"][z] += n
+            if rt == "home_run":
+                spray_chart["hr"][z] += n
+        for k in ("all", "vs_lhp", "vs_rhp", "xbh", "hr"):
+            spray_chart[f"{k}_total"] = sum(spray_chart[k].values())
+
+        # ── Count-state / split slash rows ──
+        def _slash(filter_sql):
+            cur.execute(f"""
+                SELECT {_SPL_HIT_AGG}
+                FROM summer_game_events ge
+                JOIN summer_games g ON g.id = ge.game_id
+                WHERE ge.batter_player_id = %s AND g.season = %s
+                  AND ge.result_type = ANY(%s)
+                  AND {filter_sql}
+            """, (player_id, season, _PA_RESULT_TYPES))
+            row = cur.fetchone()
+            slash = _spl_slash_from_row(row, weights)
+            n_pitches, n_swings, _str, kk, _ss = _spl_pitch_counts(row)
+            slash.update({
+                "pitches": n_pitches,
+                "bip": row["bip"] or 0,
+                "swing_pct": (n_swings / n_pitches) if n_pitches > 0 else None,
+                "contact_pct": ((n_swings - kk) / n_swings) if n_swings > 0 else None,
+                "whiff_pct": (kk / n_swings) if n_swings > 0 else None,
+                "wrc_plus": None,
+            })
+            return slash
+
+        count_states = [
+            {"label": "Hitter's counts", "detail": "1-0, 2-0, 3-0, 3-1",
+             "filter_key": "hitters", **_slash(_SPL_HITTERS_COUNTS)},
+            {"label": "Neutral counts", "detail": "0-0, 1-1, 2-1, 2-2, 3-2",
+             "filter_key": "neutral", **_slash(_SPL_NEUTRAL_COUNTS)},
+            {"label": "Pitcher's counts", "detail": "0-1, 0-2, 1-2",
+             "filter_key": "pitchers", **_slash(_SPL_PITCHERS_COUNTS)},
+            {"label": "2-strike", "detail": "any 2-strike count",
+             "filter_key": "two_strike", **_slash(_SPL_TWO_STRIKE)},
+        ]
+
+        lr_splits = [
+            {"label": "vs LHP", "filter_key": "vs_lhp",
+             **_slash("ge.pitcher_player_id IN (SELECT id FROM summer_players WHERE UPPER(throws) = 'L')")},
+            {"label": "vs RHP", "filter_key": "vs_rhp",
+             **_slash("ge.pitcher_player_id IN (SELECT id FROM summer_players WHERE UPPER(throws) = 'R')")},
+            {"label": "vs Unknown", "filter_key": None,
+             **_slash("(ge.pitcher_player_id IS NULL OR ge.pitcher_player_id IN "
+                      "(SELECT id FROM summer_players WHERE throws IS NULL))")},
+        ]
+
+        # No base/out/score state in summer PBP → no situational rows.
+        situational_splits = []
+
+        # ── Attach league baselines + deciles + wRC+ (vs overall wOBA) ──
+        baselines = _get_summer_pl_baselines(cur, league_id, season, weights)
+        overall_entry = baselines.get("overall") or {}
+        overall_league_woba = (overall_entry.get("mean") or {}).get("woba")
+        for row in count_states + lr_splits:
+            fk = row.get("filter_key")
+            entry = baselines.get(fk) if fk else None
+            row["league"] = entry["mean"] if entry else None
+            row["deciles"] = entry["deciles"] if entry else None
+            if (row.get("woba") is not None and overall_league_woba is not None
+                    and weights.woba_scale > 0 and weights.runs_per_pa > 0):
+                row["wrc_plus"] = round(
+                    ((row["woba"] - overall_league_woba) / weights.woba_scale
+                     + weights.runs_per_pa) / weights.runs_per_pa * 100
+                )
+            else:
+                row["wrc_plus"] = None
+        discipline["league"] = overall_entry.get("mean")
+        discipline["deciles"] = overall_entry.get("deciles")
+
+        return {
+            "player_id": player_id,
+            "season": season,
+            "division_level": meta["league_abbr"],
+            "discipline": discipline,
+            "count_states": count_states,
+            "lr_splits": lr_splits,
+            "situational_splits": situational_splits,
+            "contact_profile": contact_profile,
+            "spray_chart": spray_chart,
+        }
+
+
+# ── GET /summer/players/{id}/pitch-level-stats-pitcher ──────────────
+
+@router.get("/summer/players/{player_id}/pitch-level-stats-pitcher")
+@cached_endpoint(ttl_seconds=600)
+def summer_player_pitch_level_stats_pitcher(
+    player_id: int,
+    season: int = Query(CURRENT_SEASON, description="Summer season year"),
+):
+    """Pitcher pitch-level stats from summer_game_events — spring payload
+    mirror (discipline / count_states / lr_splits / opp_contact_profile /
+    opp_spray_chart). situational_splits is always [] and LI/WPA fields
+    are null: summer events carry no base/out/score state."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        meta = _spl_player_meta(cur, player_id)
+        league_id = meta["league_id"]
+        weights = _summer_pl_weights(cur, league_id, season)
+
+        # ── Discipline ──
+        cur.execute(f"""
+            SELECT {_SPL_HIT_AGG} {_SPL_ON_OR_OUT_3}
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            WHERE ge.pitcher_player_id = %s AND g.season = %s
+              AND ge.result_type = ANY(%s)
+        """, (player_id, season, _PA_RESULT_TYPES))
+        r = cur.fetchone()
+        total_pa = r["pa"] or 0
+        tracked_pa = r["tracked_pa"] or 0
+        pitches, swings, strikes, f_k, f_s = _spl_pitch_counts(r)
+        two_strike_pa = r["two_strike_pa"] or 0
+        discipline = {
+            "total_pa": total_pa,
+            "tracked_pa": tracked_pa,
+            "pitches": pitches,
+            "swings": swings,
+            "whiffs": f_k,
+            "strike_pct": (strikes / pitches) if pitches > 0 else None,
+            "called_strike_pct": (f_s / pitches) if pitches > 0 else None,
+            "whiff_pct": (f_k / swings) if swings > 0 else None,
+            "first_pitch_strike_pct": ((r["f1_strikes"] or 0) / tracked_pa) if tracked_pa > 0 else None,
+            "two_strike_pa": two_strike_pa,
+            "putaway_pct": ((r["two_strike_k"] or 0) / two_strike_pa) if two_strike_pa > 0 else None,
+            "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
+            "on_or_out_3": r["on_or_out_3"] or 0,
+            "on_or_out_3_pct": ((r["on_or_out_3"] or 0) / tracked_pa) if tracked_pa > 0 else None,
+            # No base/out/score state in summer PBP → no LI / WPA.
+            "avg_li": None, "li_pa": 0, "max_li": None,
+            "total_wpa": None, "wpa_pa": 0, "peak_wpa": None, "mean_abs_wpa": None,
+        }
+
+        # ── Opponent contact profile (induced bb_type) ──
+        cur.execute("""
+            SELECT bb_type, COUNT(*) AS c
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            WHERE ge.pitcher_player_id = %s AND g.season = %s
+              AND bb_type IS NOT NULL
+            GROUP BY bb_type
+        """, (player_id, season))
+        bb_counts = {"GB": 0, "FB": 0, "LD": 0, "PU": 0}
+        for row in cur.fetchall():
+            bb_counts[row["bb_type"]] = bb_counts.get(row["bb_type"], 0) + row["c"]
+        bb_total = sum(bb_counts.values())
+        opp_contact_profile = {
+            "bb_total": bb_total,
+            "gb_pct": (bb_counts["GB"] / bb_total) if bb_total > 0 else None,
+            "fb_pct": (bb_counts["FB"] / bb_total) if bb_total > 0 else None,
+            "ld_pct": (bb_counts["LD"] / bb_total) if bb_total > 0 else None,
+            "pu_pct": (bb_counts["PU"] / bb_total) if bb_total > 0 else None,
+            "gb_count": bb_counts["GB"],
+            "fb_count": bb_counts["FB"],
+            "ld_count": bb_counts["LD"],
+            "pu_count": bb_counts["PU"],
+        }
+
+        # ── Opponent spray chart (fine zones × batter hand × xbh/hr) ──
+        cur.execute("""
+            SELECT field_zone_fine,
+                   CASE
+                     WHEN UPPER(sb.bats) = 'L' THEN 'LHB'
+                     WHEN UPPER(sb.bats) = 'R' THEN 'RHB'
+                     ELSE 'UNK'
+                   END AS batter_hand,
+                   result_type,
+                   COUNT(*) AS c
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            LEFT JOIN summer_players sb ON sb.id = ge.batter_player_id
+            WHERE ge.pitcher_player_id = %s AND g.season = %s
+              AND ge.field_zone_fine IS NOT NULL
+            GROUP BY field_zone_fine, batter_hand, result_type
+        """, (player_id, season))
+        opp_spray_chart = {
+            "all":    {z: 0 for z in _SUMMER_FINE_ZONES},
+            "vs_lhb": {z: 0 for z in _SUMMER_FINE_ZONES},
+            "vs_rhb": {z: 0 for z in _SUMMER_FINE_ZONES},
+            "xbh":    {z: 0 for z in _SUMMER_FINE_ZONES},
+            "hr":     {z: 0 for z in _SUMMER_FINE_ZONES},
+        }
+        for row in cur.fetchall():
+            z = row["field_zone_fine"]
+            if z not in opp_spray_chart["all"]:
+                continue
+            n = row["c"]; rt = row["result_type"]
+            opp_spray_chart["all"][z] += n
+            if row["batter_hand"] == "LHB":
+                opp_spray_chart["vs_lhb"][z] += n
+            elif row["batter_hand"] == "RHB":
+                opp_spray_chart["vs_rhb"][z] += n
+            if rt in _SUMMER_XBH_TYPES:
+                opp_spray_chart["xbh"][z] += n
+            if rt == "home_run":
+                opp_spray_chart["hr"][z] += n
+        for k in ("all", "vs_lhb", "vs_rhb", "xbh", "hr"):
+            opp_spray_chart[f"{k}_total"] = sum(opp_spray_chart[k].values())
+
+        # ── Count-state / split opponent slash rows ──
+        def _opp_slash(filter_sql):
+            cur.execute(f"""
+                SELECT {_SPL_HIT_AGG}
+                FROM summer_game_events ge
+                JOIN summer_games g ON g.id = ge.game_id
+                WHERE ge.pitcher_player_id = %s AND g.season = %s
+                  AND ge.result_type = ANY(%s)
+                  AND {filter_sql}
+            """, (player_id, season, _PA_RESULT_TYPES))
+            row = cur.fetchone()
+            slash = _spl_slash_from_row(row, weights)
+            n_pitches, n_swings, n_strikes, kk, _ss = _spl_pitch_counts(row)
+            return {
+                "pa": slash["pa"], "pitches": n_pitches, "bip": row["bip"] or 0,
+                "ab": slash["ab"], "h": slash["h"], "hr": slash["hr"],
+                "bb": slash["bb"], "k": slash["k"],
+                "opp_ba": slash["ba"], "opp_obp": slash["obp"],
+                "opp_slg": slash["slg"], "opp_ops": slash["ops"],
+                "opp_iso": slash["iso"], "opp_woba": slash["woba"],
+                "k_pct": slash["k_pct"], "bb_pct": slash["bb_pct"],
+                "strike_pct": (n_strikes / n_pitches) if n_pitches > 0 else None,
+                "whiff_pct": (kk / n_swings) if n_swings > 0 else None,
+                "wrc_plus_against": None,
+            }
+
+        count_states = [
+            {"label": "Hitter's counts", "detail": "1-0, 2-0, 3-0, 3-1",
+             "filter_key": "hitters", **_opp_slash(_SPL_HITTERS_COUNTS)},
+            {"label": "Neutral counts", "detail": "0-0, 1-1, 2-1, 2-2, 3-2",
+             "filter_key": "neutral", **_opp_slash(_SPL_NEUTRAL_COUNTS)},
+            {"label": "Pitcher's counts", "detail": "0-1, 0-2, 1-2",
+             "filter_key": "pitchers", **_opp_slash(_SPL_PITCHERS_COUNTS)},
+            {"label": "2-strike", "detail": "any 2-strike count",
+             "filter_key": "two_strike", **_opp_slash(_SPL_TWO_STRIKE)},
+        ]
+
+        lr_splits = [
+            {"label": "vs LHB", "filter_key": "vs_lhb",
+             **_opp_slash("ge.batter_player_id IN (SELECT id FROM summer_players WHERE UPPER(bats) = 'L')")},
+            {"label": "vs RHB", "filter_key": "vs_rhb",
+             **_opp_slash("ge.batter_player_id IN (SELECT id FROM summer_players WHERE UPPER(bats) = 'R')")},
+            {"label": "vs Unknown", "filter_key": None,
+             **_opp_slash("(ge.batter_player_id IS NULL OR ge.batter_player_id IN "
+                          "(SELECT id FROM summer_players WHERE bats IS NULL))")},
+        ]
+
+        situational_splits = []
+
+        baselines = _get_summer_pl_pitcher_baselines(cur, league_id, season, weights)
+        overall_entry = baselines.get("overall") or {}
+        overall_league_opp_woba = (overall_entry.get("mean") or {}).get("opp_woba")
+        for row in count_states + lr_splits:
+            fk = row.get("filter_key")
+            entry = baselines.get(fk) if fk else None
+            row["league"] = entry["mean"] if entry else None
+            row["deciles"] = entry["deciles"] if entry else None
+            if (row.get("opp_woba") is not None and overall_league_opp_woba is not None
+                    and weights.woba_scale > 0 and weights.runs_per_pa > 0):
+                row["wrc_plus_against"] = round(
+                    ((row["opp_woba"] - overall_league_opp_woba) / weights.woba_scale
+                     + weights.runs_per_pa) / weights.runs_per_pa * 100
+                )
+            else:
+                row["wrc_plus_against"] = None
+        discipline["league"] = overall_entry.get("mean")
+        discipline["deciles"] = overall_entry.get("deciles")
+
+        return {
+            "player_id": player_id,
+            "season": season,
+            "division_level": meta["league_abbr"],
+            "discipline": discipline,
+            "count_states": count_states,
+            "lr_splits": lr_splits,
+            "situational_splits": situational_splits,
+            "opp_contact_profile": opp_contact_profile,
+            "opp_spray_chart": opp_spray_chart,
+        }

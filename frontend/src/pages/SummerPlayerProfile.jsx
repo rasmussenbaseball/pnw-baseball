@@ -25,6 +25,8 @@ import {
   CareerPath, divisionBadge,
   CHART_TIERS, HERO_GRADIENT, AWARD_BADGE_STYLE, RANK_BADGE_STYLE,
 } from '../components/playerProfile/shared'
+import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
+import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 
 // ── Percentile + radar configs (summer subset of the spring sets) ──
 const BAT_PCT_METRICS = [
@@ -266,31 +268,27 @@ function StatTiles({ tiles }) {
   )
 }
 
-function ApproachCard({ approach, kind }) {
-  const T = usePlayerProfileTheme()
-  if (!approach) return null
-  const tiles = kind === 'pitcher'
-    ? [['Strike%', approach.strike_pct], ['Whiff%', approach.whiff_pct], ['1st-Pitch K%', approach.first_pitch_strike_pct], ['K%', approach.k_pct], ['BB%', approach.bb_pct]]
-    : [['Swing%', approach.swing_pct], ['Contact%', approach.contact_pct], ['Whiff%', approach.whiff_pct], ['1st-Pitch Sw%', approach.first_pitch_swing_pct], ['K%', approach.k_pct], ['BB%', approach.bb_pct]]
+// Full pitch-level stat card (the spring PitchLevelStatsCard /
+// PitcherPitchLevelStatsCard rendered against the summer PBP endpoints,
+// embedded in a SectionCard shell). Replaces the old thin ApproachCard:
+// discipline tiles, batted-ball profile, spray chart, count battle, and
+// L/R splits — all colored against the WCL league cohort. The card
+// hides itself when the player has no tracked PBP, and the summer
+// payload's null LI/WPA + empty situational splits never render.
+function SummerPitchLevelCard({ playerId, season, leagueAbbr, kind }) {
+  const Card = kind === 'pitcher' ? PitcherPitchLevelStatsCard : PitchLevelStatsCard
+  const path = kind === 'pitcher'
+    ? `/summer/players/${playerId}/pitch-level-stats-pitcher`
+    : `/summer/players/${playerId}/pitch-level-stats`
   return (
-    <SectionCard title="Pitch Level Stats" right={`${approach.season} · PLAY-BY-PLAY`}>
-      <div className="text-[11px] mb-2" style={{ color: T.textLight }}>
-        From tracked WCL play-by-play · {approach.pa} {kind === 'pitcher' ? 'batters faced' : 'PA'}, {approach.pitches_seen} pitches seen
-      </div>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        {tiles.map(([label, val]) => (
-          <div key={label} className="rounded py-2 text-center" style={{ background: T.bg, border: `1px solid ${T.border}` }}>
-            <div className="text-base sm:text-lg font-bold tabular-nums" style={{ color: T.text }}>{val == null ? '—' : `${(val * 100).toFixed(1)}%`}</div>
-            <div className="text-[10px] uppercase tracking-wide mt-0.5 leading-tight" style={{ color: T.textMuted }}>{label}</div>
-          </div>
-        ))}
-      </div>
-      <p className="mt-2 text-[10px]" style={{ color: T.textLight }}>
-        {kind === 'pitcher'
-          ? 'Strike = called + swinging + foul + ball in play. Whiff = swinging strikes per swing. Samples are small early in the season.'
-          : 'Swing = whiff + foul + ball in play; contact excludes whiffs. Samples are small early in the season.'}
-      </p>
-    </SectionCard>
+    <Card
+      playerId={playerId}
+      season={season}
+      endpoint={path}
+      embedded
+      title="Pitch Level Stats"
+      right={`${season} · ${leagueAbbr || 'WCL'} PLAY-BY-PLAY`}
+    />
   )
 }
 
@@ -460,7 +458,7 @@ function CareerCards({ springData, identity, divLabel, seasonRange, season }) {
 // ════════════════════════════════════════════════════════════════
 function SummerHitterProfile({ data, springData, season }) {
   const T = usePlayerProfileTheme()
-  const { player, fielding, game_batting, approach, batting_percentiles } = data
+  const { player, fielding, game_batting, batting_percentiles } = data
   const identity = springData?.player || player
 
   const pct = batting_percentiles || {}
@@ -559,7 +557,7 @@ function SummerHitterProfile({ data, springData, season }) {
         <SeasonStatTable cols={BAT_COLS} rows={rows} blankCols={new Set([])} emptyMsg="No batting stats." />
       </SectionCard>
 
-      <ApproachCard approach={approach} kind="hitter" />
+      <SummerPitchLevelCard playerId={player.id} season={season} leagueAbbr={player.league_abbr} kind="hitter" />
       <FieldingCard rows={fielding} />
 
       <SectionCard title="Game Log" right={`${season} SEASON`}>
@@ -598,7 +596,7 @@ function SummerHitterProfile({ data, springData, season }) {
 // ════════════════════════════════════════════════════════════════
 function SummerPitcherProfile({ data, springData, season }) {
   const T = usePlayerProfileTheme()
-  const { player, game_pitching, pitch_approach, pitching_percentiles } = data
+  const { player, game_pitching, pitching_percentiles } = data
   const identity = springData?.player || player
 
   const pct = pitching_percentiles || {}
@@ -696,7 +694,7 @@ function SummerPitcherProfile({ data, springData, season }) {
         <SeasonStatTable cols={PIT_COLS} rows={rows} blankCols={new Set([])} emptyMsg="No pitching stats." minWidth="820px" />
       </SectionCard>
 
-      <ApproachCard approach={pitch_approach} kind="pitcher" />
+      <SummerPitchLevelCard playerId={player.id} season={season} leagueAbbr={player.league_abbr} kind="pitcher" />
 
       <SectionCard title="Game Log" right={`${season} SEASON`}>
         <GameLogTable cols={PIT_GAMELOG} games={games} minWidth="700px" emptyMsg="No games tracked this season yet." />
