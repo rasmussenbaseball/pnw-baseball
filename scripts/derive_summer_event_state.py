@@ -153,9 +153,11 @@ CHAIN_SCORED_RE = re.compile(
     re.IGNORECASE,
 )
 # WCL scorers chain an out inside an advance clause: "advanced to third,
-# out at home rf to c" — the runner was ultimately thrown out.
+# out at home rf to c" / "stole second, picked off" — the runner was
+# ultimately put out after the advance.
 CHAIN_OUT_RE = re.compile(
-    r",\s*(?:was\s+)?(?:thrown\s+)?out\s+at\s+(?P<base>first|second|third|home)\b",
+    r",\s*(?:was\s+)?(?:(?:thrown\s+)?out\s+at\s+(?P<base>first|second|third|home)\b"
+    r"|picked\s+off\b|out\s+on\s+the\s+play\b|out\s+on\s+a\s+(?:double|triple)\s+play\b)",
     re.IGNORECASE,
 )
 
@@ -404,45 +406,16 @@ def apply_runner_clause(clause, bases):
     if FAILED_PICKOFF_RE.search(cl):
         return 0, 0
 
-    # Out at base. "X out at second c to 2b, caught stealing" — runner removed, +1 out.
-    m = OUT_AT_RE.match(cl)
-    if m:
-        who = m.group("who")
-        last = _norm_last(who)
-        b = find_runner(bases, last)
-        if b is not None:
-            remove_runner(bases, b)
-        return 0, 1
-
-    # "X out on the play" (DP / TP companion): runner removed, +1 out.
-    m = OUT_ON_PLAY_RE.match(cl)
-    if m:
-        who = m.group("who")
-        last = _norm_last(who)
-        b = find_runner(bases, last)
-        if b is not None:
-            remove_runner(bases, b)
-        return 0, 1
-
-    # Picked off (without "advanced" — pure out)
-    m = PICKED_OFF_RE.match(cl)
-    if m:
-        who = m.group("who")
-        last = _norm_last(who)
-        b = find_runner(bases, last)
-        if b is not None:
-            remove_runner(bases, b)
-        return 0, 1
-
     # Stole / advanced (including "advanced to home" = scored).
-    # Checked BEFORE the scored branch, and STOLE before ADV: a chained
-    # clause like "Evan Burg stole second, advanced to third on the
-    # throw" must anchor on the FIRST verb ("stole second") so the
-    # runner is vacated from his real base — ADV_RE's lazy `who` would
-    # otherwise swallow "stole second," and ghost the runner. Same for
-    # "Sawyer Nelson stole third, scored on a throwing error": the
-    # chain handler removes him from 2B properly, where SCORED_RE
-    # would credit the run but leave a ghost on 2B.
+    # Checked BEFORE the out/scored branches, and STOLE before ADV: a
+    # chained clause like "Evan Burg stole second, advanced to third on
+    # the throw" must anchor on the FIRST verb ("stole second") so the
+    # runner is vacated from his real base — the lazy `who` group in
+    # ADV_RE / OUT_AT_RE / SCORED_RE would otherwise swallow the leading
+    # verb ("stole second,") and ghost the runner. Chained outs like
+    # "advanced to third, out at home rf to c" are handled by
+    # CHAIN_OUT_RE below; plain "X out at second" clauses don't match
+    # here and still fall through to OUT_AT_RE.
     m = STOLE_RE.match(cl) or ADV_RE.match(cl)
     if m:
         who = m.group("who")
@@ -489,6 +462,36 @@ def apply_runner_clause(clause, bases):
                 elif new_base > dest:
                     runs_extra += vacate_to(bases, new_base, who)
         return runs_extra + runs_extra_disp, outs_extra
+
+    # Out at base. "X out at second c to 2b, caught stealing" — runner removed, +1 out.
+    m = OUT_AT_RE.match(cl)
+    if m:
+        who = m.group("who")
+        last = _norm_last(who)
+        b = find_runner(bases, last)
+        if b is not None:
+            remove_runner(bases, b)
+        return 0, 1
+
+    # "X out on the play" (DP / TP companion): runner removed, +1 out.
+    m = OUT_ON_PLAY_RE.match(cl)
+    if m:
+        who = m.group("who")
+        last = _norm_last(who)
+        b = find_runner(bases, last)
+        if b is not None:
+            remove_runner(bases, b)
+        return 0, 1
+
+    # Picked off (without "advanced" — pure out)
+    m = PICKED_OFF_RE.match(cl)
+    if m:
+        who = m.group("who")
+        last = _norm_last(who)
+        b = find_runner(bases, last)
+        if b is not None:
+            remove_runner(bases, b)
+        return 0, 1
 
     # Scored
     m = SCORED_RE.match(cl)
