@@ -329,7 +329,7 @@ function InfoCard() {
             comparably to a team at the 95th percentile in D1, relative to their respective peers.
           </p>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            NWAC (JUCO) teams are not covered by national rating systems and use our internal PPI rating instead.
+            NWAC (JUCO) teams are not covered by national rating systems and use our internal CPI (Composite Power Index) rating instead.
           </p>
         </div>
       )}

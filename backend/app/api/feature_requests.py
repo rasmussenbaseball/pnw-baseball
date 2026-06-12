@@ -49,7 +49,6 @@ from ..stats.advanced import (
     POSITION_ADJUSTMENTS_FULL,
     compute_fip_constant, innings_to_outs,
 )
-from ..stats.ppi import compute_ppi_for_division
 from ..stats.tiebreakers import apply_head_to_head
 from ..stats.projections import (
     load_future_schedules,

@@ -49,7 +49,7 @@ from ..stats.advanced import (
     POSITION_ADJUSTMENTS_FULL,
     compute_fip_constant, innings_to_outs,
 )
-from ..stats.ppi import compute_ppi_for_division
+from ..stats.cpi import compute_cpi_for_division, SEASON_GAMES_BY_LEVEL
 from ..stats.tiebreakers import apply_head_to_head
 from ..stats.projections import (
     load_future_schedules,
@@ -1307,25 +1307,15 @@ def recruiting_breakdown(
         """, [season] + active_teams)
         rank_data = {r["team_id"]: int(r["composite_rank"]) if r["composite_rank"] else None for r in cur.fetchall()}
 
-        # 8) PPI rankings for NWAC (no national rankings available)
-        #    Compute PPI inline: rank JUCO teams by WAR/G within NWAC
+        # 8) CPI rankings for NWAC (no national rankings available).
+        #    Within-JUCO Composite Power Index rank (SoS-adjusted, predictive).
         juco_teams = [tid for tid in active_teams if team_info[tid]["division"] == "JUCO"]
-        ppi_data = {}
+        cpi_data = {}
         if juco_teams:
-            # Use WAR + win_pct to create a simple PPI rank
-            juco_scores = []
-            for tid in juco_teams:
-                oinfo = owar_data.get(tid, {"owar": 0, "games": 0})
-                pw = pwar_data.get(tid, 0)
-                g = oinfo["games"]
-                wpct = team_records[tid].get(season, {}).get("win_pct", 0)
-                warg = (oinfo["owar"] + pw) / g if g > 0 else 0
-                # Composite: 50% WAR/G + 50% W-L%
-                score = warg * 0.5 + wpct * 0.5
-                juco_scores.append((tid, score))
-            juco_scores.sort(key=lambda x: x[1], reverse=True)
-            for rank, (tid, _) in enumerate(juco_scores, 1):
-                ppi_data[tid] = rank
+            juco_ranked = compute_cpi_for_division(
+                cur, juco_teams, season,
+                season_games=SEASON_GAMES_BY_LEVEL["JUCO"])
+            cpi_data = {t["team_id"]: t["rank"] for t in juco_ranked}
 
         # Build the response
         results = []
@@ -1384,7 +1374,7 @@ def recruiting_breakdown(
                 "games": games,
                 "total_war": round(total_war, 1),
                 "national_rank": rank_data.get(tid),
-                "ppi_rank": ppi_data.get(tid),
+                "cpi_rank": cpi_data.get(tid),
             })
 
         # Sort by win_pct descending by default

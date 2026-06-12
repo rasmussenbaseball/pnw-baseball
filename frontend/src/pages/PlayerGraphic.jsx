@@ -753,10 +753,10 @@ export default function PlayerGraphic() {
                             <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>{Number(teamInfo.record.team_fip).toFixed(2)}</div>
                           </div>
                         )}
-                        {teamInfo.record.ppi != null && (
+                        {teamInfo.record.cpi != null && (
                           <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '7px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>PPI</div>
-                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>{Math.round(teamInfo.record.ppi)}</div>
+                            <div style={{ fontSize: '7px', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>CPI</div>
+                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>{Math.round(teamInfo.record.cpi)}</div>
                           </div>
                         )}
                       </div>

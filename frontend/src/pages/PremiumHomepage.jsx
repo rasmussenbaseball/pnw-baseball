@@ -387,7 +387,7 @@ const TOOLBOX = [
   { to: '/percentiles', label: 'Percentiles',  desc: 'Savant-style rankings', icon: 'bars' },
   { to: '/scatter',     label: 'Scatter',      desc: 'Plot any two stats', icon: 'dots' },
   { to: '/top-moments', label: 'Top Moments',  desc: 'Biggest WPA swings', icon: 'bolt' },
-  { to: '/team-ratings', label: 'Power Index', desc: 'PPI team ratings', icon: 'trophy' },
+  { to: '/team-ratings', label: 'Power Index', desc: 'CPI team ratings', icon: 'trophy' },
 ]
 
 function ToolIcon({ name }) {

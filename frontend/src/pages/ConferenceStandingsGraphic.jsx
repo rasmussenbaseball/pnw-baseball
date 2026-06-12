@@ -289,7 +289,7 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs, isFrozen 
       ctx.fillText('-', cols[gbColIdx].x, cellCY)
     }
 
-    // National/PPI rank
+    // National/CPI rank
     if (t.rank != null) {
       ctx.font = `700 ${fontSize}px ${font}`
       ctx.fillStyle = THEME.accent

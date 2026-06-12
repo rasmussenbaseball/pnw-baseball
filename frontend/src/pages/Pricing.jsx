@@ -43,7 +43,7 @@ const TIERS = [
     monthlyPrice: null, yearlyPrice: null, yearlySaving: 0,
     highlights: [
       'Stat Leaders, Hitting, Pitching, WAR',
-      'Scoreboard, Standings, Team Pages, PPI',
+      'Scoreboard, Standings, Team Pages, CPI',
       'National Rankings + Player Pages',
       'Free articles, About, Request a Feature',
     ],
@@ -122,7 +122,7 @@ const FEATURES = [
   { feat: 'Homepage, Scoreboard, Standings',  tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
   { feat: 'Stat Leaders + Hitting / Pitching / WAR leaderboards',
                                                tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
-  { feat: 'Team pages + PPI + National Rankings',
+  { feat: 'Team pages + CPI + National Rankings',
                                                tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },
   { feat: 'Player pages (full profile, splits, percentiles)',
                                                tiers: { none: true, free: true, premium: true, recruiting: true, coach: true } },

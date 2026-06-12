@@ -348,7 +348,7 @@ export function useStandings(season) {
 }
 
 /**
- * Fetch PPI team ratings by division.
+ * Fetch CPI (Composite Power Index) team ratings by division.
  */
 export function useTeamRatings(season) {
   return useApi('/team-ratings', { season }, [season])

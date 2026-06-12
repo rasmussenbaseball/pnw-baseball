@@ -38,6 +38,18 @@ FIP_INDEX_SCALE = 12.0
 SOS_INDEX_SCALE = 10.0
 DEFAULT_SEASON_GAMES = 54     # WCL regular season length, for expected record
 
+# Full-season game counts per spring college division. Only used to scale the
+# DISPLAYED expected record (exp_w/exp_l); the rating itself doesn't use them.
+# Values are the typical scheduled season length per the 2026 data (median
+# games played at season end: D1 ~55, D2 ~51, D3 ~40, NAIA ~51, NWAC ~47).
+SEASON_GAMES_BY_LEVEL = {
+    "D1": 56,
+    "D2": 50,
+    "D3": 40,
+    "NAIA": 50,
+    "JUCO": 45,
+}
+
 
 def _solve_srs(team_ids, games_by_team, iterations=100):
     """Iteratively solve SRS = own capped margin + average opponent rating.
@@ -144,3 +156,71 @@ def compute_cpi(team_ids, games_by_team, offense, pitching, *,
             "games": gp,
         }
     return out
+
+
+def compute_cpi_for_division(cur, division_team_ids, season, *,
+                             season_games=DEFAULT_SEASON_GAMES):
+    """Spring-college adapter: gather one division cohort's inputs and run
+    compute_cpi. Mirrors the /summer/cpi endpoint but reads the spring tables.
+
+    - games: final games where BOTH sides are in the cohort, so every SRS
+      opponent has a rating. Cross-division and out-of-region games are
+      excluded on purpose (the rating is within-division, like PPI was).
+    - batting_stats: PA-weighted team wRC+ aggregates.
+    - pitching_stats: IP-weighted team FIP aggregates. innings_pitched is
+      baseball notation (6.2 = 6 2/3) but is only a weighting term here, so
+      the small notation error is acceptable (same call as the summer side).
+
+    Returns a list of row dicts, one per team id passed in (teams with no
+    cohort games regress to ~100), sorted best-first with a 1-based "rank"
+    within the division. Fields match the summer CPI endpoint: cpi, cpi_raw,
+    rank, proj_winpct, exp_w/exp_l, actual_w/actual_l (cohort games only),
+    luck, off_wrc, pit_fip, off_index, pit_index, sos_index, sos_runs,
+    run_diff_pg, games, team_id.
+    """
+    from collections import defaultdict
+
+    team_ids = [int(t) for t in division_team_ids]
+    if not team_ids:
+        return []
+
+    cur.execute(
+        """SELECT home_team_id h, away_team_id a, home_score hs, away_score a_s
+           FROM games
+           WHERE season = %s AND status = 'final'
+             AND home_score IS NOT NULL AND away_score IS NOT NULL
+             AND home_team_id = ANY(%s) AND away_team_id = ANY(%s)""",
+        (season, team_ids, team_ids),
+    )
+    games_by_team = defaultdict(list)
+    for g in cur.fetchall():
+        margin = float(g["hs"] - g["a_s"])
+        games_by_team[g["h"]].append((g["a"], margin))
+        games_by_team[g["a"]].append((g["h"], -margin))
+
+    cur.execute(
+        """SELECT team_id, SUM(plate_appearances) pa,
+                  SUM(wrc_plus * plate_appearances) wsum
+           FROM batting_stats
+           WHERE season = %s AND team_id = ANY(%s)
+             AND plate_appearances > 0 AND wrc_plus IS NOT NULL
+           GROUP BY team_id""", (season, team_ids))
+    offense = {r["team_id"]: {"pa": int(r["pa"]), "wrc_sum": float(r["wsum"])}
+               for r in cur.fetchall()}
+
+    cur.execute(
+        """SELECT team_id, SUM(innings_pitched) ip, SUM(fip * innings_pitched) fsum
+           FROM pitching_stats
+           WHERE season = %s AND team_id = ANY(%s)
+             AND innings_pitched > 0 AND fip IS NOT NULL
+           GROUP BY team_id""", (season, team_ids))
+    pitching = {r["team_id"]: {"ip": float(r["ip"]), "fip_sum": float(r["fsum"])}
+                for r in cur.fetchall()}
+
+    ratings = compute_cpi(team_ids, games_by_team, offense, pitching,
+                          season_games=season_games)
+    rows = [{**r, "team_id": tid} for tid, r in ratings.items()]
+    rows.sort(key=lambda x: -x["cpi_raw"])
+    for i, row in enumerate(rows, 1):
+        row["rank"] = i
+    return rows

@@ -1,4 +1,9 @@
 """
+DEPRECATED (June 2026): PPI has been replaced by the Composite Power Index.
+See app/stats/cpi.py (compute_cpi + the compute_cpi_for_division spring
+adapter). Nothing imports this module at runtime anymore; it is kept only
+as a historical reference for the old formula.
+
 PNW Power Index (PPI) - Phase 1: Within-Division Team Strength Rating.
 
 Measures each team's talent level relative to their division peers.

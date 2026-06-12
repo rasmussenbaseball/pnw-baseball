@@ -1199,11 +1199,11 @@ function WarSection() {
       </Card>
 
       <Card title="Team Metrics" subtitle="Site-specific composite ratings">
-        <StatDef abbr="PPI" name="PNW Power Index">
-          A composite team strength rating that blends record, run differential, strength of schedule, and recent form. Used on the homepage and standings to rank teams across divisions.
+        <StatDef abbr="CPI" name="Composite Power Index">
+          A predictive team power rating, centered at 100 (division average, higher is better). It blends underlying talent (expected run differential from team wRC+ and FIP, which strip out sequencing and clutch luck) with schedule-adjusted results (a strength-of-schedule rating built from capped run margins, so beating strong opponents counts more). Both pieces are regressed by sample size, then converted to a projected win percentage and expected record. Teams are rated within their division on the Team Ratings page, and CPI supplies the internal rank for NWAC teams.
         </StatDef>
         <StatDef abbr="SOS" name="Strength of Schedule">
-          The average opponent quality on a team's schedule. We compute SOS by taking the mean PPI of all opponents played.
+          The average opponent quality on a team's schedule. We compute SOS from the average power rating of the opponents played.
         </StatDef>
         <StatDef abbr="SOS Remaining" name="Remaining Strength of Schedule">
           Same as SOS but only counts games not yet played. Lower SOS Remaining means an easier path to the playoffs.

@@ -52,7 +52,7 @@ from ..stats.advanced import (
     POSITION_ADJUSTMENTS_FULL,
     compute_fip_constant, innings_to_outs,
 )
-from ..stats.ppi import compute_ppi_for_division
+from ..stats.cpi import compute_cpi_for_division, SEASON_GAMES_BY_LEVEL
 from ..stats.tiebreakers import apply_head_to_head
 from ..stats.projections import (
     load_future_schedules,
@@ -1023,51 +1023,19 @@ def standings(
         """, (season, season, season))
         rows = cur.fetchall()
 
-        # Fetch PPI ranks for JUCO teams (no national rankings exist for them)
+        # Fetch CPI ranks for JUCO teams (no national rankings exist for them).
+        # CPI gathers its own inputs (games + batting/pitching aggregates).
         cur.execute("""
-            SELECT t.id,
-                   COALESCE(bat.total_owar, 0) as team_owar,
-                   COALESCE(pit.total_pwar, 0) as team_pwar,
-                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as team_war,
-                   COALESCE(bat.team_wrc_plus, 100) as team_wrc_plus,
-                   COALESCE(pit.team_fip, 4.5) as team_fip,
-                   COALESCE(sf.wins, s.wins, 0) as wins,
-                   COALESCE(sf.losses, s.losses, 0) as losses,
-                   COALESCE(sf.conference_wins, s.conference_wins, 0) as conf_wins,
-                   COALESCE(sf.conference_losses, s.conference_losses, 0) as conf_losses
+            SELECT t.id
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            LEFT JOIN team_season_stats_frozen sf ON sf.team_id = t.id AND sf.season = %s
-            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
-            LEFT JOIN (
-                SELECT team_id,
-                    SUM(offensive_war) as total_owar,
-                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
-                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as team_wrc_plus
-                FROM batting_stats WHERE season = %s GROUP BY team_id
-            ) bat ON bat.team_id = t.id
-            LEFT JOIN (
-                SELECT team_id,
-                    SUM(pitching_war) as total_pwar,
-                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
-                FROM pitching_stats WHERE season = %s GROUP BY team_id
-            ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
-        """, (season, season, season, season))
-        juco_rows = cur.fetchall()
-        # Compute PPI and build lookup
-        juco_teams_for_ppi = []
-        for r in juco_rows:
-            t = dict(r)
-            total = t["wins"] + t["losses"]
-            t["win_pct"] = round(t["wins"] / total, 3) if total > 0 else 0.0
-            conf_total = t["conf_wins"] + t["conf_losses"]
-            t["conf_win_pct"] = round(t["conf_wins"] / conf_total, 3) if conf_total > 0 else 0.0
-            juco_teams_for_ppi.append(t)
-        juco_ranked = compute_ppi_for_division(juco_teams_for_ppi)
-        ppi_lookup = {t["id"]: t.get("ppi_rank") for t in juco_ranked}
+        """)
+        juco_ids = [r["id"] for r in cur.fetchall()]
+        juco_ranked = compute_cpi_for_division(
+            cur, juco_ids, season, season_games=SEASON_GAMES_BY_LEVEL["JUCO"])
+        cpi_lookup = {t["team_id"]: t["rank"] for t in juco_ranked}
 
         # Group by conference
         conferences = {}
@@ -1081,10 +1049,10 @@ def standings(
             team["win_pct"] = round(team["wins"] / total_games, 3) if total_games > 0 else 0
             conf_games = team["conf_wins"] + team["conf_losses"]
             team["conf_win_pct"] = round(team["conf_wins"] / conf_games, 3) if conf_games > 0 else 0
-            # Attach ranking: national_rank for D1-NAIA, ppi_rank for JUCO
+            # Attach ranking: national_rank for D1-NAIA, CPI rank for JUCO
             if team["division_level"] == "JUCO":
-                team["rank"] = ppi_lookup.get(team["id"])
-                team["rank_label"] = "PPI"
+                team["rank"] = cpi_lookup.get(team["id"])
+                team["rank_label"] = "CPI"
             else:
                 team["rank"] = team.get("national_rank")
                 team["rank_label"] = "Natl"
@@ -1302,53 +1270,19 @@ def conference_standings_graphic(
                     opp_ratings_remaining.setdefault(away_id, []).append(
                         team_ratings[home_id]["power_rating"])
 
-        # 4. For JUCO teams, compute PPI ranks.
-        # COALESCE pattern: read wins/losses from team_season_stats_frozen first
-        # (so a frozen NWAC conference keeps its end-of-regular-season record),
-        # falling back to the live table for conferences still playing.
+        # 4. For JUCO teams, compute CPI ranks (the adapter gathers its own
+        # games + batting/pitching aggregates for the JUCO cohort).
         cur.execute("""
-            SELECT t.id,
-                   COALESCE(bat.total_owar, 0) as team_owar,
-                   COALESCE(pit.total_pwar, 0) as team_pwar,
-                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as team_war,
-                   COALESCE(bat.team_wrc_plus, 100) as team_wrc_plus,
-                   COALESCE(pit.team_fip, 4.5) as team_fip,
-                   COALESCE(sf.wins, s.wins, 0) as wins,
-                   COALESCE(sf.losses, s.losses, 0) as losses,
-                   COALESCE(sf.conference_wins, s.conference_wins, 0) as conf_wins,
-                   COALESCE(sf.conference_losses, s.conference_losses, 0) as conf_losses
+            SELECT t.id
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            LEFT JOIN team_season_stats_frozen sf ON sf.team_id = t.id AND sf.season = %s
-            LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
-            LEFT JOIN (
-                SELECT team_id,
-                    SUM(offensive_war) as total_owar,
-                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
-                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as team_wrc_plus
-                FROM batting_stats WHERE season = %s GROUP BY team_id
-            ) bat ON bat.team_id = t.id
-            LEFT JOIN (
-                SELECT team_id,
-                    SUM(pitching_war) as total_pwar,
-                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
-                FROM pitching_stats WHERE season = %s GROUP BY team_id
-            ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
-        """, (season, season, season, season))
-        juco_rows = cur.fetchall()
-        juco_teams_for_ppi = []
-        for r in juco_rows:
-            t = dict(r)
-            total = t["wins"] + t["losses"]
-            t["win_pct"] = round(t["wins"] / total, 3) if total > 0 else 0.0
-            conf_total = t["conf_wins"] + t["conf_losses"]
-            t["conf_win_pct"] = round(t["conf_wins"] / conf_total, 3) if conf_total > 0 else 0.0
-            juco_teams_for_ppi.append(t)
-        juco_ranked = compute_ppi_for_division(juco_teams_for_ppi)
-        ppi_lookup = {t["id"]: t.get("ppi_rank") for t in juco_ranked}
+        """)
+        juco_ids = [r["id"] for r in cur.fetchall()]
+        juco_ranked = compute_cpi_for_division(
+            cur, juco_ids, season, season_games=SEASON_GAMES_BY_LEVEL["JUCO"])
+        cpi_lookup = {t["team_id"]: t["rank"] for t in juco_ranked}
 
         # 5. Build conference groups
         conferences = {}
@@ -1360,10 +1294,10 @@ def conference_standings_graphic(
             team["conf_win_pct"] = round(team["conf_wins"] / conf_games, 3) if conf_games > 0 else 0
             team["conf_games_remaining"] = conf_remaining.get(team["id"], 0)
 
-            # Ranking: national for 4-year, PPI for JUCO
+            # Ranking: national for 4-year, CPI for JUCO
             if team["division_level"] == "JUCO":
-                team["rank"] = ppi_lookup.get(team["id"])
-                team["rank_label"] = "PPI"
+                team["rank"] = cpi_lookup.get(team["id"])
+                team["rank_label"] = "CPI"
             else:
                 team["rank"] = team.get("national_rank")
                 team["rank_label"] = "Natl"
@@ -2164,8 +2098,13 @@ def team_ratings(
     season: int = Query(..., description="Season year"),
 ):
     """
-    PNW Power Index (PPI) ratings for all teams, grouped by division.
-    Each team is rated 0-100 relative to its division peers (50 = average).
+    Composite Power Index (CPI) ratings for all teams, grouped by division.
+
+    CPI is a predictive, SoS-adjusted power rating centered at 100 (division
+    average), higher = better. Engine in app.stats.cpi (same engine as the
+    summer /summer/cpi endpoint); rankings are within-division. The query
+    also keeps the raw team aggregates (team_war / team_wrc_plus / team_fip
+    and W-L) that graphics pages read alongside the rating.
     """
     with get_connection() as conn:
         cur = conn.cursor()
@@ -2226,9 +2165,18 @@ def team_ratings(
             team["conf_win_pct"] = round(team["conf_wins"] / conf_total, 3) if conf_total > 0 else 0.0
             divisions[did]["teams"].append(team)
 
-        # Compute PPI per division
+        # Compute CPI per division (within-division power rankings)
         for div in divisions.values():
-            div["teams"] = compute_ppi_for_division(div["teams"])
+            season_games = SEASON_GAMES_BY_LEVEL.get(div["division_level"], 50)
+            cpi_rows = compute_cpi_for_division(
+                cur, [t["id"] for t in div["teams"]], season,
+                season_games=season_games)
+            cpi_by_id = {r["team_id"]: r for r in cpi_rows}
+            for t in div["teams"]:
+                extra = dict(cpi_by_id.get(t["id"], {}))
+                extra.pop("team_id", None)
+                t.update(extra)
+            div["teams"].sort(key=lambda t: t.get("rank") or 10**6)
 
         return list(divisions.values())
 
@@ -2309,7 +2257,7 @@ def national_rankings(
 
             divisions[did]["teams"].append(team)
 
-        # For teams without composite rankings (JUCO), include PPI data
+        # For teams without composite rankings (JUCO), include CPI data
         cur.execute("""
             SELECT t.id as team_id, t.short_name, t.logo_url, t.school_name,
                    c.name as conference_name, c.abbreviation as conference_abbrev,
@@ -2332,7 +2280,7 @@ def national_rankings(
                 "division_name": juco_teams[0]["division_name"],
                 "division_level": "JUCO",
                 "teams": [],
-                "note": "NWAC teams use PPI (internal rating) - no external national rankings available for JUCO"
+                "note": "NWAC teams use CPI (internal rating) - no external national rankings available for JUCO"
             }
             for r in juco_teams:
                 team = dict(r)
@@ -3346,9 +3294,9 @@ def nwac_championship_odds(season: int = Query(2026)):
     """
     Monte Carlo odds for each team to win the 8-team NWAC Championship.
 
-    Strength = the same cross-division power rating used by playoff
-    projections (Pythagorean run diff + wRC+ + FIP + WAR/game, blended
-    with national ranking). Home-field advantage is applied to the host
+    Strength = CPI (Composite Power Index) computed within the JUCO pool,
+    a predictive SoS-adjusted rating from team wRC+/FIP blended with
+    regressed game results. Home-field advantage is applied to the host
     (Lower Columbia). Returns teams sorted by championship probability.
     """
     seeds = NWAC_2026_CHAMP_SEEDS
@@ -3357,57 +3305,39 @@ def nwac_championship_odds(season: int = Query(2026)):
 
     with get_connection() as conn:
         cur = conn.cursor()
-        # PPI is normalized WITHIN the JUCO pool, so it spreads NWAC teams
+        # CPI is computed WITHIN the JUCO pool, so it spreads NWAC teams
         # across the full strength range (the cross-division power rating
-        # compresses them against a shared floor/ceiling). Compute PPI over
-        # every JUCO team, then pull the 8 championship teams.
+        # compresses them against a shared floor/ceiling). Compute CPI over
+        # every JUCO team, then pull the 8 championship teams. The CPI scale
+        # (100-centered, roughly 70-135 in-season) feeds elo_win_prob with a
+        # spread comparable to the old PPI's 20-80 band.
         cur.execute("""
             SELECT t.id, t.short_name, t.name, t.logo_url,
-                   COALESCE(bat.total_owar, 0) + COALESCE(pit.total_pwar, 0) as team_war,
-                   COALESCE(bat.team_wrc_plus, 100) as team_wrc_plus,
-                   COALESCE(pit.team_fip, 4.5) as team_fip,
                    COALESCE(s.wins, 0) as wins,
-                   COALESCE(s.losses, 0) as losses,
-                   COALESCE(s.conference_wins, 0) as conf_wins,
-                   COALESCE(s.conference_losses, 0) as conf_losses
+                   COALESCE(s.losses, 0) as losses
             FROM teams t
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
-            LEFT JOIN (
-                SELECT team_id,
-                    SUM(offensive_war) as total_owar,
-                    SUM(wrc_plus * plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL)
-                      / NULLIF(SUM(plate_appearances) FILTER (WHERE wrc_plus IS NOT NULL), 0) as team_wrc_plus
-                FROM batting_stats WHERE season = %s GROUP BY team_id
-            ) bat ON bat.team_id = t.id
-            LEFT JOIN (
-                SELECT team_id,
-                    SUM(pitching_war) as total_pwar,
-                    SUM(fip * ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL)
-                      / NULLIF(SUM(ip_outs(innings_pitched)) FILTER (WHERE fip IS NOT NULL), 0) as team_fip
-                FROM pitching_stats WHERE season = %s GROUP BY team_id
-            ) pit ON pit.team_id = t.id
             WHERE t.is_active = 1 AND d.level = 'JUCO'
-        """, (season, season, season))
+        """, (season,))
         juco_rows = [dict(r) for r in cur.fetchall()]
+        juco_ranked = compute_cpi_for_division(
+            cur, [t["id"] for t in juco_rows], season,
+            season_games=SEASON_GAMES_BY_LEVEL["JUCO"])
 
-    for t in juco_rows:
-        total = t["wins"] + t["losses"]
-        t["win_pct"] = round(t["wins"] / total, 3) if total > 0 else 0.0
-        ct = t["conf_wins"] + t["conf_losses"]
-        t["conf_win_pct"] = round(t["conf_wins"] / ct, 3) if ct > 0 else 0.0
-    juco_ranked = compute_ppi_for_division(juco_rows)
-    by_id = {t["id"]: t for t in juco_ranked}
+    cpi_by_id = {t["team_id"]: t for t in juco_ranked}
+    meta_by_id = {t["id"]: t for t in juco_rows}
 
     team_ratings = {}
     meta = {}
     for tid in team_ids:
-        t = by_id.get(tid)
-        if not t:
+        t = meta_by_id.get(tid)
+        c = cpi_by_id.get(tid)
+        if not t or not c:
             continue
-        ppi = t.get("ppi")
-        team_ratings[tid] = {"power_rating": ppi, "short_name": t["short_name"]}
+        cpi = c.get("cpi_raw")
+        team_ratings[tid] = {"power_rating": cpi, "short_name": t["short_name"]}
         meta[tid] = {
             "team_id": tid,
             "name": t["name"],
@@ -3416,8 +3346,8 @@ def nwac_championship_odds(season: int = Query(2026)):
             "seed": seed_by_team.get(tid),
             "wins": t["wins"],
             "losses": t["losses"],
-            "ppi": round(ppi, 1) if ppi is not None else None,
-            "ppi_rank": t.get("ppi_rank"),
+            "cpi": cpi,
+            "cpi_rank": c.get("rank"),
         }
 
     # ── Live conditioning: feed completed championship games into the sim ──
