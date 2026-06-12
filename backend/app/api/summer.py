@@ -27,6 +27,7 @@ from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ..stats.cpi import compute_cpi
+from .leverage import compute_li
 
 
 router = APIRouter()
@@ -159,15 +160,18 @@ def summer_games(
 
 # ── Win-probability curve (PA-by-PA, from summer_game_events) ──────
 #
-# Summer games have play-by-play (summer_game_events: one row per plate
-# appearance with count, pitch sequence, and outcome) but NOT the derived
-# base/out/score game state the spring `game_events` carry. So we reconstruct
-# what a win-expectancy model needs directly from the events: walk every PA in
-# order, count outs from the result type, and tally the running score from the
-# narrative (reconciled to the authoritative line score at each half-inning).
-# Win expectancy uses (run lead, outs remaining) via a normal approximation of
-# the remaining run differential. It is NOT full WPA — it has no baserunner
-# leverage, since the events don't store base state.
+# Preferred path (June 2026): summer_game_events now carry the same derived
+# base/out/score state + WP-table win probabilities spring game_events do
+# (scripts/derive_summer_event_state.py + scripts/compute_summer_wpa.py).
+# When wp_before/wp_after are populated on a game's events we plot the real
+# state-aware curve directly from them.
+#
+# Fallback (underived games — e.g. a game scraped minutes ago, before the
+# nightly derive runs): reconstruct an approximation directly from the
+# events — walk every PA in order, count outs from the result type, tally
+# the running score from the narrative (reconciled to the authoritative
+# line score at each half-inning). Win expectancy uses (run lead, outs
+# remaining) via a normal approximation; no baserunner leverage.
 _OUT_PLAIN = {"ground_out", "fly_out", "pop_out", "line_out", "sac_fly",
               "caught_stealing", "pickoff"}
 
@@ -203,8 +207,62 @@ def _se_we_home(lead, outs_remaining):
     return max(0.02, min(0.98, 0.5 * (1 + math.erf(z / math.sqrt(2)))))
 
 
+def _summer_win_prob_derived(cur, game):
+    """Real win-prob curve from derived state (wp_before/wp_after on
+    summer_game_events). Returns {pts, innings} or None when the game's
+    events haven't been WPA-derived yet. wp_* columns store WP from the
+    BATTING team's perspective; the chart wants HOME WP, so bottom-half
+    values pass through and top-half values flip (1 - wp)."""
+    try:
+        cur.execute(
+            """
+            SELECT inning, half, sequence_idx, wp_before, wp_after
+            FROM summer_game_events
+            WHERE game_id = %s AND wp_after IS NOT NULL
+            ORDER BY inning, (half <> 'top'), sequence_idx
+            """,
+            (game["id"],),
+        )
+        evs = cur.fetchall()
+    except Exception:
+        # wp_* columns missing (fresh DB before the first WPA backfill)
+        cur.connection.rollback()
+        return None
+    if len(evs) < 3:
+        return None
+
+    def _home_wp(half, wp):
+        return wp if half == "bottom" else 1.0 - wp
+
+    max_inn = max(e["inning"] for e in evs)
+    pts = [{"x": 0.0, "wp": round(_home_wp(evs[0]["half"], evs[0]["wp_before"]), 4)}]
+    for (inning, half), grp in groupby(evs, key=lambda e: (e["inning"], e["half"])):
+        grp = list(grp)
+        is_top = half == "top"
+        m = len(grp)
+        for j, e in enumerate(grp):
+            x = (inning - 1) + (0.0 if is_top else 0.5) + 0.5 * ((j + 1) / m)
+            pts.append({"x": round(x, 4),
+                        "wp": round(_home_wp(half, e["wp_after"]), 4)})
+
+    # Snap the final point to the actual outcome (same as the fallback).
+    fa = game.get("away_score") or 0
+    fh = game.get("home_score") or 0
+    pts[-1] = {"x": pts[-1]["x"], "wp": 1.0 if fh > fa else 0.0 if fa > fh else 0.5}
+    return {"pts": pts, "innings": max_inn}
+
+
 def _summer_win_prob(cur, game):
-    """Return {pts:[{x,wp}], innings} of HOME win probability, or None."""
+    """Return {pts:[{x,wp}], innings} of HOME win probability, or None.
+
+    Uses the real derived state + WP-table values (wp_before/wp_after,
+    written by compute_summer_wpa.py from the BATTING team's perspective)
+    when present; falls back to the no-baserunner approximation below for
+    games not yet derived. Response shape is identical either way."""
+    derived = _summer_win_prob_derived(cur, game)
+    if derived is not None:
+        return derived
+
     cur.execute(
         """
         SELECT inning, half, sequence_idx, result_type, result_text, rbi
@@ -1883,9 +1941,6 @@ def summer_pitching_leaderboard(
 # them unchanged (the cards take an `endpoint` override).
 #
 # What's intentionally different from spring:
-#   - No base/out/score state in summer_game_events, so
-#     situational_splits is ALWAYS [] and the Leverage Index / WPA
-#     fields are null (the cards hide those sections when null).
 #   - Pitch accounting follows the established summer convention:
 #     pitches = pitch-sequence letters + balls in play (the contacted
 #     pitch isn't always logged in the sequence) — same math as the
@@ -1893,6 +1948,11 @@ def summer_pitching_leaderboard(
 #     the site.
 #   - Baselines/deciles rank against the SUMMER league cohort (same
 #     league_id + season), not a college division.
+#
+# June 2026: summer_game_events now carry the same derived base/out/
+# score state as spring (derive_summer_event_state.py) plus WPA
+# (compute_summer_wpa.py), so situational_splits and the LI/WPA tiles
+# are fully populated — payload shape identical to spring.
 
 import time as _spl_time
 
@@ -1911,6 +1971,24 @@ _SPL_HITTERS_COUNTS  = "(balls_before, strikes_before) IN ((1,0),(2,0),(3,0),(3,
 _SPL_NEUTRAL_COUNTS  = "(balls_before, strikes_before) IN ((0,0),(1,1),(2,1),(2,2),(3,2))"
 _SPL_PITCHERS_COUNTS = "(balls_before, strikes_before) IN ((0,1),(0,2),(1,2))"
 _SPL_TWO_STRIKE      = "strikes_before = 2"
+
+# Situational filter SQL — derived base/out/score state written by
+# scripts/derive_summer_event_state.py. Bucket definitions copied from
+# the spring pitch_level.py so the cards read identically. All filters
+# guard with `bases_before IS NOT NULL` (directly or implicitly) so PAs
+# from not-yet-derived games are excluded rather than miscounted.
+_SPL_BASES_EMPTY   = "bases_before = '000'"
+_SPL_RUNNER_ON     = "bases_before IS NOT NULL AND bases_before <> '000'"
+_SPL_RISP          = ("bases_before IS NOT NULL AND "
+                      "(SUBSTRING(bases_before, 2, 1) = '1' OR "
+                      "SUBSTRING(bases_before, 3, 1) = '1')")
+_SPL_RISP_2OUT     = f"({_SPL_RISP}) AND outs_before = 2"
+_SPL_INNINGS_EARLY = "inning BETWEEN 1 AND 3"
+_SPL_INNINGS_MID   = "inning BETWEEN 4 AND 6"
+_SPL_INNINGS_LATE  = "inning >= 7"
+_SPL_LATE_CLOSE    = ("inning >= 7 AND bat_score_before IS NOT NULL "
+                      "AND ABS(bat_score_before - fld_score_before) <= 1")
+_SPL_LEADOFF       = "outs_before = 0 AND bases_before = '000'"
 
 
 def _summer_spray_for(field_zone, bats):
@@ -2217,8 +2295,8 @@ def _compute_summer_pl_deciles(cur, league_id, season, filter_sql, weights, leag
 
 def _get_summer_pl_baselines(cur, league_id, season, weights):
     """Cached league baselines for every filter the hitter card colors
-    against (count states + L/R splits — no situational filters, since
-    summer events carry no base/out/score state)."""
+    against (count states + L/R splits + situational state filters —
+    same set as the spring card)."""
     key = (league_id, season)
     now = _spl_time.time()
     cached = _SUMMER_PL_BASELINES_CACHE.get(key)
@@ -2232,6 +2310,16 @@ def _get_summer_pl_baselines(cur, league_id, season, weights):
         "two_strike": _SPL_TWO_STRIKE,
         "vs_lhp":     "ge.pitcher_player_id IN (SELECT id FROM summer_players WHERE UPPER(throws) = 'L')",
         "vs_rhp":     "ge.pitcher_player_id IN (SELECT id FROM summer_players WHERE UPPER(throws) = 'R')",
+        # Situational (derived state). Match the endpoint definitions.
+        "bases_empty":   _SPL_BASES_EMPTY,
+        "runner_on":     _SPL_RUNNER_ON,
+        "risp":          _SPL_RISP,
+        "risp_2out":     _SPL_RISP_2OUT,
+        "innings_early": _SPL_INNINGS_EARLY,
+        "innings_mid":   _SPL_INNINGS_MID,
+        "innings_late":  _SPL_INNINGS_LATE,
+        "late_close":    _SPL_LATE_CLOSE,
+        "leadoff":       _SPL_LEADOFF,
     }
     out = {}
     for k, fsql in filters.items():
@@ -2394,6 +2482,16 @@ def _get_summer_pl_pitcher_baselines(cur, league_id, season, weights):
         "two_strike": _SPL_TWO_STRIKE,
         "vs_lhb":     "ge.batter_player_id IN (SELECT id FROM summer_players WHERE UPPER(bats) = 'L')",
         "vs_rhb":     "ge.batter_player_id IN (SELECT id FROM summer_players WHERE UPPER(bats) = 'R')",
+        # Situational (derived state). Match the endpoint definitions.
+        "bases_empty":   _SPL_BASES_EMPTY,
+        "runner_on":     _SPL_RUNNER_ON,
+        "risp":          _SPL_RISP,
+        "risp_2out":     _SPL_RISP_2OUT,
+        "innings_early": _SPL_INNINGS_EARLY,
+        "innings_mid":   _SPL_INNINGS_MID,
+        "innings_late":  _SPL_INNINGS_LATE,
+        "late_close":    _SPL_LATE_CLOSE,
+        "leadoff":       _SPL_LEADOFF,
     }
     out = {}
     for k, fsql in filters.items():
@@ -2432,9 +2530,9 @@ def summer_player_pitch_level_stats(
     season: int = Query(CURRENT_SEASON, description="Summer season year"),
 ):
     """Hitter pitch-level stats from summer_game_events — spring payload
-    mirror (discipline / count_states / lr_splits / contact_profile /
-    spray_chart). situational_splits is always [] and LI/WPA fields are
-    null: summer events carry no base/out/score state."""
+    mirror (discipline / count_states / lr_splits / situational_splits /
+    contact_profile / spray_chart), including LI/WPA from the derived
+    base/out/score state."""
     with get_connection() as conn:
         cur = conn.cursor()
         meta = _spl_player_meta(cur, player_id)
@@ -2470,10 +2568,57 @@ def summer_player_pitch_level_stats(
             "two_strike_pa": two_strike_pa,
             "putaway_pct": ((r["two_strike_k"] or 0) / two_strike_pa) if two_strike_pa > 0 else None,
             "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
-            # No base/out/score state in summer PBP → no LI / WPA.
-            "avg_li": None, "li_pa": 0, "max_li": None,
-            "total_wpa": None, "wpa_pa": 0, "peak_wpa": None, "mean_abs_wpa": None,
         }
+
+        # ── Leverage Index (derived state; same parametric LI as spring) ──
+        cur.execute("""
+            SELECT inning, half, bat_score_before, fld_score_before,
+                   bases_before, outs_before
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = %s AND g.season = %s
+              AND ge.bases_before IS NOT NULL
+        """, (player_id, season))
+        li_rows = cur.fetchall()
+        if li_rows:
+            li_values = [
+                compute_li(
+                    lr["inning"], lr["half"],
+                    (lr["bat_score_before"] or 0) - (lr["fld_score_before"] or 0),
+                    lr["bases_before"], lr["outs_before"]
+                ) for lr in li_rows
+            ]
+            discipline["avg_li"] = sum(li_values) / len(li_values)
+            discipline["li_pa"] = len(li_values)
+            discipline["max_li"] = max(li_values)
+        else:
+            discipline["avg_li"] = None
+            discipline["li_pa"] = 0
+            discipline["max_li"] = None
+
+        # ── WPA (compute_summer_wpa.py, spring WP table) ──
+        cur.execute("""
+            SELECT
+                SUM(ge.wpa_batter)            AS total_wpa,
+                COUNT(ge.wpa_batter)          AS wpa_pa,
+                MAX(ge.wpa_batter)            AS peak_wpa,
+                AVG(ABS(ge.wpa_batter))       AS mean_abs_wpa
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            WHERE ge.batter_player_id = %s AND g.season = %s
+              AND ge.wpa_batter IS NOT NULL
+        """, (player_id, season))
+        wr = cur.fetchone()
+        if wr and wr["wpa_pa"]:
+            discipline["total_wpa"]    = float(wr["total_wpa"])
+            discipline["wpa_pa"]       = int(wr["wpa_pa"])
+            discipline["peak_wpa"]     = float(wr["peak_wpa"])
+            discipline["mean_abs_wpa"] = float(wr["mean_abs_wpa"])
+        else:
+            discipline["total_wpa"]    = None
+            discipline["wpa_pa"]       = 0
+            discipline["peak_wpa"]     = None
+            discipline["mean_abs_wpa"] = None
 
         # ── Contact profile (bb_type) + spray (Pull/Center/Oppo) ──
         cur.execute("""
@@ -2609,14 +2754,24 @@ def summer_player_pitch_level_stats(
                       "(SELECT id FROM summer_players WHERE throws IS NULL))")},
         ]
 
-        # No base/out/score state in summer PBP → no situational rows.
-        situational_splits = []
+        # ── Situational splits — derived base/out/score state ──
+        situational_splits = [
+            {"label": "Bases empty",   "detail": "no runners on",        "filter_key": "bases_empty",   **_slash(_SPL_BASES_EMPTY)},
+            {"label": "Runner(s) on",  "detail": "any base occupied",    "filter_key": "runner_on",     **_slash(_SPL_RUNNER_ON)},
+            {"label": "RISP",          "detail": "2B or 3B occupied",    "filter_key": "risp",          **_slash(_SPL_RISP)},
+            {"label": "RISP / 2 out",  "detail": "RISP w/ 2 outs",       "filter_key": "risp_2out",     **_slash(_SPL_RISP_2OUT)},
+            {"label": "Innings 1-3",   "detail": "early",                "filter_key": "innings_early", **_slash(_SPL_INNINGS_EARLY)},
+            {"label": "Innings 4-6",   "detail": "middle",               "filter_key": "innings_mid",   **_slash(_SPL_INNINGS_MID)},
+            {"label": "Innings 7+",    "detail": "late",                 "filter_key": "innings_late",  **_slash(_SPL_INNINGS_LATE)},
+            {"label": "Late & close",  "detail": "7+ inn, score ±1",     "filter_key": "late_close",    **_slash(_SPL_LATE_CLOSE)},
+            {"label": "Leadoff PA",    "detail": "first PA of inning",   "filter_key": "leadoff",       **_slash(_SPL_LEADOFF)},
+        ]
 
         # ── Attach league baselines + deciles + wRC+ (vs overall wOBA) ──
         baselines = _get_summer_pl_baselines(cur, league_id, season, weights)
         overall_entry = baselines.get("overall") or {}
         overall_league_woba = (overall_entry.get("mean") or {}).get("woba")
-        for row in count_states + lr_splits:
+        for row in count_states + lr_splits + situational_splits:
             fk = row.get("filter_key")
             entry = baselines.get(fk) if fk else None
             row["league"] = entry["mean"] if entry else None
@@ -2654,9 +2809,9 @@ def summer_player_pitch_level_stats_pitcher(
     season: int = Query(CURRENT_SEASON, description="Summer season year"),
 ):
     """Pitcher pitch-level stats from summer_game_events — spring payload
-    mirror (discipline / count_states / lr_splits / opp_contact_profile /
-    opp_spray_chart). situational_splits is always [] and LI/WPA fields
-    are null: summer events carry no base/out/score state."""
+    mirror (discipline / count_states / lr_splits / situational_splits /
+    opp_contact_profile / opp_spray_chart), including LI/WPA from the
+    derived base/out/score state."""
     with get_connection() as conn:
         cur = conn.cursor()
         meta = _spl_player_meta(cur, player_id)
@@ -2691,10 +2846,57 @@ def summer_player_pitch_level_stats_pitcher(
             "pitches_per_pa": (pitches / tracked_pa) if tracked_pa > 0 else None,
             "on_or_out_3": r["on_or_out_3"] or 0,
             "on_or_out_3_pct": ((r["on_or_out_3"] or 0) / tracked_pa) if tracked_pa > 0 else None,
-            # No base/out/score state in summer PBP → no LI / WPA.
-            "avg_li": None, "li_pa": 0, "max_li": None,
-            "total_wpa": None, "wpa_pa": 0, "peak_wpa": None, "mean_abs_wpa": None,
         }
+
+        # ── Leverage Index (derived state; same parametric LI as spring) ──
+        cur.execute("""
+            SELECT inning, half, bat_score_before, fld_score_before,
+                   bases_before, outs_before
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            WHERE ge.pitcher_player_id = %s AND g.season = %s
+              AND ge.bases_before IS NOT NULL
+        """, (player_id, season))
+        li_rows = cur.fetchall()
+        if li_rows:
+            li_values = [
+                compute_li(
+                    lr["inning"], lr["half"],
+                    (lr["bat_score_before"] or 0) - (lr["fld_score_before"] or 0),
+                    lr["bases_before"], lr["outs_before"]
+                ) for lr in li_rows
+            ]
+            discipline["avg_li"] = sum(li_values) / len(li_values)
+            discipline["li_pa"] = len(li_values)
+            discipline["max_li"] = max(li_values)
+        else:
+            discipline["avg_li"] = None
+            discipline["li_pa"] = 0
+            discipline["max_li"] = None
+
+        # ── WPA (compute_summer_wpa.py, spring WP table) ──
+        cur.execute("""
+            SELECT
+                SUM(ge.wpa_pitcher)           AS total_wpa,
+                COUNT(ge.wpa_pitcher)         AS wpa_pa,
+                MAX(ge.wpa_pitcher)           AS peak_wpa,
+                AVG(ABS(ge.wpa_pitcher))      AS mean_abs_wpa
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            WHERE ge.pitcher_player_id = %s AND g.season = %s
+              AND ge.wpa_pitcher IS NOT NULL
+        """, (player_id, season))
+        wr = cur.fetchone()
+        if wr and wr["wpa_pa"]:
+            discipline["total_wpa"]    = float(wr["total_wpa"])
+            discipline["wpa_pa"]       = int(wr["wpa_pa"])
+            discipline["peak_wpa"]     = float(wr["peak_wpa"])
+            discipline["mean_abs_wpa"] = float(wr["mean_abs_wpa"])
+        else:
+            discipline["total_wpa"]    = None
+            discipline["wpa_pa"]       = 0
+            discipline["peak_wpa"]     = None
+            discipline["mean_abs_wpa"] = None
 
         # ── Opponent contact profile (induced bb_type) ──
         cur.execute("""
@@ -2809,12 +3011,23 @@ def summer_player_pitch_level_stats_pitcher(
                           "(SELECT id FROM summer_players WHERE bats IS NULL))")},
         ]
 
-        situational_splits = []
+        # ── Situational splits — derived base/out/score state ──
+        situational_splits = [
+            {"label": "Bases empty",   "detail": "no runners on",        "filter_key": "bases_empty",   **_opp_slash(_SPL_BASES_EMPTY)},
+            {"label": "Runner(s) on",  "detail": "any base occupied",    "filter_key": "runner_on",     **_opp_slash(_SPL_RUNNER_ON)},
+            {"label": "RISP",          "detail": "2B or 3B occupied",    "filter_key": "risp",          **_opp_slash(_SPL_RISP)},
+            {"label": "RISP / 2 out",  "detail": "RISP w/ 2 outs",       "filter_key": "risp_2out",     **_opp_slash(_SPL_RISP_2OUT)},
+            {"label": "Innings 1-3",   "detail": "early",                "filter_key": "innings_early", **_opp_slash(_SPL_INNINGS_EARLY)},
+            {"label": "Innings 4-6",   "detail": "middle",               "filter_key": "innings_mid",   **_opp_slash(_SPL_INNINGS_MID)},
+            {"label": "Innings 7+",    "detail": "late",                 "filter_key": "innings_late",  **_opp_slash(_SPL_INNINGS_LATE)},
+            {"label": "Late & close",  "detail": "7+ inn, score ±1",     "filter_key": "late_close",    **_opp_slash(_SPL_LATE_CLOSE)},
+            {"label": "Leadoff PA",    "detail": "first PA of inning",   "filter_key": "leadoff",       **_opp_slash(_SPL_LEADOFF)},
+        ]
 
         baselines = _get_summer_pl_pitcher_baselines(cur, league_id, season, weights)
         overall_entry = baselines.get("overall") or {}
         overall_league_opp_woba = (overall_entry.get("mean") or {}).get("opp_woba")
-        for row in count_states + lr_splits:
+        for row in count_states + lr_splits + situational_splits:
             fk = row.get("filter_key")
             entry = baselines.get(fk) if fk else None
             row["league"] = entry["mean"] if entry else None

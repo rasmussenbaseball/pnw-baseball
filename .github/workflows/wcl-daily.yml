@@ -123,6 +123,28 @@ jobs:
           # Idempotent: only touches rows with bb_derived_at IS NULL.
           PYTHONPATH=backend python3 scripts/derive_summer_batted_ball.py || true
 
+      - name: Derive summer base/out/score state
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Runner-tracking state machine (summer port of spring's
+          # derive_event_state.py) — powers situational splits, LI and
+          # the win-prob curve. Idempotent: skips games already derived
+          # (state_derived_at), and rescraped games re-derive naturally
+          # because their fresh rows have NULL state_derived_at.
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          PYTHONPATH=backend python3 scripts/derive_summer_event_state.py --season "$SEASON" || true
+
+      - name: Compute summer WPA (win probability added)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Must run AFTER state derivation. Reuses the spring wp_lookup
+          # table (NCAA surface) so WPA means the same thing site-wide.
+          # Idempotent via wpa_derived_at IS NULL.
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          PYTHONPATH=backend python3 scripts/compute_summer_wpa.py --season "$SEASON" || true
+
       - name: Scrape WCL season fielding
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
