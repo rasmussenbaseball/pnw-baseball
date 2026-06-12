@@ -134,7 +134,7 @@ export function StandingsWidget() {
         ? <WidgetSkeleton rows={7} />
         : (error || !slides.length)
           ? <WidgetNote>Standings are unavailable right now.</WidgetNote>
-          : <Carousel slides={slides} ariaLabel="Conference standings" />}
+          : <Carousel slides={slides} ariaLabel="Conference standings" auto />}
     </WidgetCard>
   )
 }
@@ -380,7 +380,7 @@ export function StatLeadersWidget() {
         ? <WidgetSkeleton rows={7} />
         : !slides.length
           ? <WidgetNote>Stat leaders are unavailable right now.</WidgetNote>
-          : <Carousel slides={slides} ariaLabel="Stat leaders" />}
+          : <Carousel slides={slides} ariaLabel="Stat leaders" auto />}
     </WidgetCard>
   )
 }

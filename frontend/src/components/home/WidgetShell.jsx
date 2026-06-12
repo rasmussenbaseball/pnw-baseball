@@ -72,13 +72,13 @@ export function WidgetCard({ title, to, linkLabel = 'View all', accent = 'teal',
 }
 
 // ─── Auto-advance scheduler ─────────────────────────────────────────
-// One page-global ticker advances carousels ROUND-ROBIN, one per slot,
-// so no two ever move at the same instant (per Nate). With ~5 carousels
-// on the homepage and a 700ms slot, each one advances every ~3.5s.
+// One page-global ticker advances the OPTED-IN carousels ROUND-ROBIN,
+// one per slot, so no two ever move at the same instant (per Nate).
+// With the two auto carousels and a 1750ms slot, each advances ~3.5s.
 // A carousel skips its turn while hovered or within its manual-
 // interaction cooldown; nothing advances while the tab is hidden.
 
-const AUTO_SLOT_MS = 700
+const AUTO_SLOT_MS = 1750
 const MANUAL_PAUSE_MS = 10_000
 const _autoEntries = []
 let _autoTimer = null
@@ -110,11 +110,13 @@ function unregisterAutoCarousel(entry) {
  * Generic in-card carousel — arrows + dots, no external deps. Pass an
  * array of rendered slides; the card stays one slide tall.
  *
- * Auto-advances via the shared round-robin scheduler above (disable
- * with auto={false}). Hovering pauses it; using the arrows/dots pauses
- * it for 10s so readers aren't yanked off a slide they navigated to.
+ * Auto-advance is OPT-IN via auto={true} (per Nate: every widget
+ * scrolling at once is visually rough — only the marquee widgets,
+ * standings and stat leaders, auto-scroll). Enabled carousels share the
+ * round-robin scheduler above. Hovering pauses one; using the
+ * arrows/dots pauses it for 10s so readers aren't yanked off a slide.
  */
-export function Carousel({ slides, ariaLabel = 'carousel', auto = true }) {
+export function Carousel({ slides, ariaLabel = 'carousel', auto = false }) {
   const [idx, setIdx] = useState(0)
   const n = slides?.length || 0
   const pauseRef = useRef({ hovered: false, pausedUntil: 0 })
