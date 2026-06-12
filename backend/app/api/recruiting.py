@@ -912,7 +912,7 @@ _ADV_WEIGHT = {"D1": 4, "D2": 3, "NAIA": 2, "D3": 1}
 _COMMIT_LEVEL_OVERRIDES = {
     "washington": "D1", "university of pacific": "D1", "bradley": "D1",
     "east carolina": "D1", "old dominion": "D1", "western kentucky": "D1",
-    "akron": "D1", "saint louis university": "D1",
+    "akron": "D1", "saint louis university": "D1", "charleston southern": "D1",
     "montana state billings": "D2",
     "oregon tech": "NAIA", "vanguard university": "NAIA", "tabor college": "NAIA",
     "freed-hardeman": "NAIA", "ottawa": "NAIA", "missouri baptist": "NAIA",
