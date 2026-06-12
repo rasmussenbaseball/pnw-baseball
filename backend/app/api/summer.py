@@ -1931,6 +1931,160 @@ def summer_pitching_leaderboard(
     return [dict(r) for r in rows]
 
 
+# ── /summer/leaderboards/team-stats ────────────────────────────────
+#
+# Team-level aggregates for the WCL leaderboard graphic (the summer
+# equivalent of the spring /leaderboards/teams board). One row per
+# team with batting + pitching aggregates rolled up from the player
+# season tables (summer_batting_stats / summer_pitching_stats — the
+# same source-of-truth convention as spring) plus W-L from finals.
+#
+# innings_pitched is stored in baseball notation (6.2 = 6⅔), so all
+# rate math goes through the ip_outs()/outs_to_ip() DB helpers
+# (scripts/migrate_ip_helpers.sql) exactly like the spring queries.
+
+@router.get("/summer/leaderboards/team-stats")
+@cached_endpoint(ttl_seconds=1800)
+def summer_team_stats_leaderboard(
+    league: str = Query(DEFAULT_LEAGUE),
+    season: int = Query(CURRENT_SEASON),
+    sort_by: str = Query("team_avg"),
+    sort_dir: Optional[str] = Query(None, description="'asc' | 'desc'. Defaults to the natural direction for the stat."),
+    limit: int = Query(50, ge=1, le=50),
+):
+    valid_sorts = {
+        "team_avg", "team_obp", "team_slg", "team_ops", "avg_woba",
+        "total_hits", "total_hr", "total_runs", "total_rbi", "total_sb",
+        "runs_per_game", "bat_bb_pct", "bat_k_pct", "total_owar",
+        "team_era", "team_whip", "total_ip", "total_k", "total_bb_allowed",
+        "k_per_9", "bb_per_9", "avg_fip", "pit_k_pct", "pit_bb_pct",
+        "total_pwar", "total_war", "wins",
+    }
+    if sort_by not in valid_sorts:
+        sort_by = "team_avg"
+    asc_sorts = {"team_era", "team_whip", "bb_per_9", "bat_k_pct",
+                 "pit_bb_pct", "avg_fip", "total_bb_allowed"}
+    if sort_dir and sort_dir.lower() in ("asc", "desc"):
+        direction = sort_dir.upper()
+    else:
+        direction = "ASC" if sort_by in asc_sorts else "DESC"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        league_id = _league_id_for(cur, league)
+        cur.execute(
+            f"""
+            WITH team_games AS (
+              SELECT team_id, COUNT(*)::int AS games,
+                     SUM(win)::int AS wins, SUM(loss)::int AS losses
+              FROM (
+                SELECT home_team_id AS team_id,
+                       CASE WHEN home_score > away_score THEN 1 ELSE 0 END AS win,
+                       CASE WHEN home_score < away_score THEN 1 ELSE 0 END AS loss
+                FROM summer_games
+                WHERE league_id = %s AND season = %s AND status = 'final'
+                  AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+                  AND home_team_id <> away_team_id
+                UNION ALL
+                SELECT away_team_id,
+                       CASE WHEN away_score > home_score THEN 1 ELSE 0 END,
+                       CASE WHEN away_score < home_score THEN 1 ELSE 0 END
+                FROM summer_games
+                WHERE league_id = %s AND season = %s AND status = 'final'
+                  AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+                  AND home_team_id <> away_team_id
+              ) x
+              GROUP BY team_id
+            ),
+            bat AS (
+              SELECT b.team_id,
+                     SUM(b.hits)::int               AS total_hits,
+                     SUM(b.at_bats)::int            AS total_ab,
+                     SUM(b.plate_appearances)::int  AS total_pa,
+                     SUM(b.home_runs)::int          AS total_hr,
+                     SUM(b.runs)::int               AS total_runs,
+                     SUM(b.rbi)::int                AS total_rbi,
+                     SUM(b.stolen_bases)::int       AS total_sb,
+                     SUM(b.walks)::int              AS bat_bb,
+                     SUM(b.strikeouts)::int         AS bat_so,
+                     CASE WHEN SUM(b.at_bats) > 0
+                          THEN SUM(b.hits)::real / SUM(b.at_bats) END AS team_avg,
+                     CASE WHEN SUM(b.at_bats + b.walks + b.hit_by_pitch + b.sacrifice_flies) > 0
+                          THEN SUM(b.hits + b.walks + b.hit_by_pitch)::real
+                             / SUM(b.at_bats + b.walks + b.hit_by_pitch + b.sacrifice_flies) END AS team_obp,
+                     CASE WHEN SUM(b.at_bats) > 0
+                          THEN SUM(b.hits + b.doubles + 2 * b.triples + 3 * b.home_runs)::real
+                             / SUM(b.at_bats) END AS team_slg,
+                     CASE WHEN SUM(b.plate_appearances) > 0
+                          THEN SUM(b.walks)::real / SUM(b.plate_appearances) END AS bat_bb_pct,
+                     CASE WHEN SUM(b.plate_appearances) > 0
+                          THEN SUM(b.strikeouts)::real / SUM(b.plate_appearances) END AS bat_k_pct,
+                     -- PA-weighted team wOBA (cheap and matches the spring
+                     -- /leaderboards/teams convention).
+                     SUM(b.woba * b.plate_appearances) FILTER (WHERE b.woba IS NOT NULL)
+                       / NULLIF(SUM(b.plate_appearances) FILTER (WHERE b.woba IS NOT NULL), 0) AS avg_woba,
+                     SUM(b.offensive_war) AS total_owar
+              FROM summer_batting_stats b
+              JOIN summer_teams t ON t.id = b.team_id
+              WHERE t.league_id = %s AND b.season = %s
+              GROUP BY b.team_id
+            ),
+            pit AS (
+              SELECT pt.team_id,
+                     SUM(ip_outs(pt.innings_pitched))::int AS outs,
+                     SUM(pt.earned_runs)::int       AS total_er,
+                     SUM(pt.hits_allowed)::int      AS total_h_allowed,
+                     SUM(pt.walks)::int             AS total_bb_allowed,
+                     SUM(pt.strikeouts)::int        AS total_k,
+                     SUM(pt.batters_faced)::int     AS total_bf,
+                     CASE WHEN SUM(pt.batters_faced) > 0
+                          THEN SUM(pt.strikeouts)::real / SUM(pt.batters_faced) END AS pit_k_pct,
+                     CASE WHEN SUM(pt.batters_faced) > 0
+                          THEN SUM(pt.walks)::real / SUM(pt.batters_faced) END AS pit_bb_pct,
+                     -- IP-weighted FIP, same weighting as spring team boards.
+                     SUM(pt.fip * ip_outs(pt.innings_pitched)) FILTER (WHERE pt.fip IS NOT NULL)
+                       / NULLIF(SUM(ip_outs(pt.innings_pitched)) FILTER (WHERE pt.fip IS NOT NULL), 0) AS avg_fip,
+                     SUM(pt.pitching_war) AS total_pwar
+              FROM summer_pitching_stats pt
+              JOIN summer_teams t ON t.id = pt.team_id
+              WHERE t.league_id = %s AND pt.season = %s
+              GROUP BY pt.team_id
+            )
+            SELECT t.id AS team_id, t.name, t.short_name, t.logo_url,
+                   COALESCE(tg.games, 0)  AS games,
+                   COALESCE(tg.wins, 0)   AS wins,
+                   COALESCE(tg.losses, 0) AS losses,
+                   b.team_avg, b.team_obp, b.team_slg,
+                   (b.team_obp + b.team_slg) AS team_ops,
+                   b.avg_woba,
+                   b.total_hits, b.total_hr, b.total_runs, b.total_rbi, b.total_sb,
+                   CASE WHEN COALESCE(tg.games, 0) > 0
+                        THEN b.total_runs::real / tg.games END AS runs_per_game,
+                   b.bat_bb_pct, b.bat_k_pct, b.total_owar,
+                   CASE WHEN p.outs > 0 THEN p.total_er * 27.0 / p.outs END AS team_era,
+                   CASE WHEN p.outs > 0
+                        THEN (p.total_bb_allowed + p.total_h_allowed) * 3.0 / p.outs END AS team_whip,
+                   outs_to_ip(p.outs) AS total_ip,
+                   p.total_k, p.total_bb_allowed,
+                   CASE WHEN p.outs > 0 THEN p.total_k * 27.0 / p.outs END AS k_per_9,
+                   CASE WHEN p.outs > 0 THEN p.total_bb_allowed * 27.0 / p.outs END AS bb_per_9,
+                   p.avg_fip, p.pit_k_pct, p.pit_bb_pct, p.total_pwar,
+                   (COALESCE(b.total_owar, 0) + COALESCE(p.total_pwar, 0)) AS total_war
+            FROM summer_teams t
+            JOIN bat b ON b.team_id = t.id
+            LEFT JOIN pit p        ON p.team_id  = t.id
+            LEFT JOIN team_games tg ON tg.team_id = t.id
+            WHERE t.league_id = %s AND t.is_active = TRUE
+            ORDER BY {sort_by} {direction} NULLS LAST, t.name ASC
+            LIMIT %s
+            """,
+            (league_id, season, league_id, season,
+             league_id, season, league_id, season,
+             league_id, limit),
+        )
+        rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
+
 # ════════════════════════════════════════════════════════════════
 # Pitch-Level Stats — full spring-card mirror, from summer PBP
 # ════════════════════════════════════════════════════════════════

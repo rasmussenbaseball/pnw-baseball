@@ -186,6 +186,7 @@ import SummerTeamDetail from './pages/SummerTeamDetail'
 import SummerPlayerDetail from './pages/SummerPlayerDetail'
 const WclRecapGraphic = lazyWithRetry(() => import('./pages/WclRecapGraphic'))
 const WclGameRecapGraphic = lazyWithRetry(() => import('./pages/WclGameRecapGraphic'))
+const WclLeaderboardGraphic = lazyWithRetry(() => import('./pages/WclLeaderboardGraphic'))
 import SummerStatsPage from './pages/summer/SummerStatsPage'
 import SummerCpiPage from './pages/summer/SummerCpiPage'
 import SummerScoreboardPage from './pages/summer/SummerScoreboardPage'
@@ -501,6 +502,7 @@ export default function App() {
           <Route path="/team-quiz" element={<RequireAuth><TeamQuiz /></RequireAuth>} />
           <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
+          <Route path="/graphics/wcl-leaderboards" element={<RequireAuth><WclLeaderboardGraphic /></RequireAuth>} />
           <Route path="/graphics-hub" element={<RequireTier minTier="free"><GraphicsHub /></RequireTier>} />
           <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />
           <Route path="/key-matchup" element={<RequireAuth><KeyMatchupGraphic /></RequireAuth>} />
