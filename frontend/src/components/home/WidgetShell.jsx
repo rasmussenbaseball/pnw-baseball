@@ -11,7 +11,7 @@
  *  - Numbers are tabular-nums; player rows use 20px logos.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 
 // Accent header palettes. Teal is the default brand; the marketing-ish
@@ -71,18 +71,74 @@ export function WidgetCard({ title, to, linkLabel = 'View all', accent = 'teal',
   )
 }
 
+// ─── Auto-advance scheduler ─────────────────────────────────────────
+// One page-global ticker advances carousels ROUND-ROBIN, one per slot,
+// so no two ever move at the same instant (per Nate). With ~5 carousels
+// on the homepage and a 700ms slot, each one advances every ~3.5s.
+// A carousel skips its turn while hovered or within its manual-
+// interaction cooldown; nothing advances while the tab is hidden.
+
+const AUTO_SLOT_MS = 700
+const MANUAL_PAUSE_MS = 10_000
+const _autoEntries = []
+let _autoTimer = null
+let _autoIdx = 0
+
+function registerAutoCarousel(entry) {
+  _autoEntries.push(entry)
+  if (_autoTimer) return
+  _autoTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return
+    if (_autoEntries.length === 0) return
+    _autoIdx = _autoIdx % _autoEntries.length
+    const e = _autoEntries[_autoIdx]
+    _autoIdx += 1
+    if (e.canAdvance()) e.advance()
+  }, AUTO_SLOT_MS)
+}
+
+function unregisterAutoCarousel(entry) {
+  const i = _autoEntries.indexOf(entry)
+  if (i >= 0) _autoEntries.splice(i, 1)
+  if (_autoEntries.length === 0 && _autoTimer) {
+    clearInterval(_autoTimer)
+    _autoTimer = null
+  }
+}
+
 /**
  * Generic in-card carousel — arrows + dots, no external deps. Pass an
  * array of rendered slides; the card stays one slide tall.
+ *
+ * Auto-advances via the shared round-robin scheduler above (disable
+ * with auto={false}). Hovering pauses it; using the arrows/dots pauses
+ * it for 10s so readers aren't yanked off a slide they navigated to.
  */
-export function Carousel({ slides, ariaLabel = 'carousel' }) {
+export function Carousel({ slides, ariaLabel = 'carousel', auto = true }) {
   const [idx, setIdx] = useState(0)
   const n = slides?.length || 0
-  const prev = useCallback(() => setIdx(i => (i - 1 + n) % n), [n])
-  const next = useCallback(() => setIdx(i => (i + 1) % n), [n])
+  const pauseRef = useRef({ hovered: false, pausedUntil: 0 })
+  const touch = useCallback(() => { pauseRef.current.pausedUntil = Date.now() + MANUAL_PAUSE_MS }, [])
+  const prev = useCallback(() => { touch(); setIdx(i => (i - 1 + n) % n) }, [n, touch])
+  const next = useCallback(() => { touch(); setIdx(i => (i + 1) % n) }, [n, touch])
+
+  useEffect(() => {
+    if (!auto || n <= 1) return undefined
+    const entry = {
+      canAdvance: () => !pauseRef.current.hovered && Date.now() >= pauseRef.current.pausedUntil,
+      advance: () => setIdx(i => (i + 1) % n),
+    }
+    registerAutoCarousel(entry)
+    return () => unregisterAutoCarousel(entry)
+  }, [auto, n])
+
   if (!n) return null
   return (
-    <div aria-label={ariaLabel}>
+    <div
+      aria-label={ariaLabel}
+      onMouseEnter={() => { pauseRef.current.hovered = true }}
+      onMouseLeave={() => { pauseRef.current.hovered = false }}
+    >
       <div>{slides[idx]}</div>
       {n > 1 && (
         <div className="flex items-center justify-center gap-1.5 mt-2">
@@ -91,7 +147,7 @@ export function Carousel({ slides, ariaLabel = 'carousel' }) {
             ‹
           </button>
           {slides.map((_, i) => (
-            <button key={i} type="button" onClick={() => setIdx(i)} aria-label={`Slide ${i + 1}`}
+            <button key={i} type="button" onClick={() => { touch(); setIdx(i) }} aria-label={`Slide ${i + 1}`}
               className={`w-1.5 h-1.5 rounded-full transition-colors ${i === idx ? 'bg-nw-teal' : 'bg-gray-300 dark:bg-gray-600'}`} />
           ))}
           <button type="button" onClick={next} aria-label="Next"
