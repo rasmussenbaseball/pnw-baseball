@@ -280,31 +280,44 @@ export function RecruitingHubWidget() {
 // ─── 5. PNW Coach Sim (GM game) ─────────────────────────────────
 
 export function GmPreviewWidget() {
+  const MODES = [
+    ['TRADITIONAL', 'Take over any of the 57 real PNW programs — Gonzaga to Grays Harbor — and build a dynasty.'],
+    ['STORY MODE', 'Start as an unknown JUCO assistant. Win, interview, and climb the career ladder to a D1 job.'],
+    ['EXPANSION', 'Found a brand-new program from scratch: name, colors, conference, and a startup budget.'],
+  ]
+  const SYSTEMS = ['Recruiting', 'Player development', 'Budgets', 'Coaching staff',
+                   'Academics', 'Summer ball', 'Transfers', 'Lineups & bullpen']
   return (
     <WidgetCard title="PNW Coach Sim" to="/gm" linkLabel="Start your dynasty" accent="pixel">
       <div className="rounded-lg bg-[#1a1a2e] border border-[#3a3a5e] p-3 font-mono">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-[#fbbf24]">Dashboard</span>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-[#fbbf24]">Choose your career</span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#fbbf24] animate-pulse" />
         </div>
-        <div className="text-[11px] text-[#fbbf24] tabular-nums tracking-tight mb-2">
-          WK 27 · SEASON OPENS · OVR 74 · BUDGET $180K
+        {/* Three ways to play — the game's real headline */}
+        <div className="space-y-1.5 mb-2.5">
+          {MODES.map(([name, desc]) => (
+            <div key={name} className="rounded bg-[#0f0f1e] px-2 py-1.5">
+              <div className="text-[10px] font-bold tracking-widest text-[#fbbf24]">▸ {name}</div>
+              <div className="text-[10px] text-gray-300 leading-snug">{desc}</div>
+            </div>
+          ))}
         </div>
-        {/* Fake live-game readout — sells the play-by-play mode */}
-        <div className="rounded bg-[#0f0f1e] px-2 py-1.5 mb-2 text-[10px] text-gray-300 tabular-nums">
-          <div className="flex justify-between"><span>▼ 9TH · 2 OUT · RUNNERS ON 1B/2B</span><span className="text-[#fbbf24]">4-3</span></div>
-          <div className="text-gray-500 mt-0.5">Your closer vs their cleanup bat. Pitching change?</div>
+        {/* Everything a real coach juggles */}
+        <div className="text-[8px] font-bold uppercase tracking-widest text-gray-500 mb-1">You run all of it</div>
+        <div className="flex flex-wrap gap-1">
+          {SYSTEMS.map(s => (
+            <span key={s} className="px-1.5 py-0.5 rounded text-[9px] text-[#fbbf24] border border-[#3a3a5e] bg-[#1a1a2e]">
+              {s}
+            </span>
+          ))}
         </div>
-        <ul className="space-y-1 text-[11px] text-gray-300">
-          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Take over any of 250+ real PNW programs — or build an expansion team from scratch</li>
-          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Recruit HS, JUCO, and portal classes; develop players week by week</li>
-          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Manage budgets, coaching staffs, academics, and summer ball</li>
-          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Play games pitch by pitch or sim whole weeks</li>
-          <li className="flex items-start gap-1.5"><span className="text-[#fbbf24]">▸</span>Story mode: start as a JUCO assistant and climb to a D1 job</li>
-        </ul>
+        <div className="mt-2 text-[10px] text-gray-400 leading-snug">
+          Play games pitch by pitch with full bullpen control, or sim ahead a week at a time.
+        </div>
       </div>
       <div className="flex justify-around mt-2 text-center">
-        {[['5', 'Levels'], ['250+', 'Programs'], ['52', 'Week seasons'], ['3', 'Save slots']].map(([v, l]) => (
+        {[['57', 'Real programs'], ['5', 'Levels'], ['3', 'Game modes'], ['52', 'Week seasons']].map(([v, l]) => (
           <div key={l}>
             <div className="text-sm font-extrabold text-nw-teal dark:text-nw-teal-light tabular-nums">{v}</div>
             <div className="text-[8px] uppercase tracking-wider text-gray-400">{l}</div>

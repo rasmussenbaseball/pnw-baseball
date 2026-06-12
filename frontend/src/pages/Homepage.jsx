@@ -16,8 +16,6 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
 import { CURRENT_SEASON } from '../lib/seasons'
 import {
   StandingsWidget, WarLeadersWidget, StatLeadersWidget,
@@ -30,31 +28,8 @@ import {
 } from '../components/home/FeatureWidgets'
 
 export default function Homepage() {
-  const { user } = useAuth()
   return (
     <div className="max-w-7xl mx-auto">
-      {/* Slim hero band — identity + one-line pitch, no wasted height */}
-      <div className="rounded-xl bg-gradient-to-r from-nw-teal-dark via-nw-teal to-nw-teal-light text-white px-4 sm:px-6 py-4 mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg sm:text-xl font-extrabold tracking-tight">
-            Northwest Baseball Stats
-          </h1>
-          <p className="text-[11px] sm:text-xs text-white/85">
-            Advanced analytics for every PNW college program — D1, D2, D3, NAIA, and NWAC — plus summer ball, recruiting, and play-by-play data you won't find anywhere else.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Link to="/players" className="text-[11px] font-bold px-3 py-1.5 rounded-full bg-white text-nw-teal hover:bg-nw-cream">
-            Find a player
-          </Link>
-          {!user && (
-            <Link to="/login" className="text-[11px] font-bold px-3 py-1.5 rounded-full border border-white/60 text-white hover:bg-white/10">
-              Sign up free
-            </Link>
-          )}
-        </div>
-      </div>
-
       <WidgetColumns />
 
       {/* pricing strip — always full width below the columns */}

@@ -1298,7 +1298,7 @@ def summer_batting_leaderboard(
         "sacrifice_bunts", "stolen_bases", "caught_stealing",
         "intentional_walks", "grounded_into_dp",
         "batting_avg", "on_base_pct", "slugging_pct", "ops",
-        "woba", "wrc_plus", "wraa", "wrc", "iso", "babip",
+        "woba", "wobacon", "wrc_plus", "wraa", "wrc", "iso", "babip",
         "k_pct", "bb_pct", "offensive_war",
         # Plate-discipline rates derived from PBP (summer_game_events).
         "swing_pct", "contact_pct", "whiff_pct",
@@ -1376,7 +1376,7 @@ def summer_batting_leaderboard(
                    b.stolen_bases, b.caught_stealing, b.intentional_walks,
                    b.grounded_into_dp,
                    b.batting_avg, b.on_base_pct, b.slugging_pct, b.ops,
-                   b.woba, b.wrc_plus, b.wraa, b.wrc,
+                   b.woba, b.wobacon, b.wrc_plus, b.wraa, b.wrc,
                    b.iso, b.babip,
                    b.k_pct, b.bb_pct, b.offensive_war,
                    -- Plate discipline from PBP. Swing = whiffs + fouls +

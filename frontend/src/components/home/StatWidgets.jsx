@@ -260,9 +260,79 @@ export function WarLeadersWidget() {
 // 3. StatLeadersWidget
 // ════════════════════════════════════════════════════════════════════
 
+// WCL categories mirror the spring slides 1:1 (per Nate) — same advanced
+// stats, fetched from the summer leaderboards which carry the same
+// PBP-derived rates. The one exception: Air-Pull% needs batted-ball
+// direction, which the summer PBP schema doesn't capture — ISO stands in
+// on the advanced-bat slide.
+const WCL_CATS = [
+  { slide: 0, label: 'AVG',        side: 'batting',  sort: 'batting_avg',  format: 'avg', qualified: true },
+  { slide: 0, label: 'HR',         side: 'batting',  sort: 'home_runs',    format: 'int' },
+  { slide: 0, label: 'SB',         side: 'batting',  sort: 'stolen_bases', format: 'int' },
+  { slide: 1, label: 'wRC+',       side: 'batting',  sort: 'wrc_plus',     format: 'int', qualified: true },
+  { slide: 1, label: 'wOBACON',    side: 'batting',  sort: 'wobacon',      format: 'avg', qualified: true },
+  { slide: 1, label: 'ISO',        side: 'batting',  sort: 'iso',          format: 'avg', qualified: true },
+  { slide: 2, label: 'Contact%',   side: 'batting',  sort: 'contact_pct',  format: 'pct', qualified: true },
+  { slide: 2, label: 'Whiff% (P)', side: 'pitching', sort: 'whiff_pct',    format: 'pct', qualified: true },
+  { slide: 2, label: 'Strike%',    side: 'pitching', sort: 'strike_pct',   format: 'pct', qualified: true },
+  { slide: 3, label: 'ERA',        side: 'pitching', sort: 'era',          dir: 'asc', format: 'era', qualified: true },
+  { slide: 3, label: 'K',          side: 'pitching', sort: 'strikeouts',   format: 'int' },
+  { slide: 3, label: 'FIP',        side: 'pitching', sort: 'fip',          dir: 'asc', format: 'era', qualified: true },
+]
+
+/**
+ * Fetch the WCL category set (12 small sorted-leaderboard calls) when the
+ * toggle is on. Falls back one season when the current summer has no
+ * leaders yet. Plain fetches in one effect — never call useApi in a loop.
+ */
+function useWclStatLeaders(active) {
+  const [state, setState] = useState({ loading: false, season: CURRENT_SEASON, cats: null })
+  useEffect(() => {
+    if (!active || state.cats) return undefined
+    let cancelled = false
+    async function load(season) {
+      const results = await Promise.all(WCL_CATS.map(c => {
+        const params = new URLSearchParams({
+          season: String(season), league: 'WCL', limit: '3',
+          sort_by: c.sort, sort_dir: c.dir || 'desc',
+          ...(c.qualified ? { qualified: 'true' } : {}),
+        })
+        return fetch(`/api/v1/summer/leaderboards/${c.side}?${params}`)
+          .then(r => (r.ok ? r.json() : []))
+          .catch(() => [])
+      }))
+      return WCL_CATS.map((c, i) => ({
+        slide: c.slide,
+        label: c.label,
+        format: c.format,
+        leaders: (results[i] || []).slice(0, 3).map(r => ({
+          player_id: r.player_id,
+          first_name: r.first_name,
+          last_name: r.last_name,
+          team_short: r.team_short,
+          logo_url: r.logo_url,
+          value: r[c.sort],
+          to: r.player_id ? `/summer/players/${r.player_id}` : null,
+        })),
+      }))
+    }
+    setState(s => ({ ...s, loading: true }))
+    ;(async () => {
+      let season = CURRENT_SEASON
+      let cats = await load(season)
+      if (!cats.some(c => c.leaders.length)) {
+        season = CURRENT_SEASON - 1
+        cats = await load(season)
+      }
+      if (!cancelled) setState({ loading: false, season, cats })
+    })()
+    return () => { cancelled = true }
+  }, [active, state.cats])
+  return state
+}
+
 export function StatLeadersWidget() {
   const [mode, setMode] = useState('spring')      // 'spring' | 'wcl'
-  const [wclSeason, setWclSeason] = useState(CURRENT_SEASON)
 
   // Spring: season stat leaders + four PBP categories. Fixed hook count, so
   // calling useApi several times here is fine (never in a loop).
@@ -276,20 +346,8 @@ export function StatLeadersWidget() {
   const whiffP = useApi('/leaderboards/pitching-pbp',
     { season: CURRENT_SEASON, limit: 3, min_bf: 75, sort_by: 'whiff_pct', sort_dir: 'desc' })
 
-  // WCL mode only fetches when toggled on (null endpoint = skip).
-  const wcl = useApi(
-    mode === 'wcl' ? '/summer/stat-leaders' : null,
-    { season: wclSeason, league: 'WCL', limit: 3 },
-    [mode, wclSeason],
-  )
-
-  // If the current summer season has no leaders yet, fall back one year.
-  useEffect(() => {
-    if (mode !== 'wcl' || wclSeason !== CURRENT_SEASON || !wcl.data) return
-    const cats = [...(wcl.data.batting || []), ...(wcl.data.pitching || [])]
-    const hasLeaders = cats.some(c => (c.leaders || []).length > 0)
-    if (!hasLeaders) setWclSeason(CURRENT_SEASON - 1)
-  }, [mode, wclSeason, wcl.data])
+  // WCL mode fetches its 12 mirrored categories only when toggled on.
+  const wcl = useWclStatLeaders(mode === 'wcl')
 
   const findCat = (list, key) => (list || []).find(c => c.key === key) || null
   const pbpCat = (res, label, field) => {
@@ -338,28 +396,19 @@ export function StatLeadersWidget() {
       ))
     title = 'Stat Leaders'
   } else {
-    isLoading = wcl.loading
-    const cats = [...(wcl.data?.batting || []), ...(wcl.data?.pitching || [])]
-      .filter(c => (c.leaders || []).length)
-      .map(c => ({
-        ...c,
-        leaders: c.leaders.map(l => ({
-          ...l,
-          // Summer rows link to the spring profile when linked, else the
-          // summer player page.
-          to: l.spring_player_id
-            ? `/player/${l.spring_player_id}`
-            : (l.player_id ? `/summer/players/${l.player_id}` : null),
-        })),
-      }))
-    const chunks = []
-    for (let i = 0; i < cats.length; i += 3) chunks.push(cats.slice(i, i + 3))
-    slides = chunks.map((chunk, si) => (
-      <div key={si}>
-        {chunk.map((c, ci) => <CategoryBlock key={`${si}-${ci}`} cat={c} />)}
-      </div>
-    ))
-    title = `WCL ${wclSeason} Stat Leaders`
+    isLoading = wcl.loading || !wcl.cats
+    const bySlide = [[], [], [], []]
+    for (const c of wcl.cats || []) {
+      if (c.leaders.length) bySlide[c.slide].push(c)
+    }
+    slides = bySlide
+      .filter(cats => cats.length > 0)
+      .map((cats, si) => (
+        <div key={si}>
+          {cats.map((c, ci) => <CategoryBlock key={`${si}-${ci}`} cat={c} />)}
+        </div>
+      ))
+    title = `WCL ${wcl.season} Stat Leaders`
   }
 
   return (
