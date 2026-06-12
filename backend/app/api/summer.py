@@ -1301,7 +1301,7 @@ def summer_batting_leaderboard(
         "woba", "wobacon", "wrc_plus", "wraa", "wrc", "iso", "babip",
         "k_pct", "bb_pct", "offensive_war",
         # Plate-discipline rates derived from PBP (summer_game_events).
-        "swing_pct", "contact_pct", "whiff_pct",
+        "swing_pct", "contact_pct", "whiff_pct", "air_pull_pct",
     }
     if sort_by not in valid_sorts:
         sort_by = "ops"
@@ -1313,7 +1313,7 @@ def summer_batting_leaderboard(
         direction = "ASC" if sort_by == "k_pct" else "DESC"
     # PBP-derived columns are computed aliases (not on table `b`), so the
     # ORDER BY must reference the alias directly for those.
-    PBP_SORTS = {"swing_pct", "contact_pct", "whiff_pct"}
+    PBP_SORTS = {"swing_pct", "contact_pct", "whiff_pct", "air_pull_pct"}
     sort_col = sort_by if sort_by in PBP_SORTS else f"b.{sort_by}"
     with get_connection() as conn:
         cur = conn.cursor()
@@ -1391,6 +1391,10 @@ def summer_batting_leaderboard(
                    CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
                         THEN pbp.k_p::real / (pbp.k_p + pbp.f_p + pbp.in_play)
                    END AS whiff_pct,
+                   CASE WHEN pbp.bb_total_pull > 0
+                        THEN pbp.air_pull_count::real / pbp.bb_total_pull
+                   END AS air_pull_pct,
+                   pbp.bb_total_pull,
                    pbp.pa_pbp
             FROM summer_batting_stats b
             JOIN summer_players p ON p.id = b.player_id
@@ -1402,9 +1406,19 @@ def summer_batting_leaderboard(
                 COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'F', ''))), 0) AS f_p,
                 COALESCE(SUM(LENGTH(COALESCE(e.pitch_sequence, ''))), 0) AS seq_total,
                 COUNT(*) FILTER (WHERE e.was_in_play) AS in_play,
-                COUNT(*) AS pa_pbp
+                COUNT(*) AS pa_pbp,
+                -- Air-pull (same definition as spring routes.py): LD/FB to
+                -- the batter's pull side. bb_type/field_zone come from
+                -- derive_summer_batted_ball.py; switch/unknown handedness is
+                -- excluded from both numerator and denominator.
+                COUNT(*) FILTER (WHERE e.bb_type IS NOT NULL
+                                   AND UPPER(sp.bats) IN ('L','R')) AS bb_total_pull,
+                COUNT(*) FILTER (WHERE e.bb_type IN ('LD','FB')
+                    AND ((UPPER(sp.bats) = 'R' AND e.field_zone = 'LEFT')
+                      OR (UPPER(sp.bats) = 'L' AND e.field_zone = 'RIGHT'))) AS air_pull_count
               FROM summer_game_events e
               JOIN summer_games g2 ON g2.id = e.game_id
+              LEFT JOIN summer_players sp ON sp.id = e.batter_player_id
               WHERE g2.season = %s AND e.result_type = ANY(%s)
                 AND e.batter_player_id IS NOT NULL
               GROUP BY e.batter_player_id

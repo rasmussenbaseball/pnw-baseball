@@ -114,6 +114,15 @@ jobs:
           echo "→ python3 scripts/scrape_summer_pbp.py $ARGS"
           PYTHONPATH=backend python3 scripts/scrape_summer_pbp.py $ARGS || true
 
+      - name: Derive summer batted-ball type + spray zones
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Classifies bb_type/field_zone from the play narratives (same
+          # classifier spring uses) so Air-Pull% etc. work for summer.
+          # Idempotent: only touches rows with bb_derived_at IS NULL.
+          PYTHONPATH=backend python3 scripts/derive_summer_batted_ball.py || true
+
       - name: Scrape WCL season fielding
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}

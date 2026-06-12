@@ -262,16 +262,15 @@ export function WarLeadersWidget() {
 
 // WCL categories mirror the spring slides 1:1 (per Nate) — same advanced
 // stats, fetched from the summer leaderboards which carry the same
-// PBP-derived rates. The one exception: Air-Pull% needs batted-ball
-// direction, which the summer PBP schema doesn't capture — ISO stands in
-// on the advanced-bat slide.
+// PBP-derived rates (incl. Air-Pull%, classified from summer narratives
+// by derive_summer_batted_ball.py since June 2026).
 const WCL_CATS = [
   { slide: 0, label: 'AVG',        side: 'batting',  sort: 'batting_avg',  format: 'avg', qualified: true },
   { slide: 0, label: 'HR',         side: 'batting',  sort: 'home_runs',    format: 'int' },
   { slide: 0, label: 'SB',         side: 'batting',  sort: 'stolen_bases', format: 'int' },
   { slide: 1, label: 'wRC+',       side: 'batting',  sort: 'wrc_plus',     format: 'int', qualified: true },
   { slide: 1, label: 'wOBACON',    side: 'batting',  sort: 'wobacon',      format: 'avg', qualified: true },
-  { slide: 1, label: 'ISO',        side: 'batting',  sort: 'iso',          format: 'avg', qualified: true },
+  { slide: 1, label: 'Air-Pull%',  side: 'batting',  sort: 'air_pull_pct', format: 'pct', qualified: true },
   { slide: 2, label: 'Contact%',   side: 'batting',  sort: 'contact_pct',  format: 'pct', qualified: true },
   { slide: 2, label: 'Whiff% (P)', side: 'pitching', sort: 'whiff_pct',    format: 'pct', qualified: true },
   { slide: 2, label: 'Strike%',    side: 'pitching', sort: 'strike_pct',   format: 'pct', qualified: true },
