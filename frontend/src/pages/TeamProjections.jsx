@@ -229,6 +229,70 @@ function Table({ rows, side, expanded, toggle, norm }) {
   )
 }
 
+// ── Projected starting lineup ──────────────────────────────────────────────
+// Fill the 8 field positions + DH from the projected hitters. A player is
+// eligible where his game logs put him (any OF position covers any OF spot).
+// We fill the scarcest positions first, taking the best available bat (by wOBA),
+// then DH = best remaining. Positions with no eligible player are flagged.
+const FIELD_SLOTS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
+const OF_TOKENS = new Set(['LF', 'CF', 'RF', 'OF'])
+
+function slotEligible(tokens, slot) {
+  if (slot === 'LF' || slot === 'CF' || slot === 'RF') return tokens.some((t) => OF_TOKENS.has(t))
+  return tokens.includes(slot)
+}
+
+function buildLineup(hitters) {
+  const players = (hitters || []).map((h) => ({
+    id: h.player_id, name: h.name, incoming: h.is_incoming,
+    woba: h.proj?.wOBA ?? 0,
+    tokens: (h.pos || '').toUpperCase().split('/').map((s) => s.trim()).filter(Boolean),
+  }))
+  const eligCount = (slot) => players.filter((p) => slotEligible(p.tokens, slot)).length
+  const order = [...FIELD_SLOTS].sort((a, b) => eligCount(a) - eligCount(b))
+  const used = new Set(); const assigned = {}
+  for (const slot of order) {
+    const cand = players.filter((p) => !used.has(p.id) && slotEligible(p.tokens, slot))
+      .sort((a, b) => b.woba - a.woba)
+    if (cand.length) { assigned[slot] = cand[0]; used.add(cand[0].id) } else assigned[slot] = null
+  }
+  const remaining = players.filter((p) => !used.has(p.id)).sort((a, b) => b.woba - a.woba)
+  assigned.DH = remaining[0] || null
+  return { assigned, gaps: FIELD_SLOTS.filter((s) => !assigned[s]) }
+}
+
+function LineupCard({ hitters }) {
+  const { assigned, gaps } = useMemo(() => buildLineup(hitters), [hitters])
+  const order = [...FIELD_SLOTS, 'DH']
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Projected starting nine</h3>
+        <span className="text-[11px] text-gray-400">ranked by projected wOBA</span>
+      </div>
+      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
+        {order.map((slot) => {
+          const p = assigned[slot]
+          return (
+            <div key={slot} className={`rounded-md border px-2 py-1.5 text-center ${p ? 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30' : 'border-rose-300 dark:border-rose-800 border-dashed bg-rose-50/40 dark:bg-rose-900/10'}`}>
+              <div className="text-[10px] font-bold uppercase tracking-wide text-nw-teal">{slot}</div>
+              {p ? <>
+                <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate" title={p.name}>{p.name}{p.incoming ? ' ↗' : ''}</div>
+                <div className="text-[11px] tabular-nums text-gray-500">{slash(p.woba)}</div>
+              </> : <div className="text-[11px] text-rose-500 mt-1">none</div>}
+            </div>
+          )
+        })}
+      </div>
+      {gaps.length > 0 && (
+        <p className="text-xs text-rose-600 dark:text-rose-400 mt-3">
+          No projected player at: <b>{gaps.join(', ')}</b>. Incoming transfers and freshmen (added soon) should fill these.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function TeamProjections() {
   const { data: teams } = useProjectionTeams(SEASON)
   const [picked, setPicked] = useState(null)
@@ -290,6 +354,7 @@ export default function TeamProjections() {
               <p className="text-xs text-gray-500">{nTotal} projected players{nIncoming ? ` · ${nIncoming} incoming` : ''}</p>
             </div>
           </div>
+          <LineupCard hitters={payload.hitters} />
           <section>
             <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">Hitters</h3>
             <Table rows={payload.hitters} side="bat" expanded={expanded} toggle={toggle} norm={norm} />
@@ -302,7 +367,7 @@ export default function TeamProjections() {
             <p><b>Conf</b> = how much career data backs the projection (more data → more confident, less regression).
               <b> Plate skills / Stuff</b> show the projected rate with the projected change vs 2026 (▲/▼).
               The point projection is the most-likely (median) outcome; a player’s upside lives in his ceiling — click a row to see it.</p>
-            <p><b>ERA</b> blends FIP-reconstruction with regressed ERA (leans on stable peripherals). Incoming transfers are projected at their new level.</p>
+            <p><b>ERA</b> blends FIP-reconstruction with regressed ERA (leans on stable peripherals). Incoming transfers (↗) are projected at their new level, with stats translated from real NWAC-to-4-year transfer history. Power gets a real bump on the move up: NWAC homers about 0.7 per 100 PA, the 4-year levels 2 to 2.6, so transfer HR rates roughly double.</p>
           </div>
         </div>
       )}
