@@ -181,8 +181,9 @@ def proj_pt(hist, a, b, c):
 # achievable 2nd–98th percentile.
 # Only the DRIVER rates are stretched; OBP/SLG/wOBA are RECONSTRUCTED from them
 # so the slash line stays internally consistent.
+# hr_pa is NOT rank-mapped — HR is anchored to demonstrated ISO in the line
+# build so modest-power hitters don't get inflated to masher HR totals.
 BAT_ACHIEVE = {"AVG": "batting_avg", "iso": "iso",
-               "hr_pa": "home_runs::float/NULLIF(plate_appearances,0)",
                "k_pct": "k_pct", "bb_pct": "bb_pct"}
 # ERA is NOT mapped independently — it's derived from FIP (skill) so projected
 # ERA and FIP stay aligned. Mapping ERA to the actual ERA distribution projected
@@ -757,14 +758,17 @@ def main():
                         if av is not None:
                             avg = max(0.15, min(0.45, av))
                     ab = pt * (1 - bb - 0.02)
-                    # HR anchored to ISO-implied rate (blended) so weak-power
-                    # hitters project toward ~0 HR instead of league average.
-                    iso_hr = max(0.0, ISO_HR_B0 + ISO_HR_B1 * iso)
-                    # HR from demonstrated HR-rate (the best, most stable HR
-                    # predictor: r=.61) PLUS an ISO power-floor. Favoring hr_pa
-                    # lets true mashers project big totals while weak-power
-                    # hitters (low hr_pa AND low ISO) still project near zero.
-                    hr_pa_eff = 0.6 * hr_pa + 0.4 * iso_hr
+                    # HR anchored to DEMONSTRATED ISO (a stable, true-power signal
+                    # that doesn't get inflated by league-mean regression or the
+                    # rank-map). A near-zero-ISO hitter projects ~0 HR; a real
+                    # masher's high ISO carries his power through. A small slice of
+                    # the regressed HR rate nudges proven-over-ISO guys up.
+                    hh = h.dropna(subset=["iso"])
+                    iso_demo = (float(np.average(hh["iso"], weights=hh["wt_n"]))
+                                if len(hh) else iso)
+                    iso_hr = max(0.0, ISO_HR_B0 + ISO_HR_B1 * iso_demo)
+                    hr_pa_eff = max(0.0, 0.7 * iso_hr + 0.3 * hr_pa)
+                    line["hr_pa"] = round(hr_pa_eff, 4)   # used by the reconstruction
                     hr = hr_pa_eff * pt
                     s2, s3, _ = career_xbh_mix(bat, pid)
                     rem = max(iso * ab - 3 * hr, 0)
@@ -814,12 +818,17 @@ def main():
                     whip_rate = proj.get("whip_rate", (None, 0))[0]   # (H+BB) per BF
                     whip = round(whip_rate / IP_PER_BF, 2) if whip_rate else None
                     hr9 = round(hrb * 9 / IP_PER_BF, 2)               # HR allowed per 9 IP
-                    # opponent AVG = hits / at-bats. H/BF = (H+BB)/BF - BB/BF;
-                    # AB/BF ~= 1 - BB% - ~3% (HBP + sac).
-                    opp_avg = None
-                    if whip_rate:
-                        ab_frac = max(0.5, 1 - bb - 0.03)
-                        opp_avg = round(min(0.40, max(0.15, (whip_rate - bb) / ab_frac)), 3)
+                    # opponent AVG reconstructed from the components that actually
+                    # predict it: strikeouts (no ball in play), HR, and a REGRESSED
+                    # BABIP-against (pitchers barely control BABIP, so the regressed
+                    # value forecasts next year far better than demonstrated hits).
+                    babip_ag = proj.get("babip_against", (None, 0))[0]
+                    if not babip_ag or babip_ag <= 0:
+                        babip_ag = 0.310                       # league-ish fallback
+                    ab_frac = max(0.5, 1 - bb - 0.025)         # AB per BF (minus BB/HBP/sac)
+                    bip_frac = max(0.0, ab_frac - k - hrb)     # balls in play (not K/HR)
+                    h_frac = hrb + babip_ag * bip_frac         # hits per BF
+                    opp_avg = round(min(0.40, max(0.15, h_frac / ab_frac)), 3)
                     line.update({"BF": round(pt), "IP": round(ip, 1),
                                  "ERA": round(er, 2), "FIP": round(fip_rate * 39.6, 2),
                                  "WHIP": whip, "HR_allowed": round(hrb * pt, 1), "HR9": hr9,
