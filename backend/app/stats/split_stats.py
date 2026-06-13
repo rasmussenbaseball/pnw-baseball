@@ -121,9 +121,11 @@ def _event_components(event_row: dict, weights: LinearWeights) -> dict:
         'on_base': 0,  # H + BB + HBP (for OBP)
         'tb': 0,       # Total bases (for SLG)
         'woba_num': 0.0,
-        # Pitch-level: counts of K/F/B chars in pitch_sequence + the terminal
-        # in-play pitch. K = swinging strike (whiff). F = foul (contact). B = ball.
+        # Pitch-level: counts of K/S/F/B chars in pitch_sequence + the terminal
+        # in-play pitch. K = called strike (take). S = swinging strike (whiff).
+        # F = foul (contact). B = ball.
         'k_pitches': 0,
+        's_pitches': 0,
         'f_pitches': 0,
         'b_pitches': 0,
         'in_play': 0,
@@ -170,6 +172,7 @@ def _event_components(event_row: dict, weights: LinearWeights) -> dict:
     seq = event_row.get('pitch_sequence') if isinstance(event_row, dict) else None
     if seq:
         out['k_pitches'] = seq.count('K')
+        out['s_pitches'] = seq.count('S')
         out['f_pitches'] = seq.count('F')
         out['b_pitches'] = seq.count('B')
         out['pitches_total'] = len(seq)
@@ -212,11 +215,11 @@ def _aggregate_to_rates(agg: dict) -> dict:
     k_pct = agg['k'] / pa if pa > 0 else 0.0
     bb_pct = (agg['bb'] + agg['ibb']) / pa if pa > 0 else 0.0
 
-    # Contact%: contact / swings, where swings = K + F + in_play
-    swings = agg.get('k_pitches', 0) + agg.get('f_pitches', 0) + agg.get('in_play', 0)
+    # Contact%: contact / swings, where swings = S + F + in_play
+    swings = agg.get('s_pitches', 0) + agg.get('f_pitches', 0) + agg.get('in_play', 0)
     contact = agg.get('f_pitches', 0) + agg.get('in_play', 0)
     contact_pct = (contact / swings) if swings > 0 else None
-    whiff_pct = (agg.get('k_pitches', 0) / swings) if swings > 0 else None
+    whiff_pct = (agg.get('s_pitches', 0) / swings) if swings > 0 else None
     swing_pct = (swings / agg['pitches_total']) if agg.get('pitches_total', 0) > 0 else None
 
     bb_total = agg.get('bb_total', 0)
@@ -493,7 +496,7 @@ def _build_view(
 
     rates = _aggregate_to_rates(agg)
     effective_pa = agg['pa']
-    effective_swings = agg.get('k_pitches', 0) + agg.get('f_pitches', 0) + agg.get('in_play', 0)
+    effective_swings = agg.get('s_pitches', 0) + agg.get('f_pitches', 0) + agg.get('in_play', 0)
     effective_bb_total = agg.get('bb_total', 0)
 
     # Snapshot observed values before regression

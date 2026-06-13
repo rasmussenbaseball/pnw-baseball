@@ -227,7 +227,7 @@ def _fetch_pbp_stats_bulk(cur, player_ids: list, season: int) -> dict:
         """
         SELECT
           ge.batter_player_id AS pid,
-          SUM(COALESCE(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', '')), 0)) AS k_pitches,
+          SUM(COALESCE(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', '')), 0)) AS s_pitches,
           SUM(COALESCE(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', '')), 0)) AS f_pitches,
           SUM(COALESCE(LENGTH(pitch_sequence), 0)) AS seq_total,
           COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
@@ -275,7 +275,7 @@ def _fetch_pbp_stats_bulk(cur, player_ids: list, season: int) -> dict:
     out = {}
     for r in cur.fetchall():
         pid = r['pid']
-        k_p = r['k_pitches'] or 0
+        s_p = r['s_pitches'] or 0
         f_p = r['f_pitches'] or 0
         seq = r['seq_total'] or 0
         in_play = r['in_play'] or 0
@@ -284,7 +284,7 @@ def _fetch_pbp_stats_bulk(cur, player_ids: list, season: int) -> dict:
         ab = r['ab'] or 0
         hr = r['hr'] or 0
 
-        swings = k_p + f_p + in_play
+        swings = s_p + f_p + in_play
         contact = f_p + in_play
         total_pitches = seq + in_play
 
@@ -300,7 +300,7 @@ def _fetch_pbp_stats_bulk(cur, player_ids: list, season: int) -> dict:
         out[pid] = {
             'contact_pct': _safe(contact, swings),
             'swing_pct': _safe(swings, total_pitches),
-            'whiff_pct': _safe(k_p, swings),
+            'whiff_pct': _safe(s_p, swings),
             'air_pull_pct': _safe(r['air_pull'] or 0, bb_total),
             'gb_pct': _safe(r['gb'] or 0, bb_total),
             'fb_pct': _safe(r['fb'] or 0, bb_total),

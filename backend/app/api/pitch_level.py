@@ -105,10 +105,10 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
                 SUM(CASE WHEN result_type = 'hbp' THEN 1 ELSE 0 END) AS hbp,
                 SUM(CASE WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END) AS k,
                 SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
-                COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
+                COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS f_s,
                 COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
                 COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play,
-                COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'F') THEN 1
+                COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('S', 'F') THEN 1
                                   WHEN pitch_sequence = '' AND was_in_play THEN 1
                                   ELSE 0 END), 0) AS f1_swings,
                 COALESCE(SUM(CASE WHEN LEFT(pitch_sequence, 1) IN ('K', 'S', 'F') THEN 1
@@ -164,7 +164,7 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
         ubb = r["ubb"] or 0; bb = r["bb"] or 0
         hbp = r["hbp"] or 0; sf = r["sf"] or 0; k = r["k"] or 0
         pa = r["pa"] or 0; pitches = r["pitches"] or 0
-        f_k = r["f_k"] or 0; f_f = r["f_f"] or 0; f_in_play = r["f_in_play"] or 0
+        f_s = r["f_s"] or 0; f_f = r["f_f"] or 0; f_in_play = r["f_in_play"] or 0
         singles = h - d2 - d3 - hr
         tb = singles + 2*d2 + 3*d3 + 4*hr
         obp_denom = ab + bb + hbp + sf
@@ -194,12 +194,12 @@ def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_s
             metrics["first_pitch_in_play_pct"].append((r["f1_in_play"] or 0) / pa)
         if pitches > 0:
             metrics["pitches_per_pa"].append(pitches / pa)
-        swings = f_k + f_f + f_in_play
+        swings = f_s + f_f + f_in_play
         if pitches > 0:
             metrics["swing_pct"].append(swings / pitches)
         if swings > 0:
             metrics["contact_pct"].append((f_f + f_in_play) / swings)
-            metrics["whiff_pct"].append(f_k / swings)
+            metrics["whiff_pct"].append(f_s / swings)
         ts_pa = r["two_strike_pa"] or 0
         if ts_pa >= 5:
             metrics["putaway_pct"].append((r["two_strike_k"] or 0) / ts_pa)
@@ -265,14 +265,14 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
             SUM(CASE WHEN result_type IN ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END) AS k,
             SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
             SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END) AS bip,
-            COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
+            COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS f_s,
             COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
             COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS f_in_play,
             -- F1 counts: tighten to pitches_thrown >= 1 (same reason as
             -- tracked_pa above — pitches_thrown=0 rows are untracked).
             COUNT(*) FILTER (
                 WHERE pitches_thrown >= 1 AND
-                      (LEFT(pitch_sequence, 1) IN ('K', 'F')
+                      (LEFT(pitch_sequence, 1) IN ('S', 'F')
                        OR (pitch_sequence = '' AND was_in_play))
             ) AS f1_swings,
             COUNT(*) FILTER (
@@ -337,7 +337,7 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
                 weights.w_3b * tr + weights.w_hr * hr)
     woba_denom = ab + ubb + sf + hbp
     woba = (woba_num / woba_denom) if woba_denom > 0 else None
-    swings = r["f_k"] + r["f_f"] + r["f_in_play"]
+    swings = r["f_s"] + r["f_f"] + r["f_in_play"]
     contact = r["f_f"] + r["f_in_play"]
     bb_total = r["bb_total"] or 0
     two_strike_pa = r["two_strike_pa"] or 0
@@ -348,7 +348,7 @@ def _compute_pitch_level_baseline(cur, season: int, division_level: str, filter_
         "iso": iso, "woba": woba,
         "swing_pct": (swings / n_pitches) if n_pitches > 0 else None,
         "contact_pct": (contact / swings) if swings > 0 else None,
-        "whiff_pct": (r["f_k"] / swings) if swings > 0 else None,
+        "whiff_pct": (r["f_s"] / swings) if swings > 0 else None,
         "k_pct": (kct / n_pa) if n_pa > 0 else None,
         "bb_pct": (bb / n_pa) if n_pa > 0 else None,
         # F1 / putaway / P-PA denominators are TRACKED PAs only
@@ -627,7 +627,7 @@ def get_player_pitch_level_stats(
                 COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'B', ''))), 0) AS b_count,
                 COALESCE(SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END), 0) AS in_play,
                 COALESCE(SUM(CASE
-                    WHEN LEFT(pitch_sequence, 1) IN ('K', 'F') THEN 1
+                    WHEN LEFT(pitch_sequence, 1) IN ('S', 'F') THEN 1
                     WHEN pitch_sequence = '' AND was_in_play THEN 1
                     ELSE 0
                 END), 0) AS f1_swings,
@@ -656,10 +656,10 @@ def get_player_pitch_level_stats(
         r = cur.fetchone()
         tracked_pa = r["tracked_pa"] or 0
         pitches = r["pitches"] or 0
-        k = r["k_count"]; f = r["f_count"]; in_play = r["in_play"]
-        swings = k + f + in_play
+        s = r["s_count"]; f = r["f_count"]; in_play = r["in_play"]
+        swings = s + f + in_play
         contact = f + in_play
-        whiffs = k
+        whiffs = s
         two_strike_pa = r["two_strike_pa"] or 0
         two_strike_k  = r["two_strike_k"] or 0
         discipline = {
@@ -901,7 +901,7 @@ def get_player_pitch_level_stats(
                     SUM(CASE WHEN result_type = 'sac_fly' THEN 1 ELSE 0 END) AS sf,
                     SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END) AS bip,
                     -- Plate discipline counts within this filter (NULL-summed for tracked PAs only)
-                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS f_k,
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS f_s,
                     COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
                     COALESCE(SUM(CASE WHEN was_in_play AND pitches_thrown IS NOT NULL THEN 1 ELSE 0 END), 0) AS f_in_play
                 FROM game_events ge
@@ -940,11 +940,11 @@ def get_player_pitch_level_stats(
             woba_denom = ab + ubb + sf + hbp
             woba = (woba_num / woba_denom) if woba_denom > 0 else None
             # Plate discipline within filter (over pitch-tracked subset)
-            swings = row["f_k"] + row["f_f"] + row["f_in_play"]
+            swings = row["f_s"] + row["f_f"] + row["f_in_play"]
             contact = row["f_f"] + row["f_in_play"]
             swing_pct = (swings / n_pitches) if n_pitches > 0 else None
             contact_pct = (contact / swings) if swings > 0 else None
-            whiff_pct = (row["f_k"] / swings) if swings > 0 else None
+            whiff_pct = (row["f_s"] / swings) if swings > 0 else None
             return {
                 "pa": n_pa, "pitches": n_pitches, "bip": bip,
                 "ab": ab, "h": h, "hr": hr, "bb": bb, "k": kct,
@@ -1177,7 +1177,7 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
     woba_denom = ab + ubb + sf + hbp
     woba = (woba_num / woba_denom) if woba_denom > 0 else None
     pK = r["pk"]; pS = r["ps"]; pF = r["pf"]; in_play = r["p_inplay"]
-    swings = pK + pF + in_play
+    swings = pS + pF + in_play
     strikes = pK + pS + pF + in_play
     bb_total = r["bb_total"] or 0
     two_strike_pa = r["two_strike_pa"] or 0
@@ -1189,8 +1189,8 @@ def _compute_pitcher_pitch_level_baseline(cur, season: int, division_level: str,
         "k_pct": (kct / n_pa) if n_pa > 0 else None,
         "bb_pct": (bb / n_pa) if n_pa > 0 else None,
         "strike_pct": (strikes / n_pitches) if n_pitches > 0 else None,
-        "called_strike_pct": (pS / n_pitches) if n_pitches > 0 else None,
-        "whiff_pct": (pK / swings) if swings > 0 else None,
+        "called_strike_pct": (pK / n_pitches) if n_pitches > 0 else None,
+        "whiff_pct": (pS / swings) if swings > 0 else None,
         "first_pitch_strike_pct": (r["f1_strikes"] / n_tracked) if n_tracked > 0 else None,
         "putaway_pct": (r["two_strike_k"] / two_strike_pa) if two_strike_pa > 0 else None,
         "pitches_per_pa": (n_pitches / n_tracked) if n_tracked > 0 else None,
@@ -1309,13 +1309,13 @@ def _compute_pitcher_pitch_level_deciles(cur, season, division_level, filter_sql
             metrics["first_pitch_strike_pct"].append((r["f1_strikes"] or 0) / pa)
             if pitches > 0:
                 metrics["pitches_per_pa"].append(pitches / pa)
-        swings = pK + pF + in_play
+        swings = pS + pF + in_play
         strikes = pK + pS + pF + in_play
         if pitches > 0:
             metrics["strike_pct"].append(strikes / pitches)
-            metrics["called_strike_pct"].append(pS / pitches)
+            metrics["called_strike_pct"].append(pK / pitches)
         if swings > 0:
-            metrics["whiff_pct"].append(pK / swings)
+            metrics["whiff_pct"].append(pS / swings)
         ts_pa = r["two_strike_pa"] or 0
         if ts_pa >= 5:
             metrics["putaway_pct"].append((r["two_strike_k"] or 0) / ts_pa)
@@ -1472,17 +1472,17 @@ def get_player_pitch_level_stats_pitcher(
         tracked_pa = r["tracked_pa"] or 0
         pitches = r["pitches"] or 0
         pK = r["pk"]; pS = r["ps"]; pF = r["pf"]; in_play = r["in_play"]
-        swings = pK + pF + in_play
+        swings = pS + pF + in_play
         strikes = pK + pS + pF + in_play
         discipline = {
             "total_pa": total_pa,
             "tracked_pa": tracked_pa,
             "pitches": pitches,
             "swings": swings,
-            "whiffs": pK,
+            "whiffs": pS,
             "strike_pct": (strikes / pitches) if pitches > 0 else None,
-            "called_strike_pct": (pS / pitches) if pitches > 0 else None,
-            "whiff_pct": (pK / swings) if swings > 0 else None,
+            "called_strike_pct": (pK / pitches) if pitches > 0 else None,
+            "whiff_pct": (pS / swings) if swings > 0 else None,
             "first_pitch_strike_pct": (r["f1_strikes"] / tracked_pa) if tracked_pa > 0 else None,
             "two_strike_pa": r["two_strike_pa"] or 0,
             "putaway_pct": (r["two_strike_k"] / r["two_strike_pa"]) if r["two_strike_pa"] > 0 else None,
@@ -1668,7 +1668,7 @@ def get_player_pitch_level_stats_pitcher(
             woba_denom = ab + ubb + sf + hbp
             woba = (woba_num / woba_denom) if woba_denom > 0 else None
             pK = row["pk"]; pS = row["ps"]; pF = row["pf"]; in_play = row["p_inplay"]
-            swings = pK + pF + in_play
+            swings = pS + pF + in_play
             strikes = pK + pS + pF + in_play
             return {
                 "pa": n_pa, "pitches": n_pitches, "bip": row["bip"] or 0,
@@ -1678,7 +1678,7 @@ def get_player_pitch_level_stats_pitcher(
                 "k_pct": (kct / n_pa) if n_pa > 0 else None,
                 "bb_pct": (bb / n_pa) if n_pa > 0 else None,
                 "strike_pct": (strikes / n_pitches) if n_pitches > 0 else None,
-                "whiff_pct": (pK / swings) if swings > 0 else None,
+                "whiff_pct": (pS / swings) if swings > 0 else None,
                 "wrc_plus_against": None,
             }
 

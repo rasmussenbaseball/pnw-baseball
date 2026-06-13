@@ -5308,8 +5308,9 @@ def team_info_graphic(
         # the team's CONFERENCE — that's the peer set coaches actually
         # care about.
         #
-        # Pitch-sequence character legend (from routes.py:12022):
-        #   B = ball, K = swinging strike, S = called strike, F = foul,
+        # Pitch-sequence character legend (verified empirically — looking
+        # strikeouts end in K, swinging strikeouts end in S):
+        #   B = ball, K = called strike, S = swinging strike, F = foul,
         #   H = hit by pitch.  An empty pitch_sequence with was_in_play
         #   counts as a 1-pitch swing/contact (0-0 BIP).
         try:
@@ -5332,7 +5333,7 @@ def team_info_graphic(
                 f = int(r.get("f_count") or 0)
                 s = int(r.get("s_count") or 0)
                 if kind == "bat":
-                    swings = k + f + in_play
+                    swings = s + f + in_play
                     contact = f + in_play
                     bb_total = int(r.get("bb_total") or 0)
                     air_pull = int(r.get("air_pull") or 0)
@@ -5343,7 +5344,7 @@ def team_info_graphic(
                         "air_pull_pct": (air_pull / bb_total) if bb_total > 0 else None,
                     })
                 else:  # pit
-                    swings = k + f + in_play
+                    swings = s + f + in_play
                     strikes = k + s + f + in_play
                     tracked_pa = int(r.get("tracked_pa") or 0)
                     f1_strikes = int(r.get("f1_strikes") or 0)
@@ -5351,7 +5352,7 @@ def team_info_graphic(
                         "team_id":    r["team_id"],
                         "strike_pct": (strikes / pitches) if pitches > 0 else None,
                         "fps_pct":    (f1_strikes / tracked_pa) if tracked_pa > 0 else None,
-                        "whiff_pct":  (k / swings) if swings > 0 else None,
+                        "whiff_pct":  (s / swings) if swings > 0 else None,
                     })
             return out
 
@@ -6163,18 +6164,18 @@ def batting_pbp_leaderboard(
             scored AS (
                 SELECT
                     pbp.*,
-                    (pbp.k_pitches + pbp.f_pitches + pbp.in_play) AS swings,
+                    (pbp.s_pitches + pbp.f_pitches + pbp.in_play) AS swings,
                     -- swing rate = swings / pitches
                     CASE WHEN pbp.pitches > 0
-                        THEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches
+                        THEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches
                     END AS swing_pct,
                     -- whiff rate = whiffs / swings
-                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0
-                        THEN pbp.k_pitches::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play)
+                    CASE WHEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play) > 0
+                        THEN pbp.s_pitches::numeric / (pbp.s_pitches + pbp.f_pitches + pbp.in_play)
                     END AS whiff_pct,
                     -- contact rate = contact / swings (contact = foul + in_play)
-                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0
-                        THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play)
+                    CASE WHEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play) > 0
+                        THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.s_pitches + pbp.f_pitches + pbp.in_play)
                     END AS contact_pct,
                     -- pitches per PA
                     CASE WHEN pbp.tracked_pa > 0 THEN pbp.pitches::numeric / pbp.tracked_pa END AS pitches_per_pa,
@@ -6340,19 +6341,19 @@ def pitching_pbp_leaderboard(
             scored AS (
                 SELECT
                     pbp.*,
-                    (pbp.k_pitches + pbp.f_pitches + pbp.in_play) AS swings,
+                    (pbp.s_pitches + pbp.f_pitches + pbp.in_play) AS swings,
                     -- strike rate = (called + swing + foul + in_play) / pitches
                     CASE WHEN pbp.pitches > 0
                         THEN (pbp.k_pitches + pbp.s_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches
                     END AS strike_pct,
                     CASE WHEN pbp.pitches > 0
-                        THEN pbp.s_pitches::numeric / pbp.pitches
+                        THEN pbp.k_pitches::numeric / pbp.pitches
                     END AS called_strike_pct,
-                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0
-                        THEN pbp.k_pitches::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play)
+                    CASE WHEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play) > 0
+                        THEN pbp.s_pitches::numeric / (pbp.s_pitches + pbp.f_pitches + pbp.in_play)
                     END AS whiff_pct,
-                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0
-                        THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play)
+                    CASE WHEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play) > 0
+                        THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.s_pitches + pbp.f_pitches + pbp.in_play)
                     END AS contact_pct,
                     CASE WHEN pbp.tracked_pa > 0
                         THEN pbp.f1_strikes::numeric / pbp.tracked_pa
@@ -6487,10 +6488,10 @@ def team_batting_pbp_leaderboard(
             ),
             scored AS (
                 SELECT pbp.*,
-                    (pbp.k_pitches + pbp.f_pitches + pbp.in_play) AS swings,
-                    CASE WHEN pbp.pitches > 0 THEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches END AS swing_pct,
-                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN pbp.k_pitches::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play) END AS whiff_pct,
-                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play) END AS contact_pct,
+                    (pbp.s_pitches + pbp.f_pitches + pbp.in_play) AS swings,
+                    CASE WHEN pbp.pitches > 0 THEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches END AS swing_pct,
+                    CASE WHEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN pbp.k_pitches::numeric / (pbp.s_pitches + pbp.f_pitches + pbp.in_play) END AS whiff_pct,
+                    CASE WHEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.s_pitches + pbp.f_pitches + pbp.in_play) END AS contact_pct,
                     CASE WHEN pbp.tracked_pa > 0 THEN pbp.pitches::numeric / pbp.tracked_pa END AS pitches_per_pa,
                     CASE WHEN pbp.two_strike_pa > 0 THEN pbp.two_strike_k::numeric / pbp.two_strike_pa END AS putaway_pct,
                     CASE WHEN pbp.bb_total > 0 THEN pbp.fb_count::numeric / pbp.bb_total END AS fb_pct,
@@ -6587,11 +6588,11 @@ def team_pitching_pbp_leaderboard(
             ),
             scored AS (
                 SELECT pbp.*,
-                    (pbp.k_pitches + pbp.f_pitches + pbp.in_play) AS swings,
+                    (pbp.s_pitches + pbp.f_pitches + pbp.in_play) AS swings,
                     CASE WHEN pbp.pitches > 0 THEN (pbp.k_pitches + pbp.s_pitches + pbp.f_pitches + pbp.in_play)::numeric / pbp.pitches END AS strike_pct,
                     CASE WHEN pbp.pitches > 0 THEN pbp.s_pitches::numeric / pbp.pitches END AS called_strike_pct,
-                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN pbp.k_pitches::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play) END AS whiff_pct,
-                    CASE WHEN (pbp.k_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.k_pitches + pbp.f_pitches + pbp.in_play) END AS contact_pct,
+                    CASE WHEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN pbp.k_pitches::numeric / (pbp.s_pitches + pbp.f_pitches + pbp.in_play) END AS whiff_pct,
+                    CASE WHEN (pbp.s_pitches + pbp.f_pitches + pbp.in_play) > 0 THEN (pbp.f_pitches + pbp.in_play)::numeric / (pbp.s_pitches + pbp.f_pitches + pbp.in_play) END AS contact_pct,
                     CASE WHEN pbp.tracked_pa > 0 THEN pbp.f1_strikes::numeric / pbp.tracked_pa END AS first_pitch_strike_pct,
                     CASE WHEN pbp.two_strike_pa > 0 THEN pbp.two_strike_k::numeric / pbp.two_strike_pa END AS putaway_pct,
                     CASE WHEN pbp.tracked_pa > 0 THEN pbp.pitches::numeric / pbp.tracked_pa END AS pitches_per_pa,
@@ -8135,12 +8136,12 @@ def _compute_2026_pbp_pitching_percentiles(conn, division_level, season, player_
     pS = r.get("ps") or 0
     pF = r.get("pf") or 0
     in_play = r.get("p_inplay") or 0
-    swings = pK + pF + in_play
+    swings = pS + pF + in_play
     strikes = pK + pS + pF + in_play
     bb_total = r.get("bb_total") or 0
 
     strike_pct = (strikes / pitches) if pitches > 0 else None
-    whiff_pct = (pK / swings) if swings > 0 else None
+    whiff_pct = (pS / swings) if swings > 0 else None
     fps_pct = ((r.get("f1_strikes") or 0) / tracked) if tracked > 0 else None
     hr_pa_pct = ((r.get("hr") or 0) / pa) if pa > 0 else None
     opp_air_pull_pct = ((r.get("opp_air_pull") or 0) / bb_total) if bb_total > 0 else None

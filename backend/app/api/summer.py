@@ -737,15 +737,15 @@ _PA_RESULT_TYPES = [
 def _compute_summer_approach(cur, player_id, season):
     """Pitch-level + count approach splits from summer_game_events.
 
-    Pitch-sequence letters (StatCrew/Presto): K = swinging strike (whiff),
-    F = foul, B = ball, S = called strike. A swing = whiff + foul + ball
+    Pitch-sequence letters (StatCrew/Presto): S = swinging strike (whiff),
+    F = foul, B = ball, K = called strike. A swing = whiff + foul + ball
     in play; contact excludes whiffs. Same formula as the spring
     lineup_helper._fetch_pbp_stats_bulk. Returns None when no PBP PAs.
     """
     cur.execute(
         """
         SELECT
-          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS k_pitches,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS s_pitches,
           COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_pitches,
           COALESCE(SUM(LENGTH(COALESCE(pitch_sequence, ''))), 0) AS seq_total,
           COUNT(*) FILTER (WHERE was_in_play) AS in_play,
@@ -753,7 +753,7 @@ def _compute_summer_approach(cur, player_id, season):
           COUNT(*) FILTER (WHERE result_type IN ('strikeout_swinging', 'strikeout_looking')) AS k,
           COUNT(*) FILTER (WHERE result_type IN ('walk', 'intentional_walk')) AS bb,
           COUNT(*) FILTER (
-            WHERE LEFT(COALESCE(pitch_sequence, ''), 1) IN ('K', 'F')
+            WHERE LEFT(COALESCE(pitch_sequence, ''), 1) IN ('S', 'F')
                OR (was_in_play AND COALESCE(LENGTH(pitch_sequence), 0) = 0)
           ) AS fp_swing
         FROM summer_game_events e
@@ -768,12 +768,12 @@ def _compute_summer_approach(cur, player_id, season):
     if not r or not r["pa"]:
         return None
 
-    k_p = r["k_pitches"] or 0
+    s_p = r["s_pitches"] or 0
     f_p = r["f_pitches"] or 0
     seq = r["seq_total"] or 0
     in_play = r["in_play"] or 0
     pa = r["pa"] or 0
-    swings = k_p + f_p + in_play
+    swings = s_p + f_p + in_play
     contact = f_p + in_play
     pitches_seen = seq + in_play
 
@@ -786,7 +786,7 @@ def _compute_summer_approach(cur, player_id, season):
         "pitches_seen": pitches_seen,
         "swing_pct": pct(swings, pitches_seen),
         "contact_pct": pct(contact, swings),
-        "whiff_pct": pct(k_p, swings),
+        "whiff_pct": pct(s_p, swings),
         "first_pitch_swing_pct": pct(r["fp_swing"] or 0, pa),
         "k_pct": pct(r["k"] or 0, pa),
         "bb_pct": pct(r["bb"] or 0, pa),
@@ -800,8 +800,8 @@ def _compute_summer_pitch_approach(cur, player_id, season):
 
     Mirrors the hitter approach denominator convention: pitches seen =
     all pitch-sequence letters + balls-in-play (the contacted pitch isn't
-    always logged in the sequence). Strike = called strike (S) + swinging
-    strike (K) + foul (F) + ball in play. Whiff = K / swings. First-pitch
+    always logged in the sequence). Strike = called strike (K) + swinging
+    strike (S) + foul (F) + ball in play. Whiff = S / swings. First-pitch
     strike = PAs whose first logged pitch is S/K/F (or a 0-0 ball in play).
     Returns None when no tracked PBP PAs.
     """
@@ -839,7 +839,7 @@ def _compute_summer_pitch_approach(cur, player_id, season):
     seq = r["seq_total"] or 0
     in_play = r["in_play"] or 0
     pa = r["pa"] or 0
-    swings = k_p + f_p + in_play
+    swings = s_p + f_p + in_play
     strikes = k_p + s_p + f_p + in_play
     pitches_seen = seq + in_play
 
@@ -851,7 +851,7 @@ def _compute_summer_pitch_approach(cur, player_id, season):
         "pa": pa,
         "pitches_seen": pitches_seen,
         "strike_pct": pct(strikes, pitches_seen),
-        "whiff_pct": pct(k_p, swings),
+        "whiff_pct": pct(s_p, swings),
         "first_pitch_strike_pct": pct(r["f1_strikes"] or 0, r["tracked_pa"] or 0),
         "k_pct": pct(r["k"] or 0, pa),
         "bb_pct": pct(r["bb"] or 0, pa),
@@ -893,7 +893,7 @@ def _summer_hitter_contact_cohort(cur, league_id, season, min_pa=8):
     cur.execute(
         """
         SELECT e.batter_player_id AS pid,
-          COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'K', ''))), 0) AS k_p,
+          COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'S', ''))), 0) AS s_p,
           COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'F', ''))), 0) AS f_p,
           COUNT(*) FILTER (WHERE e.was_in_play) AS in_play,
           COUNT(*) AS pa
@@ -911,7 +911,7 @@ def _summer_hitter_contact_cohort(cur, league_id, season, min_pa=8):
     for r in cur.fetchall():
         if (r["pa"] or 0) < min_pa:
             continue
-        swings = (r["k_p"] or 0) + (r["f_p"] or 0) + (r["in_play"] or 0)
+        swings = (r["s_p"] or 0) + (r["f_p"] or 0) + (r["in_play"] or 0)
         if swings > 0:
             out[r["pid"]] = ((r["f_p"] or 0) + (r["in_play"] or 0)) / swings
     return out
@@ -957,11 +957,11 @@ def _summer_pitcher_pbp_cohort(cur, league_id, season, min_pitches=25):
         pitches_seen = seq + in_play
         if pitches_seen < min_pitches:
             continue
-        swings = k_p + f_p + in_play
+        swings = s_p + f_p + in_play
         tracked = r["tracked_pa"] or 0
         out[r["pid"]] = {
             "strike_pct": ((k_p + s_p + f_p + in_play) / pitches_seen) if pitches_seen else None,
-            "whiff_pct": (k_p / swings) if swings else None,
+            "whiff_pct": (s_p / swings) if swings else None,
             "first_pitch_strike_pct": ((r["f1_strikes"] or 0) / tracked) if tracked else None,
         }
     return out
@@ -1440,14 +1440,14 @@ def summer_batting_leaderboard(
                    -- Plate discipline from PBP. Swing = whiffs + fouls +
                    -- balls in play; contact excludes whiffs (same formula as
                    -- the per-player approach splits / percentile cohort).
-                   CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
-                        THEN (pbp.k_p + pbp.f_p + pbp.in_play)::real / NULLIF(pbp.seq_total + pbp.in_play, 0)
+                   CASE WHEN (pbp.s_p + pbp.f_p + pbp.in_play) > 0
+                        THEN (pbp.s_p + pbp.f_p + pbp.in_play)::real / NULLIF(pbp.seq_total + pbp.in_play, 0)
                    END AS swing_pct,
-                   CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
-                        THEN (pbp.f_p + pbp.in_play)::real / (pbp.k_p + pbp.f_p + pbp.in_play)
+                   CASE WHEN (pbp.s_p + pbp.f_p + pbp.in_play) > 0
+                        THEN (pbp.f_p + pbp.in_play)::real / (pbp.s_p + pbp.f_p + pbp.in_play)
                    END AS contact_pct,
-                   CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
-                        THEN pbp.k_p::real / (pbp.k_p + pbp.f_p + pbp.in_play)
+                   CASE WHEN (pbp.s_p + pbp.f_p + pbp.in_play) > 0
+                        THEN pbp.s_p::real / (pbp.s_p + pbp.f_p + pbp.in_play)
                    END AS whiff_pct,
                    CASE WHEN pbp.bb_total_pull > 0
                         THEN pbp.air_pull_count::real / pbp.bb_total_pull
@@ -1460,7 +1460,7 @@ def summer_batting_leaderboard(
             {qual_join}
             LEFT JOIN (
               SELECT e.batter_player_id AS pid,
-                COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'K', ''))), 0) AS k_p,
+                COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'S', ''))), 0) AS s_p,
                 COALESCE(SUM(LENGTH(e.pitch_sequence) - LENGTH(REPLACE(e.pitch_sequence, 'F', ''))), 0) AS f_p,
                 COALESCE(SUM(LENGTH(COALESCE(e.pitch_sequence, ''))), 0) AS seq_total,
                 COUNT(*) FILTER (WHERE e.was_in_play) AS in_play,
@@ -1878,7 +1878,7 @@ def summer_pitching_leaderboard(
                    pt.era, pt.whip,
                    pt.k_per_9, pt.bb_per_9, pt.h_per_9, pt.hr_per_9, pt.k_bb_ratio,
                    pt.fip, pt.k_pct, pt.bb_pct, pt.babip_against, pt.pitching_war,
-                   -- Pitch-level rates from PBP. Strike = called(S)+swinging(K)
+                   -- Pitch-level rates from PBP. Strike = called(K)+swinging(S)
                    -- +foul(F)+in play; CSW = called+swinging strikes / pitches;
                    -- whiff = swinging strikes / swings; F-Strike = first-pitch
                    -- strike rate. Same accounting as the per-player approach.
@@ -1888,8 +1888,8 @@ def summer_pitching_leaderboard(
                    CASE WHEN (pbp.seq_total + pbp.in_play) > 0
                         THEN (pbp.k_p + pbp.s_p)::real / (pbp.seq_total + pbp.in_play)
                    END AS csw_pct,
-                   CASE WHEN (pbp.k_p + pbp.f_p + pbp.in_play) > 0
-                        THEN pbp.k_p::real / (pbp.k_p + pbp.f_p + pbp.in_play)
+                   CASE WHEN (pbp.s_p + pbp.f_p + pbp.in_play) > 0
+                        THEN pbp.s_p::real / (pbp.s_p + pbp.f_p + pbp.in_play)
                    END AS whiff_pct,
                    CASE WHEN pbp.tracked_pa > 0
                         THEN pbp.f1_strikes::real / pbp.tracked_pa
@@ -2236,7 +2236,7 @@ _SPL_HIT_AGG = """
     COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
     COUNT(*) FILTER (
         WHERE pitches_thrown >= 1 AND
-              (LEFT(COALESCE(pitch_sequence, ''), 1) IN ('K', 'F')
+              (LEFT(COALESCE(pitch_sequence, ''), 1) IN ('S', 'F')
                OR (COALESCE(pitch_sequence, '') = '' AND was_in_play))
     ) AS f1_swings,
     COUNT(*) FILTER (
@@ -2312,12 +2312,12 @@ def _spl_slash_from_row(row, weights):
 
 def _spl_pitch_counts(row):
     """Summer pitch accounting: pitches = sequence letters + tracked BIP."""
-    f_k = row["f_k"] or 0
-    f_s = row["f_s"] or 0
+    f_k = row["f_k"] or 0   # called strikes
+    f_s = row["f_s"] or 0   # swinging strikes (whiffs)
     f_f = row["f_f"] or 0
     in_play = row["in_play_tr"] or 0
     pitches = (row["seq_total"] or 0) + in_play
-    swings = f_k + f_f + in_play
+    swings = f_s + f_f + in_play
     strikes = f_k + f_s + f_f + in_play
     return pitches, swings, strikes, f_k, f_s
 
@@ -2331,7 +2331,7 @@ def _spl_hitter_metrics_from_row(r, weights, league_woba=None):
     slash = _spl_slash_from_row(r, weights)
     pa = r["pa"] or 0
     tracked = r["tracked_pa"] or 0
-    pitches, swings, _strikes, f_k, _f_s = _spl_pitch_counts(r)
+    pitches, swings, _strikes, _f_k, f_s = _spl_pitch_counts(r)
     if (r["ab"] or 0) > 0:
         out["ba"] = slash["ba"]; out["slg"] = slash["slg"]; out["iso"] = slash["iso"]
     if slash["obp"] is not None:
@@ -2355,8 +2355,8 @@ def _spl_hitter_metrics_from_row(r, weights, league_woba=None):
     if pitches > 0:
         out["swing_pct"] = swings / pitches
     if swings > 0:
-        out["contact_pct"] = (swings - f_k) / swings
-        out["whiff_pct"] = f_k / swings
+        out["contact_pct"] = (swings - f_s) / swings
+        out["whiff_pct"] = f_s / swings
     ts_pa = r["two_strike_pa"] or 0
     if ts_pa >= 5:
         out["putaway_pct"] = (r["two_strike_k"] or 0) / ts_pa
@@ -2395,7 +2395,7 @@ def _compute_summer_pl_baseline(cur, league_id, season, filter_sql, weights):
     """, [season, league_id, _PA_RESULT_TYPES])
     r = cur.fetchone()
     slash = _spl_slash_from_row(r, weights)
-    pitches, swings, _strikes, f_k, _f_s = _spl_pitch_counts(r)
+    pitches, swings, _strikes, _f_k, f_s = _spl_pitch_counts(r)
     tracked = r["tracked_pa"] or 0
     bb_total = r["bb_total"] or 0
     ts_pa = r["two_strike_pa"] or 0
@@ -2406,8 +2406,8 @@ def _compute_summer_pl_baseline(cur, league_id, season, filter_sql, weights):
         "ops": slash["ops"], "iso": slash["iso"], "woba": slash["woba"],
         "k_pct": slash["k_pct"], "bb_pct": slash["bb_pct"],
         "swing_pct": (swings / pitches) if pitches > 0 else None,
-        "contact_pct": ((swings - f_k) / swings) if swings > 0 else None,
-        "whiff_pct": (f_k / swings) if swings > 0 else None,
+        "contact_pct": ((swings - f_s) / swings) if swings > 0 else None,
+        "whiff_pct": (f_s / swings) if swings > 0 else None,
         "first_pitch_swing_pct":   ((r["f1_swings"] or 0) / tracked) if tracked > 0 else None,
         "first_pitch_strike_pct":  ((r["f1_strikes"] or 0) / tracked) if tracked > 0 else None,
         "first_pitch_in_play_pct": ((r["f1_in_play"] or 0) / tracked) if tracked > 0 else None,
@@ -2528,9 +2528,9 @@ def _spl_pitcher_metrics_from_row(r, weights, league_woba=None):
             out["on_or_out_3_pct"] = (r["on_or_out_3"] or 0) / tracked
     if pitches > 0:
         out["strike_pct"] = strikes / pitches
-        out["called_strike_pct"] = f_s / pitches
+        out["called_strike_pct"] = f_k / pitches
     if swings > 0:
-        out["whiff_pct"] = f_k / swings
+        out["whiff_pct"] = f_s / swings
     ts_pa = r["two_strike_pa"] or 0
     if ts_pa >= 5:
         out["putaway_pct"] = (r["two_strike_k"] or 0) / ts_pa
@@ -2577,8 +2577,8 @@ def _compute_summer_pl_pitcher_baseline(cur, league_id, season, filter_sql, weig
         "opp_ops": slash["ops"], "opp_iso": slash["iso"], "opp_woba": slash["woba"],
         "k_pct": slash["k_pct"], "bb_pct": slash["bb_pct"],
         "strike_pct": (strikes / pitches) if pitches > 0 else None,
-        "called_strike_pct": (f_s / pitches) if pitches > 0 else None,
-        "whiff_pct": (f_k / swings) if swings > 0 else None,
+        "called_strike_pct": (f_k / pitches) if pitches > 0 else None,
+        "whiff_pct": (f_s / swings) if swings > 0 else None,
         "first_pitch_strike_pct": ((r["f1_strikes"] or 0) / tracked) if tracked > 0 else None,
         "putaway_pct": ((r["two_strike_k"] or 0) / ts_pa) if ts_pa > 0 else None,
         "pitches_per_pa": (pitches / tracked) if tracked > 0 else None,
@@ -2705,17 +2705,17 @@ def summer_player_pitch_level_stats(
         r = cur.fetchone()
         total_pa = r["pa"] or 0
         tracked_pa = r["tracked_pa"] or 0
-        pitches, swings, _strikes, f_k, _f_s = _spl_pitch_counts(r)
+        pitches, swings, _strikes, _f_k, f_s = _spl_pitch_counts(r)
         two_strike_pa = r["two_strike_pa"] or 0
         discipline = {
             "total_pa": total_pa,
             "tracked_pa": tracked_pa,
             "pitches": pitches,
             "swings": swings,
-            "whiffs": f_k,
+            "whiffs": f_s,
             "swing_pct": (swings / pitches) if pitches > 0 else None,
-            "whiff_pct": (f_k / swings) if swings > 0 else None,
-            "contact_pct": ((swings - f_k) / swings) if swings > 0 else None,
+            "whiff_pct": (f_s / swings) if swings > 0 else None,
+            "contact_pct": ((swings - f_s) / swings) if swings > 0 else None,
             "first_pitch_swing_pct":   ((r["f1_swings"] or 0) / tracked_pa) if tracked_pa > 0 else None,
             "first_pitch_strike_pct":  ((r["f1_strikes"] or 0) / tracked_pa) if tracked_pa > 0 else None,
             "first_pitch_in_play_pct": ((r["f1_in_play"] or 0) / tracked_pa) if tracked_pa > 0 else None,
@@ -2990,10 +2990,10 @@ def summer_player_pitch_level_stats_pitcher(
             "tracked_pa": tracked_pa,
             "pitches": pitches,
             "swings": swings,
-            "whiffs": f_k,
+            "whiffs": f_s,
             "strike_pct": (strikes / pitches) if pitches > 0 else None,
-            "called_strike_pct": (f_s / pitches) if pitches > 0 else None,
-            "whiff_pct": (f_k / swings) if swings > 0 else None,
+            "called_strike_pct": (f_k / pitches) if pitches > 0 else None,
+            "whiff_pct": (f_s / swings) if swings > 0 else None,
             "first_pitch_strike_pct": ((r["f1_strikes"] or 0) / tracked_pa) if tracked_pa > 0 else None,
             "two_strike_pa": two_strike_pa,
             "putaway_pct": ((r["two_strike_k"] or 0) / two_strike_pa) if two_strike_pa > 0 else None,

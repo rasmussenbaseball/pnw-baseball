@@ -1674,13 +1674,13 @@ def opponent_trends(
                 pitches = r["pitches"] or 0
                 pk = r["pk"] or 0; ps = r["ps"] or 0; pf = r["pf"] or 0
                 inp = r["in_play"] or 0
-                swings = pk + pf + inp
+                swings = ps + pf + inp
                 bb_total = r["bb_total"] or 0
                 two_k_pa = r["two_strike_pa"] or 0
                 pitcher_tendencies[r["pid"]] = {
                     "pa": pa,
                     "fps_pct": ((r["f1_strikes"] or 0) / tracked) if tracked > 0 else None,
-                    "whiff_pct": (pk / swings) if swings > 0 else None,
+                    "whiff_pct": (ps / swings) if swings > 0 else None,
                     "putaway_pct": ((r["two_strike_k"] or 0) / two_k_pa) if two_k_pa > 0 else None,
                     "strike_pct": ((pk + ps + pf + inp) / pitches) if pitches > 0 else None,
                     "gb_pct": ((r["gb_n"] or 0) / bb_total) if bb_total > 0 else None,
@@ -1766,7 +1766,7 @@ def opponent_trends(
                         WHERE strikes_before = 2
                           AND result_type IN ('strikeout_swinging','strikeout_looking')
                     ) AS two_strike_k,
-                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pK,
+                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS pS,
                     COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pF,
                     COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
                     SUM(ge.wpa_batter)         AS total_wpa,
@@ -1782,8 +1782,8 @@ def opponent_trends(
                 bb_total = r["bb_total"] or 0
                 zone_total = r["zone_total"] or 0
                 two_k_pa = r["two_strike_pa"] or 0
-                pk = r["pk"] or 0; pf = r["pf"] or 0; inp = r["in_play"] or 0
-                swings = pk + pf + inp
+                ps = r["ps"] or 0; pf = r["pf"] or 0; inp = r["in_play"] or 0
+                swings = ps + pf + inp
                 contact = pf + inp
                 batter_tendencies[r["pid"]] = {
                     "pa": r["pa"] or 0,
@@ -1798,7 +1798,7 @@ def opponent_trends(
                     "air_pull_pct": ((r["air_pull"] or 0) / bb_total) if bb_total > 0 else None,
                     "putaway_pct": ((r["two_strike_k"] or 0) / two_k_pa) if two_k_pa > 0 else None,
                     "contact_pct": (contact / swings) if swings > 0 else None,
-                    "whiff_pct": (pk / swings) if swings > 0 else None,
+                    "whiff_pct": (ps / swings) if swings > 0 else None,
                     "total_wpa": float(r["total_wpa"]) if r["total_wpa"] is not None else None,
                     "wpa_pa": int(r["wpa_pa"] or 0),
                 }

@@ -119,9 +119,9 @@ def _aggregate_pitcher_split(cur, player_ids, season, extra_where, extra_params=
         f_p = float(r['f_pitches'] or 0)
         in_play = float(r['in_play'] or 0)
         pitches_total = float(r['pitches_total'] or 0)
-        swings = k_p + f_p + in_play
+        swings = s_p + f_p + in_play
         strikes = k_p + s_p + f_p + in_play
-        slash['whiff_pct'] = (k_p / swings) if swings else None
+        slash['whiff_pct'] = (s_p / swings) if swings else None
         slash['strike_pct'] = (strikes / pitches_total) if pitches_total else None
         out[r['pid']] = slash
     return out
@@ -243,14 +243,14 @@ def _fetch_pbp_overall(cur, player_ids, season):
         f_p = float(r['f_p'] or 0)
         in_play = float(r['in_play'] or 0)
         pitches_total = float(r['pitches_total'] or 0)
-        swings = k_p + f_p + in_play
+        swings = s_p + f_p + in_play
         strikes = k_p + s_p + f_p + in_play
         bb_total = float(r['bb_total'] or 0)
         pa = float(r['pa'] or 0)
         two_strike = r['two_strike_pa'] or 0
         slash = _slash_from_counts(r)
         out[r['pid']] = {
-            'whiff_pct':   (k_p / swings) if swings else None,
+            'whiff_pct':   (s_p / swings) if swings else None,
             'strike_pct':  (strikes / pitches_total) if pitches_total else None,
             'fps_pct':     ((r['first_pitch_strikes'] or 0) / r['fps_pa_known']) if r['fps_pa_known'] else None,
             'putaway_pct': ((r['putaway_k'] or 0) / two_strike) if two_strike else None,

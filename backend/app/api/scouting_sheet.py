@@ -59,13 +59,13 @@ def _bulk_hitter_extras(cur, player_ids, season):
         SELECT
           ge.batter_player_id AS pid,
           -- Numerator: PAs with confirmed first-pitch SWING.
-          --   K = swing-and-miss, F = foul (both swings).
+          --   S = swing-and-miss, F = foul (both swings).
           --   Empty seq + was_in_play + pitches_thrown=1 = 1-pitch
           --   in-play (definitely a swing).  The pitches_thrown=1
           --   guard prevents counting unknown-count PAs.
-          --   S = called strike (a TAKE) — deliberately excluded.
+          --   K = called strike (a TAKE) — deliberately excluded.
           COUNT(*) FILTER (
-            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('K','F'))
+            WHERE (LENGTH(pitch_sequence) > 0 AND LEFT(pitch_sequence, 1) IN ('S','F'))
                OR (LENGTH(pitch_sequence) = 0 AND was_in_play AND pitches_thrown = 1)
           ) AS first_pitch_swings,
           -- Denominator: PAs where we actually know the pitch info.
@@ -106,8 +106,10 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
 
     PARSER CONVENTION (important for getting the strike% right):
       - pitch_sequence is a string of B/K/S/F/H letters where:
-          B = ball, K = swinging strike, S = called strike,
+          B = ball, K = called strike, S = swinging strike,
           F = foul, H = hit-by-pitch
+        (verified empirically: looking strikeouts end in K, swinging
+        strikeouts end in S, 99% of the time)
       - For strikeouts and walks, pitch_sequence INCLUDES the terminal
         pitch — so the K of a strikeout is already counted in the seq.
       - For balls put in play, pitch_sequence excludes the terminal
@@ -187,9 +189,9 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
         # numerator's coverage exactly.
         pitches_total = float(r['pitches_total'] or 0)
 
-        # Swings: only motions where the bat moved → K (whiff), F (foul),
-        # in_play. Called strikes (S) are takes, not swings.
-        swings = k_p + f_p + in_play
+        # Swings: only motions where the bat moved → S (whiff), F (foul),
+        # in_play. Called strikes (K) are takes, not swings.
+        swings = s_p + f_p + in_play
         # All strikes (for strike%): K + S + F from seq, plus in_play
         # (every batted ball counts as a strike). Strikeouts have the
         # final K already in the seq, so don't add it again.
@@ -210,7 +212,7 @@ def _fetch_pitcher_pbp_bulk(cur, player_ids, season):
 
         two_strike = r['two_strike_pa'] or 0
         out[r['pid']] = {
-            'whiff_pct':    _safe(k_p, swings),
+            'whiff_pct':    _safe(s_p, swings),
             'strike_pct':   _safe(strikes, pitches_total),
             'fps_pct':      _safe(r['first_pitch_strikes'] or 0, r['fps_pa_known'] or 0),
             'putaway_pct':  _safe(r['putaway_k'] or 0, two_strike),
