@@ -259,7 +259,11 @@ def main():
                     # HR anchored to ISO-implied rate (blended) so weak-power
                     # hitters project toward ~0 HR instead of league average.
                     iso_hr = max(0.0, ISO_HR_B0 + ISO_HR_B1 * iso)
-                    hr_pa_eff = 0.3 * hr_pa + 0.7 * iso_hr   # lean on demonstrated power
+                    # HR from demonstrated HR-rate (the best, most stable HR
+                    # predictor: r=.61) PLUS an ISO power-floor. Favoring hr_pa
+                    # lets true mashers project big totals while weak-power
+                    # hitters (low hr_pa AND low ISO) still project near zero.
+                    hr_pa_eff = 0.6 * hr_pa + 0.4 * iso_hr
                     hr = hr_pa_eff * pt
                     s2, s3, _ = career_xbh_mix(bat, pid)
                     rem = max(iso * ab - 3 * hr, 0)
