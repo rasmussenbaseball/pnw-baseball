@@ -1,0 +1,34 @@
+name: Player Projections (2027)
+
+# Recompute 2027 player projections and write them to the player_projections
+# table. Runs a few times a week so newly-logged commitments, transfer-portal
+# entries, and roster changes show up on the right teams.
+
+on:
+  schedule:
+    # Mon / Wed / Fri at 9 AM UTC (~1-2 AM Pacific). Cheap (DB only, no scraping).
+    - cron: '0 9 * * 1,3,5'
+  workflow_dispatch:        # allow manual runs from the Actions tab
+    inputs:
+      season:
+        description: 'Projection season (default 2027)'
+        required: false
+        default: '2027'
+
+jobs:
+  project:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install numpy pandas psycopg2-binary python-dotenv
+      - name: Compute + write projections
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          PYTHONPATH=backend python3 scripts/projections/write_projections_db.py \
+            --season "${{ github.event.inputs.season || '2027' }}"

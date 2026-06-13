@@ -40,6 +40,21 @@ from team_projection import (  # noqa: E402
 
 FOURYR = {"D1", "D2", "D3", "NAIA"}
 
+# ISO -> HR-rate (fit from data): lets weak-power hitters project toward ~0 HR
+# instead of the league-average ~2 HR. ISO .05 -> ~0.2 HR/150; ISO .25 -> ~6.
+ISO_HR_B0, ISO_HR_B1 = -0.00844, 0.2037
+
+
+def band_half(rel, side):
+    """Credible reliability-scaled half-width for the low/median/high range.
+    Replaces the raw next-season outcome sigma, which made ERA bands ~4 runs
+    wide (useless). Tighter for high-confidence players; capped so no band is
+    absurd. Units: ERA runs for pitchers, wOBA points for hitters."""
+    rel = max(0.0, min(1.0, rel or 0.0))
+    if side == "pit":
+        return round(min(max(0.30 + 1.00 * (1 - rel), 0.30), 1.20), 3)   # ~±0.5 (high) to ±1.2 (low)
+    return round(min(max(0.025 + 0.050 * (1 - rel), 0.025), 0.070), 4)    # wOBA ±25 to ±70 pts
+
 
 def departing(level, cls):
     """True if this player is leaving their current program after 2026."""
@@ -99,26 +114,32 @@ def main():
         fip_luck = load_fip_luck(cur)
         tname_map = team_name_map(cur)
 
-        # commitments: player_id -> destination (team_id, level)
-        cur.execute("""SELECT id, committed_to FROM players
-                       WHERE is_committed = 1 AND committed_to IS NOT NULL""")
-        commits = {}
+        # commitments: player_id -> destination (team_id, level).
+        # `left` = anyone who has LEFT their 2026 team: committed elsewhere OR
+        # entered the portal (even if not yet committed). They get removed from
+        # the old roster; committed ones reappear on the new team.
+        commits, left = {}, set()
+        cur.execute("""SELECT id, committed_to FROM players WHERE is_committed = 1""")
         for r in cur.fetchall():
+            left.add(r["id"])
             dest = resolve_commit(r["committed_to"], tname_map)
             if dest:
                 commits[r["id"]] = dest
-        # transfer_portal.json (4-year portal entries)
         tp_path = REPO / "backend" / "data" / "transfer_portal.json"
         if tp_path.exists():
             for e in json.loads(tp_path.read_text()).get("players", []):
                 pid = e.get("player_id")
+                if not pid:
+                    continue
+                left.add(int(pid))   # in the portal = gone from old team
                 dest = resolve_commit(e.get("committed_to"), tname_map)
-                if pid and dest:
+                if dest:
                     commits[int(pid)] = dest
-        # canonical-id remap for commitments (history is keyed on canonical id)
+        # canonical-id remap (history is keyed on canonical id)
         cur.execute("SELECT linked_id, canonical_id FROM player_links")
         cmap = {r["linked_id"]: r["canonical_id"] for r in cur.fetchall()}
         commits_canon = {cmap.get(pid, pid): dest for pid, dest in commits.items()}
+        left_canon = {cmap.get(pid, pid) for pid in left}
 
         # roster meta: most-recent (2026) team + class + name per player
         meta = {}
@@ -176,52 +197,66 @@ def main():
                     continue
                 last = h.sort_values("season").iloc[-1]
                 cur_level, cls = last["level"], last["cls"]
+                cls = cls if isinstance(cls, str) else None   # NaN -> None (JSON-safe)
+                m = meta.get(pid, {})
+                pos = (m.get("pos") or "").upper()
+                # don't show pure pitchers as hitters (or pure position players
+                # as pitchers). Two-way players (slash positions) pass both.
+                if side == "bat" and pos in ("P", "RHP", "LHP"):
+                    continue
                 # decide 2027 team + level
                 if pid in commits_canon:
                     team_id, level = commits_canon[pid]
                     incoming = True
+                elif pid in left_canon:
+                    continue   # left the program (portal/committed) - no known destination
                 elif not departing(cur_level, cls):
-                    m = meta.get(pid)
                     if not m:
                         continue
                     team_id, level, incoming = m["team_id"], cur_level, False
                 else:
-                    continue   # departing, no known destination
+                    continue   # graduating, no destination
                 proj = project_player(h, summer_lookup.get(pid, []), C, comps, level, TARGET, cls)
                 if headline not in proj:
                     continue
                 head, rel = proj[headline]
                 pt = proj_pt(h, *pa_args)
-                sigma = max(a_sig + b_sig * rel, 0.015)
-                m = meta.get(pid, {})
                 line = {"reliability": round(rel, 3), "PT": round(pt), "level": level,
-                        "from_level": cur_level, "incoming": incoming}
+                        "from_level": cur_level, "incoming": incoming,
+                        "class_2027": (CLASS_NEXT.get(cls) if cls else None)}
                 for s in comps:
                     if s in proj:
                         line[s] = round(proj[s][0], 4)
                 if side == "bat":
                     bb, k, hr_pa, avg, iso = (proj.get(s, (0, 0))[0] for s in ["bb_pct", "k_pct", "hr_pa", "avg", "iso"])
                     ab = pt * (1 - bb - 0.02)
+                    # HR anchored to ISO-implied rate (blended) so weak-power
+                    # hitters project toward ~0 HR instead of league average.
+                    iso_hr = max(0.0, ISO_HR_B0 + ISO_HR_B1 * iso)
+                    hr_pa_eff = 0.3 * hr_pa + 0.7 * iso_hr   # lean on demonstrated power
+                    hr = hr_pa_eff * pt
                     s2, s3, _ = career_xbh_mix(bat, pid)
-                    rem = max(iso * ab - 3 * hr_pa * pt, 0)
+                    rem = max(iso * ab - 3 * hr, 0)
                     tot = s2 + s3 if (s2 + s3) > 0 else 1
                     d3 = rem * (s3 / tot) / (1 + s3 / tot)
-                    line.update({"AB": round(ab), "H": round(avg * ab), "HR": round(hr_pa * pt, 1),
+                    hw = band_half(rel, "bat")
+                    line.update({"AB": round(ab), "H": round(avg * ab), "HR": round(hr, 1),
                                  "2B": round(max(rem - 2 * d3, 0), 1), "3B": round(max(d3, 0), 1),
                                  "R": round(pt * 0.16 * (proj.get("obp", (0.33, 0))[0] / 0.360)),
                                  "RBI": round(pt * 0.15 * ((avg + iso) / 0.420)),
                                  "BB": round(bb * pt), "SO": round(k * pt),
                                  "AVG": round(avg, 3), "OBP": round(proj.get("obp", (0, 0))[0], 3),
                                  "SLG": round(avg + iso, 3), "wOBA": round(head, 3),
-                                 "wOBA_lo": round(head - Z10 * sigma, 3), "wOBA_hi": round(head + Z10 * sigma, 3)})
+                                 "wOBA_lo": round(head - hw, 3), "wOBA_hi": round(head + hw, 3)})
                     sort_val = head
                 else:
                     k, bb, hrb = (proj.get(s, (0, 0))[0] for s in ["k_pct", "bb_pct", "hr_bf"])
                     fip_rate = run_coef[0]*k + run_coef[1]*bb + run_coef[2]*hrb + run_coef[3]
-                    er = FIP_BLEND * fip_rate + (1 - FIP_BLEND) * head
-                    line.update({"BF": round(pt), "ERA": round(er * 39.6, 2), "FIP": round(fip_rate * 39.6, 2),
+                    er = (FIP_BLEND * fip_rate + (1 - FIP_BLEND) * head) * 39.6   # ERA scale
+                    hw = band_half(rel, "pit")
+                    line.update({"BF": round(pt), "ERA": round(er, 2), "FIP": round(fip_rate * 39.6, 2),
                                  "K_pct": round(k, 3), "BB_pct": round(bb, 3), "HR_bf": round(hrb, 4),
-                                 "ERA_lo": round((er - Z10 * sigma) * 39.6, 2), "ERA_hi": round((er + Z10 * sigma) * 39.6, 2),
+                                 "ERA_lo": round(er - hw, 2), "ERA_hi": round(er + hw, 2),
                                  "fip_luck": (round(fip_luck.get(pid), 2) if fip_luck.get(pid) is not None else None)})
                     sort_val = -er   # lower ERA = better, so negate for desc sort
                 for f in pbp_feats:
