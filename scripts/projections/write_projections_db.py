@@ -157,7 +157,10 @@ def proj_pt(hist, a, b, c):
 BAT_ACHIEVE = {"AVG": "batting_avg", "iso": "iso",
                "hr_pa": "home_runs::float/NULLIF(plate_appearances,0)",
                "k_pct": "k_pct", "bb_pct": "bb_pct"}
-PIT_ACHIEVE = {"ERA": "era", "FIP": "fip", "K_pct": "k_pct", "BB_pct": "bb_pct"}
+# ERA is NOT mapped independently — it's derived from FIP (skill) so projected
+# ERA and FIP stay aligned. Mapping ERA to the actual ERA distribution projected
+# every lucky-low arm to STAY lucky (2.0 ERA vs 4.5 FIP), which read as a bug.
+PIT_ACHIEVE = {"FIP": "fip", "K_pct": "k_pct", "BB_pct": "bb_pct"}
 
 # wOBA-ish linear weights for reconstructing wOBA from the slash components.
 _WBB, _WHBP, _W1B, _W2B, _W3B, _WHR = 0.69, 0.72, 0.88, 1.25, 1.58, 2.00
@@ -275,10 +278,13 @@ def expand_to_achievable(rows):
                     pt_q = float(np.quantile(arr, pctile))
                     r = grp[gi]
                     last = r["proj"].get("PT", 0) or 0
-                    pt_new = 0.8 * pt_q + 0.2 * last
+                    pt_new = 0.7 * pt_q + 0.3 * last
                     if side == "bat":
                         pt_new *= pos_factor(r.get("pos"))
-                    r["proj"]["PT"] = round(pt_new)
+                    # established players don't lose much of their prior workload
+                    # just because the quality map nudges them — floor at 85% of
+                    # last year (so a returning starter keeps starting).
+                    r["proj"]["PT"] = round(max(pt_new, 0.85 * last))
     # achievable caps (99th pctile) for the reconstructed combo stats, per level
     # p90 caps: a double-max contact+power profile (.400 AVG AND elite ISO) is an
     # impossible combo, so cap the reconstructed SLG/wOBA at a great-but-real level.
@@ -323,6 +329,16 @@ def expand_to_achievable(rows):
             p["IP"] = round(pt * 0.245, 1)
             if p.get("HR_bf") is not None:
                 p["HR_allowed"] = round(p["HR_bf"] * pt, 1)
+            # ERA derived from FIP (skill) + only the repeatable ~16% of a
+            # pitcher's career ERA-FIP gap, so ERA and FIP stay consistent and
+            # no one systematically "beats their FIP".
+            fip = p.get("FIP")
+            if fip is not None:
+                gap = p.get("fip_luck") or 0.0          # career ERA - FIP
+                era = fip + 0.16 * gap
+                p["ERA"] = round(era, 2)
+                hw = band_half(p.get("reliability", 0.3), "pit")
+                p["ERA_lo"] = round(era - hw, 2); p["ERA_hi"] = round(era + hw, 2)
 
 
 def main():
@@ -383,6 +399,34 @@ def main():
             """)
             for r in cur.fetchall():
                 meta.setdefault(r["cid"], r)   # first side wins for name/pos; fine
+
+        # all positions each player actually played in 2026 (>=15% of his games),
+        # most-used first — so the roster shows e.g. "1B/OF", revealing how a team
+        # fits multiple same-primary guys via secondary spots.
+        cur.execute("""
+            WITH canon AS (SELECT linked_id pid, canonical_id cid FROM player_links)
+            SELECT COALESCE(c.cid, gb.player_id) cid, gb.position pos, COUNT(*) n
+            FROM game_batting gb JOIN games g ON g.id=gb.game_id
+            LEFT JOIN canon c ON c.pid=gb.player_id
+            WHERE g.season=2026 AND gb.position IS NOT NULL AND gb.position <> ''
+            GROUP BY 1, 2
+        """)
+        pos_counts = {}
+        for r in cur.fetchall():
+            # game-log position can be a slashed string ("1B/2B"); split + tally each
+            for raw in (r["pos"] or "").upper().split("/"):
+                pos = raw.strip()
+                if pos in ("", "PH", "PR", "DR"):    # pinch-hit/run aren't real positions
+                    continue
+                agg = pos_counts.setdefault(r["cid"], {})
+                agg[pos] = agg.get(pos, 0) + r["n"]
+        all_positions = {}
+        for cid, agg in pos_counts.items():
+            tot = sum(agg.values())
+            keep = [p for p, n in sorted(agg.items(), key=lambda kv: kv[1], reverse=True)
+                    if n >= max(2, 0.15 * tot)]
+            if keep:
+                all_positions[cid] = "/".join(keep[:3])
 
         # --- usage-based role detection (smart role logic) ---
         # A player's role is decided by their MOST RECENT season's actual usage,
@@ -576,7 +620,7 @@ def main():
                             line[f + "_prev"] = round(pv[1], 3)
                 rows.append({"season": TARGET, "team_id": team_id, "player_id": int(m.get("raw", pid)),
                              "canonical_id": int(pid), "side": side, "name": m.get("name", "?"),
-                             "pos": m.get("pos"), "class_last": cls, "is_incoming": incoming,
+                             "pos": all_positions.get(pid) or m.get("pos"), "class_last": cls, "is_incoming": incoming,
                              "from_team_id": int(m.get("team_id")) if m.get("team_id") else None,
                              "sort_val": round(float(sort_val), 5), "proj": line})
 
