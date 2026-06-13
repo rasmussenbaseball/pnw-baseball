@@ -146,6 +146,83 @@ def proj_pt(hist, a, b, c):
     return a * s.get(TARGET - 1, 0) + b * s.get(TARGET - 2, 0) + c
 
 
+# Stats to stretch to the realistically-achievable distribution, with the SQL
+# expression for their actual 2026 values (per level). Deliberate product choice
+# (Nate): rank by the model's skill read, but scale to what players actually do
+# every year so the best hitter projects ~.400, etc. Keeps the projection mean
+# and ranking; only widens the spread (never compresses) and clamps to the
+# achievable 2nd–98th percentile.
+BAT_ACHIEVE = {"AVG": "batting_avg", "OBP": "on_base_pct", "SLG": "slugging_pct",
+               "wOBA": "woba", "iso": "iso", "hr_pa": "home_runs::float/NULLIF(plate_appearances,0)",
+               "k_pct": "k_pct", "bb_pct": "bb_pct"}
+PIT_ACHIEVE = {"ERA": "era", "FIP": "fip", "WHIP": "whip", "K_pct": "k_pct",
+               "BB_pct": "bb_pct", "HR_allowed": "home_runs_allowed::float"}
+
+
+def _achievable_targets(cur):
+    """Per (side, level, stat): (std, p2, p98) of actual 2026 qualified players."""
+    out = {}
+    for side, tbl, idc, mn, specs in [
+            ("bat", "batting_stats", "plate_appearances", 100, BAT_ACHIEVE),
+            ("pit", "pitching_stats", "batters_faced", 60, PIT_ACHIEVE)]:
+        for key, expr in specs.items():
+            cur.execute(f"""
+                SELECT q.level lvl, stddev_pop(q.x) sd,
+                       percentile_cont(0.02) WITHIN GROUP (ORDER BY q.x) p2,
+                       percentile_cont(0.98) WITHIN GROUP (ORDER BY q.x) p98
+                FROM (SELECT d.level, ({expr})::float x
+                      FROM {tbl} b JOIN teams t ON t.id=b.team_id
+                      JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+                      WHERE b.season=2026 AND b.{idc}>=%s AND ({expr}) IS NOT NULL) q
+                GROUP BY q.level
+            """, (mn,))
+            for r in cur.fetchall():
+                if r["sd"]:
+                    out[(side, r["lvl"], key)] = (float(r["sd"]), float(r["p2"]), float(r["p98"]))
+    return out
+
+
+def expand_to_achievable(rows):
+    """Stretch each stat's projected spread to its real achievable distribution
+    (per level), preserving the projection mean + player ranking. Then recompute
+    hitter counting stats from the stretched rates."""
+    with get_connection() as conn:
+        tgt = _achievable_targets(conn.cursor())
+    specs = {"bat": BAT_ACHIEVE, "pit": PIT_ACHIEVE}
+    for side in ("bat", "pit"):
+        for level in {r["proj"]["level"] for r in rows if r["side"] == side}:
+            grp = [r for r in rows if r["side"] == side and r["proj"]["level"] == level]
+            for key in specs[side]:
+                t = tgt.get((side, level, key))
+                if not t:
+                    continue
+                std, p2, p98 = t
+                vals = [r["proj"].get(key) for r in grp if r["proj"].get(key) is not None]
+                if len(vals) < 5:
+                    continue
+                mu = float(np.mean(vals)); psd = float(np.std(vals)) or 1e-9
+                factor = min(max(std / psd, 1.0), 4.0)   # only widen, capped
+                for r in grp:
+                    v = r["proj"].get(key)
+                    if v is None:
+                        continue
+                    r["proj"][key] = round(min(max(mu + (v - mu) * factor, p2), p98), 4)
+    # recompute hitter counting stats from the stretched rates
+    for r in rows:
+        if r["side"] != "bat":
+            continue
+        p = r["proj"]; pt = p.get("PT", 0)
+        bb_pct = p.get("bb_pct", 0); avg = p.get("AVG", 0); iso = p.get("iso", 0); hr_pa = p.get("hr_pa", 0)
+        ab = pt * (1 - bb_pct - 0.02)
+        hr = hr_pa * pt
+        rem = max(iso * ab - 3 * hr, 0); d3 = rem * 0.06
+        p["AB"] = round(ab); p["H"] = round(avg * ab); p["HR"] = round(hr, 1)
+        p["2B"] = round(max(rem - 2 * d3, 0), 1); p["3B"] = round(max(d3, 0), 1)
+        p["SLG"] = round(avg + iso, 3); p["BB"] = round(bb_pct * pt); p["SO"] = round(p.get("k_pct", 0) * pt)
+        p["R"] = round(pt * 0.16 * (p.get("OBP", 0.33) / 0.360))
+        p["RBI"] = round(pt * 0.15 * ((avg + iso) / 0.420))
+
+
 def main():
     global TARGET
     ap = argparse.ArgumentParser()
@@ -400,6 +477,8 @@ def main():
                              "pos": m.get("pos"), "class_last": cls, "is_incoming": incoming,
                              "from_team_id": int(m.get("team_id")) if m.get("team_id") else None,
                              "sort_val": round(float(sort_val), 5), "proj": line})
+
+    expand_to_achievable(rows)
 
     # write to DB
     with get_connection() as conn:
