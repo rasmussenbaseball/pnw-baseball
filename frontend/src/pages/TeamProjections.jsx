@@ -440,7 +440,7 @@ export default function TeamProjections() {
               value={effectiveTeamId || ''} onChange={(e) => { setPicked(Number(e.target.value)); setExpanded(null) }}>
               {LEVEL_ORDER.filter((lv) => grouped[lv]).map((lv) => (
                 <optgroup key={lv} label={lv}>
-                  {grouped[lv].map((t) => <option key={t.id} value={t.id}>{t.short_name}{t.n_incoming ? ` (+${t.n_incoming})` : ''}</option>)}
+                  {grouped[lv].map((t) => <option key={t.id} value={t.id}>{t.short_name}</option>)}
                 </optgroup>
               ))}
             </select>

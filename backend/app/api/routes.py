@@ -9708,6 +9708,9 @@ def projections_teams(season: int = Query(2027),
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
             WHERE pp.season = %s
+              -- PNW teams only; drops out-of-region D1 schools that only appear
+              -- because a transfer committed there (LMU, San Diego, New Mexico…)
+              AND t.state IN ('WA', 'OR', 'ID', 'MT', 'BC')
             GROUP BY t.id, t.short_name, t.school_name, t.logo_url, d.level
             ORDER BY d.level, t.short_name
         """, (season,))
