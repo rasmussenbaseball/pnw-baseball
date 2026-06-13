@@ -78,7 +78,7 @@ def fit_training_constants(df, stats, max_season):
             for s in stats if g[f"{s}_c"].notna().sum() >= 30
         }
     return {"means": means, "rel": rel, "aging": ag, "trans": trans,
-            "tier": tier, "train": train}
+            "tier": tier, "train": train, "train_c": train_c}
 
 
 def env_mean(C, level, target_season, stat):
@@ -171,6 +171,118 @@ def project_player(history, summer_history, C, stats, target_level,
     return out
 
 
+def load_pbp_peripherals(cur, side):
+    """Per player-season PBP peripherals with CORRECT letter semantics:
+    B=ball, K=called strike, S=swinging strike, F=foul, H=HBP.
+    swings = S + F + in_play;  whiff = S / swings;
+    strike_pct = (K + S + F + in_play) / pitches (CLAUDE.md 10.6)."""
+    who = "batter_player_id" if side == "bat" else "pitcher_player_id"
+    cur.execute(f"""
+        WITH canon AS (SELECT linked_id AS player_id, canonical_id FROM player_links)
+        SELECT COALESCE(c.canonical_id, ge.{who}) AS pid, g.season,
+            SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'S',''))) AS n_s,
+            SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'K',''))) AS n_k,
+            SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'F',''))) AS n_f,
+            COALESCE(SUM(pitches_thrown), 0) AS pitches,
+            COUNT(*) FILTER (WHERE was_in_play) AS in_play,
+            COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bip,
+            COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb,
+            COUNT(*) FILTER (
+                WHERE bb_type IN ('LD','FB')
+                  AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+                    OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))) AS air_pull
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players p ON p.id = ge.batter_player_id
+        LEFT JOIN canon c ON c.player_id = ge.{who}
+        WHERE ge.{who} IS NOT NULL
+        GROUP BY 1, 2
+        HAVING COALESCE(SUM(pitches_thrown), 0) >= 100
+    """)
+    df = pd.DataFrame(cur.fetchall())
+    if df.empty:
+        return df
+    for col in df.columns:
+        if col != "pid":
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    swings = (df["n_s"] + df["n_f"] + df["in_play"]).clip(lower=1)
+    df["p_whiff"] = df["n_s"] / swings
+    df["p_gb"] = np.where(df["bip"] >= 30, df["gb"] / df["bip"].clip(lower=1), np.nan)
+    df["p_strike"] = (df["n_k"] + df["n_s"] + df["n_f"] + df["in_play"]) / df["pitches"].clip(lower=1)
+    if side == "bat":
+        df["p_airpull"] = np.where(df["bip"] >= 30, df["air_pull"] / df["bip"].clip(lower=1), np.nan)
+    df["p_n"] = df["pitches"]
+    keep = ["pid", "season", "p_whiff", "p_gb", "p_strike", "p_n"]
+    if side == "bat":
+        keep.append("p_airpull")
+    return df[keep]
+
+
+PERIPH_FEATS = {"bat": ["p_whiff", "p_gb", "p_airpull"],
+                "pit": ["p_strike", "p_whiff", "p_gb"]}
+PERIPH_MIN_FIT = 80   # need this many training pairs to fit a feature's beta
+
+# Direction each peripheral must influence the headline stat (wOBA for
+# batters, ER/BF for pitchers). A fitted beta with the wrong sign is noise
+# from a thin sample — zero it rather than apply backwards logic.
+PERIPH_SIGNS = {
+    "bat": {"p_whiff": -1, "p_gb": -1, "p_airpull": +1},
+    "pit": {"p_strike": -1, "p_whiff": -1, "p_gb": -1},
+}
+
+
+def center_peripherals(df, feats):
+    """Add f_c columns: peripheral minus its (level, season) weighted mean."""
+    df = df.copy()
+    for f in feats:
+        if f not in df.columns:
+            df[f] = np.nan
+        means = {}
+        for (lv, ssn), g in df.groupby(["level", "season"]):
+            v = g[f].dropna()
+            if len(v) >= 20:
+                means[(lv, ssn)] = float(np.average(v, weights=g.loc[v.index, "p_n"]))
+        df[f"{f}_c"] = df.apply(
+            lambda r: r[f] - means.get((r["level"], r["season"]), np.nan)
+            if pd.notna(r[f]) else np.nan, axis=1)
+    return df
+
+
+def fit_peripheral_betas(train_c, C, headline, feats, T, signs=None):
+    """On training pairs: how much does last year's peripheral predict this
+    year's headline stat BEYOND the regressed prior? Fit each feature
+    separately (univariate WLS) so divisions with partial PBP coverage —
+    e.g. batted-ball data but no pitch sequences — still contribute.
+    Returns ({feat: (beta, n)}, total_pairs_seen)."""
+    pairs = make_pairs(train_c, same_level=True)
+    K = ballast(C, "ALL", headline)
+    base = pairs.dropna(subset=[f"{headline}_c_1", f"{headline}_c_2"])
+    shrink = base["wt_n_1"] / (base["wt_n_1"] + K)
+    base = base.assign(_resid=base[f"{headline}_c_2"] - shrink * base[f"{headline}_c_1"])
+    betas = {}
+    for f in feats:
+        col = f"{f}_c_1"
+        if col not in base.columns:
+            continue
+        sub = base.dropna(subset=[col])
+        if len(sub) < PERIPH_MIN_FIT:
+            continue
+        x = sub[col].to_numpy(dtype=float)
+        y = sub["_resid"].to_numpy(dtype=float)
+        w = sub["hmean_n"].to_numpy(dtype=float)
+        mx, my = np.average(x, weights=w), np.average(y, weights=w)
+        vx = np.average((x - mx) ** 2, weights=w)
+        if vx <= 0:
+            continue
+        cov = np.average((x - mx) * (y - my), weights=w)
+        beta = float(cov / vx)
+        if signs and f in signs:
+            beta = max(beta, 0.0) if signs[f] > 0 else min(beta, 0.0)
+        if beta != 0.0:
+            betas[f] = (beta, int(len(sub)))
+    return (betas, int(len(base))) if betas else None
+
+
 def load_summer_batting(cur):
     """Summer batting seasons keyed to the spring player's canonical id."""
     cur.execute("""
@@ -214,13 +326,29 @@ def rescale_to_env(rows, value_key):
     return df
 
 
-def backtest_side(df, summer_df, stats, headline, label):
+def backtest_side(df, summer_df, stats, headline, label, periph_feats=None,
+                  periph_signs=None):
     """Run the full backtest for one side (batting or pitching)."""
     print(f"\n{'#' * 70}\n# {label} — headline stat: {headline}\n{'#' * 70}")
+    if periph_feats:
+        df = center_peripherals(df, periph_feats)
     all_rows = []
     for T in TARGET_SEASONS:
         C = fit_training_constants(df, stats, T)
         train = C["train"]
+        betas, n_fit = (None, 0)
+        if periph_feats:
+            fit = fit_peripheral_betas(C["train_c"], C, headline, periph_feats, T,
+                                       signs=periph_signs)
+            if fit:
+                betas, n_fit = fit
+                print(f"  [{T}] peripheral betas: " +
+                      "  ".join(f"{f}={b:+.4f}(n={n})" for f, (b, n) in betas.items()))
+        periph_lookup = {}
+        if periph_feats:
+            prev = df[df["season"] == T - 1]
+            for _, r in prev.iterrows():
+                periph_lookup[r["pid"]] = {f: r.get(f"{f}_c") for f in periph_feats}
         # one history table lookup: biggest sample per (pid, season)
         hist = train.sort_values("wt_n", ascending=False).drop_duplicates(["pid", "season"])
         hist_by_pid = dict(tuple(hist.groupby("pid")))
@@ -297,10 +425,21 @@ def backtest_side(df, summer_df, stats, headline, label):
                 summer_by_pid.get(pid, []), C, [headline], level, T, cls_last)
             rec["nwbb_v1"] = proj.get(headline, (lg, 0.0))[0]
             rec["reliability"] = proj.get(headline, (lg, 0.0))[1]
+
+            # nwbb_v1p: v1 plus PBP peripheral adjustment from season T-1
+            adj = 0.0
+            if betas and pid in periph_lookup:
+                for f, (b, _n) in betas.items():
+                    v = periph_lookup[pid].get(f)
+                    if v is not None and pd.notna(v):
+                        adj += b * v
+            rec["nwbb_v1p"] = rec["nwbb_v1"] + adj
             all_rows.append(rec)
 
     res = pd.DataFrame(all_rows)
     systems = ["lgavg", "repeat", "marcel", "nwbb_v1"]
+    if periph_feats and "nwbb_v1p" in res.columns:
+        systems.append("nwbb_v1p")
     for sys_ in systems:
         res = rescale_to_env(res.to_dict("records"), sys_)
 
@@ -330,8 +469,20 @@ def main():
         bat = load_batting(cur)
         pit = load_pitching(cur)
         summer_bat = load_summer_batting(cur)
-    bat_res = backtest_side(bat, summer_bat, BAT_COMPONENTS, "woba", "BATTING")
-    pit_res = backtest_side(pit, None, PIT_COMPONENTS, "era_rate", "PITCHING")
+        bat_periph = load_pbp_peripherals(cur, "bat")
+        pit_periph = load_pbp_peripherals(cur, "pit")
+    if not bat_periph.empty:
+        bat = bat.merge(bat_periph, on=["pid", "season"], how="left")
+        bat["p_n"] = bat["p_n"].fillna(0)
+    if not pit_periph.empty:
+        pit = pit.merge(pit_periph, on=["pid", "season"], how="left")
+        pit["p_n"] = pit["p_n"].fillna(0)
+    bat_res = backtest_side(bat, summer_bat, BAT_COMPONENTS, "woba", "BATTING",
+                            periph_feats=PERIPH_FEATS["bat"],
+                            periph_signs=PERIPH_SIGNS["bat"])
+    pit_res = backtest_side(pit, None, PIT_COMPONENTS, "era_rate", "PITCHING",
+                            periph_feats=PERIPH_FEATS["pit"],
+                            periph_signs=PERIPH_SIGNS["pit"])
     out = Path(__file__).resolve().parent / "backtest_results.csv"
     pd.concat([bat_res.assign(side="bat"), pit_res.assign(side="pit")]).to_csv(out, index=False)
     print(f"\nWrote per-player results to {out}")
