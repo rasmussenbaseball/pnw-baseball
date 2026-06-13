@@ -333,9 +333,15 @@ def backtest_side(df, summer_df, stats, headline, label, periph_feats=None,
     if periph_feats:
         df = center_peripherals(df, periph_feats)
     all_rows = []
+    is_pit = headline == "era_rate"
     for T in TARGET_SEASONS:
         C = fit_training_constants(df, stats, T)
         train = C["train"]
+        run_coef = None
+        if is_pit:
+            f = train.dropna(subset=["era_rate", "k_pct", "bb_pct", "hr_bf"])
+            Xr = np.column_stack([f.k_pct, f.bb_pct, f.hr_bf, np.ones(len(f))])
+            run_coef, *_ = np.linalg.lstsq(Xr, f.era_rate.to_numpy(), rcond=None)
         betas, n_fit = (None, 0)
         if periph_feats:
             fit = fit_peripheral_betas(C["train_c"], C, headline, periph_feats, T,
@@ -420,10 +426,17 @@ def backtest_side(df, summer_df, stats, headline, label, periph_feats=None,
             if had_history:
                 hsort = h.sort_values("season")
                 cls_last = hsort.iloc[-1]["cls"]
+            comps = [headline] + (["k_pct", "bb_pct", "hr_bf"] if is_pit else [])
             proj = project_player(
                 h if had_history else pd.DataFrame(columns=df.columns),
-                summer_by_pid.get(pid, []), C, [headline], level, T, cls_last)
-            rec["nwbb_v1"] = proj.get(headline, (lg, 0.0))[0]
+                summer_by_pid.get(pid, []), C, comps, level, T, cls_last)
+            v1 = proj.get(headline, (lg, 0.0))[0]
+            # pitcher: blend FIP-reconstruction (stable K/BB/HR) with direct ERA
+            if is_pit and run_coef is not None and all(s in proj for s in ("k_pct", "bb_pct", "hr_bf")):
+                fip_rate = (run_coef[0]*proj["k_pct"][0] + run_coef[1]*proj["bb_pct"][0]
+                            + run_coef[2]*proj["hr_bf"][0] + run_coef[3])
+                v1 = 0.5 * fip_rate + 0.5 * v1
+            rec["nwbb_v1"] = v1
             rec["reliability"] = proj.get(headline, (lg, 0.0))[1]
 
             # nwbb_v1p: v1 plus PBP peripheral adjustment from season T-1

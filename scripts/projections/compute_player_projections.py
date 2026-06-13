@@ -63,8 +63,22 @@ def build_summer_lookup(summer_df, max_season):
     return out
 
 
+FIP_BLEND = 0.5   # pitcher run projection = 0.5*FIP-recon + 0.5*direct-ERA (backtest-best)
+
+
+def fit_run_estimator(df, target):
+    """ER/BF ~ K% + BB% + HR/BF on pre-target pitcher-seasons (FIP-style weights;
+    HR term is heavily regressed upstream so this is effectively xFIP-like)."""
+    import numpy as np
+    f = df[df["season"] < target].dropna(subset=["era_rate", "k_pct", "bb_pct", "hr_bf"])
+    X = np.column_stack([f.k_pct, f.bb_pct, f.hr_bf, np.ones(len(f))])
+    coef, *_ = np.linalg.lstsq(X, f.era_rate.to_numpy(), rcond=None)
+    return coef
+
+
 def project_side(df, summer_df, components, headline, side, target, cur):
     C = fit_training_constants(df, components, target)
+    run_coef = fit_run_estimator(df, target) if side == "pit" else None
     feats = PERIPH_FEATS[side]
     fit = fit_peripheral_betas(C["train_c"], C, headline, feats, target,
                                signs=PERIPH_SIGNS[side])
@@ -96,6 +110,13 @@ def project_side(df, summer_df, components, headline, side, target, cur):
         if headline not in proj:
             continue
         head_val, rel = proj[headline]
+        # Pitcher run projection: blend FIP-reconstruction (stable K/BB/HR) with
+        # the regressed direct ERA. Drives off peripherals, not noisy ERA.
+        if side == "pit" and run_coef is not None and all(
+                s in proj for s in ("k_pct", "bb_pct", "hr_bf")):
+            fip_rate = (run_coef[0]*proj["k_pct"][0] + run_coef[1]*proj["bb_pct"][0]
+                        + run_coef[2]*proj["hr_bf"][0] + run_coef[3])
+            head_val = FIP_BLEND * fip_rate + (1 - FIP_BLEND) * head_val
         adj = 0.0
         for f, (b, _n) in betas.items():
             v = periph_lookup.get(pid, {}).get(f)
