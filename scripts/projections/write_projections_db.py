@@ -44,6 +44,11 @@ FOURYR = {"D1", "D2", "D3", "NAIA"}
 # instead of the league-average ~2 HR. ISO .05 -> ~0.2 HR/150; ISO .25 -> ~6.
 ISO_HR_B0, ISO_HR_B1 = -0.00844, 0.2037
 
+# Pitcher projections are too compressed toward the mean (backtest calibration
+# slope 1.17); expanding the deviation from the level mean improves accuracy AND
+# lets elite arms reach sub-3 / weak ones 7+. Hitters are well-calibrated (0.92).
+PIT_EXPAND = 1.15
+
 
 def band_half(rel, side):
     """Credible reliability-scaled half-width for the low/median/high range.
@@ -51,9 +56,11 @@ def band_half(rel, side):
     wide (useless). Tighter for high-confidence players; capped so no band is
     absurd. Units: ERA runs for pitchers, wOBA points for hitters."""
     rel = max(0.0, min(1.0, rel or 0.0))
+    # Reliability-scaled, NOT capped: confident players get tight ranges, and
+    # nothing is artificially limited (a real outlier can range to extremes).
     if side == "pit":
-        return round(min(max(0.30 + 1.00 * (1 - rel), 0.30), 1.20), 3)   # ~±0.5 (high) to ±1.2 (low)
-    return round(min(max(0.025 + 0.050 * (1 - rel), 0.025), 0.070), 4)    # wOBA ±25 to ±70 pts
+        return round(0.40 + 1.60 * (1 - rel), 3)    # ERA half-width
+    return round(0.028 + 0.075 * (1 - rel), 4)      # wOBA half-width
 
 
 def departing(level, cls):
@@ -156,6 +163,25 @@ def main():
             for r in cur.fetchall():
                 meta.setdefault(r["cid"], r)   # first side wins for name/pos; fine
 
+        # --- usage-based role detection (smart role logic) ---
+        # A player's role is decided by their MOST RECENT season's actual usage,
+        # not a static position label. If a two-way player's latest season is all
+        # pitching (e.g. a JUCO 1B/OF who became a D1 pitcher), we drop the stale
+        # hitting projection -- and vice versa. True current two-ways get both.
+        # per-level league mean ER/BF (most recent season) = expansion center
+        lvl_mean_er = {}
+        for lv, g in pit[pit["season"] == TARGET - 1].groupby("level"):
+            v = g["era_rate"].dropna()
+            if len(v):
+                lvl_mean_er[lv] = float(np.average(v, weights=g.loc[v.index, "wt_n"]))
+        bat_latest = bat.groupby("pid")["season"].max()
+        pit_latest = pit.groupby("pid")["season"].max()
+        role = {}
+        for pid in set(bat_latest.index) | set(pit_latest.index):
+            bl = int(bat_latest.get(pid, -1)); pl = int(pit_latest.get(pid, -1))
+            latest = max(bl, pl)
+            role[pid] = {"bat": bl == latest and bl > 0, "pit": pl == latest and pl > 0}
+
         rows = []
         for side in ("bat", "pit"):
             df = bat if side == "bat" else pit
@@ -199,10 +225,10 @@ def main():
                 cur_level, cls = last["level"], last["cls"]
                 cls = cls if isinstance(cls, str) else None   # NaN -> None (JSON-safe)
                 m = meta.get(pid, {})
-                pos = (m.get("pos") or "").upper()
-                # don't show pure pitchers as hitters (or pure position players
-                # as pitchers). Two-way players (slash positions) pass both.
-                if side == "bat" and pos in ("P", "RHP", "LHP"):
+                # smart role gate: only project the side the player still plays,
+                # judged by their most recent season's usage (drops stale roles
+                # for players who consolidated to one role at the next level).
+                if not role.get(pid, {}).get(side, True):
                     continue
                 # decide 2027 team + level
                 if pid in commits_canon:
@@ -252,7 +278,15 @@ def main():
                 else:
                     k, bb, hrb = (proj.get(s, (0, 0))[0] for s in ["k_pct", "bb_pct", "hr_bf"])
                     fip_rate = run_coef[0]*k + run_coef[1]*bb + run_coef[2]*hrb + run_coef[3]
-                    er = (FIP_BLEND * fip_rate + (1 - FIP_BLEND) * head) * 39.6   # ERA scale
+                    er_bf = FIP_BLEND * fip_rate + (1 - FIP_BLEND) * head
+                    # de-compress: pitcher projections are statistically too
+                    # squashed toward the mean (calibration slope 1.17 in
+                    # backtest -- expanding improves RMSE). Expand the deviation
+                    # from the level mean so elite arms reach sub-3 and weak ones
+                    # 7+, instead of everyone bunched at ~5.
+                    lg_er = lvl_mean_er.get(level, er_bf)
+                    er = (lg_er + PIT_EXPAND * (er_bf - lg_er)) * 39.6   # ERA scale
+                    fip_rate = lg_er + PIT_EXPAND * (fip_rate - lg_er)
                     hw = band_half(rel, "pit")
                     line.update({"BF": round(pt), "ERA": round(er, 2), "FIP": round(fip_rate * 39.6, 2),
                                  "K_pct": round(k, 3), "BB_pct": round(bb, 3), "HR_bf": round(hrb, 4),

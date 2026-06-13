@@ -81,7 +81,7 @@ function HitterTable({ rows }) {
           <tr className="bg-gray-50 dark:bg-gray-800/60">
             <th className={THL} colSpan={3}> </th>
             <th className={GROUP} colSpan={8}>Counting</th>
-            <th className={GROUP + ' border-l border-gray-200 dark:border-gray-700'} colSpan={5}>Rate &amp; value</th>
+            <th className={GROUP + ' border-l border-gray-200 dark:border-gray-700'} colSpan={4}>Rate &amp; value</th>
             <th className={GROUP + ' border-l border-gray-200 dark:border-gray-700'} colSpan={3}>Plate skills (Δ vs ’26)</th>
             <th className={GROUP} colSpan={1}> </th>
           </tr>
@@ -90,7 +90,7 @@ function HitterTable({ rows }) {
             <th className={TH}>PA</th><th className={TH}>H</th><th className={TH}>2B</th><th className={TH}>3B</th>
             <th className={TH}>HR</th><th className={TH}>R</th><th className={TH}>RBI</th><th className={TH}>BB</th>
             <th className={TH + ' border-l border-gray-200 dark:border-gray-700'}>AVG</th><th className={TH}>OBP</th><th className={TH}>SLG</th>
-            <th className={TH}>wOBA</th><th className={TH}>Range</th>
+            <th className={TH}>wOBA</th>
             <th className={TH + ' border-l border-gray-200 dark:border-gray-700'}>Whiff</th><th className={TH}>GB</th><th className={TH}>Pull-air</th>
             <th className={TH + ' border-l border-gray-200 dark:border-gray-700'}>Conf</th>
           </tr>
@@ -115,7 +115,6 @@ function HitterTable({ rows }) {
                 <td className={TD}>{slash(p.OBP)}</td>
                 <td className={TD}>{slash(p.SLG)}</td>
                 <td className={`${TD} ${valueColor(p.wOBA, 0.300, 0.430)}`}>{slash(p.wOBA)}</td>
-                <td className={TD + ' text-gray-400 text-[10px]'}>{slash(p.wOBA_lo)}–{slash(p.wOBA_hi)}</td>
                 <td className={TD + ' border-l border-gray-100 dark:border-gray-800'}>{pct(p, 'p_whiff', 'p_whiff_prev')}</td>
                 <td className={TD}>{pct(p, 'p_gb', 'p_gb_prev')}</td>
                 <td className={TD}>{pct(p, 'p_airpull', 'p_airpull_prev')}</td>
@@ -137,14 +136,14 @@ function PitcherTable({ rows }) {
         <thead>
           <tr className="bg-gray-50 dark:bg-gray-800/60">
             <th className={THL} colSpan={3}> </th>
-            <th className={GROUP} colSpan={5}>Run prevention</th>
+            <th className={GROUP} colSpan={4}>Run prevention</th>
             <th className={GROUP + ' border-l border-gray-200 dark:border-gray-700'} colSpan={2}>Command</th>
             <th className={GROUP + ' border-l border-gray-200 dark:border-gray-700'} colSpan={3}>Stuff (Δ vs ’26)</th>
             <th className={GROUP} colSpan={1}> </th>
           </tr>
           <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
             <th className={THL}>Player</th><th className={TH}>’27</th><th className={TH}>Pos</th>
-            <th className={TH}>BF</th><th className={TH}>ERA</th><th className={TH}>Range</th><th className={TH}>FIP</th>
+            <th className={TH}>BF</th><th className={TH}>ERA</th><th className={TH}>FIP</th>
             <th className={TH} title="Career ERA minus FIP. Negative = beats FIP; positive = unlucky.">Luck</th>
             <th className={TH + ' border-l border-gray-200 dark:border-gray-700'}>K%</th><th className={TH}>BB%</th>
             <th className={TH + ' border-l border-gray-200 dark:border-gray-700'}>Whiff</th><th className={TH}>GB</th><th className={TH}>Strike</th>
@@ -161,7 +160,6 @@ function PitcherTable({ rows }) {
                 <td className={TD}>{r.pos || '–'}</td>
                 <td className={TD}>{p.BF ?? '–'}</td>
                 <td className={`${TD} ${valueColor(p.ERA, 3.5, 7.0, true)}`}>{f2(p.ERA)}</td>
-                <td className={TD + ' text-gray-400 text-[10px]'}>{f2(p.ERA_lo)}–{f2(p.ERA_hi)}</td>
                 <td className={TD}>{f2(p.FIP)}</td>
                 <td className={TD + ' text-[11px]'}>{p.fip_luck === null || p.fip_luck === undefined ? '–' : (p.fip_luck > 0 ? '+' : '') + p.fip_luck.toFixed(1)}</td>
                 <td className={TD + ' border-l border-gray-100 dark:border-gray-800'}>{Math.round((p.K_pct ?? 0) * 100)}</td>
@@ -244,9 +242,8 @@ export default function TeamProjections() {
           </section>
 
           <div className="text-xs text-gray-400 dark:text-gray-500 space-y-1 pt-3 border-t border-gray-100 dark:border-gray-800">
-            <p><b>Range</b> = projected 10th–90th percentile (floor–ceiling). <b>Conf</b> = how much career data backs the
-              projection (more data → tighter range). <b>Plate skills / Stuff</b> show the projected rate with the projected
-              change vs 2026 (▲/▼).</p>
+            <p><b>Conf</b> = how much career data backs the projection (more data → more confident, less regression).
+              <b> Plate skills / Stuff</b> show the projected rate with the projected change vs 2026 (▲/▼).</p>
             <p><b>ERA</b> blends FIP-reconstruction with regressed ERA (leans on the stable peripherals, not noisy ERA).
               <b> Luck</b> = career ERA−FIP: negative means the pitcher has beaten his FIP, positive means he’s been unlucky.
               Incoming transfers are projected at their new level.</p>
