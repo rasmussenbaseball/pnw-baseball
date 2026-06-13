@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.models.database import get_connection  # noqa: E402
 from derive_constants import load_batting, load_pitching  # noqa: E402
 from backtest import (  # noqa: E402
-    BAT_COMPONENTS, PIT_COMPONENTS, PERIPH_FEATS, CLASS_NEXT, fit_training_constants,
+    BAT_COMPONENTS, PIT_COMPONENTS, PERIPH_FEATS, CLASS_NEXT, RECENCY, fit_training_constants,
     project_player, center_peripherals, load_pbp_peripherals, load_summer_batting,
 )
 from compute_player_projections import SIGMA, Z10, build_summer_lookup  # noqa: E402
@@ -64,8 +64,10 @@ def fit_run_estimator(pit):
 
 
 def pbp_projection(periph_raw, feats, cls_last):
-    """Career PBP rate regressed to league mean by sample (data-fit ballast),
-    plus a youth nudge in the development direction. Returns {pid:{feat:(proj,last)}}."""
+    """Per-pid PBP rate regressed to league mean by sample (data-fit ballast),
+    plus a youth nudge. Each season is weighted by recency (5/4/3) AND sample
+    (pitches), matching the core model -- so a tiny cameo season barely counts
+    and recent work counts most. Returns {pid:{feat:(proj,last)}}."""
     lg = {f: np.average(periph_raw[f].dropna(),
                         weights=periph_raw.loc[periph_raw[f].dropna().index, "p_n"])
           for f in feats if periph_raw[f].notna().any()}
@@ -73,18 +75,41 @@ def pbp_projection(periph_raw, feats, cls_last):
     for pid, g in periph_raw.groupby("pid"):
         d = {}
         for f, (K, sign) in feats.items():
-            gg = g.dropna(subset=[f])
+            gg = g.dropna(subset=[f]).copy()
             if gg.empty or f not in lg:
                 continue
-            n = gg["p_n"].sum()
-            career = np.average(gg[f], weights=gg["p_n"])
-            proj = (career * n + lg[f] * K) / (n + K)
+            # recency x sample weight per season
+            gg["w"] = gg.apply(lambda r: RECENCY.get(TARGET - int(r["season"]), 2.0) * r["p_n"], axis=1)
+            eff_n = gg["w"].sum() / RECENCY[1]      # back to raw-sample units for the ballast
+            career = np.average(gg[f], weights=gg["w"])
+            proj = (career * eff_n + lg[f] * K) / (eff_n + K)
             if sign:
                 proj += sign * YOUTH_NUDGE.get(cls_last.get(pid, "Sr"), 0.0)
             last = gg[gg["season"] == TARGET - 1]
             d[f] = (proj, float(last[f].iloc[0]) if not last.empty else None)
         if d:
             out[pid] = d
+    return out
+
+
+def load_fip_luck(cur):
+    """{canonical_id: BF-weighted career (ERA - FIP)}. Negative => persistently
+    beats FIP (run-prevention skill / luck); positive => underperforms FIP
+    (unlucky -> rebound candidate). BF-weighted so tiny cameos don't distort."""
+    cur.execute("""
+        WITH canon AS (SELECT linked_id pid, canonical_id cid FROM player_links)
+        SELECT COALESCE(c.cid, ps.player_id) cid, ps.batters_faced bf,
+               ps.era::float era, ps.fip::float fip
+        FROM pitching_stats ps LEFT JOIN canon c ON c.pid = ps.player_id
+        WHERE ps.batters_faced >= 50 AND ps.era IS NOT NULL AND ps.fip IS NOT NULL
+    """)
+    rows = {}
+    for r in cur.fetchall():
+        rows.setdefault(r["cid"], []).append((r["bf"], r["era"] - r["fip"]))
+    out = {}
+    for cid, lst in rows.items():
+        w = sum(bf for bf, _ in lst)
+        out[cid] = sum(bf * g for bf, g in lst) / w if w else None
     return out
 
 
@@ -111,6 +136,7 @@ def main():
         bat_p = load_pbp_peripherals(cur, "bat")
         pit_p = load_pbp_peripherals(cur, "pit")
         run_coef = fit_run_estimator(pit)
+        fip_luck = load_fip_luck(cur)
 
         rosters = {}
         for side, tbl, idc in [("bat", "batting_stats", "plate_appearances"),
@@ -187,9 +213,11 @@ def main():
                 fip_rate = run_coef[0]*k + run_coef[1]*bb + run_coef[2]*hrb + run_coef[3]
                 era_rate = FIP_BLEND * fip_rate + (1 - FIP_BLEND) * era_d
                 sigma = max(a_sig + b_sig * rel, 0.015)
+                luck = fip_luck.get(cid)
                 row.update({"BF": round(pt), "ERA~": f"{era_rate*39.6:.2f}",
                             "FIP~": f"{fip_rate*39.6:.2f}", "K%": f"{k:.3f}", "BB%": f"{bb:.3f}",
                             "HR/BF": f"{hrb:.3f}",
+                            "FIPluck": (f"{luck:+.2f}" if luck is not None else "-"),
                             "ERA_rng": f"{(era_rate-Z10*sigma)*39.6:.2f}-{(era_rate+Z10*sigma)*39.6:.2f}"})
             for f in pbp_feats:
                 pv = pbp_proj.get(cid, {}).get(f)
@@ -206,11 +234,13 @@ def main():
         print(pd.DataFrame(hitters)[cols].to_string(index=False))
     print(f"\n{'='*72}\n{team} — 2027 PROJECTED PITCHERS (returning)\n{'='*72}")
     if pitchers:
-        cols = ["name", "pos", "cls", "BF", "ERA~", "FIP~", "K%", "BB%", "HR/BF",
+        cols = ["name", "pos", "cls", "BF", "ERA~", "FIP~", "FIPluck", "K%", "BB%", "HR/BF",
                 "Whiff%", "GB%", "Strike%", "rel"]
         print(pd.DataFrame(pitchers)[cols].to_string(index=False))
     print("\nPBP stats: projected value with (Δ vs 2026); '-' = no PBP coverage.")
     print("Pitcher ERA~ = 50/50 blend of FIP-reconstruction and direct ERA.")
+    print("FIPluck = career BF-weighted (ERA-FIP): negative = beats FIP (skill/luck),")
+    print("positive = underperforms FIP (unlucky -> rebound candidate). ~16% carries forward.")
 
 
 if __name__ == "__main__":
