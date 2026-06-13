@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from app.models.database import get_connection  # noqa: E402
 from app.stats.advanced import (  # noqa: E402
-    DEFAULT_WEIGHTS, CollegeWAR, compute_college_war,
+    DEFAULT_WEIGHTS, DIVISION_SEASON, CollegeWAR, compute_college_war,
 )
 from derive_constants import load_batting, load_pitching  # noqa: E402
 from backtest import (  # noqa: E402
@@ -52,6 +52,11 @@ ISO_HR_B0, ISO_HR_B1 = -0.00844, 0.2037
 # slope 1.17); expanding the deviation from the level mean improves accuracy AND
 # lets elite arms reach sub-3 / weak ones 7+. Hitters are well-calibrated (0.92).
 PIT_EXPAND = 1.15
+
+# Real innings-per-batter-faced (notation-corrected league avg). Used to turn a
+# projected BF into IP and to put WHIP on a per-inning basis. The old 0.245
+# overstated IP and made WHIP read far too low.
+IP_PER_BF = 0.217
 
 # Minimum PA/BF for a season to help FIT model constants (reliability, aging,
 # translations, refinement). Players below this are still projected (to fill out
@@ -327,6 +332,82 @@ def add_war(rows, pos_fracs):
         p["WAR"] = round(war.total_war, 1)
 
 
+_FIELD_SLOTS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"]
+_SLOT_SRC = {"C": ["C"], "1B": ["1B", "3B"], "2B": ["2B", "SS", "3B"],
+             "3B": ["3B", "1B", "2B", "SS"], "SS": ["SS", "2B", "3B"],
+             "LF": ["LF", "CF", "RF", "OF"], "CF": ["LF", "CF", "RF", "OF"],
+             "RF": ["LF", "CF", "RF", "OF"]}
+_DC = dict(CAP=0.90, PRIMARY=0.80, BACKUP_MAX=0.34, DH_MAX=0.60, FLOOR=0.05)
+
+
+def allocate_hitter_pa(rows):
+    """Set each hitter's PA from a realistic playing-time share rather than a
+    compressed per-player guess. Per team we build a depth chart: each spot goes
+    to whoever played it most last year, the rest fill in (OF interchangeable;
+    1B/3B and 2B/SS/3B interchangeable), the best idle bat DHs, everyone rests
+    some, and the deep bench still gets a ~5% spot share. A player's total share
+    of games x the level's full-season PA = his projected PA, so a full-time
+    starter lands near a full season and a backup gets a back-up's reps."""
+    by_team = {}
+    for r in rows:
+        if r["side"] == "bat":
+            by_team.setdefault(r["team_id"], []).append(r)
+    for team_rows in by_team.values():
+        players = []
+        for r in team_rows:
+            pg = r["proj"].get("pos_games") or {}
+            if not pg:
+                toks = [t.strip() for t in (r.get("pos") or "").upper().split("/") if t.strip()]
+                pg = {t: 1 for t in toks}
+            players.append({"r": r, "woba": r["proj"].get("wOBA", 0) or 0, "games": pg})
+        if not players:
+            continue
+        cg = lambda p, s: sum(p["games"].get(x, 0) for x in _SLOT_SRC[s])
+        primary, claimed = {}, {}
+        claims = sorted(((p["games"].get(s, 0), p["woba"], i, s)
+                         for i, p in enumerate(players) for s in _FIELD_SLOTS if p["games"].get(s, 0) > 0),
+                        reverse=True)
+        for _, _, i, s in claims:
+            if i not in primary and s not in claimed:
+                primary[i] = s; claimed[s] = i
+        for s in _FIELD_SLOTS:
+            if s not in claimed:
+                cand = sorted((p for k, p in enumerate(players) if k not in primary and cg(p, s) > 0),
+                              key=lambda p: (cg(p, s), p["woba"]), reverse=True)
+                if cand:
+                    i = players.index(cand[0]); primary[i] = s; claimed[s] = i
+        alloc = [0.0] * len(players); cap = [_DC["CAP"]] * len(players)
+        for i, s in primary.items():
+            alloc[i] += _DC["PRIMARY"]; cap[i] -= _DC["PRIMARY"]
+        for s in _FIELD_SLOTS:
+            rem = 1.0 - (alloc[claimed[s]] if s in claimed else 0.0)
+            backups = sorted((k for k, p in enumerate(players) if primary.get(k) != s and cg(p, s) > 0 and cap[k] > 1e-6),
+                             key=lambda k: (cg(players[k], s), players[k]["woba"]), reverse=True)
+            for k in backups:
+                if rem <= 1e-6:
+                    break
+                t = min(cap[k], rem, _DC["BACKUP_MAX"])
+                if t > 0:
+                    alloc[k] += t; cap[k] -= t; rem -= t
+        dh = 1.0
+        for k in sorted(range(len(players)), key=lambda k: -players[k]["woba"]):
+            if dh <= 1e-6:
+                break
+            t = min(cap[k], dh, _DC["DH_MAX"])
+            if t > 0:
+                alloc[k] += t; cap[k] -= t; dh -= t
+        for k in range(len(players)):
+            if alloc[k] < _DC["FLOOR"]:
+                alloc[k] = _DC["FLOOR"]
+        for k, p in enumerate(players):
+            r = p["r"]
+            full_pa = DIVISION_SEASON.get(r["proj"]["level"], DIVISION_SEASON["NAIA"])["pa"]
+            pa = round(min(alloc[k], _DC["CAP"]) * full_pa)
+            if r["proj"].get("insufficient"):
+                pa = min(pa, 45)
+            r["proj"]["PT"] = pa
+
+
 def expand_to_achievable(rows):
     """Two product-driven passes:
       1. Stretch each driver rate's spread to its real achievable distribution
@@ -354,9 +435,10 @@ def expand_to_achievable(rows):
                 mapped = _quantile_map([grp[i]["proj"][key] for i in idxs], arr)
                 for j, i in enumerate(idxs):
                     grp[i]["proj"][key] = round(mapped[j], 4)
-            # --- pass 2: playing time by projected quality ---
+            # --- pass 2: playing time by projected quality (pitchers only;
+            # hitter PA is set from the depth-chart share in allocate_hitter_pa) ---
             arr = ptd.get((side, level))
-            if arr is not None and len(grp) >= 3:
+            if side == "pit" and arr is not None and len(grp) >= 3:
                 if side == "pit":
                     # quality + strike-throwing durability decide the workload
                     qz = _zscores([r["sort_val"] for r in grp])     # sort_val = -ER (higher=better)
@@ -422,9 +504,10 @@ def expand_to_achievable(rows):
                       "OBP": round(obp, 3), "SLG": round(slg, 3), "wOBA": round(woba, 3)})
         else:
             p["BF"] = round(pt)
-            p["IP"] = round(pt * 0.245, 1)
+            p["IP"] = round(pt * IP_PER_BF, 1)
             if p.get("HR_bf") is not None:
                 p["HR_allowed"] = round(p["HR_bf"] * pt, 1)
+                p["HR9"] = round(p["HR_bf"] * 9 / IP_PER_BF, 2)
             # ERA derived from FIP (skill) + only the repeatable ~16% of a
             # pitcher's career ERA-FIP gap, so ERA and FIP stay consistent and
             # no one systematically "beats their FIP".
@@ -727,12 +810,20 @@ def main():
                     er = (lg_er + expand * (er_bf - lg_er)) * 39.6   # ERA scale
                     fip_rate = lg_er + expand * (fip_rate - lg_er)
                     hw = band_half(rel, "pit")
-                    ip = pt * 0.245                      # ~74% of BF are outs
-                    whip_rate = proj.get("whip_rate", (None, 0))[0]   # baserunners/BF
-                    whip = round(whip_rate / 0.245, 2) if whip_rate else None
+                    ip = pt * IP_PER_BF
+                    whip_rate = proj.get("whip_rate", (None, 0))[0]   # (H+BB) per BF
+                    whip = round(whip_rate / IP_PER_BF, 2) if whip_rate else None
+                    hr9 = round(hrb * 9 / IP_PER_BF, 2)               # HR allowed per 9 IP
+                    # opponent AVG = hits / at-bats. H/BF = (H+BB)/BF - BB/BF;
+                    # AB/BF ~= 1 - BB% - ~3% (HBP + sac).
+                    opp_avg = None
+                    if whip_rate:
+                        ab_frac = max(0.5, 1 - bb - 0.03)
+                        opp_avg = round(min(0.40, max(0.15, (whip_rate - bb) / ab_frac)), 3)
                     line.update({"BF": round(pt), "IP": round(ip, 1),
                                  "ERA": round(er, 2), "FIP": round(fip_rate * 39.6, 2),
-                                 "WHIP": whip, "HR_allowed": round(hrb * pt, 1),
+                                 "WHIP": whip, "HR_allowed": round(hrb * pt, 1), "HR9": hr9,
+                                 "opp_avg": opp_avg,
                                  "K_pct": round(k, 3), "BB_pct": round(bb, 3), "HR_bf": round(hrb, 4),
                                  "ERA_lo": round(er - hw, 2), "ERA_hi": round(er + hw, 2),
                                  "fip_luck": (round(fip_luck.get(pid), 2) if fip_luck.get(pid) is not None else None)})
@@ -756,6 +847,7 @@ def main():
                              "from_team_id": int(m.get("team_id")) if m.get("team_id") else None,
                              "sort_val": round(float(sort_val), 5), "proj": line})
 
+    allocate_hitter_pa(rows)
     expand_to_achievable(rows)
     add_war(rows, pos_fracs)
 

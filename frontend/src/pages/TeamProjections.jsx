@@ -152,7 +152,7 @@ function normLine(p, isBat) {
 function Table({ rows, side, expanded, toggle, norm }) {
   if (!rows?.length) return <p className="text-sm text-gray-500 py-4">No projected {side === 'bat' ? 'hitters' : 'pitchers'}.</p>
   const isBat = side === 'bat'
-  const span = isBat ? 20 : 16
+  const span = isBat ? 20 : 17
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
       <table className="min-w-full text-xs">
@@ -164,7 +164,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
               <th className={GROUP + BL} colSpan={4}>Rate &amp; value</th>
               <th className={GROUP + BL} colSpan={3}>Plate skills (Δ vs ’26)</th>
             </> : <>
-              <th className={GROUP} colSpan={6}>Run prevention</th>
+              <th className={GROUP} colSpan={7}>Run prevention</th>
               <th className={GROUP + BL} colSpan={2}>Command</th>
               <th className={GROUP + BL} colSpan={3}>Stuff (Δ vs ’26)</th>
             </>}
@@ -178,7 +178,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
               <th className={TH + BL}>AVG</th><th className={TH}>OBP</th><th className={TH}>SLG</th><th className={TH}>wOBA</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Pull-air</th>
             </> : <>
-              <th className={TH}>BF</th><th className={TH}>IP</th><th className={TH}>ERA</th><th className={TH}>FIP</th><th className={TH}>WHIP</th><th className={TH}>HR</th>
+              <th className={TH}>BF</th><th className={TH}>IP</th><th className={TH}>ERA</th><th className={TH}>FIP</th><th className={TH}>WHIP</th><th className={TH}>Opp AVG</th><th className={TH}>HR/9</th>
               <th className={TH + BL}>K%</th><th className={TH}>BB%</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Strike</th>
             </>}
@@ -212,7 +212,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
                     <td className={TD}>{p.BF ?? '–'}</td><td className={TD}>{f1(p.IP)}</td>
                     <td className={`${TD} ${valueColor(p.ERA, 3.5, 7.0, true)}`}>{f2(p.ERA)}</td>
                     <td className={TD}>{f2(p.FIP)}</td>
-                    <td className={TD}>{f2(p.WHIP)}</td><td className={TD}>{f1(p.HR_allowed)}</td>
+                    <td className={TD}>{f2(p.WHIP)}</td><td className={TD}>{slash(p.opp_avg)}</td><td className={TD}>{f2(p.HR9)}</td>
                     <td className={TD + BL}>{pctInt(p.K_pct)}</td><td className={TD}>{pctInt(p.BB_pct)}</td>
                     <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev')}</td>
                     <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev')}</td><td className={TD}>{pctDelta(p, 'p_strike', 'p_strike_prev')}</td>
@@ -226,167 +226,6 @@ function Table({ rows, side, expanded, toggle, norm }) {
           })}
         </tbody>
       </table>
-    </div>
-  )
-}
-
-// ── Projected lineup / playing-time tool ────────────────────────────────────
-// Eligibility: outfielders cover all 3 OF spots; corner IF (1B/3B) cover each
-// other; 2B/SS/3B are interchangeable. A player's last-year innings share at
-// each spot (proj.pos_share) seeds where he plays. Best hitters claim full
-// time at their most-played spot first (by projected wOBA); when a spot is
-// taken they spill to a secondary one; the best bat with no defensive home
-// slides to DH; everyone left rides the bench. Result: each player's projected
-// share of games at every position, plus bench %.
-const FIELD_SLOTS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
-const SLOT_SOURCES = {
-  C: ['C'],
-  '1B': ['1B', '3B'],
-  '2B': ['2B', 'SS', '3B'],
-  '3B': ['3B', '1B', '2B', 'SS'],
-  SS: ['SS', '2B', '3B'],
-  LF: ['LF', 'CF', 'RF', 'OF'],
-  CF: ['LF', 'CF', 'RF', 'OF'],
-  RF: ['LF', 'CF', 'RF', 'OF'],
-}
-
-function playerGames(h) {
-  const pg = h.proj?.pos_games
-  if (pg && Object.keys(pg).length) return pg
-  // fallback: 1 game at each listed position so they're at least eligible there
-  const toks = (h.pos || '').toUpperCase().split('/').map((s) => s.trim()).filter(Boolean)
-  return Object.fromEntries(toks.map((t) => [t, 1]))
-}
-
-// playing-time knobs: a regular plays ~80% at his spot + spot relief, never 100%
-// (rest days); backups split the remainder; the best idle bat DHs; the deep
-// bench still gets a ~5% spot/pinch-hit share.
-const DC = { CAP: 0.90, PRIMARY: 0.80, BACKUP_MAX: 0.34, DH_MAX: 0.60, FLOOR: 0.05 }
-
-function buildDepthChart(hitters) {
-  const players = (hitters || []).map((h) => ({
-    id: h.player_id, name: h.name, incoming: h.is_incoming,
-    woba: h.proj?.wOBA ?? 0, insuf: !!h.proj?.insufficient, games: playerGames(h),
-  }))
-  if (!players.length) return { rows: [], starters: {}, gaps: [...FIELD_SLOTS] }
-  // games a player can claim at a slot (direct + cross-eligible spots)
-  const cg = (p, slot) => SLOT_SOURCES[slot].reduce((s, src) => s + (p.games[src] || 0), 0)
-
-  // 1. primary at each spot = whoever played there most (strongest claim first)
-  const primaryOf = {}, claimed = {}
-  const claims = []
-  players.forEach((p) => FIELD_SLOTS.forEach((s) => { const g = p.games[s] || 0; if (g > 0) claims.push([g, p.woba, p.id, s]) }))
-  claims.sort((a, b) => b[0] - a[0] || b[1] - a[1])
-  for (const [, , pid, s] of claims) if (!(pid in primaryOf) && !(s in claimed)) { primaryOf[pid] = s; claimed[s] = pid }
-  // 2. fill still-empty spots from cross-eligible players (most games at a source spot)
-  for (const s of FIELD_SLOTS) if (!(s in claimed)) {
-    const cand = players.filter((p) => !(p.id in primaryOf) && cg(p, s) > 0).sort((a, b) => cg(b, s) - cg(a, s) || b.woba - a.woba)
-    if (cand.length) { primaryOf[cand[0].id] = s; claimed[s] = cand[0].id }
-  }
-  // 3. allocate: primaries take their share, backups fill the rest, best idle bat DHs
-  const alloc = {}, cap = {}
-  players.forEach((p) => { alloc[p.id] = {}; cap[p.id] = DC.CAP })
-  for (const pid in primaryOf) { const s = primaryOf[pid]; alloc[pid][s] = DC.PRIMARY; cap[pid] -= DC.PRIMARY }
-  for (const s of FIELD_SLOTS) {
-    let rem = 1 - (claimed[s] ? alloc[claimed[s]][s] : 0)
-    const backups = players.filter((p) => primaryOf[p.id] !== s && cg(p, s) > 0 && cap[p.id] > 1e-6)
-      .sort((a, b) => cg(b, s) - cg(a, s) || b.woba - a.woba)
-    for (const p of backups) {
-      if (rem <= 1e-6) break
-      const t = Math.min(cap[p.id], rem, DC.BACKUP_MAX)
-      if (t > 0) { alloc[p.id][s] = (alloc[p.id][s] || 0) + t; cap[p.id] -= t; rem -= t }
-    }
-  }
-  let dh = 1
-  for (const p of [...players].sort((a, b) => b.woba - a.woba)) {
-    if (dh <= 1e-6) break
-    const t = Math.min(cap[p.id], dh, DC.DH_MAX)
-    if (t > 0) { alloc[p.id].DH = t; cap[p.id] -= t; dh -= t }
-  }
-  // 4. bench floor: even the last guys get ~5% (spot starts / pinch hits)
-  for (const p of players) {
-    const tot = Object.values(alloc[p.id]).reduce((s, v) => s + v, 0)
-    if (tot < DC.FLOOR) {
-      const slot = primaryOf[p.id] || FIELD_SLOTS.find((s) => cg(p, s) > 0) || 'DH'
-      alloc[p.id][slot] = (alloc[p.id][slot] || 0) + (DC.FLOOR - tot)
-    }
-  }
-
-  const rows = players.map((p) => {
-    const slots = Object.entries(alloc[p.id]).filter(([, v]) => v >= 0.02)
-      .map(([s, v]) => ({ s, pct: Math.round(v * 100) })).sort((a, b) => b.pct - a.pct)
-    const onField = slots.reduce((s, x) => s + x.pct, 0)
-    return { ...p, slots, bench: Math.max(0, 100 - onField) }
-  }).sort((a, b) => a.bench - b.bench)
-
-  const starters = {}
-  for (const slot of [...FIELD_SLOTS, 'DH']) {
-    let best = null, bestv = 0
-    for (const p of players) { const v = alloc[p.id][slot] || 0; if (v > bestv) { bestv = v; best = p } }
-    starters[slot] = best
-  }
-  const gaps = FIELD_SLOTS.filter((s) => !(s in claimed))
-  return { rows, starters, gaps }
-}
-
-function SlotChip({ s, pct }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded bg-nw-teal/10 text-nw-teal text-[11px] font-medium px-1.5 py-0.5">
-      <span className="font-bold">{s}</span><span className="tabular-nums">{pct}%</span>
-    </span>
-  )
-}
-
-function LineupCard({ hitters }) {
-  const { rows, starters, gaps } = useMemo(() => buildDepthChart(hitters), [hitters])
-  return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Projected lineup &amp; playing time</h3>
-        <span className="text-[11px] text-gray-400">share of games by position · best bats play most</span>
-      </div>
-      {/* starting nine */}
-      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
-        {[...FIELD_SLOTS, 'DH'].map((slot) => {
-          const p = starters[slot]
-          return (
-            <div key={slot} className={`rounded-md border px-2 py-1.5 text-center ${p ? 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30' : 'border-rose-300 dark:border-rose-800 border-dashed bg-rose-50/40 dark:bg-rose-900/10'}`}>
-              <div className="text-[10px] font-bold uppercase tracking-wide text-nw-teal">{slot}</div>
-              {p ? <>
-                <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate" title={p.name}>{p.name}{p.incoming ? ' ↗' : ''}{p.insuf ? ' *' : ''}</div>
-                <div className="text-[11px] tabular-nums text-gray-500">{slash(p.woba)}</div>
-              </> : <div className="text-[11px] text-rose-500 mt-1">none</div>}
-            </div>
-          )
-        })}
-      </div>
-      {gaps.length > 0 && (
-        <p className="text-xs text-rose-600 dark:text-rose-400">
-          No projected player able to play: <b>{gaps.join(', ')}</b>. Incoming transfers and freshmen (added soon) should fill these.
-        </p>
-      )}
-      {/* per-player playing-time breakdown */}
-      <div>
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Projected games played by position</div>
-        <div className="space-y-1">
-          {rows.map((p) => (
-            <div key={p.id} className="flex items-center gap-2 text-xs py-0.5">
-              <span className="w-44 shrink-0 truncate font-medium text-gray-800 dark:text-gray-200" title={p.name}>
-                {p.name}{p.incoming ? ' ↗' : ''}
-                {p.insuf && <span className="ml-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-semibold px-1 py-0.5 uppercase">ltd data</span>}
-              </span>
-              <span className="flex flex-wrap gap-1 flex-1">
-                {p.slots.map((x) => <SlotChip key={x.s} s={x.s} pct={x.pct} />)}
-                {p.bench > 0 && (
-                  <span className={`inline-flex items-center gap-1 rounded text-[11px] font-medium px-1.5 py-0.5 ${p.bench >= 60 ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
-                    Bench <span className="tabular-nums">{p.bench}%</span>
-                  </span>
-                )}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   )
 }
@@ -458,7 +297,6 @@ export default function TeamProjections() {
               <p className="text-xs text-gray-500">{nTotal} projected players{nIncoming ? ` · ${nIncoming} incoming` : ''}</p>
             </div>
           </div>
-          <LineupCard hitters={payload.hitters} />
           <section>
             <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">Hitters</h3>
             <Table rows={payload.hitters} side="bat" expanded={expanded} toggle={toggle} norm={norm} />
@@ -472,8 +310,8 @@ export default function TeamProjections() {
               <b> Plate skills / Stuff</b> show the projected rate with the projected change vs 2026 (▲/▼).
               The point projection is the most-likely (median) outcome; a player’s upside lives in his ceiling — click a row to see it.</p>
             <p><b>ERA</b> blends FIP-reconstruction with regressed ERA (leans on stable peripherals). Incoming transfers (↗) are projected at their new level, with stats translated from real NWAC-to-4-year transfer history. Power gets a real bump on the move up: NWAC homers about 0.7 per 100 PA, the 4-year levels 2 to 2.6, so transfer HR rates roughly double.</p>
-            <p><b>ltd</b> (limited data) marks players who barely appeared in 2026. With little to go on they are projected as below-average (about 25th percentile) and capped at a small workload, but still included so rosters and the depth chart are complete. They firm up as transfers and freshmen are added.</p>
-            <p><b>Projected lineup</b> hands each position to whoever played it most last season, fills the rest from players who can cover it (outfielders across all 3 spots; 1B/3B and 2B/SS/3B interchangeable), slots the best remaining bat at DH, and rotates rest days so no one plays every game. Percentages are projected share of games at each spot.</p>
+            <p><b>ltd</b> (limited data) marks players who barely appeared in 2026. With little to go on they are projected as below-average (about 25th percentile) and capped at a small workload, but still included so rosters and totals are complete. They firm up as transfers and freshmen are added.</p>
+            <p><b>PA and IP</b> reflect projected playing time: the best players earn near-full workloads, backups and unproven players get fewer, so a team's reps are shared realistically rather than every regular getting the same total.</p>
           </div>
         </div>
       )}
