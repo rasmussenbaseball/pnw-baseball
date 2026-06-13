@@ -1,18 +1,23 @@
 """Project a full team roster's 2027 lines -- hitters AND pitchers -- with the
-complete projected stat set and the year-over-year change vs 2026.
+complete projected stat set (counting + rate), year-over-year deltas, and
+projected pitch-level stats.
 
-The core product: pull up a current team and see every returning player's
-projected line for next season, plus how each stat is projected to move from
-last year. Returning = played for the team in 2026 with eligibility left
-(graduating Sr/Gr excluded).
+Model pieces (all backtest-validated unless noted):
+  - rate stats from the nwbb_v1 component model (weighted history, tiered
+    regression, class aging, level translations)
+  - PITCHER run projection = 50/50 blend of FIP-reconstruction (from projected
+    K%/BB%/HR, the stable stuff) and direct ERA. Beats direct ERA in backtest
+    (.0417 vs .0425) -- this is the "great FIP, middling ERA -> project up" fix.
+  - PBP stats (Whiff%, GB%, AirPull%/Strike%) regressed toward league mean with
+    DATA-FIT ballasts (whiff is sticky -> light regression; GB heavy), plus a
+    small youth-development nudge.
+  - counting stats from fitted playing-time models + the player's career
+    extra-base mix.
 
-Rate stats come from the validated nwbb_v1 component model. Counting stats use
-the fitted playing-time models. Pitch-level stats (whiff%, GB%, ... ) are
-projected by regressing the player's career PBP rate toward the league mean by
-sample size -- shown only where we have PBP coverage.
+Returning = played for the team in 2026 with eligibility left (Sr/Gr excluded).
 
 Usage:
-  PYTHONPATH=backend python3 scripts/projections/team_projection.py "Bushnell" [--pbp]
+  PYTHONPATH=backend python3 scripts/projections/team_projection.py "Bushnell"
 """
 import sys
 from pathlib import Path
@@ -27,19 +32,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.models.database import get_connection  # noqa: E402
 from derive_constants import load_batting, load_pitching  # noqa: E402
 from backtest import (  # noqa: E402
-    BAT_COMPONENTS, PIT_COMPONENTS, PERIPH_FEATS, fit_training_constants,
+    BAT_COMPONENTS, PIT_COMPONENTS, PERIPH_FEATS, CLASS_NEXT, fit_training_constants,
     project_player, center_peripherals, load_pbp_peripherals, load_summer_batting,
 )
 from compute_player_projections import SIGMA, Z10, build_summer_lookup  # noqa: E402
 
 TARGET = 2027
-PA_A, PA_B, PA_C = 0.454, 0.023, 96.8     # fitted PA model (R^2 .22)
-BF_A, BF_B, BF_C = 0.538, -0.027, 101.2   # fitted BF model (R^2 .22)
+PA_A, PA_B, PA_C = 0.454, 0.023, 96.8
+BF_A, BF_B, BF_C = 0.538, -0.027, 101.2
 GRADUATING = {"Sr", "Sr+", "Gr", "5th"}
-# PBP display stats: (regression ballast in pitches/BIP). Career rate is
-# regressed toward the league mean by sample size, then shown with delta.
-HIT_PBP = {"p_whiff": 200, "p_gb": 70, "p_airpull": 70}
-PIT_PBP = {"p_whiff": 200, "p_gb": 70, "p_strike": 150}
+FIP_BLEND = 0.5    # weight on FIP-reconstruction vs direct ERA (backtest-best)
+# Data-fit PBP-stat regression ballasts (in pitches-seen units) + sign of the
+# youth-development nudge (young players trend toward more whiffs / strikes).
+HIT_PBP = {"p_whiff": (170, 0), "p_gb": (463, 0), "p_airpull": (232, +1)}
+PIT_PBP = {"p_whiff": (304, +1), "p_gb": (953, 0), "p_strike": (341, +1)}
+YOUTH_NUDGE = {"Fr": 0.004, "So": 0.006, "Jr": 0.002, "Sr": 0.0}  # per-stat, applied * sign
 PBP_LABEL = {"p_whiff": "Whiff%", "p_gb": "GB%", "p_airpull": "AirPull%", "p_strike": "Strike%"}
 
 
@@ -48,134 +55,162 @@ def proj_pt(hist, a, b, c):
     return a * s.get(TARGET - 1, 0) + b * s.get(TARGET - 2, 0) + c
 
 
-def pbp_projection(periph_raw, feats_ballast):
-    """Per-pid career PBP rate, regressed to league mean by sample, + the 2026
-    value for the delta. Returns {pid: {feat: (proj, last)}}."""
+def fit_run_estimator(pit):
+    """ER/BF ~ K% + BB% + HR/BF (the FIP-style run weights), on pre-target data."""
+    f = pit[pit["season"] < TARGET].dropna(subset=["era_rate", "k_pct", "bb_pct", "hr_bf"])
+    X = np.column_stack([f.k_pct, f.bb_pct, f.hr_bf, np.ones(len(f))])
+    coef, *_ = np.linalg.lstsq(X, f.era_rate.to_numpy(), rcond=None)
+    return coef
+
+
+def pbp_projection(periph_raw, feats, cls_last):
+    """Career PBP rate regressed to league mean by sample (data-fit ballast),
+    plus a youth nudge in the development direction. Returns {pid:{feat:(proj,last)}}."""
     lg = {f: np.average(periph_raw[f].dropna(),
                         weights=periph_raw.loc[periph_raw[f].dropna().index, "p_n"])
-          for f in feats_ballast if periph_raw[f].notna().any()}
+          for f in feats if periph_raw[f].notna().any()}
     out = {}
     for pid, g in periph_raw.groupby("pid"):
         d = {}
-        for f, K in feats_ballast.items():
+        for f, (K, sign) in feats.items():
             gg = g.dropna(subset=[f])
             if gg.empty or f not in lg:
                 continue
             n = gg["p_n"].sum()
             career = np.average(gg[f], weights=gg["p_n"])
             proj = (career * n + lg[f] * K) / (n + K)
+            if sign:
+                proj += sign * YOUTH_NUDGE.get(cls_last.get(pid, "Sr"), 0.0)
             last = gg[gg["season"] == TARGET - 1]
-            last_v = float(last[f].iloc[0]) if not last.empty else None
-            d[f] = (proj, last_v)
+            d[f] = (proj, float(last[f].iloc[0]) if not last.empty else None)
         if d:
             out[pid] = d
     return out
 
 
-def delta(proj, last, pct=True):
-    if last is None:
-        return ""
-    dv = proj - last
-    return f" ({dv:+.3f})" if not pct else f" ({dv*100:+.1f})"
+def fmt_delta(proj, last):
+    return f"{proj*100:.0f}" + (f"({(proj-last)*100:+.0f})" if last is not None else "")
 
 
-def project_side(team, side):
-    load_fn = load_batting if side == "bat" else load_pitching
-    comps = BAT_COMPONENTS if side == "bat" else PIT_COMPONENTS
-    headline = "woba" if side == "bat" else "era_rate"
-    pa_args = (PA_A, PA_B, PA_C) if side == "bat" else (BF_A, BF_B, BF_C)
-    pbp_feats = HIT_PBP if side == "bat" else PIT_PBP
-    stat_tbl = "batting_stats" if side == "bat" else "pitching_stats"
+def career_xbh_mix(bat, cid):
+    g = bat[bat["pid"] == cid]
+    d2, d3, hr = g["d2"].sum(), g["d3"].sum(), g["hr"].sum()
+    tot = d2 + d3 + hr
+    if tot < 5:
+        return 0.78, 0.06, 0.16   # league-ish 2B/3B/HR shares of XBH
+    return d2 / tot, d3 / tot, hr / tot
 
+
+def main():
+    team = sys.argv[1] if len(sys.argv) > 1 else "Bushnell"
     with get_connection() as conn:
         cur = conn.cursor()
-        df = load_fn(cur)
-        summer = load_summer_batting(cur) if side == "bat" else None
-        periph_raw = load_pbp_peripherals(cur, side)
-        periph_c = periph_raw.copy()
-        df_feat = df.merge(periph_raw, on=["pid", "season"], how="left")
+        bat = load_batting(cur)
+        pit = load_pitching(cur)
+        summer = load_summer_batting(cur)
+        bat_p = load_pbp_peripherals(cur, "bat")
+        pit_p = load_pbp_peripherals(cur, "pit")
+        run_coef = fit_run_estimator(pit)
+
+        rosters = {}
+        for side, tbl, idc in [("bat", "batting_stats", "plate_appearances"),
+                               ("pit", "pitching_stats", "batters_faced")]:
+            cur.execute(f"""
+                SELECT COALESCE(c.canonical_id,b.player_id) cid,
+                       p.first_name||' '||p.last_name name, p.position pos,
+                       ps.year_in_school cls26
+                FROM {tbl} b JOIN teams t ON t.id=b.team_id JOIN players p ON p.id=b.player_id
+                LEFT JOIN player_links c ON c.linked_id=b.player_id
+                LEFT JOIN player_seasons ps ON ps.player_id=b.player_id AND ps.season=2026
+                WHERE b.season=2026 AND lower(t.short_name)=lower(%s) AND b.{idc}>=20
+            """, (team,))
+            rosters[side] = cur.fetchall()
+
+    def run_side(side):
+        df = bat if side == "bat" else pit
+        periph = bat_p if side == "bat" else pit_p
+        comps = BAT_COMPONENTS if side == "bat" else PIT_COMPONENTS
+        pa_args = (PA_A, PA_B, PA_C) if side == "bat" else (BF_A, BF_B, BF_C)
+        pbp_feats = HIT_PBP if side == "bat" else PIT_PBP
+        df_feat = df.merge(periph, on=["pid", "season"], how="left")
         df_feat["p_n"] = df_feat["p_n"].fillna(0)
         df_feat = center_peripherals(df_feat, PERIPH_FEATS[side])
         C = fit_training_constants(df_feat, comps, TARGET)
         hist_all = C["train"].sort_values("wt_n", ascending=False).drop_duplicates(["pid", "season"])
         summer_lookup = build_summer_lookup(summer, TARGET) if side == "bat" else {}
-        pbp_proj = pbp_projection(periph_raw, pbp_feats)
-
-        idcol = "plate_appearances" if side == "bat" else "batters_faced"
-        cur.execute(f"""
-            SELECT COALESCE(c.canonical_id, b.player_id) AS cid,
-                   p.first_name||' '||p.last_name AS name, p.position AS pos,
-                   ps.year_in_school AS cls26
-            FROM {stat_tbl} b
-            JOIN teams t ON t.id = b.team_id
-            JOIN players p ON p.id = b.player_id
-            LEFT JOIN player_links c ON c.linked_id = b.player_id
-            LEFT JOIN player_seasons ps ON ps.player_id=b.player_id AND ps.season=2026
-            WHERE b.season=2026 AND lower(t.short_name)=lower(%s) AND b.{idcol} >= 20
-        """, (team,))
-        roster = cur.fetchall()
-
-    a_sig, b_sig = SIGMA[side]
-    out = []
-    for r in roster:
-        cid = r["cid"]
-        h = hist_all[(hist_all["pid"] == cid) & (hist_all["season"] < TARGET)]
-        if h.empty:
-            continue
-        last = h.sort_values("season").iloc[-1]
-        if last["cls"] in GRADUATING:
-            continue
-        proj = project_player(h, summer_lookup.get(cid, []), C, comps, last["level"], TARGET, last["cls"])
-        if headline not in proj:
-            continue
-        head, rel = proj[headline]
-        pt = proj_pt(h, *pa_args)
-        last26 = h[h["season"] == 2026]
-        last26 = last26.iloc[0] if not last26.empty else None
-        sigma = max(a_sig + b_sig * rel, 0.015)
-        row = {"name": r["name"], "pos": r["pos"], "cls26": r["cls26"], "rel": round(rel, 2)}
-        if side == "bat":
-            bb, k, hr, avg, iso, obp = (proj.get(s, (0, 0))[0] for s in
-                                        ["bb_pct", "k_pct", "hr_pa", "avg", "iso", "obp"])
-            row.update({"PA": round(pt), "AVG": f"{avg:.3f}", "OBP": f"{obp:.3f}",
-                        "SLG": f"{avg+iso:.3f}", "HR": round(hr*pt, 1),
-                        "K%": f"{k:.3f}", "BB%": f"{bb:.3f}", "wOBA": f"{head:.3f}",
-                        "wOBA_rng": f"{head-Z10*sigma:.3f}-{head+Z10*sigma:.3f}"})
-        else:
-            era = head * 39.6  # ER/BF -> ~ERA
-            k, bb = proj.get("k_pct", (0, 0))[0], proj.get("bb_pct", (0, 0))[0]
-            row.update({"BF": round(pt), "ERA~": f"{era:.2f}", "K%": f"{k:.3f}",
-                        "BB%": f"{bb:.3f}",
-                        "ERA_rng": f"{(head-Z10*sigma)*39.6:.2f}-{(head+Z10*sigma)*39.6:.2f}"})
-        # PBP projected stats + delta vs 2026
-        pp = pbp_proj.get(cid, {})
-        for f in pbp_feats:
-            if f in pp:
-                pv, lv = pp[f]
-                row[PBP_LABEL[f]] = f"{pv*100:.0f}{delta(pv, lv)}"
+        # class map for youth nudge
+        clsmap = {}
+        for r in rosters[side]:
+            h = hist_all[(hist_all["pid"] == r["cid"]) & (hist_all["season"] < TARGET)]
+            if not h.empty:
+                clsmap[r["cid"]] = h.sort_values("season").iloc[-1]["cls"] or "Sr"
+        pbp_proj = pbp_projection(periph, pbp_feats, clsmap)
+        a_sig, b_sig = SIGMA[side]
+        rows = []
+        for r in rosters[side]:
+            cid = r["cid"]
+            h = hist_all[(hist_all["pid"] == cid) & (hist_all["season"] < TARGET)]
+            if h.empty:
+                continue
+            last = h.sort_values("season").iloc[-1]
+            if last["cls"] in GRADUATING:
+                continue
+            proj = project_player(h, summer_lookup.get(cid, []), C, comps, last["level"], TARGET, last["cls"])
+            pt = proj_pt(h, *pa_args)
+            row = {"name": r["name"], "pos": r["pos"], "cls": r["cls26"], "rel": round(proj.get("woba", proj.get("era_rate", (0, 0)))[1], 2)}
+            if side == "bat":
+                if "woba" not in proj:
+                    continue
+                woba, rel = proj["woba"]
+                bb, k, hr_pa, avg, iso = (proj.get(s, (0, 0))[0] for s in ["bb_pct", "k_pct", "hr_pa", "avg", "iso"])
+                obp = proj.get("obp", (0, 0))[0]
+                ab = pt * (1 - bb - 0.02)
+                h_ct = avg * ab
+                hr = hr_pa * pt
+                xbh = max(iso * ab, 0)           # 2B + 2*3B + 3*HR
+                rem = max(xbh - 3 * hr, 0)       # 2B + 2*3B
+                s2, s3, _ = career_xbh_mix(bat, cid)
+                tot_nonhr = s2 + s3 if (s2 + s3) > 0 else 1
+                d3 = rem * (s3 / tot_nonhr) / (1 + s3 / tot_nonhr)   # approx split
+                d2 = rem - 2 * d3
+                sigma = max(a_sig + b_sig * rel, 0.015)
+                row.update({"PA": round(pt), "AB": round(ab), "H": round(h_ct),
+                            "2B": round(max(d2, 0), 1), "3B": round(max(d3, 0), 1),
+                            "HR": round(hr, 1), "BB": round(bb * pt), "SO": round(k * pt),
+                            "AVG": f"{avg:.3f}", "OBP": f"{obp:.3f}", "SLG": f"{avg+iso:.3f}",
+                            "wOBA": f"{woba:.3f}", "wOBA_rng": f"{woba-Z10*sigma:.3f}-{woba+Z10*sigma:.3f}"})
             else:
-                row[PBP_LABEL[f]] = "-"
-        out.append((head, row))
-    out.sort(key=lambda x: x[0], reverse=(side == "bat"))
-    return [r for _, r in out]
+                if "era_rate" not in proj:
+                    continue
+                era_d, rel = proj["era_rate"]
+                k, bb, hrb = (proj.get(s, (0, 0))[0] for s in ["k_pct", "bb_pct", "hr_bf"])
+                fip_rate = run_coef[0]*k + run_coef[1]*bb + run_coef[2]*hrb + run_coef[3]
+                era_rate = FIP_BLEND * fip_rate + (1 - FIP_BLEND) * era_d
+                sigma = max(a_sig + b_sig * rel, 0.015)
+                row.update({"BF": round(pt), "ERA~": f"{era_rate*39.6:.2f}",
+                            "FIP~": f"{fip_rate*39.6:.2f}", "K%": f"{k:.3f}", "BB%": f"{bb:.3f}",
+                            "HR/BF": f"{hrb:.3f}",
+                            "ERA_rng": f"{(era_rate-Z10*sigma)*39.6:.2f}-{(era_rate+Z10*sigma)*39.6:.2f}"})
+            for f in pbp_feats:
+                pv = pbp_proj.get(cid, {}).get(f)
+                row[PBP_LABEL[f]] = fmt_delta(*pv) if pv else "-"
+            rows.append((proj.get("woba", proj.get("era_rate"))[0], row))
+        rows.sort(key=lambda x: x[0], reverse=(side == "bat"))
+        return [r for _, r in rows]
 
-
-def main():
-    team = sys.argv[1] if len(sys.argv) > 1 else "Bushnell"
-    hitters = project_side(team, "bat")
-    pitchers = project_side(team, "pit")
-
-    print(f"\n{'='*70}\n{team} — 2027 PROJECTED HITTERS (returning)\n{'='*70}")
+    hitters, pitchers = run_side("bat"), run_side("pit")
+    print(f"\n{'='*72}\n{team} — 2027 PROJECTED HITTERS (returning)\n{'='*72}")
     if hitters:
-        cols = ["name", "pos", "cls26", "PA", "AVG", "OBP", "SLG", "HR", "K%", "BB%",
-                "wOBA", "Whiff%", "GB%", "AirPull%", "rel"]
+        cols = ["name", "pos", "cls", "PA", "AB", "H", "2B", "3B", "HR", "BB", "SO",
+                "AVG", "OBP", "SLG", "wOBA", "Whiff%", "GB%", "AirPull%", "rel"]
         print(pd.DataFrame(hitters)[cols].to_string(index=False))
-    print(f"\n{'='*70}\n{team} — 2027 PROJECTED PITCHERS (returning)\n{'='*70}")
+    print(f"\n{'='*72}\n{team} — 2027 PROJECTED PITCHERS (returning)\n{'='*72}")
     if pitchers:
-        cols = ["name", "pos", "cls26", "BF", "ERA~", "K%", "BB%", "Whiff%", "GB%",
-                "Strike%", "rel"]
+        cols = ["name", "pos", "cls", "BF", "ERA~", "FIP~", "K%", "BB%", "HR/BF",
+                "Whiff%", "GB%", "Strike%", "rel"]
         print(pd.DataFrame(pitchers)[cols].to_string(index=False))
-    print("\nPBP stats show projected value (× vs 2026 change in parens); '-' = no PBP coverage.")
+    print("\nPBP stats: projected value with (Δ vs 2026); '-' = no PBP coverage.")
+    print("Pitcher ERA~ = 50/50 blend of FIP-reconstruction and direct ERA.")
 
 
 if __name__ == "__main__":
