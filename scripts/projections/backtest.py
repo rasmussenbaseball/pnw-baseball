@@ -196,6 +196,8 @@ def load_pbp_peripherals(cur, side):
             COUNT(*) FILTER (WHERE was_in_play) AS in_play,
             COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bip,
             COUNT(*) FILTER (WHERE bb_type = 'GB') AS gb,
+            COUNT(*) FILTER (WHERE bb_type = 'LD') AS ld,
+            COUNT(*) FILTER (WHERE bb_type = 'FB') AS fb,
             COUNT(*) FILTER (
                 WHERE bb_type IN ('LD','FB')
                   AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
@@ -218,10 +220,12 @@ def load_pbp_peripherals(cur, side):
     df["p_whiff"] = df["n_s"] / swings
     df["p_gb"] = np.where(df["bip"] >= 30, df["gb"] / df["bip"].clip(lower=1), np.nan)
     df["p_strike"] = (df["n_k"] + df["n_s"] + df["n_f"] + df["in_play"]) / df["pitches"].clip(lower=1)
+    df["p_ld"] = np.where(df["bip"] >= 30, df["ld"] / df["bip"].clip(lower=1), np.nan)
+    df["p_fb"] = np.where(df["bip"] >= 30, df["fb"] / df["bip"].clip(lower=1), np.nan)
     if side == "bat":
         df["p_airpull"] = np.where(df["bip"] >= 30, df["air_pull"] / df["bip"].clip(lower=1), np.nan)
     df["p_n"] = df["pitches"]
-    keep = ["pid", "season", "p_whiff", "p_gb", "p_strike", "p_n"]
+    keep = ["pid", "season", "p_whiff", "p_gb", "p_ld", "p_fb", "p_strike", "p_n"]
     if side == "bat":
         keep.append("p_airpull")
     return df[keep]

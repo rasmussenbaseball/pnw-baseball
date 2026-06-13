@@ -49,6 +49,46 @@ ISO_HR_B0, ISO_HR_B1 = -0.00844, 0.2037
 # lets elite arms reach sub-3 / weak ones 7+. Hitters are well-calibrated (0.92).
 PIT_EXPAND = 1.15
 
+# Cross-validated multi-stat refinements: project a stat from the peripheral
+# skills that produce it, not from itself alone (analyze_all_stats.py CV gains).
+# {target: [predictors]} — predictors are box components (from proj) or PBP
+# rates (from pbp_proj). Applied only when all predictors are available.
+BAT_REFINE = {"avg": ["avg", "k_pct", "babip", "p_ld"]}        # CV -5%
+PIT_REFINE = {"bb_pct": ["bb_pct", "p_strike", "p_whiff"]}     # CV -15%
+
+
+def fit_refine(df_feat, target, preds, target_season):
+    """Fit target_next ~ predictors_now on training pairs. Returns (preds, coef)."""
+    P = make_pairs(df_feat[df_feat["season"] < target_season], same_level=True)
+    cols1 = [f"{p}_1" for p in preds]
+    need = cols1 + [f"{target}_2", "hmean_n"]
+    if any(c not in P.columns for c in need):
+        return None
+    sub = P.dropna(subset=need)
+    if len(sub) < 150:
+        return None
+    X = np.column_stack([sub[c].to_numpy(float) for c in cols1] + [np.ones(len(sub))])
+    sw = np.sqrt(sub["hmean_n"].to_numpy(float))
+    coef, *_ = np.linalg.lstsq(X * sw[:, None], sub[f"{target}_2"].to_numpy(float) * sw, rcond=None)
+    return (preds, coef)
+
+
+def apply_refine(spec, proj, pbp_for_pid):
+    """Refined stat from the player's projected predictors, or None if any
+    predictor is unavailable (-> caller keeps the baseline projection)."""
+    preds, coef = spec
+    vals = []
+    for p in preds:
+        if p in proj:
+            v = proj[p][0]
+        else:
+            t = pbp_for_pid.get(p)
+            v = t[0] if t else None
+        if v is None:
+            return None
+        vals.append(v)
+    return float(np.dot(coef[:-1], vals) + coef[-1])
+
 
 def band_half(rel, side):
     """Credible reliability-scaled half-width for the low/median/high range.
@@ -211,6 +251,12 @@ def main():
                     Xc = np.column_stack([prc[f].to_numpy(float) for f in EF] + [np.ones(len(prc))])
                     sw = np.sqrt(prc["hmean_n"].to_numpy(float))
                     era_periph, *_ = np.linalg.lstsq(Xc * sw[:, None], prc["era_rate_2"].to_numpy(float) * sw, rcond=None)
+            # multi-stat refinement models (avg / bb_pct from their peripherals)
+            refine = {}
+            for tgt, preds in (BAT_REFINE if side == "bat" else PIT_REFINE).items():
+                spec = fit_refine(df_feat, tgt, preds, TARGET)
+                if spec:
+                    refine[tgt] = spec
 
             # who do we project on this side? everyone with a recent qualified season
             recent = hist_all[hist_all["season"].isin([TARGET - 1, TARGET - 2])]
@@ -267,8 +313,14 @@ def main():
                 for s in comps:
                     if s in proj:
                         line[s] = round(proj[s][0], 4)
+                pbp_for = pbp_proj.get(pid, {})
                 if side == "bat":
                     bb, k, hr_pa, avg, iso = (proj.get(s, (0, 0))[0] for s in ["bb_pct", "k_pct", "hr_pa", "avg", "iso"])
+                    # refine AVG from its peripherals (K%, BABIP, LD%) when available
+                    if "avg" in refine:
+                        av = apply_refine(refine["avg"], proj, pbp_for)
+                        if av is not None:
+                            avg = max(0.15, min(0.45, av))
                     ab = pt * (1 - bb - 0.02)
                     # HR anchored to ISO-implied rate (blended) so weak-power
                     # hitters project toward ~0 HR instead of league average.
@@ -295,6 +347,11 @@ def main():
                     sort_val = head
                 else:
                     k, bb, hrb = (proj.get(s, (0, 0))[0] for s in ["k_pct", "bb_pct", "hr_bf"])
+                    # refine BB% from strike%/whiff% (a strike-thrower walks fewer)
+                    if "bb_pct" in refine:
+                        bbr = apply_refine(refine["bb_pct"], proj, pbp_for)
+                        if bbr is not None:
+                            bb = max(0.02, min(0.25, bbr))
                     fip_rate = run_coef[0]*k + run_coef[1]*bb + run_coef[2]*hrb + run_coef[3]
                     # Prefer the validated peripheral run model (K%,BB%,whiff,GB,
                     # strike) when we have the player's pitch-level rates; else
