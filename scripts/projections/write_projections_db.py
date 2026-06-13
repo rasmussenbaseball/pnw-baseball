@@ -53,6 +53,24 @@ ISO_HR_B0, ISO_HR_B1 = -0.00844, 0.2037
 # lets elite arms reach sub-3 / weak ones 7+. Hitters are well-calibrated (0.92).
 PIT_EXPAND = 1.15
 
+# Minimum PA/BF for a season to help FIT model constants (reliability, aging,
+# translations, refinement). Players below this are still projected (to fill out
+# rosters and depth charts), just not used to derive the constants.
+FIT_MIN = 50
+
+# Low-sample handling: a player with little career data is unproven, and unproven
+# players are below average (the good ones earn playing time). Below LOW_N total
+# career PA/BF we pull their rates toward the level's 25th-percentile (poor)
+# value, scaled by how little data they have; below INSUF_N we also flag the line
+# "not enough data to project" and cap their playing time. They still appear in
+# rosters / depth charts / totals, just as weak, low-volume players.
+LOW_N = 60
+INSUF_N = 20
+POOR_Q = 0.25                       # 25th-percentile-quality anchor
+# stats where a HIGH value is bad (so "poor" = the high quantile)
+LOW_GOOD = {"bat": {"k_pct"},
+            "pit": {"bb_pct", "hr_bf", "babip_against", "whip_rate", "era_rate"}}
+
 # Cross-validated multi-stat refinements: project a stat from the peripheral
 # skills that produce it, not from itself alone (analyze_all_stats.py CV gains).
 # {target: [predictors]} — predictors are box components (from proj) or PBP
@@ -238,6 +256,22 @@ def _zscores(vals):
     return (a - a.mean()) / sd
 
 
+def poor_anchors(df_fit, comps, side):
+    """Per (level, stat) value at the 25th-quality-percentile, from qualified
+    actuals. For stats where high is bad (K% for hitters, ERA/BB% for pitchers)
+    that's the 75th raw percentile; otherwise the 25th. Used to pull unproven
+    (low-sample) players toward a believably below-average line."""
+    low_good = LOW_GOOD[side]
+    out = {}
+    for lvl, g in df_fit.groupby("level"):
+        for s in comps:
+            v = g[s].dropna()
+            if len(v) >= 15:
+                q = (1 - POOR_Q) if s in low_good else POOR_Q
+                out[(lvl, s)] = float(np.quantile(v, q))
+    return out
+
+
 def _league_baselines(cur):
     """2026 league wOBA (PA-weighted) and FIP (IP-weighted) per division level.
     Projections are translated INTO a 2026-like run environment, so WAR is
@@ -344,6 +378,9 @@ def expand_to_achievable(rows):
                     # just because the quality map nudges them — floor at 85% of
                     # last year (so a returning starter keeps starting).
                     r["proj"]["PT"] = round(max(pt_new, 0.85 * last))
+                    # unproven players don't get inflated workloads by the quality map
+                    if r["proj"].get("insufficient"):
+                        r["proj"]["PT"] = min(r["proj"]["PT"], 45 if side == "bat" else 50)
     # achievable caps (99th pctile) for the reconstructed combo stats, per level
     # p90 caps: a double-max contact+power profile (.400 AVG AND elite ISO) is an
     # impossible combo, so cap the reconstructed SLG/wOBA at a great-but-real level.
@@ -408,12 +445,16 @@ def main():
 
     with get_connection() as conn:
         cur = conn.cursor()
-        bat = load_batting(cur)
-        pit = load_pitching(cur)
+        # Load EVERY rostered player (min 1 PA/BF) so depth charts and position
+        # gaps fill out. Model constants are still fit only on the >=FIT_MIN
+        # subset (below) so tiny samples don't add noise; the extra low-PA
+        # players are projected with those clean constants (heavy regression).
+        bat = load_batting(cur, min_pa=1)
+        pit = load_pitching(cur, min_bf=1)
         summer = load_summer_batting(cur)
         bat_p = load_pbp_peripherals(cur, "bat")
         pit_p = load_pbp_peripherals(cur, "pit")
-        run_coef = fit_run_estimator(pit)
+        run_coef = fit_run_estimator(pit[pit["wt_n"] >= FIT_MIN])
         fip_luck = load_fip_luck(cur)
         tname_map = team_name_map(cur)
 
@@ -454,7 +495,7 @@ def main():
                 FROM {tbl} b JOIN players p ON p.id=b.player_id
                 LEFT JOIN player_links c ON c.linked_id=b.player_id
                 LEFT JOIN player_seasons ps ON ps.player_id=b.player_id AND ps.season=2026
-                WHERE b.season=2026 AND b.{idc}>=20
+                WHERE b.season=2026 AND b.{idc}>=1
             """)
             for r in cur.fetchall():
                 meta.setdefault(r["cid"], r)   # first side wins for name/pos; fine
@@ -497,7 +538,7 @@ def main():
         # hitting projection -- and vice versa. True current two-ways get both.
         # per-level league mean ER/BF (most recent season) = expansion center
         lvl_mean_er = {}
-        for lv, g in pit[pit["season"] == TARGET - 1].groupby("level"):
+        for lv, g in pit[(pit["season"] == TARGET - 1) & (pit["wt_n"] >= FIT_MIN)].groupby("level"):
             v = g["era_rate"].dropna()
             if len(v):
                 lvl_mean_er[lv] = float(np.average(v, weights=g.loc[v.index, "wt_n"]))
@@ -520,8 +561,13 @@ def main():
             df_feat = df.merge(periph, on=["pid", "season"], how="left")
             df_feat["p_n"] = df_feat["p_n"].fillna(0)
             df_feat = center_peripherals(df_feat, PERIPH_FEATS[side])
-            C = fit_training_constants(df_feat, comps, TARGET)
-            hist_all = C["train"].sort_values("wt_n", ascending=False).drop_duplicates(["pid", "season"])
+            # constants fit on the qualified subset; history (who we project from)
+            # is the full roster so low-PA returners still get a projection.
+            df_fit = df_feat[df_feat["wt_n"] >= FIT_MIN].copy()
+            C = fit_training_constants(df_fit, comps, TARGET)
+            anchors_poor = poor_anchors(df_fit[df_fit["season"] < TARGET], comps, side)
+            hist_all = (df_feat[df_feat["season"] < TARGET]
+                        .sort_values("wt_n", ascending=False).drop_duplicates(["pid", "season"]))
             summer_lookup = build_summer_lookup(summer, TARGET) if side == "bat" else {}
             a_sig, b_sig = SIGMA[side]
 
@@ -530,7 +576,7 @@ def main():
             # is volatile; its stable inputs predict it far better than ERA does).
             era_periph = None
             if side == "pit":
-                tr = df_feat[df_feat["season"] < TARGET]
+                tr = df_feat[(df_feat["season"] < TARGET) & (df_feat["wt_n"] >= FIT_MIN)]
                 pr = make_pairs(tr, same_level=True)
                 EF = ["k_pct_1", "bb_pct_1", "p_whiff_1", "p_gb_1", "p_strike_1"]
                 prc = pr.dropna(subset=EF + ["era_rate_2", "hmean_n"])
@@ -541,7 +587,7 @@ def main():
             # multi-stat refinement models (avg / bb_pct from their peripherals)
             refine = {}
             for tgt, preds in (BAT_REFINE if side == "bat" else PIT_REFINE).items():
-                spec = fit_refine(df_feat, tgt, preds, TARGET)
+                spec = fit_refine(df_feat[df_feat["wt_n"] >= FIT_MIN], tgt, preds, TARGET)
                 if spec:
                     refine[tgt] = spec
 
@@ -592,10 +638,24 @@ def main():
                 proj = project_player(h, summer_lookup.get(pid, []), C, comps, level, TARGET, cls)
                 if headline not in proj:
                     continue
+                # unproven (low-sample) players: blend every projected rate toward
+                # the level's 25th-pct (poor) value, weighted by how thin the data
+                # is. Very thin samples get flagged "insufficient" and capped PT.
+                career_n = float(h["wt_n"].sum())
+                insufficient = career_n < INSUF_N
+                if career_n < LOW_N:
+                    dw = max(0.12, career_n / LOW_N)
+                    for s in list(proj):
+                        anc = anchors_poor.get((level, s))
+                        if anc is not None:
+                            val, r_ = proj[s]
+                            proj[s] = (dw * val + (1 - dw) * anc, r_)
                 head, rel = proj[headline]
                 pt = proj_pt(h, *pa_args)
+                if insufficient:
+                    pt = min(pt, 45 if side == "bat" else 50)
                 line = {"reliability": round(rel, 3), "PT": round(pt), "level": level,
-                        "from_level": cur_level, "incoming": incoming,
+                        "from_level": cur_level, "incoming": incoming, "insufficient": insufficient,
                         "class_2027": (CLASS_NEXT.get(cls) if cls else None)}
                 for s in comps:
                     if s in proj:
@@ -661,8 +721,11 @@ def main():
                     # from the level mean so elite arms reach sub-3 and weak ones
                     # 7+, instead of everyone bunched at ~5.
                     lg_er = lvl_mean_er.get(level, er_bf)
-                    er = (lg_er + PIT_EXPAND * (er_bf - lg_er)) * 39.6   # ERA scale
-                    fip_rate = lg_er + PIT_EXPAND * (fip_rate - lg_er)
+                    # don't expand unproven arms past their (already poor) anchor —
+                    # keep them around the 25th-pct level instead of overshooting.
+                    expand = 1.0 if insufficient else PIT_EXPAND
+                    er = (lg_er + expand * (er_bf - lg_er)) * 39.6   # ERA scale
+                    fip_rate = lg_er + expand * (fip_rate - lg_er)
                     hw = band_half(rel, "pit")
                     ip = pt * 0.245                      # ~74% of BF are outs
                     whip_rate = proj.get("whip_rate", (None, 0))[0]   # baserunners/BF
@@ -684,6 +747,9 @@ def main():
                 # / playing-time tool on the frontend); only meaningful for hitters
                 if side == "bat" and pos_fracs.get(pid):
                     line["pos_share"] = {p: round(f, 3) for p, f in pos_fracs[pid].items() if f >= 0.05}
+                    # absolute games at each position last year, so the depth-chart
+                    # tool can hand each spot to whoever played it most.
+                    line["pos_games"] = {p: int(n) for p, n in pos_counts.get(pid, {}).items()}
                 rows.append({"season": TARGET, "team_id": team_id, "player_id": int(m.get("raw", pid)),
                              "canonical_id": int(pid), "side": side, "name": m.get("name", "?"),
                              "pos": all_positions.get(pid) or m.get("pos"), "class_last": cls, "is_incoming": incoming,

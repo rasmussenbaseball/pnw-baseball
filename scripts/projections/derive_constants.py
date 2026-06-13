@@ -72,7 +72,7 @@ def wcorr(x, y, w):
     return cov / np.sqrt(vx * vy)
 
 
-def load_batting(cur):
+def load_batting(cur, min_pa=MIN_PA):
     cur.execute("""
         WITH canon AS (SELECT linked_id AS player_id, canonical_id FROM player_links)
         SELECT COALESCE(c.canonical_id, b.player_id) AS pid,
@@ -91,7 +91,7 @@ def load_batting(cur):
         LEFT JOIN player_seasons ps
                ON ps.player_id = b.player_id AND ps.season = b.season
         WHERE b.plate_appearances >= %s
-    """, (MIN_PA,))
+    """, (min_pa,))
     df = pd.DataFrame(cur.fetchall())
     for col in ["pa", "ab", "h", "d2", "d3", "hr", "bb", "k", "hbp", "sf"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
@@ -120,7 +120,7 @@ def load_batting(cur):
     return df
 
 
-def load_pitching(cur):
+def load_pitching(cur, min_bf=MIN_BF):
     cur.execute("""
         WITH canon AS (SELECT linked_id AS player_id, canonical_id FROM player_links)
         SELECT COALESCE(c.canonical_id, p.player_id) AS pid,
@@ -139,7 +139,7 @@ def load_pitching(cur):
         LEFT JOIN player_seasons ps
                ON ps.player_id = p.player_id AND ps.season = p.season
         WHERE p.batters_faced >= %s
-    """, (MIN_BF,))
+    """, (min_bf,))
     df = pd.DataFrame(cur.fetchall())
     for col in ["bf", "k", "bb", "hr", "ha", "hb", "er"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
@@ -153,7 +153,10 @@ def load_pitching(cur):
     bip = (df["bf"] - df["k"] - df["bb"] - df["hb"] - df["hr"]).clip(lower=0)
     df["babip_against"] = np.where(bip >= 20, (df["ha"] - df["hr"]) / bip.clip(lower=1), np.nan)
     df["whip_rate"] = (df["ha"] + df["bb"]) / df["bf"]          # baserunners per BF
-    df["era_rate"] = np.where(df["outs"] >= 30, df["er"] / df["bf"], np.nan)  # ER per BF
+    # ER per BF. Low-IP arms get a (noisy) rate that heavy regression tames; the
+    # constant-fitting paths filter to >=50 BF, so this only adds rates for the
+    # sub-10-IP roster fillers we now project.
+    df["era_rate"] = np.where(df["bf"] > 0, df["er"] / df["bf"], np.nan)
     df["cls"] = df["class_ps"].combine_first(df["class_pl"]).map(norm_class)
     df["wt_n"] = df["bf"]
     return df

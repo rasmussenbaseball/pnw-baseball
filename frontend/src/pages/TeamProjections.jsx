@@ -195,6 +195,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
                     className={`cursor-pointer border-b border-gray-100 dark:border-gray-800 ${i % 2 ? 'bg-gray-50/40 dark:bg-gray-800/20' : ''} ${open ? 'bg-nw-teal/5' : 'hover:bg-nw-teal/5'}`}>
                   <td className={TDL + ' font-medium text-gray-900 dark:text-gray-100'}>
                     <span className="text-gray-300 mr-1">{open ? '▾' : '▸'}</span>{r.name}<Incoming row={r} />
+                    {p.insufficient && <span className="ml-1.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-semibold px-1 py-0.5 uppercase align-middle" title="Barely played in 2026 — projected as a below-average player from limited data">ltd</span>}
                   </td>
                   <td className={TD}>{p.class_2027 || '–'}</td>
                   <td className={TD}>{r.pos || '–'}</td>
@@ -249,68 +250,82 @@ const SLOT_SOURCES = {
   RF: ['LF', 'CF', 'RF', 'OF'],
 }
 
-function playerShare(h) {
-  const ps = h.proj?.pos_share
-  if (ps && Object.keys(ps).length) return ps
-  // fallback: split evenly across the listed positions
+function playerGames(h) {
+  const pg = h.proj?.pos_games
+  if (pg && Object.keys(pg).length) return pg
+  // fallback: 1 game at each listed position so they're at least eligible there
   const toks = (h.pos || '').toUpperCase().split('/').map((s) => s.trim()).filter(Boolean)
-  if (!toks.length) return {}
-  const f = 1 / toks.length
-  return Object.fromEntries(toks.map((t) => [t, f]))
+  return Object.fromEntries(toks.map((t) => [t, 1]))
 }
+
+// playing-time knobs: a regular plays ~80% at his spot + spot relief, never 100%
+// (rest days); backups split the remainder; the best idle bat DHs; the deep
+// bench still gets a ~5% spot/pinch-hit share.
+const DC = { CAP: 0.90, PRIMARY: 0.80, BACKUP_MAX: 0.34, DH_MAX: 0.60, FLOOR: 0.05 }
 
 function buildDepthChart(hitters) {
   const players = (hitters || []).map((h) => ({
     id: h.player_id, name: h.name, incoming: h.is_incoming,
-    woba: h.proj?.wOBA ?? 0, share: playerShare(h),
+    woba: h.proj?.wOBA ?? 0, insuf: !!h.proj?.insufficient, games: playerGames(h),
   }))
-  // a player's pull toward a slot: full credit for innings actually played there,
-  // discounted credit for cross-eligible spots (an SS sliding to 2B/3B/1B), so
-  // players gravitate to their real position before filling in elsewhere.
-  const slotWeight = (p, slot) => {
-    const direct = p.share[slot] || 0
-    const cross = SLOT_SOURCES[slot].reduce((s, src) => (src === slot ? s : s + (p.share[src] || 0)), 0)
-    return direct + 0.3 * cross
+  if (!players.length) return { rows: [], starters: {}, gaps: [...FIELD_SLOTS] }
+  // games a player can claim at a slot (direct + cross-eligible spots)
+  const cg = (p, slot) => SLOT_SOURCES[slot].reduce((s, src) => s + (p.games[src] || 0), 0)
+
+  // 1. primary at each spot = whoever played there most (strongest claim first)
+  const primaryOf = {}, claimed = {}
+  const claims = []
+  players.forEach((p) => FIELD_SLOTS.forEach((s) => { const g = p.games[s] || 0; if (g > 0) claims.push([g, p.woba, p.id, s]) }))
+  claims.sort((a, b) => b[0] - a[0] || b[1] - a[1])
+  for (const [, , pid, s] of claims) if (!(pid in primaryOf) && !(s in claimed)) { primaryOf[pid] = s; claimed[s] = pid }
+  // 2. fill still-empty spots from cross-eligible players (most games at a source spot)
+  for (const s of FIELD_SLOTS) if (!(s in claimed)) {
+    const cand = players.filter((p) => !(p.id in primaryOf) && cg(p, s) > 0).sort((a, b) => cg(b, s) - cg(a, s) || b.woba - a.woba)
+    if (cand.length) { primaryOf[cand[0].id] = s; claimed[s] = cand[0].id }
   }
-  const eligCount = (slot) => players.filter((p) => slotWeight(p, slot) > 0).length
-  const counts = Object.fromEntries(FIELD_SLOTS.map((s) => [s, eligCount(s)]))
-
-  const posCap = Object.fromEntries(FIELD_SLOTS.map((s) => [s, 1]))
-  const pCap = {}; const alloc = {}
-  players.forEach((p) => { pCap[p.id] = 1; alloc[p.id] = {} })
-  const byQ = [...players].sort((a, b) => b.woba - a.woba)
-
-  // pass 1: field positions (most-played spot first, ties → scarcer spot first)
-  for (const p of byQ) {
-    const slots = FIELD_SLOTS.filter((s) => slotWeight(p, s) > 0)
-      .sort((a, b) => slotWeight(p, b) - slotWeight(p, a) || counts[a] - counts[b])
-    for (const s of slots) {
-      if (pCap[p.id] <= 1e-6) break
-      const take = Math.min(pCap[p.id], posCap[s])
-      if (take > 0) { alloc[p.id][s] = (alloc[p.id][s] || 0) + take; pCap[p.id] -= take; posCap[s] -= take }
+  // 3. allocate: primaries take their share, backups fill the rest, best idle bat DHs
+  const alloc = {}, cap = {}
+  players.forEach((p) => { alloc[p.id] = {}; cap[p.id] = DC.CAP })
+  for (const pid in primaryOf) { const s = primaryOf[pid]; alloc[pid][s] = DC.PRIMARY; cap[pid] -= DC.PRIMARY }
+  for (const s of FIELD_SLOTS) {
+    let rem = 1 - (claimed[s] ? alloc[claimed[s]][s] : 0)
+    const backups = players.filter((p) => primaryOf[p.id] !== s && cg(p, s) > 0 && cap[p.id] > 1e-6)
+      .sort((a, b) => cg(b, s) - cg(a, s) || b.woba - a.woba)
+    for (const p of backups) {
+      if (rem <= 1e-6) break
+      const t = Math.min(cap[p.id], rem, DC.BACKUP_MAX)
+      if (t > 0) { alloc[p.id][s] = (alloc[p.id][s] || 0) + t; cap[p.id] -= t; rem -= t }
     }
   }
-  // pass 2: DH — best bat with leftover time
   let dh = 1
-  for (const p of byQ) {
+  for (const p of [...players].sort((a, b) => b.woba - a.woba)) {
     if (dh <= 1e-6) break
-    if (pCap[p.id] > 1e-6) { const t = Math.min(pCap[p.id], dh); alloc[p.id].DH = t; pCap[p.id] -= t; dh -= t }
+    const t = Math.min(cap[p.id], dh, DC.DH_MAX)
+    if (t > 0) { alloc[p.id].DH = t; cap[p.id] -= t; dh -= t }
+  }
+  // 4. bench floor: even the last guys get ~5% (spot starts / pinch hits)
+  for (const p of players) {
+    const tot = Object.values(alloc[p.id]).reduce((s, v) => s + v, 0)
+    if (tot < DC.FLOOR) {
+      const slot = primaryOf[p.id] || FIELD_SLOTS.find((s) => cg(p, s) > 0) || 'DH'
+      alloc[p.id][slot] = (alloc[p.id][slot] || 0) + (DC.FLOOR - tot)
+    }
   }
 
   const rows = players.map((p) => {
-    const slots = Object.entries(alloc[p.id]).filter(([, v]) => v >= 0.005)
+    const slots = Object.entries(alloc[p.id]).filter(([, v]) => v >= 0.02)
       .map(([s, v]) => ({ s, pct: Math.round(v * 100) })).sort((a, b) => b.pct - a.pct)
     const onField = slots.reduce((s, x) => s + x.pct, 0)
     return { ...p, slots, bench: Math.max(0, 100 - onField) }
-  }).sort((a, b) => (100 - a.bench) - (100 - b.bench)).reverse()
+  }).sort((a, b) => a.bench - b.bench)
 
   const starters = {}
   for (const slot of [...FIELD_SLOTS, 'DH']) {
-    let best = null
-    for (const p of players) if ((alloc[p.id][slot] || 0) > (best ? alloc[best.id][slot] : 0)) best = p
+    let best = null, bestv = 0
+    for (const p of players) { const v = alloc[p.id][slot] || 0; if (v > bestv) { bestv = v; best = p } }
     starters[slot] = best
   }
-  const gaps = FIELD_SLOTS.filter((s) => counts[s] === 0)
+  const gaps = FIELD_SLOTS.filter((s) => !(s in claimed))
   return { rows, starters, gaps }
 }
 
@@ -338,7 +353,7 @@ function LineupCard({ hitters }) {
             <div key={slot} className={`rounded-md border px-2 py-1.5 text-center ${p ? 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30' : 'border-rose-300 dark:border-rose-800 border-dashed bg-rose-50/40 dark:bg-rose-900/10'}`}>
               <div className="text-[10px] font-bold uppercase tracking-wide text-nw-teal">{slot}</div>
               {p ? <>
-                <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate" title={p.name}>{p.name}{p.incoming ? ' ↗' : ''}</div>
+                <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate" title={p.name}>{p.name}{p.incoming ? ' ↗' : ''}{p.insuf ? ' *' : ''}</div>
                 <div className="text-[11px] tabular-nums text-gray-500">{slash(p.woba)}</div>
               </> : <div className="text-[11px] text-rose-500 mt-1">none</div>}
             </div>
@@ -356,7 +371,10 @@ function LineupCard({ hitters }) {
         <div className="space-y-1">
           {rows.map((p) => (
             <div key={p.id} className="flex items-center gap-2 text-xs py-0.5">
-              <span className="w-40 shrink-0 truncate font-medium text-gray-800 dark:text-gray-200" title={p.name}>{p.name}{p.incoming ? ' ↗' : ''}</span>
+              <span className="w-44 shrink-0 truncate font-medium text-gray-800 dark:text-gray-200" title={p.name}>
+                {p.name}{p.incoming ? ' ↗' : ''}
+                {p.insuf && <span className="ml-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-semibold px-1 py-0.5 uppercase">ltd data</span>}
+              </span>
               <span className="flex flex-wrap gap-1 flex-1">
                 {p.slots.map((x) => <SlotChip key={x.s} s={x.s} pct={x.pct} />)}
                 {p.bench > 0 && (
@@ -454,6 +472,8 @@ export default function TeamProjections() {
               <b> Plate skills / Stuff</b> show the projected rate with the projected change vs 2026 (▲/▼).
               The point projection is the most-likely (median) outcome; a player’s upside lives in his ceiling — click a row to see it.</p>
             <p><b>ERA</b> blends FIP-reconstruction with regressed ERA (leans on stable peripherals). Incoming transfers (↗) are projected at their new level, with stats translated from real NWAC-to-4-year transfer history. Power gets a real bump on the move up: NWAC homers about 0.7 per 100 PA, the 4-year levels 2 to 2.6, so transfer HR rates roughly double.</p>
+            <p><b>ltd</b> (limited data) marks players who barely appeared in 2026. With little to go on they are projected as below-average (about 25th percentile) and capped at a small workload, but still included so rosters and the depth chart are complete. They firm up as transfers and freshmen are added.</p>
+            <p><b>Projected lineup</b> hands each position to whoever played it most last season, fills the rest from players who can cover it (outfielders across all 3 spots; 1B/3B and 2B/SS/3B interchangeable), slots the best remaining bat at DH, and rotates rest days so no one plays every game. Percentages are projected share of games at each spot.</p>
           </div>
         </div>
       )}
