@@ -63,11 +63,15 @@ def fit_run_estimator(pit):
     return coef
 
 
-def pbp_projection(periph_raw, feats, cls_last):
-    """Per-pid PBP rate regressed to league mean by sample (data-fit ballast),
+def pbp_projection(periph_raw, feats, cls_last, anchors=None):
+    """Per-pid PBP rate regressed toward an anchor by sample (data-fit ballast),
     plus a youth nudge. Each season is weighted by recency (5/4/3) AND sample
-    (pitches), matching the core model -- so a tiny cameo season barely counts
-    and recent work counts most. Returns {pid:{feat:(proj,last)}}."""
+    (pitches), matching the core model -- so a tiny cameo season barely counts.
+    The regression anchor defaults to the league mean, but `anchors[pid][feat]`
+    overrides it with a TALENT-appropriate target (e.g. a power arm's whiff
+    regresses toward a K%-implied whiff, not the scrub average -- the Courtney
+    fix). Returns {pid:{feat:(proj,last)}}."""
+    anchors = anchors or {}
     lg = {f: np.average(periph_raw[f].dropna(),
                         weights=periph_raw.loc[periph_raw[f].dropna().index, "p_n"])
           for f in feats if periph_raw[f].notna().any()}
@@ -78,11 +82,11 @@ def pbp_projection(periph_raw, feats, cls_last):
             gg = g.dropna(subset=[f]).copy()
             if gg.empty or f not in lg:
                 continue
-            # recency x sample weight per season
             gg["w"] = gg.apply(lambda r: RECENCY.get(TARGET - int(r["season"]), 2.0) * r["p_n"], axis=1)
-            eff_n = gg["w"].sum() / RECENCY[1]      # back to raw-sample units for the ballast
+            eff_n = gg["w"].sum() / RECENCY[1]
             career = np.average(gg[f], weights=gg["w"])
-            proj = (career * eff_n + lg[f] * K) / (eff_n + K)
+            anchor = anchors.get(pid, {}).get(f, lg[f])
+            proj = (career * eff_n + anchor * K) / (eff_n + K)
             if sign:
                 proj += sign * YOUTH_NUDGE.get(cls_last.get(pid, "Sr"), 0.0)
             last = gg[gg["season"] == TARGET - 1]
@@ -90,6 +94,12 @@ def pbp_projection(periph_raw, feats, cls_last):
         if d:
             out[pid] = d
     return out
+
+
+# Pitcher whiff regresses toward a K%-implied target (whiff = a + b*K%), so a
+# power arm anchors to a power-arm whiff, not the global mean. Fit from data
+# (whiff = 0.047 + 0.759*K%); a tie on RMSE but far more sensible than the mean.
+WHIFF_FROM_K = (0.047, 0.759)
 
 
 def load_fip_luck(cur):
@@ -170,7 +180,17 @@ def main():
             h = hist_all[(hist_all["pid"] == r["cid"]) & (hist_all["season"] < TARGET)]
             if not h.empty:
                 clsmap[r["cid"]] = h.sort_values("season").iloc[-1]["cls"] or "Sr"
-        pbp_proj = pbp_projection(periph, pbp_feats, clsmap)
+        # talent-aware whiff anchor for pitchers (K%-implied; Courtney fix)
+        anchors = {}
+        if side == "pit":
+            a0, a1 = WHIFF_FROM_K
+            for cid, cls in clsmap.items():
+                hk = hist_all[(hist_all["pid"] == cid) & (hist_all["season"] < TARGET)]
+                hk = hk.dropna(subset=["k_pct"])
+                if not hk.empty:
+                    kbar = np.average(hk["k_pct"], weights=hk["wt_n"])
+                    anchors[cid] = {"p_whiff": a0 + a1 * kbar}
+        pbp_proj = pbp_projection(periph, pbp_feats, clsmap, anchors)
         a_sig, b_sig = SIGMA[side]
         rows = []
         for r in rosters[side]:
@@ -200,9 +220,14 @@ def main():
                 d3 = rem * (s3 / tot_nonhr) / (1 + s3 / tot_nonhr)   # approx split
                 d2 = rem - 2 * d3
                 sigma = max(a_sig + b_sig * rel, 0.015)
+                # R/RBI are context-dependent: scale league per-PA rates by the
+                # player's OBP (scores runs) / SLG (drives them). Rough estimates.
+                runs = pt * 0.16 * (obp / 0.360)
+                rbi = pt * 0.15 * ((avg + iso) / 0.420)
                 row.update({"PA": round(pt), "AB": round(ab), "H": round(h_ct),
                             "2B": round(max(d2, 0), 1), "3B": round(max(d3, 0), 1),
-                            "HR": round(hr, 1), "BB": round(bb * pt), "SO": round(k * pt),
+                            "HR": round(hr, 1), "R": round(runs), "RBI": round(rbi),
+                            "BB": round(bb * pt), "SO": round(k * pt),
                             "AVG": f"{avg:.3f}", "OBP": f"{obp:.3f}", "SLG": f"{avg+iso:.3f}",
                             "wOBA": f"{woba:.3f}", "wOBA_rng": f"{woba-Z10*sigma:.3f}-{woba+Z10*sigma:.3f}"})
             else:
@@ -229,8 +254,8 @@ def main():
     hitters, pitchers = run_side("bat"), run_side("pit")
     print(f"\n{'='*72}\n{team} — 2027 PROJECTED HITTERS (returning)\n{'='*72}")
     if hitters:
-        cols = ["name", "pos", "cls", "PA", "AB", "H", "2B", "3B", "HR", "BB", "SO",
-                "AVG", "OBP", "SLG", "wOBA", "Whiff%", "GB%", "AirPull%", "rel"]
+        cols = ["name", "pos", "cls", "PA", "AB", "H", "2B", "3B", "HR", "R", "RBI",
+                "BB", "SO", "AVG", "OBP", "SLG", "wOBA", "Whiff%", "GB%", "AirPull%", "rel"]
         print(pd.DataFrame(hitters)[cols].to_string(index=False))
     print(f"\n{'='*72}\n{team} — 2027 PROJECTED PITCHERS (returning)\n{'='*72}")
     if pitchers:
