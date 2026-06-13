@@ -108,11 +108,20 @@ def translation_delta(C, from_level, to_level, stat):
     return 0.0
 
 
+# Trust stable signature skills more than RMSE-optimal: scale their regression
+# ballast down so a proven masher / high-K arm holds his level instead of being
+# pulled to the league mean. Deliberate product choice (small accuracy cost) for
+# projections that keep player character. Volatile stats (BABIP, ERA) untouched.
+STABLE_TRUST = 0.6
+STABLE_STATS = {"k_pct", "iso", "hr_pa", "wobacon"}   # YoY r >= 0.5 (see analyze_all_stats)
+
+
 def ballast(C, level, stat, default=200):
     for key in (level, "ALL"):
         v = C["rel"].get(key, {}).get(stat)
         if v:
-            return max(v["ballast"], 10)
+            b = max(v["ballast"], 10)
+            return b * STABLE_TRUST if stat in STABLE_STATS else b
     return default
 
 
