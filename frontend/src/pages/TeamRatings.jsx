@@ -99,7 +99,7 @@ function DivisionTable({ division }) {
                 <span className="hidden sm:inline">Pitch</span>
                 <span className="sm:hidden">P</span>
               </th>
-              <th className="text-center px-1 py-2 font-semibold w-12" title="Strength of schedule vs division opponents (100 = average)">
+              <th className="text-center px-1 py-2 font-semibold w-12" title="Strength of schedule (100 = average). PEAR-based for NCAA and NAIA, results-based for NWAC">
                 <span className="hidden sm:inline">SoS</span>
                 <span className="sm:hidden">S</span>
               </th>
@@ -204,7 +204,7 @@ function InfoCard() {
             </div>
             <div className="bg-gray-50 dark:bg-gray-900/40 rounded p-2">
               <p className="font-bold text-nw-teal">Schedule-adjusted results (35%)</p>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400">A strength-of-schedule rating from capped run margins against division opponents, so beating strong teams counts more. Regressed hard when the sample is small.</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Capped run margins plus strength of schedule, so beating strong teams counts more. For NCAA and NAIA teams the schedule strength comes from PEAR's national SOS ratings, which account for every opponent on the slate. NWAC schedules are fully covered by our own game results, so NWAC strength of schedule is calculated from those results instead. Regressed hard when the sample is small.</p>
             </div>
             <div className="bg-gray-50 dark:bg-gray-900/40 rounded p-2">
               <p className="font-bold text-nw-teal">Projection</p>
@@ -212,7 +212,7 @@ function InfoCard() {
             </div>
           </div>
           <p>
-            Off, Pitch, and SoS are also centered at 100, so a 106 offense is clearly above the division average and a 94 is clearly below it. The results component only counts games against teams in the same division, which keeps the rating an apples-to-apples comparison.
+            Off, Pitch, and SoS are also centered at 100, so a 106 offense is clearly above the division average and a 94 is clearly below it. Run margins only count games against teams in the same division, which keeps the rating an apples-to-apples comparison, while the PEAR schedule strength reflects each NCAA and NAIA team's full national slate.
           </p>
         </div>
       )}

@@ -14,9 +14,14 @@ Three ingredients, blended predictive-first:
      more stable and more predictive than raw W-L in a short season. Both are
      regressed toward league average by sample size (PA / IP).
 
-  2. Results (~35%). A Simple Rating System (SRS) on capped run margins, solved
-     iteratively so beating strong opponents counts more (strength of schedule).
-     Regressed hard toward zero by games played — a 9-game record tells you little.
+  2. Results (~35%). Capped run margins plus a strength-of-schedule adjustment,
+     so beating strong opponents counts more. By default the SoS comes from an
+     internal Simple Rating System (SRS) solved iteratively over the cohort's
+     games; callers may instead supply external_sos (runs/game above an average
+     opponent) when a better schedule signal exists outside the cohort's game
+     graph (e.g. PEAR-derived SoS for spring NCAA/NAIA divisions whose teams
+     play mostly national opponents). Regressed hard toward zero by games
+     played — a 9-game record tells you little.
 
   3. Blend -> one run-differential-per-game number, converted to a projected
      win % (Pythagenpat) and an expected record, and scaled to a readable index
@@ -81,13 +86,22 @@ def _pythagenpat_winpct(rs_pg, ra_pg):
 
 
 def compute_cpi(team_ids, games_by_team, offense, pitching, *,
-                season_games=DEFAULT_SEASON_GAMES):
+                season_games=DEFAULT_SEASON_GAMES, external_sos=None):
     """Compute CPI for one league-season.
 
     team_ids: iterable of team ids that played games
     games_by_team: {tid: [(opponent_id, run_margin), ...]}
     offense: {tid: {"pa": int, "wrc_sum": float}}   wrc_sum = sum(wrc_plus * PA)
     pitching: {tid: {"ip": float, "fip_sum": float}} fip_sum = sum(fip * IP)
+    external_sos: optional {tid: sos_runs_per_game} — schedule strength in the
+        engine's native units (runs/game above a league-average opponent,
+        harder schedule = positive). When provided, it replaces the internal
+        SRS opponent adjustment in the results component AND the displayed
+        sos_index/sos_runs; teams missing from the dict get 0.0 (an average
+        schedule). When None, the internal SRS path is used and behavior is
+        identical to before this parameter existed. The engine stays
+        data-source agnostic: how external_sos is derived (e.g. PEAR) lives
+        in the caller/adapter, not here.
 
     Returns {tid: {...rating + components...}} (unranked; caller sorts).
     """
@@ -127,15 +141,20 @@ def compute_cpi(team_ids, games_by_team, offense, pitching, *,
         pit_rd = (lg_fip - fip)                         # runs/game above avg, pitching (FIP ~ R/9)
         talent_rd = off_rd + pit_rd
 
-        # ── Results: SRS regressed hard toward 0 ──
-        results_rd = srs[t] * gp / (gp + RESULTS_REGRESS_GAMES) if gp else 0.0
+        # ── Results: own capped margin + SoS, regressed hard toward 0 ──
+        if external_sos is not None:
+            sos = float(external_sos.get(t, 0.0))   # avg opponent strength (runs/game)
+            results_full = own_margin[t] + sos
+        else:
+            sos = srs[t] - own_margin[t]  # average opponent strength (runs/game)
+            results_full = srs[t]         # = own_margin + internal-SRS SoS
+        results_rd = results_full * gp / (gp + RESULTS_REGRESS_GAMES) if gp else 0.0
 
         final_rd = TALENT_WEIGHT * talent_rd + RESULTS_WEIGHT * results_rd
 
         proj = _pythagenpat_winpct(lg_rpg + final_rd / 2, lg_rpg - final_rd / 2)
         w, l = wins[t]
         actual = w / gp if gp else None
-        sos = srs[t] - own_margin[t]  # average opponent strength (runs/game)
 
         out[t] = {
             "cpi": round(100 + final_rd * CPI_SCALE),
@@ -158,6 +177,56 @@ def compute_cpi(team_ids, games_by_team, offense, pitching, *,
     return out
 
 
+# ── PEAR-based SoS for the spring adapter ──────────────────
+# PEAR (national_ratings, source='pear') publishes a strength-of-schedule value
+# per team where a LOWER value means a HARDER schedule. Verified empirically on
+# the 2026 data: corr(sos, sos_rank) is +0.97 to +0.999 within every division,
+# and sos_rank 1 is the toughest schedule, so value and rank point the same
+# way (low = tough). We convert each division cohort's values to z-scores
+# oriented harder = positive, then scale to the engine's native runs/game.
+#
+# Calibration (PEAR_SOS_RUNS_PER_SD = 1.0): the internal dense-graph SoS for
+# NWAC — the one cohort whose teams play ONLY cohort opponents, so the SRS
+# solve sees the complete schedule — spreads ~0.56 runs/game SD across 28
+# teams (2026), and the undersampled D1 internal graph ~0.66. The PEAR cohorts
+# span genuinely national schedule differences the internal graph can't see
+# (the 2026 D1 cohort covers national SoS ranks 45 to 182 of 308), so 1.0
+# run/SD — slightly above the dense-graph spread, at the conservative end of
+# the plausible 0.75-1.5 range — keeps the results component from being
+# whipsawed by z-scores computed over small (5-9 team) cohorts.
+PEAR_SOS_RUNS_PER_SD = 1.0
+PEAR_MIN_COVERED = 3          # need at least this many PEAR rows in a cohort
+
+
+def _pear_external_sos(cur, team_ids, season):
+    """Build {team_id: sos_runs_per_game} from PEAR SoS for one division
+    cohort, or None when the cohort has no usable PEAR coverage (NWAC/JUCO —
+    those fall back to the engine's internal SRS SoS, which is genuinely good
+    there because NWAC teams only play NWAC teams).
+
+    Latest scraped_at row per team+season wins. Teams in the cohort without a
+    PEAR row are simply omitted: the engine treats them as 0.0 = the cohort
+    mean schedule.
+    """
+    cur.execute(
+        """SELECT DISTINCT ON (team_id) team_id, sos
+           FROM national_ratings
+           WHERE season = %s AND source = 'pear'
+             AND team_id = ANY(%s) AND sos IS NOT NULL
+           ORDER BY team_id, scraped_at DESC NULLS LAST""",
+        (season, list(team_ids)),
+    )
+    vals = {r["team_id"]: float(r["sos"]) for r in cur.fetchall()}
+    if len(vals) < PEAR_MIN_COVERED or len(vals) * 2 < len(team_ids):
+        return None
+    mean = sum(vals.values()) / len(vals)
+    sd = (sum((v - mean) ** 2 for v in vals.values()) / len(vals)) ** 0.5
+    if sd < 1e-9:
+        return None
+    # lower PEAR value = harder schedule, so (mean - value) makes harder positive
+    return {t: (mean - v) / sd * PEAR_SOS_RUNS_PER_SD for t, v in vals.items()}
+
+
 def compute_cpi_for_division(cur, division_team_ids, season, *,
                              season_games=DEFAULT_SEASON_GAMES):
     """Spring-college adapter: gather one division cohort's inputs and run
@@ -170,6 +239,11 @@ def compute_cpi_for_division(cur, division_team_ids, season, *,
     - pitching_stats: IP-weighted team FIP aggregates. innings_pitched is
       baseball notation (6.2 = 6 2/3) but is only a weighting term here, so
       the small notation error is acceptable (same call as the summer side).
+    - SoS: divisions with PEAR coverage (D1/D2/D3/NAIA) get external_sos from
+      PEAR's national SoS via _pear_external_sos, because their teams play
+      mostly opponents the cohort-internal game graph never sees. NWAC/JUCO
+      has no PEAR rows, so _pear_external_sos returns None and the internal
+      SRS SoS is used — appropriate there since NWAC teams only play NWAC.
 
     Returns a list of row dicts, one per team id passed in (teams with no
     cohort games regress to ~100), sorted best-first with a 1-based "rank"
@@ -217,8 +291,10 @@ def compute_cpi_for_division(cur, division_team_ids, season, *,
     pitching = {r["team_id"]: {"ip": float(r["ip"]), "fip_sum": float(r["fsum"])}
                 for r in cur.fetchall()}
 
+    external_sos = _pear_external_sos(cur, team_ids, season)
+
     ratings = compute_cpi(team_ids, games_by_team, offense, pitching,
-                          season_games=season_games)
+                          season_games=season_games, external_sos=external_sos)
     rows = [{**r, "team_id": tid} for tid, r in ratings.items()]
     rows.sort(key=lambda x: -x["cpi_raw"])
     for i, row in enumerate(rows, 1):
