@@ -9735,9 +9735,38 @@ def team_projections(team_id: int, season: int = Query(2027),
             WHERE pp.season = %s AND pp.team_id = %s
             ORDER BY pp.sort_val DESC
         """, (season, team_id))
+        rows = [dict(r) for r in cur.fetchall()]
+        # attach each player's 2026 actuals (by canonical id, summed across teams)
+        # so the detail view can show 2026 -> 2027 (projected) and the change.
+        cids = [r["canonical_id"] for r in rows] or [0]
+        cur.execute("""
+            WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
+            SELECT COALESCE(c.cid, b.player_id) AS cid,
+                   SUM(b.plate_appearances) AS pa, SUM(b.at_bats) AS ab, SUM(b.hits) AS h,
+                   SUM(b.doubles) AS d2, SUM(b.triples) AS d3, SUM(b.home_runs) AS hr,
+                   SUM(b.walks) AS bb, SUM(b.strikeouts) AS so, SUM(b.runs) AS r, SUM(b.rbi) AS rbi,
+                   ROUND(AVG(b.batting_avg)::numeric,3) AS avg, ROUND(AVG(b.on_base_pct)::numeric,3) AS obp,
+                   ROUND(AVG(b.slugging_pct)::numeric,3) AS slg, ROUND(AVG(b.woba)::numeric,3) AS woba
+            FROM batting_stats b LEFT JOIN canon c ON c.pid = b.player_id
+            WHERE b.season = 2026 AND COALESCE(c.cid, b.player_id) = ANY(%s)
+            GROUP BY 1
+        """, (cids,))
+        bat26 = {r["cid"]: dict(r) for r in cur.fetchall()}
+        cur.execute("""
+            WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
+            SELECT COALESCE(c.cid, p.player_id) AS cid,
+                   SUM(p.batters_faced) AS bf, SUM(p.innings_pitched) AS ip,
+                   ROUND(AVG(p.era)::numeric,2) AS era, ROUND(AVG(p.fip)::numeric,2) AS fip,
+                   ROUND(AVG(p.k_pct)::numeric,3) AS k_pct, ROUND(AVG(p.bb_pct)::numeric,3) AS bb_pct
+            FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
+            WHERE p.season = 2026 AND COALESCE(c.cid, p.player_id) = ANY(%s)
+            GROUP BY 1
+        """, (cids,))
+        pit26 = {r["cid"]: dict(r) for r in cur.fetchall()}
         hitters, pitchers = [], []
-        for r in cur.fetchall():
-            row = dict(r)
+        for row in rows:
+            cid = row["canonical_id"]
+            row["actual_2026"] = (bat26 if row["side"] == "bat" else pit26).get(cid)
             (hitters if row["side"] == "bat" else pitchers).append(row)
         return {"team": dict(team), "season": season,
                 "hitters": hitters, "pitchers": pitchers}

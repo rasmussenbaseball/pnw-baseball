@@ -288,7 +288,8 @@ def main():
                     er = (lg_er + PIT_EXPAND * (er_bf - lg_er)) * 39.6   # ERA scale
                     fip_rate = lg_er + PIT_EXPAND * (fip_rate - lg_er)
                     hw = band_half(rel, "pit")
-                    line.update({"BF": round(pt), "ERA": round(er, 2), "FIP": round(fip_rate * 39.6, 2),
+                    line.update({"BF": round(pt), "IP": round(pt * 0.245, 1),  # ~74% of BF are outs
+                                 "ERA": round(er, 2), "FIP": round(fip_rate * 39.6, 2),
                                  "K_pct": round(k, 3), "BB_pct": round(bb, 3), "HR_bf": round(hrb, 4),
                                  "ERA_lo": round(er - hw, 2), "ERA_hi": round(er + hw, 2),
                                  "fip_luck": (round(fip_luck.get(pid), 2) if fip_luck.get(pid) is not None else None)})
