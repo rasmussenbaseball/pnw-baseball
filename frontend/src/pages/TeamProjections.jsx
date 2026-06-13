@@ -229,50 +229,111 @@ function Table({ rows, side, expanded, toggle, norm }) {
   )
 }
 
-// ── Projected starting lineup ──────────────────────────────────────────────
-// Fill the 8 field positions + DH from the projected hitters. A player is
-// eligible where his game logs put him (any OF position covers any OF spot).
-// We fill the scarcest positions first, taking the best available bat (by wOBA),
-// then DH = best remaining. Positions with no eligible player are flagged.
+// ── Projected lineup / playing-time tool ────────────────────────────────────
+// Eligibility: outfielders cover all 3 OF spots; corner IF (1B/3B) cover each
+// other; 2B/SS/3B are interchangeable. A player's last-year innings share at
+// each spot (proj.pos_share) seeds where he plays. Best hitters claim full
+// time at their most-played spot first (by projected wOBA); when a spot is
+// taken they spill to a secondary one; the best bat with no defensive home
+// slides to DH; everyone left rides the bench. Result: each player's projected
+// share of games at every position, plus bench %.
 const FIELD_SLOTS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
-const OF_TOKENS = new Set(['LF', 'CF', 'RF', 'OF'])
-
-function slotEligible(tokens, slot) {
-  if (slot === 'LF' || slot === 'CF' || slot === 'RF') return tokens.some((t) => OF_TOKENS.has(t))
-  return tokens.includes(slot)
+const SLOT_SOURCES = {
+  C: ['C'],
+  '1B': ['1B', '3B'],
+  '2B': ['2B', 'SS', '3B'],
+  '3B': ['3B', '1B', '2B', 'SS'],
+  SS: ['SS', '2B', '3B'],
+  LF: ['LF', 'CF', 'RF', 'OF'],
+  CF: ['LF', 'CF', 'RF', 'OF'],
+  RF: ['LF', 'CF', 'RF', 'OF'],
 }
 
-function buildLineup(hitters) {
+function playerShare(h) {
+  const ps = h.proj?.pos_share
+  if (ps && Object.keys(ps).length) return ps
+  // fallback: split evenly across the listed positions
+  const toks = (h.pos || '').toUpperCase().split('/').map((s) => s.trim()).filter(Boolean)
+  if (!toks.length) return {}
+  const f = 1 / toks.length
+  return Object.fromEntries(toks.map((t) => [t, f]))
+}
+
+function buildDepthChart(hitters) {
   const players = (hitters || []).map((h) => ({
     id: h.player_id, name: h.name, incoming: h.is_incoming,
-    woba: h.proj?.wOBA ?? 0,
-    tokens: (h.pos || '').toUpperCase().split('/').map((s) => s.trim()).filter(Boolean),
+    woba: h.proj?.wOBA ?? 0, share: playerShare(h),
   }))
-  const eligCount = (slot) => players.filter((p) => slotEligible(p.tokens, slot)).length
-  const order = [...FIELD_SLOTS].sort((a, b) => eligCount(a) - eligCount(b))
-  const used = new Set(); const assigned = {}
-  for (const slot of order) {
-    const cand = players.filter((p) => !used.has(p.id) && slotEligible(p.tokens, slot))
-      .sort((a, b) => b.woba - a.woba)
-    if (cand.length) { assigned[slot] = cand[0]; used.add(cand[0].id) } else assigned[slot] = null
+  // a player's pull toward a slot: full credit for innings actually played there,
+  // discounted credit for cross-eligible spots (an SS sliding to 2B/3B/1B), so
+  // players gravitate to their real position before filling in elsewhere.
+  const slotWeight = (p, slot) => {
+    const direct = p.share[slot] || 0
+    const cross = SLOT_SOURCES[slot].reduce((s, src) => (src === slot ? s : s + (p.share[src] || 0)), 0)
+    return direct + 0.3 * cross
   }
-  const remaining = players.filter((p) => !used.has(p.id)).sort((a, b) => b.woba - a.woba)
-  assigned.DH = remaining[0] || null
-  return { assigned, gaps: FIELD_SLOTS.filter((s) => !assigned[s]) }
+  const eligCount = (slot) => players.filter((p) => slotWeight(p, slot) > 0).length
+  const counts = Object.fromEntries(FIELD_SLOTS.map((s) => [s, eligCount(s)]))
+
+  const posCap = Object.fromEntries(FIELD_SLOTS.map((s) => [s, 1]))
+  const pCap = {}; const alloc = {}
+  players.forEach((p) => { pCap[p.id] = 1; alloc[p.id] = {} })
+  const byQ = [...players].sort((a, b) => b.woba - a.woba)
+
+  // pass 1: field positions (most-played spot first, ties → scarcer spot first)
+  for (const p of byQ) {
+    const slots = FIELD_SLOTS.filter((s) => slotWeight(p, s) > 0)
+      .sort((a, b) => slotWeight(p, b) - slotWeight(p, a) || counts[a] - counts[b])
+    for (const s of slots) {
+      if (pCap[p.id] <= 1e-6) break
+      const take = Math.min(pCap[p.id], posCap[s])
+      if (take > 0) { alloc[p.id][s] = (alloc[p.id][s] || 0) + take; pCap[p.id] -= take; posCap[s] -= take }
+    }
+  }
+  // pass 2: DH — best bat with leftover time
+  let dh = 1
+  for (const p of byQ) {
+    if (dh <= 1e-6) break
+    if (pCap[p.id] > 1e-6) { const t = Math.min(pCap[p.id], dh); alloc[p.id].DH = t; pCap[p.id] -= t; dh -= t }
+  }
+
+  const rows = players.map((p) => {
+    const slots = Object.entries(alloc[p.id]).filter(([, v]) => v >= 0.005)
+      .map(([s, v]) => ({ s, pct: Math.round(v * 100) })).sort((a, b) => b.pct - a.pct)
+    const onField = slots.reduce((s, x) => s + x.pct, 0)
+    return { ...p, slots, bench: Math.max(0, 100 - onField) }
+  }).sort((a, b) => (100 - a.bench) - (100 - b.bench)).reverse()
+
+  const starters = {}
+  for (const slot of [...FIELD_SLOTS, 'DH']) {
+    let best = null
+    for (const p of players) if ((alloc[p.id][slot] || 0) > (best ? alloc[best.id][slot] : 0)) best = p
+    starters[slot] = best
+  }
+  const gaps = FIELD_SLOTS.filter((s) => counts[s] === 0)
+  return { rows, starters, gaps }
+}
+
+function SlotChip({ s, pct }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded bg-nw-teal/10 text-nw-teal text-[11px] font-medium px-1.5 py-0.5">
+      <span className="font-bold">{s}</span><span className="tabular-nums">{pct}%</span>
+    </span>
+  )
 }
 
 function LineupCard({ hitters }) {
-  const { assigned, gaps } = useMemo(() => buildLineup(hitters), [hitters])
-  const order = [...FIELD_SLOTS, 'DH']
+  const { rows, starters, gaps } = useMemo(() => buildDepthChart(hitters), [hitters])
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Projected starting nine</h3>
-        <span className="text-[11px] text-gray-400">ranked by projected wOBA</span>
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Projected lineup &amp; playing time</h3>
+        <span className="text-[11px] text-gray-400">share of games by position · best bats play most</span>
       </div>
+      {/* starting nine */}
       <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
-        {order.map((slot) => {
-          const p = assigned[slot]
+        {[...FIELD_SLOTS, 'DH'].map((slot) => {
+          const p = starters[slot]
           return (
             <div key={slot} className={`rounded-md border px-2 py-1.5 text-center ${p ? 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30' : 'border-rose-300 dark:border-rose-800 border-dashed bg-rose-50/40 dark:bg-rose-900/10'}`}>
               <div className="text-[10px] font-bold uppercase tracking-wide text-nw-teal">{slot}</div>
@@ -285,10 +346,29 @@ function LineupCard({ hitters }) {
         })}
       </div>
       {gaps.length > 0 && (
-        <p className="text-xs text-rose-600 dark:text-rose-400 mt-3">
-          No projected player at: <b>{gaps.join(', ')}</b>. Incoming transfers and freshmen (added soon) should fill these.
+        <p className="text-xs text-rose-600 dark:text-rose-400">
+          No projected player able to play: <b>{gaps.join(', ')}</b>. Incoming transfers and freshmen (added soon) should fill these.
         </p>
       )}
+      {/* per-player playing-time breakdown */}
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Projected games played by position</div>
+        <div className="space-y-1">
+          {rows.map((p) => (
+            <div key={p.id} className="flex items-center gap-2 text-xs py-0.5">
+              <span className="w-40 shrink-0 truncate font-medium text-gray-800 dark:text-gray-200" title={p.name}>{p.name}{p.incoming ? ' ↗' : ''}</span>
+              <span className="flex flex-wrap gap-1 flex-1">
+                {p.slots.map((x) => <SlotChip key={x.s} s={x.s} pct={x.pct} />)}
+                {p.bench > 0 && (
+                  <span className={`inline-flex items-center gap-1 rounded text-[11px] font-medium px-1.5 py-0.5 ${p.bench >= 60 ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                    Bench <span className="tabular-nums">{p.bench}%</span>
+                  </span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -323,13 +403,19 @@ export default function TeamProjections() {
           </p>
         </div>
         <div className="flex items-end gap-3">
-          <label className="text-sm">
+          <div className="text-sm">
             <span className="block text-xs text-gray-500 mb-1">View</span>
-            <button onClick={() => setNorm((v) => !v)}
-              className={`rounded-md border px-3 py-2 text-sm font-medium whitespace-nowrap ${norm ? 'border-nw-teal bg-nw-teal/10 text-nw-teal' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}>
-              {norm ? 'Per 200 PA / 50 IP' : 'Projected totals'}
-            </button>
-          </label>
+            <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
+              <button onClick={() => setNorm(false)}
+                className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${!norm ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                Projected totals
+              </button>
+              <button onClick={() => setNorm(true)}
+                className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-l border-gray-300 dark:border-gray-600 ${norm ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                Per 200 PA / 50 IP
+              </button>
+            </div>
+          </div>
           <label className="text-sm">
             <span className="block text-xs text-gray-500 mb-1">Team</span>
             <select className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm min-w-[240px]"

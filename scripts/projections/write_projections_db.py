@@ -680,6 +680,10 @@ def main():
                         line[f] = round(pv[0], 3)
                         if pv[1] is not None:
                             line[f + "_prev"] = round(pv[1], 3)
+                # last-year share of games at each position (drives the depth-chart
+                # / playing-time tool on the frontend); only meaningful for hitters
+                if side == "bat" and pos_fracs.get(pid):
+                    line["pos_share"] = {p: round(f, 3) for p, f in pos_fracs[pid].items() if f >= 0.05}
                 rows.append({"season": TARGET, "team_id": team_id, "player_id": int(m.get("raw", pid)),
                              "canonical_id": int(pid), "side": side, "name": m.get("name", "?"),
                              "pos": all_positions.get(pid) or m.get("pos"), "class_last": cls, "is_incoming": incoming,
