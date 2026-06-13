@@ -200,6 +200,7 @@ import TeamStatsPage from './pages/TeamStatsPage'
 import TeamsPage from './pages/TeamsPage'
 import ProTracker from './pages/ProTracker'
 import TeamDetail from './pages/TeamDetail'
+import TeamProjections from './pages/TeamProjections'
 import TeamComparison from './pages/TeamComparison'
 import ScatterPlot from './pages/ScatterPlot'
 import PlayerSearch from './pages/PlayerSearch'
@@ -384,6 +385,7 @@ export default function App() {
 
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />
+          <Route path="/projections" element={<RequireDev><TeamProjections /></RequireDev>} />
           <Route path="/pro-tracker" element={<ProTracker />} />
           <Route path="/standings" element={<StandingsPage />} />
           <Route path="/results" element={<Navigate to="/scoreboard" replace />} />

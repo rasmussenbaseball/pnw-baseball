@@ -117,6 +117,16 @@ export function useTeamStats(teamId, season) {
   return useApi(`/teams/${teamId}/stats`, { season }, [teamId, season])
 }
 
+/** Teams that have projections (for the Projections page team picker). */
+export function useProjectionTeams(season = 2027) {
+  return useApi('/projections/teams', { season }, [season])
+}
+
+/** 2027 projected hitters + pitchers for a team (returning + incoming). */
+export function useTeamProjections(teamId, season = 2027) {
+  return useApi(teamId ? `/teams/${teamId}/projections` : null, { season }, [teamId, season])
+}
+
 /**
  * Fetch the rich team-overview payload used by the social info-graphic
  * — record splits, run diff, Pythag, national/conf/power ranks, top 5

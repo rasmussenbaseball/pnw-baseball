@@ -9690,6 +9690,60 @@ def transfer_portal_players(
 
 
 # ============================================================
+# PLAYER PROJECTIONS (2027) — dev-gated
+# ============================================================
+
+@router.get("/projections/teams")
+@cached_endpoint(ttl_seconds=1800)
+def projections_teams(season: int = Query(2027),
+                      _user: str = Depends(require_tier("dev"))):
+    """Teams that have projections for the season, for the page's team picker."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.id, t.short_name, t.school_name, t.logo_url, d.level,
+                   COUNT(*) AS n, COUNT(*) FILTER (WHERE pp.is_incoming) AS n_incoming
+            FROM player_projections pp
+            JOIN teams t ON t.id = pp.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE pp.season = %s
+            GROUP BY t.id, t.short_name, t.school_name, t.logo_url, d.level
+            ORDER BY d.level, t.short_name
+        """, (season,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+@router.get("/teams/{team_id}/projections")
+@cached_endpoint(ttl_seconds=1800)
+def team_projections(team_id: int, season: int = Query(2027),
+                     _user: str = Depends(require_tier("dev"))):
+    """2027 projected hitters + pitchers for a team (returning + incoming
+    transfers). Each row's `proj` holds the full projected stat line."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""SELECT id, short_name, school_name, logo_url FROM teams WHERE id = %s""", (team_id,))
+        team = cur.fetchone()
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        cur.execute("""
+            SELECT pp.player_id, pp.canonical_id, pp.side, pp.name, pp.pos,
+                   pp.class_last, pp.is_incoming, pp.from_team_id, pp.proj,
+                   ft.short_name AS from_team
+            FROM player_projections pp
+            LEFT JOIN teams ft ON ft.id = pp.from_team_id
+            WHERE pp.season = %s AND pp.team_id = %s
+            ORDER BY pp.sort_val DESC
+        """, (season, team_id))
+        hitters, pitchers = [], []
+        for r in cur.fetchall():
+            row = dict(r)
+            (hitters if row["side"] == "bat" else pitchers).append(row)
+        return {"team": dict(team), "season": season,
+                "hitters": hitters, "pitchers": pitchers}
+
+
+# ============================================================
 # TEAM STATS
 # ============================================================
 

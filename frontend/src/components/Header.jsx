@@ -41,6 +41,7 @@ const NAV = [
     items: [
       { to: '/scoreboard', label: 'Scoreboard', desc: 'Scores, results & schedules' },
       { to: '/teams', label: 'Team Pages', desc: 'Rosters, stats & profiles' },
+      { to: '/projections', label: 'Projections', desc: '2027 projected rosters (incl. transfers)', requires: 'dev' },
       { to: '/pro-tracker', label: 'Pro Tracker', desc: 'PNW alumni in MiLB & MLB, by school' },
       { to: '/standings', label: 'Standings', desc: 'Conference & overall rankings' },
       { to: '/team-ratings', label: 'Team Ratings (CPI)', desc: 'Within-division power rankings' },
