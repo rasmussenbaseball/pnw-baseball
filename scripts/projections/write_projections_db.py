@@ -152,75 +152,177 @@ def proj_pt(hist, a, b, c):
 # every year so the best hitter projects ~.400, etc. Keeps the projection mean
 # and ranking; only widens the spread (never compresses) and clamps to the
 # achievable 2nd–98th percentile.
-BAT_ACHIEVE = {"AVG": "batting_avg", "OBP": "on_base_pct", "SLG": "slugging_pct",
-               "wOBA": "woba", "iso": "iso", "hr_pa": "home_runs::float/NULLIF(plate_appearances,0)",
+# Only the DRIVER rates are stretched; OBP/SLG/wOBA are RECONSTRUCTED from them
+# so the slash line stays internally consistent.
+BAT_ACHIEVE = {"AVG": "batting_avg", "iso": "iso",
+               "hr_pa": "home_runs::float/NULLIF(plate_appearances,0)",
                "k_pct": "k_pct", "bb_pct": "bb_pct"}
-PIT_ACHIEVE = {"ERA": "era", "FIP": "fip", "WHIP": "whip", "K_pct": "k_pct",
-               "BB_pct": "bb_pct", "HR_allowed": "home_runs_allowed::float"}
+PIT_ACHIEVE = {"ERA": "era", "FIP": "fip", "K_pct": "k_pct", "BB_pct": "bb_pct"}
+
+# wOBA-ish linear weights for reconstructing wOBA from the slash components.
+_WBB, _WHBP, _W1B, _W2B, _W3B, _WHR = 0.69, 0.72, 0.88, 1.25, 1.58, 2.00
 
 
-def _achievable_targets(cur):
-    """Per (side, level, stat): (std, p2, p98) of actual 2026 qualified players."""
+def pos_factor(pos):
+    """Playing-time multiplier by position. Catchers rarely exceed ~70% of team
+    games unless they also DH/play the field; everyone else can play ~full-time."""
+    if not pos:
+        return 1.0
+    parts = pos.upper().split("/")
+    if parts == ["C"]:
+        return 0.72
+    if "C" in parts:
+        return 0.88        # catcher who also DHs / plays another spot
+    return 1.0
+
+
+def _pt_distributions(cur):
+    """Per (side, level): sorted np.array of actual 2026 playing time (PA / BF),
+    so we can map a projected-quality rank to a realistic workload."""
     out = {}
-    for side, tbl, idc, mn, specs in [
-            ("bat", "batting_stats", "plate_appearances", 100, BAT_ACHIEVE),
-            ("pit", "pitching_stats", "batters_faced", 60, PIT_ACHIEVE)]:
-        for key, expr in specs.items():
-            cur.execute(f"""
-                SELECT q.level lvl, stddev_pop(q.x) sd,
-                       percentile_cont(0.02) WITHIN GROUP (ORDER BY q.x) p2,
-                       percentile_cont(0.98) WITHIN GROUP (ORDER BY q.x) p98
-                FROM (SELECT d.level, ({expr})::float x
-                      FROM {tbl} b JOIN teams t ON t.id=b.team_id
-                      JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-                      WHERE b.season=2026 AND b.{idc}>=%s AND ({expr}) IS NOT NULL) q
-                GROUP BY q.level
-            """, (mn,))
-            for r in cur.fetchall():
-                if r["sd"]:
-                    out[(side, r["lvl"], key)] = (float(r["sd"]), float(r["p2"]), float(r["p98"]))
+    for side, tbl, col, mn in [("bat", "batting_stats", "plate_appearances", 15),
+                               ("pit", "pitching_stats", "batters_faced", 15)]:
+        cur.execute(f"""SELECT d.level lvl, b.{col} v FROM {tbl} b
+            JOIN teams t ON t.id=b.team_id JOIN conferences c ON c.id=t.conference_id
+            JOIN divisions d ON d.id=c.division_id WHERE b.season=2026 AND b.{col}>=%s""", (mn,))
+        tmp = {}
+        for r in cur.fetchall():
+            tmp.setdefault(r["lvl"], []).append(float(r["v"]))
+        for lvl, vals in tmp.items():
+            out[(side, lvl)] = np.array(sorted(vals))
     return out
 
 
+def _achievable_targets(cur):
+    """Per (side, level, stat): sorted np.array of actual 2026 qualified values,
+    for quantile-mapping. Includes SLG/wOBA for clamping the reconstructed line."""
+    out = {}
+    for side, tbl, idc, mn, specs in [
+            ("bat", "batting_stats", "plate_appearances", 100,
+             {**BAT_ACHIEVE, "SLG": "slugging_pct", "wOBA": "woba"}),
+            ("pit", "pitching_stats", "batters_faced", 60, PIT_ACHIEVE)]:
+        for key, expr in specs.items():
+            cur.execute(f"""SELECT d.level lvl, ({expr})::float x
+                FROM {tbl} b JOIN teams t ON t.id=b.team_id
+                JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+                WHERE b.season=2026 AND b.{idc}>=%s AND ({expr}) IS NOT NULL""", (mn,))
+            tmp = {}
+            for r in cur.fetchall():
+                tmp.setdefault(r["lvl"], []).append(float(r["x"]))
+            for lvl, vals in tmp.items():
+                if len(vals) >= 8:
+                    out[(side, lvl, key)] = np.array(sorted(vals))
+    return out
+
+
+def _quantile_map(proj_vals, target_arr):
+    """Map each projected value to the actual distribution at its rank-percentile
+    (smooth, no clamp-piling). Percentiles are compressed to [0.03, 0.97] so the
+    extremes land on achievable values, not tiny-sample freaks (a 47.00 ERA or a
+    .250 ERA at the literal min/max)."""
+    n = len(proj_vals)
+    order = np.argsort(np.argsort(proj_vals))
+    return [float(np.quantile(target_arr, 0.03 + 0.94 * ((order[i] + 0.5) / n))) for i in range(n)]
+
+
+def _zscores(vals):
+    a = np.array(vals, dtype=float)
+    sd = a.std() or 1e-9
+    return (a - a.mean()) / sd
+
+
 def expand_to_achievable(rows):
-    """Stretch each stat's projected spread to its real achievable distribution
-    (per level), preserving the projection mean + player ranking. Then recompute
-    hitter counting stats from the stretched rates."""
+    """Two product-driven passes:
+      1. Stretch each driver rate's spread to its real achievable distribution
+         (best hitter ~.400, ERAs sub-2 to 8+), preserving mean + ranking.
+      2. Assign playing time by PROJECTED QUALITY, not last year: the best
+         hitters/arms get near-full workloads (scaled by position; pitchers also
+         rewarded for strike-throwing durability), the worst get the fewest.
+    Then reconstruct the slash line + counts from the stretched rates."""
     with get_connection() as conn:
-        tgt = _achievable_targets(conn.cursor())
+        cur = conn.cursor()
+        tgt = _achievable_targets(cur)
+        ptd = _pt_distributions(cur)
     specs = {"bat": BAT_ACHIEVE, "pit": PIT_ACHIEVE}
     for side in ("bat", "pit"):
         for level in {r["proj"]["level"] for r in rows if r["side"] == side}:
             grp = [r for r in rows if r["side"] == side and r["proj"]["level"] == level]
+            # --- pass 1: quantile-map driver rates to the achievable distribution ---
             for key in specs[side]:
-                t = tgt.get((side, level, key))
-                if not t:
+                arr = tgt.get((side, level, key))
+                if arr is None:
                     continue
-                std, p2, p98 = t
-                vals = [r["proj"].get(key) for r in grp if r["proj"].get(key) is not None]
-                if len(vals) < 5:
+                idxs = [i for i, r in enumerate(grp) if r["proj"].get(key) is not None]
+                if len(idxs) < 5:
                     continue
-                mu = float(np.mean(vals)); psd = float(np.std(vals)) or 1e-9
-                factor = min(max(std / psd, 1.0), 4.0)   # only widen, capped
-                for r in grp:
-                    v = r["proj"].get(key)
-                    if v is None:
-                        continue
-                    r["proj"][key] = round(min(max(mu + (v - mu) * factor, p2), p98), 4)
-    # recompute hitter counting stats from the stretched rates
+                mapped = _quantile_map([grp[i]["proj"][key] for i in idxs], arr)
+                for j, i in enumerate(idxs):
+                    grp[i]["proj"][key] = round(mapped[j], 4)
+            # --- pass 2: playing time by projected quality ---
+            arr = ptd.get((side, level))
+            if arr is not None and len(grp) >= 3:
+                if side == "pit":
+                    # quality + strike-throwing durability decide the workload
+                    qz = _zscores([r["sort_val"] for r in grp])     # sort_val = -ER (higher=better)
+                    sz = _zscores([(r["proj"].get("p_strike") or 0.62) for r in grp])
+                    score = qz + 0.4 * sz
+                else:
+                    score = np.array([r["sort_val"] for r in grp])  # wOBA (higher=better)
+                order = np.argsort(score)                            # ascending; best last
+                n = len(order)
+                for rank, gi in enumerate(order):
+                    pctile = (rank + 0.5) / n
+                    pt_q = float(np.quantile(arr, pctile))
+                    r = grp[gi]
+                    last = r["proj"].get("PT", 0) or 0
+                    pt_new = 0.8 * pt_q + 0.2 * last
+                    if side == "bat":
+                        pt_new *= pos_factor(r.get("pos"))
+                    r["proj"]["PT"] = round(pt_new)
+    # achievable caps (99th pctile) for the reconstructed combo stats, per level
+    # p90 caps: a double-max contact+power profile (.400 AVG AND elite ISO) is an
+    # impossible combo, so cap the reconstructed SLG/wOBA at a great-but-real level.
+    slg_cap = {lvl: float(np.quantile(tgt[("bat", lvl, "SLG")], 0.90))
+               for (s, lvl, k) in tgt if s == "bat" and k == "SLG"}
+    woba_cap = {lvl: float(np.quantile(tgt[("bat", lvl, "wOBA")], 0.90))
+                for (s, lvl, k) in tgt if s == "bat" and k == "wOBA"}
+    # --- reconstruct slash + counts from stretched rates and the new PT ---
     for r in rows:
-        if r["side"] != "bat":
-            continue
         p = r["proj"]; pt = p.get("PT", 0)
-        bb_pct = p.get("bb_pct", 0); avg = p.get("AVG", 0); iso = p.get("iso", 0); hr_pa = p.get("hr_pa", 0)
-        ab = pt * (1 - bb_pct - 0.02)
-        hr = hr_pa * pt
-        rem = max(iso * ab - 3 * hr, 0); d3 = rem * 0.06
-        p["AB"] = round(ab); p["H"] = round(avg * ab); p["HR"] = round(hr, 1)
-        p["2B"] = round(max(rem - 2 * d3, 0), 1); p["3B"] = round(max(d3, 0), 1)
-        p["SLG"] = round(avg + iso, 3); p["BB"] = round(bb_pct * pt); p["SO"] = round(p.get("k_pct", 0) * pt)
-        p["R"] = round(pt * 0.16 * (p.get("OBP", 0.33) / 0.360))
-        p["RBI"] = round(pt * 0.15 * ((avg + iso) / 0.420))
+        if r["side"] == "bat":
+            bb_pct = p.get("bb_pct", 0); avg = p.get("AVG", 0); iso = p.get("iso", 0)
+            hr_pa = p.get("hr_pa", 0); k_pct = p.get("k_pct", 0)
+            # cap ISO so SLG (=AVG+ISO) can't exceed the achievable max — prevents
+            # a contact+power double-max producing an impossible .700 SLG.
+            cap = slg_cap.get(p.get("level"))
+            if cap is not None:
+                iso = min(iso, max(0.0, cap - avg))
+            hbp_pa = 0.01
+            ab = pt * (1 - bb_pct - hbp_pa - 0.01)        # minus BB, HBP, sac
+            hr = hr_pa * pt
+            h = avg * ab
+            xb_bases = max(iso * ab, 0)                    # 2B + 2*3B + 3*HR
+            non_hr_xb = max(xb_bases - 3 * hr, 0)          # 2B + 2*3B
+            d3 = non_hr_xb * 0.06
+            d2 = max(non_hr_xb - 2 * d3, 0)
+            singles = max(h - d2 - d3 - hr, 0)
+            bb = bb_pct * pt; hbp = hbp_pa * pt
+            slg = avg + iso
+            obp = (h + bb + hbp) / pt if pt else 0
+            woba = ((_WBB * bb + _WHBP * hbp + _W1B * singles + _W2B * d2
+                     + _W3B * d3 + _WHR * hr) / pt) if pt else 0
+            wcap = woba_cap.get(p.get("level"))
+            if wcap is not None:
+                woba = min(woba, wcap)
+            p.update({"AB": round(ab), "H": round(h), "HR": round(hr, 1),
+                      "2B": round(d2, 1), "3B": round(d3, 1), "BB": round(bb), "SO": round(k_pct * pt),
+                      "R": round(pt * 0.16 * (obp / 0.360)), "RBI": round(pt * 0.15 * (slg / 0.420)),
+                      "OBP": round(obp, 3), "SLG": round(slg, 3), "wOBA": round(woba, 3)})
+        else:
+            p["BF"] = round(pt)
+            p["IP"] = round(pt * 0.245, 1)
+            if p.get("HR_bf") is not None:
+                p["HR_allowed"] = round(p["HR_bf"] * pt, 1)
 
 
 def main():
