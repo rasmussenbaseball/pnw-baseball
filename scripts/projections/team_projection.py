@@ -38,14 +38,19 @@ from backtest import (  # noqa: E402
 from compute_player_projections import SIGMA, Z10, build_summer_lookup  # noqa: E402
 
 TARGET = 2027
-PA_A, PA_B, PA_C = 0.454, 0.023, 96.8
-BF_A, BF_B, BF_C = 0.538, -0.027, 101.2
+# Playing time: weight last season heavily with a small floor, so established
+# roles hold and marginal guys DON'T balloon to 30+ IP / a full-time PA load.
+PA_A, PA_B, PA_C = 0.65, 0.05, 30.0
+BF_A, BF_B, BF_C = 0.65, 0.05, 30.0
 GRADUATING = {"Sr", "Sr+", "Gr", "5th"}
 FIP_BLEND = 0.5    # weight on FIP-reconstruction vs direct ERA (backtest-best)
-# Data-fit PBP-stat regression ballasts (in pitches-seen units) + sign of the
-# youth-development nudge (young players trend toward more whiffs / strikes).
-HIT_PBP = {"p_whiff": (170, 0), "p_gb": (463, 0), "p_airpull": (232, +1)}
-PIT_PBP = {"p_whiff": (304, +1), "p_gb": (953, 0), "p_strike": (341, +1)}
+# PBP signature-skill ballasts (pitches-seen units). Kept LOW: strike%, whiff%,
+# GB% are stable signature traits (a sinkerballer stays a sinkerballer); the
+# raw YoY reliability looked low only because narrative-derived tags are noisy,
+# so we trust the player's own level and barely regress these. (sign = youth
+# development nudge direction.)
+HIT_PBP = {"p_whiff": (120, 0), "p_gb": (200, 0), "p_airpull": (160, +1)}
+PIT_PBP = {"p_whiff": (170, +1), "p_gb": (220, 0), "p_strike": (160, +1)}
 YOUTH_NUDGE = {"Fr": 0.004, "So": 0.006, "Jr": 0.002, "Sr": 0.0}  # per-stat, applied * sign
 PBP_LABEL = {"p_whiff": "Whiff%", "p_gb": "GB%", "p_airpull": "AirPull%", "p_strike": "Strike%"}
 

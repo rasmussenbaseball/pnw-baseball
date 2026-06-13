@@ -18,8 +18,9 @@ const f1 = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(1))
 const slash = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(3).replace(/^0/, ''))
 const pctInt = (v) => (v === null || v === undefined ? '–' : `${Math.round(v * 100)}%`)
 
-// pitch-level rate as a whole % with the YoY change beside it
-function pctDelta(proj, key, prevKey) {
+// pitch-level rate as a whole % with the YoY change beside it.
+// upGood = is an INCREASE good for this stat+side? (hitter whiff up = bad).
+function pctDelta(proj, key, prevKey, upGood = true) {
   const v = proj?.[key]
   if (v === null || v === undefined) return <span className="text-gray-300 dark:text-gray-600">–</span>
   const shown = `${Math.round(v * 100)}%`
@@ -28,7 +29,8 @@ function pctDelta(proj, key, prevKey) {
   const d = Math.round((v - prev) * 100)
   if (d === 0) return <span>{shown}</span>
   const up = d > 0
-  return <span>{shown}<span className={`ml-0.5 text-[10px] ${up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{up ? '▲' : '▼'}{Math.abs(d)}</span></span>
+  const good = up === upGood   // up & upGood, or down & !upGood
+  return <span>{shown}<span className={`ml-0.5 text-[10px] ${good ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{up ? '▲' : '▼'}{Math.abs(d)}</span></span>
 }
 
 function Confidence({ rel }) {
@@ -135,7 +137,7 @@ function PitcherDetail({ row, span }) {
 function Table({ rows, side, expanded, toggle }) {
   if (!rows?.length) return <p className="text-sm text-gray-500 py-4">No projected {side === 'bat' ? 'hitters' : 'pitchers'}.</p>
   const isBat = side === 'bat'
-  const span = isBat ? 19 : 13
+  const span = isBat ? 19 : 15
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
       <table className="min-w-full text-xs">
@@ -147,7 +149,7 @@ function Table({ rows, side, expanded, toggle }) {
               <th className={GROUP + BL} colSpan={4}>Rate &amp; value</th>
               <th className={GROUP + BL} colSpan={3}>Plate skills (Δ vs ’26)</th>
             </> : <>
-              <th className={GROUP} colSpan={5}>Run prevention</th>
+              <th className={GROUP} colSpan={6}>Run prevention</th>
               <th className={GROUP + BL} colSpan={2}>Command</th>
               <th className={GROUP + BL} colSpan={3}>Stuff (Δ vs ’26)</th>
             </>}
@@ -161,7 +163,7 @@ function Table({ rows, side, expanded, toggle }) {
               <th className={TH + BL}>AVG</th><th className={TH}>OBP</th><th className={TH}>SLG</th><th className={TH}>wOBA</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Pull-air</th>
             </> : <>
-              <th className={TH}>BF</th><th className={TH}>IP</th><th className={TH}>ERA</th><th className={TH}>FIP</th><th className={TH}>K-BB</th>
+              <th className={TH}>BF</th><th className={TH}>IP</th><th className={TH}>ERA</th><th className={TH}>FIP</th><th className={TH}>WHIP</th><th className={TH}>HR</th>
               <th className={TH + BL}>K%</th><th className={TH}>BB%</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Strike</th>
             </>}
@@ -188,13 +190,13 @@ function Table({ rows, side, expanded, toggle }) {
                     <td className={TD}>{p.R ?? '–'}</td><td className={TD}>{p.RBI ?? '–'}</td><td className={TD}>{p.BB ?? '–'}</td>
                     <td className={TD + BL}>{slash(p.AVG)}</td><td className={TD}>{slash(p.OBP)}</td><td className={TD}>{slash(p.SLG)}</td>
                     <td className={`${TD} ${valueColor(p.wOBA, 0.300, 0.430)}`}>{slash(p.wOBA)}</td>
-                    <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev')}</td>
-                    <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev')}</td><td className={TD}>{pctDelta(p, 'p_airpull', 'p_airpull_prev')}</td>
+                    <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev', false)}</td>
+                    <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev', false)}</td><td className={TD}>{pctDelta(p, 'p_airpull', 'p_airpull_prev', true)}</td>
                   </> : <>
                     <td className={TD}>{p.BF ?? '–'}</td><td className={TD}>{f1(p.IP)}</td>
                     <td className={`${TD} ${valueColor(p.ERA, 3.5, 7.0, true)}`}>{f2(p.ERA)}</td>
                     <td className={TD}>{f2(p.FIP)}</td>
-                    <td className={TD}>{p.K_pct != null && p.BB_pct != null ? `${Math.round((p.K_pct - p.BB_pct) * 100)}%` : '–'}</td>
+                    <td className={TD}>{f2(p.WHIP)}</td><td className={TD}>{f1(p.HR_allowed)}</td>
                     <td className={TD + BL}>{pctInt(p.K_pct)}</td><td className={TD}>{pctInt(p.BB_pct)}</td>
                     <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev')}</td>
                     <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev')}</td><td className={TD}>{pctDelta(p, 'p_strike', 'p_strike_prev')}</td>
