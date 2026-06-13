@@ -53,8 +53,10 @@ PIT_EXPAND = 1.15
 # skills that produce it, not from itself alone (analyze_all_stats.py CV gains).
 # {target: [predictors]} — predictors are box components (from proj) or PBP
 # rates (from pbp_proj). Applied only when all predictors are available.
-BAT_REFINE = {"avg": ["avg", "k_pct", "babip", "p_ld"]}        # CV -5%
-PIT_REFINE = {"bb_pct": ["bb_pct", "p_strike", "p_whiff"]}     # CV -15%
+# order matters: babip refined first (feeds avg). All CV-validated, well-calibrated.
+BAT_REFINE = {"babip": ["babip", "p_ld", "p_gb", "p_airpull"],  # CV -6.6%
+              "avg": ["avg", "k_pct", "babip", "p_ld"]}          # CV -5%
+PIT_REFINE = {"bb_pct": ["bb_pct", "p_strike", "p_whiff"]}       # CV -15%
 
 
 def fit_refine(df_feat, target, preds, target_season):
@@ -315,6 +317,11 @@ def main():
                         line[s] = round(proj[s][0], 4)
                 pbp_for = pbp_proj.get(pid, {})
                 if side == "bat":
+                    # refine BABIP first (from LD%/GB%/air-pull) so AVG uses it
+                    if "babip" in refine:
+                        br = apply_refine(refine["babip"], proj, pbp_for)
+                        if br is not None:
+                            proj["babip"] = (max(0.20, min(0.45, br)), proj["babip"][1])
                     bb, k, hr_pa, avg, iso = (proj.get(s, (0, 0))[0] for s in ["bb_pct", "k_pct", "hr_pa", "avg", "iso"])
                     # refine AVG from its peripherals (K%, BABIP, LD%) when available
                     if "avg" in refine:
