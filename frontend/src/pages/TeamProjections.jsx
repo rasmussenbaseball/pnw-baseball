@@ -134,10 +134,25 @@ function PitcherDetail({ row, span }) {
   )
 }
 
-function Table({ rows, side, expanded, toggle }) {
+// Rescale counting stats to a fixed volume (200 PA / 50 IP) so players compare
+// on equal playing time. Rate stats (AVG/ERA/wOBA/FIP/K%…) are untouched; WAR
+// scales with volume too, giving a clean per-200-PA / per-50-IP value number.
+function normLine(p, isBat) {
+  const vol = isBat ? (p.PT || 0) : (p.IP || 0)
+  if (!vol) return p
+  const f = (isBat ? 200 : 50) / vol
+  const r0 = (v) => (v == null ? v : Math.round(v * f))
+  const r1 = (v) => (v == null ? v : Math.round(v * f * 10) / 10)
+  return isBat
+    ? { ...p, PT: 200, H: r0(p.H), '2B': r0(p['2B']), '3B': r0(p['3B']),
+        HR: r1(p.HR), R: r0(p.R), RBI: r0(p.RBI), BB: r0(p.BB), WAR: r1(p.WAR) }
+    : { ...p, IP: 50, BF: r0(p.BF), HR_allowed: r1(p.HR_allowed), WAR: r1(p.WAR) }
+}
+
+function Table({ rows, side, expanded, toggle, norm }) {
   if (!rows?.length) return <p className="text-sm text-gray-500 py-4">No projected {side === 'bat' ? 'hitters' : 'pitchers'}.</p>
   const isBat = side === 'bat'
-  const span = isBat ? 19 : 15
+  const span = isBat ? 20 : 16
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
       <table className="min-w-full text-xs">
@@ -153,7 +168,7 @@ function Table({ rows, side, expanded, toggle }) {
               <th className={GROUP + BL} colSpan={2}>Command</th>
               <th className={GROUP + BL} colSpan={3}>Stuff (Δ vs ’26)</th>
             </>}
-            <th className={GROUP} colSpan={1}> </th>
+            <th className={GROUP + BL} colSpan={2}>Value</th>
           </tr>
           <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
             <th className={THL}>Player</th><th className={TH}>’27</th><th className={TH}>Pos</th>
@@ -167,12 +182,12 @@ function Table({ rows, side, expanded, toggle }) {
               <th className={TH + BL}>K%</th><th className={TH}>BB%</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Strike</th>
             </>}
-            <th className={TH + BL}>Conf</th>
+            <th className={TH + BL}>WAR</th><th className={TH}>Conf</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => {
-            const p = r.proj || {}
+            const p = norm ? normLine(r.proj || {}, isBat) : (r.proj || {})
             const open = expanded === r.player_id
             return (
               <Fragment key={r.player_id}>
@@ -201,7 +216,8 @@ function Table({ rows, side, expanded, toggle }) {
                     <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev')}</td>
                     <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev')}</td><td className={TD}>{pctDelta(p, 'p_strike', 'p_strike_prev')}</td>
                   </>}
-                  <td className={TDL + BL}><Confidence rel={p.reliability} /></td>
+                  <td className={`${TD} ${BL} font-semibold ${valueColor(p.WAR, 0.5, 2.0)}`}>{f1(p.WAR)}</td>
+                  <td className={TDL}><Confidence rel={p.reliability} /></td>
                 </tr>
                 {open && (isBat ? <HitterDetail row={r} span={span} /> : <PitcherDetail row={r} span={span} />)}
               </Fragment>
@@ -217,6 +233,7 @@ export default function TeamProjections() {
   const { data: teams } = useProjectionTeams(SEASON)
   const [picked, setPicked] = useState(null)
   const [expanded, setExpanded] = useState(null)
+  const [norm, setNorm] = useState(false)
   const effectiveTeamId = picked || teams?.[0]?.id || null
   const { data: payload, loading } = useTeamProjections(effectiveTeamId, SEASON)
   const toggle = (id) => setExpanded((cur) => (cur === id ? null : id))
@@ -241,17 +258,26 @@ export default function TeamProjections() {
             Click any player for their 2026 → 2027 change and floor/ceiling outcomes.
           </p>
         </div>
-        <label className="text-sm">
-          <span className="block text-xs text-gray-500 mb-1">Team</span>
-          <select className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm min-w-[240px]"
-            value={effectiveTeamId || ''} onChange={(e) => { setPicked(Number(e.target.value)); setExpanded(null) }}>
-            {LEVEL_ORDER.filter((lv) => grouped[lv]).map((lv) => (
-              <optgroup key={lv} label={lv}>
-                {grouped[lv].map((t) => <option key={t.id} value={t.id}>{t.short_name}{t.n_incoming ? ` (+${t.n_incoming})` : ''}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        </label>
+        <div className="flex items-end gap-3">
+          <label className="text-sm">
+            <span className="block text-xs text-gray-500 mb-1">View</span>
+            <button onClick={() => setNorm((v) => !v)}
+              className={`rounded-md border px-3 py-2 text-sm font-medium whitespace-nowrap ${norm ? 'border-nw-teal bg-nw-teal/10 text-nw-teal' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}>
+              {norm ? 'Per 200 PA / 50 IP' : 'Projected totals'}
+            </button>
+          </label>
+          <label className="text-sm">
+            <span className="block text-xs text-gray-500 mb-1">Team</span>
+            <select className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm min-w-[240px]"
+              value={effectiveTeamId || ''} onChange={(e) => { setPicked(Number(e.target.value)); setExpanded(null) }}>
+              {LEVEL_ORDER.filter((lv) => grouped[lv]).map((lv) => (
+                <optgroup key={lv} label={lv}>
+                  {grouped[lv].map((t) => <option key={t.id} value={t.id}>{t.short_name}{t.n_incoming ? ` (+${t.n_incoming})` : ''}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {loading && <p className="text-sm text-gray-500 py-8">Loading projections…</p>}
@@ -266,11 +292,11 @@ export default function TeamProjections() {
           </div>
           <section>
             <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">Hitters</h3>
-            <Table rows={payload.hitters} side="bat" expanded={expanded} toggle={toggle} />
+            <Table rows={payload.hitters} side="bat" expanded={expanded} toggle={toggle} norm={norm} />
           </section>
           <section>
             <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">Pitchers</h3>
-            <Table rows={payload.pitchers} side="pit" expanded={expanded} toggle={toggle} />
+            <Table rows={payload.pitchers} side="pit" expanded={expanded} toggle={toggle} norm={norm} />
           </section>
           <div className="text-xs text-gray-400 dark:text-gray-500 space-y-1 pt-3 border-t border-gray-100 dark:border-gray-800">
             <p><b>Conf</b> = how much career data backs the projection (more data → more confident, less regression).

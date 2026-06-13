@@ -17,6 +17,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -26,6 +27,9 @@ sys.path.insert(0, str(REPO / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from app.models.database import get_connection  # noqa: E402
+from app.stats.advanced import (  # noqa: E402
+    DEFAULT_WEIGHTS, CollegeWAR, compute_college_war,
+)
 from derive_constants import load_batting, load_pitching  # noqa: E402
 from backtest import (  # noqa: E402
     BAT_COMPONENTS, PIT_COMPONENTS, PERIPH_FEATS, CLASS_NEXT, RECENCY,
@@ -234,6 +238,61 @@ def _zscores(vals):
     return (a - a.mean()) / sd
 
 
+def _league_baselines(cur):
+    """2026 league wOBA (PA-weighted) and FIP (IP-weighted) per division level.
+    Projections are translated INTO a 2026-like run environment, so WAR is
+    anchored to that season's league context."""
+    cur.execute("""SELECT d.level lvl,
+          SUM(b.woba*b.plate_appearances)/NULLIF(SUM(b.plate_appearances),0) v
+        FROM batting_stats b JOIN teams t ON t.id=b.team_id
+        JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+        WHERE b.season=2026 AND b.plate_appearances>=20 AND b.woba IS NOT NULL GROUP BY 1""")
+    lg_woba = {r["lvl"]: float(r["v"]) for r in cur.fetchall() if r["v"]}
+    cur.execute("""SELECT d.level lvl,
+          SUM(p.fip*p.innings_pitched)/NULLIF(SUM(p.innings_pitched),0) v
+        FROM pitching_stats p JOIN teams t ON t.id=p.team_id
+        JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+        WHERE p.season=2026 AND p.innings_pitched>=10 AND p.fip IS NOT NULL GROUP BY 1""")
+    lg_fip = {r["lvl"]: float(r["v"]) for r in cur.fetchall() if r["v"]}
+    return lg_woba, lg_fip
+
+
+def add_war(rows, pos_fracs):
+    """Projected WAR via the site's compute_college_war (same formula as the
+    actual-season WAR on player pages, so projected and real WAR are directly
+    comparable). Batting runs from projected wOBA vs league wOBA at the
+    destination level + positional + replacement; pitching from FIP vs league."""
+    with get_connection() as conn:
+        lg_woba, lg_fip = _league_baselines(conn.cursor())
+    DEF_WOBA, DEF_FIP = 0.345, 5.0
+    for r in rows:
+        p = r["proj"]; level = p.get("level") or "D2"
+        w = DEFAULT_WEIGHTS.get(level, DEFAULT_WEIGHTS["D1"])
+        if r["side"] == "bat":
+            pa = p.get("PT") or 0
+            woba = p.get("wOBA")
+            if not pa or woba is None:
+                continue
+            wraa = ((woba - lg_woba.get(level, DEF_WOBA)) / w.woba_scale) * pa
+            pw = pos_fracs.get(r["canonical_id"])
+            war = compute_college_war(
+                batting=SimpleNamespace(wraa=wraa), position_weights=pw,
+                position=(p.get("pos") or "DH").split("/")[0].upper(),
+                plate_appearances=int(pa), division_level=level)
+        else:
+            ip = p.get("IP") or 0
+            fip = p.get("FIP")
+            if not ip or fip is None:
+                continue
+            # pitching runs above replacement, on the site's runs_per_win scale
+            pwar = ((lg_fip.get(level, DEF_FIP) - fip) / w.runs_per_win
+                    + 0.025) * (ip / 9.0)
+            war = compute_college_war(
+                pitching=SimpleNamespace(pitching_war=pwar),
+                innings_pitched=ip, division_level=level)
+        p["WAR"] = round(war.total_war, 1)
+
+
 def expand_to_achievable(rows):
     """Two product-driven passes:
       1. Stretch each driver rate's spread to its real achievable distribution
@@ -421,12 +480,15 @@ def main():
                 agg = pos_counts.setdefault(r["cid"], {})
                 agg[pos] = agg.get(pos, 0) + r["n"]
         all_positions = {}
+        pos_fracs = {}   # cid -> {pos: fraction of games} for the WAR positional adj
         for cid, agg in pos_counts.items():
             tot = sum(agg.values())
             keep = [p for p, n in sorted(agg.items(), key=lambda kv: kv[1], reverse=True)
                     if n >= max(2, 0.15 * tot)]
             if keep:
                 all_positions[cid] = "/".join(keep[:3])
+            if tot:
+                pos_fracs[cid] = {p: n / tot for p, n in agg.items()}
 
         # --- usage-based role detection (smart role logic) ---
         # A player's role is decided by their MOST RECENT season's actual usage,
@@ -625,6 +687,7 @@ def main():
                              "sort_val": round(float(sort_val), 5), "proj": line})
 
     expand_to_achievable(rows)
+    add_war(rows, pos_fracs)
 
     # write to DB
     with get_connection() as conn:
