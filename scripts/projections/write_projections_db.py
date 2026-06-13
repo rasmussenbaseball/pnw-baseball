@@ -584,6 +584,20 @@ def main():
             for r in cur.fetchall():
                 meta.setdefault(r["cid"], r)   # first side wins for name/pos; fine
 
+        # per-level HR-per-fly-ball (the xFIP normalizer). FB% is a stable pitcher
+        # skill; HR/FB is mostly luck + park/level, so projecting HR as
+        # (projected FB% x level HR/FB) is far more predictive than a pitcher's
+        # own noisy HR rate. NWAC's HR/FB (~.037) is a third of the 4-year levels.
+        cur.execute("""
+            SELECT d.level lvl, COUNT(*) FILTER (WHERE ge.bb_type='FB') fb,
+                   COUNT(*) FILTER (WHERE ge.result_type='home_run') hr
+            FROM game_events ge JOIN games g ON g.id=ge.game_id
+            JOIN players p ON p.id=ge.pitcher_player_id JOIN teams t ON t.id=p.team_id
+            JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+            WHERE g.season=2026 GROUP BY 1
+        """)
+        hr_per_fb = {r["lvl"]: (r["hr"] / r["fb"]) for r in cur.fetchall() if r["fb"]}
+
         # all positions each player actually played in 2026 (>=15% of his games),
         # most-used first — so the roster shows e.g. "1B/OF", revealing how a team
         # fits multiple same-primary guys via secondary spots.
@@ -791,6 +805,15 @@ def main():
                         bbr = apply_refine(refine["bb_pct"], proj, pbp_for)
                         if bbr is not None:
                             bb = max(0.02, min(0.25, bbr))
+                    # xFIP-style HR rate: projected FB% (a stable skill) x the
+                    # level's HR-per-fly-ball, blended over the pitcher's own noisy
+                    # HR rate. Far more predictive, and it carries the level's power
+                    # environment (NWAC arms give up HR on far fewer fly balls).
+                    p_fb = pbp_for.get("p_fb", (None,))[0]
+                    if p_fb is not None and level in hr_per_fb:
+                        bip_frac = max(0.40, 1 - k - bb - 0.02)
+                        xhr_bf = hr_per_fb[level] * p_fb * bip_frac
+                        hrb = 0.7 * xhr_bf + 0.3 * hrb
                     fip_rate = run_coef[0]*k + run_coef[1]*bb + run_coef[2]*hrb + run_coef[3]
                     # Prefer the validated peripheral run model (K%,BB%,whiff,GB,
                     # strike) when we have the player's pitch-level rates; else
