@@ -46,7 +46,7 @@ RECENCY = {1: 5.0, 2: 4.0, 3: 3.0}     # seasons back -> weight
 SUMMER_RECENCY_MULT = 0.6              # summer season weight vs its spring slot
 CLASS_NEXT = {"Fr": "So", "So": "Jr", "Jr": "Sr", "Sr": "Sr+", "Sr+": "Sr+"}
 
-BAT_COMPONENTS = ["k_pct", "bb_pct", "iso", "babip", "hr_pa", "woba", "avg", "obp"]
+BAT_COMPONENTS = ["k_pct", "bb_pct", "iso", "babip", "hr_pa", "woba", "avg", "obp", "wobacon"]
 PIT_COMPONENTS = ["k_pct", "bb_pct", "hr_bf", "babip_against", "whip_rate", "era_rate"]
 
 

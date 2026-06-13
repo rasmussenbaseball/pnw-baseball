@@ -41,7 +41,7 @@ MIN_BF = 50
 MIN_PAIRS = 25       # don't publish a constant fit on fewer pairs than this
 COVID_SEASONS = {2020}  # excluded from pair-based fits (truncated season)
 
-BAT_STATS = ["k_pct", "bb_pct", "iso", "hr_pa", "babip", "avg", "obp", "woba"]
+BAT_STATS = ["k_pct", "bb_pct", "iso", "hr_pa", "babip", "avg", "obp", "woba", "wobacon"]
 PIT_STATS = ["k_pct", "bb_pct", "hr_bf", "babip_against", "whip_rate", "era_rate"]
 
 CLASS_ORDER = {"Fr": 1, "So": 2, "Jr": 3, "Sr": 4, "Gr": 5, "5th": 5}
@@ -104,6 +104,16 @@ def load_batting(cur):
     df["obp"] = (df["h"] + df["bb"] + df["hbp"]) / df["pa"]
     bip = (df["ab"] - df["k"] - df["hr"] + df["sf"]).clip(lower=0)
     df["babip"] = np.where(bip >= 20, (df["h"] - df["hr"]) / bip.clip(lower=1), np.nan)
+    # wOBAcon = production per ball put in play (power/contact quality, isolates
+    # "when he makes contact, how much damage"). Computed for ALL seasons from
+    # counting stats (the stored wobacon column only exists 2024+). Weights are
+    # standard hit values; centered per division-season so the scale washes out.
+    singles = df["h"] - df["d2"] - df["d3"] - df["hr"]
+    contact_pa = (df["ab"] - df["k"] + df["sf"]).clip(lower=1)
+    df["wobacon"] = np.where(
+        (df["ab"] - df["k"]) >= 20,
+        (0.9 * singles + 1.25 * df["d2"] + 1.6 * df["d3"] + 2.0 * df["hr"]) / contact_pa,
+        np.nan)
     # class: prefer the season-specific record, fall back to roster field
     df["cls"] = df["class_ps"].combine_first(df["class_pl"]).map(norm_class)
     df["wt_n"] = df["pa"]
