@@ -19,6 +19,7 @@ const GRAPHICS = [
   { to: '/team-info-graphic',       label: 'Team Info',             desc: 'Full team overview graphic.' },
   { to: '/team-season-recap',       label: 'Team Season Recap',     desc: 'End-of-year highlights: record, WAR leaders, clutch moment.' },
   { to: '/graphics/wcl-leaderboards', label: 'WCL Leaderboards',    desc: 'Player + team stat cards in the summer look.' },
+  { to: '/graphics/wcl-standings',  label: 'WCL Standings',         desc: 'WCL standings with record, run differential, and CPI rank in the summer look.' },
   { to: '/summer/recap',            label: 'WCL Daily Recap',       desc: 'A full WCL slate: scores with R/H/E and each game\'s standouts.' },
   { to: '/summer/game-recap',       label: 'WCL Game Recap',        desc: 'One WCL game: line score, pitching decisions, and top hitters.' },
 ]
