@@ -87,10 +87,13 @@ BAT_REFINE = {"babip": ["babip", "p_ld", "p_gb", "p_airpull"],  # CV -6.6%
               # (plate discipline) — drive these off PBP skill, not a static lag.
               "k_pct": ["p_whiff", "p_swing", "k_pct"],
               "bb_pct": ["p_swing", "p_whiff", "bb_pct"]}
-# BB% / K% from strike-throwing and whiff skill (no lagged rate, so a strike-
-# thrower visibly walks fewer and a whiff-getter strikes out more).
-PIT_REFINE = {"bb_pct": ["p_strike", "p_whiff"],
-              "k_pct": ["p_whiff", "p_strike"]}
+# BB% / K% blend the pitcher's OWN track record with his strike-throwing and
+# whiff skill. The lagged rate has to stay in: dropping it made the model use
+# only the population trend (high-whiff arms walk more on average), which
+# inverted proven control artists (Wolfe 7% BB -> 13%). With the lag, a strike%
+# nudge adjusts a real track record instead of overwriting it.
+PIT_REFINE = {"bb_pct": ["bb_pct", "p_strike", "p_whiff"],
+              "k_pct": ["k_pct", "p_whiff", "p_strike"]}
 
 
 def fit_refine(df_feat, target, preds, target_season):
