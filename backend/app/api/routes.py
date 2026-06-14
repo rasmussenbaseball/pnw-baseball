@@ -9764,8 +9764,8 @@ def team_projections(team_id: int, season: int = Query(2027),
                    ROUND(AVG(p.whip)::numeric,2) AS whip,
                    ROUND(SUM(p.hits_allowed)::numeric
                          / NULLIF(SUM(p.batters_faced) - SUM(p.walks) - SUM(p.hit_batters), 0), 3) AS opp_avg,
-                   ROUND(SUM(p.home_runs_allowed) * 9.0
-                         / NULLIF(SUM(FLOOR(p.innings_pitched) + (p.innings_pitched - FLOOR(p.innings_pitched)) * 10/3.0), 0), 2) AS hr9
+                   ROUND((SUM(p.home_runs_allowed) * 9.0
+                         / NULLIF(SUM(FLOOR(p.innings_pitched) + (p.innings_pitched - FLOOR(p.innings_pitched)) * 10/3.0), 0))::numeric, 2) AS hr9
             FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
             WHERE p.season = 2026 AND COALESCE(c.cid, p.player_id) = ANY(%s)
             GROUP BY 1
