@@ -152,7 +152,7 @@ function normLine(p, isBat) {
 function Table({ rows, side, expanded, toggle, norm }) {
   if (!rows?.length) return <p className="text-sm text-gray-500 py-4">No projected {side === 'bat' ? 'hitters' : 'pitchers'}.</p>
   const isBat = side === 'bat'
-  const span = isBat ? 20 : 17
+  const span = isBat ? 21 : 17
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
       <table className="min-w-full text-xs">
@@ -160,8 +160,8 @@ function Table({ rows, side, expanded, toggle, norm }) {
           <tr className="bg-gray-50 dark:bg-gray-800/60">
             <th className={THL} colSpan={3}> </th>
             {isBat ? <>
-              <th className={GROUP} colSpan={8}>Counting</th>
-              <th className={GROUP + BL} colSpan={4}>Rate &amp; value</th>
+              <th className={GROUP} colSpan={7}>Counting</th>
+              <th className={GROUP + BL} colSpan={6}>Rate &amp; discipline</th>
               <th className={GROUP + BL} colSpan={3}>Plate skills (Δ vs ’26)</th>
             </> : <>
               <th className={GROUP} colSpan={7}>Run prevention</th>
@@ -174,8 +174,8 @@ function Table({ rows, side, expanded, toggle, norm }) {
             <th className={THL}>Player</th><th className={TH}>’27</th><th className={TH}>Pos</th>
             {isBat ? <>
               <th className={TH}>PA</th><th className={TH}>H</th><th className={TH}>2B</th><th className={TH}>3B</th>
-              <th className={TH}>HR</th><th className={TH}>R</th><th className={TH}>RBI</th><th className={TH}>BB</th>
-              <th className={TH + BL}>AVG</th><th className={TH}>OBP</th><th className={TH}>SLG</th><th className={TH}>wOBA</th>
+              <th className={TH}>HR</th><th className={TH}>R</th><th className={TH}>RBI</th>
+              <th className={TH + BL}>AVG</th><th className={TH}>OBP</th><th className={TH}>SLG</th><th className={TH}>wOBA</th><th className={TH}>BB%</th><th className={TH}>K%</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Pull-air</th>
             </> : <>
               <th className={TH}>BF</th><th className={TH}>IP</th><th className={TH}>ERA</th><th className={TH}>FIP</th><th className={TH}>WHIP</th><th className={TH}>Opp AVG</th><th className={TH}>HR/9</th>
@@ -203,9 +203,10 @@ function Table({ rows, side, expanded, toggle, norm }) {
                     <td className={TD}>{p.PT ?? '–'}</td><td className={TD}>{p.H ?? '–'}</td>
                     <td className={TD}>{p['2B'] ?? '–'}</td><td className={TD}>{p['3B'] ?? '–'}</td>
                     <td className={TD + ' font-semibold text-gray-900 dark:text-gray-100'}>{p.HR ?? '–'}</td>
-                    <td className={TD}>{p.R ?? '–'}</td><td className={TD}>{p.RBI ?? '–'}</td><td className={TD}>{p.BB ?? '–'}</td>
+                    <td className={TD}>{p.R ?? '–'}</td><td className={TD}>{p.RBI ?? '–'}</td>
                     <td className={TD + BL}>{slash(p.AVG)}</td><td className={TD}>{slash(p.OBP)}</td><td className={TD}>{slash(p.SLG)}</td>
                     <td className={`${TD} ${valueColor(p.wOBA, 0.300, 0.430)}`}>{slash(p.wOBA)}</td>
+                    <td className={TD}>{pctInt(p.bb_pct)}</td><td className={TD}>{pctInt(p.k_pct)}</td>
                     <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev', false)}</td>
                     <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev', false)}</td><td className={TD}>{pctDelta(p, 'p_airpull', 'p_airpull_prev', true)}</td>
                   </> : <>

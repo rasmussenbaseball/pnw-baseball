@@ -426,11 +426,18 @@ def expand_to_achievable(rows):
         for level in {r["proj"]["level"] for r in rows if r["side"] == side}:
             grp = [r for r in rows if r["side"] == side and r["proj"]["level"] == level]
             # --- pass 1: quantile-map driver rates to the achievable distribution ---
+            # Map ONLY projected regulars onto the (PA>=100) qualified distribution,
+            # so the regular pool matches the actual regular distribution 1:1. If we
+            # mapped every rostered hitter, the bench would fill the low ranks and
+            # shove every starter above the qualified median (so everyone hit .300+).
+            # Fringe/part-time players keep their regressed projection (lower).
+            reg_pt = 100 if side == "bat" else 60
             for key in specs[side]:
                 arr = tgt.get((side, level, key))
                 if arr is None:
                     continue
-                idxs = [i for i, r in enumerate(grp) if r["proj"].get(key) is not None]
+                idxs = [i for i, r in enumerate(grp)
+                        if r["proj"].get(key) is not None and (r["proj"].get("PT") or 0) >= reg_pt]
                 if len(idxs) < 5:
                     continue
                 mapped = _quantile_map([grp[i]["proj"][key] for i in idxs], arr)
