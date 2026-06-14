@@ -635,6 +635,46 @@ export function useRecruitingBreakdown(season = CURRENT_SEASON) {
 }
 
 /**
+ * Recruiting Classes leaderboard - per-school HS commit class summaries
+ * for a grad year (PREMIUM-gated). Sorted by class_score desc.
+ */
+export function useRecruitingClasses(gradYear = 2026) {
+  return useApi('/recruiting/classes', { grad_year: gradYear }, [gradYear])
+}
+
+/**
+ * One school's full HS commit list for a grad year (PREMIUM-gated). Pass
+ * null teamId to skip the fetch (used when no leaderboard row is expanded).
+ */
+export function useRecruitingClassDetail(teamId, gradYear = 2026) {
+  return useApi(
+    teamId ? `/recruiting/classes/${teamId}` : null,
+    { grad_year: gradYear },
+    [teamId, gradYear]
+  )
+}
+
+/**
+ * A team's incoming HS commits for a grad year (PUBLIC) - powers the
+ * team-page "Incoming Class" section. Pass null teamId to skip.
+ */
+export function useTeamRecruits(teamId, gradYear = 2026) {
+  return useApi(
+    teamId ? `/teams/${teamId}/recruits` : null,
+    { grad_year: gradYear },
+    [teamId, gradYear]
+  )
+}
+
+/**
+ * Top recruiting classes (PUBLIC) - capped leaderboard for the homepage /
+ * Recruiting Hub teaser card.
+ */
+export function useTopRecruitingClasses(gradYear = 2026, limit = 5) {
+  return useApi('/recruiting/classes/top', { grad_year: gradYear, limit }, [gradYear, limit])
+}
+
+/**
  * Opponent Trends - comprehensive scouting report for a team.
  */
 export function useOpponentTrends(teamId, season = CURRENT_SEASON) {

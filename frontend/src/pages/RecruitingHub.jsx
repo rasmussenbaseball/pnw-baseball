@@ -6,6 +6,7 @@
 // The tools it links to ARE gated; clicking one while signed out shows the upsell.
 // Brand rule: no em-dashes in displayed copy.
 import { Link } from 'react-router-dom'
+import TopRecruitingClassesCard from '../components/home/TopRecruitingClassesCard'
 
 // ── tiny inline line icons (stroke = currentColor) ────────────────
 const ic = (paths) => (
@@ -53,9 +54,9 @@ const RECRUIT_TOOLS = [
   { to: '/recruiting/map', icon: 'map', tier: 'premium', name: 'Program Map',
     blurb: 'Every PNW college baseball program on one map, by division.',
     why: 'See your options by geography and figure out how far from home you are willing to go.' },
-  { to: '/recruiting-classes', icon: 'users', tier: 'soon', name: 'Recruiting Classes',
-    blurb: 'Incoming class breakdowns for PNW programs.',
-    why: 'Coming soon: see who each program is bringing in and how your class stacks up.' },
+  { to: '/recruiting-classes', icon: 'users', tier: 'premium', name: 'Recruiting Classes',
+    blurb: 'Incoming high school class breakdowns for every PNW program, graded and ranked by PBR and BBNW state rankings.',
+    why: 'See who each program is bringing in and how your class stacks up against the rest of the region.' },
 ]
 
 // ── tools (coach-facing unlock at Recruiting $10/mo) ──────────────
@@ -188,6 +189,25 @@ export default function RecruitingHub() {
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-5">These tools unlock with Premium. Click any one to open it.</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {RECRUIT_TOOLS.map((t) => <ToolCard key={t.name} tool={t} />)}
+        </div>
+
+        {/* Public teaser: a live peek at the 2026 recruiting classes leaderboard.
+            Ungated so logged-out visitors see real data and click through. */}
+        <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <TopRecruitingClassesCard />
+          <div className="sm:col-span-1 lg:col-span-2 flex items-center rounded-2xl bg-teal-50/60 dark:bg-teal-900/20 ring-1 ring-teal-100 dark:ring-teal-800 p-5">
+            <div>
+              <h3 className="text-base font-extrabold text-nw-teal dark:text-gray-100">See who is committing to PNW programs</h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400 max-w-md">
+                We track the high school commits landing at Pacific Northwest college programs and grade
+                each class by PBR and BBNW state rankings. Open the full board to expand any school and
+                see its entire incoming class.
+              </p>
+              <Link to="/recruiting-classes" className="inline-block mt-3 text-sm font-bold text-nw-teal hover:underline">
+                Open the full recruiting classes board &rarr;
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
 

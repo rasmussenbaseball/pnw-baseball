@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames } from '../hooks/useApi'
+import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits } from '../hooks/useApi'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
 import FavoriteButton from '../components/FavoriteButton'
@@ -267,6 +267,9 @@ export default function TeamDetail() {
               offset={0}
             />
           </div>
+
+          {/* Incoming HS recruiting class (only shows if there are commits) */}
+          <IncomingClass teamId={teamId} />
         </div>
       )}
 
@@ -274,6 +277,55 @@ export default function TeamDetail() {
       {activeTab === 'history' && (
         <TeamHistoryTab history={history} loading={historyLoading} teamId={teamId} />
       )}
+    </div>
+  )
+}
+
+
+// ============================================================
+// INCOMING RECRUITING CLASS (HS commits)
+// ============================================================
+
+// Compact list of a team's incoming HS commits for 2026. Renders nothing
+// while loading, on error, or when the team has zero commits, so most
+// non-marquee team pages simply don't show the section.
+function IncomingClass({ teamId, gradYear = 2026 }) {
+  const { data } = useTeamRecruits(teamId, gradYear)
+  const commits = data?.commits || []
+  if (!commits.length) return null
+
+  return (
+    <div className="mb-8">
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">Incoming Class ({gradYear})</h2>
+        <Link to="/recruiting-classes" className="text-[11px] font-semibold text-nw-teal hover:underline whitespace-nowrap">
+          All classes &rarr;
+        </Link>
+      </div>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-4">
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+          {commits.map((c) => {
+            const rank = c.bbnw_state_rank ?? c.pbr_state_rank
+            const rankLabel = c.bbnw_state_rank != null ? 'BBNW' : 'PBR'
+            return (
+              <div key={c.id} className="flex items-center gap-2 py-1 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+                <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
+                {c.position && (
+                  <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">{c.position}</span>
+                )}
+                <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                  {[c.high_school, c.state].filter(Boolean).join(', ')}
+                </span>
+                {rank != null && (
+                  <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap shrink-0">
+                    {rankLabel} #{rank}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
