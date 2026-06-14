@@ -96,6 +96,16 @@ PIT_REFINE = {"bb_pct": ["bb_pct", "p_strike", "p_whiff"],
               "k_pct": ["k_pct", "p_whiff", "p_strike"]}
 
 
+def to_ip_notation(decimal_ip):
+    """Decimal innings -> baseball notation (.1 = 1/3 inning, .2 = 2/3).
+    51.6 decimal -> 51 and ~2 thirds -> 51.2."""
+    whole = int(decimal_ip)
+    thirds = round((decimal_ip - whole) * 3)
+    if thirds >= 3:
+        whole += 1; thirds = 0
+    return round(whole + thirds / 10.0, 1)
+
+
 def fit_refine(df_feat, target, preds, target_season):
     """Fit target_next ~ predictors_now on training pairs. Returns (preds, coef)."""
     P = make_pairs(df_feat[df_feat["season"] < target_season], same_level=True)
@@ -590,7 +600,7 @@ def expand_to_achievable(rows):
             k = p.get("K_pct", 0) or 0; bb = p.get("BB_pct", 0) or 0
             hrb = p.get("HR_bf", 0) or 0; babip = p.get("babip_against") or 0.31
             p["BF"] = round(pt)
-            p["IP"] = round(pt * ipbf, 1)
+            p["IP"] = to_ip_notation(pt * ipbf)           # baseball notation (.1=1/3)
             p["HR_allowed"] = round(hrb * pt, 1)
             p["HR9"] = round(hrb * 9 / ipbf, 2)
             # Opp AVG and WHIP DERIVED from K%, HR, BB%, and the regressed BABIP
