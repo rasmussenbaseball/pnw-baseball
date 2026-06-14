@@ -196,15 +196,16 @@ def proj_pt(hist, a, b, c):
 # players at that level actually do. hr_pa's rank comes from demonstrated ISO (set
 # in the line build) so small-sample power doesn't inflate; OBP/wOBA map directly
 # (reconstructing them from the slash systematically understated both).
+# Map only the INDEPENDENT skills to each level's actual distribution. The
+# DEPENDENT stats (OBP, wOBA, SLG, WHIP, Opp AVG) are DERIVED from these so they
+# stay internally consistent — mapping them on their own broke the relationships
+# (e.g. a 3% walk hitter showing OBP 110 pts over his AVG).
 BAT_ACHIEVE = {"AVG": "batting_avg", "iso": "iso",
                "hr_pa": "home_runs::float/NULLIF(plate_appearances,0)",
-               "k_pct": "k_pct", "bb_pct": "bb_pct",
-               "OBP": "on_base_pct", "wOBA": "woba"}
-# ERA is NOT mapped (derived from FIP so the two stay aligned). FIP, WHIP, Opp AVG,
-# and HR-per-BF each map to their own level distribution.
+               "k_pct": "k_pct", "bb_pct": "bb_pct"}
+# ERA is derived from FIP. FIP, K%, BB%, and HR-per-BF are the independent skills
+# mapped per level; WHIP and Opp AVG are derived from K%/BB%/HR + regressed BABIP.
 PIT_ACHIEVE = {"FIP": "fip", "K_pct": "k_pct", "BB_pct": "bb_pct",
-               "WHIP": "whip",
-               "opp_avg": "hits_allowed::float / NULLIF(batters_faced - walks - COALESCE(hit_batters,0), 0)",
                "HR_bf": "home_runs_allowed::float / NULLIF(batters_faced,0)"}
 
 # wOBA-ish linear weights for reconstructing wOBA from the slash components.
@@ -474,6 +475,20 @@ def expand_to_achievable(rows):
             JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
             WHERE p.season=2026 AND p.batters_faced>=30 GROUP BY 1""")
         ip_per_bf = {r["lvl"]: float(r["v"]) for r in cur.fetchall() if r["v"]}
+        # per-level HBP / SF / SH rates (per PA) — needed to DERIVE OBP and wOBA
+        # consistently. College HBP is ~3% of PA (not the ~1% guessed before),
+        # which is why reconstructed OBP/wOBA were ~20 pts low.
+        cur.execute("""SELECT d.level lvl,
+              AVG(b.hit_by_pitch::float/NULLIF(b.plate_appearances,0)) hbp,
+              AVG(b.sacrifice_flies::float/NULLIF(b.plate_appearances,0)) sf,
+              AVG(GREATEST(b.plate_appearances - b.at_bats - b.walks - b.hit_by_pitch - b.sacrifice_flies, 0)::float
+                  / NULLIF(b.plate_appearances,0)) sh
+            FROM batting_stats b JOIN teams t ON t.id=b.team_id
+            JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+            WHERE b.season=2026 AND b.plate_appearances>=100 GROUP BY 1""")
+        bat_env = {r["lvl"]: {"hbp": float(r["hbp"] or 0.03), "sf": float(r["sf"] or 0.01),
+                              "sh": float(r["sh"] or 0.012)} for r in cur.fetchall()}
+    DEF_ENV = {"hbp": 0.030, "sf": 0.011, "sh": 0.012}
     specs = {"bat": BAT_ACHIEVE, "pit": PIT_ACHIEVE}
     for side in ("bat", "pit"):
         for level in {r["proj"]["level"] for r in rows if r["side"] == side}:
@@ -543,8 +558,9 @@ def expand_to_achievable(rows):
             cap = slg_cap.get(p.get("level"))
             if cap is not None:
                 iso = min(iso, max(0.0, cap - avg))
-            hbp_pa = 0.01
-            ab = pt * (1 - bb_pct - hbp_pa - 0.01)        # minus BB, HBP, sac
+            env = bat_env.get(p.get("level"), DEF_ENV)
+            hbp_pa, sf_pa, sh_pa = env["hbp"], env["sf"], env["sh"]
+            ab = pt * max(0.4, 1 - bb_pct - hbp_pa - sf_pa - sh_pa)
             hr = hr_pa * pt
             h = avg * ab
             xb_bases = max(iso * ab, 3 * hr)               # ensure room for the HR (2B/3B>=0)
@@ -555,22 +571,36 @@ def expand_to_achievable(rows):
             bb = bb_pct * pt; hbp = hbp_pa * pt
             # SLG from the actual reconstructed bases, so the slash always adds up
             slg = (singles + 2 * d2 + 3 * d3 + 4 * hr) / ab if ab else 0
-            obp = p.get("OBP") or ((h + bb + hbp) / pt if pt else 0)
+            # OBP and wOBA DERIVED from this same line (denominator AB+BB+HBP+SF =
+            # PA minus sac bunts) so they always track AVG/BB%/HBP — a low-walk
+            # hitter can't show a high OBP. HBP is the real ~3%/PA, not 1%.
+            denom = pt * (1 - sh_pa)
+            obp = (h + bb + hbp) / denom if denom else 0
+            woba = ((_WBB * bb + _WHBP * hbp + _W1B * singles + _W2B * d2
+                     + _W3B * d3 + _WHR * hr) / denom) if denom else 0
+            wcap = woba_cap.get(p.get("level"))
+            if wcap is not None:
+                woba = min(woba, wcap)
             p.update({"AB": round(ab), "H": round(h), "HR": round(hr, 1),
                       "2B": round(d2, 1), "3B": round(d3, 1), "BB": round(bb), "SO": round(k_pct * pt),
                       "R": round(pt * 0.16 * (obp / 0.360)), "RBI": round(pt * 0.15 * (slg / 0.420)),
-                      "SLG": round(slg, 3)})
-            # OBP / wOBA keep their mapped (regular) or regressed (fringe) values;
-            # only fill a reconstructed OBP if none was set.
-            if p.get("OBP") is None:
-                p["OBP"] = round(obp, 3)
+                      "OBP": round(obp, 3), "SLG": round(slg, 3), "wOBA": round(woba, 3)})
         else:
             ipbf = ip_per_bf.get(p.get("level"), IP_PER_BF)
+            k = p.get("K_pct", 0) or 0; bb = p.get("BB_pct", 0) or 0
+            hrb = p.get("HR_bf", 0) or 0; babip = p.get("babip_against") or 0.31
             p["BF"] = round(pt)
             p["IP"] = round(pt * ipbf, 1)
-            if p.get("HR_bf") is not None:
-                p["HR_allowed"] = round(p["HR_bf"] * pt, 1)
-                p["HR9"] = round(p["HR_bf"] * 9 / ipbf, 2)
+            p["HR_allowed"] = round(hrb * pt, 1)
+            p["HR9"] = round(hrb * 9 / ipbf, 2)
+            # Opp AVG and WHIP DERIVED from K%, HR, BB%, and the regressed BABIP
+            # (pitchers barely control BABIP), so they track the skills and each
+            # other instead of being mapped independently.
+            ab_frac = max(0.5, 1 - bb - 0.025)            # AB per BF (minus BB/HBP/sac)
+            bip_frac = max(0.0, ab_frac - k - hrb)        # balls in play (not K/HR)
+            h_frac = hrb + babip * bip_frac               # hits per BF
+            p["opp_avg"] = round(min(0.40, max(0.15, h_frac / ab_frac)), 3)
+            p["WHIP"] = round((h_frac + bb) / ipbf, 2)    # (H+BB) per IP
             # ERA derived from FIP (skill) + only the repeatable ~16% of a
             # pitcher's career ERA-FIP gap, so ERA and FIP stay consistent and
             # no one systematically "beats their FIP".

@@ -9776,6 +9776,9 @@ def team_projections(team_id: int, season: int = Query(2027),
             cid = row["canonical_id"]
             row["actual_2026"] = (bat26 if row["side"] == "bat" else pit26).get(cid)
             (hitters if row["side"] == "bat" else pitchers).append(row)
+        # order by projected workload: hitters by PA, pitchers by IP (most first)
+        hitters.sort(key=lambda r: float((r["proj"] or {}).get("PT") or 0), reverse=True)
+        pitchers.sort(key=lambda r: float((r["proj"] or {}).get("IP") or 0), reverse=True)
         return {"team": dict(team), "season": season,
                 "hitters": hitters, "pitchers": pitchers}
 
