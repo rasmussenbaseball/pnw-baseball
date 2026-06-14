@@ -186,14 +186,15 @@ const STAT_COLS = [
   { key: 'run_diff', label: 'DIFF', format: 'diff' },
   { key: 'team_ops', label: 'OPS',  format: 'avg' },
   { key: 'team_era', label: 'ERA',  format: 'era' },
-  { key: 'cpi',      label: 'CPI',  format: 'int' },
+  // CPI shown as a league-wide rank (#1..#16), not the 100-scale value.
+  { key: 'cpi_rank', label: 'CPI',  format: 'rank' },
 ]
 
 // ════════════════════════════════════════════════════════════════
 // Canvas renderer — one pipeline for preview AND export.
 // ════════════════════════════════════════════════════════════════
 async function renderStandings(canvas, opts) {
-  const { teams, title, subtitle, footerNote, theme, division, loading } = opts
+  const { blocks, title, subtitle, footerNote, theme, loading } = opts
   const w = SIZE.w, h = SIZE.h
   const dpr = 2
   canvas.width = w * dpr
@@ -285,37 +286,45 @@ async function renderStandings(canvas, opts) {
   const bodyPadX = 36
   const bodyTop = headerH + 16
   const bodyBottom = footerY - 14
-  const colHeaderH = 28
-  const bodyH = bodyBottom - bodyTop - colHeaderH
 
-  if (loading || !teams.length) {
+  const realBlocks = (blocks || []).filter(b => b.teams.length)
+  if (loading || !realBlocks.length) {
     ctx.fillStyle = theme.name
     ctx.font = `700 22px ${FONT}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(loading ? 'Loading…' : 'No standings for these filters', w / 2, (bodyTop + bodyBottom) / 2)
+    ctx.fillText(loading ? 'Loading…' : 'No standings available', w / 2, (bodyTop + bodyBottom) / 2)
     return
   }
 
-  const n = teams.length
-  const rowGap = Math.min(8, Math.max(3, Math.floor(80 / n)))
-  const rowH = Math.floor((bodyH - rowGap * (n - 1)) / n)
-  const fontSize = Math.min(Math.max(Math.floor(rowH * 0.4), 12), 20)
-  const logoSize = Math.min(Math.floor(rowH * 0.66), 34)
+  // Both divisions stack vertically: a shared column-header row, then each
+  // division as a labeled block. Row height is solved so all teams + the
+  // two division labels fit between header and footer.
+  const N = realBlocks.reduce((s, b) => s + b.teams.length, 0)
+  const B = realBlocks.length
+  const colHeaderH = 26
+  const labelH = 30
+  const blockGap = 14
+  const rowGap = 3
+  const fixed = colHeaderH + B * labelH + (B - 1) * blockGap + (N - B) * rowGap
+  const rowH = Math.floor((bodyBottom - bodyTop - fixed) / N)
+  const fontSize = Math.min(Math.max(Math.floor(rowH * 0.42), 12), 19)
+  const logoSize = Math.min(Math.floor(rowH * 0.7), 32)
 
-  // ── Column geometry: stats drawn from the right edge ──
   const tableLeft = bodyPadX
   const tableRight = w - bodyPadX
   const rowPadX = 16
   const statW = Math.floor((tableRight - tableLeft) * 0.105)
-  const rankW = Math.floor(fontSize * 2.0)
+  const rankW = Math.floor(fontSize * 1.9)
   const recordX = tableRight - rowPadX - STAT_COLS.length * statW   // W-L sits left of the stat block
   const recordW = Math.floor((tableRight - tableLeft) * 0.1)
 
-  // Pre-load row logos
-  const logoImgs = await Promise.all(teams.map(t => loadLogoCached(t.logo)))
+  // Pre-load every logo, keyed by team id.
+  const logoMap = new Map()
+  await Promise.all(realBlocks.flatMap(b => b.teams).map(async t =>
+    logoMap.set(t.team_id, await loadLogoCached(t.logo))))
 
-  // ── Column headers ──
+  // ── Shared column headers ──
   const hy = bodyTop + colHeaderH / 2 - 2
   ctx.font = `800 ${Math.max(Math.floor(fontSize * 0.62), 10)}px ${FONT}`
   ctx.fillStyle = theme.colHeader
@@ -329,60 +338,44 @@ async function renderStandings(canvas, opts) {
     ctx.fillText(STAT_COLS[i].label, cx, hy)
   }
 
-  // ── Rows ──
-  const rowStartY = bodyTop + colHeaderH
-  for (let i = 0; i < n; i++) {
-    const t = teams[i]
-    const isTop3 = i < 3
+  // ── One standings row. `pos` is the within-division standing (1..n);
+  //    the division leader (pos 1) gets the gold medallion treatment. ──
+  function drawRow(t, y, pos, isLeader) {
     const x = tableLeft
-    const y = rowStartY + i * (rowH + rowGap)
     const cw = tableRight - tableLeft
     const r = 10
-
-    // Card
     ctx.fillStyle = theme.card
-    canvasRoundRect(ctx, x, y, cw, rowH, r)
-    ctx.fill()
-    ctx.strokeStyle = isTop3 ? theme.medals[i] : theme.cardBorder
-    ctx.lineWidth = isTop3 ? 2 : 1
+    canvasRoundRect(ctx, x, y, cw, rowH, r); ctx.fill()
+    ctx.strokeStyle = isLeader ? theme.medals[0] : theme.cardBorder
+    ctx.lineWidth = isLeader ? 2 : 1
     ctx.stroke()
-    // Left accent bar
-    ctx.save()
-    canvasRoundRect(ctx, x, y, cw, rowH, r)
-    ctx.clip()
-    ctx.fillStyle = isTop3 ? theme.medals[i] : theme.cardAccent
-    ctx.fillRect(x, y, 5, rowH)
-    ctx.restore()
+    ctx.save(); canvasRoundRect(ctx, x, y, cw, rowH, r); ctx.clip()
+    ctx.fillStyle = isLeader ? theme.medals[0] : theme.cardAccent
+    ctx.fillRect(x, y, 5, rowH); ctx.restore()
 
     const cy = y + rowH / 2
     let cellX = x + rowPadX
 
-    // Rank — gold medallion for top 3, plain number otherwise
-    if (isTop3) {
-      const mr = Math.min(rowH * 0.3, 17)
-      ctx.beginPath()
-      ctx.arc(cellX + rankW / 2, cy, mr, 0, Math.PI * 2)
-      ctx.fillStyle = theme.medals[i]
-      ctx.fill()
-      ctx.strokeStyle = theme.medalRing
-      ctx.lineWidth = 1.5
-      ctx.stroke()
+    // Standing position — gold medallion for the division leader
+    if (isLeader) {
+      const mr = Math.min(rowH * 0.3, 16)
+      ctx.beginPath(); ctx.arc(cellX + rankW / 2, cy, mr, 0, Math.PI * 2)
+      ctx.fillStyle = theme.medals[0]; ctx.fill()
+      ctx.strokeStyle = theme.medalRing; ctx.lineWidth = 1.5; ctx.stroke()
       ctx.fillStyle = theme.medalText
       ctx.font = `900 ${Math.floor(mr * 1.05)}px ${FONT}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(String(t.rank), cellX + rankW / 2, cy + 1)
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(String(pos), cellX + rankW / 2, cy + 1)
     } else {
-      ctx.font = `900 ${Math.max(fontSize, 16)}px ${FONT}`
+      ctx.font = `900 ${Math.max(fontSize, 15)}px ${FONT}`
       ctx.fillStyle = theme.rank
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(String(t.rank), cellX + rankW / 2, cy)
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(String(pos), cellX + rankW / 2, cy)
     }
     cellX += rankW
 
     // Logo
-    const logoImg = logoImgs[i]
+    const logoImg = logoMap.get(t.team_id)
     if (logoImg) {
       drawImageContain(ctx, logoImg, cellX, cy - logoSize / 2, logoSize, logoSize)
     } else {
@@ -396,26 +389,12 @@ async function renderStandings(canvas, opts) {
     }
     cellX += logoSize + 12
 
-    // Team name (+ division tag when showing combined standings)
+    // Team name (no per-row division tag — the block header carries it)
     const nameMaxW = recordX - recordW - cellX - 12
-    const showDivTag = division === 'all' && t.division
-    if (showDivTag) {
-      const subSize = Math.floor(fontSize * 0.62)
-      const gap = Math.floor(fontSize * 0.18)
-      const nameY = cy - (subSize + gap) / 2
-      ctx.font = `700 ${fontSize}px ${FONT}`
-      ctx.fillStyle = theme.name
-      ctx.textAlign = 'left'
-      ctx.fillText(truncText(ctx, t.team_name || t.team || '-', nameMaxW), cellX, nameY)
-      ctx.font = `600 ${subSize}px ${FONT}`
-      ctx.fillStyle = theme.secondary
-      ctx.fillText(`${t.division} Div.`, cellX, nameY + fontSize / 2 + gap + subSize / 2)
-    } else {
-      ctx.font = `700 ${fontSize}px ${FONT}`
-      ctx.fillStyle = theme.name
-      ctx.textAlign = 'left'
-      ctx.fillText(truncText(ctx, t.team_name || t.team || '-', nameMaxW), cellX, cy)
-    }
+    ctx.font = `700 ${fontSize}px ${FONT}`
+    ctx.fillStyle = theme.name
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText(truncText(ctx, t.team_name || t.team || '-', nameMaxW), cellX, cy)
 
     // W-L
     ctx.font = `700 ${fontSize}px ${FONT}`
@@ -427,32 +406,54 @@ async function renderStandings(canvas, opts) {
     for (let c = 0; c < STAT_COLS.length; c++) {
       const col = STAT_COLS[c]
       const cx = tableRight - rowPadX - (STAT_COLS.length - 1 - c) * statW - statW / 2
-      let val, color, text
+      let color, text
       if (col.key === 'run_diff') {
-        val = t.run_diff
-        color = val > 0 ? theme.green : val < 0 ? theme.red : theme.secondary
-        text = val > 0 ? `+${val}` : `${val}`
+        const v = t.run_diff
+        color = v > 0 ? theme.green : v < 0 ? theme.red : theme.secondary
+        text = v > 0 ? `+${v}` : `${v}`
         ctx.font = `800 ${fontSize}px ${FONT}`
       } else if (col.key === 'winpct') {
-        val = t.actual_winpct
-        color = theme.text
-        text = fmt(val, 'avg')
-        ctx.font = `600 ${Math.floor(fontSize * 0.92)}px ${FONT}`
-      } else if (col.key === 'cpi') {
-        val = t.cpi
-        color = isTop3 ? theme.mainStatTop3 : theme.mainStat
-        text = fmt(val, 'int')
+        color = theme.name           // the sort key — emphasized
+        text = fmt(t.actual_winpct, 'avg')
+        ctx.font = `800 ${fontSize}px ${FONT}`
+      } else if (col.key === 'cpi_rank') {
+        color = isLeader ? theme.mainStatTop3 : theme.mainStat
+        text = `#${t.cpiRank}`
         ctx.font = `800 ${fontSize}px ${FONT}`
       } else {
-        val = t[col.key]
         color = theme.text
-        text = fmt(val, col.format)
+        text = fmt(t[col.key], col.format)
         ctx.font = `600 ${Math.floor(fontSize * 0.92)}px ${FONT}`
       }
       ctx.fillStyle = color
       ctx.textAlign = 'center'
       ctx.fillText(text, cx, cy)
     }
+  }
+
+  // ── Division blocks, stacked ──
+  let y = bodyTop + colHeaderH
+  for (let b = 0; b < realBlocks.length; b++) {
+    const block = realBlocks[b]
+
+    // Division label bar (navy band, gold text — matches the header band)
+    ctx.fillStyle = theme.headerStops[0]
+    canvasRoundRect(ctx, tableLeft, y + 3, tableRight - tableLeft, labelH - 6, 6); ctx.fill()
+    ctx.fillStyle = theme.kicker
+    ctx.font = `900 ${Math.floor(labelH * 0.42)}px ${FONT}`
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText(`${block.name.toUpperCase()} DIVISION`, tableLeft + 16, y + labelH / 2)
+    ctx.textAlign = 'right'
+    ctx.font = `700 ${Math.floor(labelH * 0.34)}px ${FONT}`
+    ctx.fillStyle = theme.headerSub
+    ctx.fillText(`${block.teams.length} teams`, tableRight - 16, y + labelH / 2)
+    y += labelH
+
+    for (let i = 0; i < block.teams.length; i++) {
+      drawRow(block.teams[i], y, i + 1, i === 0)
+      y += rowH + rowGap
+    }
+    y += blockGap - rowGap
   }
 }
 
@@ -463,7 +464,6 @@ export default function WclStandingsGraphic() {
   const canvasRef = useRef(null)
 
   const [season, setSeason] = useState(CURRENT_SUMMER_SEASON)
-  const [division, setDivision] = useState('all')   // 'all' | 'North' | 'South' | ...
   const [themeId, setThemeId] = useState('classic')
   const [customTitle, setCustomTitle] = useState('')
   const [exporting, setExporting] = useState(false)
@@ -476,38 +476,44 @@ export default function WclStandingsGraphic() {
   )
   const loading = cpiLoading || tsLoading
 
-  // Reset division if it no longer exists for the selected season's data
   const cpiTeams = cpiData?.teams || []
-  const divisions = [...new Set(cpiTeams.map(t => t.division).filter(Boolean))].sort()
-  useEffect(() => {
-    if (division !== 'all' && !divisions.includes(division)) setDivision('all')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [season, divisions.join(',')])
 
-  // Join CPI rows with team-stats (OPS / ERA) on team_id, compute total run diff
+  // Join CPI rows with team-stats (OPS / ERA), compute total run diff, and
+  // keep each team's LEAGUE-WIDE CPI rank (shown as #N). Then group by
+  // division and sort each block by win% (the standings order Nate wants),
+  // breaking ties on run differential then CPI rank.
   const teamStatsList = Array.isArray(teamStatsData) ? teamStatsData : teamStatsData?.data || []
   const statsById = Object.fromEntries(teamStatsList.map(t => [t.team_id, t]))
 
-  let rows = cpiTeams
-    .filter(t => division === 'all' || t.division === division)
-    .map(t => {
-      const ts = statsById[t.team_id] || {}
-      return {
-        ...t,
-        run_diff: Math.round((t.run_diff_pg || 0) * (t.games || 0)),
-        team_ops: ts.team_ops,
-        team_era: ts.team_era,
-      }
-    })
-    .sort((a, b) => a.rank - b.rank)
+  const enrich = (t) => {
+    const ts = statsById[t.team_id] || {}
+    return {
+      ...t,
+      cpiRank: t.rank,                                   // league CPI rank (1..N)
+      run_diff: Math.round((t.run_diff_pg || 0) * (t.games || 0)),
+      team_ops: ts.team_ops,
+      team_era: ts.team_era,
+    }
+  }
 
-  // Re-rank within a single-division view so the column reads 1..n
-  if (division !== 'all') rows = rows.map((t, i) => ({ ...t, rank: i + 1 }))
+  const byDiv = {}
+  for (const t of cpiTeams) {
+    const d = t.division || 'WCL'
+    ;(byDiv[d] = byDiv[d] || []).push(enrich(t))
+  }
+  const sortByWin = (a, b) =>
+    (b.actual_winpct - a.actual_winpct) ||
+    (b.run_diff - a.run_diff) ||
+    (a.cpiRank - b.cpiRank)
+  const DIV_ORDER = { North: 0, South: 1, East: 2, West: 3 }
+  const blocks = Object.keys(byDiv)
+    .sort((a, b) => (DIV_ORDER[a] ?? 9) - (DIV_ORDER[b] ?? 9) || a.localeCompare(b))
+    .map(name => ({ name, teams: byDiv[name].sort(sortByWin) }))
+  const totalTeams = blocks.reduce((s, b) => s + b.teams.length, 0)
 
-  const titleText = customTitle || (division === 'all' ? 'WCL Standings' : `WCL ${division} Division`)
-  const subtitle = `${season} West Coast League`
-    + (division === 'all' ? ' · By CPI Rank' : ' · By CPI Rank')
-  const footerNote = 'Ordered by CPI'
+  const titleText = customTitle || 'WCL Standings'
+  const subtitle = `${season} West Coast League · Both Divisions`
+  const footerNote = 'Ranked by win%'
 
   // ─── Render whenever inputs change ───
   const renderToken = useRef(0)
@@ -516,20 +522,19 @@ export default function WclStandingsGraphic() {
     if (!canvas) return
     const token = ++renderToken.current
     renderStandings(canvas, {
-      teams: rows, title: titleText, subtitle, footerNote, theme, division, loading,
+      blocks, title: titleText, subtitle, footerNote, theme, loading,
     }).catch(err => console.error('WCL standings render failed:', err))
     return () => { if (renderToken.current === token) renderToken.current++ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(rows), loading, themeId, titleText, subtitle, division])
+  }, [JSON.stringify(blocks), loading, themeId, titleText, subtitle])
 
   // ─── Export ───
   const handleExport = useCallback(() => {
-    if (!canvasRef.current || !rows.length) return
+    if (!canvasRef.current || !totalTeams) return
     setExporting(true)
     try {
       const a = document.createElement('a')
-      const divTag = division === 'all' ? 'all' : division.toLowerCase()
-      a.download = `wcl-standings-${divTag}-${season}.png`
+      a.download = `wcl-standings-${season}.png`
       a.href = canvasRef.current.toDataURL('image/png')
       a.click()
     } catch (err) {
@@ -538,7 +543,7 @@ export default function WclStandingsGraphic() {
     } finally {
       setExporting(false)
     }
-  }, [rows.length, division, season])
+  }, [totalTeams, season])
 
   const scale = Math.min(600 / SIZE.w, 800 / SIZE.h)
 
@@ -563,15 +568,9 @@ export default function WclStandingsGraphic() {
                 {SUMMER_SEASONS.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-
-            <div>
-              <label className="text-xs text-gray-500">Division</label>
-              <select value={division} onChange={e => setDivision(e.target.value)}
-                className="w-full mt-0.5 rounded border border-gray-300 px-2 py-1 text-sm">
-                <option value="all">All (combined)</option>
-                {divisions.map(d => <option key={d} value={d}>{d} Division</option>)}
-              </select>
-            </div>
+            <p className="text-[11px] text-gray-400">
+              Both divisions shown, ranked by win percentage.
+            </p>
           </div>
 
           {/* Theme */}
@@ -605,7 +604,7 @@ export default function WclStandingsGraphic() {
 
             <button
               onClick={handleExport}
-              disabled={exporting || loading || !rows.length}
+              disabled={exporting || loading || !totalTeams}
               className="w-full py-2.5 rounded-lg bg-[#14365c] text-white font-bold text-sm
                 hover:bg-[#0d2240] transition-colors disabled:opacity-40 disabled:cursor-not-allowed
                 flex items-center justify-center gap-2"
