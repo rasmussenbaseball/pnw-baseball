@@ -189,16 +189,23 @@ def proj_pt(hist, a, b, c):
 # every year so the best hitter projects ~.400, etc. Keeps the projection mean
 # and ranking; only widens the spread (never compresses) and clamps to the
 # achievable 2nd–98th percentile.
-# Only the DRIVER rates are stretched; OBP/SLG/wOBA are RECONSTRUCTED from them
-# so the slash line stays internally consistent.
-# hr_pa is NOT rank-mapped — HR is anchored to demonstrated ISO in the line
-# build so modest-power hitters don't get inflated to masher HR totals.
+# Every projected rate is mapped to its OWN league-level actual distribution, so
+# each stat is calibrated to that level's run environment (NWAC HR/9 != NAIA HR/9,
+# etc.) AND de-compressed to a realistic spread. The model's projection only sets
+# each player's RANK within his level; the map sets the absolute value from what
+# players at that level actually do. hr_pa's rank comes from demonstrated ISO (set
+# in the line build) so small-sample power doesn't inflate; OBP/wOBA map directly
+# (reconstructing them from the slash systematically understated both).
 BAT_ACHIEVE = {"AVG": "batting_avg", "iso": "iso",
-               "k_pct": "k_pct", "bb_pct": "bb_pct"}
-# ERA is NOT mapped independently — it's derived from FIP (skill) so projected
-# ERA and FIP stay aligned. Mapping ERA to the actual ERA distribution projected
-# every lucky-low arm to STAY lucky (2.0 ERA vs 4.5 FIP), which read as a bug.
-PIT_ACHIEVE = {"FIP": "fip", "K_pct": "k_pct", "BB_pct": "bb_pct"}
+               "hr_pa": "home_runs::float/NULLIF(plate_appearances,0)",
+               "k_pct": "k_pct", "bb_pct": "bb_pct",
+               "OBP": "on_base_pct", "wOBA": "woba"}
+# ERA is NOT mapped (derived from FIP so the two stay aligned). FIP, WHIP, Opp AVG,
+# and HR-per-BF each map to their own level distribution.
+PIT_ACHIEVE = {"FIP": "fip", "K_pct": "k_pct", "BB_pct": "bb_pct",
+               "WHIP": "whip",
+               "opp_avg": "hits_allowed::float / NULLIF(batters_faced - walks - COALESCE(hit_batters,0), 0)",
+               "HR_bf": "home_runs_allowed::float / NULLIF(batters_faced,0)"}
 
 # wOBA-ish linear weights for reconstructing wOBA from the slash components.
 _WBB, _WHBP, _W1B, _W2B, _W3B, _WHR = 0.69, 0.72, 0.88, 1.25, 1.58, 2.00
@@ -458,6 +465,15 @@ def expand_to_achievable(rows):
         cur = conn.cursor()
         tgt = _achievable_targets(cur)
         ptd = _pt_distributions(cur)
+        # per-level innings-per-batter-faced (run environments differ: NWAC has
+        # more baserunners -> fewer outs per BF). Drives IP and HR/9 per level.
+        cur.execute("""SELECT d.level lvl,
+              SUM(FLOOR(p.innings_pitched) + (p.innings_pitched-FLOOR(p.innings_pitched))*10/3.0)
+              / NULLIF(SUM(p.batters_faced),0) v
+            FROM pitching_stats p JOIN teams t ON t.id=p.team_id
+            JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+            WHERE p.season=2026 AND p.batters_faced>=30 GROUP BY 1""")
+        ip_per_bf = {r["lvl"]: float(r["v"]) for r in cur.fetchall() if r["v"]}
     specs = {"bat": BAT_ACHIEVE, "pit": PIT_ACHIEVE}
     for side in ("bat", "pit"):
         for level in {r["proj"]["level"] for r in rows if r["side"] == side}:
@@ -515,14 +531,15 @@ def expand_to_achievable(rows):
                for (s, lvl, k) in tgt if s == "bat" and k == "SLG"}
     woba_cap = {lvl: float(np.quantile(tgt[("bat", lvl, "wOBA")], 0.90))
                 for (s, lvl, k) in tgt if s == "bat" and k == "wOBA"}
-    # --- reconstruct slash + counts from stretched rates and the new PT ---
+    # --- reconstruct COUNTING stats from the (already level-mapped) rates ---
+    # OBP, wOBA, SLG-inputs, WHIP, Opp AVG, HR-rate are all mapped per level above,
+    # so here we only derive the counting line and keep the slash internally
+    # consistent (SLG is recomputed from the actual reconstructed hits).
     for r in rows:
         p = r["proj"]; pt = p.get("PT", 0)
         if r["side"] == "bat":
             bb_pct = p.get("bb_pct", 0); avg = p.get("AVG", 0); iso = p.get("iso", 0)
             hr_pa = p.get("hr_pa", 0); k_pct = p.get("k_pct", 0)
-            # cap ISO so SLG (=AVG+ISO) can't exceed the achievable max — prevents
-            # a contact+power double-max producing an impossible .700 SLG.
             cap = slg_cap.get(p.get("level"))
             if cap is not None:
                 iso = min(iso, max(0.0, cap - avg))
@@ -530,29 +547,30 @@ def expand_to_achievable(rows):
             ab = pt * (1 - bb_pct - hbp_pa - 0.01)        # minus BB, HBP, sac
             hr = hr_pa * pt
             h = avg * ab
-            xb_bases = max(iso * ab, 0)                    # 2B + 2*3B + 3*HR
+            xb_bases = max(iso * ab, 3 * hr)               # ensure room for the HR (2B/3B>=0)
             non_hr_xb = max(xb_bases - 3 * hr, 0)          # 2B + 2*3B
             d3 = non_hr_xb * 0.06
             d2 = max(non_hr_xb - 2 * d3, 0)
             singles = max(h - d2 - d3 - hr, 0)
             bb = bb_pct * pt; hbp = hbp_pa * pt
-            slg = avg + iso
-            obp = (h + bb + hbp) / pt if pt else 0
-            woba = ((_WBB * bb + _WHBP * hbp + _W1B * singles + _W2B * d2
-                     + _W3B * d3 + _WHR * hr) / pt) if pt else 0
-            wcap = woba_cap.get(p.get("level"))
-            if wcap is not None:
-                woba = min(woba, wcap)
+            # SLG from the actual reconstructed bases, so the slash always adds up
+            slg = (singles + 2 * d2 + 3 * d3 + 4 * hr) / ab if ab else 0
+            obp = p.get("OBP") or ((h + bb + hbp) / pt if pt else 0)
             p.update({"AB": round(ab), "H": round(h), "HR": round(hr, 1),
                       "2B": round(d2, 1), "3B": round(d3, 1), "BB": round(bb), "SO": round(k_pct * pt),
                       "R": round(pt * 0.16 * (obp / 0.360)), "RBI": round(pt * 0.15 * (slg / 0.420)),
-                      "OBP": round(obp, 3), "SLG": round(slg, 3), "wOBA": round(woba, 3)})
+                      "SLG": round(slg, 3)})
+            # OBP / wOBA keep their mapped (regular) or regressed (fringe) values;
+            # only fill a reconstructed OBP if none was set.
+            if p.get("OBP") is None:
+                p["OBP"] = round(obp, 3)
         else:
+            ipbf = ip_per_bf.get(p.get("level"), IP_PER_BF)
             p["BF"] = round(pt)
-            p["IP"] = round(pt * IP_PER_BF, 1)
+            p["IP"] = round(pt * ipbf, 1)
             if p.get("HR_bf") is not None:
                 p["HR_allowed"] = round(p["HR_bf"] * pt, 1)
-                p["HR9"] = round(p["HR_bf"] * 9 / IP_PER_BF, 2)
+                p["HR9"] = round(p["HR_bf"] * 9 / ipbf, 2)
             # ERA derived from FIP (skill) + only the repeatable ~16% of a
             # pitcher's career ERA-FIP gap, so ERA and FIP stay consistent and
             # no one systematically "beats their FIP".
