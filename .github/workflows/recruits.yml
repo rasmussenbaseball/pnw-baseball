@@ -1,0 +1,55 @@
+name: Recruit Commits Scrape
+
+on:
+  # Weekly, Monday 9:00 AM PT (16:00 UTC). HS commitments trickle in slowly,
+  # so once a week keeps the recruiting-classes board fresh without hammering
+  # Baseball Northwest. The scraper is idempotent (upsert on name+grad_year),
+  # so re-running never duplicates.
+  schedule:
+    - cron: '0 16 * * 1'
+  workflow_dispatch:
+    inputs:
+      grad_year:
+        description: 'Recruiting class year (default 2026)'
+        required: false
+        default: '2026'
+      state:
+        description: 'Limit to one state (WA/OR/ID/MT/BC); blank = all PNW'
+        required: false
+        default: ''
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            pip install --retries 5 --timeout 30 \
+              requests beautifulsoup4 psycopg2-binary python-dotenv && break
+            echo "pip install failed (attempt $attempt) — retrying in 10s"
+            sleep 10
+          done
+          python -c "import requests, bs4, psycopg2, dotenv"
+
+      - name: Scrape recruit commits (Baseball Northwest)
+        env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          GRAD="${{ github.event.inputs.grad_year || '2026' }}"
+          STATE="${{ github.event.inputs.state || '' }}"
+          ARGS="--grad-year $GRAD"
+          if [ -n "$STATE" ]; then ARGS="$ARGS --state $STATE"; fi
+          echo "→ python3 scripts/scrape_recruits.py $ARGS"
+          # ensure_schema() in the scraper creates the recruits table if it
+          # doesn't exist, so this is safe on a fresh database.
+          PYTHONPATH=backend python3 scripts/scrape_recruits.py $ARGS
