@@ -96,6 +96,63 @@ PIT_REFINE = {"bb_pct": ["bb_pct", "p_strike", "p_whiff"],
               "k_pct": ["k_pct", "p_whiff", "p_strike"]}
 
 
+def _waterfill(weights, total, cap):
+    """Distribute `total` across items proportional to weights, capping each at
+    `cap` and redistributing the overflow to the uncapped. Lets a team's PA/IP sum
+    to its level average while no individual exceeds a realistic max."""
+    n = len(weights); alloc = [0.0] * n; active = set(range(n)); rem = float(total)
+    for _ in range(8):
+        sw = sum(weights[i] for i in active)
+        if sw <= 1e-9 or not active or rem <= 1e-9:
+            break
+        per = rem / sw; capped = []
+        for i in active:
+            if weights[i] * per >= cap:
+                alloc[i] = cap; capped.append(i)
+        if not capped:
+            for i in active:
+                alloc[i] = weights[i] * per
+            break
+        for i in capped:
+            active.discard(i); rem -= cap
+    return alloc
+
+
+def team_workload(cur):
+    """Per-level average TEAM PA and TEAM IP, a realistic individual cap (97th
+    pctile), innings-per-BF, and the sorted per-pitcher IP shape — so every team's
+    projected PA/IP sums to its league's actual team average."""
+    def tip(n):
+        w = int(n); return w + round((n - w) * 10) / 3.0
+    wl = {}
+    cur.execute("""SELECT d.level lvl, b.team_id tid, SUM(b.plate_appearances) tpa,
+              array_agg(b.plate_appearances) pas
+        FROM batting_stats b JOIN teams t ON t.id=b.team_id
+        JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+        WHERE b.season=2026 AND t.state IN ('WA','OR','ID','MT','BC') GROUP BY 1,2""")
+    tpa, ipa = {}, {}
+    for r in cur.fetchall():
+        tpa.setdefault(r["lvl"], []).append(r["tpa"]); ipa.setdefault(r["lvl"], []).extend(r["pas"])
+    cur.execute("""SELECT d.level lvl, p.team_id tid, array_agg(p.innings_pitched) ips,
+              SUM(FLOOR(p.innings_pitched)+(p.innings_pitched-FLOOR(p.innings_pitched))*10/3.0) tip,
+              SUM(p.batters_faced) bf
+        FROM pitching_stats p JOIN teams t ON t.id=p.team_id
+        JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
+        WHERE p.season=2026 AND t.state IN ('WA','OR','ID','MT','BC') GROUP BY 1,2""")
+    tipd, iip, ipnum, bfden = {}, {}, {}, {}
+    for r in cur.fetchall():
+        lvl = r["lvl"]
+        tipd.setdefault(lvl, []).append(sum(tip(float(x)) for x in r["ips"]))
+        iip.setdefault(lvl, []).extend(tip(float(x)) for x in r["ips"])
+        ipnum[lvl] = ipnum.get(lvl, 0) + float(r["tip"] or 0); bfden[lvl] = bfden.get(lvl, 0) + (r["bf"] or 0)
+    for lvl in tpa:
+        wl[lvl] = {"pa": float(np.mean(tpa[lvl])), "pa_cap": float(np.quantile(ipa[lvl], 0.97)),
+                   "ip": float(np.mean(tipd.get(lvl, [0]))), "ip_cap": float(np.quantile(iip.get(lvl, [1]), 0.97)),
+                   "ip_per_bf": (ipnum[lvl] / bfden[lvl]) if bfden.get(lvl) else 0.217,
+                   "ip_shape": sorted(iip.get(lvl, [10]))}
+    return wl
+
+
 def to_ip_notation(decimal_ip):
     """Decimal innings -> baseball notation (.1 = 1/3 inning, .2 = 2/3).
     51.6 decimal -> 51 and ~2 thirds -> 51.2."""
@@ -396,14 +453,12 @@ _SLOT_SRC = {"C": ["C"], "1B": ["1B", "3B"], "2B": ["2B", "SS", "3B"],
 _DC = dict(CAP=0.90, PRIMARY=0.80, BACKUP_MAX=0.34, DH_MAX=0.60, FLOOR=0.05)
 
 
-def allocate_hitter_pa(rows):
-    """Set each hitter's PA from a realistic playing-time share rather than a
-    compressed per-player guess. Per team we build a depth chart: each spot goes
-    to whoever played it most last year, the rest fill in (OF interchangeable;
-    1B/3B and 2B/SS/3B interchangeable), the best idle bat DHs, everyone rests
-    some, and the deep bench still gets a ~5% spot share. A player's total share
-    of games x the level's full-season PA = his projected PA, so a full-time
-    starter lands near a full season and a backup gets a back-up's reps."""
+def allocate_hitter_pa(rows, workload):
+    """Distribute each team's PA so the team total equals its LEVEL AVERAGE,
+    split by depth-chart playing-time share and capped at the level's realistic
+    individual max. Each spot goes to whoever played it most last year, the rest
+    fill in (OF interchangeable; 1B/3B and 2B/SS/3B interchangeable), the best
+    idle bat DHs, everyone rests, the deep bench gets a sliver."""
     by_team = {}
     for r in rows:
         if r["side"] == "bat":
@@ -455,36 +510,59 @@ def allocate_hitter_pa(rows):
         for k in range(len(players)):
             if alloc[k] < _DC["FLOOR"]:
                 alloc[k] = _DC["FLOOR"]
+        lvl = players[0]["r"]["proj"]["level"]
+        wl = workload.get(lvl) or {"pa": 1900, "pa_cap": 240}
+        pas = _waterfill(alloc, wl["pa"], wl["pa_cap"])   # team PA -> level average
         for k, p in enumerate(players):
             r = p["r"]
-            full_pa = DIVISION_SEASON.get(r["proj"]["level"], DIVISION_SEASON["NAIA"])["pa"]
-            pa = round(min(alloc[k], _DC["CAP"]) * full_pa)
+            pa = round(pas[k])
             if r["proj"].get("insufficient"):
                 pa = min(pa, 45)
             r["proj"]["PT"] = pa
 
 
-def expand_to_achievable(rows):
-    """Two product-driven passes:
-      1. Stretch each driver rate's spread to its real achievable distribution
-         (best hitter ~.400, ERAs sub-2 to 8+), preserving mean + ranking.
-      2. Assign playing time by PROJECTED QUALITY, not last year: the best
-         hitters/arms get near-full workloads (scaled by position; pitchers also
-         rewarded for strike-throwing durability), the worst get the fewest.
-    Then reconstruct the slash line + counts from the stretched rates."""
+def allocate_pitcher_ip(rows, workload):
+    """Distribute each team's innings so the staff total equals its LEVEL AVERAGE,
+    split by quality + strike-throwing durability (shaped like a real staff: an ace
+    ~80-90 IP down to mop-up), capped at the level's realistic individual max."""
+    by_team = {}
+    for r in rows:
+        if r["side"] == "pit":
+            by_team.setdefault(r["team_id"], []).append(r)
+    for team_rows in by_team.values():
+        lvl = team_rows[0]["proj"]["level"]
+        wl = workload.get(lvl)
+        if not wl:
+            continue
+        ipbf = wl["ip_per_bf"]; shape = wl["ip_shape"]
+        # rank by quality (-ERA via sort_val) + strike-throwing durability
+        qz = _zscores([r["sort_val"] for r in team_rows])
+        sz = _zscores([(r["proj"].get("p_strike") or 0.62) for r in team_rows])
+        score = qz + 0.4 * sz
+        order = list(np.argsort(score))          # ascending; best last
+        n = len(team_rows)
+        # weight each arm by the actual IP-distribution value at his staff rank
+        weights = [0.0] * n
+        for rank, gi in enumerate(order):
+            pctile = (rank + 0.5) / n            # 0=worst .. ~1=ace
+            weights[gi] = float(np.quantile(shape, pctile))
+        ips = _waterfill(weights, wl["ip"], wl["ip_cap"])
+        for k, r in enumerate(team_rows):
+            ip = ips[k]
+            if r["proj"].get("insufficient"):
+                ip = min(ip, 12)
+            r["proj"]["PT"] = round(ip / ipbf) if ipbf else round(ip / 0.217)
+
+
+def expand_to_achievable(rows, workload):
+    """Map each driver rate to its level's actual distribution (de-compress +
+    calibrate per run environment), then reconstruct the slash/counts. Playing
+    time (PA/IP) is already set by allocate_hitter_pa / allocate_pitcher_ip."""
+    ip_per_bf = {lvl: w["ip_per_bf"] for lvl, w in workload.items()}
     with get_connection() as conn:
         cur = conn.cursor()
         tgt = _achievable_targets(cur)
         ptd = _pt_distributions(cur)
-        # per-level innings-per-batter-faced (run environments differ: NWAC has
-        # more baserunners -> fewer outs per BF). Drives IP and HR/9 per level.
-        cur.execute("""SELECT d.level lvl,
-              SUM(FLOOR(p.innings_pitched) + (p.innings_pitched-FLOOR(p.innings_pitched))*10/3.0)
-              / NULLIF(SUM(p.batters_faced),0) v
-            FROM pitching_stats p JOIN teams t ON t.id=p.team_id
-            JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-            WHERE p.season=2026 AND p.batters_faced>=30 GROUP BY 1""")
-        ip_per_bf = {r["lvl"]: float(r["v"]) for r in cur.fetchall() if r["v"]}
         # per-level HBP / SF / SH rates (per PA) — needed to DERIVE OBP and wOBA
         # consistently. College HBP is ~3% of PA (not the ~1% guessed before),
         # which is why reconstructed OBP/wOBA were ~20 pts low.
@@ -521,34 +599,6 @@ def expand_to_achievable(rows):
                 mapped = _quantile_map([grp[i]["proj"][key] for i in idxs], arr)
                 for j, i in enumerate(idxs):
                     grp[i]["proj"][key] = round(mapped[j], 4)
-            # --- pass 2: playing time by projected quality (pitchers only;
-            # hitter PA is set from the depth-chart share in allocate_hitter_pa) ---
-            arr = ptd.get((side, level))
-            if side == "pit" and arr is not None and len(grp) >= 3:
-                if side == "pit":
-                    # quality + strike-throwing durability decide the workload
-                    qz = _zscores([r["sort_val"] for r in grp])     # sort_val = -ER (higher=better)
-                    sz = _zscores([(r["proj"].get("p_strike") or 0.62) for r in grp])
-                    score = qz + 0.4 * sz
-                else:
-                    score = np.array([r["sort_val"] for r in grp])  # wOBA (higher=better)
-                order = np.argsort(score)                            # ascending; best last
-                n = len(order)
-                for rank, gi in enumerate(order):
-                    pctile = (rank + 0.5) / n
-                    pt_q = float(np.quantile(arr, pctile))
-                    r = grp[gi]
-                    last = r["proj"].get("PT", 0) or 0
-                    pt_new = 0.7 * pt_q + 0.3 * last
-                    if side == "bat":
-                        pt_new *= pos_factor(r.get("pos"))
-                    # established players don't lose much of their prior workload
-                    # just because the quality map nudges them — floor at 85% of
-                    # last year (so a returning starter keeps starting).
-                    r["proj"]["PT"] = round(max(pt_new, 0.85 * last))
-                    # unproven players don't get inflated workloads by the quality map
-                    if r["proj"].get("insufficient"):
-                        r["proj"]["PT"] = min(r["proj"]["PT"], 45 if side == "bat" else 50)
     # achievable caps (99th pctile) for the reconstructed combo stats, per level
     # p90 caps: a double-max contact+power profile (.400 AVG AND elite ISO) is an
     # impossible combo, so cap the reconstructed SLG/wOBA at a great-but-real level.
@@ -1034,8 +1084,11 @@ def main():
                              "from_team_id": int(m.get("team_id")) if m.get("team_id") else None,
                              "sort_val": round(float(sort_val), 5), "proj": line})
 
-    allocate_hitter_pa(rows)
-    expand_to_achievable(rows)
+    with get_connection() as conn:
+        workload = team_workload(conn.cursor())   # per-level team PA/IP + caps
+    allocate_hitter_pa(rows, workload)
+    allocate_pitcher_ip(rows, workload)
+    expand_to_achievable(rows, workload)
     add_breakout(rows)
     add_war(rows, pos_fracs)
 
