@@ -162,7 +162,7 @@ function normLine(p, isBat) {
 function Table({ rows, side, expanded, toggle, norm }) {
   if (!rows?.length) return <p className="text-sm text-gray-500 py-4">No projected {side === 'bat' ? 'hitters' : 'pitchers'}.</p>
   const isBat = side === 'bat'
-  const span = isBat ? 21 : 17
+  const span = isBat ? 20 : 17
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
       <table className="min-w-full text-xs">
@@ -170,7 +170,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
           <tr className="bg-gray-50 dark:bg-gray-800/60">
             <th className={THL} colSpan={3}> </th>
             {isBat ? <>
-              <th className={GROUP} colSpan={7}>Counting</th>
+              <th className={GROUP} colSpan={6}>Counting</th>
               <th className={GROUP + BL} colSpan={6}>Rate &amp; discipline</th>
               <th className={GROUP + BL} colSpan={3}>Plate skills (Δ vs ’26)</th>
             </> : <>
@@ -183,7 +183,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
           <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
             <th className={THL}>Player</th><th className={TH}>’27</th><th className={TH}>Pos</th>
             {isBat ? <>
-              <th className={TH}>PA</th><th className={TH}>H</th><th className={TH}>2B</th><th className={TH}>3B</th>
+              <th className={TH}>PA</th><th className={TH}>H</th><th className={TH}>2B</th>
               <th className={TH}>HR</th><th className={TH}>R</th><th className={TH}>RBI</th>
               <th className={TH + BL}>AVG</th><th className={TH}>OBP</th><th className={TH}>SLG</th><th className={TH}>wOBA</th><th className={TH}>BB%</th><th className={TH}>K%</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Pull-air</th>
@@ -211,9 +211,13 @@ function Table({ rows, side, expanded, toggle, norm }) {
                   </td>
                   <td className={TD}>{p.class_2027 || '–'}</td>
                   <td className={TD}>{r.pos || '–'}</td>
+                  {p.no_data ? <>
+                    <td className={TD}>{(isBat ? p.PT : p.BF) ?? '–'}</td>
+                    <td colSpan={span - 4} className="px-2.5 py-2 text-left text-[11px] italic text-gray-400">not enough data to project (2026 sample too small)</td>
+                  </> : <>
                   {isBat ? <>
                     <td className={TD}>{p.PT ?? '–'}</td><td className={TD}>{p.H ?? '–'}</td>
-                    <td className={TD}>{p['2B'] ?? '–'}</td><td className={TD}>{p['3B'] ?? '–'}</td>
+                    <td className={TD}>{p['2B'] ?? '–'}</td>
                     <td className={TD + ' font-semibold text-gray-900 dark:text-gray-100'}>{p.HR ?? '–'}</td>
                     <td className={TD}>{p.R ?? '–'}</td><td className={TD}>{p.RBI ?? '–'}</td>
                     <td className={TD + BL}>{slash(p.AVG)}{deltaArrow(p.AVG, a.avg, true)}</td>
@@ -238,6 +242,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
                   </>}
                   <td className={`${TD} ${BL} font-semibold ${valueColor(p.WAR, 0.5, 2.0)}`}>{f1(p.WAR)}</td>
                   <td className={TDL}><Confidence rel={p.reliability} /></td>
+                  </>}
                 </tr>
                 {open && (isBat ? <HitterDetail row={r} span={span} /> : <PitcherDetail row={r} span={span} />)}
               </Fragment>

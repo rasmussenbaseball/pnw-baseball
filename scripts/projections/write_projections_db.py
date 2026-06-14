@@ -82,8 +82,15 @@ LOW_GOOD = {"bat": {"k_pct"},
 # rates (from pbp_proj). Applied only when all predictors are available.
 # order matters: babip refined first (feeds avg). All CV-validated, well-calibrated.
 BAT_REFINE = {"babip": ["babip", "p_ld", "p_gb", "p_airpull"],  # CV -6.6%
-              "avg": ["avg", "k_pct", "babip", "p_ld"]}          # CV -5%
-PIT_REFINE = {"bb_pct": ["bb_pct", "p_strike", "p_whiff"]}       # CV -15%
+              "avg": ["avg", "k_pct", "babip", "p_ld"],          # CV -5%
+              # K% from whiff/swing (contact skills), BB% from swing rate
+              # (plate discipline) — drive these off PBP skill, not a static lag.
+              "k_pct": ["p_whiff", "p_swing", "k_pct"],
+              "bb_pct": ["p_swing", "p_whiff", "bb_pct"]}
+# BB% / K% from strike-throwing and whiff skill (no lagged rate, so a strike-
+# thrower visibly walks fewer and a whiff-getter strikes out more).
+PIT_REFINE = {"bb_pct": ["p_strike", "p_whiff"],
+              "k_pct": ["p_whiff", "p_strike"]}
 
 
 def fit_refine(df_feat, target, preds, target_season):
@@ -291,13 +298,15 @@ def add_breakout(rows):
         if r["side"] == "bat":
             w26 = p.pop("_w26", None); bb26 = p.pop("_bb26", None)
             woba = p.get("wOBA")
-            if (not p.get("insufficient") and n >= 80 and w26 is not None and woba is not None
-                    and woba - w26 >= 0.040 and woba >= 0.350 and (bb26 is None or bb26 < 0.310)):
+            if (not p.get("insufficient") and not p.get("no_data") and n >= 50
+                    and w26 is not None and woba is not None
+                    and woba - w26 >= 0.025 and woba >= 0.335 and (bb26 is None or bb26 < 0.320)):
                 bo = True
         else:
             e26 = p.pop("_e26", None); f26 = p.pop("_f26", None); era = p.get("ERA")
-            if (not p.get("insufficient") and n >= 40 and e26 is not None and era is not None
-                    and e26 - era >= 1.0 and era <= 4.1 and f26 is not None and e26 - f26 >= 0.6):
+            if (not p.get("insufficient") and not p.get("no_data") and n >= 30
+                    and e26 is not None and era is not None
+                    and e26 - era >= 0.7 and era <= 4.3 and f26 is not None and e26 - f26 >= 0.4):
                 bo = True
         if bo:
             p["breakout"] = True
@@ -773,6 +782,10 @@ def main():
                 # is. Very thin samples get flagged "insufficient" and capped PT.
                 career_n = float(h["wt_n"].sum())
                 insufficient = career_n < INSUF_N
+                # below ~10 PA / ~5 IP there isn't enough to project a real line —
+                # flag it so the page shows "not enough data" (the player is still
+                # listed with projected playing time).
+                no_data = career_n < (10 if side == "bat" else 22)
                 if career_n < LOW_N:
                     dw = max(0.12, career_n / LOW_N)
                     for s in list(proj):
@@ -786,7 +799,7 @@ def main():
                     pt = min(pt, 45 if side == "bat" else 50)
                 line = {"reliability": round(rel, 3), "PT": round(pt), "level": level,
                         "from_level": cur_level, "incoming": incoming, "insufficient": insufficient,
-                        "class_2027": (CLASS_NEXT.get(cls) if cls else None)}
+                        "no_data": no_data, "class_2027": (CLASS_NEXT.get(cls) if cls else None)}
                 # stash 2026 luck signals for the post-expand breakout check
                 line["_n"] = career_n
                 if side == "bat":
@@ -807,6 +820,17 @@ def main():
                         br = apply_refine(refine["babip"], proj, pbp_for)
                         if br is not None:
                             proj["babip"] = (max(0.20, min(0.45, br)), proj["babip"][1])
+                    # K% from whiff/swing, BB% from swing/whiff (when PBP available)
+                    if "k_pct" in refine:
+                        kr = apply_refine(refine["k_pct"], proj, pbp_for)
+                        if kr is not None:
+                            proj["k_pct"] = (max(0.03, min(0.45, kr)), proj["k_pct"][1])
+                            line["k_pct"] = round(proj["k_pct"][0], 4)
+                    if "bb_pct" in refine:
+                        bbr = apply_refine(refine["bb_pct"], proj, pbp_for)
+                        if bbr is not None:
+                            proj["bb_pct"] = (max(0.01, min(0.25, bbr)), proj["bb_pct"][1])
+                            line["bb_pct"] = round(proj["bb_pct"][0], 4)
                     bb, k, hr_pa, avg, iso = (proj.get(s, (0, 0))[0] for s in ["bb_pct", "k_pct", "hr_pa", "avg", "iso"])
                     # refine AVG from its peripherals (K%, BABIP, LD%) when available
                     if "avg" in refine:
@@ -820,8 +844,11 @@ def main():
                     # masher's high ISO carries his power through. A small slice of
                     # the regressed HR rate nudges proven-over-ISO guys up.
                     hh = h.dropna(subset=["iso"])
-                    iso_demo = (float(np.average(hh["iso"], weights=hh["wt_n"]))
-                                if len(hh) else iso)
+                    iso_raw = (float(np.average(hh["iso"], weights=hh["wt_n"]))
+                               if len(hh) else iso)
+                    # regress demonstrated ISO toward league power by sample size,
+                    # so a few HR in 20-30 PA don't project a masher's HR total.
+                    iso_demo = (iso_raw * career_n + 0.130 * 120) / (career_n + 120)
                     iso_hr = max(0.0, ISO_HR_B0 + ISO_HR_B1 * iso_demo)
                     hr_pa_eff = max(0.0, 0.7 * iso_hr + 0.3 * hr_pa)
                     line["hr_pa"] = round(hr_pa_eff, 4)   # used by the reconstruction
@@ -843,10 +870,15 @@ def main():
                 else:
                     k, bb, hrb = (proj.get(s, (0, 0))[0] for s in ["k_pct", "bb_pct", "hr_bf"])
                     # refine BB% from strike%/whiff% (a strike-thrower walks fewer)
+                    # and K% from whiff/strike% (a whiff-getter strikes out more)
                     if "bb_pct" in refine:
                         bbr = apply_refine(refine["bb_pct"], proj, pbp_for)
                         if bbr is not None:
                             bb = max(0.02, min(0.25, bbr))
+                    if "k_pct" in refine:
+                        kr = apply_refine(refine["k_pct"], proj, pbp_for)
+                        if kr is not None:
+                            k = max(0.05, min(0.45, kr))
                     # xFIP-style HR rate: projected FB% (a stable skill) x the
                     # level's HR-per-fly-ball, blended over the pitcher's own noisy
                     # HR rate. Far more predictive, and it carries the level's power

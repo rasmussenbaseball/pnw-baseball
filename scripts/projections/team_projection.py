@@ -49,7 +49,7 @@ FIP_BLEND = 0.5    # weight on FIP-reconstruction vs direct ERA (backtest-best)
 # raw YoY reliability looked low only because narrative-derived tags are noisy,
 # so we trust the player's own level and barely regress these. (sign = youth
 # development nudge direction.)
-HIT_PBP = {"p_whiff": (120, 0), "p_gb": (200, 0), "p_airpull": (90, +1), "p_ld": (250, 0)}  # air-pull r=.72 very stable; LD% for the AVG/BABIP models
+HIT_PBP = {"p_whiff": (120, 0), "p_gb": (200, 0), "p_airpull": (90, +1), "p_ld": (250, 0), "p_swing": (120, 0)}  # swing rate -> BB%/K% models
 PIT_PBP = {"p_whiff": (170, +1), "p_gb": (220, 0), "p_strike": (160, +1), "p_fb": (220, 0)}  # FB% allowed -> xFIP-style HR rate
 YOUTH_NUDGE = {"Fr": 0.004, "So": 0.006, "Jr": 0.002, "Sr": 0.0}  # per-stat, applied * sign
 PBP_LABEL = {"p_whiff": "Whiff%", "p_gb": "GB%", "p_airpull": "AirPull%", "p_strike": "Strike%"}

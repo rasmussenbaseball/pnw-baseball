@@ -218,6 +218,7 @@ def load_pbp_peripherals(cur, side):
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     swings = (df["n_s"] + df["n_f"] + df["in_play"]).clip(lower=1)
     df["p_whiff"] = df["n_s"] / swings
+    df["p_swing"] = (df["n_s"] + df["n_f"] + df["in_play"]) / df["pitches"].clip(lower=1)  # swing rate
     df["p_gb"] = np.where(df["bip"] >= 30, df["gb"] / df["bip"].clip(lower=1), np.nan)
     df["p_strike"] = (df["n_k"] + df["n_s"] + df["n_f"] + df["in_play"]) / df["pitches"].clip(lower=1)
     df["p_ld"] = np.where(df["bip"] >= 30, df["ld"] / df["bip"].clip(lower=1), np.nan)
@@ -225,7 +226,7 @@ def load_pbp_peripherals(cur, side):
     if side == "bat":
         df["p_airpull"] = np.where(df["bip"] >= 30, df["air_pull"] / df["bip"].clip(lower=1), np.nan)
     df["p_n"] = df["pitches"]
-    keep = ["pid", "season", "p_whiff", "p_gb", "p_ld", "p_fb", "p_strike", "p_n"]
+    keep = ["pid", "season", "p_whiff", "p_swing", "p_gb", "p_ld", "p_fb", "p_strike", "p_n"]
     if side == "bat":
         keep.append("p_airpull")
     return df[keep]
