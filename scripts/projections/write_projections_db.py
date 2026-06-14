@@ -231,11 +231,19 @@ def team_name_map(cur):
     return m
 
 
+# Out-of-region schools whose name loosely collides with a PNW team — they must
+# resolve to None (player leaves the region), not the same-city PNW school.
+# "Bellevue University" (NAIA, Nebraska) vs "Bellevue" CC (NWAC, WA).
+_NON_PNW_COMMITS = {"bellevue university"}
+
+
 def resolve_commit(name, tname_map):
     """Free-text committed_to -> (team_id, level) if it's a tracked PNW team."""
     if not name:
         return None
     key = name.strip().lower()
+    if key in _NON_PNW_COMMITS:
+        return None
     if key in tname_map:
         return tname_map[key]
     # loose contains-match (e.g. "Oregon State" vs "Oregon St")
