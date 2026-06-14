@@ -1382,3 +1382,179 @@ def recruiting_breakdown(
         return results
 
 
+# ════════════════════════════════════════════════════════════════════
+# RECRUITING CLASSES — HS commits to our PNW schools (from BBNW/PBR)
+# ════════════════════════════════════════════════════════════════════
+# Data lives in the `recruits` table (scripts/scrape_recruits.py). Each row
+# is a HS player committed to one of our schools (committed_team_id), with
+# the better of the BBNW/PBR per-state rank → recruit_score (0-100). A
+# school's class_score is the SUM of its commits' scores (rewards landing
+# more good players); we also expose the average and the top commit.
+
+_PNW_STATES = ('WA', 'OR', 'ID', 'MT', 'BC')
+
+
+def _recruit_row(r):
+    """Shape one recruit row for the API (used by class detail + team page)."""
+    return {
+        "id": r["id"],
+        "name": f'{r["first_name"]} {r["last_name"]}'.strip(),
+        "first_name": r["first_name"],
+        "last_name": r["last_name"],
+        "position": r["position"],
+        "grad_year": r["grad_year"],
+        "high_school": r["high_school"],
+        "city": r["city"],
+        "state": r["state"],
+        "height": r["height"],
+        "weight": r["weight"],
+        "bbnw_state_rank": r["bbnw_state_rank"],
+        "pbr_state_rank": r["pbr_state_rank"],
+        "recruit_score": float(r["recruit_score"]) if r["recruit_score"] is not None else None,
+        "is_ranked": r["bbnw_state_rank"] is not None or r["pbr_state_rank"] is not None,
+        "headshot_url": r["headshot_url"],
+    }
+
+
+def _class_summary_rows(cur, grad_year, limit=None):
+    """Per-school class summary, ranked by class_score. Shared by the premium
+    board and the public teaser."""
+    cur.execute(
+        """
+        SELECT t.id AS team_id, t.name, t.short_name, t.logo_url,
+               d.level AS division,
+               COUNT(*) AS commits,
+               COUNT(*) FILTER (WHERE r.bbnw_state_rank IS NOT NULL
+                                   OR r.pbr_state_rank IS NOT NULL) AS ranked,
+               ROUND(SUM(r.recruit_score))::int AS class_score,
+               ROUND(AVG(r.recruit_score), 1)::float8 AS avg_score,
+               MAX(r.recruit_score) AS top_score
+        FROM recruits r
+        JOIN teams t ON r.committed_team_id = t.id
+        JOIN conferences c ON t.conference_id = c.id
+        JOIN divisions d ON c.division_id = d.id
+        WHERE r.grad_year = %s AND t.state IN %s
+        GROUP BY t.id, t.name, t.short_name, t.logo_url, d.level
+        ORDER BY class_score DESC, commits DESC
+        """,
+        (grad_year, _PNW_STATES),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+
+    # Attach each class's top commit (name + position) in one extra query.
+    if rows:
+        team_ids = [r["team_id"] for r in rows]
+        ph = ",".join(["%s"] * len(team_ids))
+        cur.execute(
+            f"""
+            SELECT DISTINCT ON (committed_team_id)
+                   committed_team_id AS tid, first_name, last_name, position,
+                   bbnw_state_rank, pbr_state_rank
+            FROM recruits
+            WHERE grad_year = %s AND committed_team_id IN ({ph})
+            ORDER BY committed_team_id, recruit_score DESC
+            """,
+            [grad_year] + team_ids,
+        )
+        top = {r["tid"]: r for r in cur.fetchall()}
+        for row in rows:
+            t = top.get(row["team_id"])
+            row["top_commit"] = (
+                {"name": f'{t["first_name"]} {t["last_name"]}'.strip(),
+                 "position": t["position"],
+                 "rank": t["bbnw_state_rank"] or t["pbr_state_rank"]}
+                if t else None
+            )
+            row["avg_score"] = round(row["avg_score"], 1) if row["avg_score"] is not None else None
+            row["top_score"] = float(row["top_score"]) if row["top_score"] is not None else None
+
+    for i, row in enumerate(rows, 1):
+        row["class_rank"] = i
+    return rows[:limit] if limit else rows
+
+
+@router.get("/recruiting/classes")
+@cached_endpoint(ttl_seconds=3600)
+def recruiting_classes(
+    grad_year: int = Query(2026, description="Recruiting class year"),
+    _user: str = Depends(require_tier("premium")),
+):
+    """Per-school incoming-class leaderboard ranked by class_score."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        return {"grad_year": grad_year, "classes": _class_summary_rows(cur, grad_year)}
+
+
+@router.get("/recruiting/classes/top")
+@cached_endpoint(ttl_seconds=3600)
+def recruiting_classes_top(
+    grad_year: int = Query(2026, description="Recruiting class year"),
+    limit: int = Query(5, ge=1, le=15),
+):
+    """PUBLIC teaser: the top recruiting classes (drives signups to the
+    premium board). Same summary shape, capped to `limit`."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        return {"grad_year": grad_year, "classes": _class_summary_rows(cur, grad_year, limit=limit)}
+
+
+@router.get("/recruiting/classes/{team_id}")
+@cached_endpoint(ttl_seconds=3600)
+def recruiting_class_detail(
+    team_id: int,
+    grad_year: int = Query(2026, description="Recruiting class year"),
+    _user: str = Depends(require_tier("premium")),
+):
+    """One school's full incoming class: every commit with ranks + score."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT t.id, t.name, t.short_name, t.logo_url, d.level AS division
+               FROM teams t
+               JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id
+               WHERE t.id = %s""",
+            (team_id,),
+        )
+        team = cur.fetchone()
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        cur.execute(
+            """SELECT * FROM recruits
+               WHERE committed_team_id = %s AND grad_year = %s
+               ORDER BY recruit_score DESC, last_name""",
+            (team_id, grad_year),
+        )
+        commits = [_recruit_row(r) for r in cur.fetchall()]
+        return {
+            "team": dict(team),
+            "grad_year": grad_year,
+            "commit_count": len(commits),
+            "ranked_count": sum(1 for c in commits if c["is_ranked"]),
+            "class_score": round(sum(c["recruit_score"] or 0 for c in commits)),
+            "commits": commits,
+        }
+
+
+@router.get("/teams/{team_id}/recruits")
+@cached_endpoint(ttl_seconds=3600)
+def team_recruits(
+    team_id: int,
+    grad_year: int = Query(2026, description="Recruiting class year"),
+):
+    """PUBLIC: a team's incoming HS commits, for the team-page section."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT * FROM recruits
+               WHERE committed_team_id = %s AND grad_year = %s
+               ORDER BY recruit_score DESC, last_name""",
+            (team_id, grad_year),
+        )
+        commits = [_recruit_row(r) for r in cur.fetchall()]
+        return {
+            "team_id": team_id,
+            "grad_year": grad_year,
+            "commit_count": len(commits),
+            "commits": commits,
+        }
