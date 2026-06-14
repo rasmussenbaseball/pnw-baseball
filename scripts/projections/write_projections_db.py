@@ -732,6 +732,16 @@ def main():
                 spec = fit_refine(df_feat[df_feat["wt_n"] >= FIT_MIN], tgt, preds, TARGET)
                 if spec:
                     refine[tgt] = spec
+            # skill-only anchors (single predictor each) blended 50/50 with the
+            # track-record projection so a pitcher's strike% / whiff% genuinely
+            # moves his BB% / K% (a strike-thrower is projected to walk fewer)
+            # without a strong track record being overwritten.
+            skill = {}
+            if side == "pit":
+                for tgt, preds in {"bb_pct": ["p_strike"], "k_pct": ["p_whiff"]}.items():
+                    sp = fit_refine(df_feat[df_feat["wt_n"] >= FIT_MIN], tgt, preds, TARGET)
+                    if sp:
+                        skill[tgt] = sp
 
             # who do we project on this side? everyone with a recent qualified season
             recent = hist_all[hist_all["season"].isin([TARGET - 1, TARGET - 2])]
@@ -882,6 +892,16 @@ def main():
                         kr = apply_refine(refine["k_pct"], proj, pbp_for)
                         if kr is not None:
                             k = max(0.05, min(0.45, kr))
+                    # blend the track-record rate 50/50 with the strike%/whiff%
+                    # skill anchor, so command/stuff visibly move the projection
+                    if "bb_pct" in skill:
+                        bs = apply_refine(skill["bb_pct"], proj, pbp_for)
+                        if bs is not None:
+                            bb = max(0.02, min(0.25, 0.5 * bb + 0.5 * bs))
+                    if "k_pct" in skill:
+                        ks = apply_refine(skill["k_pct"], proj, pbp_for)
+                        if ks is not None:
+                            k = max(0.05, min(0.45, 0.5 * k + 0.5 * ks))
                     # xFIP-style HR rate: projected FB% (a stable skill) x the
                     # level's HR-per-fly-ball, blended over the pitcher's own noisy
                     # HR rate. Far more predictive, and it carries the level's power
