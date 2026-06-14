@@ -278,6 +278,31 @@ def poor_anchors(df_fit, comps, side):
     return out
 
 
+def add_breakout(rows):
+    """Flag players the model expects to break out because last year sold them
+    short. Hitters: a real sample, unlucky BABIP, and a big projected wOBA jump to
+    a strong level. Pitchers: 2026 ERA well above their 2026 FIP (unlucky run
+    prevention) and a big projected ERA improvement to a good level. Consumes the
+    stashed _-prefixed 2026 signals."""
+    for r in rows:
+        p = r["proj"]
+        n = p.pop("_n", 0) or 0
+        bo = False
+        if r["side"] == "bat":
+            w26 = p.pop("_w26", None); bb26 = p.pop("_bb26", None)
+            woba = p.get("wOBA")
+            if (not p.get("insufficient") and n >= 80 and w26 is not None and woba is not None
+                    and woba - w26 >= 0.040 and woba >= 0.350 and (bb26 is None or bb26 < 0.310)):
+                bo = True
+        else:
+            e26 = p.pop("_e26", None); f26 = p.pop("_f26", None); era = p.get("ERA")
+            if (not p.get("insufficient") and n >= 40 and e26 is not None and era is not None
+                    and e26 - era >= 1.0 and era <= 4.1 and f26 is not None and e26 - f26 >= 0.6):
+                bo = True
+        if bo:
+            p["breakout"] = True
+
+
 def _league_baselines(cur):
     """2026 league wOBA (PA-weighted) and FIP (IP-weighted) per division level.
     Projections are translated INTO a 2026-like run environment, so WAR is
@@ -762,6 +787,16 @@ def main():
                 line = {"reliability": round(rel, 3), "PT": round(pt), "level": level,
                         "from_level": cur_level, "incoming": incoming, "insufficient": insufficient,
                         "class_2027": (CLASS_NEXT.get(cls) if cls else None)}
+                # stash 2026 luck signals for the post-expand breakout check
+                line["_n"] = career_n
+                if side == "bat":
+                    line["_w26"] = float(last["woba"]) if pd.notna(last["woba"]) else None
+                    line["_bb26"] = float(last["babip"]) if pd.notna(last["babip"]) else None
+                else:
+                    line["_e26"] = float(last["era_rate"]) * 39.6 if pd.notna(last["era_rate"]) else None
+                    lk, lbb, lhr = last["k_pct"], last["bb_pct"], last["hr_bf"]
+                    line["_f26"] = ((run_coef[0]*lk + run_coef[1]*lbb + run_coef[2]*lhr + run_coef[3]) * 39.6
+                                    if all(pd.notna(x) for x in (lk, lbb, lhr)) else None)
                 for s in comps:
                     if s in proj:
                         line[s] = round(proj[s][0], 4)
@@ -888,6 +923,7 @@ def main():
 
     allocate_hitter_pa(rows)
     expand_to_achievable(rows)
+    add_breakout(rows)
     add_war(rows, pos_fracs)
 
     # write to DB

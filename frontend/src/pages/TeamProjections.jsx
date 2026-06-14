@@ -48,6 +48,16 @@ function Incoming({ row }) {
   return <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={row.from_team ? `Incoming from ${row.from_team}` : 'Incoming transfer'}>{row.from_team ? `↙ ${row.from_team}` : 'Incoming'}</span>
 }
 
+// tiny up/down arrow vs 2026 actual, colored by whether it's an improvement
+function deltaArrow(v27, v26, higherBetter = true) {
+  if (v26 == null || v27 == null || isNaN(v26) || isNaN(v27)) return null
+  const d = v27 - v26
+  if (Math.abs(d) < 1e-9) return null
+  const improved = higherBetter ? d > 0 : d < 0
+  return <span className={`ml-0.5 text-[8px] align-middle ${improved ? 'text-emerald-500' : 'text-rose-400'}`}>{d > 0 ? '▲' : '▼'}</span>
+}
+const rate = (num, den) => (den ? num / den : null)   // 2026 actual rate from counts
+
 function valueColor(v, lo, hi, invert = false) {
   if (v === null || v === undefined) return ''
   let t = (v - lo) / (hi - lo); if (invert) t = 1 - t; t = Math.max(0, Math.min(1, t))
@@ -188,6 +198,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
         <tbody>
           {rows.map((r, i) => {
             const p = norm ? normLine(r.proj || {}, isBat) : (r.proj || {})
+            const a = r.actual_2026 || {}
             const open = expanded === r.player_id
             return (
               <Fragment key={r.player_id}>
@@ -195,6 +206,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
                     className={`cursor-pointer border-b border-gray-100 dark:border-gray-800 ${i % 2 ? 'bg-gray-50/40 dark:bg-gray-800/20' : ''} ${open ? 'bg-nw-teal/5' : 'hover:bg-nw-teal/5'}`}>
                   <td className={TDL + ' font-medium text-gray-900 dark:text-gray-100'}>
                     <span className="text-gray-300 mr-1">{open ? '▾' : '▸'}</span>{r.name}<Incoming row={r} />
+                    {p.breakout && <span className="ml-1 align-middle" title="Projected breakout: the model reads last season's results as unlucky relative to the underlying skills (low BABIP / ERA well above FIP) and expects a big step forward">🚀</span>}
                     {p.insufficient && <span className="ml-1.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-semibold px-1 py-0.5 uppercase align-middle" title="Barely played in 2026 — projected as a below-average player from limited data">ltd</span>}
                   </td>
                   <td className={TD}>{p.class_2027 || '–'}</td>
@@ -204,17 +216,23 @@ function Table({ rows, side, expanded, toggle, norm }) {
                     <td className={TD}>{p['2B'] ?? '–'}</td><td className={TD}>{p['3B'] ?? '–'}</td>
                     <td className={TD + ' font-semibold text-gray-900 dark:text-gray-100'}>{p.HR ?? '–'}</td>
                     <td className={TD}>{p.R ?? '–'}</td><td className={TD}>{p.RBI ?? '–'}</td>
-                    <td className={TD + BL}>{slash(p.AVG)}</td><td className={TD}>{slash(p.OBP)}</td><td className={TD}>{slash(p.SLG)}</td>
-                    <td className={`${TD} ${valueColor(p.wOBA, 0.300, 0.430)}`}>{slash(p.wOBA)}</td>
-                    <td className={TD}>{pctInt(p.bb_pct)}</td><td className={TD}>{pctInt(p.k_pct)}</td>
+                    <td className={TD + BL}>{slash(p.AVG)}{deltaArrow(p.AVG, a.avg, true)}</td>
+                    <td className={TD}>{slash(p.OBP)}{deltaArrow(p.OBP, a.obp, true)}</td>
+                    <td className={TD}>{slash(p.SLG)}{deltaArrow(p.SLG, a.slg, true)}</td>
+                    <td className={`${TD} ${valueColor(p.wOBA, 0.300, 0.430)}`}>{slash(p.wOBA)}{deltaArrow(p.wOBA, a.woba, true)}</td>
+                    <td className={TD}>{pctInt(p.bb_pct)}{deltaArrow(p.bb_pct, rate(a.bb, a.pa), true)}</td>
+                    <td className={TD}>{pctInt(p.k_pct)}{deltaArrow(p.k_pct, rate(a.so, a.pa), false)}</td>
                     <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev', false)}</td>
                     <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev', false)}</td><td className={TD}>{pctDelta(p, 'p_airpull', 'p_airpull_prev', true)}</td>
                   </> : <>
                     <td className={TD}>{p.BF ?? '–'}</td><td className={TD}>{f1(p.IP)}</td>
-                    <td className={`${TD} ${valueColor(p.ERA, 3.5, 7.0, true)}`}>{f2(p.ERA)}</td>
-                    <td className={TD}>{f2(p.FIP)}</td>
-                    <td className={TD}>{f2(p.WHIP)}</td><td className={TD}>{slash(p.opp_avg)}</td><td className={TD}>{f2(p.HR9)}</td>
-                    <td className={TD + BL}>{pctInt(p.K_pct)}</td><td className={TD}>{pctInt(p.BB_pct)}</td>
+                    <td className={`${TD} ${valueColor(p.ERA, 3.5, 7.0, true)}`}>{f2(p.ERA)}{deltaArrow(p.ERA, a.era, false)}</td>
+                    <td className={TD}>{f2(p.FIP)}{deltaArrow(p.FIP, a.fip, false)}</td>
+                    <td className={TD}>{f2(p.WHIP)}{deltaArrow(p.WHIP, a.whip, false)}</td>
+                    <td className={TD}>{slash(p.opp_avg)}{deltaArrow(p.opp_avg, a.opp_avg, false)}</td>
+                    <td className={TD}>{f2(p.HR9)}{deltaArrow(p.HR9, a.hr9, false)}</td>
+                    <td className={TD + BL}>{pctInt(p.K_pct)}{deltaArrow(p.K_pct, a.k_pct, true)}</td>
+                    <td className={TD}>{pctInt(p.BB_pct)}{deltaArrow(p.BB_pct, a.bb_pct, false)}</td>
                     <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev')}</td>
                     <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev')}</td><td className={TD}>{pctDelta(p, 'p_strike', 'p_strike_prev')}</td>
                   </>}
@@ -313,6 +331,7 @@ export default function TeamProjections() {
             <p><b>ERA</b> blends FIP-reconstruction with regressed ERA (leans on stable peripherals). Incoming transfers (↗) are projected at their new level, with stats translated from real NWAC-to-4-year transfer history. Power gets a real bump on the move up: NWAC homers about 0.7 per 100 PA, the 4-year levels 2 to 2.6, so transfer HR rates roughly double.</p>
             <p><b>ltd</b> (limited data) marks players who barely appeared in 2026. With little to go on they are projected as below-average (about 25th percentile) and capped at a small workload, but still included so rosters and totals are complete. They firm up as transfers and freshmen are added.</p>
             <p><b>PA and IP</b> reflect projected playing time: the best players earn near-full workloads, backups and unproven players get fewer, so a team's reps are shared realistically rather than every regular getting the same total.</p>
+            <p><b>▲▼</b> next to a rate show whether it is projected up or down vs the player's 2026 rate (green = better, red = worse, direction-aware). <b>🚀</b> flags a projected breakout: the model reads last season as unlucky relative to the underlying skills (low BABIP, or ERA well above FIP) and expects a real step forward.</p>
           </div>
         </div>
       )}
