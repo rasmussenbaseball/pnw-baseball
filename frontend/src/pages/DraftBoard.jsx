@@ -28,6 +28,18 @@ function formatDate(dateStr) {
   } catch { return dateStr }
 }
 
+// Byline under a scouting report: "By {author} · {date}" when we know the
+// author, otherwise the older "Updated {date}" so readers know when it was written.
+function ReportByline({ author, date }) {
+  if (!author && !date) return null
+  const dateStr = date ? formatDate(date) : ''
+  return (
+    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 italic">
+      {author ? `By ${author}${dateStr ? ` · ${dateStr}` : ''}` : `Updated ${dateStr}`}
+    </p>
+  )
+}
+
 
 // ─── Up/down movement arrow ──────────────────────────────────
 // Renders a small green ▲ or red ▼ next to the rank when the
@@ -77,7 +89,7 @@ function ProspectMeta({ year, commit }) {
 
 
 // ─── Expandable player stats row ──────────────────────────────
-function PlayerStatsDropdown({ playerId, report, reportDate }) {
+function PlayerStatsDropdown({ playerId, report, reportDate, reportAuthor }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -102,7 +114,7 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
         {report ? (
           <div className="mt-2">
             <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{report}</p>
-            {reportDate && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 italic">Updated {formatDate(reportDate)}</p>}
+            <ReportByline author={reportAuthor} date={reportDate} />
           </div>
         ) : (
           <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
@@ -193,7 +205,7 @@ function PlayerStatsDropdown({ playerId, report, reportDate }) {
       {report ? (
         <div className="mt-2 border-t border-gray-100 dark:border-gray-700 pt-2">
           <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{report}</p>
-          {reportDate && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 italic">Updated {formatDate(reportDate)}</p>}
+          <ReportByline author={reportAuthor} date={reportDate} />
         </div>
       ) : (
         <p className="text-[10px] text-gray-300 mt-1">Scouting report coming soon.</p>
@@ -324,7 +336,7 @@ export default function DraftBoard({ year }) {
                     </div>
                     {isExpanded && (
                       <div className="bg-gray-50/80 border-t border-gray-100 dark:border-gray-700">
-                        <PlayerStatsDropdown playerId={p.playerId} report={p.report} reportDate={p.reportDate} />
+                        <PlayerStatsDropdown playerId={p.playerId} report={p.report} reportDate={p.reportDate} reportAuthor={p.reportAuthor} />
                       </div>
                     )}
                   </td>
@@ -386,7 +398,7 @@ export default function DraftBoard({ year }) {
               </div>
               {isExpanded && (
                 <div className="bg-gray-50/80 border-t border-gray-100 dark:border-gray-700">
-                  <PlayerStatsDropdown playerId={p.playerId} report={p.report} reportDate={p.reportDate} />
+                  <PlayerStatsDropdown playerId={p.playerId} report={p.report} reportDate={p.reportDate} reportAuthor={p.reportAuthor} />
                 </div>
               )}
             </div>
