@@ -158,11 +158,17 @@ function TransferList({ transfers }) {
                 )}
               </td>
               <td className="px-3 py-1.5 text-center text-xs tabular-nums whitespace-nowrap">
-                <span className="font-bold text-nw-teal dark:text-nw-teal-light">{(t.war ?? 0).toFixed(1)}</span>
-                {t.boosted && (
-                  <span className="ml-1 inline-flex items-center text-[9px] font-bold px-1 py-0.5 rounded bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300" title="D1 player dropping a level: WAR doubled in the rating">
-                    2×
-                  </span>
+                {t.war != null ? (
+                  <>
+                    <span className="font-bold text-nw-teal dark:text-nw-teal-light">{t.war.toFixed(1)}</span>
+                    {t.boosted && (
+                      <span className="ml-1 inline-flex items-center text-[9px] font-bold px-1 py-0.5 rounded bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300" title="D1 player dropping a level: WAR doubled in the rating">
+                        2×
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-gray-400 dark:text-gray-500" title="Out-of-region transfer: no WAR in our data, not counted in the rating">—</span>
                 )}
               </td>
             </tr>
@@ -502,13 +508,13 @@ export default function RecruitingClasses() {
             <>
               <p><strong>Avg WAR</strong> rates each program's transfer class by the <em>average</em> season WAR (offense + pitching) of its transfers, not the total, so depth never inflates a class: 7 transfers worth 7 WAR rate at 1.00, the same as one transfer worth 1 WAR. A below-replacement transfer counts as 0, never a negative.</p>
               <p><strong>Transfer Rank</strong> is each player's standing among <em>every</em> player in his pool, not just the transfers — a JUCO commit is ranked against all NWAC players, with hitting and pitching ranked separately (so there's a #1 hitter and a #1 pitcher). A <strong>D1 player dropping</strong> to a D2, D3, or NAIA program has his WAR doubled (a "2×" tag), reflecting his outsized impact at the new level.</p>
-              <p className="italic">Only transfers from PNW programs are included (NWAC JUCO players and the four-year portal players we track), because WAR is only available for players in our database.</p>
+              <p className="italic">WAR is only available for players in our database (NWAC JUCO + the four-year programs we track). An incoming transfer from outside the region is still listed, but with no WAR ("—") and left out of the WAR average, so it never penalizes a class.</p>
             </>
           )}
           {view === 'combined' && (
             <>
               <p><strong>Combined Class Rating</strong> = HS Class Rating + {COMBINED_TRANSFER_WEIGHT}× the program's average transfer WAR. The HS rankings are the backbone, so a strong transfer class nudges a program up a few spots without overturning the solid HS order.</p>
-              <p className="italic">Only transfers from PNW programs are included (NWAC JUCO + tracked four-year portal players), since WAR is only available for players in our database.</p>
+              <p className="italic">WAR is only available for transfers from PNW programs (NWAC JUCO + tracked four-year players); out-of-region transfers are shown but unrated and left out of the average.</p>
             </>
           )}
           <p className="italic">2026 commitments trickle in through the cycle, so classes will keep filling out.</p>

@@ -1683,31 +1683,37 @@ def _transfer_commits(cur):
             "dest_team_id": tid, "source": "juco",
         })
 
-    # Portal tracker — committed entries from the curated JSON.
-    portal = {p["player_id"]: p for p in _load_transfer_portal()
-              if p.get("player_id") and p.get("committed_to")}
-    if portal:
+    # Portal tracker — committed entries from the curated JSON. Entries WITH a
+    # player_id are PNW players we track (stats → WAR). Entries WITHOUT one are
+    # incoming transfers from outside our DB (out-of-region commits to a PNW
+    # school); they carry inline name/from and have no stats, so they list
+    # unrated.
+    portal_entries = [p for p in _load_transfer_portal() if p.get("committed_to")]
+    pid_list = [p["player_id"] for p in portal_entries if p.get("player_id")]
+    prow = {}
+    if pid_list:
         cur.execute(
             """SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
                       p.headshot_url, t.short_name AS prev_school
                FROM players p JOIN teams t ON t.id = p.team_id
-               WHERE p.id = ANY(%s)""", (list(portal),))
+               WHERE p.id = ANY(%s)""", (pid_list,))
         prow = {r["id"]: r for r in cur.fetchall()}
-        for pid, pj in portal.items():
-            tid = _resolve_committed_team_id(cur, pj["committed_to"], cache, pnw_ids)
-            if not tid:
-                continue
-            r = prow.get(pid)
-            full = f'{r["first_name"]} {r["last_name"]}'.strip() if r else None
-            out.append({
-                "player_id": pid,
-                "name": pj.get("name") or full or "Unknown",
-                "position": pj.get("position") or (r["position"] if r else None),
-                "year": r["year_in_school"] if r else None,
-                "previous_school": pj.get("from") or (r["prev_school"] if r else None),
-                "headshot_url": r["headshot_url"] if r else None,
-                "dest_team_id": tid, "source": "portal",
-            })
+    for pj in portal_entries:
+        tid = _resolve_committed_team_id(cur, pj["committed_to"], cache, pnw_ids)
+        if not tid:
+            continue
+        pid = pj.get("player_id")
+        r = prow.get(pid) if pid else None
+        full = f'{r["first_name"]} {r["last_name"]}'.strip() if r else None
+        out.append({
+            "player_id": pid,
+            "name": pj.get("name") or full or "Unknown",
+            "position": pj.get("position") or (r["position"] if r else None),
+            "year": r["year_in_school"] if r else None,
+            "previous_school": pj.get("from") or (r["prev_school"] if r else None),
+            "headshot_url": r["headshot_url"] if r else None,
+            "dest_team_id": tid, "source": "portal",
+        })
     return out
 
 
@@ -1715,6 +1721,7 @@ def _transfer_commits(cur):
 # double his WAR in the transfer rating (per Nate). Same season-WAR basis as the
 # JUCO / portal trackers: offensive_war + pitching_war for the current season.
 _TRANSFER_DROP_DOWN_LEVELS = {"D2", "D3", "NAIA"}
+_PITCHER_POSITIONS = {"P", "RHP", "LHP", "SP", "RP", "PITCHER"}
 
 
 def _war_pool_ranks(cur, pids, season, war_table, war_col, juco):
@@ -1748,7 +1755,7 @@ def _enrich_transfer_war(cur, commits, season):
     Hitting and pitching are ranked separately (never combined)."""
     if not commits:
         return
-    pids = [c["player_id"] for c in commits]
+    pids = [c["player_id"] for c in commits if c["player_id"] is not None]
     cur.execute(
         """SELECT p.id, d.level AS origin_level,
                   bs.offensive_war AS owar, ps.pitching_war AS pwar
@@ -1779,6 +1786,16 @@ def _enrich_transfer_war(cur, commits, season):
         owar, pwar, origin = info.get(c["player_id"], (None, None, None))
         o = float(owar) if owar is not None else None
         p = float(pwar) if pwar is not None else None
+        # "rated" = we have season stats for him. Out-of-region incoming commits
+        # (no DB stats) are unrated: shown, but left out of the WAR average so a
+        # team isn't penalized for a transfer we simply can't measure.
+        c["rated"] = o is not None or p is not None
+        if not c["rated"]:
+            c["war"] = c["war_adjusted"] = c["pool_rank"] = None
+            c["boosted"] = False
+            c["player_type"] = ("pitcher" if (c.get("position") or "").upper()
+                                in _PITCHER_POSITIONS else "hitter")
+            continue
         war = (o or 0.0) + (p or 0.0)
         is_pitcher = (p if p is not None else NEG) > (o if o is not None else NEG)
         boosted = (c["source"] == "portal" and origin == "D1"
@@ -1829,20 +1846,20 @@ def recruiting_transfers(
                 t["transfers"].append({k: c[k] for k in (
                     "player_id", "name", "position", "year", "previous_school",
                     "headshot_url", "source", "war", "war_adjusted", "boosted",
-                    "player_type", "pool_rank")})
+                    "player_type", "pool_rank", "rated")})
         rows = list(teams.values())
         for t in rows:
             t["transfer_count"] = len(t["transfers"])
-            # Total floored, drop-down-adjusted WAR brought in...
-            t["transfer_total"] = round(
-                sum(max(0.0, x["war_adjusted"]) for x in t["transfers"]), 1)
-            # ...but the RATING is the AVERAGE WAR per transfer (volume-neutral,
-            # like the HS class rating): 7 transfers worth 7 WAR rate at 1.0, not
-            # 7. So a couple of high-impact transfers beat a pile of depth pieces.
-            t["transfer_rating"] = round(
-                t["transfer_total"] / t["transfer_count"], 2) if t["transfer_count"] else 0.0
-            # Best transfers first within a program.
-            t["transfers"].sort(key=lambda x: -x["war_adjusted"])
+            # Average over RATED transfers only (we have WAR for them). The
+            # rating is the AVERAGE WAR per transfer (volume-neutral, like the HS
+            # class rating): 7 transfers worth 7 WAR rate at 1.0, not 7. Unrated
+            # out-of-region commits are shown but excluded here, not penalized.
+            rated = [max(0.0, x["war_adjusted"]) for x in t["transfers"] if x["rated"]]
+            t["rated_count"] = len(rated)
+            t["transfer_total"] = round(sum(rated), 1)
+            t["transfer_rating"] = round(sum(rated) / len(rated), 2) if rated else 0.0
+            # Best (rated) transfers first; unrated commits sort to the end.
+            t["transfers"].sort(key=lambda x: (not x["rated"], -(x["war_adjusted"] or 0)))
         # Rank programs by average transfer WAR (the NWAC/portal class quality).
         rows.sort(key=lambda t: (-t["transfer_rating"], -t["transfer_count"], t["name"]))
         return {

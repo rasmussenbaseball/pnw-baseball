@@ -1,5 +1,5 @@
 {
-  "_comment": "PNW four-year (non-JUCO) players who have entered the transfer portal. Served by /transfer-portal and shown on the Transfer Portal Tracker (Coaching tab). Add entries as players enter; set committed_to once a player commits. Optional 'position' overrides the DB position for placeholder players who have no stats yet, so they still file on the correct Hitters/Pitchers list.",
+  "_comment": "PNW four-year players who entered the transfer portal (player_id set, served by /transfer-portal on the Transfer Portal Tracker), PLUS incoming transfers from outside our database (no player_id: out-of-region players committing to a PNW school). committed_to drives the Recruiting Classes transfers view; entries without a player_id have no stats so they show there unrated (excluded from the WAR average, not penalized). Optional position overrides the DB position.",
   "updated": "2026-06-14",
   "players": [
     {
@@ -160,7 +160,7 @@
       "player_id": 3646,
       "name": "Calvin Gregory",
       "from": "Oregon St.",
-      "committed_to": null
+      "committed_to": "VCU"
     },
     {
       "player_id": 3760,
@@ -308,6 +308,38 @@
       "name": "Payton Knowles",
       "from": "Seattle U",
       "committed_to": "Troy"
+    },
+    {
+      "player_id": 3013,
+      "name": "Kellen Berg",
+      "from": "CWU",
+      "committed_to": null
+    },
+    {
+      "player_id": 10423,
+      "name": "Jace Miller",
+      "from": "Oregon St.",
+      "committed_to": null
+    },
+    {
+      "name": "Caden Gould",
+      "from": null,
+      "committed_to": "Bushnell"
+    },
+    {
+      "name": "Xander Meissner",
+      "from": "Bethany Lutheran",
+      "committed_to": "Northwest Nazarene"
+    },
+    {
+      "name": "Carter Johnstone",
+      "from": "Vanderbilt",
+      "committed_to": "Oregon"
+    },
+    {
+      "name": "Diego Cruz",
+      "from": "Miami (OH)",
+      "committed_to": "Oregon State"
     }
   ]
 }
