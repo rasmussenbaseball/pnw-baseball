@@ -22,7 +22,7 @@ import os
 from pdf2image import convert_from_path
 from PIL import Image
 
-OUT = "/tmp/tm_crops"
+OUT = "/tmp/tm_crops"   # default; override with --out
 HEADER_FRAC = 0.045   # top band: "Last, First | Team | Year"
 TABLE_TOP = 0.265     # "Stats by Pitch Type" table band
 TABLE_BOT = 0.520
@@ -42,27 +42,29 @@ def composite(img):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
+    ap.add_argument("--out", default=OUT, help="output dir for crops (default /tmp/tm_crops)")
     ap.add_argument("--page", type=int, help="render only this page, in L/R halves at full DPI")
     a = ap.parse_args()
-    os.makedirs(OUT, exist_ok=True)
+    out = a.out
+    os.makedirs(out, exist_ok=True)
 
     if a.page:
         img = convert_from_path(a.pdf, dpi=300, first_page=a.page, last_page=a.page)[0]
         combo = composite(img)
-        combo.crop((0, 0, int(combo.width * 0.52), combo.height)).save(f"{OUT}/p{a.page:02d}_L.png")
-        combo.crop((int(combo.width * 0.50), 0, combo.width, combo.height)).save(f"{OUT}/p{a.page:02d}_R.png")
-        print(f"wrote {OUT}/p{a.page:02d}_L.png and _R.png")
+        combo.crop((0, 0, int(combo.width * 0.52), combo.height)).save(f"{out}/p{a.page:02d}_L.png")
+        combo.crop((int(combo.width * 0.50), 0, combo.width, combo.height)).save(f"{out}/p{a.page:02d}_R.png")
+        print(f"wrote {out}/p{a.page:02d}_L.png and _R.png")
         return
 
-    for f in os.listdir(OUT):
+    for f in os.listdir(out):
         if f.endswith(".png"):
-            os.remove(os.path.join(OUT, f))
+            os.remove(os.path.join(out, f))
     pages = convert_from_path(a.pdf, dpi=300)
     for i, img in enumerate(pages):
         combo = composite(img)
         th = int(combo.height * TARGET_W / combo.width)
-        combo.resize((TARGET_W, th), Image.LANCZOS).save(f"{OUT}/p{i + 1:02d}.png")
-    print(f"rendered {len(pages)} pages -> {OUT}/p01..p{len(pages):02d}.png")
+        combo.resize((TARGET_W, th), Image.LANCZOS).save(f"{out}/p{i + 1:02d}.png")
+    print(f"rendered {len(pages)} pages -> {out}/p01..p{len(pages):02d}.png")
 
 
 if __name__ == "__main__":
