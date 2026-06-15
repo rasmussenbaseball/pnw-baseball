@@ -655,6 +655,15 @@ export function useRecruitingClassDetail(teamId, gradYear = 2026) {
 }
 
 /**
+ * Transfer commits (JUCO + portal) grouped by destination PNW program
+ * (PREMIUM-gated). Powers the "Transfers" and "Combined" views on the
+ * Recruiting Classes page. Transfers are unrated for now (listed only).
+ */
+export function useRecruitingTransfers(gradYear = 2026) {
+  return useApi('/recruiting/transfers', { grad_year: gradYear }, [gradYear])
+}
+
+/**
  * A team's incoming HS commits for a grad year (PUBLIC) - powers the
  * team-page "Incoming Class" section. Pass null teamId to skip.
  */

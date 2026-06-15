@@ -1593,3 +1593,164 @@ def team_recruits(
             "class_score": round(sum(scored) / len(scored), 1) if scored else None,
             "commits": commits,
         }
+
+
+# ── Transfers (JUCO + portal commits) → Recruiting Classes "Transfers" view ──
+# HS recruits live in the `recruits` table; transfers do NOT — they are existing
+# college players who committed to a PNW program. Two sources feed them:
+#   * JUCO tracker: players.is_committed = 1 + players.committed_to (free text)
+#   * Portal tracker: backend/data/transfer_portal.json (curated, committed_to)
+# We resolve each commitment string to one of the 57 PNW programs we feature (the
+# recruit_school_map universe) via the shared team_matching resolver, dropping
+# out-of-region / OOC destinations, and group by destination team. Ratings for
+# transfers come later — for now they are listed, not scored.
+
+_TRANSFER_PORTAL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data",
+                                     "transfer_portal.json")
+_RECRUIT_SCHOOL_MAP_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data",
+                                        "recruit_school_map.json")
+
+
+def _pnw_program_ids():
+    """team_ids of the PNW programs the recruiting board covers (the 57 schools in
+    recruit_school_map). Used to drop transfer destinations that resolve to a
+    non-PNW or out-of-conference team (San Diego, Bradley, OOC placeholders)."""
+    try:
+        with open(_RECRUIT_SCHOOL_MAP_PATH) as f:
+            return {int(k) for k in json.load(f).keys()}
+    except (OSError, ValueError):
+        return set()
+
+
+def _load_transfer_portal():
+    try:
+        with open(_TRANSFER_PORTAL_PATH) as f:
+            return json.load(f).get("players", [])
+    except (OSError, ValueError):
+        return []
+
+
+def _resolve_committed_team_id(cur, name, cache, pnw_ids):
+    """committed_to string -> a PNW program team_id, or None. Uses the shared
+    team_matching resolver (aliases, Pacific D1/D3 disambiguation, no row
+    creation) then keeps only teams that sit on the recruiting board."""
+    if not name:
+        return None
+    key = name.strip().lower()
+    if key in cache:
+        return cache[key]
+    try:
+        from team_matching import get_team_id_by_school  # scripts/, lazy
+    except ImportError:
+        import sys
+        scripts = os.path.join(os.path.dirname(__file__), "..", "..", "..", "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from team_matching import get_team_id_by_school
+    tid = get_team_id_by_school(cur, name)
+    if tid not in pnw_ids:
+        tid = None
+    cache[key] = tid
+    return tid
+
+
+def _transfer_commits(cur):
+    """Every committed transfer (JUCO + portal) that landed at a PNW program, as
+    flat dicts ready to group by dest_team_id."""
+    pnw_ids = _pnw_program_ids()
+    cache = {}
+    out = []
+
+    # JUCO tracker — players.is_committed + committed_to (free-text school).
+    cur.execute(
+        """SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
+                  p.committed_to, p.headshot_url, t.short_name AS prev_school
+           FROM players p
+           JOIN teams t ON t.id = p.team_id
+           JOIN conferences c ON t.conference_id = c.id
+           JOIN divisions d ON c.division_id = d.id
+           WHERE d.level = 'JUCO' AND COALESCE(p.is_committed, 0) = 1
+             AND p.committed_to IS NOT NULL AND p.committed_to <> ''""")
+    for r in cur.fetchall():
+        tid = _resolve_committed_team_id(cur, r["committed_to"], cache, pnw_ids)
+        if not tid:
+            continue
+        out.append({
+            "player_id": r["id"],
+            "name": f'{r["first_name"]} {r["last_name"]}'.strip(),
+            "position": r["position"], "year": r["year_in_school"],
+            "previous_school": r["prev_school"], "headshot_url": r["headshot_url"],
+            "dest_team_id": tid, "source": "juco",
+        })
+
+    # Portal tracker — committed entries from the curated JSON.
+    portal = {p["player_id"]: p for p in _load_transfer_portal()
+              if p.get("player_id") and p.get("committed_to")}
+    if portal:
+        cur.execute(
+            """SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
+                      p.headshot_url, t.short_name AS prev_school
+               FROM players p JOIN teams t ON t.id = p.team_id
+               WHERE p.id = ANY(%s)""", (list(portal),))
+        prow = {r["id"]: r for r in cur.fetchall()}
+        for pid, pj in portal.items():
+            tid = _resolve_committed_team_id(cur, pj["committed_to"], cache, pnw_ids)
+            if not tid:
+                continue
+            r = prow.get(pid)
+            full = f'{r["first_name"]} {r["last_name"]}'.strip() if r else None
+            out.append({
+                "player_id": pid,
+                "name": pj.get("name") or full or "Unknown",
+                "position": pj.get("position") or (r["position"] if r else None),
+                "year": r["year_in_school"] if r else None,
+                "previous_school": pj.get("from") or (r["prev_school"] if r else None),
+                "headshot_url": r["headshot_url"] if r else None,
+                "dest_team_id": tid, "source": "portal",
+            })
+    return out
+
+
+@router.get("/recruiting/transfers")
+@cached_endpoint(ttl_seconds=1800)
+def recruiting_transfers(
+    grad_year: int = Query(2026, description="Cycle year (transfers are the current incoming class)"),
+    _user: str = Depends(require_tier("premium")),
+):
+    """Transfer commits (JUCO + portal) grouped by destination PNW program, for the
+    Recruiting Classes "Transfers" / "Combined" views. No rating yet — listed only."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        commits = _transfer_commits(cur)
+        teams = {}
+        ids = sorted({c["dest_team_id"] for c in commits})
+        if ids:
+            cur.execute(
+                """SELECT t.id, t.name, t.short_name, t.logo_url, d.level AS division
+                   FROM teams t JOIN conferences c ON t.conference_id = c.id
+                   JOIN divisions d ON c.division_id = d.id
+                   WHERE t.id = ANY(%s)""", (ids,))
+            for r in cur.fetchall():
+                teams[r["id"]] = {"team_id": r["id"], "name": r["name"],
+                                  "short_name": r["short_name"], "logo_url": r["logo_url"],
+                                  "division": r["division"], "transfers": []}
+        for c in commits:
+            t = teams.get(c["dest_team_id"])
+            if t is not None:
+                t["transfers"].append({k: c[k] for k in (
+                    "player_id", "name", "position", "year", "previous_school",
+                    "headshot_url", "source")})
+        rows = list(teams.values())
+        for t in rows:
+            # Portal (4-year) transfers first, then JUCO, each alphabetical.
+            t["transfers"].sort(key=lambda x: (x["source"] != "portal", x["name"]))
+            t["transfer_count"] = len(t["transfers"])
+        rows.sort(key=lambda t: (-t["transfer_count"], t["name"]))
+        return {
+            "grad_year": grad_year, "teams": rows,
+            "totals": {
+                "transfers": len(commits), "teams": len(rows),
+                "juco": sum(1 for c in commits if c["source"] == "juco"),
+                "portal": sum(1 for c in commits if c["source"] == "portal"),
+            },
+        }

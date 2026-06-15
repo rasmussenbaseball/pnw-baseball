@@ -1,11 +1,20 @@
-import { useState, Fragment } from 'react'
-import { Link } from 'react-router-dom'
-import { useRecruitingClasses, useRecruitingClassDetail } from '../hooks/useApi'
+import { useState, useMemo, Fragment } from 'react'
+import { useRecruitingClasses, useRecruitingClassDetail, useRecruitingTransfers } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 
 // Grad years that have been scraped. Future years come online as they're
 // scraped, so adding one here is all it takes to extend the selector.
 const GRAD_YEARS = [2026]
+
+// The three pages, selected by the buttons at the top.
+const VIEWS = [
+  { key: 'hs', label: 'High School',
+    blurb: 'High school commits to PNW college programs, graded by their State Rank. Each school\'s Class Rating is the average prospect rating of its ranked commits (0 to 100), weighted by state. Depth and unrated commits do not inflate it.' },
+  { key: 'transfers', label: 'Transfers',
+    blurb: 'Incoming transfers (JUCO and four-year portal) committed to each PNW program. Transfer ratings are coming soon, so these are listed without a class rating for now.' },
+  { key: 'combined', label: 'Combined',
+    blurb: 'The full incoming class for each program: high school newcomers plus transfers, side by side. Class Rating reflects the high school commits only for now.' },
+]
 
 // Single chip showing a recruit's State Rank, or a muted "Unranked".
 function RankChips({ stateRank }) {
@@ -19,263 +28,432 @@ function RankChips({ stateRank }) {
   )
 }
 
-// Inline expanded panel: a school's full commit list, fetched lazily.
-function ExpandedClass({ teamId, gradYear, colSpan }) {
+// JUCO vs four-year-portal source tag on a transfer row.
+function SourceBadge({ source }) {
+  const isPortal = source === 'portal'
+  return (
+    <span className={`inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap ${
+      isPortal
+        ? 'bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'
+        : 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300'
+    }`}>
+      {isPortal ? 'Portal' : 'JUCO'}
+    </span>
+  )
+}
+
+// HS commit list for one school, fetched lazily. Inner content only (no <tr>),
+// so it can be dropped into the High School view OR stacked with transfers in
+// the Combined view.
+function ClassCommitsPanel({ teamId, gradYear }) {
   const { data, loading, error } = useRecruitingClassDetail(teamId, gradYear)
 
+  if (loading) return <div className="text-center py-4 text-xs text-gray-400 dark:text-gray-500">Loading commits...</div>
+  if (error) return <div className="text-center py-4 text-xs text-red-400">Couldn't load this class.</div>
+  if (!data) return null
+
   return (
-    <tr className="bg-nw-cream/40 dark:bg-gray-900/40">
-      <td colSpan={colSpan} className="px-3 sm:px-4 py-3">
-        {loading && (
-          <div className="text-center py-4 text-xs text-gray-400 dark:text-gray-500">Loading commits...</div>
-        )}
-        {error && (
-          <div className="text-center py-4 text-xs text-red-400">Couldn't load this class.</div>
-        )}
-        {data && (
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-              {data.team?.name} commits ({data.commit_count}
-              {data.scored_count != null ? ` · ${data.scored_count} rated` : ''}
-              {data.class_score != null ? ` · ${data.class_score.toFixed(1)} avg rating` : ''})
-            </div>
-            <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <th className="px-3 py-1.5 text-left font-semibold">Commit</th>
-                    <th className="px-3 py-1.5 text-center font-semibold">Pos</th>
-                    <th className="px-3 py-1.5 text-left font-semibold">High School</th>
-                    <th className="px-3 py-1.5 text-center font-semibold">Ht / Wt</th>
-                    <th className="px-3 py-1.5 text-left font-semibold">State Rank</th>
-                    <th className="px-3 py-1.5 text-center font-semibold">Rating</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.commits.map((c, i) => (
-                    <tr
-                      key={c.id}
-                      className={`border-b border-gray-100 dark:border-gray-700 last:border-0 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-900/20'}`}
-                    >
-                      <td className="px-3 py-1.5">
-                        <div className="flex items-center gap-2">
-                          {c.headshot_url ? (
-                            <img
-                              src={c.headshot_url}
-                              alt=""
-                              className="w-6 h-6 rounded-full object-cover shrink-0"
-                              loading="lazy"
-                              onError={(e) => { e.target.style.display = 'none' }}
-                            />
-                          ) : (
-                            <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 shrink-0" />
-                          )}
-                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
+    <div>
+      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+        {data.team?.name} HS commits ({data.commit_count}
+        {data.scored_count != null ? ` · ${data.scored_count} rated` : ''}
+        {data.class_score != null ? ` · ${data.class_score.toFixed(1)} avg rating` : ''})
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <th className="px-3 py-1.5 text-left font-semibold">Commit</th>
+              <th className="px-3 py-1.5 text-center font-semibold">Pos</th>
+              <th className="px-3 py-1.5 text-left font-semibold">High School</th>
+              <th className="px-3 py-1.5 text-center font-semibold">Ht / Wt</th>
+              <th className="px-3 py-1.5 text-left font-semibold">State Rank</th>
+              <th className="px-3 py-1.5 text-center font-semibold">Rating</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.commits.map((c, i) => (
+              <tr
+                key={c.id}
+                className={`border-b border-gray-100 dark:border-gray-700 last:border-0 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-900/20'}`}
+              >
+                <td className="px-3 py-1.5">
+                  <div className="flex items-center gap-2">
+                    {c.headshot_url ? (
+                      <img src={c.headshot_url} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" loading="lazy" onError={(e) => { e.target.style.display = 'none' }} />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 shrink-0" />
+                    )}
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-1.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-400">{c.position || '-'}</td>
+                <td className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400">
+                  <span className="whitespace-nowrap">{c.high_school || '-'}</span>
+                  {(c.city || c.state) && (
+                    <span className="block text-[10px] text-gray-400 dark:text-gray-500">
+                      {[c.city, c.state].filter(Boolean).join(', ')}
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-1.5 text-center text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {c.height || c.weight ? `${c.height || '-'}${c.weight ? ` / ${c.weight}` : ''}` : '-'}
+                </td>
+                <td className="px-3 py-1.5"><RankChips stateRank={c.state_rank} /></td>
+                <td className="px-3 py-1.5 text-center text-xs tabular-nums">
+                  {c.recruit_score != null ? (
+                    <span className="font-bold text-nw-teal dark:text-nw-teal-light">{Math.round(c.recruit_score)}</span>
+                  ) : (
+                    <span className="text-[10px] italic text-gray-400 dark:text-gray-500">No ranking</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// Incoming-transfer list for one school. Data is embedded in the transfers
+// board response, so this renders without a fetch.
+function TransferList({ transfers }) {
+  if (!transfers || transfers.length === 0) {
+    return <div className="text-center py-3 text-xs text-gray-400 dark:text-gray-500 italic">No transfers yet.</div>
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <th className="px-3 py-1.5 text-left font-semibold">Transfer</th>
+            <th className="px-3 py-1.5 text-center font-semibold">Pos</th>
+            <th className="px-3 py-1.5 text-left font-semibold">From</th>
+            <th className="px-3 py-1.5 text-center font-semibold">Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          {transfers.map((t, i) => (
+            <tr
+              key={t.player_id ?? i}
+              className={`border-b border-gray-100 dark:border-gray-700 last:border-0 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-900/20'}`}
+            >
+              <td className="px-3 py-1.5">
+                <div className="flex items-center gap-2">
+                  {t.headshot_url ? (
+                    <img src={t.headshot_url} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" loading="lazy" onError={(e) => { e.target.style.display = 'none' }} />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 shrink-0" />
+                  )}
+                  <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{t.name}</span>
+                </div>
+              </td>
+              <td className="px-3 py-1.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-400">{t.position || '-'}</td>
+              <td className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">{t.previous_school || '-'}</td>
+              <td className="px-3 py-1.5 text-center"><SourceBadge source={t.source} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// A single program logo + name + division badge cell.
+function ProgramCell({ row, isOpen }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`text-gray-300 dark:text-gray-600 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>&rsaquo;</span>
+      {row.logo_url ? (
+        <img src={row.logo_url} alt="" className="w-6 h-6 object-contain shrink-0" loading="lazy" onError={(e) => { e.target.style.display = 'none' }} />
+      ) : (
+        <div className="w-6 h-6 shrink-0" />
+      )}
+      <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{row.name}</span>
+      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${divisionBadgeClass(row.division)}`}>{row.division}</span>
+    </div>
+  )
+}
+
+const rowBg = (i, isOpen) =>
+  isOpen
+    ? 'bg-teal-50/60 dark:bg-teal-900/20'
+    : `hover:bg-blue-50/40 dark:hover:bg-gray-700/40 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-900/20'}`
+
+// ── High School board (the original leaderboard) ──
+function HSBoard({ classes, gradYear, expanded, toggle }) {
+  const topScore = classes.reduce((m, c) => (c.class_score != null && c.class_score > m ? c.class_score : m), 0)
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <th className="px-3 py-2 text-center font-semibold w-10">#</th>
+            <th className="px-3 py-2 text-left font-semibold">Program</th>
+            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Commits</th>
+            <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Class Rating</th>
+          </tr>
+        </thead>
+        <tbody>
+          {classes.map((cls, i) => {
+            const isOpen = expanded === cls.team_id
+            const hasRank = cls.class_rank != null
+            const hasScore = cls.class_score != null
+            const isTop3 = hasRank && cls.class_rank <= 3
+            const pct = hasScore && topScore > 0 ? Math.max(4, (cls.class_score / topScore) * 100) : 0
+            return (
+              <Fragment key={cls.team_id}>
+                <tr onClick={() => toggle(cls.team_id)} className={`border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${rowBg(i, isOpen)}`}>
+                  <td className="px-3 py-2.5 text-center">
+                    <span className={`inline-flex items-center justify-center text-sm font-black tabular-nums ${isTop3 ? 'text-amber-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                      {hasRank ? cls.class_rank : '—'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5"><ProgramCell row={cls} isOpen={isOpen} /></td>
+                  <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums whitespace-nowrap">
+                    <span className="font-semibold">{cls.scored_commits ?? cls.ranked ?? 0} rated</span>
+                    <span className="text-gray-400 dark:text-gray-500"> · {cls.commits} total</span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {hasScore ? (
+                      <div className="flex items-center gap-2 min-w-[120px]">
+                        <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light w-10 text-right">{cls.class_score.toFixed(1)}</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                          <div className={`h-full rounded-full ${isTop3 ? 'bg-amber-400' : 'bg-nw-teal'}`} style={{ width: `${pct}%` }} />
                         </div>
-                      </td>
-                      <td className="px-3 py-1.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-400">{c.position || '-'}</td>
-                      <td className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400">
-                        <span className="whitespace-nowrap">{c.high_school || '-'}</span>
-                        {(c.city || c.state) && (
-                          <span className="block text-[10px] text-gray-400 dark:text-gray-500">
-                            {[c.city, c.state].filter(Boolean).join(', ')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1.5 text-center text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                        {c.height || c.weight
-                          ? `${c.height || '-'}${c.weight ? ` / ${c.weight}` : ''}`
-                          : '-'}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <RankChips stateRank={c.state_rank} />
-                      </td>
-                      <td className="px-3 py-1.5 text-center text-xs tabular-nums">
-                        {c.recruit_score != null ? (
-                          <span className="font-bold text-nw-teal dark:text-nw-teal-light">
-                            {Math.round(c.recruit_score)}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] italic text-gray-400 dark:text-gray-500">No ranking</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </td>
-    </tr>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] italic text-gray-400 dark:text-gray-500">Not enough ranked commits to rate</span>
+                    )}
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="bg-nw-cream/40 dark:bg-gray-900/40">
+                    <td colSpan={4} className="px-3 sm:px-4 py-3"><ClassCommitsPanel teamId={cls.team_id} gradYear={gradYear} /></td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Transfers board (unrated; JUCO + portal commits per program) ──
+function TransfersBoard({ teams, expanded, toggle }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <th className="px-3 py-2 text-left font-semibold">Program</th>
+            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Incoming Transfers</th>
+          </tr>
+        </thead>
+        <tbody>
+          {teams.map((t, i) => {
+            const isOpen = expanded === t.team_id
+            const portal = t.transfers.filter((x) => x.source === 'portal').length
+            const juco = t.transfer_count - portal
+            return (
+              <Fragment key={t.team_id}>
+                <tr onClick={() => toggle(t.team_id)} className={`border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${rowBg(i, isOpen)}`}>
+                  <td className="px-3 py-2.5"><ProgramCell row={t} isOpen={isOpen} /></td>
+                  <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums whitespace-nowrap">
+                    <span className="font-semibold text-nw-teal dark:text-nw-teal-light">{t.transfer_count}</span>
+                    <span className="text-gray-400 dark:text-gray-500"> · {juco} JUCO{portal ? ` · ${portal} portal` : ''}</span>
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="bg-nw-cream/40 dark:bg-gray-900/40">
+                    <td colSpan={2} className="px-3 sm:px-4 py-3"><TransferList transfers={t.transfers} /></td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Combined board (HS rating + transfer count; expand shows both) ──
+function CombinedBoard({ rows, gradYear, expanded, toggle }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <th className="px-3 py-2 text-left font-semibold">Program</th>
+            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">HS Commits</th>
+            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Transfers</th>
+            <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Class Rating</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => {
+            const isOpen = expanded === row.team_id
+            const hasScore = row.class_score != null
+            return (
+              <Fragment key={row.team_id}>
+                <tr onClick={() => toggle(row.team_id)} className={`border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${rowBg(i, isOpen)}`}>
+                  <td className="px-3 py-2.5"><ProgramCell row={row} isOpen={isOpen} /></td>
+                  <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums">{row.hs_commits || '—'}</td>
+                  <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums">{row.transfer_count || '—'}</td>
+                  <td className="px-3 py-2.5">
+                    {hasScore ? (
+                      <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light">{row.class_score.toFixed(1)}</span>
+                    ) : (
+                      <span className="text-[11px] italic text-gray-400 dark:text-gray-500">Not rated</span>
+                    )}
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="bg-nw-cream/40 dark:bg-gray-900/40">
+                    <td colSpan={4} className="px-3 sm:px-4 py-3 space-y-3">
+                      {row.hs_commits > 0 && <ClassCommitsPanel teamId={row.team_id} gradYear={gradYear} />}
+                      {row.transfer_count > 0 && (
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                            Transfers ({row.transfer_count})
+                          </div>
+                          <TransferList transfers={row.transfers} />
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
 export default function RecruitingClasses() {
   const [gradYear, setGradYear] = useState(2026)
+  const [view, setView] = useState('hs')
   const [expanded, setExpanded] = useState(null)
-  const { data, loading, error } = useRecruitingClasses(gradYear)
 
-  const classes = data?.classes || []
-  // The best class_score anchors the relative bar widths. Classes can now be
-  // unranked (class_rank null) with a null class_score, so derive the max
-  // from the numeric scores rather than assuming classes[0].
-  const topScore = classes.reduce(
-    (max, c) => (c.class_score != null && c.class_score > max ? c.class_score : max),
-    0,
-  )
-  const COL_SPAN = 4
+  const { data: hsData, loading: hsLoading, error: hsError } = useRecruitingClasses(gradYear)
+  const { data: trData, loading: trLoading, error: trError } = useRecruitingTransfers(gradYear)
 
+  const classes = hsData?.classes || []
+  const transferTeams = trData?.teams || []
+
+  // Combined = union of programs from both sources, keyed by team_id. Sorted so
+  // rated HS classes lead, then teams driven by transfer volume, then by name.
+  const combinedRows = useMemo(() => {
+    const m = new Map()
+    for (const c of hsData?.classes || []) {
+      m.set(c.team_id, {
+        team_id: c.team_id, name: c.name, logo_url: c.logo_url, division: c.division,
+        class_score: c.class_score, hs_commits: c.commits, transfer_count: 0, transfers: [],
+      })
+    }
+    for (const t of trData?.teams || []) {
+      const ex = m.get(t.team_id)
+      if (ex) { ex.transfer_count = t.transfer_count; ex.transfers = t.transfers }
+      else m.set(t.team_id, {
+        team_id: t.team_id, name: t.name, logo_url: t.logo_url, division: t.division,
+        class_score: null, hs_commits: 0, transfer_count: t.transfer_count, transfers: t.transfers,
+      })
+    }
+    return [...m.values()].sort((a, b) => {
+      const as = a.class_score ?? -1, bs = b.class_score ?? -1
+      if (bs !== as) return bs - as
+      if (b.transfer_count !== a.transfer_count) return b.transfer_count - a.transfer_count
+      return a.name.localeCompare(b.name)
+    })
+  }, [hsData, trData])
+
+  const switchView = (v) => { setView(v); setExpanded(null) }
   const toggle = (teamId) => setExpanded((cur) => (cur === teamId ? null : teamId))
+
+  const loading = view === 'transfers' ? trLoading : view === 'combined' ? (hsLoading || trLoading) : hsLoading
+  const error = view === 'transfers' ? trError : view === 'combined' ? (hsError || trError) : hsError
+  const isEmpty =
+    view === 'hs' ? classes.length === 0
+      : view === 'transfers' ? transferTeams.length === 0
+        : combinedRows.length === 0
+
+  const activeBlurb = VIEWS.find((v) => v.key === view)?.blurb
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">{gradYear} Recruiting Classes</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-3xl">
-        High school commits to PNW college programs, graded by their State Rank. Each school's Class
-        Rating is the average prospect rating of its ranked commits (0 to 100), weighted by state.
-        Depth and unrated commits do not inflate it. Expand a row to see the full incoming class.
-      </p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-3xl">{activeBlurb}</p>
 
-      {/* Grad-year selector */}
-      <div className="flex items-center gap-2 mb-4">
-        <label htmlFor="gradYear" className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-          Class
-        </label>
-        <select
-          id="gradYear"
-          value={gradYear}
-          onChange={(e) => { setGradYear(Number(e.target.value)); setExpanded(null) }}
-          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-nw-teal"
-        >
-          {GRAD_YEARS.map((y) => (
-            <option key={y} value={y}>{y}</option>
+      {/* View toggle + grad-year selector */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-0.5">
+          {VIEWS.map((v) => (
+            <button
+              key={v.key}
+              onClick={() => switchView(v.key)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                view === v.key
+                  ? 'bg-nw-teal text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-nw-teal dark:hover:text-nw-teal-light'
+              }`}
+            >
+              {v.label}
+            </button>
           ))}
-        </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="gradYear" className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Class</label>
+          <select
+            id="gradYear"
+            value={gradYear}
+            onChange={(e) => { setGradYear(Number(e.target.value)); setExpanded(null) }}
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-nw-teal"
+          >
+            {GRAD_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
       </div>
 
-      {loading && (
-        <div className="text-center py-12 text-gray-400 dark:text-gray-500">Loading recruiting classes...</div>
-      )}
-      {error && (
-        <div className="text-center py-12 text-red-400">Error: {error}</div>
-      )}
+      {loading && <div className="text-center py-12 text-gray-400 dark:text-gray-500">Loading recruiting classes...</div>}
+      {error && <div className="text-center py-12 text-red-400">Error: {error}</div>}
 
-      {!loading && !error && classes.length === 0 && (
-        <div className="text-center py-12 text-gray-400 dark:text-gray-500">No commits found for {gradYear}.</div>
-      )}
-
-      {!loading && !error && classes.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                <th className="px-3 py-2 text-center font-semibold w-10">#</th>
-                <th className="px-3 py-2 text-left font-semibold">Program</th>
-                <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Commits</th>
-                <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Class Rating</th>
-              </tr>
-            </thead>
-            <tbody>
-              {classes.map((cls, i) => {
-                const isOpen = expanded === cls.team_id
-                // class_rank is now nullable: only classes with >= 3 scored
-                // commits get a number. Unranked classes sort last and render
-                // without a rank / medallion.
-                const hasRank = cls.class_rank != null
-                const hasScore = cls.class_score != null
-                const isTop3 = hasRank && cls.class_rank <= 3
-                const pct = hasScore && topScore > 0
-                  ? Math.max(4, (cls.class_score / topScore) * 100)
-                  : 0
-                return (
-                  <Fragment key={cls.team_id}>
-                    <tr
-                      onClick={() => toggle(cls.team_id)}
-                      className={`border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${
-                        isOpen ? 'bg-teal-50/60 dark:bg-teal-900/20' : 'hover:bg-blue-50/40 dark:hover:bg-gray-700/40'
-                      } ${i % 2 === 0 && !isOpen ? 'bg-white dark:bg-gray-800' : ''} ${i % 2 !== 0 && !isOpen ? 'bg-gray-50/50 dark:bg-gray-900/20' : ''}`}
-                    >
-                      {/* Rank */}
-                      <td className="px-3 py-2.5 text-center">
-                        <span className={`inline-flex items-center justify-center text-sm font-black tabular-nums ${
-                          isTop3 ? 'text-amber-500' : 'text-gray-400 dark:text-gray-500'
-                        }`}>
-                          {hasRank ? cls.class_rank : '—'}
-                        </span>
-                      </td>
-
-                      {/* Program */}
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-gray-300 dark:text-gray-600 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>&rsaquo;</span>
-                          {cls.logo_url ? (
-                            <img
-                              src={cls.logo_url}
-                              alt=""
-                              className="w-6 h-6 object-contain shrink-0"
-                              loading="lazy"
-                              onError={(e) => { e.target.style.display = 'none' }}
-                            />
-                          ) : (
-                            <div className="w-6 h-6 shrink-0" />
-                          )}
-                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
-                            {cls.name}
-                          </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${divisionBadgeClass(cls.division)}`}>
-                            {cls.division}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Commits: rated (scored) of total */}
-                      <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums whitespace-nowrap">
-                        <span className="font-semibold">{cls.scored_commits ?? cls.ranked ?? 0} rated</span>
-                        <span className="text-gray-400 dark:text-gray-500"> · {cls.commits} total</span>
-                      </td>
-
-                      {/* Class rating (0-100 avg) + bar */}
-                      <td className="px-3 py-2.5">
-                        {hasScore ? (
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light w-10 text-right">
-                              {cls.class_score.toFixed(1)}
-                            </span>
-                            <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${isTop3 ? 'bg-amber-400' : 'bg-nw-teal'}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] italic text-gray-400 dark:text-gray-500">
-                            Not enough ranked commits to rate
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <ExpandedClass
-                        teamId={cls.team_id}
-                        gradYear={gradYear}
-                        colSpan={COL_SPAN}
-                      />
-                    )}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
+      {!loading && !error && isEmpty && (
+        <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+          {view === 'transfers' ? 'No transfer commitments tracked yet.' : `No commits found for ${gradYear}.`}
         </div>
       )}
 
+      {!loading && !error && !isEmpty && view === 'hs' && (
+        <HSBoard classes={classes} gradYear={gradYear} expanded={expanded} toggle={toggle} />
+      )}
+      {!loading && !error && !isEmpty && view === 'transfers' && (
+        <TransfersBoard teams={transferTeams} expanded={expanded} toggle={toggle} />
+      )}
+      {!loading && !error && !isEmpty && view === 'combined' && (
+        <CombinedBoard rows={combinedRows} gradYear={gradYear} expanded={expanded} toggle={toggle} />
+      )}
+
       {/* Legend */}
-      {!loading && !error && classes.length > 0 && (
+      {!loading && !error && !isEmpty && (
         <div className="mt-4 px-1 text-[10px] text-gray-400 dark:text-gray-500 space-y-1 max-w-3xl">
-          <p><strong>Class Rating</strong> is the average prospect rating (0 to 100) of each class's ranked commits, weighted by state. Depth and unrated commits do not inflate it. The bar shows each rating relative to the top class.</p>
-          <p><strong>Commits</strong> shows rated (from states we rank) of total. Classes with fewer than 3 rated commits are not ranked and sort last.</p>
+          {view === 'hs' && (
+            <>
+              <p><strong>Class Rating</strong> is the average prospect rating (0 to 100) of each class's ranked commits, weighted by state. Depth and unrated commits do not inflate it. The bar shows each rating relative to the top class.</p>
+              <p><strong>Commits</strong> shows rated (from states we rank) of total. Classes with fewer than 3 rated commits are not ranked and sort last.</p>
+            </>
+          )}
+          {view === 'transfers' && (
+            <p><strong>Transfers</strong> are incoming commitments from our JUCO tracker and four-year transfer-portal tracker, grouped by the PNW program they committed to. Transfer ratings are coming soon.</p>
+          )}
+          {view === 'combined' && (
+            <p><strong>Combined</strong> shows each program's full incoming class: high school newcomers and transfers. Class Rating reflects the high school commits only for now; transfer ratings are coming soon.</p>
+          )}
           <p className="italic">2026 commitments trickle in through the cycle, so classes will keep filling out.</p>
         </div>
       )}
