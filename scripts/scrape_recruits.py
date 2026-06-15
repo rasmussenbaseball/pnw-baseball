@@ -493,13 +493,24 @@ def run(grad_year, state_filter, dry_run):
     school_map = load_school_map()
     states = [state_filter.upper()] if state_filter else PNW_STATES
 
-    # Pull team names for committed_raw reference.
+    # Pull team names for committed_raw reference, plus any PBR ranks already in
+    # the DB. PBR's full state rankings are paywalled, so most pbr_state_rank
+    # values were ingested from PDF exports (ingest_pbr_pdf_rankings.py), NOT
+    # scraped here — this scraper has no way to re-derive them. We load them so
+    # the rebuild below can carry them forward; without this they'd be wiped
+    # every run and CA/Canada classes would collapse to unranked.
     team_names = {}
+    existing_pbr = {}
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute("SELECT id, name, short_name FROM teams")
         for r in cur.fetchall():
             team_names[r["id"]] = r["name"] or r["short_name"]
+        cur.execute("SELECT first_name, last_name, pbr_state_rank FROM recruits "
+                    "WHERE grad_year = %s AND pbr_state_rank IS NOT NULL", (grad_year,))
+        for r in cur.fetchall():
+            existing_pbr[(norm_name(r["first_name"]),
+                          norm_name(r["last_name"]))] = r["pbr_state_rank"]
 
     # 1) Rankings indexes
     bbnw_index, pbr_index = fetch_state_indexes(grad_year, states)
@@ -659,6 +670,14 @@ def run(grad_year, state_filter, dry_run):
             rec["weight"] = rec.get("weight") or br.get("weight")
             if "bbnw" not in rec["sources"]:
                 rec["sources"].append("bbnw")
+        # Carry forward a PDF-ingested PBR rank this scrape couldn't see, so the
+        # score below reflects it (and the upsert COALESCE keeps it in place).
+        if not rec.get("pbr_state_rank"):
+            ek = (norm_name(rec["first_name"]), norm_name(rec["last_name"]))
+            if ek in existing_pbr:
+                rec["pbr_state_rank"] = existing_pbr[ek]
+                if "pbr" not in rec["sources"]:
+                    rec["sources"].append("pbr")
         rank_state = br["state"] if br else rec.get("state")
         rec["recruit_score"] = compute_score(
             rec.get("bbnw_state_rank"), rec.get("pbr_state_rank"), rank_state)
@@ -749,7 +768,7 @@ def run(grad_year, state_filter, dry_run):
                     weight            = COALESCE(EXCLUDED.weight, recruits.weight),
                     committed_team_id = EXCLUDED.committed_team_id,
                     committed_raw     = EXCLUDED.committed_raw,
-                    pbr_state_rank    = EXCLUDED.pbr_state_rank,
+                    pbr_state_rank    = COALESCE(EXCLUDED.pbr_state_rank, recruits.pbr_state_rank),
                     pbr_url           = COALESCE(EXCLUDED.pbr_url, recruits.pbr_url),
                     bbnw_state_rank   = EXCLUDED.bbnw_state_rank,
                     bbnw_url          = EXCLUDED.bbnw_url,
