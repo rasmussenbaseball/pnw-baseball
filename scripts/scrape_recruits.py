@@ -95,14 +95,21 @@ PBR_BASE = "https://www.prepbaseballreport.com"
 # exact value PBR adds over BBNW (BBNW only lists local-state players).
 PNW_HOME_STATES = {"WA", "OR", "ID", "MT", "BC"}
 
-SCORE_FLOOR = 20.0
-SCORE_K = 1.2
-# Unranked / no-rank-data commits score below the ranking floor (the rank
-# curve bottoms at 20 around state-rank ~65). Kept low on purpose so a CLASS
-# score (the sum of its commits' scores) is driven by ranked talent, not by
-# how many depth / out-of-region commits a program stacks up. Out-of-region
-# PBR commits have no rank only because PBR per-school pages don't list one,
-# so this is an "unknown" placeholder, not a judgment that they're weak.
+# Curve shape. The score is a SMOOTH harmonic decay of the effective rank:
+#   score = 100 / (1 + SCORE_DECAY * (eff_rank - 1)) * quality
+# Harmonic (not linear) on purpose: a linear curve slid to a hard floor, so it
+# fell off a cliff in the middle (OR #30 -> #65 dropped 40 pts) and then pinned
+# every deep player at the same floor (every WA player past ~#67 was a flat 20).
+# The harmonic curve eases off gradually and never flatlines, so #100 and #150
+# still separate. SCORE_DECAY is tuned so OR #30 ~= 63 and OR #65 ~= 44 (the
+# anchors Nate gave). DEPTH then stretches/compresses the rank before the curve.
+SCORE_DECAY = 0.018
+# Unranked / no-rank-data commits sit at this baseline. Kept low on purpose so a
+# CLASS average is driven by ranked talent, not by how many depth / out-of-region
+# commits a program stacks up. Out-of-region PBR commits have no rank only
+# because PBR per-school pages don't list one, so this is an "unknown"
+# placeholder, not a judgment that they're weak. A ranked player always scores
+# at least UNRANKED_BASELINE + 1, so ranked > unranked everywhere.
 UNRANKED_BASELINE = 12.0
 
 
@@ -374,20 +381,24 @@ def parse_pbr_rankings(html, grad_year):
 # WA/OR/ID/MT keep their approved QUALITY and DEPTH 1.0 so their scores are
 # unchanged from the last tuning. Only deep states get DEPTH > 1.
 STATE_QUALITY = {
-    "WA": 1.00, "OR": 0.97, "ID": 0.72, "MT": 0.60,
+    "WA": 1.00, "OR": 0.97, "ID": 0.78, "MT": 0.60,
     "CA": 1.05, "TX": 1.06, "FL": 1.04, "AZ": 0.98, "GA": 1.02,
-    "NV": 0.88, "UT": 0.85, "CO": 0.85, "HI": 0.80,
+    "NV": 0.88, "UT": 0.85, "CO": 0.85, "HI": 0.78,
     # Canada bumped up: the BC/AB/ON pipelines were badly underrated before.
     "BC": 0.90, "AB": 0.88, "ON": 0.90,
 }
+# DEPTH > 1 compresses the ladder (deep pools: a #64 is still strong); DEPTH < 1
+# stretches it so a thin pool falls off fast. ID/MT use DEPTH < 1 because they
+# rank only a shallow top tier — a state #12 there is NOT a #12-caliber player,
+# so it should drop quickly (Nate: "Idaho needs to drop off way faster").
 STATE_DEPTH = {
-    "WA": 1.0, "OR": 1.0, "ID": 1.0, "MT": 1.0,
+    "WA": 1.0, "OR": 1.0, "ID": 0.35, "MT": 0.40,
     "CA": 6.0, "TX": 4.5, "FL": 4.0, "GA": 3.5, "AZ": 2.5,
-    "NV": 1.2, "UT": 1.2, "CO": 1.2, "HI": 1.0,
+    "NV": 1.2, "UT": 1.2, "CO": 1.2, "HI": 0.7,
     "BC": 2.0, "AB": 1.8, "ON": 2.5,
 }
 STATE_DEFAULT_QUALITY = 0.82
-STATE_DEFAULT_DEPTH = 1.3
+STATE_DEFAULT_DEPTH = 1.1
 
 
 def combined_state_rank(bbnw_rank, pbr_rank):
@@ -402,9 +413,10 @@ def combined_state_rank(bbnw_rank, pbr_rank):
 
 
 def compute_score(bbnw_rank, pbr_rank, state=None):
-    """Combined State Rank (avg of the outlet ranks) → within-state curve
-    (#1≈100, #25≈71, #65≈23), then scaled by the state strength factor so
-    ranks are cross-state comparable.
+    """Combined State Rank (avg of the outlet ranks) → effective rank (DEPTH
+    stretch/compress) → smooth harmonic decay → QUALITY scale, so ranks are
+    cross-state comparable. e.g. WA #5≈93, #30≈63, #100≈36; CA's deep pool
+    keeps #64≈88; thin ID drops fast, #12≈50.
 
     Unranked players split by whether we have ANY ranking source for their
     home state (RANKED_STATES):
@@ -420,12 +432,13 @@ def compute_score(bbnw_rank, pbr_rank, state=None):
         return UNRANKED_BASELINE if st in RANKED_STATES else None
     depth = STATE_DEPTH.get(st, STATE_DEFAULT_DEPTH)
     quality = STATE_QUALITY.get(st, STATE_DEFAULT_QUALITY)
-    # Compress the raw rank into a WA-equivalent "effective rank" first (deep
-    # pools shrink the ladder), run it through the within-state curve, then
-    # scale by top-end quality. Hard-capped at 100 — no rating exceeds it.
+    # Map the raw rank to a WA-equivalent "effective rank" (depth stretches or
+    # compresses it), run it through the smooth harmonic decay, then scale by
+    # top-end quality. Capped at 100; floored just above the unranked baseline
+    # so a ranked player always beats an unranked one.
     eff_rank = 1.0 + (rank - 1) / depth
-    base = max(SCORE_FLOOR, min(100.0, 100.0 - (eff_rank - 1) * SCORE_K))
-    score = min(100.0, base * quality)
+    decay = 100.0 / (1.0 + SCORE_DECAY * (eff_rank - 1.0))
+    score = min(100.0, decay * quality)
     return round(max(UNRANKED_BASELINE + 1.0, score), 1)
 
 
