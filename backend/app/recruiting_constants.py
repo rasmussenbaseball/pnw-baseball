@@ -18,5 +18,11 @@ to make that exclusion consistent.
 RANKED_STATES = {
     "WA", "OR", "ID",        # BBNW
     "CA", "UT", "NV",        # PBR (US)
-    "AB", "ON", "BC",        # PBR (Canada)
+    "ON",                    # PBR (Canada) — the only province with real coverage
 }
+# BC and AB are intentionally OUT: the PBR PDF carries essentially no ranked
+# BC/AB commits, so an unranked BC/AB player has no ranking source at all.
+# Baselining him would drag Canada-heavy classes down for data we never had;
+# instead he is excluded from class math (no signal), like HI/MT/CO. A BC/AB
+# player who IS individually ranked still scores normally — this set only
+# governs the unranked baseline.

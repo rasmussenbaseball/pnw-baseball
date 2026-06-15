@@ -362,14 +362,32 @@ def parse_pbr_rankings(html, grad_year):
 # only matter if we ever attach a cross-state rank to those players; today
 # they're unranked (PBR's full rankings are paywalled), so they stay at the
 # flat baseline regardless.
-STATE_FACTOR = {
-    # WA is just barely a stronger baseball state than OR (per Nate), so OR
-    # sits right under it; ID is a notch lower than its first pass.
-    "WA": 1.00, "OR": 0.97, "ID": 0.72, "MT": 0.60, "BC": 0.68,
-    "CA": 1.10, "TX": 1.08, "FL": 1.05, "AZ": 1.00, "GA": 1.02,
-    "NV": 0.88, "UT": 0.85, "CO": 0.85, "HI": 0.80, "AB": 0.62, "ON": 0.60,
+# Two knobs per state, because "how good is a #N from here?" has two
+# independent answers:
+#   QUALITY = top-end strength: how good the state's BEST prospects are vs WA's
+#             #1. A multiplier on the whole curve (WA = 1.0 baseline).
+#   DEPTH   = pool depth: a divisor on rank-distance. A deep pool ranks hundreds
+#             of real prospects, so its #64 is a far better player than a #64 in
+#             a shallow pool. WA = 1.0 (no compression). California is the
+#             deepest pool we touch (PBR ranks run past 340), so a CA #64 maps
+#             to roughly WA's top-10 — which is what it actually is.
+# WA/OR/ID/MT keep their approved QUALITY and DEPTH 1.0 so their scores are
+# unchanged from the last tuning. Only deep states get DEPTH > 1.
+STATE_QUALITY = {
+    "WA": 1.00, "OR": 0.97, "ID": 0.72, "MT": 0.60,
+    "CA": 1.05, "TX": 1.06, "FL": 1.04, "AZ": 0.98, "GA": 1.02,
+    "NV": 0.88, "UT": 0.85, "CO": 0.85, "HI": 0.80,
+    # Canada bumped up: the BC/AB/ON pipelines were badly underrated before.
+    "BC": 0.90, "AB": 0.88, "ON": 0.90,
 }
-STATE_DEFAULT_FACTOR = 0.85
+STATE_DEPTH = {
+    "WA": 1.0, "OR": 1.0, "ID": 1.0, "MT": 1.0,
+    "CA": 6.0, "TX": 4.5, "FL": 4.0, "GA": 3.5, "AZ": 2.5,
+    "NV": 1.2, "UT": 1.2, "CO": 1.2, "HI": 1.0,
+    "BC": 2.0, "AB": 1.8, "ON": 2.5,
+}
+STATE_DEFAULT_QUALITY = 0.82
+STATE_DEFAULT_DEPTH = 1.3
 
 
 def combined_state_rank(bbnw_rank, pbr_rank):
@@ -400,9 +418,15 @@ def compute_score(bbnw_rank, pbr_rank, state=None):
     rank = combined_state_rank(bbnw_rank, pbr_rank)
     if rank is None:
         return UNRANKED_BASELINE if st in RANKED_STATES else None
-    base = max(SCORE_FLOOR, min(100.0, 100.0 - (rank - 1) * SCORE_K))
-    factor = STATE_FACTOR.get(st, STATE_DEFAULT_FACTOR)
-    return round(max(UNRANKED_BASELINE + 1.0, base * factor), 1)
+    depth = STATE_DEPTH.get(st, STATE_DEFAULT_DEPTH)
+    quality = STATE_QUALITY.get(st, STATE_DEFAULT_QUALITY)
+    # Compress the raw rank into a WA-equivalent "effective rank" first (deep
+    # pools shrink the ladder), run it through the within-state curve, then
+    # scale by top-end quality. Hard-capped at 100 — no rating exceeds it.
+    eff_rank = 1.0 + (rank - 1) / depth
+    base = max(SCORE_FLOOR, min(100.0, 100.0 - (eff_rank - 1) * SCORE_K))
+    score = min(100.0, base * quality)
+    return round(max(UNRANKED_BASELINE + 1.0, score), 1)
 
 
 # ─────────────────────────── main run ───────────────────────────
@@ -613,6 +637,31 @@ def run(grad_year, state_filter, dry_run):
                 }
                 new_here += 1
         per_school_pbr_new[short] = new_here
+
+    # Final BBNW-rank enrichment + uniform (re)scoring across BOTH passes. This
+    # closes two gaps the per-pass logic left:
+    #   1) A commit found only on a PBR school page (so the BBNW pass never saw
+    #      it) can still appear on a BBNW state ranking list. Keegan Matson is a
+    #      PBR-listed Oregon St commit who is BBNW WA #34 — the PBR pass alone
+    #      would store him unranked. Apply the BBNW rank to every commit by name.
+    #   2) The state a player is RANKED in governs his score, not his hometown.
+    #      Anthony Karis lives in ID but is ranked on Washington's list, so he is
+    #      scored as a WA prospect. We score each ranked commit from its ranking
+    #      state and fall back to the hometown only when he isn't ranked.
+    for rec in by_key.values():
+        nk = norm_name(rec.get("full_name")
+                       or f"{rec['first_name']} {rec['last_name']}")
+        br = bbnw_index.get(nk)
+        if br and not rec.get("bbnw_state_rank"):
+            rec["bbnw_state_rank"] = br["rank"]
+            rec["bbnw_url"] = rec.get("bbnw_url") or br.get("url")
+            rec["height"] = rec.get("height") or br.get("height")
+            rec["weight"] = rec.get("weight") or br.get("weight")
+            if "bbnw" not in rec["sources"]:
+                rec["sources"].append("bbnw")
+        rank_state = br["state"] if br else rec.get("state")
+        rec["recruit_score"] = compute_score(
+            rec.get("bbnw_state_rank"), rec.get("pbr_state_rank"), rank_state)
 
     all_recruits = list(by_key.values())
     matched_ranks = sum(1 for r in all_recruits
