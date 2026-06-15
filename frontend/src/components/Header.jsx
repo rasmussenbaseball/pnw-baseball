@@ -64,7 +64,7 @@ const NAV = [
       { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis', requires: 'premium' },
       { to: '/recruiting/program-guide', label: 'Program Guide (PDF)', desc: 'In-depth PDF book on all 57 PNW programs', requires: 'premium' },
       { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations', requires: 'premium' },
-      { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', locked: true },
+      { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', requires: 'premium' },
     ],
   },
   // News splits into Articles (the original /news list) and Commitments
