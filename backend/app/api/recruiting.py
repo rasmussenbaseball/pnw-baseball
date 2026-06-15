@@ -1408,12 +1408,23 @@ def _recruit_row(r):
         "state": r["state"],
         "height": r["height"],
         "weight": r["weight"],
-        "bbnw_state_rank": r["bbnw_state_rank"],
-        "pbr_state_rank": r["pbr_state_rank"],
+        # Single public "State Rank" = the rounded average of the source
+        # ranks we hold. We deliberately do NOT expose which outlets these
+        # came from (per Nate).
+        "state_rank": _combined_rank(r["bbnw_state_rank"], r["pbr_state_rank"]),
         "recruit_score": float(r["recruit_score"]) if r["recruit_score"] is not None else None,
         "is_ranked": r["bbnw_state_rank"] is not None or r["pbr_state_rank"] is not None,
         "headshot_url": r["headshot_url"],
     }
+
+
+def _combined_rank(bbnw_rank, pbr_rank):
+    """Average the source ranks into one whole-number State Rank (no
+    fractions). #10 + #20 -> 15. One source -> that rank. None -> None."""
+    ranks = [x for x in (bbnw_rank, pbr_rank) if x is not None]
+    if not ranks:
+        return None
+    return int(sum(ranks) / len(ranks) + 0.5)
 
 
 # A class needs at least this many ranked-state commits to earn a competitive

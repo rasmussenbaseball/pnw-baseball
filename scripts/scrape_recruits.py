@@ -363,17 +363,30 @@ def parse_pbr_rankings(html, grad_year):
 # they're unranked (PBR's full rankings are paywalled), so they stay at the
 # flat baseline regardless.
 STATE_FACTOR = {
-    "WA": 1.00, "OR": 0.90, "ID": 0.78, "MT": 0.62, "BC": 0.70,
+    # WA is just barely a stronger baseball state than OR (per Nate), so OR
+    # sits right under it; ID is a notch lower than its first pass.
+    "WA": 1.00, "OR": 0.97, "ID": 0.72, "MT": 0.60, "BC": 0.68,
     "CA": 1.10, "TX": 1.08, "FL": 1.05, "AZ": 1.00, "GA": 1.02,
     "NV": 0.88, "UT": 0.85, "CO": 0.85, "HI": 0.80, "AB": 0.62, "ON": 0.60,
 }
 STATE_DEFAULT_FACTOR = 0.85
 
 
+def combined_state_rank(bbnw_rank, pbr_rank):
+    """The player's single State Rank = the AVERAGE of the outlet ranks we
+    have, rounded to a whole number (no fractions, per Nate): #10 and #20 →
+    15. One source → that rank. Neither → None. We never surface which
+    outlets these came from."""
+    ranks = [r for r in (bbnw_rank, pbr_rank) if r]
+    if not ranks:
+        return None
+    return int(sum(ranks) / len(ranks) + 0.5)  # round half up
+
+
 def compute_score(bbnw_rank, pbr_rank, state=None):
-    """Better (lower) of the two ranks → within-state curve (#1≈100, #25≈71,
-    #65≈23), then scaled by the state strength factor so ranks are
-    cross-state comparable.
+    """Combined State Rank (avg of the outlet ranks) → within-state curve
+    (#1≈100, #25≈71, #65≈23), then scaled by the state strength factor so
+    ranks are cross-state comparable.
 
     Unranked players split by whether we have ANY ranking source for their
     home state (RANKED_STATES):
@@ -384,11 +397,10 @@ def compute_score(bbnw_rank, pbr_rank, state=None):
         penalized (per Nate). The site shows them as commits with no rank.
     A ranked player always scores above a baseline one."""
     st = (state or "").strip().upper()
-    ranks = [r for r in (bbnw_rank, pbr_rank) if r]
-    if not ranks:
+    rank = combined_state_rank(bbnw_rank, pbr_rank)
+    if rank is None:
         return UNRANKED_BASELINE if st in RANKED_STATES else None
-    best = min(ranks)
-    base = max(SCORE_FLOOR, min(100.0, 100.0 - (best - 1) * SCORE_K))
+    base = max(SCORE_FLOOR, min(100.0, 100.0 - (rank - 1) * SCORE_K))
     factor = STATE_FACTOR.get(st, STATE_DEFAULT_FACTOR)
     return round(max(UNRANKED_BASELINE + 1.0, base * factor), 1)
 
