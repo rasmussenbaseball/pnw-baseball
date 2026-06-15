@@ -55,7 +55,7 @@ const RECRUIT_TOOLS = [
     blurb: 'Every PNW college baseball program on one map, by division.',
     why: 'See your options by geography and figure out how far from home you are willing to go.' },
   { to: '/recruiting-classes', icon: 'users', tier: 'premium', name: 'Recruiting Classes',
-    blurb: 'Incoming high school class breakdowns for every PNW program, graded and ranked by PBR and BBNW state rankings.',
+    blurb: 'Incoming high school class breakdowns for every PNW program, graded and ranked by state rankings.',
     why: 'See who each program is bringing in and how your class stacks up against the rest of the region.' },
 ]
 
@@ -200,7 +200,7 @@ export default function RecruitingHub() {
               <h3 className="text-base font-extrabold text-nw-teal dark:text-gray-100">See who is committing to PNW programs</h3>
               <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400 max-w-md">
                 We track the high school commits landing at Pacific Northwest college programs and grade
-                each class by PBR and BBNW state rankings. Open the full board to expand any school and
+                each class by state rankings. Open the full board to expand any school and
                 see its entire incoming class.
               </p>
               <Link to="/recruiting-classes" className="inline-block mt-3 text-sm font-bold text-nw-teal hover:underline">

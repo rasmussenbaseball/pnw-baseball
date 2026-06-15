@@ -319,8 +319,7 @@ function IncomingClass({ teamId, gradYear = 2026 }) {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-4">
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
           {commits.map((c) => {
-            const rank = c.bbnw_state_rank ?? c.pbr_state_rank
-            const rankLabel = c.bbnw_state_rank != null ? 'BBNW' : 'PBR'
+            const rank = c.state_rank
             return (
               <div key={c.id} className="flex items-center gap-2 py-1 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
                 <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
@@ -332,7 +331,7 @@ function IncomingClass({ teamId, gradYear = 2026 }) {
                 </span>
                 {rank != null ? (
                   <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap shrink-0">
-                    {rankLabel} #{rank}
+                    State Rank #{rank}
                   </span>
                 ) : c.recruit_score == null ? (
                   <span className="text-[10px] italic text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">No ranking</span>

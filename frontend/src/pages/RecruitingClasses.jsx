@@ -7,24 +7,14 @@ import { divisionBadgeClass } from '../utils/stats'
 // scraped, so adding one here is all it takes to extend the selector.
 const GRAD_YEARS = [2026]
 
-// Small chip showing a recruit's source ranking, or a muted "Unranked".
-function RankChips({ bbnw, pbr }) {
-  const chips = []
-  if (bbnw != null) chips.push(['BBNW', bbnw])
-  if (pbr != null) chips.push(['PBR', pbr])
-  if (chips.length === 0) {
+// Single chip showing a recruit's State Rank, or a muted "Unranked".
+function RankChips({ stateRank }) {
+  if (stateRank == null) {
     return <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 italic">Unranked</span>
   }
   return (
-    <span className="flex flex-wrap gap-1">
-      {chips.map(([label, rank]) => (
-        <span
-          key={label}
-          className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap"
-        >
-          {label} #{rank}
-        </span>
-      ))}
+    <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap">
+      State Rank #{stateRank}
     </span>
   )
 }
@@ -57,7 +47,7 @@ function ExpandedClass({ teamId, gradYear, colSpan }) {
                     <th className="px-3 py-1.5 text-center font-semibold">Pos</th>
                     <th className="px-3 py-1.5 text-left font-semibold">High School</th>
                     <th className="px-3 py-1.5 text-center font-semibold">Ht / Wt</th>
-                    <th className="px-3 py-1.5 text-left font-semibold">Ranking</th>
+                    <th className="px-3 py-1.5 text-left font-semibold">State Rank</th>
                     <th className="px-3 py-1.5 text-center font-semibold">Rating</th>
                   </tr>
                 </thead>
@@ -98,7 +88,7 @@ function ExpandedClass({ teamId, gradYear, colSpan }) {
                           : '-'}
                       </td>
                       <td className="px-3 py-1.5">
-                        <RankChips bbnw={c.bbnw_state_rank} pbr={c.pbr_state_rank} />
+                        <RankChips stateRank={c.state_rank} />
                       </td>
                       <td className="px-3 py-1.5 text-center text-xs tabular-nums">
                         {c.recruit_score != null ? (
@@ -134,7 +124,7 @@ export default function RecruitingClasses() {
     (max, c) => (c.class_score != null && c.class_score > max ? c.class_score : max),
     0,
   )
-  const COL_SPAN = 5
+  const COL_SPAN = 4
 
   const toggle = (teamId) => setExpanded((cur) => (cur === teamId ? null : teamId))
 
@@ -142,10 +132,9 @@ export default function RecruitingClasses() {
     <div>
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">{gradYear} Recruiting Classes</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-3xl">
-        High school commits to PNW college programs, graded by their PBR and BBNW state rankings.
-        Each school's Class Rating is the average prospect rating of its ranked commits (0 to 100),
-        weighted by state. Depth and unrated commits do not inflate it. Expand a row to see the full
-        incoming class.
+        High school commits to PNW college programs, graded by their State Rank. Each school's Class
+        Rating is the average prospect rating of its ranked commits (0 to 100), weighted by state.
+        Depth and unrated commits do not inflate it. Expand a row to see the full incoming class.
       </p>
 
       {/* Grad-year selector */}
@@ -184,7 +173,6 @@ export default function RecruitingClasses() {
                 <th className="px-3 py-2 text-center font-semibold w-10">#</th>
                 <th className="px-3 py-2 text-left font-semibold">Program</th>
                 <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Commits</th>
-                <th className="px-3 py-2 text-left font-semibold">Top Commit</th>
                 <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Class Rating</th>
               </tr>
             </thead>
@@ -245,27 +233,6 @@ export default function RecruitingClasses() {
                       <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums whitespace-nowrap">
                         <span className="font-semibold">{cls.scored_commits ?? cls.ranked ?? 0} rated</span>
                         <span className="text-gray-400 dark:text-gray-500"> · {cls.commits} total</span>
-                      </td>
-
-                      {/* Top commit */}
-                      <td className="px-3 py-2.5">
-                        {cls.top_commit ? (
-                          <span className="flex items-center gap-1.5">
-                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {cls.top_commit.name}
-                            </span>
-                            {cls.top_commit.position && (
-                              <span className="text-[10px] text-gray-400 dark:text-gray-500">{cls.top_commit.position}</span>
-                            )}
-                            {cls.top_commit.rank != null && (
-                              <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap">
-                                #{cls.top_commit.rank}
-                              </span>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-300 dark:text-gray-600">-</span>
-                        )}
                       </td>
 
                       {/* Class rating (0-100 avg) + bar */}
