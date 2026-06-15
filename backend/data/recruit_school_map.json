@@ -3,43 +3,43 @@
     "short_name": "UW",
     "school_name": "University of Washington",
     "bbnw_slug": "university-of-washington",
-    "pbr_code": null
+    "pbr_code": "washington"
   },
   "2": {
     "short_name": "Oregon",
     "school_name": "University of Oregon",
     "bbnw_slug": "university-of-oregon",
-    "pbr_code": null
+    "pbr_code": "oregon"
   },
   "3": {
     "short_name": "Oregon St.",
     "school_name": "Oregon State University",
     "bbnw_slug": "oregon-state-university",
-    "pbr_code": null
+    "pbr_code": "oregon-state"
   },
   "4": {
     "short_name": "Wash. St.",
     "school_name": "Washington State University",
     "bbnw_slug": "washington-state-university",
-    "pbr_code": null
+    "pbr_code": "washington-state"
   },
   "5": {
     "short_name": "CWU",
     "school_name": "Central Washington University",
     "bbnw_slug": "central-washington-university",
-    "pbr_code": null
+    "pbr_code": "cwu"
   },
   "6": {
     "short_name": "SMU",
     "school_name": "Saint Martin's University",
     "bbnw_slug": "saint-martins-university",
-    "pbr_code": null
+    "pbr_code": "saint-martin-s-university"
   },
   "7": {
     "short_name": "MSUB",
     "school_name": "Montana State University-Billings",
     "bbnw_slug": null,
-    "pbr_code": null
+    "pbr_code": "montana-state-university-billings"
   },
   "8": {
     "short_name": "WOU",
@@ -57,19 +57,19 @@
     "short_name": "UPS",
     "school_name": "University of Puget Sound",
     "bbnw_slug": "university-of-puget-sound",
-    "pbr_code": null
+    "pbr_code": "puget-sound"
   },
   "11": {
     "short_name": "PLU",
     "school_name": "Pacific Lutheran University",
     "bbnw_slug": "pacific-lutheran-university",
-    "pbr_code": null
+    "pbr_code": "plu"
   },
   "12": {
     "short_name": "Whitman",
     "school_name": "Whitman College",
     "bbnw_slug": "whitman-college",
-    "pbr_code": null
+    "pbr_code": "whitman-college"
   },
   "13": {
     "short_name": "Whitworth",
@@ -81,37 +81,37 @@
     "short_name": "Linfield",
     "school_name": "Linfield University",
     "bbnw_slug": "linfield-university",
-    "pbr_code": null
+    "pbr_code": "linfield-college"
   },
   "15": {
     "short_name": "L&C",
     "school_name": "Lewis & Clark College",
-    "bbnw_slug": null,
+    "bbnw_slug": "lewis--clark-college",
     "pbr_code": null
   },
   "16": {
     "short_name": "Willamette",
     "school_name": "Willamette University",
     "bbnw_slug": "willamette-university",
-    "pbr_code": null
+    "pbr_code": "willamette-university"
   },
   "17": {
     "short_name": "Pacific",
     "school_name": "Pacific University",
     "bbnw_slug": "pacific-university",
-    "pbr_code": null
+    "pbr_code": "pacific"
   },
   "18": {
     "short_name": "GFU",
     "school_name": "George Fox University",
     "bbnw_slug": "george-fox-university",
-    "pbr_code": null
+    "pbr_code": "gfu"
   },
   "19": {
     "short_name": "EOU",
     "school_name": "Eastern Oregon University",
     "bbnw_slug": "eastern-oregon-university",
-    "pbr_code": null
+    "pbr_code": "eou"
   },
   "20": {
     "short_name": "OIT",
@@ -123,49 +123,49 @@
     "short_name": "C of I",
     "school_name": "College of Idaho",
     "bbnw_slug": "college-of-idaho",
-    "pbr_code": null
+    "pbr_code": "college-of-idaho"
   },
   "22": {
     "short_name": "LCSC",
     "school_name": "Lewis-Clark State College",
     "bbnw_slug": "lewis-clark-state-college",
-    "pbr_code": "LCC"
+    "pbr_code": "lcsc"
   },
   "23": {
     "short_name": "Corban",
     "school_name": "Corban University",
     "bbnw_slug": "corban-university",
-    "pbr_code": null
+    "pbr_code": "corban-university"
   },
   "24": {
     "short_name": "Bushnell",
     "school_name": "Bushnell University",
     "bbnw_slug": "bushnell-university",
-    "pbr_code": null
+    "pbr_code": "bushnell"
   },
   "25": {
     "short_name": "Bellevue",
     "school_name": "Bellevue College",
     "bbnw_slug": "bellevue-college",
-    "pbr_code": null
+    "pbr_code": "BC"
   },
   "26": {
     "short_name": "Douglas",
     "school_name": "Douglas College",
-    "bbnw_slug": null,
-    "pbr_code": null
+    "bbnw_slug": "douglas-college",
+    "pbr_code": "douglas-college"
   },
   "27": {
     "short_name": "Edmonds",
     "school_name": "Edmonds College",
     "bbnw_slug": "edmonds-college",
-    "pbr_code": null
+    "pbr_code": "edmonds-community-college"
   },
   "28": {
     "short_name": "Everett",
     "school_name": "Everett Community College",
     "bbnw_slug": "everett-community-college",
-    "pbr_code": null
+    "pbr_code": "everett-cc"
   },
   "29": {
     "short_name": "Olympic",
@@ -177,25 +177,25 @@
     "short_name": "Pierce",
     "school_name": "Pierce College",
     "bbnw_slug": "pierce-college",
-    "pbr_code": null
+    "pbr_code": "pierce-college"
   },
   "31": {
     "short_name": "Shoreline",
     "school_name": "Shoreline Community College",
     "bbnw_slug": "shoreline-community-college",
-    "pbr_code": null
+    "pbr_code": "shoreline-community-college"
   },
   "32": {
     "short_name": "Skagit",
     "school_name": "Skagit Valley College",
     "bbnw_slug": "skagit-valley-college",
-    "pbr_code": null
+    "pbr_code": "skagit-valley-college"
   },
   "33": {
     "short_name": "Big Bend",
     "school_name": "Big Bend Community College",
     "bbnw_slug": "big-bend-community-college",
-    "pbr_code": null
+    "pbr_code": "big-bend-community-college"
   },
   "34": {
     "short_name": "Columbia Basin",
@@ -206,139 +206,139 @@
   "35": {
     "short_name": "Spokane",
     "school_name": "Spokane Falls Community College",
-    "bbnw_slug": null,
-    "pbr_code": null
+    "bbnw_slug": "community-colleges-of-spokane",
+    "pbr_code": "spokane-falls-community-college"
   },
   "36": {
     "short_name": "Treasure Valley",
     "school_name": "Treasure Valley Community College",
     "bbnw_slug": "treasure-valley-community-college",
-    "pbr_code": null
+    "pbr_code": "treasure-valley-cc"
   },
   "37": {
     "short_name": "Walla Walla",
     "school_name": "Walla Walla Community College",
     "bbnw_slug": "walla-walla-community-college",
-    "pbr_code": null
+    "pbr_code": "walla-walla-community-college"
   },
   "38": {
     "short_name": "Wenatchee Valley",
     "school_name": "Wenatchee Valley College",
     "bbnw_slug": "wenatchee-valley-college",
-    "pbr_code": null
+    "pbr_code": "wvc"
   },
   "39": {
     "short_name": "Yakima Valley",
     "school_name": "Yakima Valley College",
     "bbnw_slug": "yakima-valley-college",
-    "pbr_code": null
+    "pbr_code": "yvc"
   },
   "40": {
     "short_name": "Blue Mountain",
     "school_name": "Blue Mountain Community College",
     "bbnw_slug": "blue-mountain-community-college",
-    "pbr_code": null
+    "pbr_code": "bmcc"
   },
   "41": {
     "short_name": "Chemeketa",
     "school_name": "Chemeketa Community College",
     "bbnw_slug": "chemeketa-community-college",
-    "pbr_code": null
+    "pbr_code": "chemeketa-community-college"
   },
   "42": {
     "short_name": "Clackamas",
     "school_name": "Clackamas Community College",
     "bbnw_slug": "clackamas-community-college",
-    "pbr_code": null
+    "pbr_code": "clackamas-community-college"
   },
   "43": {
     "short_name": "Lane",
     "school_name": "Lane Community College",
     "bbnw_slug": "lane-community-college",
-    "pbr_code": null
+    "pbr_code": "lane-community-college"
   },
   "44": {
     "short_name": "Linn-Benton",
     "school_name": "Linn-Benton Community College",
     "bbnw_slug": "linn-benton-community-college",
-    "pbr_code": null
+    "pbr_code": "lbcc"
   },
   "45": {
     "short_name": "Mt. Hood",
     "school_name": "Mt. Hood Community College",
     "bbnw_slug": "mt-hood-community-college",
-    "pbr_code": null
+    "pbr_code": "mt-hood-community-college"
   },
   "46": {
     "short_name": "SW Oregon",
     "school_name": "Southwestern Oregon Community College",
     "bbnw_slug": "southwestern-oregon-community-college",
-    "pbr_code": null
+    "pbr_code": "southwestern-oregon-community-college"
   },
   "47": {
     "short_name": "Umpqua",
     "school_name": "Umpqua Community College",
     "bbnw_slug": "umpqua-community-college",
-    "pbr_code": null
+    "pbr_code": "umpqua-community-college"
   },
   "48": {
     "short_name": "Centralia",
     "school_name": "Centralia College",
     "bbnw_slug": "centralia-college",
-    "pbr_code": null
+    "pbr_code": "centralia-college"
   },
   "49": {
     "short_name": "Clark",
     "school_name": "Clark College",
     "bbnw_slug": "clark-college",
-    "pbr_code": null
+    "pbr_code": "clark-college"
   },
   "50": {
     "short_name": "Grays Harbor",
     "school_name": "Grays Harbor College",
     "bbnw_slug": "grays-harbor-college",
-    "pbr_code": null
+    "pbr_code": "ghc"
   },
   "52": {
     "short_name": "Lower Columbia",
     "school_name": "Lower Columbia College",
     "bbnw_slug": "lower-columbia-college",
-    "pbr_code": null
+    "pbr_code": "LCC"
   },
   "53": {
     "short_name": "Tacoma",
     "school_name": "Tacoma Community College",
     "bbnw_slug": "tacoma-community-college",
-    "pbr_code": null
+    "pbr_code": "tacoma-community-college"
   },
   "482": {
     "short_name": "Portland",
     "school_name": "University of Portland",
     "bbnw_slug": "university-of-portland",
-    "pbr_code": null
+    "pbr_code": "portland"
   },
   "483": {
     "short_name": "Gonzaga",
     "school_name": "Gonzaga University",
     "bbnw_slug": "gonzaga-university",
-    "pbr_code": null
+    "pbr_code": "gonzaga"
   },
   "484": {
     "short_name": "Seattle U",
     "school_name": "Seattle University",
     "bbnw_slug": "seattle-university",
-    "pbr_code": null
+    "pbr_code": "seattle"
   },
   "505": {
     "short_name": "Warner Pacific",
     "school_name": "Warner Pacific University",
     "bbnw_slug": "warner-pacific-university",
-    "pbr_code": null
+    "pbr_code": "warner-pacific-university"
   },
   "5720": {
     "short_name": "UBC",
     "school_name": "University of British Columbia",
-    "bbnw_slug": null,
-    "pbr_code": null
+    "bbnw_slug": "university-of-british-columbia",
+    "pbr_code": "british-columbia"
   }
 }

@@ -3,23 +3,31 @@
 HS Recruit / Commit ingestion → `recruits` table.
 
 Ingests high-school commits to OUR ~57 PNW schools (WA/OR/ID/MT/BC) from
-Baseball Northwest (BBNW) and enriches with Prep Baseball Report (PBR) state
-rankings. BBNW carries the feature; PBR is enrichment-only.
+Baseball Northwest (BBNW) and Prep Baseball Report (PBR).
+
+Two sources, two roles:
+  • BBNW per-school pages → commits (local-states players only) + the ONLY
+    rank source (per-state BBNW rankings pages). BBNW carries scoring.
+  • PBR per-school pages  → commits too, and crucially the OUT-OF-REGION ones
+    (a TX/CA/AZ kid committing to Gonzaga) that BBNW never lists. PBR per-school
+    pages carry NO rank, so PBR contributes COMMITS, not ranks, in v1.
 
 Pipeline (per the "Recruiting Classes" plan):
   1. Read backend/data/recruit_school_map.json  → team_id → {bbnw_slug, pbr_code}.
-  2. For each mapped school, fetch its BBNW page (/schools/{slug}) and parse its
-     commit table. The school page IS the destination, so committed_team_id is
-     known directly from the map (no committed_raw string resolution needed).
-  3. Fetch each PNW state's BBNW rankings page → (norm_name, grad_year) →
+  2. Fetch each PNW state's BBNW rankings page → (norm_name, grad_year) →
      {bbnw_rank, height, weight}. Static HTML holds the top ~60 per state
-     (load-more is JS/AJAX driven); we accept that cap and log it. Elite commits
-     drive class scores; unranked-but-committed players still get a baseline.
-  4. Fetch each state's PBR rankings (where a URL is known) → {pbr_rank}.
-  5. Join ranks onto the commit universe by normalized name + grad_year.
-  6. Score: better (lower) of bbnw/pbr rank → clamp(100-(rank-1)*1.2, 20, 100);
+     (load-more is JS/AJAX driven); we accept that cap and log it.
+  3. BBNW pass: for each mapped school fetch its BBNW page (/schools/{slug}),
+     parse its commit table, join ranks. The school page IS the destination, so
+     committed_team_id is known directly from the map.
+  4. PBR pass: for each mapped school with a pbr_code fetch /schools/{code},
+     parse its commit table (same Name|State|HS|Class|Pos. shape). Merge by
+     (first,last,grad_year): a player already from BBNW gains 'pbr' in sources +
+     missing fields filled; a PBR-only player (out-of-region) is inserted new
+     with committed_team_id = that school and baseline score 25.
+  5. Score: better (lower) of bbnw/pbr rank → clamp(100-(rank-1)*1.2, 20, 100);
      unranked → baseline 25.
-  7. Upsert into recruits ON CONFLICT (first_name,last_name,grad_year).
+  6. Upsert into recruits ON CONFLICT (first_name,last_name,grad_year).
 
 LIVE SCRAPING MUST RUN ON THE SERVER — SCRAPER_API_KEY lives only in the
 server's /opt/pnw-baseball/.env. From the Mac, DATABASE_URL connects read-only
@@ -74,10 +82,22 @@ PBR_STATE_URL = {
 }
 
 BBNW_BASE = "https://baseballnorthwest.com"
+PBR_BASE = "https://www.prepbaseballreport.com"
+
+# Player home-states that count as "in region" for the PNW. A PBR per-school
+# commit whose home state is NOT one of these is an out-of-region commit — the
+# exact value PBR adds over BBNW (BBNW only lists local-state players).
+PNW_HOME_STATES = {"WA", "OR", "ID", "MT", "BC"}
 
 SCORE_FLOOR = 20.0
 SCORE_K = 1.2
-UNRANKED_BASELINE = 25.0
+# Unranked / no-rank-data commits score below the ranking floor (the rank
+# curve bottoms at 20 around state-rank ~65). Kept low on purpose so a CLASS
+# score (the sum of its commits' scores) is driven by ranked talent, not by
+# how many depth / out-of-region commits a program stacks up. Out-of-region
+# PBR commits have no rank only because PBR per-school pages don't list one,
+# so this is an "unknown" placeholder, not a judgment that they're weak.
+UNRANKED_BASELINE = 12.0
 
 
 # ────────────────────────────── DB ──────────────────────────────
@@ -174,6 +194,21 @@ def norm_name(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
+def derive_bbnw_slug(school_name):
+    """Derive a BBNW /schools/{slug} slug from a school_name.
+
+    BBNW renders " & " as a DOUBLE hyphen: "Lewis & Clark College" ->
+    "lewis--clark-college" (confirmed live). Everything else collapses to single
+    hyphens. This is a fallback for schools added to the map without a slug; the
+    authoritative slugs in recruit_school_map.json were verified by probing.
+    """
+    s = unicodedata.normalize("NFKD", school_name or "").encode("ascii", "ignore").decode()
+    s = s.lower().replace(" & ", " -- ").replace("&", " -- ")
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = re.sub(r"-{3,}", "--", s)
+    return s.strip("-")
+
+
 def split_name(full):
     parts = (full or "").strip().split()
     if not parts:
@@ -227,6 +262,21 @@ def parse_school_commits(html, grad_year):
             "grad_year": grad_year,
         })
     return commits
+
+
+def parse_pbr_school_commits(html, grad_year):
+    """Parse a PBR per-school page (/schools/{code}).
+
+    PBR school pages carry ONE table with the SAME column shape as BBNW school
+    pages: Name | State | School(HS) | Class(grad year) | Pos. — so the BBNW
+    row parser is reused verbatim. The State column is the player's HOME state,
+    so out-of-region commits (CA/TX/AZ/...) appear here and are kept (we do NOT
+    filter by state). PBR soft-404s render the 'Page Cannot Be Found' shell and
+    a real header row 'Name'/'State'; guard both so a missing code yields [].
+    """
+    if not html or "page cannot be found" in html.lower():
+        return []
+    return parse_school_commits(html, grad_year)
 
 
 def parse_state_rankings(html, grad_year):
@@ -381,45 +431,63 @@ def run(grad_year, state_filter, dry_run):
     # 1) Rankings indexes
     bbnw_index, pbr_index = fetch_state_indexes(grad_year, states)
 
-    # 2) Walk each mapped school, parse its commits
-    all_recruits = []
-    per_school_counts = {}
-    matched_ranks = 0
+    # Commits accumulate into a dict keyed on the upsert key (first, last,
+    # grad_year) so the two passes (BBNW then PBR) merge in place: a player
+    # listed by both sources becomes ONE row with sources=['bbnw','pbr']; a
+    # player only on PBR (out-of-region) is a new row with sources=['pbr'].
+    by_key = {}
+    per_school_bbnw = {}
+    per_school_pbr_new = {}
+    dup_count = 0
+
+    def upsert_key(c):
+        return (norm_name(c["first_name"]), norm_name(c["last_name"]),
+                c["grad_year"])
+
+    # 2) BBNW pass — walk each mapped school, parse its commits + join ranks.
     for team_id, info in sorted(school_map.items()):
         bbnw_slug = info.get("bbnw_slug")
         short = info.get("short_name", str(team_id))
         if not bbnw_slug:
-            logger.info("%s (team %s): no bbnw_slug; skipping", short, team_id)
-            continue
+            # Fall back to deriving a slug from the school name. Verified slugs
+            # live in the map; this only helps a newly-added school whose slug
+            # wasn't probed yet (and harmlessly 404s if BBNW lacks the page).
+            derived = derive_bbnw_slug(info.get("school_name", ""))
+            if derived:
+                logger.info("%s (team %s): no bbnw_slug in map; trying derived "
+                            "slug %r", short, team_id, derived)
+                bbnw_slug = derived
+            else:
+                logger.info("%s (team %s): no bbnw_slug; skipping BBNW", short, team_id)
+                per_school_bbnw[short] = 0
+                continue
         url = f"{BBNW_BASE}/schools/{bbnw_slug}"
         html = scraperapi_fetch(SCRAPER_API_KEY, url, min_size=3000,
                                 label=f"BBNW school {short}")
         if not html:
-            logger.warning("%s: school page fetch failed", short)
-            per_school_counts[short] = 0
+            logger.warning("%s: BBNW school page fetch failed", short)
+            per_school_bbnw[short] = 0
             continue
         commits = parse_school_commits(html, grad_year)
         # If a state filter is set, keep only commits from that state.
         if state_filter:
             commits = [c for c in commits if c.get("state") == state_filter.upper()]
-        per_school_counts[short] = len(commits)
+        per_school_bbnw[short] = len(commits)
 
         for c in commits:
-            key = norm_name(c["full_name"])
-            br = bbnw_index.get(key)
+            nk = norm_name(c["full_name"])
+            br = bbnw_index.get(nk)
             bbnw_rank = br["rank"] if br else None
             bbnw_url = br["url"] if br else None
             height = br["height"] if br else None
             weight = br["weight"] if br else None
-            pbr_rank = pbr_index.get(key)
-            pbr_url = pbr_index.get((key, "url"))
-            if bbnw_rank or pbr_rank:
-                matched_ranks += 1
+            pbr_rank = pbr_index.get(nk)
+            pbr_url = pbr_index.get((nk, "url"))
             sources = ["bbnw"]
             if pbr_rank:
                 sources.append("pbr")
             score = compute_score(bbnw_rank, pbr_rank)
-            all_recruits.append({
+            rec = {
                 **c,
                 "committed_team_id": team_id,
                 "committed_raw": team_names.get(team_id),
@@ -431,25 +499,95 @@ def run(grad_year, state_filter, dry_run):
                 "weight": weight,
                 "recruit_score": score,
                 "sources": sources,
-            })
+            }
+            k = upsert_key(c)
+            if k in by_key:
+                # BBNW listed the same commit twice on a page — keep the better.
+                dup_count += 1
+                if score > by_key[k]["recruit_score"]:
+                    by_key[k] = rec
+            else:
+                by_key[k] = rec
 
-    # Dedup on the upsert key (first, last, grad_year). BBNW occasionally lists
-    # the same commit twice on a school page, and the UNIQUE constraint would
-    # collapse them on write anyway — do it here so dry-run counts match the
-    # real write and we recount rank-matches on the deduped set. Keep the
-    # higher-scored instance (a ranked row beats a duplicate unranked row).
-    deduped = {}
-    for r in all_recruits:
-        k = (norm_name(r["first_name"]), norm_name(r["last_name"]), r["grad_year"])
-        if k not in deduped or r["recruit_score"] > deduped[k]["recruit_score"]:
-            deduped[k] = r
-    dup_count = len(all_recruits) - len(deduped)
-    all_recruits = list(deduped.values())
+    # 3) PBR pass — per-school commit pages. Mirrors the BBNW pass but PBR pages
+    # carry NO rank (rank enrichment stays BBNW-only for v1). The value PBR adds
+    # is COMMITS, especially OUT-OF-REGION players (a TX/CA/AZ kid → Gonzaga)
+    # that BBNW (local-states-only) never lists. For a commit already present
+    # from BBNW: keep committed_team_id, add 'pbr' to sources, fill any missing
+    # state / HS / position / score-baseline. For a NEW PBR-only commit: insert
+    # with committed_team_id = this school and the baseline score (25).
+    for team_id, info in sorted(school_map.items()):
+        pbr_code = info.get("pbr_code")
+        short = info.get("short_name", str(team_id))
+        if not pbr_code:
+            continue
+        url = f"{PBR_BASE}/schools/{pbr_code}"
+        html = scraperapi_fetch(SCRAPER_API_KEY, url, min_size=3000,
+                                label=f"PBR school {short}")
+        if not html:
+            logger.warning("%s: PBR school page fetch failed", short)
+            per_school_pbr_new[short] = 0
+            continue
+        commits = parse_pbr_school_commits(html, grad_year)
+        if state_filter:
+            commits = [c for c in commits if c.get("state") == state_filter.upper()]
+        new_here = 0
+        for c in commits:
+            k = upsert_key(c)
+            existing = by_key.get(k)
+            if existing:
+                # Merge: this player already came from BBNW (or another PBR
+                # school). Keep their committed_team_id; just record PBR as a
+                # source and backfill any missing descriptive fields.
+                if "pbr" not in existing["sources"]:
+                    existing["sources"].append("pbr")
+                if not existing.get("pbr_url"):
+                    existing["pbr_url"] = url
+                for fld in ("state", "high_school", "position"):
+                    if not existing.get(fld) and c.get(fld):
+                        existing[fld] = c[fld]
+            else:
+                # New commit seen only on PBR — the out-of-region pickup. PBR
+                # per-school pages carry no rank, so baseline score (25).
+                by_key[k] = {
+                    **c,
+                    "committed_team_id": team_id,
+                    "committed_raw": team_names.get(team_id),
+                    "bbnw_state_rank": None,
+                    "bbnw_url": None,
+                    "pbr_state_rank": None,
+                    "pbr_url": url,
+                    "height": None,
+                    "weight": None,
+                    "recruit_score": UNRANKED_BASELINE,
+                    "sources": ["pbr"],
+                }
+                new_here += 1
+        per_school_pbr_new[short] = new_here
+
+    all_recruits = list(by_key.values())
     matched_ranks = sum(1 for r in all_recruits
                         if r["bbnw_state_rank"] or r["pbr_state_rank"])
     if dup_count:
         logger.info("Collapsed %d duplicate commit row(s) on (name, grad_year).",
                     dup_count)
+
+    # Per-school commit totals (BBNW + any PBR-only adds) for reporting.
+    per_school_counts = {}
+    short_by_team = {tid: info.get("short_name", str(tid))
+                     for tid, info in school_map.items()}
+    for r in all_recruits:
+        s = short_by_team.get(r["committed_team_id"], str(r["committed_team_id"]))
+        per_school_counts[s] = per_school_counts.get(s, 0) + 1
+
+    pbr_only = sum(1 for r in all_recruits if r["sources"] == ["pbr"])
+    out_of_region = sum(
+        1 for r in all_recruits
+        if (r.get("state") or "").upper() not in PNW_HOME_STATES
+        and (r.get("state") or "")
+    )
+    logger.info("PBR pass: %d commit(s) only on PBR (new), %d total out-of-region "
+                "(home state not WA/OR/ID/MT/BC).", pbr_only, out_of_region)
 
     total = len(all_recruits)
     rank_rate = (matched_ranks / total * 100) if total else 0.0
@@ -457,9 +595,12 @@ def run(grad_year, state_filter, dry_run):
     logger.info("Grad year %s: %d commits across %d schools; %d ranked "
                 "(%.1f%% rank-match rate)", grad_year, total,
                 sum(1 for v in per_school_counts.values() if v), matched_ranks, rank_rate)
+    logger.info("Per-school commits (total | BBNW rows | PBR-only new):")
     for short in sorted(per_school_counts, key=lambda s: -per_school_counts[s]):
         if per_school_counts[short]:
-            logger.info("  %-20s %d commits", short, per_school_counts[short])
+            logger.info("  %-20s %3d | bbnw %3d | pbr-new %2d", short,
+                        per_school_counts[short], per_school_bbnw.get(short, 0),
+                        per_school_pbr_new.get(short, 0))
 
     if dry_run:
         logger.info("DRY RUN — nothing written.")
@@ -467,10 +608,20 @@ def run(grad_year, state_filter, dry_run):
         sample = sorted(all_recruits, key=lambda r: -r["recruit_score"])[:10]
         logger.info("Top 10 by score (dry run):")
         for r in sample:
-            logger.info("  %.1f  %s %s (%s) → %s  [bbnw#%s pbr#%s]",
+            logger.info("  %.1f  %s %s (%s) → %s  [bbnw#%s pbr#%s src=%s]",
                         r["recruit_score"], r["first_name"], r["last_name"],
                         r["position"], r["committed_raw"],
-                        r["bbnw_state_rank"], r["pbr_state_rank"])
+                        r["bbnw_state_rank"], r["pbr_state_rank"], r["sources"])
+        # show out-of-region PBR pickups — the headline new value
+        oor = [r for r in all_recruits
+               if (r.get("state") or "").upper() not in PNW_HOME_STATES
+               and (r.get("state") or "")]
+        logger.info("Sample out-of-region commits (PBR's new value), %d total:",
+                    len(oor))
+        for r in oor[:10]:
+            logger.info("  %s %s (%s) home=%s → %s  src=%s",
+                        r["first_name"], r["last_name"], r["position"],
+                        r.get("state"), r["committed_raw"], r["sources"])
         return
 
     # 3) Upsert
