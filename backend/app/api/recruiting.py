@@ -1416,18 +1416,28 @@ def _recruit_row(r):
     }
 
 
+# A class needs at least this many ranked-state commits to earn a competitive
+# class_rank — keeps a school that landed one elite player off the top of the
+# board on a 1-man sample. Smaller classes still return (with their commits),
+# just without a rank.
+_MIN_RANKED_FOR_CLASS = 3
+
+
 def _class_summary_rows(cur, grad_year, limit=None):
-    """Per-school class summary, ranked by class_score. Shared by the premium
-    board and the public teaser."""
+    """Per-school class summary. class_score is the AVERAGE recruit_score over
+    commits from states we have rankings for (recruit_score IS NOT NULL) — so
+    landing more players never inflates a class, and commits from no-ranking
+    states (per recruiting_constants.RANKED_STATES) are excluded, not
+    penalized. Ranked by that average. Shared by the premium board + teaser."""
     cur.execute(
         """
         SELECT t.id AS team_id, t.name, t.short_name, t.logo_url,
                d.level AS division,
                COUNT(*) AS commits,
+               COUNT(r.recruit_score) AS scored_commits,
                COUNT(*) FILTER (WHERE r.bbnw_state_rank IS NOT NULL
                                    OR r.pbr_state_rank IS NOT NULL) AS ranked,
-               ROUND(SUM(r.recruit_score))::int AS class_score,
-               ROUND(AVG(r.recruit_score), 1)::float8 AS avg_score,
+               ROUND(AVG(r.recruit_score), 1)::float8 AS class_score,
                MAX(r.recruit_score) AS top_score
         FROM recruits r
         JOIN teams t ON r.committed_team_id = t.id
@@ -1435,9 +1445,10 @@ def _class_summary_rows(cur, grad_year, limit=None):
         JOIN divisions d ON c.division_id = d.id
         WHERE r.grad_year = %s AND t.state IN %s
         GROUP BY t.id, t.name, t.short_name, t.logo_url, d.level
-        ORDER BY class_score DESC, commits DESC
+        ORDER BY (COUNT(r.recruit_score) >= %s) DESC,
+                 class_score DESC NULLS LAST, ranked DESC
         """,
-        (grad_year, _PNW_STATES),
+        (grad_year, _PNW_STATES, _MIN_RANKED_FOR_CLASS),
     )
     rows = [dict(r) for r in cur.fetchall()]
 
@@ -1465,11 +1476,17 @@ def _class_summary_rows(cur, grad_year, limit=None):
                  "rank": t["bbnw_state_rank"] or t["pbr_state_rank"]}
                 if t else None
             )
-            row["avg_score"] = round(row["avg_score"], 1) if row["avg_score"] is not None else None
+            row["class_score"] = round(row["class_score"], 1) if row["class_score"] is not None else None
             row["top_score"] = float(row["top_score"]) if row["top_score"] is not None else None
 
-    for i, row in enumerate(rows, 1):
-        row["class_rank"] = i
+    # Only classes with enough ranked-state commits get a competitive rank.
+    rank = 0
+    for row in rows:
+        if row["scored_commits"] >= _MIN_RANKED_FOR_CLASS and row["class_score"] is not None:
+            rank += 1
+            row["class_rank"] = rank
+        else:
+            row["class_rank"] = None
     return rows[:limit] if limit else rows
 
 
@@ -1526,12 +1543,16 @@ def recruiting_class_detail(
             (team_id, grad_year),
         )
         commits = [_recruit_row(r) for r in cur.fetchall()]
+        # class_score = AVERAGE over commits from ranked states (recruit_score
+        # not null); volume-neutral, no-ranking-state commits excluded.
+        scored = [c["recruit_score"] for c in commits if c["recruit_score"] is not None]
         return {
             "team": dict(team),
             "grad_year": grad_year,
             "commit_count": len(commits),
             "ranked_count": sum(1 for c in commits if c["is_ranked"]),
-            "class_score": round(sum(c["recruit_score"] or 0 for c in commits)),
+            "scored_count": len(scored),
+            "class_score": round(sum(scored) / len(scored), 1) if scored else None,
             "commits": commits,
         }
 
