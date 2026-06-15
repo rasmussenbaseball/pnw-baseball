@@ -923,6 +923,26 @@ function SubHead({ children }) {
   return <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mt-6 mb-2">{children}</h3>
 }
 
+// A striking research finding: a big figure on the left, the explanation on the
+// right, color-coded by flavor (good skill / warning / trade-off / neutral).
+function Finding({ figure, label, tone = 'teal', children }) {
+  const t = {
+    teal: { box: 'border-nw-teal/40 bg-nw-teal/5 dark:bg-nw-teal/10', fig: 'text-nw-teal dark:text-nw-teal-light' },
+    emerald: { box: 'border-emerald-400/50 bg-emerald-50 dark:bg-emerald-900/15', fig: 'text-emerald-600 dark:text-emerald-400' },
+    rose: { box: 'border-rose-400/50 bg-rose-50 dark:bg-rose-900/15', fig: 'text-rose-600 dark:text-rose-400' },
+    amber: { box: 'border-amber-400/50 bg-amber-50 dark:bg-amber-900/15', fig: 'text-amber-600 dark:text-amber-400' },
+  }[tone]
+  return (
+    <div className={`rounded-xl border border-l-4 ${t.box} p-4 flex items-center gap-4`}>
+      <div className="shrink-0 w-20 text-center">
+        <div className={`text-2xl font-black tabular-nums leading-none ${t.fig}`}>{figure}</div>
+        <div className="text-[10px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 mt-1 leading-tight">{label}</div>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{children}</p>
+    </div>
+  )
+}
+
 function PredictivenessSection() {
   return (
     <div>
@@ -959,6 +979,40 @@ function PredictivenessSection() {
         of a season, and BABIP needs more than a full one, which is the first hint that a hitter's
         average and BABIP in any given year are mostly noise.
       </P>
+
+      <SubHead>A few things the data taught us</SubHead>
+      <div className="space-y-3 my-3">
+        <Finding figure=".72" label="Air-pull stickiness" tone="emerald">
+          Pulling the ball in the air is the single most repeatable thing a hitter does in our data,
+          stickier than even strikeout rate. And it pays off: a pulled fly ball clears the fence
+          14.4% of the time, versus just 2.3% for every other fly ball. Real pull-side power is a
+          skill, and it shows up season after season.
+        </Finding>
+        <Finding figure="+9" label="K% jump, JUCO to D1" tone="rose">
+          Talent does not transfer one-to-one between levels. A hitter who moves from JUCO to
+          Division I sees his strikeout rate climb close to nine points and his wOBA fall around 55,
+          the same swing against much better arms. We re-level every transfer so a monster JUCO line
+          is not mistaken for a monster D1 one.
+        </Finding>
+        <Finding figure="−.43" label="Strike% vs Whiff%" tone="amber">
+          There is a built-in trade-off on the mound: the more a pitcher lives in the strike zone,
+          the fewer bats he misses. Strike-throwers pitch to soft contact, while whiff-chasers pile
+          up strikeouts but walk more hitters. Which lever a pitcher pulls tells you a lot about how
+          to read his line.
+        </Finding>
+        <Finding figure=".11" label="Summer bat carryover" tone="rose">
+          A hot summer-ball line can be a mirage. A player's summer strikeout rate carries into the
+          next spring reasonably well (r .46), but his summer batting line barely does at all
+          (r .11). Wood bats and wildly uneven competition make summer numbers noisy, with the
+          underlying skills the only part worth trusting.
+        </Finding>
+        <Finding figure="~50%" label="Single-season noise" tone="teal">
+          Roughly half of what shows up in a single college season is noise, not a knock on the
+          stats, just the reality of small samples. It is why an honest projection is always more
+          conservative than last year's line, and why a player's exciting upside lives in his range
+          of outcomes rather than his most-likely number.
+        </Finding>
+      </div>
 
       <SubHead>Signal versus outcome</SubHead>
       <P>
