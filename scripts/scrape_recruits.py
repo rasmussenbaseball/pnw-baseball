@@ -346,14 +346,36 @@ def parse_pbr_rankings(html, grad_year):
 
 
 # ─────────────────────────── scoring ────────────────────────────
-def compute_score(bbnw_rank, pbr_rank):
-    """Better (lower) of the two ranks → score on a clamped linear curve.
-    #1 ≈ 100, #25 ≈ 71, #65 ≈ 23. Unranked → baseline."""
+# Cross-state weighting. A state rank is only comparable WITHIN its state —
+# the #5 player in Washington is a better prospect than the #5 in Idaho,
+# because WA has a far deeper HS talent pool. So we scale each state's rank
+# curve by a strength factor (strongest PNW state = 1.0). Factors are seeded
+# from BBNW's own ranking depth (WA lists ~60, OR ~30, ID ~25) plus known
+# regional baseball strength, and are a transparent editable dial — tune
+# here if a state looks over/under-rated. Out-of-region factors (CA/TX/...)
+# only matter if we ever attach a cross-state rank to those players; today
+# they're unranked (PBR's full rankings are paywalled), so they stay at the
+# flat baseline regardless.
+STATE_FACTOR = {
+    "WA": 1.00, "OR": 0.90, "ID": 0.78, "MT": 0.62, "BC": 0.70,
+    "CA": 1.10, "TX": 1.08, "FL": 1.05, "AZ": 1.00, "GA": 1.02,
+    "NV": 0.88, "UT": 0.85, "CO": 0.85, "HI": 0.80, "AB": 0.62, "ON": 0.60,
+}
+STATE_DEFAULT_FACTOR = 0.85
+
+
+def compute_score(bbnw_rank, pbr_rank, state=None):
+    """Better (lower) of the two ranks → within-state curve (#1≈100, #25≈71,
+    #65≈23), then scaled by the state strength factor so ranks are
+    cross-state comparable. Unranked → flat baseline (no ranking signal).
+    A ranked player always scores above an unranked one."""
     ranks = [r for r in (bbnw_rank, pbr_rank) if r]
     if not ranks:
         return UNRANKED_BASELINE
     best = min(ranks)
-    return round(max(SCORE_FLOOR, min(100.0, 100.0 - (best - 1) * SCORE_K)), 1)
+    base = max(SCORE_FLOOR, min(100.0, 100.0 - (best - 1) * SCORE_K))
+    factor = STATE_FACTOR.get((state or "").strip().upper(), STATE_DEFAULT_FACTOR)
+    return round(max(UNRANKED_BASELINE + 1.0, base * factor), 1)
 
 
 # ─────────────────────────── main run ───────────────────────────
@@ -486,7 +508,7 @@ def run(grad_year, state_filter, dry_run):
             sources = ["bbnw"]
             if pbr_rank:
                 sources.append("pbr")
-            score = compute_score(bbnw_rank, pbr_rank)
+            score = compute_score(bbnw_rank, pbr_rank, c.get("state"))
             rec = {
                 **c,
                 "committed_team_id": team_id,
