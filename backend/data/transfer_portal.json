@@ -322,8 +322,9 @@
       "committed_to": null
     },
     {
-      "name": "Caden Gould",
-      "from": null,
+      "player_id": 3400,
+      "name": "Caiden Gould",
+      "from": "Linfield",
       "committed_to": "Bushnell"
     },
     {
