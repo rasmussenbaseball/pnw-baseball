@@ -6,14 +6,20 @@ import { divisionBadgeClass } from '../utils/stats'
 // scraped, so adding one here is all it takes to extend the selector.
 const GRAD_YEARS = [2026]
 
+// Combined Class Rating = HS class rating + this much per point of transfer
+// WAR (a program's transfer rating is the sum of its transfers' drop-down-
+// adjusted WAR, floored at 0). Kept low on purpose: the HS rankings are the
+// backbone, so transfers nudge the order a few spots without overturning it.
+const COMBINED_TRANSFER_WEIGHT = 1.2
+
 // The three pages, selected by the buttons at the top.
 const VIEWS = [
   { key: 'hs', label: 'High School',
     blurb: 'High school commits to PNW college programs, graded by their State Rank. Each school\'s Class Rating is the average prospect rating of its ranked commits (0 to 100), weighted by state. Depth and unrated commits do not inflate it.' },
   { key: 'transfers', label: 'Transfers',
-    blurb: 'Incoming transfers (JUCO and four-year portal) committed to each PNW program. Transfer ratings are coming soon, so these are listed without a class rating for now.' },
+    blurb: 'Incoming transfers (JUCO and four-year portal) committed to each PNW program, rated by their season WAR. A program\'s Transfer WAR is the sum of its transfers\' WAR; a D1 player dropping to a lower level counts double.' },
   { key: 'combined', label: 'Combined',
-    blurb: 'The full incoming class for each program: high school newcomers plus transfers, side by side. Class Rating reflects the high school commits only for now.' },
+    blurb: 'The full incoming class for each program: high school newcomers plus transfers. Combined Class Rating is the HS rating plus a weighted transfer-WAR bonus, so strong HS classes stay on top while transfers nudge the order.' },
 ]
 
 // Single chip showing a recruit's State Rank, or a muted "Unranked".
@@ -117,7 +123,8 @@ function ClassCommitsPanel({ teamId, gradYear }) {
 }
 
 // Incoming-transfer list for one school. Data is embedded in the transfers
-// board response, so this renders without a fetch.
+// board response, so this renders without a fetch. Shows each transfer's season
+// WAR (the rating basis) and a "2×" tag when a D1 player dropped down a level.
 function TransferList({ transfers }) {
   if (!transfers || transfers.length === 0) {
     return <div className="text-center py-3 text-xs text-gray-400 dark:text-gray-500 italic">No transfers yet.</div>
@@ -130,7 +137,8 @@ function TransferList({ transfers }) {
             <th className="px-3 py-1.5 text-left font-semibold">Transfer</th>
             <th className="px-3 py-1.5 text-center font-semibold">Pos</th>
             <th className="px-3 py-1.5 text-left font-semibold">From</th>
-            <th className="px-3 py-1.5 text-center font-semibold">Type</th>
+            <th className="px-3 py-1.5 text-left font-semibold">Transfer Rank</th>
+            <th className="px-3 py-1.5 text-center font-semibold">WAR</th>
           </tr>
         </thead>
         <tbody>
@@ -147,11 +155,26 @@ function TransferList({ transfers }) {
                     <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 shrink-0" />
                   )}
                   <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{t.name}</span>
+                  <SourceBadge source={t.source} />
                 </div>
               </td>
               <td className="px-3 py-1.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-400">{t.position || '-'}</td>
               <td className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">{t.previous_school || '-'}</td>
-              <td className="px-3 py-1.5 text-center"><SourceBadge source={t.source} /></td>
+              <td className="px-3 py-1.5">
+                {t.transfer_rank != null && (
+                  <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap">
+                    Transfer #{t.transfer_rank}
+                  </span>
+                )}
+              </td>
+              <td className="px-3 py-1.5 text-center text-xs tabular-nums whitespace-nowrap">
+                <span className="font-bold text-nw-teal dark:text-nw-teal-light">{(t.war ?? 0).toFixed(1)}</span>
+                {t.boosted && (
+                  <span className="ml-1 inline-flex items-center text-[9px] font-bold px-1 py-0.5 rounded bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300" title="D1 player dropping a level: WAR doubled in the rating">
+                    2×
+                  </span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -242,15 +265,18 @@ function HSBoard({ classes, gradYear, expanded, toggle }) {
   )
 }
 
-// ── Transfers board (unrated; JUCO + portal commits per program) ──
+// ── Transfers board (ranked by total transfer WAR; JUCO + portal per program) ──
 function TransfersBoard({ teams, expanded, toggle }) {
+  const topRating = teams.reduce((m, t) => (t.transfer_rating > m ? t.transfer_rating : m), 0)
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <th className="px-3 py-2 text-center font-semibold w-10">#</th>
             <th className="px-3 py-2 text-left font-semibold">Program</th>
-            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Incoming Transfers</th>
+            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Transfers</th>
+            <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Transfer WAR</th>
           </tr>
         </thead>
         <tbody>
@@ -258,18 +284,31 @@ function TransfersBoard({ teams, expanded, toggle }) {
             const isOpen = expanded === t.team_id
             const portal = t.transfers.filter((x) => x.source === 'portal').length
             const juco = t.transfer_count - portal
+            const isTop3 = i < 3
+            const pct = topRating > 0 ? Math.max(4, (t.transfer_rating / topRating) * 100) : 0
             return (
               <Fragment key={t.team_id}>
                 <tr onClick={() => toggle(t.team_id)} className={`border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${rowBg(i, isOpen)}`}>
+                  <td className="px-3 py-2.5 text-center">
+                    <span className={`inline-flex items-center justify-center text-sm font-black tabular-nums ${isTop3 ? 'text-amber-500' : 'text-gray-400 dark:text-gray-500'}`}>{i + 1}</span>
+                  </td>
                   <td className="px-3 py-2.5"><ProgramCell row={t} isOpen={isOpen} /></td>
                   <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums whitespace-nowrap">
-                    <span className="font-semibold text-nw-teal dark:text-nw-teal-light">{t.transfer_count}</span>
+                    <span className="font-semibold">{t.transfer_count}</span>
                     <span className="text-gray-400 dark:text-gray-500"> · {juco} JUCO{portal ? ` · ${portal} portal` : ''}</span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2 min-w-[120px]">
+                      <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light w-10 text-right">{t.transfer_rating.toFixed(1)}</span>
+                      <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                        <div className={`h-full rounded-full ${isTop3 ? 'bg-amber-400' : 'bg-nw-teal'}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
                   </td>
                 </tr>
                 {isOpen && (
                   <tr className="bg-nw-cream/40 dark:bg-gray-900/40">
-                    <td colSpan={2} className="px-3 sm:px-4 py-3"><TransferList transfers={t.transfers} /></td>
+                    <td colSpan={4} className="px-3 sm:px-4 py-3"><TransferList transfers={t.transfers} /></td>
                   </tr>
                 )}
               </Fragment>
@@ -281,15 +320,17 @@ function TransfersBoard({ teams, expanded, toggle }) {
   )
 }
 
-// ── Combined board (HS rating + transfer count; expand shows both) ──
+// ── Combined board (HS rating + transfer WAR bonus; expand shows both) ──
 function CombinedBoard({ rows, gradYear, expanded, toggle }) {
+  const topScore = rows.reduce((m, r) => (r.combined_score > m ? r.combined_score : m), 0)
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <th className="px-3 py-2 text-center font-semibold w-10">#</th>
             <th className="px-3 py-2 text-left font-semibold">Program</th>
-            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">HS Commits</th>
+            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">HS</th>
             <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Transfers</th>
             <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Class Rating</th>
           </tr>
@@ -297,16 +338,33 @@ function CombinedBoard({ rows, gradYear, expanded, toggle }) {
         <tbody>
           {rows.map((row, i) => {
             const isOpen = expanded === row.team_id
-            const hasScore = row.class_score != null
+            const hasScore = row.combined_score > 0
+            const isTop3 = i < 3
+            const pct = topScore > 0 ? Math.max(4, (row.combined_score / topScore) * 100) : 0
             return (
               <Fragment key={row.team_id}>
                 <tr onClick={() => toggle(row.team_id)} className={`border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors ${rowBg(i, isOpen)}`}>
+                  <td className="px-3 py-2.5 text-center">
+                    <span className={`inline-flex items-center justify-center text-sm font-black tabular-nums ${isTop3 ? 'text-amber-500' : 'text-gray-400 dark:text-gray-500'}`}>{i + 1}</span>
+                  </td>
                   <td className="px-3 py-2.5"><ProgramCell row={row} isOpen={isOpen} /></td>
                   <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums">{row.hs_commits || '—'}</td>
-                  <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums">{row.transfer_count || '—'}</td>
+                  <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums whitespace-nowrap">
+                    {row.transfer_count ? (
+                      <>
+                        <span className="font-semibold">{row.transfer_count}</span>
+                        <span className="text-gray-400 dark:text-gray-500"> · {row.transfer_rating.toFixed(1)} WAR</span>
+                      </>
+                    ) : '—'}
+                  </td>
                   <td className="px-3 py-2.5">
                     {hasScore ? (
-                      <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light">{row.class_score.toFixed(1)}</span>
+                      <div className="flex items-center gap-2 min-w-[120px]">
+                        <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light w-10 text-right">{row.combined_score.toFixed(1)}</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                          <div className={`h-full rounded-full ${isTop3 ? 'bg-amber-400' : 'bg-nw-teal'}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
                     ) : (
                       <span className="text-[11px] italic text-gray-400 dark:text-gray-500">Not rated</span>
                     )}
@@ -314,12 +372,12 @@ function CombinedBoard({ rows, gradYear, expanded, toggle }) {
                 </tr>
                 {isOpen && (
                   <tr className="bg-nw-cream/40 dark:bg-gray-900/40">
-                    <td colSpan={4} className="px-3 sm:px-4 py-3 space-y-3">
+                    <td colSpan={5} className="px-3 sm:px-4 py-3 space-y-3">
                       {row.hs_commits > 0 && <ClassCommitsPanel teamId={row.team_id} gradYear={gradYear} />}
                       {row.transfer_count > 0 && (
                         <div>
                           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                            Transfers ({row.transfer_count})
+                            Transfers ({row.transfer_count} · {row.transfer_rating.toFixed(1)} WAR)
                           </div>
                           <TransferList transfers={row.transfers} />
                         </div>
@@ -347,30 +405,32 @@ export default function RecruitingClasses() {
   const classes = hsData?.classes || []
   const transferTeams = trData?.teams || []
 
-  // Combined = union of programs from both sources, keyed by team_id. Sorted so
-  // rated HS classes lead, then teams driven by transfer volume, then by name.
+  // Combined = union of programs from both sources, keyed by team_id. The
+  // Combined Class Rating is the HS class rating plus a weighted transfer-WAR
+  // bonus, so the HS rankings stay the backbone and transfers nudge the order.
   const combinedRows = useMemo(() => {
     const m = new Map()
     for (const c of hsData?.classes || []) {
       m.set(c.team_id, {
         team_id: c.team_id, name: c.name, logo_url: c.logo_url, division: c.division,
-        class_score: c.class_score, hs_commits: c.commits, transfer_count: 0, transfers: [],
+        class_score: c.class_score, hs_commits: c.commits,
+        transfer_count: 0, transfer_rating: 0, transfers: [],
       })
     }
     for (const t of trData?.teams || []) {
       const ex = m.get(t.team_id)
-      if (ex) { ex.transfer_count = t.transfer_count; ex.transfers = t.transfers }
+      if (ex) { ex.transfer_count = t.transfer_count; ex.transfer_rating = t.transfer_rating; ex.transfers = t.transfers }
       else m.set(t.team_id, {
         team_id: t.team_id, name: t.name, logo_url: t.logo_url, division: t.division,
-        class_score: null, hs_commits: 0, transfer_count: t.transfer_count, transfers: t.transfers,
+        class_score: null, hs_commits: 0,
+        transfer_count: t.transfer_count, transfer_rating: t.transfer_rating, transfers: t.transfers,
       })
     }
-    return [...m.values()].sort((a, b) => {
-      const as = a.class_score ?? -1, bs = b.class_score ?? -1
-      if (bs !== as) return bs - as
-      if (b.transfer_count !== a.transfer_count) return b.transfer_count - a.transfer_count
-      return a.name.localeCompare(b.name)
-    })
+    const rows = [...m.values()]
+    for (const r of rows) {
+      r.combined_score = (r.class_score ?? 0) + COMBINED_TRANSFER_WEIGHT * (r.transfer_rating || 0)
+    }
+    return rows.sort((a, b) => b.combined_score - a.combined_score || a.name.localeCompare(b.name))
   }, [hsData, trData])
 
   const switchView = (v) => { setView(v); setExpanded(null) }
@@ -449,10 +509,13 @@ export default function RecruitingClasses() {
             </>
           )}
           {view === 'transfers' && (
-            <p><strong>Transfers</strong> are incoming commitments from our JUCO tracker and four-year transfer-portal tracker, grouped by the PNW program they committed to. Transfer ratings are coming soon.</p>
+            <>
+              <p><strong>Transfer WAR</strong> ranks each program's incoming transfer class by the sum of its transfers' season WAR (offense + pitching). A below-replacement transfer counts as 0, never a negative.</p>
+              <p>A <strong>D1 player dropping</strong> to a D2, D3, or NAIA program has his WAR doubled (a "2×" tag), reflecting his outsized impact at the new level. <strong>Transfer Rank</strong> is each player's spot among all tracked transfers by adjusted WAR.</p>
+            </>
           )}
           {view === 'combined' && (
-            <p><strong>Combined</strong> shows each program's full incoming class: high school newcomers and transfers. Class Rating reflects the high school commits only for now; transfer ratings are coming soon.</p>
+            <p><strong>Combined Class Rating</strong> = HS Class Rating + {COMBINED_TRANSFER_WEIGHT}× the program's Transfer WAR. The HS rankings are the backbone, so a strong transfer class nudges a program up a few spots without overturning the solid HS order.</p>
           )}
           <p className="italic">2026 commitments trickle in through the cycle, so classes will keep filling out.</p>
         </div>

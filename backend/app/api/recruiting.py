@@ -1711,6 +1711,46 @@ def _transfer_commits(cur):
     return out
 
 
+# A D1 player dropping to D2/D3/NAIA has outsized impact at the new level, so we
+# double his WAR in the transfer rating (per Nate). Same season-WAR basis as the
+# JUCO / portal trackers: offensive_war + pitching_war for the current season.
+_TRANSFER_DROP_DOWN_LEVELS = {"D2", "D3", "NAIA"}
+
+
+def _enrich_transfer_war(cur, commits, season):
+    """Attach season WAR to each transfer + the drop-down-adjusted value. Mutates
+    `commits` in place, adding war (raw), war_adjusted (×2 for a D1→lower portal
+    move), and boosted (bool)."""
+    if not commits:
+        return
+    pids = [c["player_id"] for c in commits]
+    cur.execute(
+        """SELECT p.id, d.level AS origin_level,
+                  COALESCE(bs.offensive_war, 0) + COALESCE(ps.pitching_war, 0) AS war
+           FROM players p
+           JOIN teams t ON t.id = p.team_id
+           JOIN conferences c ON t.conference_id = c.id
+           JOIN divisions d ON c.division_id = d.id
+           LEFT JOIN batting_stats bs ON bs.player_id = p.id AND bs.season = %s
+           LEFT JOIN pitching_stats ps ON ps.player_id = p.id AND ps.season = %s
+           WHERE p.id = ANY(%s)""", (season, season, pids))
+    info = {r["id"]: (float(r["war"]), r["origin_level"]) for r in cur.fetchall()}
+    dids = sorted({c["dest_team_id"] for c in commits})
+    cur.execute(
+        """SELECT t.id, d.level FROM teams t
+           JOIN conferences c ON t.conference_id = c.id
+           JOIN divisions d ON c.division_id = d.id
+           WHERE t.id = ANY(%s)""", (dids,))
+    dest_level = {r["id"]: r["level"] for r in cur.fetchall()}
+    for c in commits:
+        war, origin = info.get(c["player_id"], (0.0, None))
+        boosted = (c["source"] == "portal" and origin == "D1"
+                   and dest_level.get(c["dest_team_id"]) in _TRANSFER_DROP_DOWN_LEVELS)
+        c["war"] = round(war, 1)
+        c["war_adjusted"] = round(war * 2 if boosted else war, 1)
+        c["boosted"] = boosted
+
+
 @router.get("/recruiting/transfers")
 @cached_endpoint(ttl_seconds=1800)
 def recruiting_transfers(
@@ -1718,10 +1758,16 @@ def recruiting_transfers(
     _user: str = Depends(require_tier("premium")),
 ):
     """Transfer commits (JUCO + portal) grouped by destination PNW program, for the
-    Recruiting Classes "Transfers" / "Combined" views. No rating yet — listed only."""
+    Recruiting Classes "Transfers" / "Combined" views. Each transfer carries its
+    season WAR (portal D1→lower doubled); a program's transfer rating is the sum of
+    its transfers' WAR floored at 0 (a below-replacement transfer never hurts)."""
     with get_connection() as conn:
         cur = conn.cursor()
         commits = _transfer_commits(cur)
+        _enrich_transfer_war(cur, commits, CURRENT_SEASON)
+        # League-wide transfer rank by drop-down-adjusted WAR (1 = best).
+        for rank, c in enumerate(sorted(commits, key=lambda x: -x["war_adjusted"]), 1):
+            c["transfer_rank"] = rank
         teams = {}
         ids = sorted({c["dest_team_id"] for c in commits})
         if ids:
@@ -1739,13 +1785,18 @@ def recruiting_transfers(
             if t is not None:
                 t["transfers"].append({k: c[k] for k in (
                     "player_id", "name", "position", "year", "previous_school",
-                    "headshot_url", "source")})
+                    "headshot_url", "source", "war", "war_adjusted", "boosted",
+                    "transfer_rank")})
         rows = list(teams.values())
         for t in rows:
-            # Portal (4-year) transfers first, then JUCO, each alphabetical.
-            t["transfers"].sort(key=lambda x: (x["source"] != "portal", x["name"]))
+            # Rating = sum of drop-down-adjusted WAR floored at 0 per player.
+            t["transfer_rating"] = round(
+                sum(max(0.0, x["war_adjusted"]) for x in t["transfers"]), 1)
             t["transfer_count"] = len(t["transfers"])
-        rows.sort(key=lambda t: (-t["transfer_count"], t["name"]))
+            # Best transfers first within a program.
+            t["transfers"].sort(key=lambda x: -x["war_adjusted"])
+        # Rank programs by total transfer WAR (the NWAC/portal class strength).
+        rows.sort(key=lambda t: (-t["transfer_rating"], -t["transfer_count"], t["name"]))
         return {
             "grad_year": grad_year, "teams": rows,
             "totals": {
