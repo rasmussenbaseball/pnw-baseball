@@ -161,10 +161,12 @@ function TransferList({ transfers }) {
               <td className="px-3 py-1.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-400">{t.position || '-'}</td>
               <td className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">{t.previous_school || '-'}</td>
               <td className="px-3 py-1.5">
-                {t.transfer_rank != null && (
+                {t.pool_rank != null ? (
                   <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap">
-                    Transfer #{t.transfer_rank}
+                    {t.source === 'juco' ? 'NWAC ' : ''}{t.player_type === 'pitcher' ? 'Pitcher' : 'Hitter'} #{t.pool_rank}
                   </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 italic">Unranked</span>
                 )}
               </td>
               <td className="px-3 py-1.5 text-center text-xs tabular-nums whitespace-nowrap">
@@ -511,7 +513,7 @@ export default function RecruitingClasses() {
           {view === 'transfers' && (
             <>
               <p><strong>Transfer WAR</strong> ranks each program's incoming transfer class by the sum of its transfers' season WAR (offense + pitching). A below-replacement transfer counts as 0, never a negative.</p>
-              <p>A <strong>D1 player dropping</strong> to a D2, D3, or NAIA program has his WAR doubled (a "2×" tag), reflecting his outsized impact at the new level. <strong>Transfer Rank</strong> is each player's spot among all tracked transfers by adjusted WAR.</p>
+              <p><strong>Transfer Rank</strong> is each player's standing among <em>every</em> player in his pool, not just the transfers — a JUCO commit is ranked against all NWAC players, with hitting and pitching ranked separately (so there's a #1 hitter and a #1 pitcher). A <strong>D1 player dropping</strong> to a D2, D3, or NAIA program has his WAR doubled (a "2×" tag) in his new program's Transfer WAR, reflecting his outsized impact at the new level.</p>
             </>
           )}
           {view === 'combined' && (

@@ -1717,16 +1717,41 @@ def _transfer_commits(cur):
 _TRANSFER_DROP_DOWN_LEVELS = {"D2", "D3", "NAIA"}
 
 
+def _war_pool_ranks(cur, pids, season, war_table, war_col, juco):
+    """player_id -> rank within a full division pool by a single WAR column.
+    juco=True ranks among ALL NWAC (JUCO) players; juco=False among all the
+    four-year players we track. Returned only for the players in `pids`, but the
+    rank reflects the WHOLE pool — so the #1 hitter overall is rank 1 even if he
+    isn't a transfer (Karsten Hansen anchors the NWAC hitter scale)."""
+    op = "=" if juco else "<>"
+    cur.execute(
+        f"""SELECT player_id, rnk FROM (
+                SELECT s.player_id,
+                       RANK() OVER (ORDER BY s.{war_col} DESC) AS rnk
+                FROM {war_table} s
+                JOIN players p ON p.id = s.player_id
+                JOIN teams t ON t.id = p.team_id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE d.level {op} 'JUCO' AND s.season = %s
+                  AND s.{war_col} IS NOT NULL
+            ) z WHERE player_id = ANY(%s)""", (season, pids))
+    return {r["player_id"]: r["rnk"] for r in cur.fetchall()}
+
+
 def _enrich_transfer_war(cur, commits, season):
-    """Attach season WAR to each transfer + the drop-down-adjusted value. Mutates
-    `commits` in place, adding war (raw), war_adjusted (×2 for a D1→lower portal
-    move), and boosted (bool)."""
+    """Attach season WAR + league rank to each transfer. Mutates `commits`,
+    adding war (offense+pitching, matching the trackers), war_adjusted (×2 for a
+    D1→lower portal move), boosted, player_type ('hitter'/'pitcher' by dominant
+    WAR), and pool_rank — the player's standing among ALL players in his pool
+    (NWAC for JUCO commits, four-year for portal), ranked by his side's WAR.
+    Hitting and pitching are ranked separately (never combined)."""
     if not commits:
         return
     pids = [c["player_id"] for c in commits]
     cur.execute(
         """SELECT p.id, d.level AS origin_level,
-                  COALESCE(bs.offensive_war, 0) + COALESCE(ps.pitching_war, 0) AS war
+                  bs.offensive_war AS owar, ps.pitching_war AS pwar
            FROM players p
            JOIN teams t ON t.id = p.team_id
            JOIN conferences c ON t.conference_id = c.id
@@ -1734,7 +1759,7 @@ def _enrich_transfer_war(cur, commits, season):
            LEFT JOIN batting_stats bs ON bs.player_id = p.id AND bs.season = %s
            LEFT JOIN pitching_stats ps ON ps.player_id = p.id AND ps.season = %s
            WHERE p.id = ANY(%s)""", (season, season, pids))
-    info = {r["id"]: (float(r["war"]), r["origin_level"]) for r in cur.fetchall()}
+    info = {r["id"]: (r["owar"], r["pwar"], r["origin_level"]) for r in cur.fetchall()}
     dids = sorted({c["dest_team_id"] for c in commits})
     cur.execute(
         """SELECT t.id, d.level FROM teams t
@@ -1742,32 +1767,50 @@ def _enrich_transfer_war(cur, commits, season):
            JOIN divisions d ON c.division_id = d.id
            WHERE t.id = ANY(%s)""", (dids,))
     dest_level = {r["id"]: r["level"] for r in cur.fetchall()}
+
+    # Full-pool WAR leaderboards (split hitting / pitching) for both divisions.
+    juco_hit = _war_pool_ranks(cur, pids, season, "batting_stats", "offensive_war", True)
+    juco_pit = _war_pool_ranks(cur, pids, season, "pitching_stats", "pitching_war", True)
+    four_hit = _war_pool_ranks(cur, pids, season, "batting_stats", "offensive_war", False)
+    four_pit = _war_pool_ranks(cur, pids, season, "pitching_stats", "pitching_war", False)
+
+    NEG = float("-inf")
     for c in commits:
-        war, origin = info.get(c["player_id"], (0.0, None))
+        owar, pwar, origin = info.get(c["player_id"], (None, None, None))
+        o = float(owar) if owar is not None else None
+        p = float(pwar) if pwar is not None else None
+        war = (o or 0.0) + (p or 0.0)
+        is_pitcher = (p if p is not None else NEG) > (o if o is not None else NEG)
         boosted = (c["source"] == "portal" and origin == "D1"
                    and dest_level.get(c["dest_team_id"]) in _TRANSFER_DROP_DOWN_LEVELS)
         c["war"] = round(war, 1)
         c["war_adjusted"] = round(war * 2 if boosted else war, 1)
         c["boosted"] = boosted
+        c["player_type"] = "pitcher" if is_pitcher else "hitter"
+        if c["source"] == "juco":
+            pool = (juco_pit if is_pitcher else juco_hit)
+        else:
+            pool = (four_pit if is_pitcher else four_hit)
+        c["pool_rank"] = pool.get(c["player_id"])
 
 
 @router.get("/recruiting/transfers")
-@cached_endpoint(ttl_seconds=1800)
+@cached_endpoint(ttl_seconds=300)
 def recruiting_transfers(
     grad_year: int = Query(2026, description="Cycle year (transfers are the current incoming class)"),
     _user: str = Depends(require_tier("premium")),
 ):
     """Transfer commits (JUCO + portal) grouped by destination PNW program, for the
     Recruiting Classes "Transfers" / "Combined" views. Each transfer carries its
-    season WAR (portal D1→lower doubled); a program's transfer rating is the sum of
-    its transfers' WAR floored at 0 (a below-replacement transfer never hurts)."""
+    season WAR (portal D1→lower doubled) and its league rank (among ALL NWAC
+    players for JUCO commits, hitting and pitching ranked separately); a program's
+    transfer rating is the sum of its transfers' WAR floored at 0 (a below-
+    replacement transfer never hurts). Read live from the DB on every cache miss,
+    so a newly-flagged commitment appears within the short cache window."""
     with get_connection() as conn:
         cur = conn.cursor()
         commits = _transfer_commits(cur)
         _enrich_transfer_war(cur, commits, CURRENT_SEASON)
-        # League-wide transfer rank by drop-down-adjusted WAR (1 = best).
-        for rank, c in enumerate(sorted(commits, key=lambda x: -x["war_adjusted"]), 1):
-            c["transfer_rank"] = rank
         teams = {}
         ids = sorted({c["dest_team_id"] for c in commits})
         if ids:
@@ -1786,7 +1829,7 @@ def recruiting_transfers(
                 t["transfers"].append({k: c[k] for k in (
                     "player_id", "name", "position", "year", "previous_school",
                     "headshot_url", "source", "war", "war_adjusted", "boosted",
-                    "transfer_rank")})
+                    "player_type", "pool_rank")})
         rows = list(teams.values())
         for t in rows:
             # Rating = sum of drop-down-adjusted WAR floored at 0 per player.
