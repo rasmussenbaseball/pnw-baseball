@@ -157,6 +157,14 @@ _TEAM_ALIASES = {
     "lewis-clark st.": "LCSC",
     "lc state": "LCSC",
     "northwest nazarene": "NNU",
+    # Abbreviated / renamed JUCO + small-college forms PBR uses in HS recruit
+    # commitments that don't fuzzy-match school_name (added 2026-06-14 while
+    # ingesting the PBR rankings PDF).
+    "everett cc": "Everett",                # school_name "Everett Community College"
+    "edmonds community college": "Edmonds", # renamed to "Edmonds College"
+    "edmonds cc": "Edmonds",
+    "treasure valley cc": "Treasure Valley",
+    "linfield college": "Linfield",         # renamed to "Linfield University"
     # UBC (British Columbia) is written a few ways by opponent sites.
     "british columbia": "UBC",
     "british colum.": "UBC",

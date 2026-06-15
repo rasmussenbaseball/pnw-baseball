@@ -57,6 +57,12 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 DATABASE_URL = os.environ.get("DATABASE_URL")
+
+# Home states for which we have a ranking source (BBNW + the PBR PDF). A
+# recruit from a state NOT in this set has no ranking data and is excluded
+# from class scoring (not penalized). Shared with the API.
+sys.path.insert(0, str(ROOT / "backend"))
+from app.recruiting_constants import RANKED_STATES  # noqa: E402
 SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY")
 SCHOOL_MAP_PATH = ROOT / "backend" / "data" / "recruit_school_map.json"
 
@@ -367,14 +373,23 @@ STATE_DEFAULT_FACTOR = 0.85
 def compute_score(bbnw_rank, pbr_rank, state=None):
     """Better (lower) of the two ranks → within-state curve (#1≈100, #25≈71,
     #65≈23), then scaled by the state strength factor so ranks are
-    cross-state comparable. Unranked → flat baseline (no ranking signal).
-    A ranked player always scores above an unranked one."""
+    cross-state comparable.
+
+    Unranked players split by whether we have ANY ranking source for their
+    home state (RANKED_STATES):
+      - state HAS rankings, player just didn't make the list → flat baseline
+        (a real "depth piece" signal; counts in the class average).
+      - state has NO ranking source (HI, MT, CO, AZ, ...) → return None. We
+        have no data, so they're EXCLUDED from class math rather than
+        penalized (per Nate). The site shows them as commits with no rank.
+    A ranked player always scores above a baseline one."""
+    st = (state or "").strip().upper()
     ranks = [r for r in (bbnw_rank, pbr_rank) if r]
     if not ranks:
-        return UNRANKED_BASELINE
+        return UNRANKED_BASELINE if st in RANKED_STATES else None
     best = min(ranks)
     base = max(SCORE_FLOOR, min(100.0, 100.0 - (best - 1) * SCORE_K))
-    factor = STATE_FACTOR.get((state or "").strip().upper(), STATE_DEFAULT_FACTOR)
+    factor = STATE_FACTOR.get(st, STATE_DEFAULT_FACTOR)
     return round(max(UNRANKED_BASELINE + 1.0, base * factor), 1)
 
 
