@@ -6,11 +6,11 @@ import { divisionBadgeClass } from '../utils/stats'
 // scraped, so adding one here is all it takes to extend the selector.
 const GRAD_YEARS = [2026]
 
-// Combined Class Rating = HS class rating + this much per point of transfer
-// WAR (a program's transfer rating is the sum of its transfers' drop-down-
-// adjusted WAR, floored at 0). Kept low on purpose: the HS rankings are the
-// backbone, so transfers nudge the order a few spots without overturning it.
-const COMBINED_TRANSFER_WEIGHT = 1.2
+// Combined Class Rating = HS class rating + this much per point of a program's
+// transfer rating (its AVERAGE WAR per transfer, drop-down-adjusted, floored at
+// 0). The HS rankings stay the backbone — at this weight an elite transfer
+// class adds a handful of points without overturning the top tier.
+const COMBINED_TRANSFER_WEIGHT = 3.0
 
 // The three pages, selected by the buttons at the top.
 const VIEWS = [
@@ -84,14 +84,7 @@ function ClassCommitsPanel({ teamId, gradYear }) {
                 className={`border-b border-gray-100 dark:border-gray-700 last:border-0 ${i % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-900/20'}`}
               >
                 <td className="px-3 py-1.5">
-                  <div className="flex items-center gap-2">
-                    {c.headshot_url ? (
-                      <img src={c.headshot_url} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" loading="lazy" onError={(e) => { e.target.style.display = 'none' }} />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 shrink-0" />
-                    )}
-                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
-                  </div>
+                  <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
                 </td>
                 <td className="px-3 py-1.5 text-center text-xs font-semibold text-gray-600 dark:text-gray-400">{c.position || '-'}</td>
                 <td className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400">
@@ -149,11 +142,6 @@ function TransferList({ transfers }) {
             >
               <td className="px-3 py-1.5">
                 <div className="flex items-center gap-2">
-                  {t.headshot_url ? (
-                    <img src={t.headshot_url} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" loading="lazy" onError={(e) => { e.target.style.display = 'none' }} />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 shrink-0" />
-                  )}
                   <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{t.name}</span>
                   <SourceBadge source={t.source} />
                 </div>
@@ -278,7 +266,7 @@ function TransfersBoard({ teams, expanded, toggle }) {
             <th className="px-3 py-2 text-center font-semibold w-10">#</th>
             <th className="px-3 py-2 text-left font-semibold">Program</th>
             <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Transfers</th>
-            <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Transfer WAR</th>
+            <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Avg WAR</th>
           </tr>
         </thead>
         <tbody>
@@ -301,7 +289,7 @@ function TransfersBoard({ teams, expanded, toggle }) {
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2 min-w-[120px]">
-                      <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light w-10 text-right">{t.transfer_rating.toFixed(1)}</span>
+                      <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light w-12 text-right" title={`${t.transfer_total} total WAR over ${t.transfer_count} transfer${t.transfer_count === 1 ? '' : 's'}`}>{t.transfer_rating.toFixed(2)}</span>
                       <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
                         <div className={`h-full rounded-full ${isTop3 ? 'bg-amber-400' : 'bg-nw-teal'}`} style={{ width: `${pct}%` }} />
                       </div>
@@ -355,7 +343,7 @@ function CombinedBoard({ rows, gradYear, expanded, toggle }) {
                     {row.transfer_count ? (
                       <>
                         <span className="font-semibold">{row.transfer_count}</span>
-                        <span className="text-gray-400 dark:text-gray-500"> · {row.transfer_rating.toFixed(1)} WAR</span>
+                        <span className="text-gray-400 dark:text-gray-500"> · {row.transfer_rating.toFixed(2)} avg WAR</span>
                       </>
                     ) : '—'}
                   </td>
@@ -379,7 +367,7 @@ function CombinedBoard({ rows, gradYear, expanded, toggle }) {
                       {row.transfer_count > 0 && (
                         <div>
                           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                            Transfers ({row.transfer_count} · {row.transfer_rating.toFixed(1)} WAR)
+                            Transfers ({row.transfer_count} · {row.transfer_rating.toFixed(2)} avg WAR)
                           </div>
                           <TransferList transfers={row.transfers} />
                         </div>
@@ -512,12 +500,16 @@ export default function RecruitingClasses() {
           )}
           {view === 'transfers' && (
             <>
-              <p><strong>Transfer WAR</strong> ranks each program's incoming transfer class by the sum of its transfers' season WAR (offense + pitching). A below-replacement transfer counts as 0, never a negative.</p>
-              <p><strong>Transfer Rank</strong> is each player's standing among <em>every</em> player in his pool, not just the transfers — a JUCO commit is ranked against all NWAC players, with hitting and pitching ranked separately (so there's a #1 hitter and a #1 pitcher). A <strong>D1 player dropping</strong> to a D2, D3, or NAIA program has his WAR doubled (a "2×" tag) in his new program's Transfer WAR, reflecting his outsized impact at the new level.</p>
+              <p><strong>Avg WAR</strong> rates each program's transfer class by the <em>average</em> season WAR (offense + pitching) of its transfers, not the total, so depth never inflates a class: 7 transfers worth 7 WAR rate at 1.00, the same as one transfer worth 1 WAR. A below-replacement transfer counts as 0, never a negative.</p>
+              <p><strong>Transfer Rank</strong> is each player's standing among <em>every</em> player in his pool, not just the transfers — a JUCO commit is ranked against all NWAC players, with hitting and pitching ranked separately (so there's a #1 hitter and a #1 pitcher). A <strong>D1 player dropping</strong> to a D2, D3, or NAIA program has his WAR doubled (a "2×" tag), reflecting his outsized impact at the new level.</p>
+              <p className="italic">Only transfers from PNW programs are included (NWAC JUCO players and the four-year portal players we track), because WAR is only available for players in our database.</p>
             </>
           )}
           {view === 'combined' && (
-            <p><strong>Combined Class Rating</strong> = HS Class Rating + {COMBINED_TRANSFER_WEIGHT}× the program's Transfer WAR. The HS rankings are the backbone, so a strong transfer class nudges a program up a few spots without overturning the solid HS order.</p>
+            <>
+              <p><strong>Combined Class Rating</strong> = HS Class Rating + {COMBINED_TRANSFER_WEIGHT}× the program's average transfer WAR. The HS rankings are the backbone, so a strong transfer class nudges a program up a few spots without overturning the solid HS order.</p>
+              <p className="italic">Only transfers from PNW programs are included (NWAC JUCO + tracked four-year portal players), since WAR is only available for players in our database.</p>
+            </>
           )}
           <p className="italic">2026 commitments trickle in through the cycle, so classes will keep filling out.</p>
         </div>

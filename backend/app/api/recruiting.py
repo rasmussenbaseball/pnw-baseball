@@ -1832,13 +1832,18 @@ def recruiting_transfers(
                     "player_type", "pool_rank")})
         rows = list(teams.values())
         for t in rows:
-            # Rating = sum of drop-down-adjusted WAR floored at 0 per player.
-            t["transfer_rating"] = round(
-                sum(max(0.0, x["war_adjusted"]) for x in t["transfers"]), 1)
             t["transfer_count"] = len(t["transfers"])
+            # Total floored, drop-down-adjusted WAR brought in...
+            t["transfer_total"] = round(
+                sum(max(0.0, x["war_adjusted"]) for x in t["transfers"]), 1)
+            # ...but the RATING is the AVERAGE WAR per transfer (volume-neutral,
+            # like the HS class rating): 7 transfers worth 7 WAR rate at 1.0, not
+            # 7. So a couple of high-impact transfers beat a pile of depth pieces.
+            t["transfer_rating"] = round(
+                t["transfer_total"] / t["transfer_count"], 2) if t["transfer_count"] else 0.0
             # Best transfers first within a program.
             t["transfers"].sort(key=lambda x: -x["war_adjusted"])
-        # Rank programs by total transfer WAR (the NWAC/portal class strength).
+        # Rank programs by average transfer WAR (the NWAC/portal class quality).
         rows.sort(key=lambda t: (-t["transfer_rating"], -t["transfer_count"], t["name"]))
         return {
             "grad_year": grad_year, "teams": rows,
