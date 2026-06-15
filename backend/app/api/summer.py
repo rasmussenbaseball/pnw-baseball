@@ -1120,6 +1120,40 @@ def _trackman_payload(cur, summer_player_id, season):
     }
 
 
+@router.get("/trackman/pitches")
+def trackman_all_pitches(_user: str = Depends(require_tier("dev"))):
+    """Private (dev-tier only) flat dump of EVERY trackman_pitches row joined
+    with player + team, for the TrackMan Data table hub. Small dataset, so the
+    frontend filters/sorts client-side. Also returns distinct teams + pitch
+    types for the filter dropdowns."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT tp.summer_player_id, sp.first_name, sp.last_name, sp.throws,
+                   st.name AS team, tp.season, tp.pitch_type, tp.pitch_count,
+                   tp.usage_pct, tp.velo, tp.spin, tp.ivb, tp.hb, tp.tilt,
+                   tp.extension, tp.rel_height, tp.rel_side,
+                   tp.in_zone_pct, tp.whiff_pct, tp.chase_pct
+            FROM trackman_pitches tp
+            JOIN summer_players sp ON sp.id = tp.summer_player_id
+            JOIN summer_teams st   ON st.id = tp.team_id
+            ORDER BY sp.last_name, sp.first_name, tp.pitch_count DESC NULLS LAST
+            """
+        )
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            d["player"] = f"{d.pop('first_name')} {d.pop('last_name')}"
+            rows.append(d)
+        return {
+            "pitches": rows,
+            "teams": sorted({r["team"] for r in rows}),
+            "pitch_types": sorted({r["pitch_type"] for r in rows}),
+            "players": sorted({r["player"] for r in rows}),
+        }
+
+
 @router.get("/summer/players/{player_id}/trackman")
 def summer_player_trackman(
     player_id: int,

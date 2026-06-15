@@ -158,6 +158,9 @@ const NAV = [
       { to: '/broadcasts', label: 'Email Broadcasts',
         desc: 'Compose and send to opted-in subscribers',
         requireEmail: DEVELOPER_EMAILS },
+      { to: '/trackman-data', label: 'TrackMan Data',
+        desc: 'Filterable pitch-shape stat tables (velo, movement, whiff/chase) across all ingested WCL teams',
+        requireEmail: DEVELOPER_EMAILS },
       // Visual divider — items below are kept around for reference but
       // are no longer the active tools used regularly.
       { heading: 'Archived' },
