@@ -21,12 +21,13 @@ from datetime import date, timedelta
 from itertools import groupby
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ..stats.cpi import compute_cpi
+from .auth import require_tier
 from .leverage import compute_li
 
 
@@ -1079,6 +1080,87 @@ def _summer_percentiles(cur, league_id, season, bat_row, pit_row):
 
 
 # ── /summer/players/{id} ───────────────────────────────────────────
+
+def _trackman_payload(cur, summer_player_id, season):
+    """Shared TrackMan payload for a resolved summer_player_id (or None)."""
+    if not summer_player_id:
+        return {"has_data": False, "season": None, "seasons": [], "pitches": []}
+    cur.execute(
+        "SELECT DISTINCT season FROM trackman_pitches "
+        "WHERE summer_player_id = %s ORDER BY season DESC",
+        (summer_player_id,),
+    )
+    seasons = [r["season"] for r in cur.fetchall()]
+    if not seasons:
+        return {"has_data": False, "season": None, "seasons": [], "pitches": []}
+    eff = season if (season in seasons) else seasons[0]
+    cur.execute(
+        """
+        SELECT pitch_type, pitch_count, usage_pct, velo, spin, ivb, hb, tilt,
+               extension, rel_height, rel_side, in_zone_pct, whiff_pct, chase_pct,
+               source_file
+        FROM trackman_pitches
+        WHERE summer_player_id = %s AND season = %s
+        ORDER BY pitch_count DESC NULLS LAST
+        """,
+        (summer_player_id, eff),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    src = rows[0].get("source_file") if rows else None
+    for r in rows:
+        r.pop("source_file", None)
+    return {
+        "has_data": bool(rows),
+        "season": eff,
+        "seasons": seasons,
+        "summer_player_id": summer_player_id,
+        "total_pitches": sum((r["pitch_count"] or 0) for r in rows),
+        "source": src,
+        "pitches": rows,
+    }
+
+
+@router.get("/summer/players/{player_id}/trackman")
+def summer_player_trackman(
+    player_id: int,
+    season: Optional[int] = Query(None),
+    _user: str = Depends(require_tier("dev")),
+):
+    """Private (dev-tier only) TrackMan per-pitch-type averages for a SUMMER
+    player. Ordered by pitch usage so the arsenal reads top-down. The movement
+    plot is just (hb, ivb) per pitch type; the frontend draws it natively."""
+    with get_connection() as conn:
+        return _trackman_payload(conn.cursor(), player_id, season)
+
+
+@router.get("/players/{player_id}/trackman")
+def spring_player_trackman(
+    player_id: int,
+    season: Optional[int] = Query(None),
+    _user: str = Depends(require_tier("dev")),
+):
+    """Same TrackMan payload, addressed by the COLLEGE (spring) player id —
+    resolves the linked summer player via summer_player_links. Linked players
+    redirect from the summer page to the unified /player page, so the unified
+    page fetches TrackMan here. Dev-tier only."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # A spring player can link to >1 summer stint; pick the one that
+        # actually has TrackMan rows (most recent season first).
+        cur.execute(
+            """
+            SELECT l.summer_player_id
+            FROM summer_player_links l
+            JOIN trackman_pitches tp ON tp.summer_player_id = l.summer_player_id
+            WHERE l.spring_player_id = %s
+            ORDER BY tp.season DESC
+            LIMIT 1
+            """,
+            (player_id,),
+        )
+        row = cur.fetchone()
+        return _trackman_payload(cur, row["summer_player_id"] if row else None, season)
+
 
 @router.get("/summer/players/{player_id}")
 @cached_endpoint(ttl_seconds=180)

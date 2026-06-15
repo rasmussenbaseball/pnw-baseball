@@ -8,6 +8,7 @@ import { usePlayerGameLogs, usePlayerGooseEggs } from '../hooks/useApi'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 import WpaByGameChart from '../components/LazyWpaByGameChart'  // defers recharts off the player page
 import PlayerCompsCard from '../components/PlayerCompsCard'
+import TrackManCard from '../components/playerProfile/TrackManCard'
 import {
   usePlayerProfileTheme, formatPct,
   RadarChart, PercentilePanel, RollingLineChart, PerGameBarChart,
@@ -370,6 +371,8 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
       <SectionCard title="Pitch Level Stats" right={String(SEASON)}>
         <div className="-mx-2"><PitcherPitchLevelStatsCard playerId={playerId} season={SEASON} /></div>
       </SectionCard>
+
+      <TrackManCard endpoint={`/players/${playerId}/trackman`} />
 
       <SectionCard title="WPA on the Mound" right={String(SEASON)}>
         <WpaByGameChart playerId={playerId} position="pitcher" />

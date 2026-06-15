@@ -27,6 +27,7 @@ import {
 } from '../components/playerProfile/shared'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
+import TrackManCard from '../components/playerProfile/TrackManCard'
 
 // ── Percentile + radar configs (summer subset of the spring sets) ──
 const BAT_PCT_METRICS = [
@@ -695,6 +696,8 @@ function SummerPitcherProfile({ data, springData, season }) {
       </SectionCard>
 
       <SummerPitchLevelCard playerId={player.id} season={season} leagueAbbr={player.league_abbr} kind="pitcher" />
+
+      <TrackManCard endpoint={`/summer/players/${player.id}/trackman`} />
 
       <SectionCard title="Game Log" right={`${season} SEASON`}>
         <GameLogTable cols={PIT_GAMELOG} games={games} minWidth="700px" emptyMsg="No games tracked this season yet." />
