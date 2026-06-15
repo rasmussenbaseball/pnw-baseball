@@ -29,8 +29,8 @@ export default function TopRecruitingClassesCard({ gradYear = 2026, limit = 5, c
           rank={cls.class_rank ?? i + 1}
           logo={cls.logo_url}
           name={cls.short_name || cls.name}
-          sub={`${cls.commits} commit${cls.commits === 1 ? '' : 's'} · ${cls.ranked} ranked`}
-          value={Math.round(cls.class_score)}
+          sub={`${cls.scored_commits ?? cls.ranked ?? 0} rated · ${cls.commits} total`}
+          value={cls.class_score != null ? cls.class_score.toFixed(1) : '—'}
           to="/recruiting-classes"
         />
       ))}

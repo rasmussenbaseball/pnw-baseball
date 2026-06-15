@@ -45,7 +45,9 @@ function ExpandedClass({ teamId, gradYear, colSpan }) {
         {data && (
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-              {data.team?.name} commits ({data.commit_count})
+              {data.team?.name} commits ({data.commit_count}
+              {data.scored_count != null ? ` · ${data.scored_count} rated` : ''}
+              {data.class_score != null ? ` · ${data.class_score.toFixed(1)} avg rating` : ''})
             </div>
             <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
               <table className="w-full text-sm">
@@ -56,7 +58,7 @@ function ExpandedClass({ teamId, gradYear, colSpan }) {
                     <th className="px-3 py-1.5 text-left font-semibold">High School</th>
                     <th className="px-3 py-1.5 text-center font-semibold">Ht / Wt</th>
                     <th className="px-3 py-1.5 text-left font-semibold">Ranking</th>
-                    <th className="px-3 py-1.5 text-center font-semibold">Score</th>
+                    <th className="px-3 py-1.5 text-center font-semibold">Rating</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -98,8 +100,14 @@ function ExpandedClass({ teamId, gradYear, colSpan }) {
                       <td className="px-3 py-1.5">
                         <RankChips bbnw={c.bbnw_state_rank} pbr={c.pbr_state_rank} />
                       </td>
-                      <td className="px-3 py-1.5 text-center text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">
-                        {c.recruit_score != null ? Math.round(c.recruit_score) : '-'}
+                      <td className="px-3 py-1.5 text-center text-xs tabular-nums">
+                        {c.recruit_score != null ? (
+                          <span className="font-bold text-nw-teal dark:text-nw-teal-light">
+                            {Math.round(c.recruit_score)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] italic text-gray-400 dark:text-gray-500">No ranking</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -119,9 +127,14 @@ export default function RecruitingClasses() {
   const { data, loading, error } = useRecruitingClasses(gradYear)
 
   const classes = data?.classes || []
-  // #1 score anchors the relative bar widths.
-  const topScore = classes.length ? classes[0].class_score : 0
-  const COL_SPAN = 6
+  // The best class_score anchors the relative bar widths. Classes can now be
+  // unranked (class_rank null) with a null class_score, so derive the max
+  // from the numeric scores rather than assuming classes[0].
+  const topScore = classes.reduce(
+    (max, c) => (c.class_score != null && c.class_score > max ? c.class_score : max),
+    0,
+  )
+  const COL_SPAN = 5
 
   const toggle = (teamId) => setExpanded((cur) => (cur === teamId ? null : teamId))
 
@@ -130,8 +143,9 @@ export default function RecruitingClasses() {
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">{gradYear} Recruiting Classes</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-3xl">
         High school commits to PNW college programs, graded by their PBR and BBNW state rankings.
-        Each school's class score sums the value of every commit, so programs landing more (and more
-        highly ranked) players rise to the top. Expand a row to see the full incoming class.
+        Each school's Class Rating is the average prospect rating of its ranked commits (0 to 100),
+        weighted by state. Depth and unrated commits do not inflate it. Expand a row to see the full
+        incoming class.
       </p>
 
       {/* Grad-year selector */}
@@ -170,16 +184,22 @@ export default function RecruitingClasses() {
                 <th className="px-3 py-2 text-center font-semibold w-10">#</th>
                 <th className="px-3 py-2 text-left font-semibold">Program</th>
                 <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Commits</th>
-                <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Ranked</th>
                 <th className="px-3 py-2 text-left font-semibold">Top Commit</th>
-                <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Class Score</th>
+                <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Class Rating</th>
               </tr>
             </thead>
             <tbody>
               {classes.map((cls, i) => {
                 const isOpen = expanded === cls.team_id
-                const isTop3 = (cls.class_rank ?? i + 1) <= 3
-                const pct = topScore > 0 ? Math.max(4, (cls.class_score / topScore) * 100) : 0
+                // class_rank is now nullable: only classes with >= 3 scored
+                // commits get a number. Unranked classes sort last and render
+                // without a rank / medallion.
+                const hasRank = cls.class_rank != null
+                const hasScore = cls.class_score != null
+                const isTop3 = hasRank && cls.class_rank <= 3
+                const pct = hasScore && topScore > 0
+                  ? Math.max(4, (cls.class_score / topScore) * 100)
+                  : 0
                 return (
                   <Fragment key={cls.team_id}>
                     <tr
@@ -193,7 +213,7 @@ export default function RecruitingClasses() {
                         <span className={`inline-flex items-center justify-center text-sm font-black tabular-nums ${
                           isTop3 ? 'text-amber-500' : 'text-gray-400 dark:text-gray-500'
                         }`}>
-                          {cls.class_rank ?? i + 1}
+                          {hasRank ? cls.class_rank : '—'}
                         </span>
                       </td>
 
@@ -221,14 +241,10 @@ export default function RecruitingClasses() {
                         </div>
                       </td>
 
-                      {/* Commits */}
-                      <td className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 dark:text-gray-300 tabular-nums">
-                        {cls.commits}
-                      </td>
-
-                      {/* Ranked */}
-                      <td className="px-3 py-2.5 text-center text-xs text-gray-600 dark:text-gray-400 tabular-nums">
-                        {cls.ranked}
+                      {/* Commits: rated (scored) of total */}
+                      <td className="px-3 py-2.5 text-center text-xs text-gray-700 dark:text-gray-300 tabular-nums whitespace-nowrap">
+                        <span className="font-semibold">{cls.scored_commits ?? cls.ranked ?? 0} rated</span>
+                        <span className="text-gray-400 dark:text-gray-500"> · {cls.commits} total</span>
                       </td>
 
                       {/* Top commit */}
@@ -252,19 +268,25 @@ export default function RecruitingClasses() {
                         )}
                       </td>
 
-                      {/* Class score + bar */}
+                      {/* Class rating (0-100 avg) + bar */}
                       <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2 min-w-[120px]">
-                          <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light w-10 text-right">
-                            {Math.round(cls.class_score)}
-                          </span>
-                          <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${isTop3 ? 'bg-amber-400' : 'bg-nw-teal'}`}
-                              style={{ width: `${pct}%` }}
-                            />
+                        {hasScore ? (
+                          <div className="flex items-center gap-2 min-w-[120px]">
+                            <span className="text-sm font-black tabular-nums text-nw-teal dark:text-nw-teal-light w-10 text-right">
+                              {cls.class_score.toFixed(1)}
+                            </span>
+                            <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${isTop3 ? 'bg-amber-400' : 'bg-nw-teal'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <span className="text-[11px] italic text-gray-400 dark:text-gray-500">
+                            Not enough ranked commits to rate
+                          </span>
+                        )}
                       </td>
                     </tr>
                     {isOpen && (
@@ -285,8 +307,8 @@ export default function RecruitingClasses() {
       {/* Legend */}
       {!loading && !error && classes.length > 0 && (
         <div className="mt-4 px-1 text-[10px] text-gray-400 dark:text-gray-500 space-y-1 max-w-3xl">
-          <p><strong>Class Score</strong> sums the value of every commit, graded from the better of their PBR or BBNW state ranking. Unranked commits add a small baseline.</p>
-          <p><strong>Ranked</strong> counts commits with a PBR or BBNW state ranking. The bar shows each class score relative to the No. 1 class.</p>
+          <p><strong>Class Rating</strong> is the average prospect rating (0 to 100) of each class's ranked commits, weighted by state. Depth and unrated commits do not inflate it. The bar shows each rating relative to the top class.</p>
+          <p><strong>Commits</strong> shows rated (from states we rank) of total. Classes with fewer than 3 rated commits are not ranked and sort last.</p>
           <p className="italic">2026 commitments trickle in through the cycle, so classes will keep filling out.</p>
         </div>
       )}

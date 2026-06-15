@@ -294,11 +294,25 @@ function IncomingClass({ teamId, gradYear = 2026 }) {
   const commits = data?.commits || []
   if (!commits.length) return null
 
+  // class_score is now a 0-100 average of the ranked commits (or null if the
+  // class has no scored commits). Show it as the headline rating when present.
+  const classScore = data?.class_score
+  const scoredCount = data?.scored_count
+
   return (
     <div className="mb-8">
       <div className="mb-2 flex items-center gap-2">
         <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">Incoming Class ({gradYear})</h2>
-        <Link to="/recruiting-classes" className="text-[11px] font-semibold text-nw-teal hover:underline whitespace-nowrap">
+        {classScore != null && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-nw-teal dark:text-nw-teal-light">
+            <span className="text-sm font-black tabular-nums">{classScore.toFixed(1)}</span>
+            <span className="text-gray-400 dark:text-gray-500 font-medium">avg rating</span>
+            {scoredCount != null && (
+              <span className="text-gray-400 dark:text-gray-500 font-medium">· {scoredCount} rated</span>
+            )}
+          </span>
+        )}
+        <Link to="/recruiting-classes" className="ml-auto text-[11px] font-semibold text-nw-teal hover:underline whitespace-nowrap">
           All classes &rarr;
         </Link>
       </div>
@@ -316,11 +330,13 @@ function IncomingClass({ teamId, gradYear = 2026 }) {
                 <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
                   {[c.high_school, c.state].filter(Boolean).join(', ')}
                 </span>
-                {rank != null && (
+                {rank != null ? (
                   <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap shrink-0">
                     {rankLabel} #{rank}
                   </span>
-                )}
+                ) : c.recruit_score == null ? (
+                  <span className="text-[10px] italic text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">No ranking</span>
+                ) : null}
               </div>
             )
           })}
