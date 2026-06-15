@@ -1573,9 +1573,12 @@ def team_recruits(
             (team_id, grad_year),
         )
         commits = [_recruit_row(r) for r in cur.fetchall()]
+        scored = [c["recruit_score"] for c in commits if c["recruit_score"] is not None]
         return {
             "team_id": team_id,
             "grad_year": grad_year,
             "commit_count": len(commits),
+            "scored_count": len(scored),
+            "class_score": round(sum(scored) / len(scored), 1) if scored else None,
             "commits": commits,
         }
