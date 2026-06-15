@@ -862,6 +862,162 @@ function EnvStat({ v, l }) {
 
 
 // ============================================================
+// STAT PREDICTIVENESS (stickiness + stabilization)
+// Numbers are real, measured on the NWBB database (seasons 2018-2026,
+// 1,555 batting / 1,299 pitching back-to-back season pairs, min 50 PA/BF):
+// year-over-year reliability r and stabilization ballast, straight out of
+// backend/data/projection_constants.json (the constants our projection
+// system actually runs on). Ordered stickiest -> noisiest.
+// ============================================================
+const BAT_RELIABILITY = [
+  { stat: 'K%', r: 0.61, ballast: 91 },
+  { stat: 'HR rate', r: 0.55, ballast: 117 },
+  { stat: 'ISO', r: 0.55, ballast: 118 },
+  { stat: 'wOBA', r: 0.45, ballast: 173 },
+  { stat: 'OBP', r: 0.43, ballast: 191 },
+  { stat: 'BB%', r: 0.42, ballast: 199 },
+  { stat: 'AVG', r: 0.37, ballast: 246 },
+  { stat: 'BABIP', r: 0.23, ballast: 469 },
+]
+const PIT_RELIABILITY = [
+  { stat: 'K%', r: 0.55, ballast: 131 },
+  { stat: 'BB%', r: 0.49, ballast: 170 },
+  { stat: 'WHIP', r: 0.37, ballast: 283 },
+  { stat: 'ERA', r: 0.30, ballast: 392 },
+  { stat: 'BABIP', r: 0.18, ballast: 762 },
+  { stat: 'HR rate', r: 0.14, ballast: 1023 },
+]
+
+// One ranked reliability bar: stat name, fill = r (as a percent), the r value,
+// and the stabilization sample. Green = skill, amber = mixed, red = mostly luck.
+function StabilityBar({ stat, r, ballast, unit }) {
+  const fill = r >= 0.5 ? 'bg-emerald-500' : r >= 0.35 ? 'bg-amber-500' : 'bg-rose-500'
+  const txt = r >= 0.5 ? 'text-emerald-600 dark:text-emerald-400'
+    : r >= 0.35 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
+  const pct = Math.round(r * 100)
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <span className="w-14 text-xs font-bold text-gray-700 dark:text-gray-200 shrink-0">{stat}</span>
+      <div className="flex-1 h-2.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+        <div className={`h-full rounded-full ${fill}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`w-8 text-right text-xs font-bold tabular-nums ${txt}`}>.{String(pct).padStart(2, '0')}</span>
+      <span className="w-16 text-right text-[10px] text-gray-400 dark:text-gray-500 tabular-nums hidden sm:inline">~{ballast} {unit}</span>
+    </div>
+  )
+}
+
+function ReliabilityCard({ title, rows, unit }) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+      <div className="flex items-baseline justify-between mb-2">
+        <h4 className="text-base font-bold text-gray-800 dark:text-gray-100">{title}</h4>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">r · stabilizes</span>
+      </div>
+      {rows.map((row) => <StabilityBar key={row.stat} {...row} unit={unit} />)}
+    </div>
+  )
+}
+
+function SubHead({ children }) {
+  return <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mt-6 mb-2">{children}</h3>
+}
+
+function PredictivenessSection() {
+  return (
+    <div>
+      <P>
+        A great season and a great player are not always the same thing. Some of what shows up in a
+        stat line is real, repeatable skill, and some of it is luck that will not carry into next
+        year. When we built our projection system, we measured exactly how much of each stat is
+        signal and how much is noise, using every qualified pair of back-to-back seasons in our
+        database: 1,555 hitters and 1,299 pitchers from 2018 to 2026. Here is what we found, and how
+        it shapes the way we read a box score.
+      </P>
+
+      <SubHead>Stickiness: which stats carry over</SubHead>
+      <P>
+        If a stat measures a true skill, a player who is good at it one year tends to be good at it
+        the next. We capture that with a year-over-year correlation (r): a value near 1.00 means the
+        stat is almost pure skill, and a value near 0 means it is almost pure luck. The bars below
+        run from stickiest to noisiest. The figure on the right is the sample (plate appearances for
+        hitters, batters faced for pitchers) at which each stat becomes roughly half skill, half
+        noise, its stabilization point.
+      </P>
+      <div className="grid md:grid-cols-2 gap-3 my-3">
+        <ReliabilityCard title="Batting" rows={BAT_RELIABILITY} unit="PA" />
+        <ReliabilityCard title="Pitching" rows={PIT_RELIABILITY} unit="BF" />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-gray-500 dark:text-gray-400 mb-1">
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Skill (r ≥ .50)</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> Mixed (.35 to .50)</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" /> Mostly luck (under .35)</span>
+      </div>
+      <P>
+        A college season is only about 200 to 250 plate appearances, so strikeout rate, walk rate,
+        and power (ISO and home run rate) stabilize inside a single year. Batting average needs most
+        of a season, and BABIP needs more than a full one, which is the first hint that a hitter's
+        average and BABIP in any given year are mostly noise.
+      </P>
+
+      <SubHead>Signal versus outcome</SubHead>
+      <P>
+        The single most useful idea here is to separate what a player <em>does</em> from what
+        <em> happened</em> to him. Skills like strikeout rate, walk rate, contact rate, and
+        ground-ball rate are things the player largely controls, and they carry forward. Outcomes
+        like batting average, BABIP, and ERA sit downstream of those skills plus a heavy dose of luck
+        (defense behind him, sequencing, a few bloop hits or scorched lineouts). Our projections lean
+        on the skills and heavily discount the outcomes. That is why a 100-PA hitter keeps almost all
+        of his strikeout rate but has his BABIP pulled nearly all the way back to league average.
+      </P>
+
+      <div className="grid md:grid-cols-2 gap-3 my-3">
+        <Card title="Why we are skeptical of ERA" accent="rose">
+          <P>
+            ERA is one of the least predictive pitching stats we track (year-to-year reliability
+            around .30). The two run estimators we tested, FIP and xFIP, both predict next year's runs
+            better than ERA does. The gap between a pitcher's ERA and his FIP, the part where he
+            "beats" or "loses to" his peripherals, is only about 16% repeatable. So when a pitcher
+            posts a strong FIP but a mediocre ERA, we read the ERA as bad luck and project him to
+            improve toward his peripherals.
+          </P>
+        </Card>
+        <Card title="BABIP is mostly luck" accent="rose">
+          <P>
+            Batting average on balls in play carries forward at about .23 for hitters and .18 for
+            pitchers, the lowest marks of anything we measured, and it takes 450-plus plate
+            appearances to stabilize. A .360 BABIP season almost always regresses. We treat it as
+            roughly three-quarters luck and pull it most of the way back to league average, which in
+            turn drags a luck-inflated batting average back down with it.
+          </P>
+        </Card>
+      </div>
+
+      <SubHead>How to read a stat line</SubHead>
+      <Card title="The short version" accent="teal">
+        <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1.5 list-disc pl-5">
+          <li>In a small sample, trust <strong>strikeout and walk rates</strong> first, then <strong>power</strong> (ISO and home run rate). Be skeptical of <strong>average, BABIP, and ERA</strong> until the sample is large.</li>
+          <li>A .380 hitter riding a .400 BABIP with ordinary contact and power is due to come back to earth. A hitter with elite strikeout and walk rates and real power is the safer bet, even when the surface numbers look alike.</li>
+          <li>A reliever with a shiny ERA but a walk problem is living dangerously. A starter with a great FIP and an unlucky ERA is a buy.</li>
+          <li>This is not a hunch. It is exactly how our projection model weights each input, and it is why two players with the same wOBA can get very different forecasts.</li>
+        </ul>
+      </Card>
+
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 italic mt-3 leading-relaxed">
+        Methodology: reliability (r) is the year-over-year correlation of each rate across qualified
+        back-to-back seasons (minimum 50 plate appearances or batters faced) in the NWBB database,
+        2018 to 2026 (1,555 hitter pairs, 1,299 pitcher pairs). The stabilization figure is the
+        regression weight derived from that correlation, the sample at which the stat is about half
+        skill and half noise. These numbers shift by division (a stat is generally stickier in D1
+        than in JUCO), and our projection system uses the division-specific values rather than the
+        pooled ones shown here.
+      </p>
+    </div>
+  )
+}
+
+
+// ============================================================
 // GLOSSARY: TRADITIONAL BATTING
 // ============================================================
 function BattingSection() {
@@ -1224,6 +1380,7 @@ const PAGE_SECTIONS = [
   { id: 'behind', label: 'Behind the Curtain' },
   { id: 'coverage', label: 'Coverage' },
   { id: 'environments', label: 'Run Environments' },
+  { id: 'predictiveness', label: 'Stat Predictiveness' },
   { id: 'glossary', label: 'Stat Glossary' },
 ]
 
@@ -1284,6 +1441,12 @@ export default function About() {
 
         <SectionHeading id="environments">Run Environments</SectionHeading>
         <EnvironmentSection />
+
+        <SectionHeading id="predictiveness">Stat Predictiveness</SectionHeading>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          Which stats are skill and which are luck, measured on our own data. The research behind our projection system.
+        </p>
+        <PredictivenessSection />
 
         <SectionHeading id="glossary">Stat Glossary</SectionHeading>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
