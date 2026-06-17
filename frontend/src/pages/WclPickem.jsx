@@ -194,14 +194,10 @@ function PicksView({ user, series, weekOpen, N, draft, myPicks, usedConf, setPic
               <span>{decided ? (s.is_push ? 'Split' : '✓ Final') : s.status === 'in_progress' ? '● In progress' : (d.confidence ? `${d.confidence} pts` : 'Upcoming')}</span>
             </div>
             <div className="px-3 py-2.5">
-              {/* matchup + series record */}
-              <div className="flex items-center gap-2 mb-1.5">
-                <SeriesTeam s={s} side="away" win={win} />
-                <div className="flex flex-col items-center px-1">
-                  <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{s.away_wins}–{s.home_wins}</span>
-                  <span className="text-[10px] text-gray-400">{decided ? 'final' : 'series'}</span>
-                </div>
-                <SeriesTeam s={s} side="home" win={win} align="right" />
+              {/* matchup — two stacked team rows w/ record, CPI rank, stats */}
+              <div className="mb-2">
+                <TeamRow s={s} side="away" />
+                <TeamRow s={s} side="home" />
               </div>
 
               {/* per-game scores */}
@@ -277,16 +273,39 @@ function PicksView({ user, series, weekOpen, N, draft, myPicks, usedConf, setPic
   )
 }
 
-function SeriesTeam({ s, side, win, align }) {
+// One team's row inside a series card: logo, name, HOME/AWAY tag, record + CPI
+// rank + a couple power stats, and (once the series starts) games won.
+function TeamRow({ s, side }) {
   const id = side === 'away' ? s.away_team_id : s.home_team_id
   const logo = side === 'away' ? s.away_logo : s.home_logo
   const nm = side === 'away' ? s.away_name : s.home_name
-  const isWin = win && win === id
+  const meta = side === 'away' ? s.away_meta : s.home_meta
+  const wins = side === 'away' ? s.away_wins : s.home_wins
+  const isHome = side === 'home'
+  const isWin = s.winner_team_id && s.winner_team_id === id
   return (
-    <div className={`flex items-center gap-1.5 flex-1 ${align === 'right' ? 'justify-end text-right' : ''}`}>
-      {align === 'right' && <span className={`text-sm font-semibold ${isWin ? 'text-nw-teal' : 'text-gray-900 dark:text-gray-100'}`}>{nm}</span>}
-      {logo && <img src={logo} alt="" className="w-5 h-5 object-contain" />}
-      {align !== 'right' && <span className={`text-sm font-semibold ${isWin ? 'text-nw-teal' : 'text-gray-900 dark:text-gray-100'}`}>{nm}</span>}
+    <div className={`flex items-center gap-2 py-1 ${side === 'away' ? 'border-b border-gray-100 dark:border-gray-800' : ''}`}>
+      {logo && <img src={logo} alt="" className="w-6 h-6 object-contain shrink-0" />}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className={`text-sm font-semibold truncate ${isWin ? 'text-nw-teal' : 'text-gray-900 dark:text-gray-100'}`}>{nm}</span>
+          {isHome
+            ? <span className="text-[9px] font-bold bg-nw-teal/15 text-nw-teal px-1.5 py-0.5 rounded shrink-0">HOME</span>
+            : <span className="text-[9px] font-semibold text-gray-400 px-1 shrink-0">AWAY</span>}
+        </div>
+        {meta && (
+          <div className="flex flex-wrap gap-x-2 text-[11px] leading-tight text-gray-500 dark:text-gray-400">
+            {meta.cpi_rank != null && <span className="font-semibold text-gray-600 dark:text-gray-300">#{meta.cpi_rank} CPI</span>}
+            {meta.wins != null && <span>{meta.wins}-{meta.losses}</span>}
+            {meta.off_index != null && <span>OFF {meta.off_index}</span>}
+            {meta.pit_index != null && <span>PIT {meta.pit_index}</span>}
+            {meta.run_diff_pg != null && <span>{meta.run_diff_pg >= 0 ? '+' : ''}{meta.run_diff_pg} R/G</span>}
+          </div>
+        )}
+      </div>
+      {s.status !== 'upcoming' && (
+        <span className={`text-lg font-bold shrink-0 ${isWin ? 'text-nw-teal' : 'text-gray-400'}`}>{wins}</span>
+      )}
     </div>
   )
 }

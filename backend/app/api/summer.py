@@ -473,6 +473,12 @@ def summer_cpi(league: str = Query(DEFAULT_LEAGUE), season: int = Query(CURRENT_
     """Composite Power Index: a predictive, SoS-adjusted power rating built from
     underlying performance (team wRC+ / FIP) blended with regressed results.
     Engine in app.stats.cpi (reused for spring later)."""
+    return compute_summer_cpi(league, season)
+
+
+def compute_summer_cpi(league: str, season: int):
+    """CPI rows for a league/season (reusable: the /summer/cpi endpoint and the
+    WCL Pick 'Em series enrichment both call this)."""
     from collections import defaultdict
     with get_connection() as conn:
         cur = conn.cursor()

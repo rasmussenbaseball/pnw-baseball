@@ -75,15 +75,21 @@ _ARIA_RE = re.compile(
 )
 
 
-def _classify_status(status_text, class_list):
-    """Map the schedule card to one of our status enum strings."""
+def _classify_status(status_text, class_list, played=False):
+    """Map the schedule card to one of our status enum strings.
+
+    `played` = the card carried a data-boxscore attr (the game has a real box
+    score). Future games only expose a box-score URL on their anchor href and
+    label the link "Live stats" (a watch-live link, NOT in-progress), so we key
+    'final' off `played` rather than the link text.
+    """
     s = (status_text or "").lower()
-    if "live stats" in s or "in progress" in s:
-        return "in_progress"
-    if "box score" in s or "recap" in s or "has-recap" in class_list:
-        return "final"
     if "ppd" in s or "postponed" in s:
         return "postponed"
+    if played or "box score" in s or "recap" in s or "has-recap" in class_list:
+        return "final"
+    if "in progress" in s:
+        return "in_progress"
     return "scheduled"
 
 
@@ -117,16 +123,21 @@ def parse_schedule(html, season):
 
     for card in soup.select("div.card.event-row"):
         classes = card.get("class") or []
-        box_url = card.get("data-boxscore") or None
+        # Played games carry a data-boxscore attr. Future games don't — their
+        # eventual box URL lives only on the "Baseball event" anchor's href.
+        data_box = card.get("data-boxscore") or None
+        box_url = data_box
 
         # Several anchors inside the card carry aria-label (team
         # schedule, ical, etc.). We only want the one describing the
         # game itself — its label starts with "Baseball event:".
         aria_label = None
+        event_href = None
         for a in card.find_all("a", attrs={"aria-label": True}):
             lbl = a.get("aria-label", "").strip()
             if lbl.startswith("Baseball event:"):
                 aria_label = lbl
+                event_href = a.get("href") or None
                 break
 
         away_name = None
@@ -140,6 +151,11 @@ def parse_schedule(html, season):
                 home_name = m.group("home").strip()
                 time_str = m.group("time").strip()
                 status_text = m.group("status").strip()
+
+        # Future games have no data-boxscore attr — fall back to the eventual
+        # box URL on the event anchor so they still get a date + code.
+        if not box_url and event_href and "/boxscores/" in event_href:
+            box_url = event_href
 
         # Date comes from box-score URL when present; otherwise we
         # rely on the schedule page rendering the year correctly in
@@ -179,7 +195,7 @@ def parse_schedule(html, season):
             "game_time": time_str,
             "away_team_name": away_name,
             "home_team_name": home_name,
-            "status": _classify_status(status_text, classes),
+            "status": _classify_status(status_text, classes, played=bool(data_box)),
             "game_type": _classify_game_type(classes),
             "source_url": canonical_box_url,
             "boxscore_code": box_code,

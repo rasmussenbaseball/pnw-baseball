@@ -28,6 +28,7 @@ from pydantic import BaseModel
 
 from ..models.database import get_connection
 from .auth import get_current_user, get_optional_user
+from .summer import compute_summer_cpi
 
 router = APIRouter(prefix="/pickem", tags=["pickem"])
 
@@ -204,7 +205,29 @@ def _series_locked(s, today: date) -> bool:
     return s["start"] <= today
 
 
-def _series_payload(s, today: date):
+def _team_meta(season):
+    """Per-team record + CPI rank + a couple power stats, keyed by team_id.
+    Reuses the Composite Power Index engine (cached). Best-effort: returns {} if
+    CPI can't be built (e.g. preseason with no finals yet)."""
+    try:
+        cpi = compute_summer_cpi(LEAGUE, season)
+    except Exception:
+        return {}
+    out = {}
+    for r in (cpi.get("teams") or []):
+        out[r["team_id"]] = {
+            "cpi_rank": r.get("rank"),
+            "wins": r.get("actual_w"),
+            "losses": r.get("actual_l"),
+            "off_index": r.get("off_index"),
+            "pit_index": r.get("pit_index"),
+            "run_diff_pg": r.get("run_diff_pg"),
+        }
+    return out
+
+
+def _series_payload(s, today: date, tmeta=None):
+    tmeta = tmeta or {}
     return {
         "id": s["id"],
         "label": _fmt_label(s["start"], s["end"]),
@@ -221,6 +244,9 @@ def _series_payload(s, today: date):
         "status": s["status"],
         "games": s["games"],
         "locked": _series_locked(s, today),
+        # home_team_id already says who hosts; the frontend badges it.
+        "away_meta": tmeta.get(s["away_team_id"]),
+        "home_meta": tmeta.get(s["home_team_id"]),
     }
 
 
@@ -283,7 +309,8 @@ def pickem_series(season: int = Query(DEFAULT_SEASON), week: Optional[str] = Que
     weeks = _compute_weeks(series)
     wk = week or _current_week_key(weeks, today)
     ws = _week_series(series, wk)
-    return {"season": season, "week": wk, "series": [_series_payload(s, today) for s in ws]}
+    tmeta = _team_meta(season)
+    return {"season": season, "week": wk, "series": [_series_payload(s, today, tmeta) for s in ws]}
 
 
 # ── My picks ────────────────────────────────────────────────────────
@@ -465,6 +492,7 @@ def pickem_entries(
             "result": result,
         }
 
-    series_payload = [_series_payload(s, today) for s in wk_series]
+    tmeta = _team_meta(season)
+    series_payload = [_series_payload(s, today, tmeta) for s in wk_series]
     out = sorted(entries.values(), key=lambda e: -e["points"])
     return {"season": season, "week": wk, "series": series_payload, "entries": out}
