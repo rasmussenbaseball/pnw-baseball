@@ -89,6 +89,14 @@ function Game({ data }) {
     const sl = roster.find((s) => s.type === 'hitter' && s.pos === pos)
     return sl ? !!sl.player : true
   }
+  // Which open lineup slot a hitter would fill: a still-open eligible position
+  // (primary first), else DH (any hitter can DH), else null = can't place.
+  const openSlotFor = (h) => {
+    for (const pos of (h.elig && h.elig.length ? h.elig : [h.p])) {
+      if (!slotFilled(pos)) return pos
+    }
+    return !slotFilled('DH') ? 'DH' : null
+  }
   const pitcherSlotsLeft = roster.filter((s) => s.type === 'pitcher' && !s.player).length
   const hitterCount = roster.filter((s) => s.type === 'hitter' && s.player).length
   const pitcherCount = roster.filter((s) => s.type === 'pitcher' && s.player).length
@@ -97,11 +105,10 @@ function Game({ data }) {
   // How many legal picks a team offers given the current roster — used to make
   // every settled spin guaranteed-playable (no dead ends).
   const legalCount = (team) => {
-    const dhOpen = !slotFilled('DH')
     let n = 0
     for (const h of hByTeam[team] || []) {
       if (usedPids.has(h.pid)) continue
-      if (!slotFilled(h.p) || dhOpen) n++
+      if (openSlotFor(h)) n++
     }
     if (pitcherSlotsLeft > 0) {
       for (const p of pByTeam[team] || []) if (!usedPids.has(p.pid)) n++
@@ -181,10 +188,10 @@ function Game({ data }) {
 
   const draftHitter = (h) => {
     if (usedPids.has(h.pid)) return
+    const slot = openSlotFor(h)
+    if (!slot) return
     const next = roster.map((s) => ({ ...s }))
-    // Prefer the player's natural position; fall back to DH (any hitter can DH).
-    let target = next.find((s) => s.type === 'hitter' && s.pos === h.p && !s.player)
-    if (!target) target = next.find((s) => s.type === 'hitter' && s.pos === 'DH' && !s.player)
+    const target = next.find((s) => s.type === 'hitter' && s.pos === slot && !s.player)
     if (!target) return
     target.player = h
     setRoster(next)
@@ -193,7 +200,12 @@ function Game({ data }) {
   const draftPitcher = (p) => {
     if (usedPids.has(p.pid)) return
     const next = roster.map((s) => ({ ...s }))
-    const target = next.find((s) => s.type === 'pitcher' && !s.player)
+    // Relievers fill the RP slot; starters fill an SP slot. Fall back to the
+    // other kind of slot if the preferred one is full.
+    const openSP = () => next.find((s) => s.type === 'pitcher' && s.label !== 'RP' && !s.player)
+    const openRP = () => next.find((s) => s.type === 'pitcher' && s.label === 'RP' && !s.player)
+    const anyOpen = () => next.find((s) => s.type === 'pitcher' && !s.player)
+    const target = p.rp ? (openRP() || anyOpen()) : (openSP() || anyOpen())
     if (!target) return
     target.player = p
     setRoster(next)
@@ -210,7 +222,7 @@ function Game({ data }) {
   const curHitters = useMemo(() => {
     if (!spin) return []
     let list = (hByTeam[spin.team] || []).filter((h) => h.l === spin.lvl)
-    if (posF !== 'all') list = list.filter((h) => h.p === posF)
+    if (posF !== 'all') list = list.filter((h) => (h.elig || [h.p]).includes(posF))
     const cmp = {
       off: (a, b) => b.off - a.off, avg: (a, b) => b.avg - a.avg,
       obp: (a, b) => b.obp - a.obp, slg: (a, b) => b.slg - a.slg,
@@ -242,11 +254,11 @@ function Game({ data }) {
       <style>{SCOPED_CSS}</style>
 
       <div className="mb-4">
-        <h1 className="text-3xl sm:text-4xl font-black text-nw-teal dark:text-gray-100">PNW Draft</h1>
+        <h1 className="text-3xl sm:text-4xl font-black text-nw-teal dark:text-gray-100">56-0</h1>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Spin a team, draft a player, build the best roster in the Pacific Northwest. 14 picks (9 hitters, position-locked, plus 5 pitchers), one shot at a perfect 56-0.
+          The PNW Draft. Spin a team, draft a player, build the best roster in the Pacific Northwest. 14 picks (9 hitters plus 5 pitchers), one shot at a perfect 56-0 season.
         </p>
-        <InternCredit names="Oliver Duthie" className="mt-2" />
+        <InternCredit names="Nate Petz" className="mt-2" />
       </div>
 
       <div id="pnwdraft">
@@ -267,7 +279,7 @@ function Game({ data }) {
                 hNeed={9 - hitterCount} pNeed={5 - pitcherCount}
                 sortH={sortH} sortP={sortP} setSortH={setSortH} setSortP={setSortP}
                 posF={posF} setPosF={setPosF}
-                usedPids={usedPids} slotFilled={slotFilled} dhOpen={!slotFilled('DH')}
+                usedPids={usedPids} openSlotFor={openSlotFor}
                 pitcherSlotsLeft={pitcherSlotsLeft}
                 onDraftH={draftHitter} onDraftP={draftPitcher}
               />
@@ -405,7 +417,7 @@ function Sorter({ label, val, opts, onChange }) {
 }
 
 function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, setSortH, setSortP,
-  posF, setPosF, usedPids, slotFilled, dhOpen, pitcherSlotsLeft, onDraftH, onDraftP }) {
+  posF, setPosF, usedPids, openSlotFor, pitcherSlotsLeft, onDraftH, onDraftP }) {
   return (
     <div className="picker-card">
       <div className="phdr">
@@ -435,22 +447,22 @@ function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, se
               <div className="ecol">No hitters here at {spin.team}</div>
             ) : hitters.map((p) => {
               const taken = usedPids.has(p.pid)
-              const posFull = slotFilled(p.p)
-              const placeable = !posFull || dhOpen
-              const dis = taken || !placeable
-              const willDH = !taken && posFull && dhOpen
+              const slot = taken ? null : openSlotFor(p)
+              const dis = taken || !slot
+              const offPos = !!slot && slot !== p.p   // filling a secondary spot or DH
+              const elig = p.elig || [p.p]
               return (
                 <div key={p.pid} className={'prow' + (dis ? ' dis' : '')} onClick={() => !dis && onDraftH(p)}>
                   <div className="ptop">
                     <div className="pnm">{p.n}</div>
                     <div className="pri">
-                      <span className={'pbg' + (posFull && !taken ? ' full' : '')}>
-                        {willDH ? 'DH' : p.p}{posFull && !taken && !willDH ? ' X' : ''}
+                      <span className={'pbg' + (offPos ? ' full' : '')}>
+                        {dis ? p.p : slot}{offPos ? ' →' : ''}
                       </span>
                       <span className={'pwr' + (p.war >= 0 ? '' : ' neg')}>{(p.war >= 0 ? '+' : '') + p.war.toFixed(1)}</span>
                     </div>
                   </div>
-                  <div className="psb">{p.t} ({p.l}) · {p.g}G</div>
+                  <div className="psb">{p.t} ({p.l}) · {p.g}G{elig.length > 1 ? ' · ' + elig.join('/') : ''}</div>
                   <div className="pst">
                     <span className="ps hl"><strong>{p.avg.toFixed(3)}</strong></span>
                     <span className="ps"><strong>{p.obp.toFixed(3)}</strong> OBP</span>
@@ -478,7 +490,7 @@ function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, se
                   <div className="ptop">
                     <div className="pnm">{p.n}</div>
                     <div className="pri">
-                      <span className="pbg">{p.sv > 0 ? 'RP' : 'SP'}</span>
+                      <span className="pbg">{p.rp ? 'RP' : 'SP'}</span>
                       <span className={'pwr' + (p.war >= 0 ? '' : ' neg')}>{(p.war >= 0 ? '+' : '') + p.war.toFixed(1)}</span>
                     </div>
                   </div>
@@ -512,7 +524,7 @@ function Result({ result: r, roster, logos, meta, onReset }) {
   const shareText = useMemo(() => {
     const lineup = roster.filter((s) => s.player)
       .map((s) => `${s.label}: ${s.player.n} (${s.player.t})`).join('\n')
-    return `PNW Draft — I went ${r.wins}-${r.losses}! ${r.wins === 56 ? '🏆' : r.wins >= 44 ? '🔥' : ''}\n\n${lineup}\n\nBuild yours at nwbaseballstats.com/draft`
+    return `56-0 (PNW Draft): I went ${r.wins}-${r.losses}! ${r.wins === 56 ? '🏆' : r.wins >= 44 ? '🔥' : ''}\n\n${lineup}\n\nBuild yours at nwbaseballstats.com/draft`
   }, [roster, r])
 
   const copy = async () => {

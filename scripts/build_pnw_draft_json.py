@@ -46,6 +46,7 @@ OUT_PATH = os.path.join(os.path.dirname(__file__), '..', 'backend', 'data', 'pnw
 
 MIN_PA = 40
 MIN_IP = 20.0
+ELIG_MIN_GAMES = 5   # games at a position to qualify there (for multi-position)
 
 # Division-strength multipliers — absolute quality of an AVERAGE player at each
 # level, D1 = 1.00 baseline. This is what makes cross-level rosters fair: a
@@ -102,15 +103,24 @@ def assign_positions(cur, season, team_ids):
         pg[r['player_id']][np] = pg[r['player_id']].get(np, 0) + (r['games'] or 0)
 
     primary = {}
+    eligible = {}  # pid -> [positions], primary first, where they played >= ELIG_MIN_GAMES
     for pid, counts in pg.items():
         # Best specific lineup position by games.
         specific = {p: g for p, g in counts.items() if p in HPOS}
         if specific:
-            primary[pid] = max(specific, key=specific.get)
+            prim = max(specific, key=specific.get)
+            primary[pid] = prim
+            # Multi-position: any specific position with enough games qualifies.
+            elig = [p for p, g in specific.items() if g >= ELIG_MIN_GAMES]
+            if prim not in elig:
+                elig.append(prim)
+            # Order primary first, then the rest in lineup order.
+            eligible[pid] = [prim] + [p for p in HPOS if p in elig and p != prim]
         elif counts.get('OF'):
             primary[pid] = 'LF'   # generic-OF-only → corner default
+            eligible[pid] = ['LF']
         # else: leave unassigned (only DH/PH/PR/IF generic) → filled by fallback
-    return primary
+    return primary, eligible
 
 
 def main():
@@ -129,7 +139,7 @@ def main():
         teams = {r['id']: {'short': r['short_name'], 'level': r['level']} for r in cur.fetchall()}
         team_ids = list(teams.keys())
 
-        primary_pos = assign_positions(cur, season, team_ids)
+        primary_pos, eligible_pos = assign_positions(cur, season, team_ids)
 
         # Hitters (qualified)
         cur.execute("""
@@ -151,14 +161,17 @@ def main():
             if not team or team['level'] not in LEVEL_STR:
                 continue
             pos = primary_pos.get(r['player_id'])
+            elig = eligible_pos.get(r['player_id'])
             if not pos:
                 pos = norm_pos(r['listed']) if norm_pos(r['listed']) in HPOS else 'DH'
                 if pos == 'OF':
                     pos = 'LF'
+            if not elig:
+                elig = [pos]
             off = float(r['wrc_plus']) * LEVEL_STR[team['level']]
             hitters.append({
                 'pid': r['player_id'], 'n': f"{r['first_name'] or ''} {r['last_name'] or ''}".strip(),
-                't': team['short'], 'p': pos, 'l': team['level'],
+                't': team['short'], 'p': pos, 'elig': elig, 'l': team['level'],
                 'avg': round(float(r['batting_avg']), 3),
                 'obp': round(float(r['on_base_pct'] or 0), 3),
                 'slg': round(float(r['slugging_pct'] or 0), 3),
@@ -172,7 +185,7 @@ def main():
         # Pitchers (qualified)
         cur.execute("""
             SELECT ps.player_id, ps.team_id, p.first_name, p.last_name,
-                   ps.games, ps.innings_pitched, ps.era, ps.whip, ps.k_per_9,
+                   ps.games, ps.games_started, ps.innings_pitched, ps.era, ps.whip, ps.k_per_9,
                    ps.fip, ps.fip_plus, ps.wins, ps.saves, ps.pitching_war
             FROM pitching_stats ps
             JOIN players p ON p.id = ps.player_id
@@ -193,6 +206,11 @@ def main():
             if ip_real < MIN_IP:
                 continue
             pit = float(r['fip_plus']) * LEVEL_STR[team['level']]
+            g = int(r['games'] or 0)
+            gs = int(r['games_started'] or 0)
+            # Reliever = primarily relief appearances (or has saves). Drives the
+            # RP badge AND which staff slot the pick fills.
+            is_rp = (gs < g * 0.5) or int(r['saves'] or 0) > 0
             pitchers.append({
                 'pid': r['player_id'], 'n': f"{r['first_name'] or ''} {r['last_name'] or ''}".strip(),
                 't': team['short'], 'l': team['level'],
@@ -202,7 +220,7 @@ def main():
                 'fip': round(float(r['fip'] or 0), 2),
                 'ip': round(ip_real, 1),
                 'w': int(r['wins'] or 0), 'sv': int(r['saves'] or 0),
-                'g': int(r['games'] or 0),
+                'g': g, 'gs': gs, 'rp': is_rp,
                 'war': round(float(r['pitching_war'] or 0), 2),
                 'pit': round(pit, 1),
             })
