@@ -1,6 +1,6 @@
 {
   "_comment": "PNW four-year players who entered the transfer portal (player_id set, served by /transfer-portal on the Transfer Portal Tracker), PLUS incoming transfers from outside our database (no player_id: out-of-region players committing to a PNW school). committed_to drives the Recruiting Classes transfers view; entries without a player_id have no stats so they show there unrated (excluded from the WAR average, not penalized). Optional position overrides the DB position.",
-  "updated": "2026-06-14",
+  "updated": "2026-06-15",
   "players": [
     {
       "player_id": 3026,
@@ -335,6 +335,24 @@
       "name": "Diego Cruz",
       "from": "Miami (OH)",
       "committed_to": "Oregon State"
+    },
+    {
+      "player_id": 3420,
+      "name": "Joey Marasco",
+      "from": "GFU",
+      "committed_to": null
+    },
+    {
+      "player_id": 3509,
+      "name": "Naulivou Lauaki Jr.",
+      "from": "Oregon",
+      "committed_to": null
+    },
+    {
+      "player_id": 3501,
+      "name": "Angel Laya",
+      "from": "Oregon",
+      "committed_to": null
     }
   ]
 }

@@ -60,6 +60,9 @@ COMMITMENTS = [
     # June 12, 2026 batch ("Triston" is the DB/roster spelling)
     ("Wallace", "Triston", "Umpqua", "Lewis-Clark State"),
     ("Metzker", "Aiden", "Umpqua", "Western Oregon"),
+    # June 15, 2026 batch
+    ("Long", "Kaleb", "SW Oregon", "Ave Maria"),
+    ("Hansen", "Karsten", "Lower Columbia", "Marshall"),
 ]
 
 # (last_name, first_name, team_short_name) — players to set back to uncommitted.
