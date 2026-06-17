@@ -9452,9 +9452,11 @@ def _PLAYER_PBP_CTES(batter_pred: str, pitcher_pred: str, with_juco_ids: bool = 
             bpbp AS (
                 SELECT ge.batter_player_id AS pid,
                     COALESCE(SUM(ge.pitches_thrown) FILTER (WHERE ge.pitches_thrown>=1),0) AS pitches,
-                    -- 'S' = swinging strike (whiff); 'K' = CALLED strike. Swing%
-                    -- and contact% key off swings, so they must use sp ('S'),
+                    -- 'S' = swinging strike (whiff); 'K' = CALLED strike. Swing
+                    -- and contact rates key off swings, so they must use sp ('S'),
                     -- NOT called strikes. (Site-wide K/S fix, 2026-06-12.)
+                    -- NOTE: keep this query string free of literal percent signs --
+                    -- psycopg2 binds params by percent-formatting the whole string.
                     COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'S',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS sp,
                     COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'F',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS fp,
                     COALESCE(SUM(CASE WHEN ge.was_in_play THEN 1 ELSE 0 END) FILTER (WHERE ge.pitches_thrown>=1),0) AS inp,
