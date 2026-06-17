@@ -112,6 +112,8 @@ const NAV = [
         requires: 'free' },
       { to: '/draft', label: '56-0',
         desc: 'Draft the best PNW roster and chase a perfect 56-0 season' },
+      { to: '/wcl-pickem', label: "WCL Pick 'Em",
+        desc: 'Weekly confidence pool — pick every WCL game and climb the leaderboard' },
     ],
   },
   {
