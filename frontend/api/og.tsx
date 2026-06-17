@@ -1380,6 +1380,26 @@ function PortraitCard({
     pct: getPct(m.key),
     value: m.value,
   }));
+  // No-percentile seasons (summer, or pre-PBP years) show a plain season-stats
+  // grid in place of the percentile bars, so the card stays the same size.
+  const hasPctBars = bars.some((b) => b.pct != null);
+  const rateCells = isPitcher
+    ? [
+        { label: 'ERA', value: PFmt('era', L.era) },
+        { label: 'WHIP', value: PFmt('whip', L.whip) },
+        { label: 'FIP', value: PFmt('fip', L.fip) },
+        { label: 'K/9', value: L.k_per_9 != null ? Number(L.k_per_9).toFixed(1) : '—' },
+        { label: 'BB/9', value: L.bb_per_9 != null ? Number(L.bb_per_9).toFixed(1) : '—' },
+        { label: 'BAA', value: PFmt('avg', L.baa) },
+      ]
+    : [
+        { label: 'AVG', value: PFmt('avg', L.batting_avg) },
+        { label: 'OBP', value: PFmt('obp', L.on_base_pct) },
+        { label: 'SLG', value: PFmt('slg', L.slugging_pct) },
+        { label: 'OPS', value: PFmt('ops', L.ops) },
+        { label: 'wOBA', value: PFmt('woba', L.woba) },
+        { label: 'wRC+', value: fmtInt(L.wrc_plus) },
+      ];
 
   // ── Reaching base (hitter) / outcomes (pitcher) stacked bar ──
   let stack;
@@ -1602,12 +1622,23 @@ function PortraitCard({
 
         {/* mid row: percentiles | batted-ball (hitter) or stack */}
         <div style={{ display: 'flex', gap: 14, height: 340 }}>
-          <Panel title="Percentile Rankings" w={612} h={340} note={`vs ${levelLabel} · ${L.season || ''}`}>
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', flex: 1 }}>
-              {bars.map((b, i) => (
-                <PBar key={i} label={b.label} value={b.value} pct={b.pct} />
-              ))}
-            </div>
+          <Panel
+            title={hasPctBars ? 'Percentile Rankings' : 'Season Stats'}
+            w={612}
+            h={340}
+            note={hasPctBars ? `vs ${levelLabel} · ${L.season || ''}` : `${L.season || ''} season`}
+          >
+            {hasPctBars ? (
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', flex: 1 }}>
+                {bars.map((b, i) => (
+                  <PBar key={i} label={b.label} value={b.value} pct={b.pct} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                <MiniStatGrid cells={rateCells} />
+              </div>
+            )}
           </Panel>
           {!isPitcher && contact ? (
             <Panel title="Spray Chart" w={356} h={340}>
@@ -1758,26 +1789,43 @@ export default async function handler(req) {
         if (format === 'portrait') {
           imgW = P_W; imgH = P_H;
           const levelLabel = player.division_level || player.division_name || 'PNW';
-          // Pull play-by-play panels for the latest season (best-effort).
+          const seasonParam = url.searchParams.get('season');
+          const kind = (url.searchParams.get('kind') || 'spring').toLowerCase();
+          const summerList = isPitcher ? (data.summer_pitching || []) : (data.summer_batting || []);
+
+          let selected = latest;
           let pbp = null;
-          if (latest && latest.season) {
-            const pbpUrl = isPitcher
-              ? `${API_BASE}/players/${id}/pitch-level-stats-pitcher?season=${latest.season}`
-              : `${API_BASE}/players/${id}/pitch-level-stats?season=${latest.season}`;
-            pbp = await safeFetch(pbpUrl);
+          let percentiles = isPitcher ? (data.pitching_percentiles || {}) : (data.batting_percentiles || {});
+
+          if (kind === 'summer') {
+            // Summer season: stats-only (no PBP / percentiles) → Season Stats fallback.
+            selected = (seasonParam ? summerList.find((r) => String(r.season) === seasonParam) : summerList[0]) || latest;
+            percentiles = {};
+          } else {
+            if (seasonParam) {
+              const found = list.find((r) => String(r.season) === seasonParam);
+              if (found) selected = found;
+            }
+            // Season-correct percentiles when not the latest season.
+            if (selected && latest && selected.season !== latest.season) {
+              const d2 = await safeFetch(`${API_BASE}/players/${id}?percentile_season=${selected.season}`);
+              if (d2) percentiles = isPitcher ? (d2.pitching_percentiles || {}) : (d2.batting_percentiles || {});
+            }
+            if (selected && selected.season) {
+              const pbpUrl = isPitcher
+                ? `${API_BASE}/players/${id}/pitch-level-stats-pitcher?season=${selected.season}`
+                : `${API_BASE}/players/${id}/pitch-level-stats?season=${selected.season}`;
+              pbp = await safeFetch(pbpUrl);
+            }
           }
           element = (
             <PortraitCard
               player={player}
               isPitcher={isPitcher}
-              latest={latest}
+              latest={selected}
               seasons={list}
-              summerSeasons={isPitcher ? (data.summer_pitching || []) : (data.summer_batting || [])}
-              percentiles={
-                isPitcher
-                  ? data.pitching_percentiles || {}
-                  : data.batting_percentiles || {}
-              }
+              summerSeasons={summerList}
+              percentiles={percentiles}
               headshotSrc={headshotSrc}
               logoSrc={logoSrc}
               awards={(data.awards || []).filter((a) =>

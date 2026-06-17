@@ -411,6 +411,7 @@ export default function PlayerGraphic() {
   const [selectedSeason, setSelectedSeason] = useState('latest')
   const [statMode, setStatMode] = useState(null)
   const [teamInfo, setTeamInfo] = useState(null)
+  const [gSel, setGSel] = useState(null) // graphic season selection {season, kind}
   const cardRef = useRef(null)
 
   const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
@@ -544,23 +545,43 @@ export default function PlayerGraphic() {
       </div>
 
       {/* ═══ NEW SERVER-RENDERED GRAPHIC ═══ */}
-      {playerId && !loading && !error && (
-        <div className="flex flex-col items-center gap-3">
-          <img
-            src={`/api/og?t=player&id=${playerId}&format=portrait`}
-            alt="Player graphic"
-            style={{ width: 'min(540px, 100%)', borderRadius: 12, border: '1px solid #e5e7eb' }}
-          />
-          <a
-            href={`/api/og?t=player&id=${playerId}&format=portrait`}
-            download={`player-${playerId}.png`}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-nw-teal text-white text-sm font-semibold hover:opacity-90"
-          >
-            📸 Download graphic
-          </a>
-          <p className="text-xs text-gray-400">On mobile, long-press the image to save. Latest season shown.</p>
-        </div>
-      )}
+      {playerId && !loading && !error && (() => {
+        const springS = [...new Set([...battingStats, ...pitchingStats].map(s => s.season))].sort((a, b) => b - a)
+        const summerS = [...new Set([...summerBatting, ...summerPitching].map(s => s.season))].sort((a, b) => b - a)
+        const opts = [
+          ...springS.map(s => ({ key: `spring:${s}`, season: s, kind: 'spring', label: `${s}` })),
+          ...summerS.map(s => ({ key: `summer:${s}`, season: s, kind: 'summer', label: `${s} WCL (summer)` })),
+        ]
+        const sel = gSel || opts[0]
+        const qs = sel ? `&season=${sel.season}&kind=${sel.kind}` : ''
+        const imgUrl = `/api/og?t=player&id=${playerId}&format=portrait${qs}`
+        return (
+          <div className="flex flex-col items-center gap-3">
+            {opts.length > 1 && (
+              <select
+                value={sel ? sel.key : ''}
+                onChange={e => setGSel(opts.find(o => o.key === e.target.value) || null)}
+                className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
+              >
+                {opts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+            )}
+            <img
+              src={imgUrl}
+              alt="Player graphic"
+              style={{ width: 'min(540px, 100%)', borderRadius: 12, border: '1px solid #e5e7eb' }}
+            />
+            <a
+              href={imgUrl}
+              download={`player-${playerId}-${sel ? sel.season : ''}.png`}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-nw-teal text-white text-sm font-semibold hover:opacity-90"
+            >
+              📸 Download graphic
+            </a>
+            <p className="text-xs text-gray-400">On mobile, long-press the image to save.</p>
+          </div>
+        )
+      })()}
 
       {playerId && loading && (
         <div className="text-center py-12 text-gray-500">Loading player data...</div>
