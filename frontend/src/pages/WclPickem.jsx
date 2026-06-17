@@ -24,13 +24,16 @@ async function authHeaders() {
   } catch { return {} }
 }
 async function getJSON(url) {
-  const r = await fetch(url, { headers: await authHeaders() })
+  // no-store: these are live pool endpoints (schedule/results/leaderboard) —
+  // never serve a stale browser-cached copy.
+  const r = await fetch(url, { headers: await authHeaders(), cache: 'no-store' })
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`)
   return r.json()
 }
 async function postJSON(url, body) {
   const r = await fetch(url, {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify(body),
   })
