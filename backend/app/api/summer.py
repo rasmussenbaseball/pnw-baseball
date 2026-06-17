@@ -3090,13 +3090,14 @@ def summer_player_pitch_level_stats(
             """, (player_id, season, _PA_RESULT_TYPES))
             row = cur.fetchone()
             slash = _spl_slash_from_row(row, weights)
-            n_pitches, n_swings, _str, kk, _ss = _spl_pitch_counts(row)
+            n_pitches, n_swings, _str, _f_k, f_s = _spl_pitch_counts(row)
             slash.update({
                 "pitches": n_pitches,
                 "bip": row["bip"] or 0,
                 "swing_pct": (n_swings / n_pitches) if n_pitches > 0 else None,
-                "contact_pct": ((n_swings - kk) / n_swings) if n_swings > 0 else None,
-                "whiff_pct": (kk / n_swings) if n_swings > 0 else None,
+                # whiff = swinging strikes (f_s), NOT called strikes (f_k).
+                "contact_pct": ((n_swings - f_s) / n_swings) if n_swings > 0 else None,
+                "whiff_pct": (f_s / n_swings) if n_swings > 0 else None,
                 "wrc_plus": None,
             })
             return slash
@@ -3344,7 +3345,7 @@ def summer_player_pitch_level_stats_pitcher(
             """, (player_id, season, _PA_RESULT_TYPES))
             row = cur.fetchone()
             slash = _spl_slash_from_row(row, weights)
-            n_pitches, n_swings, n_strikes, kk, _ss = _spl_pitch_counts(row)
+            n_pitches, n_swings, n_strikes, _f_k, f_s = _spl_pitch_counts(row)
             return {
                 "pa": slash["pa"], "pitches": n_pitches, "bip": row["bip"] or 0,
                 "ab": slash["ab"], "h": slash["h"], "hr": slash["hr"],
@@ -3354,7 +3355,7 @@ def summer_player_pitch_level_stats_pitcher(
                 "opp_iso": slash["iso"], "opp_woba": slash["woba"],
                 "k_pct": slash["k_pct"], "bb_pct": slash["bb_pct"],
                 "strike_pct": (n_strikes / n_pitches) if n_pitches > 0 else None,
-                "whiff_pct": (kk / n_swings) if n_swings > 0 else None,
+                "whiff_pct": (f_s / n_swings) if n_swings > 0 else None,
                 "wrc_plus_against": None,
             }
 
