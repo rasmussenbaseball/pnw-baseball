@@ -228,15 +228,14 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
         {sideToggle}
         <div className="ml-auto flex items-center gap-2">
           {seasonSelector}
-          <a
-            href={`/api/og?t=player&id=${player.id}&format=portrait`}
-            target="_blank" rel="noopener noreferrer"
+          <Link
+            to={`/player-pages?id=${player.id}`}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white hover:opacity-90 transition-opacity"
             style={{ background: T.accent }}
-            title="Open a downloadable, shareable graphic of this player"
+            title="View a downloadable, shareable graphic of this player"
           >
             📸 Player graphic
-          </a>
+          </Link>
         </div>
       </div>
 

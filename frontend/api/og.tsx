@@ -1200,7 +1200,7 @@ function MiniStatGrid({ cells }) {
             gap: 4,
           }}
         >
-          <div style={{ display: 'flex', fontSize: 30, fontWeight: 800, color: PROFILE.ink }}>{c.value}</div>
+          <div style={{ display: 'flex', fontSize: 30, fontWeight: 800, color: c.color || PROFILE.ink }}>{c.value}</div>
           <div style={{ display: 'flex', fontSize: 17, color: PROFILE.muted, fontWeight: 600 }}>{c.label}</div>
         </div>
       ))}
@@ -1227,6 +1227,49 @@ function SplitRow({ label, value, accent }) {
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 38, borderBottom: `1px solid ${PROFILE.track}` }}>
       <div style={{ display: 'flex', fontSize: 19, color: PROFILE.muted, fontWeight: 600 }}>{label}</div>
       <div style={{ display: 'flex', fontSize: 22, fontWeight: 800, color: accent || PROFILE.ink }}>{value}</div>
+    </div>
+  );
+}
+
+// Stylized spray field: a fan (home plate + foul lines + outfield arc) split
+// into pull / center / oppo wedges, each shaded by how often the batter hits
+// the ball that way. Pull side flips with handedness.
+function SprayField({ pull, center, oppo, gb, fb, ld, bats }) {
+  const cx = 178, cy = 196, R = 165;
+  const pt = (deg) => {
+    const r = (deg * Math.PI) / 180;
+    return [cx + R * Math.sin(r), cy - R * Math.cos(r)];
+  };
+  const B = [-45, -15, 15, 45].map(pt);
+  const wedge = (p1, p2) =>
+    `M ${cx} ${cy} L ${p1[0].toFixed(1)} ${p1[1].toFixed(1)} A ${R} ${R} 0 0 1 ${p2[0].toFixed(1)} ${p2[1].toFixed(1)} Z`;
+  const fill = (f) => `rgba(210,45,73,${(0.18 + Math.min(0.72, (f || 0) * 1.7)).toFixed(2)})`;
+  const rhh = (bats || 'R').toUpperCase().startsWith('R'); // RHH pulls to left field
+  const leftFrac = rhh ? pull : oppo;
+  const rightFrac = rhh ? oppo : pull;
+  const lbl = (f) => (f != null ? Math.round(f * 100) + '%' : '—');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+      <svg width={300} height={210} viewBox="0 0 356 210">
+        <path d={wedge(B[0], B[1])} fill={fill(leftFrac)} />
+        <path d={wedge(B[1], B[2])} fill={fill(center)} />
+        <path d={wedge(B[2], B[3])} fill={fill(rightFrac)} />
+        <line x1={cx} y1={cy} x2={B[0][0]} y2={B[0][1]} stroke="#14365c" strokeWidth="2.5" />
+        <line x1={cx} y1={cy} x2={B[3][0]} y2={B[3][1]} stroke="#14365c" strokeWidth="2.5" />
+        <path d={`M ${B[0][0].toFixed(1)} ${B[0][1].toFixed(1)} A ${R} ${R} 0 0 1 ${B[3][0].toFixed(1)} ${B[3][1].toFixed(1)}`} fill="none" stroke="#14365c" strokeWidth="2.5" />
+        <circle cx={cx} cy={cy} r="5" fill="#14365c" />
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: 4 }}>
+        {[['Pull', pull], ['Center', center], ['Oppo', oppo]].map(([k, v], i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: 2 }}>
+            <div style={{ display: 'flex', fontSize: 22, fontWeight: 800, color: PROFILE.ink }}>{lbl(v)}</div>
+            <div style={{ display: 'flex', fontSize: 15, color: PROFILE.muted, fontWeight: 600 }}>{k}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', marginTop: 8, fontSize: 16, color: PROFILE.muted }}>
+        {`GB ${lbl(gb)} · LD ${lbl(ld)} · FB ${lbl(fb)}`}
+      </div>
     </div>
   );
 }
@@ -1358,23 +1401,38 @@ function PortraitCard({
     return null;
   };
 
+  // Color a discipline value vs the league average (from the endpoint), given
+  // which direction is "good". maroon = better, blue = worse, ink = average/no data.
+  const lg = disc && disc.league ? disc.league : {};
+  const dcolor = (v, lgv, higherBetter) => {
+    if (v == null || lgv == null || lgv === 0) return PROFILE.ink;
+    const r = v / lgv;
+    if (higherBetter) return r >= 1.05 ? PROFILE.maroon : r <= 0.95 ? PROFILE.blue : PROFILE.ink;
+    return r <= 0.95 ? PROFILE.maroon : r >= 1.05 ? PROFILE.blue : PROFILE.ink;
+  };
+  const twoK = ((pbp && pbp.count_states) || []).find(
+    (c) => (c.label || '').toLowerCase().includes('2-strike')
+  );
+  const twoKlg = twoK && twoK.league ? twoK.league.contact_pct : null;
+  const airPull = contact ? contact.air_pull_pct : null;
+
   const discCells = disc
     ? isPitcher
       ? [
-          { label: 'Strike%', value: pct1(disc.strike_pct) },
-          { label: '1st-K%', value: pct1(disc.first_pitch_strike_pct) },
-          { label: 'Whiff%', value: pct1(disc.whiff_pct) },
-          { label: 'Called-K%', value: pct1(disc.called_strike_pct) },
-          { label: 'Putaway%', value: pct1(disc.putaway_pct) },
+          { label: 'Strike%', value: pct1(disc.strike_pct), color: dcolor(disc.strike_pct, lg.strike_pct, true) },
+          { label: '1st-K%', value: pct1(disc.first_pitch_strike_pct), color: dcolor(disc.first_pitch_strike_pct, lg.first_pitch_strike_pct, true) },
+          { label: 'Whiff%', value: pct1(disc.whiff_pct), color: dcolor(disc.whiff_pct, lg.whiff_pct, true) },
+          { label: 'Called-K%', value: pct1(disc.called_strike_pct), color: dcolor(disc.called_strike_pct, lg.called_strike_pct, true) },
+          { label: 'Putaway%', value: pct1(disc.putaway_pct), color: dcolor(disc.putaway_pct, lg.putaway_pct, true) },
           { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—' },
         ]
       : [
           { label: 'Swing%', value: pct1(disc.swing_pct) },
-          { label: 'Contact%', value: pct1(disc.contact_pct) },
-          { label: 'Whiff%', value: pct1(disc.whiff_pct) },
-          { label: '1st-K%', value: pct1(disc.first_pitch_strike_pct) },
-          { label: 'Putaway%', value: pct1(disc.putaway_pct) },
-          { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—' },
+          { label: 'Contact%', value: pct1(disc.contact_pct), color: dcolor(disc.contact_pct, lg.contact_pct, true) },
+          { label: '2K-Contact%', value: twoK ? pct1(twoK.contact_pct) : '—', color: dcolor(twoK && twoK.contact_pct, twoKlg, true) },
+          { label: 'Putaway%', value: pct1(disc.putaway_pct), color: dcolor(disc.putaway_pct, lg.putaway_pct, false) },
+          { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—', color: dcolor(disc.pitches_per_pa, lg.pitches_per_pa, true) },
+          { label: 'Air-Pull%', value: airPull != null ? pct1(airPull) : '—', color: dcolor(airPull, lg.air_pull_pct, true) },
         ]
     : isPitcher
       ? [
@@ -1514,13 +1572,13 @@ function PortraitCard({
               ))}
             </div>
           </Panel>
-          {battedBars ? (
-            <Panel title="Batted Ball" w={356} h={340}>
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', flex: 1 }}>
-                {battedBars.map((b, i) => (
-                  <LabeledBar key={i} label={b.label} pct={b.pct} color={b.color} />
-                ))}
-              </div>
+          {contact ? (
+            <Panel title="Spray Chart" w={356} h={340}>
+              <SprayField
+                pull={contact.pull_pct} center={contact.center_pct} oppo={contact.oppo_pct}
+                gb={contact.gb_pct} fb={contact.fb_pct} ld={contact.ld_pct}
+                bats={player.bats}
+              />
             </Panel>
           ) : (
             <Panel title={isPitcher ? 'Batters Faced' : 'How They Reach Base'} w={356} h={340}>
@@ -1539,7 +1597,12 @@ function PortraitCard({
           >
             <MiniStatGrid cells={discCells} />
           </Panel>
-          <Panel title={(vsL || vsR || risp) ? 'Splits & Clutch' : 'Rates'} w={356} h={300}>
+          <Panel
+            title={(vsL || vsR || risp) ? 'Splits & Clutch' : 'Rates'}
+            w={356}
+            h={300}
+            note={(vsL || vsR || risp) ? 'L/R + RISP shown as OPS' : null}
+          >
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {splitRows.map((r, i) => (
                 <SplitRow key={i} label={r.label} value={r.value} accent={r.accent} />
@@ -1553,9 +1616,14 @@ function PortraitCard({
           <Panel title="Career" w={612} h={280}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 1 }}>
               {sortedSeasons.map((s, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, height: 46, borderBottom: i < sortedSeasons.length - 1 ? `1px solid ${PROFILE.track}` : 'none' }}>
-                  <div style={{ display: 'flex', width: 70, fontSize: 22, fontWeight: 800, color: PROFILE.navy }}>{`'${String(s.season).slice(2)}`}</div>
-                  <div style={{ display: 'flex', flex: 1, fontSize: 21, color: PROFILE.ink }}>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 46, borderBottom: i < sortedSeasons.length - 1 ? `1px solid ${PROFILE.track}` : 'none' }}>
+                  <div style={{ display: 'flex', width: 52, fontSize: 22, fontWeight: 800, color: PROFILE.navy }}>{`'${String(s.season).slice(2)}`}</div>
+                  <div style={{ display: 'flex', width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+                    {s.logo_url ? (
+                      <img src={proxiedImageUrl(fixUrl(s.logo_url))} width={28} height={28} style={{ objectFit: 'contain' }} />
+                    ) : null}
+                  </div>
+                  <div style={{ display: 'flex', flex: 1, fontSize: 20, color: PROFILE.ink }}>
                     {isPitcher
                       ? `${fmtInt(s.games)} G · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K · ${PFmt('war', s.pitching_war)} WAR`
                       : `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI · ${PFmt('war', s.offensive_war)} WAR`}

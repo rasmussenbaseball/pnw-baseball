@@ -522,7 +522,7 @@ export default function App() {
           <Route path="/tournament-bracket" element={<RequireAuth><TournamentBracketGraphic /></RequireAuth>} />
           <Route path="/daily-recap" element={<RequireAuth><DailyRecapGraphic /></RequireAuth>} />
           <Route path="/feature-request" element={<FeatureRequest />} />
-          <Route path="/player-pages" element={<RequireAuth><PlayerGraphic /></RequireAuth>} />
+          <Route path="/player-pages" element={<PlayerGraphic />} />
           <Route path="/conference-standings" element={<RequireAuth><ConferenceStandingsGraphic /></RequireAuth>} />
           <Route path="/all-conference-graphic" element={<RequireAuth><AllConferenceGraphic /></RequireAuth>} />
           <Route path="/top-performers-graphic" element={<RequireAuth><TopPerformersGraphic /></RequireAuth>} />
