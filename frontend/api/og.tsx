@@ -37,6 +37,40 @@ const FAINT = 'rgba(255,255,255,0.45)';
 const WIDTH = 1200;
 const HEIGHT = 630;
 
+// Portrait "trading card" download size (fixed for every player).
+const P_W = 1080;
+const P_H = 1350;
+
+// New player-profile palette (savant-style cream / navy / maroon / gold),
+// matching frontend/src/components/playerProfile/shared.jsx.
+const PROFILE = {
+  cream: '#faf7f1',
+  card: '#ffffff',
+  border: '#e5dfd2',
+  borderStrong: '#c8bfa8',
+  ink: '#1a1a1a',
+  muted: '#6b6b6b',
+  light: '#9a9a9a',
+  track: '#efeadc',
+  navy: '#14365c',
+  navyLight: '#1f5485',
+  maroon: '#d22d49',
+  blue: '#5d99c6',
+  gold: '#c9a44c',
+};
+const HERO_GRAD = `linear-gradient(120deg, ${PROFILE.navy} 0%, ${PROFILE.navyLight} 55%, ${PROFILE.gold} 100%)`;
+
+// Savant-style percentile color: blue (low) → neutral → maroon (high).
+function pctColor(p) {
+  if (p == null) return PROFILE.light;
+  if (p >= 85) return '#c0273f';
+  if (p >= 70) return PROFILE.maroon;
+  if (p >= 55) return '#e07a6a';
+  if (p >= 45) return '#b0a99a';
+  if (p >= 30) return '#7fa8cc';
+  return PROFILE.blue;
+}
+
 const CACHE_HEADERS = {
   'Cache-Control':
     'public, immutable, no-transform, max-age=86400, s-maxage=86400',
@@ -184,6 +218,12 @@ function fmt(n, places = 3) {
 function fmtInt(n) {
   if (n === null || n === undefined || n === '') return '—';
   return String(Math.round(Number(n)));
+}
+
+function ordinal(n) {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 // Build a same-origin URL that proxies an external image through
@@ -977,6 +1017,408 @@ function GameCard({ game }) {
 // Handler
 // ───────────────────────────────────────────────────────────────
 
+// ───────────────────────────────────────────────────────────────
+// Portrait download card (fixed 1080x1350 for every player)
+//
+// Designed so EVERY zone is always filled regardless of how much data a
+// player has: optional sections (awards, multi-season career) fall back to
+// computed content (season strengths, career totals) so the card is never
+// half-empty and is always the same size.
+// ───────────────────────────────────────────────────────────────
+
+function PFmt(key, v) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (key === 'avg' || key === 'obp' || key === 'slg' || key === 'ops' ||
+      key === 'woba' || key === 'iso' || key === 'babip')
+    return fmt(v, 3);
+  if (key === 'era' || key === 'whip' || key === 'fip' || key === 'xfip' ||
+      key === 'siera')
+    return fmt(v, 2);
+  if (key === 'war') return (Number(v) >= 0 ? '' : '') + fmt(v, 1);
+  if (key === 'ip' || key === 'num1') return fmt(v, 1);
+  if (key === 'pct') return fmt(Number(v) * (Number(v) <= 1 ? 100 : 1), 1) + '%';
+  if (key === 'pct100') return fmt(v, 1) + '%';
+  return fmtInt(v);
+}
+
+function StatCell({ label, value, accent }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 1,
+        gap: 4,
+      }}
+    >
+      <div style={{ display: 'flex', fontSize: 19, color: PROFILE.muted, fontWeight: 600, letterSpacing: 0.5 }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', fontSize: 34, fontWeight: 800, color: accent || PROFILE.ink }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function StatRow({ cells, top }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        background: PROFILE.card,
+        border: `2px solid ${PROFILE.border}`,
+        borderRadius: 16,
+        marginTop: top ? 0 : 12,
+        padding: '16px 8px',
+      }}
+    >
+      {cells.map((c, i) => (
+        <StatCell key={i} label={c.label} value={c.value} accent={c.accent} />
+      ))}
+    </div>
+  );
+}
+
+function Panel({ title, w, h, children, note }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: w,
+        height: h,
+        background: PROFILE.card,
+        border: `2px solid ${PROFILE.border}`,
+        borderRadius: 18,
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          fontSize: 20,
+          fontWeight: 800,
+          color: PROFILE.navy,
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+          marginBottom: 14,
+        }}
+      >
+        {title}
+      </div>
+      {children}
+      {note ? (
+        <div style={{ display: 'flex', marginTop: 'auto', fontSize: 14, color: PROFILE.light }}>
+          {note}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PBar({ label, value, pct }) {
+  const c = pctColor(pct);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, height: 38 }}>
+      <div style={{ display: 'flex', width: 92, justifyContent: 'flex-end', fontSize: 20, fontWeight: 700, color: PROFILE.ink }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flex: 1, height: 18, background: PROFILE.track, borderRadius: 9, position: 'relative' }}>
+        <div style={{ display: 'flex', width: `${Math.max(3, Math.min(100, pct || 0))}%`, height: 18, background: c, borderRadius: 9 }} />
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          background: c,
+          color: '#fff',
+          fontSize: 20,
+          fontWeight: 800,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {pct != null ? Math.round(pct) : '—'}
+      </div>
+      <div style={{ display: 'flex', width: 72, justifyContent: 'flex-end', fontSize: 19, fontWeight: 700, color: PROFILE.muted }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function StackBar({ segments }) {
+  const total = segments.reduce((s, x) => s + (x.value || 0), 0) || 1;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', width: '100%', height: 34, borderRadius: 8, overflow: 'hidden' }}>
+        {segments.map((s, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              width: `${(s.value / total) * 100}%`,
+              height: 34,
+              background: s.color,
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px' }}>
+        {segments.map((s, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 18, color: PROFILE.ink }}>
+            <div style={{ display: 'flex', width: 14, height: 14, borderRadius: 4, background: s.color }} />
+            <div style={{ display: 'flex', fontWeight: 700 }}>{s.label}</div>
+            <div style={{ display: 'flex', color: PROFILE.muted }}>
+              {Math.round((s.value / total) * 100)}%
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PortraitCard({
+  player, isPitcher, latest, seasons, percentiles, headshotSrc, logoSrc,
+  awards, careerRankings, pnwRankings, goldGloves, levelLabel,
+}) {
+  const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
+  const team = player.team_name || player.team_short || '';
+  const pos = player.position || (isPitcher ? 'P' : '');
+  const klass = player.year_in_school ? `${player.year_in_school}` : '';
+  const bt = [player.bats, player.throws].filter(Boolean).join('/');
+
+  // ── Stat lines ──
+  const L = latest || {};
+  const coreCells = isPitcher
+    ? [
+        { label: 'G', value: fmtInt(L.games) },
+        { label: 'GS', value: fmtInt(L.games_started) },
+        { label: 'IP', value: PFmt('ip', L.innings_pitched) },
+        { label: 'W', value: fmtInt(L.wins) },
+        { label: 'L', value: fmtInt(L.losses) },
+        { label: 'SV', value: fmtInt(L.saves) },
+        { label: 'K', value: fmtInt(L.strikeouts) },
+        { label: 'BB', value: fmtInt(L.walks) },
+      ]
+    : [
+        { label: 'G', value: fmtInt(L.games) },
+        { label: 'PA', value: fmtInt(L.plate_appearances) },
+        { label: 'H', value: fmtInt(L.hits) },
+        { label: 'HR', value: fmtInt(L.home_runs) },
+        { label: 'RBI', value: fmtInt(L.rbi) },
+        { label: 'SB', value: fmtInt(L.stolen_bases) },
+        { label: 'R', value: fmtInt(L.runs) },
+        { label: 'BB', value: fmtInt(L.walks) },
+      ];
+  const advCells = isPitcher
+    ? [
+        { label: 'ERA', value: PFmt('era', L.era), accent: PROFILE.navy },
+        { label: 'WHIP', value: PFmt('whip', L.whip) },
+        { label: 'FIP', value: PFmt('fip', L.fip) },
+        { label: 'xFIP', value: PFmt('xfip', L.xfip) },
+        { label: 'SIERA', value: PFmt('siera', L.siera) },
+        { label: 'K/9', value: PFmt('num1', L.k_per_9) },
+        { label: 'BB/9', value: PFmt('num1', L.bb_per_9) },
+        { label: 'WAR', value: PFmt('war', L.pitching_war), accent: PROFILE.maroon },
+      ]
+    : [
+        { label: 'AVG', value: PFmt('avg', L.batting_avg), accent: PROFILE.navy },
+        { label: 'OBP', value: PFmt('obp', L.on_base_pct) },
+        { label: 'SLG', value: PFmt('slg', L.slugging_pct) },
+        { label: 'OPS', value: PFmt('ops', L.ops) },
+        { label: 'wOBA', value: PFmt('woba', L.woba) },
+        { label: 'wRC+', value: fmtInt(L.wrc_plus) },
+        { label: 'ISO', value: PFmt('iso', L.iso) },
+        { label: 'WAR', value: PFmt('war', L.offensive_war), accent: PROFILE.maroon },
+      ];
+
+  // ── Percentile bars ──
+  const pctMetrics = isPitcher
+    ? [
+        { key: 'pitching_war', label: 'WAR', vk: 'pitching_war', fk: 'war' },
+        { key: 'fip', label: 'FIP', vk: 'fip', fk: 'fip' },
+        { key: 'k_pct', label: 'K%', vk: 'k_pct', fk: 'pct' },
+        { key: 'bb_pct', label: 'BB%', vk: 'bb_pct', fk: 'pct' },
+        { key: 'siera', label: 'SIERA', vk: 'siera', fk: 'siera' },
+        { key: 'lob_pct', label: 'LOB%', vk: 'lob_pct', fk: 'pct' },
+      ]
+    : [
+        { key: 'woba', label: 'wOBA', vk: 'woba', fk: 'woba' },
+        { key: 'wrc_plus', label: 'wRC+', vk: 'wrc_plus', fk: 'int' },
+        { key: 'iso', label: 'ISO', vk: 'iso', fk: 'iso' },
+        { key: 'bb_pct', label: 'BB%', vk: 'bb_pct', fk: 'pct' },
+        { key: 'k_pct', label: 'K%', vk: 'k_pct', fk: 'pct' },
+        { key: 'offensive_war', label: 'WAR', vk: 'offensive_war', fk: 'war' },
+      ];
+  const getPct = (k) => {
+    const p = percentiles[k];
+    return p == null ? null : (typeof p === 'object' ? p.percentile : p);
+  };
+  const bars = pctMetrics.map((m) => ({
+    label: m.label,
+    pct: getPct(m.key),
+    value: PFmt(m.fk, L[m.vk]),
+  }));
+
+  // ── Reaching base (hitter) / outcomes (pitcher) stacked bar ──
+  let stack;
+  if (isPitcher) {
+    const k = L.strikeouts || 0, bb = (L.walks || 0) + (L.hit_batters || 0),
+      h = L.hits_allowed || 0,
+      bf = L.batters_faced || (k + bb + h + 1),
+      outs = Math.max(0, bf - k - bb - h);
+    stack = [
+      { label: 'K', value: k, color: PROFILE.maroon },
+      { label: 'Out', value: outs, color: PROFILE.navy },
+      { label: 'Hit', value: h, color: PROFILE.gold },
+      { label: 'BB/HBP', value: bb, color: PROFILE.blue },
+    ];
+  } else {
+    const hr = L.home_runs || 0, d = L.doubles || 0, t = L.triples || 0,
+      h = L.hits || 0, singles = Math.max(0, h - d - t - hr),
+      bb = L.walks || 0, hbp = L.hit_by_pitch || 0;
+    stack = [
+      { label: '1B', value: singles, color: '#2f9e6f' },
+      { label: '2B', value: d, color: PROFILE.gold },
+      { label: '3B', value: t, color: '#e07a6a' },
+      { label: 'HR', value: hr, color: PROFILE.maroon },
+      { label: 'BB', value: bb, color: PROFILE.blue },
+      { label: 'HBP', value: hbp, color: PROFILE.navyLight },
+    ].filter((s) => s.value > 0);
+  }
+
+  // ── Career rows (fallback-aware) ──
+  const sortedSeasons = [...(seasons || [])].sort(
+    (a, b) => Number(b.season || 0) - Number(a.season || 0)
+  ).slice(0, 4);
+
+  // ── Accolades with fallback to computed "season strengths" ──
+  const accolades = [];
+  (goldGloves || []).slice(0, 3).forEach((g) =>
+    accolades.push({ text: `${String(g.season).slice(2)} ${g.scope} GG${g.mvp ? ' MVP' : ''}`, kind: 'gold' })
+  );
+  (pnwRankings || []).slice(0, 3).forEach((r) =>
+    accolades.push({ text: `${ordinal(r.rank)} PNW · ${r.category}`, kind: 'pnw' })
+  );
+  (careerRankings || []).slice(0, 3).forEach((r) =>
+    accolades.push({ text: `${ordinal(r.rank)} ${player.team_short || 'team'} · ${r.category}`, kind: 'career' })
+  );
+  (awards || []).slice(0, 3).forEach((a) =>
+    accolades.push({ text: `${String(a.season).slice(2)} ${a.category} leader`, kind: 'award' })
+  );
+  // Fallback: if thin, fill with top percentile "strengths"
+  if (accolades.length < 4) {
+    const strengths = bars
+      .filter((b) => b.pct != null && b.pct >= 60)
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 5 - accolades.length)
+      .map((b) => ({ text: `${ordinal(Math.round(b.pct))} pct · ${b.label}`, kind: 'strength' }));
+    accolades.push(...strengths);
+  }
+  const accColor = { gold: '#fef3c7', pnw: '#dbeafe', career: '#fde9ee', award: '#e7f0e3', strength: '#eef1f6' };
+  const accText = { gold: '#92400e', pnw: '#1e40af', career: '#9b1c34', award: '#2f6b2a', strength: '#3a4a63' };
+
+  return (
+    <div style={{ width: P_W, height: P_H, display: 'flex', flexDirection: 'column', background: PROFILE.cream, fontFamily: '"Inter","Helvetica Neue",system-ui,sans-serif' }}>
+      {/* HERO */}
+      <div style={{ display: 'flex', height: 250, background: HERO_GRAD, padding: 36, alignItems: 'center', gap: 28 }}>
+        <div style={{ display: 'flex', width: 168, height: 168, borderRadius: 20, background: 'rgba(255,255,255,0.12)', border: '4px solid rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+          {headshotSrc ? (
+            <img src={headshotSrc} width={168} height={168} style={{ objectFit: 'cover', width: 168, height: 168 }} />
+          ) : (
+            <div style={{ display: 'flex', fontSize: 64, fontWeight: 900, color: '#fff' }}>
+              {(player.first_name || '?')[0]}{(player.last_name || '?')[0]}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 8 }}>
+          <div style={{ display: 'flex', fontSize: 62, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: -1.5 }}>
+            {fullName || 'Player'}
+          </div>
+          <div style={{ display: 'flex', gap: 14, fontSize: 26, color: 'rgba(255,255,255,0.9)', alignItems: 'center' }}>
+            {[pos, player.jersey_number ? `#${player.jersey_number}` : '', bt, klass].filter(Boolean).join('  ·  ')}
+          </div>
+          <div style={{ display: 'flex', fontSize: 30, fontWeight: 800, color: PROFILE.gold, marginTop: 2 }}>
+            {team}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <div style={{ display: 'flex', width: 110, height: 110, borderRadius: 16, background: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+            {logoSrc ? (
+              <img src={logoSrc} width={86} height={86} style={{ objectFit: 'contain' }} />
+            ) : (
+              <div style={{ display: 'flex', fontSize: 40, fontWeight: 900, color: PROFILE.navy }}>{(team || '?')[0]}</div>
+            )}
+          </div>
+          <div style={{ display: 'flex', background: PROFILE.gold, color: PROFILE.navy, fontSize: 20, fontWeight: 800, padding: '5px 14px', borderRadius: 10, letterSpacing: 1 }}>
+            {levelLabel}
+          </div>
+        </div>
+      </div>
+
+      {/* BODY */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, padding: '24px 36px 0', gap: 14 }}>
+        <StatRow cells={coreCells} top />
+        <StatRow cells={advCells} />
+
+        {/* mid row */}
+        <div style={{ display: 'flex', gap: 14, height: 372 }}>
+          <Panel title="Percentile Rankings" w={612} h={372} note={`vs ${levelLabel} · ${L.season || ''}`}>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', flex: 1 }}>
+              {bars.map((b, i) => (
+                <PBar key={i} label={b.label} value={b.value} pct={b.pct} />
+              ))}
+            </div>
+          </Panel>
+          <Panel title={isPitcher ? 'Batters Faced' : 'How They Reach Base'} w={356} h={372}>
+            <StackBar segments={stack} />
+          </Panel>
+        </div>
+
+        {/* bottom row */}
+        <div style={{ display: 'flex', gap: 14, height: 300 }}>
+          <Panel title="Career" w={612} h={300}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 1 }}>
+              {sortedSeasons.map((s, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, height: 46, borderBottom: i < sortedSeasons.length - 1 ? `1px solid ${PROFILE.track}` : 'none' }}>
+                  <div style={{ display: 'flex', width: 70, fontSize: 22, fontWeight: 800, color: PROFILE.navy }}>{`'${String(s.season).slice(2)}`}</div>
+                  <div style={{ display: 'flex', flex: 1, fontSize: 21, color: PROFILE.ink }}>
+                    {isPitcher
+                      ? `${fmtInt(s.games)} G · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K · ${PFmt('war', s.pitching_war)} WAR`
+                      : `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI · ${PFmt('war', s.offensive_war)} WAR`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title={accolades.some((a) => a.kind !== 'strength') ? 'Accolades' : 'Season Strengths'} w={356} h={300}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {accolades.slice(0, 5).map((a, i) => (
+                <div key={i} style={{ display: 'flex', background: accColor[a.kind], color: accText[a.kind], fontSize: 19, fontWeight: 700, padding: '8px 12px', borderRadius: 10 }}>
+                  {a.text}
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+
+        {/* footer */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 56, marginTop: 'auto' }}>
+          <div style={{ display: 'flex', fontSize: 22, fontWeight: 800, color: PROFILE.navy }}>nwbaseballstats.com</div>
+          <div style={{ display: 'flex', fontSize: 20, color: PROFILE.muted }}>{L.season ? `${L.season} season` : ''}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function handler(req) {
   try {
     const url = new URL(req.url);
@@ -986,8 +1428,11 @@ export default async function handler(req) {
     const title = url.searchParams.get('title');
     const subtitle = url.searchParams.get('subtitle');
     const kicker = url.searchParams.get('kicker');
+    const format = (url.searchParams.get('format') || '').toLowerCase();
 
     let element;
+    let imgW = WIDTH;
+    let imgH = HEIGHT;
 
     if (type === 'player' && id) {
       const data = await safeFetch(`${API_BASE}/players/${id}`);
@@ -1009,15 +1454,47 @@ export default async function handler(req) {
         // Satori sees a stable same-origin URL with no redirects.
         const headshotSrc = proxiedImageUrl(fixUrl(player.headshot_url));
         const logoSrc = proxiedImageUrl(fixUrl(player.logo_url));
-        element = (
-          <PlayerCard
-            player={player}
-            latest={latest}
-            isPitcher={isPitcher}
-            headshotSrc={headshotSrc}
-            logoSrc={logoSrc}
-          />
-        );
+
+        if (format === 'portrait') {
+          imgW = P_W; imgH = P_H;
+          const levelLabel = player.division_level || player.division_name || 'PNW';
+          element = (
+            <PortraitCard
+              player={player}
+              isPitcher={isPitcher}
+              latest={latest}
+              seasons={list}
+              percentiles={
+                isPitcher
+                  ? data.pitching_percentiles || {}
+                  : data.batting_percentiles || {}
+              }
+              headshotSrc={headshotSrc}
+              logoSrc={logoSrc}
+              awards={(data.awards || []).filter((a) =>
+                isPitcher ? a.type === 'pitching' : a.type === 'batting'
+              )}
+              careerRankings={(data.career_rankings || []).filter((r) =>
+                isPitcher ? r.type === 'pitching' : r.type === 'batting'
+              )}
+              pnwRankings={(data.pnw_rankings || []).filter((r) =>
+                isPitcher ? r.type === 'pitching' : r.type === 'batting'
+              )}
+              goldGloves={data.gold_gloves || []}
+              levelLabel={levelLabel}
+            />
+          );
+        } else {
+          element = (
+            <PlayerCard
+              player={player}
+              latest={latest}
+              isPitcher={isPitcher}
+              headshotSrc={headshotSrc}
+              logoSrc={logoSrc}
+            />
+          );
+        }
       }
     } else if (type === 'article' && slug) {
       const data = await safeFetch(`${API_BASE}/articles/${slug}`);
@@ -1068,8 +1545,8 @@ export default async function handler(req) {
     }
 
     return new ImageResponse(element, {
-      width: WIDTH,
-      height: HEIGHT,
+      width: imgW,
+      height: imgH,
       headers: CACHE_HEADERS,
     });
   } catch (e) {
