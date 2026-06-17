@@ -1404,7 +1404,7 @@ function PortraitCard({
         { key: 'k_pct', label: 'K%', value: PFmt('pct', L.k_pct) },
         { key: 'bb_pct', label: 'BB%', value: PFmt('pct', L.bb_pct) },
         { key: 'baa', label: 'BAA', value: PFmt('avg', L.baa) },
-        { key: 'hr_pa_pct', label: 'HR/PA', value: L.batters_faced ? PFmt('avg', (L.home_runs_allowed || 0) / L.batters_faced) : '—' },
+        { key: 'hr_pa_pct', altKey: 'hr_per_9', label: 'HR/PA', value: L.batters_faced ? PFmt('avg', (L.home_runs_allowed || 0) / L.batters_faced) : '—' },
       ]
     : [
         { key: 'woba', label: 'wOBA', value: PFmt('woba', L.woba) },
@@ -1420,7 +1420,9 @@ function PortraitCard({
   };
   const bars = pctMetrics.map((m) => ({
     label: m.label,
-    pct: getPct(m.key),
+    // Fall back to a related metric's percentile when the primary key isn't
+    // computed for that season (e.g. HR/PA only exists 2026+, use HR/9 before).
+    pct: getPct(m.key) ?? (m.altKey ? getPct(m.altKey) : null),
     value: m.value,
   }));
   // No-percentile seasons (summer, or pre-PBP years) show a plain season-stats
@@ -1473,6 +1475,11 @@ function PortraitCard({
 
   // ── PBP-derived panels (discipline / batted-ball / splits / clutch) ──
   const disc = pbp && pbp.discipline ? pbp.discipline : null;
+  // Pre-2026 seasons have PA-level data (WPA/LI/splits) but NO pitch-tracking,
+  // so disc exists yet strike%/whiff%/swing% are null. Treat that as "no
+  // discipline" so the Command & Misses / Plate Discipline panel falls back to
+  // real season rates instead of a grid of dashes.
+  const hasDisc = !!(disc && (isPitcher ? disc.strike_pct != null : disc.swing_pct != null));
   const contact =
     pbp && pbp.contact_profile && (pbp.contact_profile.bb_total || pbp.contact_profile.gb_pct != null)
       ? pbp.contact_profile : null;
@@ -1505,7 +1512,7 @@ function PortraitCard({
   const twoKpctl = twoK && twoK.deciles ? decilePct(twoK.deciles.contact_pct, twoK.contact_pct, true) : null;
   const airPull = contact ? contact.air_pull_pct : null;
 
-  const discCells = disc
+  const discCells = hasDisc
     ? isPitcher
       ? [
           { label: 'Strike%', value: pct1(disc.strike_pct), pctl: dP('strike_pct', disc.strike_pct, true) },
@@ -1619,11 +1626,13 @@ function PortraitCard({
   (leagueRankings || []).slice(0, 4).forEach((r) =>
     accolades.push({ text: `${ordinal(r.rank)} ${levelLabel} · ${r.category}`, kind: 'pnw' })
   );
+  // Use each ranking/award's OWN team (a multi-school guy can lead SV at Bellevue
+  // while currently at Bushnell) + show that team's logo so it's unambiguous.
   (careerRankings || []).slice(0, 3).forEach((r) =>
-    accolades.push({ text: `${ordinal(r.rank)} ${player.team_short || 'team'} · ${r.category}`, kind: 'career' })
+    accolades.push({ text: `${ordinal(r.rank)} ${r.team_short || player.team_short || 'team'} · ${r.category}`, kind: 'career', logo: r.team_logo })
   );
   (awards || []).slice(0, 3).forEach((a) =>
-    accolades.push({ text: `${String(a.season).slice(2)} ${a.category} leader`, kind: 'award' })
+    accolades.push({ text: `'${String(a.season).slice(2)} ${a.team_short ? a.team_short + ' ' : ''}${a.category} leader`, kind: 'award', logo: a.team_logo })
   );
   // Fallback: if thin, fill with top percentile "strengths"
   if (accolades.length < 4) {
@@ -1749,7 +1758,7 @@ function PortraitCard({
             title={isPitcher ? 'Command & Misses' : 'Plate Discipline'}
             w={612}
             h={300}
-            note={disc ? 'play-by-play (tracked PA)' : 'season rates'}
+            note={hasDisc ? 'play-by-play (tracked PA)' : 'season rates'}
           >
             <MiniStatGrid cells={discCells} />
           </Panel>
@@ -1812,8 +1821,9 @@ function PortraitCard({
           <Panel title={accolades.some((a) => a.kind !== 'strength') ? 'Accolades' : 'Season Strengths'} w={356} h={280}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {accolades.slice(0, 4).map((a, i) => (
-                <div key={i} style={{ display: 'flex', background: accColor[a.kind], color: accText[a.kind], fontSize: 18, fontWeight: 700, padding: '8px 12px', borderRadius: 10 }}>
-                  {a.text}
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: accColor[a.kind], color: accText[a.kind], fontSize: 18, fontWeight: 700, padding: '8px 12px', borderRadius: 10 }}>
+                  {a.logo ? <img src={proxiedImageUrl(fixUrl(a.logo))} width={22} height={22} style={{ objectFit: 'contain' }} /> : null}
+                  <div style={{ display: 'flex' }}>{a.text}</div>
                 </div>
               ))}
             </div>
@@ -1907,16 +1917,25 @@ export default async function handler(req) {
               trend = buildTrend(gl, isPitcher);
             }
           }
+          // Hero reflects the SELECTED season's team (a transfer's 2023 card
+          // should show the school he pitched for that year, not his current one).
+          const seasonLogoSrc = proxiedImageUrl(fixUrl((selected && (selected.logo_url || selected.team_logo)) || player.logo_url));
+          const heroPlayer = {
+            ...player,
+            team_name: (selected && (selected.team_name || selected.team_short)) || player.team_name || player.team_short,
+            team_short: (selected && selected.team_short) || player.team_short,
+          };
+          const seasonLevel = (selected && (selected.division_level || selected.division_name || selected.league_abbrev)) || levelLabel;
           element = (
             <PortraitCard
-              player={player}
+              player={heroPlayer}
               isPitcher={isPitcher}
               latest={selected}
               seasons={list}
               summerSeasons={summerList}
               percentiles={percentiles}
               headshotSrc={headshotSrc}
-              logoSrc={logoSrc}
+              logoSrc={seasonLogoSrc}
               awards={(data.awards || []).filter((a) =>
                 isPitcher ? a.type === 'pitching' : a.type === 'batting'
               )}
@@ -1927,7 +1946,7 @@ export default async function handler(req) {
                 isPitcher ? r.type === 'pitching' : r.type === 'batting'
               )}
               goldGloves={data.gold_gloves || []}
-              levelLabel={levelLabel}
+              levelLabel={seasonLevel}
               pbp={pbp}
               trend={trend}
             />
