@@ -50,7 +50,7 @@ COMMITMENTS = [
     ("Walker", "Jackson", "Yakima Valley", "Saint Louis University"),
     # June 10, 2026 batch
     ("Jones", "Dillon", "Wenatchee Valley", "Lewis-Clark State"),
-    ("Furuhata", "Daichi", "SW Oregon", "Northwest Nazarene"),
+    ("Furuhata", "Daichi", "SW Oregon", "Saint Martin's"),
     ("Ringrose", "Tristan", "Pierce", "Lewis-Clark State"),
     # June 11, 2026 batch
     ("Robbins", "Jeremiah", "Umpqua", "Lewis-Clark State"),
