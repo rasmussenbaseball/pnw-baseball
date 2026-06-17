@@ -8852,17 +8852,27 @@ def _load_gold_gloves():
 
 
 def _gold_gloves_for(player_ids):
+    """Return one entry per (season, scope, position) for the player.
+    The source JSON intentionally lists MVPs as a separate row (Nate's data
+    came that way), but a "Gold Glove MVP at C" and "Gold Glove C" are the
+    same award — collapse to one entry, with mvp=True if either row set it.
+    """
     pid_set = set(player_ids)
-    out = []
+    merged = {}
     for a in _load_gold_gloves():
-        if a.get("player_id") in pid_set:
-            out.append({
+        if a.get("player_id") not in pid_set:
+            continue
+        key = (a["season"], a["scope"], a["position"])
+        if key not in merged:
+            merged[key] = {
                 "season": a["season"],
                 "scope": a["scope"],
                 "position": a["position"],
                 "mvp": bool(a.get("mvp")),
-            })
-    # Newest first; within season MVP first, then by scope, then position
+            }
+        elif a.get("mvp"):
+            merged[key]["mvp"] = True
+    out = list(merged.values())
     out.sort(key=lambda x: (-x["season"], not x["mvp"], x["scope"], x["position"]))
     return out
 
