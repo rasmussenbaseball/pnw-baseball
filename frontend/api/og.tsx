@@ -1299,7 +1299,7 @@ function SprayField({ pull, center, oppo, gb, fb, ld, bats }) {
 }
 
 function PortraitCard({
-  player, isPitcher, latest, seasons, percentiles, headshotSrc, logoSrc,
+  player, isPitcher, latest, seasons, summerSeasons, percentiles, headshotSrc, logoSrc,
   awards, careerRankings, pnwRankings, goldGloves, levelLabel, pbp,
 }) {
   const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
@@ -1413,6 +1413,9 @@ function PortraitCard({
   const contact =
     pbp && pbp.contact_profile && (pbp.contact_profile.bb_total || pbp.contact_profile.gb_pct != null)
       ? pbp.contact_profile : null;
+  const oppContact =
+    pbp && pbp.opp_contact_profile && pbp.opp_contact_profile.gb_pct != null
+      ? pbp.opp_contact_profile : null;
   const pct1 = (v) => (v == null ? '—' : (v * 100).toFixed(1) + '%');
   const findSplit = (arr, keys) => {
     if (!arr) return null;
@@ -1522,10 +1525,11 @@ function PortraitCard({
     }
   }
 
-  // ── Career rows (fallback-aware) ──
-  const sortedSeasons = [...(seasons || [])].sort(
-    (a, b) => Number(b.season || 0) - Number(a.season || 0)
-  ).slice(0, 4);
+  // ── Career rows: spring + summer, newest first ──
+  const sortedSeasons = [
+    ...(seasons || []).map((s) => ({ ...s, _summer: false })),
+    ...(summerSeasons || []).map((s) => ({ ...s, _summer: true, _tag: s.league_abbrev || 'WCL' })),
+  ].sort((a, b) => Number(b.season || 0) - Number(a.season || 0)).slice(0, 5);
 
   // ── Accolades with fallback to computed "season strengths" ──
   const accolades = [];
@@ -1605,13 +1609,25 @@ function PortraitCard({
               ))}
             </div>
           </Panel>
-          {contact ? (
+          {!isPitcher && contact ? (
             <Panel title="Spray Chart" w={356} h={340}>
               <SprayField
                 pull={contact.pull_pct} center={contact.center_pct} oppo={contact.oppo_pct}
                 gb={contact.gb_pct} fb={contact.fb_pct} ld={contact.ld_pct}
                 bats={player.bats}
               />
+            </Panel>
+          ) : isPitcher && oppContact ? (
+            <Panel title="Opponent Contact" w={356} h={340}>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
+                <LabeledBar label="GB" pct={oppContact.gb_pct * 100} color={PROFILE.navy} />
+                <LabeledBar label="LD" pct={oppContact.ld_pct * 100} color={PROFILE.maroon} />
+                <LabeledBar label="FB" pct={oppContact.fb_pct * 100} color={PROFILE.navyLight} />
+                <div style={{ display: 'flex', marginTop: 8 }}>
+                  <SplitRow label="Opp BA" value={PFmt('avg', L.baa)} accent={pctColor(getPct('baa'))} />
+                </div>
+                <SplitRow label="BABIP" value={PFmt('babip', L.babip_against)} />
+              </div>
             </Panel>
           ) : (
             <Panel title={isPitcher ? 'Batters Faced' : 'How They Reach Base'} w={356} h={340}>
@@ -1648,21 +1664,32 @@ function PortraitCard({
         <div style={{ display: 'flex', gap: 14, height: 280 }}>
           <Panel title="Career" w={612} h={280}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 1 }}>
-              {sortedSeasons.map((s, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 46, borderBottom: i < sortedSeasons.length - 1 ? `1px solid ${PROFILE.track}` : 'none' }}>
-                  <div style={{ display: 'flex', width: 52, fontSize: 22, fontWeight: 800, color: PROFILE.navy }}>{`'${String(s.season).slice(2)}`}</div>
-                  <div style={{ display: 'flex', width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
-                    {s.logo_url ? (
-                      <img src={proxiedImageUrl(fixUrl(s.logo_url))} width={28} height={28} style={{ objectFit: 'contain' }} />
+              {sortedSeasons.map((s, i) => {
+                const logo = s.logo_url || s.team_logo;
+                const line = isPitcher
+                  ? (s._summer
+                      ? `${fmtInt(s.games)} G · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K`
+                      : `${fmtInt(s.games)} G · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K · ${PFmt('war', s.pitching_war)} WAR`)
+                  : (s._summer
+                      ? `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI`
+                      : `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI · ${PFmt('war', s.offensive_war)} WAR`);
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 46, borderBottom: i < sortedSeasons.length - 1 ? `1px solid ${PROFILE.track}` : 'none' }}>
+                    <div style={{ display: 'flex', width: 48, fontSize: 22, fontWeight: 800, color: PROFILE.navy }}>{`'${String(s.season).slice(2)}`}</div>
+                    <div style={{ display: 'flex', width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+                      {logo ? (
+                        <img src={proxiedImageUrl(fixUrl(logo))} width={28} height={28} style={{ objectFit: 'contain' }} />
+                      ) : null}
+                    </div>
+                    {s._summer ? (
+                      <div style={{ display: 'flex', background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 800, padding: '2px 6px', borderRadius: 5 }}>
+                        {s._tag}
+                      </div>
                     ) : null}
+                    <div style={{ display: 'flex', flex: 1, fontSize: 19, color: PROFILE.ink }}>{line}</div>
                   </div>
-                  <div style={{ display: 'flex', flex: 1, fontSize: 20, color: PROFILE.ink }}>
-                    {isPitcher
-                      ? `${fmtInt(s.games)} G · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K · ${PFmt('war', s.pitching_war)} WAR`
-                      : `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI · ${PFmt('war', s.offensive_war)} WAR`}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Panel>
           <Panel title={accolades.some((a) => a.kind !== 'strength') ? 'Accolades' : 'Season Strengths'} w={356} h={280}>
@@ -1745,6 +1772,7 @@ export default async function handler(req) {
               isPitcher={isPitcher}
               latest={latest}
               seasons={list}
+              summerSeasons={isPitcher ? (data.summer_pitching || []) : (data.summer_batting || [])}
               percentiles={
                 isPitcher
                   ? data.pitching_percentiles || {}
