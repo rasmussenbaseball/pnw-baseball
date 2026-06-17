@@ -1990,11 +1990,17 @@ export default async function handler(req) {
         // (normal rows) and the summer season (WCL-tagged) — same merge the spring
         // card does, just from the summer side.
         let springSeasons = [];
+        let springHeadshot = null;
         const link = data.spring_link;
         if (link && link.spring_player_id) {
           const sp = await safeFetch(`${API_BASE}/players/${link.spring_player_id}`);
-          if (sp) springSeasons = isPitcher ? (sp.pitching_stats || []) : (sp.batting_stats || []);
+          if (sp) {
+            springSeasons = isPitcher ? (sp.pitching_stats || []) : (sp.batting_stats || []);
+            // PNW WCL guys: reuse the headshot from their linked spring profile.
+            if (sp.player && sp.player.headshot_url) springHeadshot = sp.player.headshot_url;
+          }
         }
+        const summerHeadshot = proxiedImageUrl(fixUrl(p.headshot_url || springHeadshot));
         // Cumulative trend from this season's game logs — fills the career box for
         // single-season summer players (low minimum, since summer seasons are short).
         const trend = buildTrend({ batting: data.game_batting, pitching: data.game_pitching }, isPitcher, 3);
@@ -2007,7 +2013,7 @@ export default async function handler(req) {
               seasons={springSeasons.length ? springSeasons : summerRows}
               summerSeasons={springSeasons.length ? summerRows : []}
               percentiles={isPitcher ? (data.pitching_percentiles || {}) : (data.batting_percentiles || {})}
-              headshotSrc={proxiedImageUrl(fixUrl(p.headshot_url))}
+              headshotSrc={summerHeadshot}
               logoSrc={proxiedImageUrl(fixUrl(p.team_logo))}
               awards={[]}
               careerRankings={[]}
