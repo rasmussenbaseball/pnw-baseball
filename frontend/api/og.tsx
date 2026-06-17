@@ -1048,7 +1048,7 @@ function PFmt(key, v) {
   if (key === 'era' || key === 'whip' || key === 'fip' || key === 'xfip' ||
       key === 'siera')
     return fmt(v, 2);
-  if (key === 'war') return (Number(v) >= 0 ? '' : '') + fmt(v, 1);
+  if (key === 'war') return Number(v).toFixed(1); // keep leading 0 (0.6, -0.4)
   if (key === 'ip' || key === 'num1') return fmt(v, 1);
   if (key === 'pct') return fmt(Number(v) * (Number(v) <= 1 ? 100 : 1), 1) + '%';
   if (key === 'pct100') return fmt(v, 1) + '%';
@@ -1284,7 +1284,11 @@ function SprayField({ pull, center, oppo, gb, fb, ld, bats }) {
         <circle cx={cx} cy={cy} r="4.5" fill="#14365c" />
       </svg>
       <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: 6 }}>
-        {[['Pull', pull, COL.pull], ['Center', center, COL.center], ['Oppo', oppo, COL.oppo]].map(([k, v, rgb], i) => (
+        {(() => {
+          const D = { pull: ['Pull', pull, COL.pull], center: ['Center', center, COL.center], oppo: ['Oppo', oppo, COL.oppo] };
+          // Labels follow the wedges left-to-right so a lefty's Pull sits under the right wedge.
+          return [D[leftDir], D.center, D[rightDir]];
+        })().map(([k, v, rgb], i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: 2 }}>
             <div style={{ display: 'flex', fontSize: 22, fontWeight: 800, color: `rgb(${rgb})` }}>{lbl(v)}</div>
             <div style={{ display: 'flex', fontSize: 15, color: PROFILE.muted, fontWeight: 600 }}>{k}</div>
@@ -1343,7 +1347,7 @@ function PortraitCard({
 }) {
   const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
   const team = player.team_name || player.team_short || '';
-  const pos = player.position || (isPitcher ? 'P' : '');
+  const pos = (player.position || (isPitcher ? 'P' : '')).toUpperCase();
   const klass = player.year_in_school ? `${player.year_in_school}` : '';
   const bt = [player.bats, player.throws].filter(Boolean).join('/');
 
@@ -1475,6 +1479,10 @@ function PortraitCard({
   const oppContact =
     pbp && pbp.opp_contact_profile && pbp.opp_contact_profile.gb_pct != null
       ? pbp.opp_contact_profile : null;
+  // Spray wedges need pull/center/oppo direction (spring PBP has it; summer/pitchers don't).
+  // Without direction but with GB/FB/LD, show a batted-ball panel instead of the spray fan.
+  const canSpray = !isPitcher && contact && contact.pull_pct != null;
+  const battedOnly = !isPitcher && contact && contact.pull_pct == null;
   const pct1 = (v) => (v == null ? '—' : (v * 100).toFixed(1) + '%');
   const findSplit = (arr, keys) => {
     if (!arr) return null;
@@ -1588,9 +1596,14 @@ function PortraitCard({
   const sortedSeasons = [
     ...(seasons || []).map((s) => ({ ...s, _summer: false })),
     ...(summerSeasons || []).map((s) => ({ ...s, _summer: true, _tag: s.league_abbrev || 'WCL' })),
-  ].sort((a, b) => Number(b.season || 0) - Number(a.season || 0)).slice(0, 5);
+  ].sort((a, b) => Number(b.season || 0) - Number(a.season || 0)).slice(0, 6);
   // Short careers (<=2 seasons) get a season-trajectory chart to fill the space.
   const showTrend = !!(trend && trend.points && trend.points.length >= 6 && sortedSeasons.length <= 2);
+  // Rows shrink to always fit the fixed career box (content height ≈ panel − title/padding).
+  const careerContentH = showTrend ? 96 : 200;
+  const careerRowH = Math.min(46, Math.floor(careerContentH / Math.max(1, sortedSeasons.length)));
+  const careerLineFs = careerRowH >= 42 ? 19 : careerRowH >= 36 ? 17 : 15;
+  const careerYrFs = careerRowH >= 42 ? 22 : 19;
 
   // ── Accolades with fallback to computed "season strengths" ──
   const accolades = [];
@@ -1681,7 +1694,7 @@ function PortraitCard({
               </div>
             )}
           </Panel>
-          {!isPitcher && contact ? (
+          {canSpray ? (
             <Panel title="Spray Chart" w={356} h={340}>
               <SprayField
                 pull={contact.pull_pct} center={contact.center_pct} oppo={contact.oppo_pct}
@@ -1689,16 +1702,32 @@ function PortraitCard({
                 bats={player.bats}
               />
             </Panel>
+          ) : battedOnly ? (
+            <Panel title="Batted Ball" w={356} h={340}>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <LabeledBar label="GB" pct={contact.gb_pct * 100} color={PROFILE.navy} />
+                <LabeledBar label="LD" pct={contact.ld_pct * 100} color={PROFILE.maroon} />
+                <LabeledBar label="FB" pct={contact.fb_pct * 100} color={PROFILE.navyLight} />
+                <div style={{ display: 'flex', height: 1, background: PROFILE.track, margin: '16px 0 8px' }} />
+                <MiniStatGrid cells={[
+                  { label: 'AVG', value: PFmt('avg', L.batting_avg) },
+                  { label: 'ISO', value: PFmt('iso', L.iso) },
+                  { label: 'BABIP', value: PFmt('babip', L.babip) },
+                ]} />
+              </div>
+            </Panel>
           ) : isPitcher && oppContact ? (
             <Panel title="Opponent Contact" w={356} h={340}>
-              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <LabeledBar label="GB" pct={oppContact.gb_pct * 100} color={PROFILE.navy} />
                 <LabeledBar label="LD" pct={oppContact.ld_pct * 100} color={PROFILE.maroon} />
                 <LabeledBar label="FB" pct={oppContact.fb_pct * 100} color={PROFILE.navyLight} />
-                <div style={{ display: 'flex', marginTop: 8 }}>
-                  <SplitRow label="Opp BA" value={PFmt('avg', L.baa)} accent={pctColor(getPct('baa'))} />
-                </div>
-                <SplitRow label="BABIP" value={PFmt('babip', L.babip_against)} />
+                <div style={{ display: 'flex', height: 1, background: PROFILE.track, margin: '16px 0 8px' }} />
+                <MiniStatGrid cells={[
+                  { label: 'Opp BA', value: PFmt('avg', L.baa), pctl: getPct('baa') },
+                  { label: 'BABIP', value: PFmt('babip', L.babip_against), pctl: null },
+                  { label: 'HR/9', value: L.hr_per_9 != null ? Number(L.hr_per_9).toFixed(1) : '—', pctl: getPct('hr_per_9') },
+                ]} />
               </div>
             </Panel>
           ) : (
@@ -1747,11 +1776,11 @@ function PortraitCard({
                       ? `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI`
                       : `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI · ${PFmt('war', s.offensive_war)} WAR`);
                 return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 46, borderBottom: i < sortedSeasons.length - 1 ? `1px solid ${PROFILE.track}` : 'none' }}>
-                    <div style={{ display: 'flex', width: 48, fontSize: 22, fontWeight: 800, color: PROFILE.navy }}>{`'${String(s.season).slice(2)}`}</div>
-                    <div style={{ display: 'flex', width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, height: careerRowH, borderBottom: i < sortedSeasons.length - 1 ? `1px solid ${PROFILE.track}` : 'none' }}>
+                    <div style={{ display: 'flex', width: 48, fontSize: careerYrFs, fontWeight: 800, color: PROFILE.navy }}>{`'${String(s.season).slice(2)}`}</div>
+                    <div style={{ display: 'flex', width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}>
                       {logo ? (
-                        <img src={proxiedImageUrl(fixUrl(logo))} width={28} height={28} style={{ objectFit: 'contain' }} />
+                        <img src={proxiedImageUrl(fixUrl(logo))} width={24} height={24} style={{ objectFit: 'contain' }} />
                       ) : null}
                     </div>
                     {s._summer ? (
@@ -1759,7 +1788,7 @@ function PortraitCard({
                         {s._tag}
                       </div>
                     ) : null}
-                    <div style={{ display: 'flex', flex: 1, fontSize: 19, color: PROFILE.ink }}>{line}</div>
+                    <div style={{ display: 'flex', flex: 1, fontSize: careerLineFs, color: PROFILE.ink }}>{line}</div>
                   </div>
                 );
               })}
@@ -1935,25 +1964,38 @@ export default async function handler(req) {
           ...p,
           team_name: p.team_name,
           logo_url: p.team_logo,
+          position: posUp, // summer feed stores lowercase ("cf") → uppercase to "CF"
           division_level: lvl,
         };
+        // Summer has PBP too (discipline, L/R splits, leverage) — fetch it so the
+        // card shows splits/clutch/batted-ball instead of "How They Reach Base".
+        let pbp = null;
+        if (selected && selected.season) {
+          const pbpUrl = isPitcher
+            ? `${API_BASE}/summer/players/${id}/pitch-level-stats-pitcher?season=${selected.season}`
+            : `${API_BASE}/summer/players/${id}/pitch-level-stats?season=${selected.season}`;
+          pbp = await safeFetch(pbpUrl);
+        }
+        // Summer season rows carry no logo of their own; stamp the team logo so the
+        // career box shows it on every row.
+        const seasonRows = list.map((r) => ({ ...r, team_logo: r.team_logo || p.team_logo, logo_url: r.logo_url || p.team_logo }));
         imgW = P_W; imgH = P_H;
         element = (
             <PortraitCard
               player={cardPlayer}
               isPitcher={isPitcher}
               latest={selected}
-              seasons={list}
+              seasons={seasonRows}
               summerSeasons={[]}
               percentiles={isPitcher ? (data.pitching_percentiles || {}) : (data.batting_percentiles || {})}
-              headshotSrc={null}
+              headshotSrc={proxiedImageUrl(fixUrl(p.headshot_url))}
               logoSrc={proxiedImageUrl(fixUrl(p.team_logo))}
               awards={[]}
               careerRankings={[]}
               pnwRankings={[]}
               goldGloves={[]}
               levelLabel={lvl}
-              pbp={null}
+              pbp={pbp}
             />
           );
       }
