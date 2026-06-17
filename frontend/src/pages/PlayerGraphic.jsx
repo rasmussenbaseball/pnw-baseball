@@ -202,9 +202,13 @@ function PlayerSearchBox({ onSelect }) {
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/v1/players/search?q=${encodeURIComponent(query)}`)
-        const data = await res.json()
-        setResults(Array.isArray(data) ? data : data.players || [])
+        const [springRes, summerRes] = await Promise.all([
+          fetch(`/api/v1/players/search?q=${encodeURIComponent(query)}`).then(r => r.json()).catch(() => []),
+          fetch(`/api/v1/summer/player-search?q=${encodeURIComponent(query)}`).then(r => r.json()).catch(() => []),
+        ])
+        const spring = (Array.isArray(springRes) ? springRes : springRes.players || []).map(p => ({ ...p, _summer: false }))
+        const summer = (Array.isArray(summerRes) ? summerRes : []).map(p => ({ ...p, _summer: true }))
+        setResults([...spring, ...summer])
         setOpen(true)
       } catch { setResults([]) }
       setLoading(false)
@@ -228,8 +232,8 @@ function PlayerSearchBox({ onSelect }) {
         <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
           {results.map(p => (
             <button
-              key={p.id}
-              onClick={() => { onSelect(p.id); setQuery(p.first_name + ' ' + p.last_name); setOpen(false) }}
+              key={`${p._summer ? 's' : 'p'}-${p.id}`}
+              onClick={() => { onSelect(p); setQuery(p.first_name + ' ' + p.last_name); setOpen(false) }}
               className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100 last:border-b-0"
             >
               {p.headshot_url ? (
@@ -239,9 +243,12 @@ function PlayerSearchBox({ onSelect }) {
                   {p.first_name?.[0]}{p.last_name?.[0]}
                 </div>
               )}
-              <div>
-                <div className="text-sm font-medium text-gray-900">{p.first_name} {p.last_name}</div>
-                <div className="text-xs text-gray-500">{p.team_name} · {p.position}</div>
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
+                  {p.first_name} {p.last_name}
+                  {p._summer && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">{p.league_abbr || 'WCL'}</span>}
+                </div>
+                <div className="text-xs text-gray-500 truncate">{p.team_name} · {p.position}{p._summer && p.college ? ` · ${p.college}` : ''}</div>
               </div>
             </button>
           ))}
@@ -412,6 +419,12 @@ export default function PlayerGraphic() {
   const [statMode, setStatMode] = useState(null)
   const [teamInfo, setTeamInfo] = useState(null)
   const [gSel, setGSel] = useState(null) // graphic season selection {season, kind}
+  const [summerId, setSummerId] = useState(null) // summer-only player selection
+  const onPick = (p) => {
+    setGSel(null)
+    if (p && p._summer) { setSummerId(p.id); setPlayerId(null) }
+    else { setPlayerId(p?.id ?? p); setSummerId(null) }
+  }
   const cardRef = useRef(null)
 
   const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
@@ -540,9 +553,23 @@ export default function PlayerGraphic() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Player Pages</h1>
-        <p className="text-sm text-gray-500 mb-4">Generate a shareable, downloadable player graphic.</p>
-        <PlayerSearchBox onSelect={setPlayerId} />
+        <p className="text-sm text-gray-500 mb-4">Generate a shareable, downloadable player graphic. Spring and summer (WCL) players included.</p>
+        <PlayerSearchBox onSelect={onPick} />
       </div>
+
+      {/* ═══ SUMMER-ONLY PLAYER GRAPHIC ═══ */}
+      {summerId && (() => {
+        const imgUrl = `/api/og?t=summerplayer&id=${summerId}&format=portrait`
+        return (
+          <div className="flex flex-col items-center gap-3">
+            <img src={imgUrl} alt="Player graphic" style={{ width: 'min(540px, 100%)', borderRadius: 12, border: '1px solid #e5e7eb' }} />
+            <a href={imgUrl} download={`player-summer-${summerId}.png`} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-nw-teal text-white text-sm font-semibold hover:opacity-90">
+              📸 Download graphic
+            </a>
+            <p className="text-xs text-gray-400">Summer (WCL) player. On mobile, long-press the image to save.</p>
+          </div>
+        )
+      })()}
 
       {/* ═══ NEW SERVER-RENDERED GRAPHIC ═══ */}
       {playerId && !loading && !error && (() => {

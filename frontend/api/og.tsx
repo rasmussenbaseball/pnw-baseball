@@ -1854,6 +1854,55 @@ export default async function handler(req) {
           );
         }
       }
+    } else if (type === 'summerplayer' && id) {
+      // Summer-only player card (WCL etc.): no PBP, percentiles vs summer-league
+      // peers when present, summer seasons in the career box.
+      const seasonParam = url.searchParams.get('season');
+      const data = await safeFetch(
+        `${API_BASE}/summer/players/${id}${seasonParam ? `?season=${seasonParam}` : ''}`
+      );
+      if (data && data.player) {
+        const p = data.player;
+        const batting = data.batting || [];
+        const pitching = data.pitching || [];
+        const posUp = (p.position || '').toUpperCase();
+        const posPitcher = ['P', 'RHP', 'LHP', 'SP', 'RP'].includes(posUp);
+        const isPitcher = pitching.length > 0 && (batting.length === 0 || posPitcher);
+        const list = isPitcher ? pitching : batting;
+        let selected = list.length
+          ? [...list].sort((a, b) => Number(b.season || 0) - Number(a.season || 0))[0]
+          : null;
+        if (seasonParam) {
+          const f = list.find((r) => String(r.season) === seasonParam);
+          if (f) selected = f;
+        }
+        const lvl = p.league_abbr || 'WCL';
+        const cardPlayer = {
+          ...p,
+          team_name: p.team_name,
+          logo_url: p.team_logo,
+          division_level: lvl,
+        };
+        imgW = P_W; imgH = P_H;
+        element = (
+            <PortraitCard
+              player={cardPlayer}
+              isPitcher={isPitcher}
+              latest={selected}
+              seasons={list}
+              summerSeasons={[]}
+              percentiles={isPitcher ? (data.pitching_percentiles || {}) : (data.batting_percentiles || {})}
+              headshotSrc={null}
+              logoSrc={proxiedImageUrl(fixUrl(p.team_logo))}
+              awards={[]}
+              careerRankings={[]}
+              pnwRankings={[]}
+              goldGloves={[]}
+              levelLabel={lvl}
+              pbp={null}
+            />
+          );
+      }
     } else if (type === 'article' && slug) {
       const data = await safeFetch(`${API_BASE}/articles/${slug}`);
       if (data) {

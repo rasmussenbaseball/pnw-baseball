@@ -1196,6 +1196,36 @@ def spring_player_trackman(
         return _trackman_payload(cur, row["summer_player_id"] if row else None, season)
 
 
+@router.get("/summer/player-search")
+@cached_endpoint(ttl_seconds=300)
+def search_summer_players(q: str = Query(..., min_length=2), limit: int = Query(15)):
+    """Search SUMMER-ONLY players (no linked spring profile) by name — used to
+    pull up downloadable player graphics for guys who never played spring in the
+    PNW. Public. Path is /summer/player-search (not /summer/players/...) so it
+    doesn't collide with the {player_id} detail route."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        search = f"%{q.strip()}%"
+        cur.execute(
+            """
+            SELECT p.id, p.first_name, p.last_name, p.position, p.college,
+                   t.short_name AS team_short, t.name AS team_name,
+                   t.logo_url AS team_logo, l.abbreviation AS league_abbr
+            FROM summer_players p
+            JOIN summer_teams t   ON t.id = p.team_id
+            JOIN summer_leagues l ON l.id = t.league_id
+            LEFT JOIN summer_player_links spl ON spl.summer_player_id = p.id
+            WHERE spl.summer_player_id IS NULL
+              AND (p.first_name ILIKE %s OR p.last_name ILIKE %s
+                   OR (p.first_name || ' ' || p.last_name) ILIKE %s)
+            ORDER BY p.last_name, p.first_name
+            LIMIT %s
+            """,
+            (search, search, search, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
 @router.get("/summer/players/{player_id}")
 @cached_endpoint(ttl_seconds=180)
 def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
