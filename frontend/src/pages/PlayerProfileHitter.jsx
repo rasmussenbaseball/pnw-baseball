@@ -264,12 +264,21 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
 
   return (
     <ProfileShell>
-      {(sideToggle || seasonSelector) && (
-        <div className="flex items-center gap-2 flex-wrap mb-1">
-          {sideToggle}
-          {seasonSelector && <div className="ml-auto">{seasonSelector}</div>}
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        {sideToggle}
+        <div className="ml-auto flex items-center gap-2">
+          {seasonSelector}
+          <a
+            href={`/api/og?t=player&id=${player.id}&format=portrait`}
+            target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white hover:opacity-90 transition-opacity"
+            style={{ background: T.accent }}
+            title="Open a downloadable, shareable graphic of this player"
+          >
+            📸 Player graphic
+          </a>
         </div>
-      )}
+      </div>
 
       {/* Hero */}
       <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>

@@ -539,9 +539,28 @@ export default function PlayerGraphic() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Player Pages</h1>
-        <p className="text-sm text-gray-500 mb-4">Generate a shareable player graphic. Screenshot to save.</p>
+        <p className="text-sm text-gray-500 mb-4">Generate a shareable, downloadable player graphic.</p>
         <PlayerSearchBox onSelect={setPlayerId} />
       </div>
+
+      {/* ═══ NEW SERVER-RENDERED GRAPHIC ═══ */}
+      {playerId && !loading && !error && (
+        <div className="flex flex-col items-center gap-3">
+          <img
+            src={`/api/og?t=player&id=${playerId}&format=portrait`}
+            alt="Player graphic"
+            style={{ width: 'min(540px, 100%)', borderRadius: 12, border: '1px solid #e5e7eb' }}
+          />
+          <a
+            href={`/api/og?t=player&id=${playerId}&format=portrait`}
+            download={`player-${playerId}.png`}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-nw-teal text-white text-sm font-semibold hover:opacity-90"
+          >
+            📸 Download graphic
+          </a>
+          <p className="text-xs text-gray-400">On mobile, long-press the image to save. Latest season shown.</p>
+        </div>
+      )}
 
       {playerId && loading && (
         <div className="text-center py-12 text-gray-500">Loading player data...</div>
@@ -550,7 +569,7 @@ export default function PlayerGraphic() {
         <div className="text-center py-12 text-red-500">Failed to load player. Try another search.</div>
       )}
 
-      {rawData && (
+      {false && rawData && (
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedSeason}
@@ -582,8 +601,8 @@ export default function PlayerGraphic() {
         </div>
       )}
 
-      {/* ═══ THE CARD ═══ */}
-      {rawData && (
+      {/* ═══ THE CARD (legacy DOM card, replaced by the server-rendered image above) ═══ */}
+      {false && rawData && (
         <div className="flex justify-center">
           <div
             ref={cardRef}
