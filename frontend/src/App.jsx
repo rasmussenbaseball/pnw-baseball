@@ -497,11 +497,15 @@ export default function App() {
           {/* Pricing / tier comparison — public so anyone can see what each tier gets */}
           <Route path="/pricing" element={<Pricing />} />
 
-          {/* Draft (auth required) */}
-          <Route path="/draft" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
-          <Route path="/draft/2026" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
-          <Route path="/draft/2027" element={<RequireTier minTier="premium"><DraftBoard year="27" /></RequireTier>} />
-          <Route path="/draft/2028" element={<RequireTier minTier="premium"><DraftBoard year="28" /></RequireTier>} />
+          {/* MLB Draft Board (auth required). Lives at /draftboard; /draft is the 56-0 game. */}
+          <Route path="/draftboard" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
+          <Route path="/draftboard/2026" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
+          <Route path="/draftboard/2027" element={<RequireTier minTier="premium"><DraftBoard year="27" /></RequireTier>} />
+          <Route path="/draftboard/2028" element={<RequireTier minTier="premium"><DraftBoard year="28" /></RequireTier>} />
+          {/* Old /draft/* draft-board links redirect to the new path */}
+          <Route path="/draft/2026" element={<Navigate to="/draftboard/2026" replace />} />
+          <Route path="/draft/2027" element={<Navigate to="/draftboard/2027" replace />} />
+          <Route path="/draft/2028" element={<Navigate to="/draftboard/2028" replace />} />
 
           {/* Misc (auth required) */}
           <Route path="/top-moments" element={<RequireAuth><TopMoments /></RequireAuth>} />

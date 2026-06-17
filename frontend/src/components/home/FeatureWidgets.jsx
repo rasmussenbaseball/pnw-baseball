@@ -50,7 +50,7 @@ export function DraftBoardWidget() {
   return (
     <WidgetCard
       title="MLB Draft Board"
-      to="/draft"
+      to="/draftboard"
       linkLabel="Full board"
       controls={
         <PillToggle

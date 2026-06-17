@@ -126,7 +126,7 @@ const NAV = [
         requires: 'free' },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats',
         requires: 'premium' },
-      { to: '/draft', label: 'Draft', desc: 'PNW college baseball MLB draft board',
+      { to: '/draftboard', label: 'Draft Board', desc: 'PNW college baseball MLB draft board',
         requires: 'premium' },
       { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
         desc: 'NWAC players available for transfer to 4-year programs',
