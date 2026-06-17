@@ -72,6 +72,23 @@ function Game({ data }) {
   const levels = useMemo(
     () => LEVEL_ORDER.filter((l) => (teams[l] || []).length), [teams])
 
+  // Spin weighting: a blend between level-equal (every level equally likely —
+  // makes the 5 D2 teams show way more than any one of the 28 NWAC teams) and
+  // team-equal. weight = teamCount^0.5 tilts toward the bigger levels (more NWAC
+  // variety, fewer repeat D2) without going fully proportional.
+  const levelWeights = useMemo(() => {
+    const w = {}
+    for (const l of levels) w[l] = Math.sqrt((teams[l] || []).length)
+    return w
+  }, [levels, teams])
+  const pickLevel = (exclude) => {
+    const pool = levels.filter((l) => l !== exclude)
+    const total = pool.reduce((s, l) => s + levelWeights[l], 0)
+    let r = Math.random() * total
+    for (const l of pool) { r -= levelWeights[l]; if (r <= 0) return l }
+    return pool[pool.length - 1]
+  }
+
   const [roster, setRoster] = useState(emptyRoster)
   const [phase, setPhase] = useState('spin') // spin | pick | result
   const [spin, setSpin] = useState(null)      // {lvl, team}
@@ -138,7 +155,7 @@ function Game({ data }) {
         const opts = (teams[lvl] || []).filter((t) => t !== spin.team)
         team = pick(opts.length ? opts : teams[lvl])
       } else {
-        lvl = pick(levels)
+        lvl = pickLevel()
         team = pick(teams[lvl])
       }
       last = { lvl, team }
@@ -177,13 +194,13 @@ function Game({ data }) {
   const skipLevel = () => {
     if (!skips.level || !spin || spinning) return
     setSkips((s) => ({ ...s, level: s.level - 1 }))
-    // Force a different level.
+    // Force a different level (weighted, excluding the current one).
     let t = null
     for (let i = 0; i < 300; i++) {
-      const lvl = pick(levels.filter((l) => l !== spin.lvl))
+      const lvl = pickLevel(spin.lvl)
       const team = pick(teams[lvl])
       t = { lvl, team }
-      if (legalCount(team) > 0) break
+      if (legalCount(lvl, team) > 0) break
     }
     animateTo(t)
   }
@@ -583,34 +600,17 @@ function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, se
 }
 
 function Result({ result: r, roster, logos, meta, onReset }) {
-  const [copied, setCopied] = useState(false)
+  const [made, setMade] = useState(false)
   const win = r.wins >= 44
   const verdict =
-    r.wins === 56 ? 'UNDEFEATED — PNW immortals' :
-    r.wins >= 50 ? 'Conference champions' :
-    r.wins >= 44 ? 'Postseason bound' :
-    r.wins >= 34 ? 'Missed the mark' : 'Time to rebuild'
+    r.wins === 56 ? 'UNDEFEATED — PNW IMMORTALS' :
+    r.wins >= 50 ? 'CONFERENCE CHAMPIONS' :
+    r.wins >= 44 ? 'POSTSEASON BOUND' :
+    r.wins >= 34 ? 'MISSED THE MARK' : 'TIME TO REBUILD'
 
-  const shareText = useMemo(() => {
-    const lineup = roster.filter((s) => s.player)
-      .map((s) => `${s.label}: ${s.player.n} (${s.player.t})`).join('\n')
-    return `56-0 (PNW Draft): I went ${r.wins}-${r.losses}! ${r.wins === 56 ? '🏆' : r.wins >= 44 ? '🔥' : ''}\n\n${lineup}\n\nBuild yours at nwbaseballstats.com/draft`
-  }, [roster, r])
-
-  const copy = async () => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareText)
-      } else {
-        const ta = document.createElement('textarea')
-        ta.value = shareText
-        ta.style.position = 'fixed'; ta.style.opacity = '0'
-        document.body.appendChild(ta); ta.select()
-        document.execCommand('copy')
-        document.body.removeChild(ta)
-      }
-    } catch { /* clipboard blocked — still show feedback so the user can select manually */ }
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
+  const download = () => {
+    drawDraftGraphic({ r, roster, verdict, win })
+    setMade(true); setTimeout(() => setMade(false), 2500)
   }
 
   return (
@@ -668,7 +668,7 @@ function Result({ result: r, roster, logos, meta, onReset }) {
       </div>
 
       <div className="btn-row" style={{ marginTop: '.25rem' }}>
-        <button className="btn bspin" onClick={copy}>{copied ? '✓ COPIED' : '📋 COPY RESULT'}</button>
+        <button className="btn bspin" onClick={download}>{made ? '✓ SAVED IMAGE' : '📸 GET 56-0 GRAPHIC'}</button>
         <button className="btn bsec" onClick={onReset}>DRAFT AGAIN</button>
       </div>
       <p className="hint" style={{ marginTop: '.6rem' }}>
@@ -676,6 +676,130 @@ function Result({ result: r, roster, logos, meta, onReset }) {
       </p>
     </>
   )
+}
+
+// Draw a shareable 56-0 result card to a canvas and trigger a PNG download.
+// Canvas-drawn (the site's standard for graphics) so there's no CDN dependency
+// or cross-origin logo tainting.
+function drawDraftGraphic({ r, roster, verdict, win }) {
+  const W = 1080, H = 1350, dpr = 2
+  const cv = document.createElement('canvas')
+  cv.width = W * dpr; cv.height = H * dpr
+  const x = cv.getContext('2d')
+  x.scale(dpr, dpr)
+  const C = {
+    bg: '#0a1628', panel: '#0f1e38', line: '#1e3a5f', gold: '#e8c96a',
+    text: '#e8dcc8', muted: '#4a6080', sub: '#8a9ab0',
+    green: '#5ecf8a', blue: '#4a9af0', red: '#f08080',
+  }
+  const SERIF = 'Georgia, "Times New Roman", serif'
+  const MONO = '"Courier New", monospace'
+  const center = W / 2
+
+  x.fillStyle = C.bg; x.fillRect(0, 0, W, H)
+  x.strokeStyle = C.gold; x.lineWidth = 2; x.globalAlpha = 0.5
+  x.strokeRect(18, 18, W - 36, H - 36); x.globalAlpha = 1
+
+  const clip = (txt, font, max) => {
+    x.font = font
+    if (x.measureText(txt).width <= max) return txt
+    let s = txt
+    while (s.length > 1 && x.measureText(s + '…').width > max) s = s.slice(0, -1)
+    return s + '…'
+  }
+
+  // Header
+  x.textAlign = 'center'
+  x.fillStyle = C.gold; x.font = `bold 96px ${SERIF}`
+  x.fillText('56-0', center, 130)
+  x.fillStyle = C.sub; x.font = `22px ${MONO}`
+  x.fillText('T H E   P N W   D R A F T', center, 172)
+
+  // Record banner
+  const by = 210, bh = 250
+  x.fillStyle = win ? 'rgba(30,92,53,0.35)' : 'rgba(58,16,16,0.35)'
+  roundRect(x, 40, by, W - 80, bh, 16); x.fill()
+  x.fillStyle = C.gold; x.font = `bold 150px ${MONO}`
+  x.fillText(`${r.wins}-${r.losses}`, center, by + 150)
+  x.fillStyle = C.sub; x.font = `22px ${MONO}`
+  x.fillText('56-GAME REGULAR SEASON', center, by + 188)
+  x.fillStyle = win ? C.green : C.red; x.font = `bold 30px ${SERIF}`
+  x.fillText(verdict, center, by + 232)
+
+  // Ratings (offense / pitching) with bars
+  const ry = 530
+  const cell = (cx, label, val, color) => {
+    x.textAlign = 'center'
+    x.fillStyle = C.muted; x.font = `18px ${MONO}`
+    x.fillText(label, cx, ry)
+    x.fillStyle = C.text; x.font = `bold 46px ${MONO}`
+    x.fillText(`${val}`, cx, ry + 48)
+    x.fillStyle = C.muted; x.font = `18px ${MONO}`
+    x.fillText('/ 100', cx, ry + 74)
+    // bar
+    const bw = 360, bx = cx - bw / 2, bby = ry + 92
+    x.fillStyle = C.panel; roundRect(x, bx, bby, bw, 10, 5); x.fill()
+    x.fillStyle = color; roundRect(x, bx, bby, bw * (val / 100), 10, 5); x.fill()
+  }
+  cell(center - 240, 'OFFENSE', r.offBar, C.green)
+  cell(center + 240, 'PITCHING', r.pitBar, C.blue)
+
+  // Slash / rotation line
+  x.fillStyle = C.sub; x.font = `19px ${MONO}`
+  x.fillText(
+    `${r.havg.toFixed(3)}/${r.hobp.toFixed(3)}/${r.hslg.toFixed(3)}  ·  ${r.hr} HR  ·  ${r.hwrc.toFixed(0)} wRC+   |   ${r.pera.toFixed(2)} ERA  ·  ${r.pwhip.toFixed(2)} WHIP`,
+    center, ry + 118)
+
+  // Roster header
+  const rosterTop = 712
+  x.strokeStyle = C.line; x.lineWidth = 1
+  x.beginPath(); x.moveTo(40, rosterTop - 26); x.lineTo(W - 40, rosterTop - 26); x.stroke()
+  x.fillStyle = C.gold; x.font = `bold 22px ${MONO}`
+  x.fillText('FINAL ROSTER', center, rosterTop - 2)
+
+  const hitters = roster.filter((s) => s.type === 'hitter')
+  const pitchers = roster.filter((s) => s.type === 'pitcher')
+  const drawRow = (slot, colX, rowY, colW) => {
+    const p = slot.player
+    x.textAlign = 'left'
+    x.fillStyle = C.muted; x.font = `bold 17px ${MONO}`
+    x.fillText(slot.label.padEnd(3, ' '), colX, rowY)
+    const nameX = colX + 52
+    x.fillStyle = C.text; x.font = `bold 21px ${SERIF}`
+    x.fillText(p ? clip(p.n, `bold 21px ${SERIF}`, colW - 110) : '--', nameX, rowY)
+    if (p) {
+      x.textAlign = 'right'
+      x.fillStyle = C.sub; x.font = `15px ${MONO}`
+      x.fillText(p.t, colX + colW, rowY)
+    }
+  }
+  // Left column: 9 hitters
+  let yy = rosterTop + 34
+  const stepH = 50
+  hitters.forEach((s) => { drawRow(s, 56, yy, 470); yy += stepH })
+  // Right column: 5 pitchers
+  yy = rosterTop + 34
+  pitchers.forEach((s) => { drawRow(s, 566, yy, 458); yy += stepH })
+
+  // Footer
+  x.textAlign = 'center'
+  x.fillStyle = C.gold; x.font = `bold 24px ${MONO}`
+  x.fillText('nwbaseballstats.com/draft', center, H - 48)
+
+  const link = document.createElement('a')
+  link.download = `56-0-pnw-draft-${r.wins}-${r.losses}.png`
+  link.href = cv.toDataURL('image/png')
+  link.click()
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
 }
 
 // Intern's original CSS, scoped under #pnwdraft so it can't leak into the site.
