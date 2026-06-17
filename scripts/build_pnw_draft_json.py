@@ -47,6 +47,7 @@ OUT_PATH = os.path.join(os.path.dirname(__file__), '..', 'backend', 'data', 'pnw
 MIN_PA = 40
 MIN_IP = 20.0
 ELIG_MIN_GAMES = 5   # games at a position to qualify there (for multi-position)
+ROLE_MIN_APPS = 3    # min starts AND relief apps to count a pitcher as a swing (both)
 
 # Division-strength multipliers — absolute quality of an AVERAGE player at each
 # level, D1 = 1.00 baseline. This is what makes cross-level rosters fair: a
@@ -120,7 +121,20 @@ def assign_positions(cur, season, team_ids):
             primary[pid] = 'LF'   # generic-OF-only → corner default
             eligible[pid] = ['LF']
         # else: leave unassigned (only DH/PH/PR/IF generic) → filled by fallback
-    return primary, eligible
+
+    # Total distinct games per hitter (for the `g` display when batting_stats.games
+    # is missing/zero — e.g. the Willamette D3 rows whose games never ingested).
+    cur.execute("""
+        SELECT gb.player_id,
+               COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) AS games
+        FROM game_batting gb
+        JOIN games g ON g.id = gb.game_id
+        WHERE gb.player_id IS NOT NULL AND g.season = %s AND gb.team_id = ANY(%s)
+          AND (g.is_postseason IS NULL OR g.is_postseason = FALSE)
+        GROUP BY gb.player_id
+    """, (season, team_ids))
+    games_count = {r['player_id']: int(r['games'] or 0) for r in cur.fetchall()}
+    return primary, eligible, games_count
 
 
 def main():
@@ -139,7 +153,7 @@ def main():
         teams = {r['id']: {'short': r['short_name'], 'level': r['level']} for r in cur.fetchall()}
         team_ids = list(teams.keys())
 
-        primary_pos, eligible_pos = assign_positions(cur, season, team_ids)
+        primary_pos, eligible_pos, games_count = assign_positions(cur, season, team_ids)
 
         # Hitters (qualified)
         cur.execute("""
@@ -151,7 +165,6 @@ def main():
             JOIN players p ON p.id = bs.player_id
             WHERE bs.season = %s AND bs.team_id = ANY(%s)
               AND bs.plate_appearances >= %s
-              AND COALESCE(bs.games, 0) > 0
               AND bs.wrc_plus IS NOT NULL
               AND bs.batting_avg IS NOT NULL
         """, (season, team_ids, MIN_PA))
@@ -178,7 +191,7 @@ def main():
                 'hr': int(r['home_runs'] or 0), 'rbi': int(r['rbi'] or 0),
                 'wrc': round(float(r['wrc_plus']), 0),
                 'war': round(float(r['offensive_war'] or 0), 2),
-                'g': int(r['games'] or 0),
+                'g': int(r['games'] or 0) or games_count.get(r['player_id'], 0),
                 'off': round(off, 1),
             })
 
@@ -208,9 +221,16 @@ def main():
             pit = float(r['fip_plus']) * LEVEL_STR[team['level']]
             g = int(r['games'] or 0)
             gs = int(r['games_started'] or 0)
-            # Reliever = primarily relief appearances (or has saves). Drives the
-            # RP badge AND which staff slot the pick fills.
-            is_rp = (gs < g * 0.5) or int(r['saves'] or 0) > 0
+            relief = max(g - gs, 0)
+            # Role from actual usage (NOT saves — a starter can vulture a save).
+            #   both  = meaningful time as starter AND reliever -> user chooses slot
+            #   SP    = mostly starts;  RP = mostly relief
+            if gs >= ROLE_MIN_APPS and relief >= ROLE_MIN_APPS:
+                role = 'both'
+            elif gs >= relief:
+                role = 'SP'
+            else:
+                role = 'RP'
             pitchers.append({
                 'pid': r['player_id'], 'n': f"{r['first_name'] or ''} {r['last_name'] or ''}".strip(),
                 't': team['short'], 'l': team['level'],
@@ -220,7 +240,7 @@ def main():
                 'fip': round(float(r['fip'] or 0), 2),
                 'ip': round(ip_real, 1),
                 'w': int(r['wins'] or 0), 'sv': int(r['saves'] or 0),
-                'g': g, 'gs': gs, 'rp': is_rp,
+                'g': g, 'gs': gs, 'role': role,
                 'war': round(float(r['pitching_war'] or 0), 2),
                 'pit': round(pit, 1),
             })
@@ -267,21 +287,83 @@ def main():
         totals.append(total_of(hs, ps))
     mean = sum(totals) / len(totals)
 
-    # Win mapping = piecewise-linear through three anchors:
-    #   worst-possible roster -> 3 wins, average (random) roster -> 30,
-    #   best-possible roster -> 56. Gives full dynamic range (a careless
-    #   roster can bottom out, an optimized one reaches a clean sweep)
-    #   while keeping the typical roster respectable.
-    WORST_WINS, CENTER_WINS, BEST_WINS = 3.0, 30.0, 56.0
+    # ── Engaged-play (greedy) distribution ──
+    # A thoughtful player grabs the best available stud each round. We compare a
+    # candidate hitter vs pitcher by PERCENTILE within its own pool (so the 90th-
+    # pct bat ranks like the 90th-pct arm) and take the higher. This is what the
+    # win curve's upper anchors are calibrated to, so a genuinely strong draft
+    # reaches the low-to-mid 50s instead of stalling in the high 30s.
+    pitchers_by_team = {}
+    for p in pitchers:
+        pitchers_by_team.setdefault(p['t'], []).append(p)
+    off_sorted = sorted(h['off'] for h in hitters)
+    pit_sorted = sorted(p['pit'] for p in pitchers)
+
+    def _pct(sorted_vals, v):
+        from bisect import bisect_left
+        return bisect_left(sorted_vals, v) / max(len(sorted_vals) - 1, 1)
+
+    def greedy_total(rng):
+        need = set(HPOS); need_p = N_PITCHERS
+        hs, ps = [], []
+        guard = 0
+        while (need or need_p > 0) and guard < 500:
+            guard += 1
+            lv = rng.choice(list(teams_by_level)); tm = rng.choice(teams_by_level[lv])
+            # best hitter for an open eligible slot (DH counts if open)
+            bh = None
+            for h in hByteam_get(tm):
+                fits = ('DH' in need) or any(pos in need for pos in (h.get('elig') or [h['p']]))
+                if fits and (bh is None or h['off'] > bh['off']):
+                    bh = h
+            bp = None
+            if need_p > 0:
+                for p in pitchers_by_team.get(tm, []):
+                    if bp is None or p['pit'] > bp['pit']:
+                        bp = p
+            take_h = bh and (not bp or _pct(off_sorted, bh['off']) >= _pct(pit_sorted, bp['pit']))
+            if take_h:
+                slot = next((pos for pos in (bh.get('elig') or [bh['p']]) if pos in need), 'DH')
+                need.discard(slot); hs.append(bh)
+            elif bp:
+                need_p -= 1; ps.append(bp)
+        if len(hs) == 9 and len(ps) == 5:
+            return total_of(hs, ps)
+        return None
+
+    hByteam = {}
+    for h in hitters:
+        hByteam.setdefault(h['t'], []).append(h)
+    def hByteam_get(tm):
+        return hByteam.get(tm, [])
+
+    grng = random.Random(11)
+    gtot = sorted(t for t in (greedy_total(grng) for _ in range(4000)) if t is not None)
+    g50 = gtot[len(gtot) // 2]
+    g90 = gtot[int(0.90 * len(gtot))]
+    g99 = gtot[int(0.99 * len(gtot))]
+
+    # Win curve = linear interpolation through monotonic (total, wins) anchors.
+    raw_anchors = [
+        (worst_total, 2.0),     # careless / worst-possible bottoms out
+        (mean, 28.0),           # a random roster is roughly .500
+        (g50, 44.0),            # typical engaged play
+        (g90, 52.0),            # a strong, well-built roster
+        (max(best_total, g99 + 1), 56.0),  # near-perfect -> sweep
+    ]
+    anchors = []
+    for tot, w in raw_anchors:
+        if not anchors or tot > anchors[-1][0] + 1e-6:
+            anchors.append((round(tot, 3), w))
 
     def wins(total):
-        if total <= mean:
-            frac = (total - worst_total) / max(mean - worst_total, 1e-6)
-            w = WORST_WINS + frac * (CENTER_WINS - WORST_WINS)
-        else:
-            frac = (total - mean) / max(best_total - mean, 1e-6)
-            w = CENTER_WINS + frac * (BEST_WINS - CENTER_WINS)
-        return max(0, min(56, round(w)))
+        if total <= anchors[0][0]:
+            return max(0, min(56, round(anchors[0][1])))
+        for (t0, w0), (t1, w1) in zip(anchors, anchors[1:]):
+            if total <= t1:
+                frac = (total - t0) / max(t1 - t0, 1e-6)
+                return max(0, min(56, round(w0 + frac * (w1 - w0))))
+        return 56
 
     # 0-100 bar bounds from the worst/best achievable single-roster means
     off_lo, off_hi = hs_of(worst_h), hs_of(best_h)
@@ -294,9 +376,7 @@ def main():
         'level_str': LEVEL_STR, 'min_pa': MIN_PA, 'min_ip': MIN_IP,
         'weights': {'h': WEIGHT_H, 'p': WEIGHT_P},
         'games': 56,
-        'win_map': {'worst_total': round(worst_total, 3), 'mean': round(mean, 3),
-                    'best_total': round(best_total, 3),
-                    'worst_wins': WORST_WINS, 'center_wins': CENTER_WINS, 'best_wins': BEST_WINS},
+        'win_map': {'anchors': anchors},
         'off_bar': {'min': round(off_lo, 2), 'max': round(off_hi, 2)},
         'pit_bar': {'min': round(pit_lo, 2), 'max': round(pit_hi, 2)},
         'best_total': round(best_total, 2), 'worst_total': round(worst_total, 2),
@@ -312,41 +392,16 @@ def main():
     print(f"  hitters={len(hitters)} pitchers={len(pitchers)} "
           f"teams={sum(len(v) for v in teams_by_level.values())}")
     print(f"  teams/level: " + ", ".join(f"{lv}:{len(v)}" for lv, v in sorted(teams_by_level.items())))
+    print(f"  win anchors (total->wins): " + ", ".join(f"{t:.0f}->{w:.0f}" for t, w in anchors))
     print(f"  win calibration: random mean={wins(mean)}  best={wins(best_total)}  worst={wins(worst_total)}")
     rw = sorted(wins(t) for t in totals)
     print(f"  random win spread: p5={rw[len(rw)//20]}  p50={rw[len(rw)//2]}  p95={rw[19*len(rw)//20]}  "
           f"min={rw[0]} max={rw[-1]}")
-
-    # Greedy engaged play: each round spin a random level+team, take the best
-    # available player for a still-needed slot (DH can be any hitter).
-    def greedy_game(rng):
-        need = set(HPOS); need_p = N_PITCHERS
-        hs, ps = [], []
-        guard = 0
-        while need or need_p > 0:
-            guard += 1
-            if guard > 500:
-                break
-            lv = rng.choice(list(teams_by_level))
-            tm = rng.choice(teams_by_level[lv])
-            cand_h = [h for h in hitters if h['t'] == tm and (h['p'] in need or 'DH' in need)]
-            cand_p = pitchers_by_team.get(tm, []) if need_p > 0 else []
-            best_h_pick = max(cand_h, key=lambda x: x['off'], default=None)
-            best_p_pick = max(cand_p, key=lambda x: x['pit'], default=None)
-            if best_h_pick and (not best_p_pick or best_h_pick['off'] >= best_p_pick['pit'] * 0.9):
-                slot = best_h_pick['p'] if best_h_pick['p'] in need else 'DH'
-                need.discard(slot); hs.append(best_h_pick)
-            elif best_p_pick:
-                need_p -= 1; ps.append(best_p_pick)
-        if len(hs) == 9 and len(ps) == 5:
-            return wins(total_of(hs, ps))
-        return None
-    pitchers_by_team = {}
-    for p in pitchers:
-        pitchers_by_team.setdefault(p['t'], []).append(p)
-    grng = random.Random(11)
-    gw = sorted(w for w in (greedy_game(grng) for _ in range(3000)) if w is not None)
-    print(f"  GREEDY engaged play: p5={gw[len(gw)//20]}  p50={gw[len(gw)//2]}  p95={gw[19*len(gw)//20]}  max={gw[-1]}")
+    gww = sorted(wins(t) for t in gtot)
+    print(f"  GREEDY engaged play wins: p5={gww[len(gww)//20]}  p50={gww[len(gww)//2]}  "
+          f"p90={gww[int(0.9*len(gww))]}  p95={gww[19*len(gww)//20]}  max={gww[-1]}")
+    print(f"  multi-position hitters: {sum(1 for h in hitters if len(h['elig'])>1)}  "
+          f"swing pitchers (both): {sum(1 for p in pitchers if p['role']=='both')}")
     print("  BEST roster:")
     for h in best_h:
         print(f"    {h['p']:3} {h['n']:22} {h['l']:5} wRC+={h['wrc']:.0f} off={h['off']}")

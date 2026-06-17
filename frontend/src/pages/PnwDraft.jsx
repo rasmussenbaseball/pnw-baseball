@@ -54,15 +54,19 @@ export default function PnwDraft() {
 function Game({ data }) {
   const { hitters, pitchers, teams, logos = {}, meta } = data
 
-  // Index pools by team for fast lookup.
+  // Index pools by level+team. Keying by team short_name ALONE is unsafe:
+  // "Pacific" exists at both D1 and D3, so a D1 spin must not see D3 Pacific's
+  // players (and vice versa) — that mismatch could mark a team playable while
+  // the level-filtered picker shows nobody.
+  const tkey = (lvl, team) => lvl + '|' + team
   const hByTeam = useMemo(() => {
     const m = {}
-    for (const h of hitters) (m[h.t] ||= []).push(h)
+    for (const h of hitters) (m[tkey(h.l, h.t)] ||= []).push(h)
     return m
   }, [hitters])
   const pByTeam = useMemo(() => {
     const m = {}
-    for (const p of pitchers) (m[p.t] ||= []).push(p)
+    for (const p of pitchers) (m[tkey(p.l, p.t)] ||= []).push(p)
     return m
   }, [pitchers])
   const levels = useMemo(
@@ -105,14 +109,14 @@ function Game({ data }) {
 
   // How many legal picks a team offers given the current roster — used to make
   // every settled spin guaranteed-playable (no dead ends).
-  const legalCount = (team) => {
+  const legalCount = (lvl, team) => {
     let n = 0
-    for (const h of hByTeam[team] || []) {
+    for (const h of hByTeam[tkey(lvl, team)] || []) {
       if (usedPids.has(h.pid)) continue
       if (openSlotFor(h)) n++
     }
     if (pitcherSlotsLeft > 0) {
-      for (const p of pByTeam[team] || []) if (!usedPids.has(p.pid)) n++
+      for (const p of pByTeam[tkey(lvl, team)] || []) if (!usedPids.has(p.pid)) n++
     }
     return n
   }
@@ -132,7 +136,7 @@ function Game({ data }) {
         team = pick(teams[lvl])
       }
       last = { lvl, team }
-      if (legalCount(team) > 0) return last
+      if (legalCount(lvl, team) > 0) return last
     }
     return last
   }
@@ -210,21 +214,36 @@ function Game({ data }) {
     const dests = destinationsFor(h)
     if (dests.length === 0) return
     if (dests.length === 1) placeHitterAt(h, dests[0])
-    else setChoosing({ h, dests })   // let the user pick which spot
+    else setChoosing({ kind: 'hitter', player: h, dests })   // pick which spot
+  }
+  const spOpen = () => roster.some((s) => s.type === 'pitcher' && s.label !== 'RP' && !s.player)
+  const rpOpen = () => roster.some((s) => s.type === 'pitcher' && s.label === 'RP' && !s.player)
+  const placePitcherAs = (p, kind) => {
+    if (usedPids.has(p.pid)) return
+    const next = roster.map((s) => ({ ...s }))
+    const findSP = () => next.find((s) => s.type === 'pitcher' && s.label !== 'RP' && !s.player)
+    const findRP = () => next.find((s) => s.type === 'pitcher' && s.label === 'RP' && !s.player)
+    const anyOpen = () => next.find((s) => s.type === 'pitcher' && !s.player)
+    const target = kind === 'RP' ? (findRP() || anyOpen()) : (findSP() || anyOpen())
+    if (!target) return
+    target.player = p
+    setChoosing(null)
+    setRoster(next)
+    advance(next)
   }
   const draftPitcher = (p) => {
     if (usedPids.has(p.pid)) return
-    const next = roster.map((s) => ({ ...s }))
-    // Relievers fill the RP slot; starters fill an SP slot. Fall back to the
-    // other kind of slot if the preferred one is full.
-    const openSP = () => next.find((s) => s.type === 'pitcher' && s.label !== 'RP' && !s.player)
-    const openRP = () => next.find((s) => s.type === 'pitcher' && s.label === 'RP' && !s.player)
-    const anyOpen = () => next.find((s) => s.type === 'pitcher' && !s.player)
-    const target = p.rp ? (openRP() || anyOpen()) : (openSP() || anyOpen())
-    if (!target) return
-    target.player = p
-    setRoster(next)
-    advance(next)
+    const sp = spOpen(), rp = rpOpen()
+    // A swing pitcher (started AND relieved) lets you choose the role when both
+    // slot kinds are open. Pure starters/relievers fill their slot (fallback to
+    // the other kind when their preferred slot is full).
+    if (p.role === 'both' && sp && rp) {
+      setChoosing({ kind: 'pitcher', player: p, dests: ['SP', 'RP'] })
+    } else if (p.role === 'RP') {
+      placePitcherAs(p, rp ? 'RP' : 'SP')
+    } else {
+      placePitcherAs(p, sp ? 'SP' : 'RP')
+    }
   }
 
   const reset = () => {
@@ -236,7 +255,7 @@ function Game({ data }) {
   // ── Sorted, filtered pick lists for the current team ──
   const curHitters = useMemo(() => {
     if (!spin) return []
-    let list = (hByTeam[spin.team] || []).filter((h) => h.l === spin.lvl)
+    let list = (hByTeam[tkey(spin.lvl, spin.team)] || []).slice()
     if (posF !== 'all') list = list.filter((h) => (h.elig || [h.p]).includes(posF))
     const cmp = {
       off: (a, b) => b.off - a.off, avg: (a, b) => b.avg - a.avg,
@@ -249,7 +268,7 @@ function Game({ data }) {
 
   const curPitchers = useMemo(() => {
     if (!spin) return []
-    const list = (pByTeam[spin.team] || []).filter((p) => p.l === spin.lvl)
+    const list = (pByTeam[tkey(spin.lvl, spin.team)] || [])
     const cmp = {
       off: (a, b) => b.pit - a.pit, era: (a, b) => a.era - b.era,
       fip: (a, b) => a.fip - b.fip, k9: (a, b) => b.k9 - a.k9,
@@ -298,7 +317,9 @@ function Game({ data }) {
                 pitcherSlotsLeft={pitcherSlotsLeft}
                 onDraftH={draftHitter} onDraftP={draftPitcher}
                 choosing={choosing}
-                onChoose={(slot) => placeHitterAt(choosing.h, slot)}
+                onChoose={(slot) => choosing.kind === 'pitcher'
+                  ? placePitcherAs(choosing.player, slot)
+                  : placeHitterAt(choosing.player, slot)}
                 onCancelChoose={() => setChoosing(null)}
               />
             )}
@@ -321,15 +342,18 @@ function computeResult(roster, meta) {
   const w = meta.weights || { h: 0.55, p: 0.45 }
   const total = w.h * hs + w.p * ps
 
-  // Piecewise win mapping from meta.win_map (worst→3, average→30, best→56).
-  const wm = meta.win_map
-  let wins
-  if (total <= wm.mean) {
-    const frac = (total - wm.worst_total) / Math.max(wm.mean - wm.worst_total, 1e-6)
-    wins = wm.worst_wins + frac * (wm.center_wins - wm.worst_wins)
+  // Win mapping: linear interpolation through the calibrated (total, wins)
+  // anchors in meta.win_map.anchors (careless ~.500, engaged play low-to-mid
+  // 50s, near-perfect = sweep).
+  const anchors = meta.win_map.anchors
+  let wins = anchors[anchors.length - 1][1]
+  if (total <= anchors[0][0]) {
+    wins = anchors[0][1]
   } else {
-    const frac = (total - wm.mean) / Math.max(wm.best_total - wm.mean, 1e-6)
-    wins = wm.center_wins + frac * (wm.best_wins - wm.center_wins)
+    for (let i = 0; i < anchors.length - 1; i++) {
+      const [t0, w0] = anchors[i], [t1, w1] = anchors[i + 1]
+      if (total <= t1) { wins = w0 + (total - t0) / Math.max(t1 - t0, 1e-6) * (w1 - w0); break }
+    }
   }
   wins = Math.max(0, Math.min(56, Math.round(wins)))
 
@@ -441,7 +465,7 @@ function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, se
     <div className="picker-card">
       {choosing && (
         <div className="chooser">
-          <span className="chooser-lbl">Play <strong>{choosing.h.n}</strong> at:</span>
+          <span className="chooser-lbl">Play <strong>{choosing.player.n}</strong> at:</span>
           <div className="chooser-opts">
             {choosing.dests.map((slot) => (
               <button key={slot} className="pfb on" onClick={() => onChoose(slot)}>{slot}</button>
@@ -520,11 +544,11 @@ function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, se
                   <div className="ptop">
                     <div className="pnm">{p.n}</div>
                     <div className="pri">
-                      <span className="pbg">{p.rp ? 'RP' : 'SP'}</span>
+                      <span className="pbg">{p.role === 'both' ? 'SP/RP' : p.role}</span>
                       <span className={'pwr' + (p.war >= 0 ? '' : ' neg')}>{(p.war >= 0 ? '+' : '') + p.war.toFixed(1)}</span>
                     </div>
                   </div>
-                  <div className="psb">{p.t} ({p.l}) · {p.g}G · {p.w}W{p.sv ? ' ' + p.sv + 'SV' : ''}</div>
+                  <div className="psb">{p.t} ({p.l}) · {p.gs}GS/{p.g}G · {p.w}W{p.sv ? ' ' + p.sv + 'SV' : ''}</div>
                   <div className="pst">
                     <span className="ps hl"><strong>{p.era.toFixed(2)}</strong> ERA</span>
                     <span className="ps"><strong>{p.whip.toFixed(2)}</strong> WHIP</span>
