@@ -200,6 +200,7 @@ import WarLeaderboard from './pages/WarLeaderboard'
 import TeamStatsPage from './pages/TeamStatsPage'
 import TeamsPage from './pages/TeamsPage'
 import ProTracker from './pages/ProTracker'
+import PnwDraft from './pages/PnwDraft'
 import TeamDetail from './pages/TeamDetail'
 import TeamProjections from './pages/TeamProjections'
 import TrackManData from './pages/TrackManData'
@@ -390,6 +391,7 @@ export default function App() {
           <Route path="/projections" element={<RequireDev><TeamProjections /></RequireDev>} />
           <Route path="/trackman-data" element={<RequireDev><TrackManData /></RequireDev>} />
           <Route path="/pro-tracker" element={<ProTracker />} />
+          <Route path="/draft" element={<PnwDraft />} />
           <Route path="/standings" element={<StandingsPage />} />
           <Route path="/results" element={<Navigate to="/scoreboard" replace />} />
           <Route path="/scoreboard" element={<Scoreboard />} />

@@ -34,6 +34,7 @@ const NAV = [
       { to: '/player-comps', label: 'Player Comps', desc: "Each player's closest statistical comparables (NW + MLB)", requires: 'free' },
       { to: '/records', label: 'Records', desc: 'Single-season & career record holders', requires: 'free' },
       { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards", requires: 'free' },
+      { to: '/draft', label: 'PNW Draft', desc: 'Build the best PNW roster, chase a perfect 56-0' },
     ],
   },
   {
