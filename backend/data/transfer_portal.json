@@ -1,6 +1,6 @@
 {
   "_comment": "PNW four-year players who entered the transfer portal (player_id set, served by /transfer-portal on the Transfer Portal Tracker), PLUS incoming transfers from outside our database (no player_id: out-of-region players committing to a PNW school). committed_to drives the Recruiting Classes transfers view; entries without a player_id have no stats so they show there unrated (excluded from the WAR average, not penalized). Optional position overrides the DB position.",
-  "updated": "2026-06-15",
+  "updated": "2026-06-17",
   "players": [
     {
       "player_id": 3026,
@@ -90,7 +90,7 @@
       "player_id": 3492,
       "name": "Jackson Hotchkiss",
       "from": "Washington",
-      "committed_to": null
+      "committed_to": "Arizona State"
     },
     {
       "player_id": 3611,
@@ -239,7 +239,7 @@
       "player_id": 3550,
       "name": "Mikey Bell",
       "from": "Gonzaga",
-      "committed_to": null
+      "committed_to": "Georgia"
     },
     {
       "player_id": 15479,
