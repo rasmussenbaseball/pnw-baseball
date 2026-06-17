@@ -60,15 +60,29 @@ const PROFILE = {
 };
 const HERO_GRAD = `linear-gradient(120deg, ${PROFILE.navy} 0%, ${PROFILE.navyLight} 55%, ${PROFILE.gold} 100%)`;
 
-// Savant-style percentile color: blue (low) → neutral → maroon (high).
+// Savant-style percentile color ramp: deep blue (low) → light blue → DARK
+// (middle) → light red → deep red (high). Black/dark is reserved for the
+// middle band only; everything else gets a shade of red or blue.
 function pctColor(p) {
-  if (p == null) return PROFILE.light;
-  if (p >= 85) return '#c0273f';
-  if (p >= 70) return PROFILE.maroon;
-  if (p >= 55) return '#e07a6a';
-  if (p >= 45) return '#b0a99a';
-  if (p >= 30) return '#7fa8cc';
-  return PROFILE.blue;
+  if (p == null) return '#9a9a9a';
+  if (p >= 90) return '#b01e38';
+  if (p >= 73) return '#d2415a';
+  if (p >= 58) return '#e08475';
+  if (p >= 43) return '#2b2b2b';
+  if (p >= 28) return '#7fa8cc';
+  if (p >= 11) return '#5d99c6';
+  return '#1f5fa8';
+}
+
+// Percentile (0-100, higher value = higher) from the endpoint's decile array
+// (9 thresholds). higherBetter flips it so "good" is always high.
+function decilePct(decArr, v, higherBetter) {
+  if (!decArr || !decArr.length || v == null) return null;
+  let c = 0;
+  for (const t of decArr) if (v >= t) c++;
+  let pct = (c / decArr.length) * 100;
+  if (!higherBetter) pct = 100 - pct;
+  return Math.max(1, Math.min(99, Math.round(pct)));
 }
 
 const CACHE_HEADERS = {
@@ -1197,11 +1211,18 @@ function MiniStatGrid({ cells }) {
             justifyContent: 'center',
             width: '33.3%',
             height: 84,
-            gap: 4,
+            gap: 5,
           }}
         >
-          <div style={{ display: 'flex', fontSize: 30, fontWeight: 800, color: c.color || PROFILE.ink }}>{c.value}</div>
-          <div style={{ display: 'flex', fontSize: 17, color: PROFILE.muted, fontWeight: 600 }}>{c.label}</div>
+          <div style={{ display: 'flex', fontSize: 30, fontWeight: 800, color: c.pctl != null ? pctColor(c.pctl) : (c.color || PROFILE.ink) }}>{c.value}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', fontSize: 16, color: PROFILE.muted, fontWeight: 600 }}>{c.label}</div>
+            {c.pctl != null ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 26, height: 19, padding: '0 5px', borderRadius: 6, background: pctColor(c.pctl), color: '#fff', fontSize: 13, fontWeight: 800 }}>
+                {c.pctl}
+              </div>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>
@@ -1235,7 +1256,7 @@ function SplitRow({ label, value, accent }) {
 // into pull / center / oppo wedges, each shaded by how often the batter hits
 // the ball that way. Pull side flips with handedness.
 function SprayField({ pull, center, oppo, gb, fb, ld, bats }) {
-  const cx = 178, cy = 196, R = 165;
+  const cx = 158, cy = 150, R = 134;
   const pt = (deg) => {
     const r = (deg * Math.PI) / 180;
     return [cx + R * Math.sin(r), cy - R * Math.cos(r)];
@@ -1243,31 +1264,34 @@ function SprayField({ pull, center, oppo, gb, fb, ld, bats }) {
   const B = [-45, -15, 15, 45].map(pt);
   const wedge = (p1, p2) =>
     `M ${cx} ${cy} L ${p1[0].toFixed(1)} ${p1[1].toFixed(1)} A ${R} ${R} 0 0 1 ${p2[0].toFixed(1)} ${p2[1].toFixed(1)} Z`;
-  const fill = (f) => `rgba(210,45,73,${(0.18 + Math.min(0.72, (f || 0) * 1.7)).toFixed(2)})`;
+  // Each direction gets its own hue, opacity scaled by how often the ball goes there.
+  const rgba = (rgb, f) => `rgba(${rgb},${(0.3 + Math.min(0.65, (f || 0) * 1.5)).toFixed(2)})`;
+  const COL = { pull: '210,45,73', center: '201,164,76', oppo: '93,153,198' };
   const rhh = (bats || 'R').toUpperCase().startsWith('R'); // RHH pulls to left field
-  const leftFrac = rhh ? pull : oppo;
-  const rightFrac = rhh ? oppo : pull;
+  const leftDir = rhh ? 'pull' : 'oppo';
+  const rightDir = rhh ? 'oppo' : 'pull';
+  const fracOf = { pull, center, oppo };
   const lbl = (f) => (f != null ? Math.round(f * 100) + '%' : '—');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-      <svg width={300} height={210} viewBox="0 0 356 210">
-        <path d={wedge(B[0], B[1])} fill={fill(leftFrac)} />
-        <path d={wedge(B[1], B[2])} fill={fill(center)} />
-        <path d={wedge(B[2], B[3])} fill={fill(rightFrac)} />
-        <line x1={cx} y1={cy} x2={B[0][0]} y2={B[0][1]} stroke="#14365c" strokeWidth="2.5" />
-        <line x1={cx} y1={cy} x2={B[3][0]} y2={B[3][1]} stroke="#14365c" strokeWidth="2.5" />
-        <path d={`M ${B[0][0].toFixed(1)} ${B[0][1].toFixed(1)} A ${R} ${R} 0 0 1 ${B[3][0].toFixed(1)} ${B[3][1].toFixed(1)}`} fill="none" stroke="#14365c" strokeWidth="2.5" />
-        <circle cx={cx} cy={cy} r="5" fill="#14365c" />
+      <svg width={300} height={160} viewBox="0 0 316 160">
+        <path d={wedge(B[0], B[1])} fill={rgba(COL[leftDir], fracOf[leftDir])} />
+        <path d={wedge(B[1], B[2])} fill={rgba(COL.center, center)} />
+        <path d={wedge(B[2], B[3])} fill={rgba(COL[rightDir], fracOf[rightDir])} />
+        <path d={`M ${cx} ${cy} L ${B[0][0].toFixed(1)} ${B[0][1].toFixed(1)} A ${R} ${R} 0 0 1 ${B[3][0].toFixed(1)} ${B[3][1].toFixed(1)} Z`} fill="none" stroke="#14365c" strokeWidth="2.5" />
+        <line x1={cx} y1={cy} x2={B[1][0].toFixed(1)} y2={B[1][1].toFixed(1)} stroke="#14365c" strokeWidth="1" />
+        <line x1={cx} y1={cy} x2={B[2][0].toFixed(1)} y2={B[2][1].toFixed(1)} stroke="#14365c" strokeWidth="1" />
+        <circle cx={cx} cy={cy} r="4.5" fill="#14365c" />
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: 4 }}>
-        {[['Pull', pull], ['Center', center], ['Oppo', oppo]].map(([k, v], i) => (
+      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: 6 }}>
+        {[['Pull', pull, COL.pull], ['Center', center, COL.center], ['Oppo', oppo, COL.oppo]].map(([k, v, rgb], i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: 2 }}>
-            <div style={{ display: 'flex', fontSize: 22, fontWeight: 800, color: PROFILE.ink }}>{lbl(v)}</div>
+            <div style={{ display: 'flex', fontSize: 22, fontWeight: 800, color: `rgb(${rgb})` }}>{lbl(v)}</div>
             <div style={{ display: 'flex', fontSize: 15, color: PROFILE.muted, fontWeight: 600 }}>{k}</div>
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', marginTop: 8, fontSize: 16, color: PROFILE.muted }}>
+      <div style={{ display: 'flex', marginTop: 8, fontSize: 15, color: PROFILE.muted }}>
         {`GB ${lbl(gb)} · LD ${lbl(ld)} · FB ${lbl(fb)}`}
       </div>
     </div>
@@ -1332,20 +1356,20 @@ function PortraitCard({
   // ── Percentile bars ──
   const pctMetrics = isPitcher
     ? [
-        { key: 'pitching_war', label: 'WAR', vk: 'pitching_war', fk: 'war' },
-        { key: 'fip', label: 'FIP', vk: 'fip', fk: 'fip' },
-        { key: 'k_pct', label: 'K%', vk: 'k_pct', fk: 'pct' },
-        { key: 'bb_pct', label: 'BB%', vk: 'bb_pct', fk: 'pct' },
-        { key: 'siera', label: 'SIERA', vk: 'siera', fk: 'siera' },
-        { key: 'lob_pct', label: 'LOB%', vk: 'lob_pct', fk: 'pct' },
+        { key: 'pitching_war', label: 'WAR', value: PFmt('war', L.pitching_war) },
+        { key: 'fip', label: 'FIP', value: PFmt('fip', L.fip) },
+        { key: 'k_pct', label: 'K%', value: PFmt('pct', L.k_pct) },
+        { key: 'bb_pct', label: 'BB%', value: PFmt('pct', L.bb_pct) },
+        { key: 'baa', label: 'BAA', value: PFmt('avg', L.baa) },
+        { key: 'hr_pa_pct', label: 'HR/PA', value: L.batters_faced ? PFmt('avg', (L.home_runs_allowed || 0) / L.batters_faced) : '—' },
       ]
     : [
-        { key: 'woba', label: 'wOBA', vk: 'woba', fk: 'woba' },
-        { key: 'wrc_plus', label: 'wRC+', vk: 'wrc_plus', fk: 'int' },
-        { key: 'iso', label: 'ISO', vk: 'iso', fk: 'iso' },
-        { key: 'bb_pct', label: 'BB%', vk: 'bb_pct', fk: 'pct' },
-        { key: 'k_pct', label: 'K%', vk: 'k_pct', fk: 'pct' },
-        { key: 'offensive_war', label: 'WAR', vk: 'offensive_war', fk: 'war' },
+        { key: 'woba', label: 'wOBA', value: PFmt('woba', L.woba) },
+        { key: 'wrc_plus', label: 'wRC+', value: fmtInt(L.wrc_plus) },
+        { key: 'iso', label: 'ISO', value: PFmt('iso', L.iso) },
+        { key: 'bb_pct', label: 'BB%', value: PFmt('pct', L.bb_pct) },
+        { key: 'k_pct', label: 'K%', value: PFmt('pct', L.k_pct) },
+        { key: 'offensive_war', label: 'WAR', value: PFmt('war', L.offensive_war) },
       ];
   const getPct = (k) => {
     const p = percentiles[k];
@@ -1354,7 +1378,7 @@ function PortraitCard({
   const bars = pctMetrics.map((m) => ({
     label: m.label,
     pct: getPct(m.key),
-    value: PFmt(m.fk, L[m.vk]),
+    value: m.value,
   }));
 
   // ── Reaching base (hitter) / outcomes (pitcher) stacked bar ──
@@ -1401,38 +1425,33 @@ function PortraitCard({
     return null;
   };
 
-  // Color a discipline value vs the league average (from the endpoint), given
-  // which direction is "good". maroon = better, blue = worse, ink = average/no data.
-  const lg = disc && disc.league ? disc.league : {};
-  const dcolor = (v, lgv, higherBetter) => {
-    if (v == null || lgv == null || lgv === 0) return PROFILE.ink;
-    const r = v / lgv;
-    if (higherBetter) return r >= 1.05 ? PROFILE.maroon : r <= 0.95 ? PROFILE.blue : PROFILE.ink;
-    return r <= 0.95 ? PROFILE.maroon : r >= 1.05 ? PROFILE.blue : PROFILE.ink;
-  };
+  // Direction-aware percentile (vs the endpoint's deciles) drives the color
+  // ramp + a small percentile readout on each discipline stat.
+  const dec = disc && disc.deciles ? disc.deciles : {};
+  const dP = (decKey, v, higherBetter) => decilePct(dec[decKey], v, higherBetter);
   const twoK = ((pbp && pbp.count_states) || []).find(
     (c) => (c.label || '').toLowerCase().includes('2-strike')
   );
-  const twoKlg = twoK && twoK.league ? twoK.league.contact_pct : null;
+  const twoKpctl = twoK && twoK.deciles ? decilePct(twoK.deciles.contact_pct, twoK.contact_pct, true) : null;
   const airPull = contact ? contact.air_pull_pct : null;
 
   const discCells = disc
     ? isPitcher
       ? [
-          { label: 'Strike%', value: pct1(disc.strike_pct), color: dcolor(disc.strike_pct, lg.strike_pct, true) },
-          { label: '1st-K%', value: pct1(disc.first_pitch_strike_pct), color: dcolor(disc.first_pitch_strike_pct, lg.first_pitch_strike_pct, true) },
-          { label: 'Whiff%', value: pct1(disc.whiff_pct), color: dcolor(disc.whiff_pct, lg.whiff_pct, true) },
-          { label: 'Called-K%', value: pct1(disc.called_strike_pct), color: dcolor(disc.called_strike_pct, lg.called_strike_pct, true) },
-          { label: 'Putaway%', value: pct1(disc.putaway_pct), color: dcolor(disc.putaway_pct, lg.putaway_pct, true) },
-          { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—' },
+          { label: 'Strike%', value: pct1(disc.strike_pct), pctl: dP('strike_pct', disc.strike_pct, true) },
+          { label: '1st-K%', value: pct1(disc.first_pitch_strike_pct), pctl: dP('first_pitch_strike_pct', disc.first_pitch_strike_pct, true) },
+          { label: 'Whiff%', value: pct1(disc.whiff_pct), pctl: dP('whiff_pct', disc.whiff_pct, true) },
+          { label: 'Called-K%', value: pct1(disc.called_strike_pct), pctl: dP('called_strike_pct', disc.called_strike_pct, true) },
+          { label: 'Putaway%', value: pct1(disc.putaway_pct), pctl: dP('putaway_pct', disc.putaway_pct, true) },
+          { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—', pctl: null },
         ]
       : [
-          { label: 'Swing%', value: pct1(disc.swing_pct) },
-          { label: 'Contact%', value: pct1(disc.contact_pct), color: dcolor(disc.contact_pct, lg.contact_pct, true) },
-          { label: '2K-Contact%', value: twoK ? pct1(twoK.contact_pct) : '—', color: dcolor(twoK && twoK.contact_pct, twoKlg, true) },
-          { label: 'Putaway%', value: pct1(disc.putaway_pct), color: dcolor(disc.putaway_pct, lg.putaway_pct, false) },
-          { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—', color: dcolor(disc.pitches_per_pa, lg.pitches_per_pa, true) },
-          { label: 'Air-Pull%', value: airPull != null ? pct1(airPull) : '—', color: dcolor(airPull, lg.air_pull_pct, true) },
+          { label: 'Swing%', value: pct1(disc.swing_pct), pctl: null },
+          { label: 'Contact%', value: pct1(disc.contact_pct), pctl: dP('contact_pct', disc.contact_pct, true) },
+          { label: '2K-Contact%', value: twoK ? pct1(twoK.contact_pct) : '—', pctl: twoKpctl },
+          { label: 'Putaway%', value: pct1(disc.putaway_pct), pctl: dP('putaway_pct', disc.putaway_pct, false) },
+          { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—', pctl: dP('pitches_per_pa', disc.pitches_per_pa, true) },
+          { label: 'Air-Pull%', value: airPull != null ? pct1(airPull) : '—', pctl: dP('air_pull_pct', airPull, true) },
         ]
     : isPitcher
       ? [
@@ -1465,12 +1484,26 @@ function PortraitCard({
   const vsL = findSplit(pbp && pbp.lr_splits, ['vs_lhp', 'vs_lhb', 'vs lhp', 'vs lhb']);
   const vsR = findSplit(pbp && pbp.lr_splits, ['vs_rhp', 'vs_rhb', 'vs rhp', 'vs rhb']);
   const risp = findSplit(pbp && pbp.situational_splits, ['risp']);
+  // Pitchers expose opponent slash as opp_ops (ops is null for them).
+  const oVal = (s) => (s == null ? null : isPitcher ? s.opp_ops : s.ops);
+  const splitColor = (ops) => {
+    if (ops == null) return PROFILE.ink;
+    let p = ((ops - 0.5) / 0.55) * 100; // .500→0, 1.05→100
+    p = Math.max(1, Math.min(99, p));
+    if (isPitcher) p = 100 - p; // low opponent OPS = good
+    return pctColor(p);
+  };
   const splitRows = [];
-  if (vsL) splitRows.push({ label: isPitcher ? 'vs LHB' : 'vs LHP', value: PFmt('ops', vsL.ops) });
-  if (vsR) splitRows.push({ label: isPitcher ? 'vs RHB' : 'vs RHP', value: PFmt('ops', vsR.ops) });
-  if (risp) splitRows.push({ label: 'RISP', value: PFmt('ops', risp.ops) });
+  if (vsL) splitRows.push({ label: isPitcher ? 'vs LHB' : 'vs LHP', value: PFmt('ops', oVal(vsL)), accent: splitColor(oVal(vsL)) });
+  if (vsR) splitRows.push({ label: isPitcher ? 'vs RHB' : 'vs RHP', value: PFmt('ops', oVal(vsR)), accent: splitColor(oVal(vsR)) });
+  if (risp) splitRows.push({ label: 'RISP', value: PFmt('ops', oVal(risp)), accent: splitColor(oVal(risp)) });
   if (disc) {
-    splitRows.push({ label: 'WPA', value: (disc.total_wpa >= 0 ? '+' : '') + fmt(disc.total_wpa, 2), accent: PROFILE.maroon });
+    const w = disc.total_wpa;
+    splitRows.push({
+      label: 'WPA',
+      value: (w >= 0 ? '+' : '') + fmt(w, 2),
+      accent: w >= 0.3 ? '#b01e38' : w >= 0 ? '#d2415a' : w >= -0.3 ? '#7fa8cc' : '#1f5fa8',
+    });
     splitRows.push({ label: 'Avg LI', value: fmt(disc.avg_li, 2) });
   }
   // Fallback so the panel is never empty
