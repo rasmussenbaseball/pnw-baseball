@@ -457,7 +457,7 @@ function StatsTable({ rows, columns, careerRow }) {
 
 // ── Team Awards ─────────────────────────────────────────────────
 
-function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded = false }) {
+function TeamAwards({ awards, careerRankings, pnwRankings, goldGloves, teamShort, embedded = false }) {
   // Group season awards by year + team
   const bySeason = {}
   awards.forEach(a => {
@@ -473,6 +473,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
   const hasSeasonAwards = awards.length > 0
   const hasCareerRankings = careerRankings && careerRankings.length > 0
   const hasPnwRankings = pnwRankings && pnwRankings.length > 0
+  const hasGoldGloves = goldGloves && goldGloves.length > 0
 
   function formatVal(cat, val, fmt) {
     // If a format hint is provided (from PNW rankings), use it
@@ -514,8 +515,57 @@ function TeamAwards({ awards, careerRankings, pnwRankings, teamShort, embedded =
         </div>
       )
 
+  // Group gold gloves by (season, scope). One badge per group, listing
+  // positions (so "C + MVP" reads as one chip rather than two near-duplicates).
+  const ggGroups = []
+  if (hasGoldGloves) {
+    const map = new Map()
+    for (const g of goldGloves) {
+      const key = `${g.season}|${g.scope}`
+      if (!map.has(key)) {
+        map.set(key, { season: g.season, scope: g.scope, positions: new Set(), mvp: false })
+      }
+      const entry = map.get(key)
+      entry.positions.add(g.position)
+      if (g.mvp) entry.mvp = true
+    }
+    for (const v of map.values()) ggGroups.push(v)
+    ggGroups.sort((a, b) => b.season - a.season || a.scope.localeCompare(b.scope))
+  }
+
   return (
     <Wrapper>
+      {/* Gold Gloves — curated honors, leads the section */}
+      {hasGoldGloves && (
+        <div className={(hasSeasonAwards || hasPnwRankings || hasCareerRankings) ? 'mb-4 pb-4 border-b border-gray-100 dark:border-gray-700' : ''}>
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
+            Gold Gloves
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {ggGroups.map((g, i) => (
+              <div
+                key={i}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border bg-amber-50 text-amber-900 border-amber-300"
+                title={`${g.season} ${g.scope} Gold Glove${g.mvp ? ' MVP' : ''} (${[...g.positions].join(', ')})`}
+              >
+                <span aria-hidden="true">🥇</span>
+                <span className="font-bold">{String(g.season).slice(-2)}</span>
+                <span>{g.scope}</span>
+                <span className="opacity-70">{[...g.positions].join('/')}</span>
+                {g.mvp && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-bold uppercase">
+                    MVP
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">
+            Gold Glove honors (All-NWAC, NWAC region, CCC, ABCA/Rawlings)
+          </p>
+        </div>
+      )}
+
       {/* Season Awards */}
       {hasSeasonAwards && (
         <div className={hasCareerRankings ? 'mb-4 pb-4 border-b border-gray-100 dark:border-gray-700' : ''}>
@@ -1615,7 +1665,7 @@ function PlayerDetailStandard() {
     )
   }
 
-  const { player, batting_stats, pitching_stats, fielding_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, position_breakdown, linked_players, summer_batting, summer_pitching, current_summer_assignment } = data
+  const { player, batting_stats, pitching_stats, fielding_stats, batting_percentiles, pitching_percentiles, percentile_season: activePercentileSeason, awards, career_rankings, pnw_rankings, gold_gloves, position_breakdown, linked_players, summer_batting, summer_pitching, current_summer_assignment } = data
   const isTransfer = linked_players && linked_players.length > 1
   const hasBatting = batting_stats && batting_stats.length > 0
   const hasPitching = pitching_stats && pitching_stats.length > 0
@@ -1869,6 +1919,7 @@ function PlayerDetailStandard() {
         const hasAwards = (awards && awards.length > 0)
                        || (career_rankings && career_rankings.length > 0)
                        || (pnw_rankings && pnw_rankings.length > 0)
+                       || (gold_gloves && gold_gloves.length > 0)
         const hasPosition = position_breakdown && position_breakdown.length > 0
         const hasBars = (batting_percentiles && Object.keys(batting_percentiles).length > 0)
                      || (pitching_percentiles && Object.keys(pitching_percentiles).length > 0)
@@ -1926,6 +1977,7 @@ function PlayerDetailStandard() {
               awards={awards || []}
               careerRankings={career_rankings || []}
               pnwRankings={pnw_rankings || []}
+              goldGloves={gold_gloves || []}
               teamShort={player.team_short}
             />
           ) : null
@@ -1997,6 +2049,7 @@ function PlayerDetailStandard() {
                   awards={awards || []}
                   careerRankings={career_rankings || []}
                   pnwRankings={pnw_rankings || []}
+                  goldGloves={gold_gloves || []}
                   teamShort={player.team_short}
                 />
               )}

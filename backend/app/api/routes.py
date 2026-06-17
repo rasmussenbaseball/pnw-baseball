@@ -8831,6 +8831,42 @@ def _compute_player_awards(conn, player_id, team_id, batting_list, pitching_list
     return {"season_awards": awards, "career_rankings": career_rankings}
 
 
+# ── Gold Gloves: curated list loaded from backend/data/gold_gloves.json ──
+# Cached in-process; reload requires app restart (Render does this on deploy,
+# which is when the JSON would change anyway).
+_GOLD_GLOVE_CACHE = {"data": None}
+
+
+def _load_gold_gloves():
+    if _GOLD_GLOVE_CACHE["data"] is None:
+        import os as _os, json as _json
+        path = _os.path.join(
+            _os.path.dirname(__file__), "..", "..", "data", "gold_gloves.json"
+        )
+        try:
+            with open(path) as f:
+                _GOLD_GLOVE_CACHE["data"] = _json.load(f).get("awards", [])
+        except Exception:
+            _GOLD_GLOVE_CACHE["data"] = []
+    return _GOLD_GLOVE_CACHE["data"]
+
+
+def _gold_gloves_for(player_ids):
+    pid_set = set(player_ids)
+    out = []
+    for a in _load_gold_gloves():
+        if a.get("player_id") in pid_set:
+            out.append({
+                "season": a["season"],
+                "scope": a["scope"],
+                "position": a["position"],
+                "mvp": bool(a.get("mvp")),
+            })
+    # Newest first; within season MVP first, then by scope, then position
+    out.sort(key=lambda x: (-x["season"], not x["mvp"], x["scope"], x["position"]))
+    return out
+
+
 @router.get("/players/{player_id}")
 @cached_endpoint(ttl_seconds=1800)
 def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
@@ -9360,6 +9396,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             "league_context": league_context,
             "awards": all_awards["season_awards"],
             "career_rankings": all_awards["career_rankings"],
+            "gold_gloves": _gold_gloves_for(all_player_ids),
             "pnw_rankings": pnw_rankings,
             "position_breakdown": position_breakdown,
             "linked_players": linked_players,

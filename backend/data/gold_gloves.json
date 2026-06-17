@@ -1,0 +1,563 @@
+{
+  "_comment": "Curated Gold Glove award winners shown on player profiles. Each entry: season (year), scope (e.g. 'All-NWAC', 'NWAC North', 'CCC', 'ABCA/Rawlings JUCO'), position, player name + team_short for resolution, and optional mvp:true. player_id is filled in by scripts/resolve_gold_gloves.py \u2014 null means unresolved (will not surface on a profile until matched).",
+  "updated": "2026-06-16",
+  "awards": [
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "C",
+      "mvp": true,
+      "name": "Cooper Barrow",
+      "team_short": "Edmonds",
+      "player_id": 897
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "P",
+      "name": "Cooper Richter",
+      "team_short": "Bellevue",
+      "player_id": 618
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "C",
+      "name": "Cooper Barrow",
+      "team_short": "Edmonds",
+      "player_id": 897
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "1B",
+      "name": "Jackson Wendt",
+      "team_short": "Lower Columbia",
+      "player_id": 1024
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "2B",
+      "name": "Andre Muneton",
+      "team_short": "Columbia Basin",
+      "player_id": 838
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "3B",
+      "name": "Brayden Ollar",
+      "team_short": "Treasure Valley",
+      "player_id": 1236
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "SS",
+      "name": "Noah Figuered",
+      "team_short": "Edmonds",
+      "player_id": 65
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "OF",
+      "name": "Diego Escandon",
+      "team_short": "Columbia Basin",
+      "player_id": 46
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "OF",
+      "name": "Jordan Araiza",
+      "team_short": "Mt. Hood",
+      "player_id": 1043
+    },
+    {
+      "season": 2026,
+      "scope": "All-NWAC",
+      "position": "OF",
+      "name": "Bryce Moser",
+      "team_short": "Edmonds",
+      "player_id": 888
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "C",
+      "mvp": true,
+      "name": "Cooper Barrow",
+      "team_short": "Edmonds",
+      "player_id": 897
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "P",
+      "name": "Cooper Richter",
+      "team_short": "Bellevue",
+      "player_id": 618
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "C",
+      "name": "Cooper Barrow",
+      "team_short": "Edmonds",
+      "player_id": 897
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "1B",
+      "name": "Lukas Cheha",
+      "team_short": "Everett",
+      "player_id": 924
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "2B",
+      "name": "Julian Unay",
+      "team_short": "Everett",
+      "player_id": 917
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "3B",
+      "name": "Carsen Mann",
+      "team_short": "Edmonds",
+      "player_id": 898
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "SS",
+      "name": "Noah Figuered",
+      "team_short": "Edmonds",
+      "player_id": 65
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "OF",
+      "name": "Davis Downer",
+      "team_short": "Everett",
+      "player_id": 921
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "OF",
+      "name": "Elliot Oster",
+      "team_short": "Bellevue",
+      "player_id": 641
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC North",
+      "position": "OF",
+      "name": "Bryce Moser",
+      "team_short": "Edmonds",
+      "player_id": 888
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "OF",
+      "mvp": true,
+      "name": "Jordan Araiza",
+      "team_short": "Mt. Hood",
+      "player_id": 1043
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "P",
+      "name": "Evan Lehnert",
+      "team_short": "Linn-Benton",
+      "player_id": 1009
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "C",
+      "name": "Jeremiah Robbins",
+      "team_short": "Umpqua",
+      "player_id": 1268
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "1B",
+      "name": "Aaron Manchaca",
+      "team_short": "Clackamas",
+      "player_id": 786
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "2B",
+      "name": "Jackson Thomsen",
+      "team_short": "Umpqua",
+      "player_id": 110
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "3B",
+      "name": "Mark Carpenter",
+      "team_short": "Linn-Benton",
+      "player_id": 994
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "SS",
+      "name": "Daichi Furuhata",
+      "team_short": "SW Oregon",
+      "player_id": 1164
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "OF",
+      "name": "Jordan Araiza",
+      "team_short": "Mt. Hood",
+      "player_id": 1043
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "OF",
+      "name": "Noah Scharer",
+      "team_short": "Linn-Benton",
+      "player_id": 995
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC South",
+      "position": "OF",
+      "name": "Peyton Tyner",
+      "team_short": "Lane",
+      "player_id": 27
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "OF",
+      "mvp": true,
+      "name": "Diego Escandon",
+      "team_short": "Columbia Basin",
+      "player_id": 46
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "P",
+      "name": "Chase Fleming",
+      "team_short": "Big Bend",
+      "player_id": 604
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "C",
+      "name": "Easton Anderson",
+      "team_short": "Yakima Valley",
+      "player_id": 1357
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "1B",
+      "name": "Diego Martinez Griffin",
+      "team_short": "Columbia Basin",
+      "player_id": 837
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "2B",
+      "name": "Andre Muneton",
+      "team_short": "Columbia Basin",
+      "player_id": 838
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "3B",
+      "name": "Brayden Ollar",
+      "team_short": "Treasure Valley",
+      "player_id": 1236
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "SS",
+      "name": "Eddie Marson",
+      "team_short": "Blue Mountain",
+      "player_id": 695
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "OF",
+      "name": "Kevin Brekke",
+      "team_short": "Columbia Basin",
+      "player_id": 833
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "OF",
+      "name": "Diego Escandon",
+      "team_short": "Columbia Basin",
+      "player_id": 46
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC East",
+      "position": "OF",
+      "name": "Garren Gooler",
+      "team_short": "Yakima Valley",
+      "player_id": 20
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "1B",
+      "mvp": true,
+      "name": "Jackson Wendt",
+      "team_short": "Lower Columbia",
+      "player_id": 1024
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "P",
+      "name": "Vayden Lawrence",
+      "team_short": "Pierce",
+      "player_id": 171
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "C",
+      "name": "Jaylen Kennedy",
+      "team_short": "Lower Columbia",
+      "player_id": 1023
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "1B",
+      "name": "Jackson Wendt",
+      "team_short": "Lower Columbia",
+      "player_id": 1024
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "2B",
+      "name": "Martyn Hernandez",
+      "team_short": "Lower Columbia",
+      "player_id": 1017
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "3B",
+      "name": "Sam Davidson",
+      "team_short": "Lower Columbia",
+      "player_id": 66
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "SS",
+      "name": "Keagan Kelly",
+      "team_short": "Lower Columbia",
+      "player_id": 1016
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "OF",
+      "name": "Bradley Carl",
+      "team_short": "Pierce",
+      "player_id": 1082
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "OF",
+      "name": "Ty Iddon",
+      "team_short": "Tacoma",
+      "player_id": 1207
+    },
+    {
+      "season": 2026,
+      "scope": "NWAC West",
+      "position": "OF",
+      "name": "Parker Peschel",
+      "team_short": "Clark",
+      "player_id": 809
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "P",
+      "name": "Marcos Ulloa-Ford",
+      "team_short": "OIT",
+      "player_id": 2807
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "C",
+      "name": "Bulla Ephan",
+      "team_short": "LCSC",
+      "player_id": 2717
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "1B",
+      "name": "Darren Smith",
+      "team_short": "C of I",
+      "player_id": 2825
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "2B",
+      "name": "Tucker Zander",
+      "team_short": "EOU",
+      "player_id": 2751
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "3B",
+      "name": "David Krahn",
+      "team_short": "British Columbia",
+      "player_id": null
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "SS",
+      "name": "Matt Vanslyke",
+      "team_short": "British Columbia",
+      "player_id": null
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "OF",
+      "name": "Caleb Richter",
+      "team_short": "Bushnell",
+      "player_id": 2902
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "OF",
+      "name": "Bryce Johnson",
+      "team_short": "LCSC",
+      "player_id": 2709
+    },
+    {
+      "season": 2026,
+      "scope": "CCC",
+      "position": "OF",
+      "name": "Michael O'Daniel",
+      "team_short": "OIT",
+      "player_id": 2790
+    },
+    {
+      "season": 2024,
+      "scope": "ABCA/Rawlings NCAA D1",
+      "position": "OF",
+      "name": "Bryce Boettcher",
+      "team_short": "Oregon",
+      "player_id": 4612
+    },
+    {
+      "season": 2024,
+      "scope": "ABCA/Rawlings JUCO",
+      "position": "3B",
+      "name": "Evan McGuire",
+      "team_short": "Clark",
+      "player_id": 77
+    },
+    {
+      "season": 2024,
+      "scope": "ABCA/Rawlings JUCO",
+      "position": "OF",
+      "name": "Raine Yoshida",
+      "team_short": "SW Oregon",
+      "player_id": 5353
+    },
+    {
+      "season": 2024,
+      "scope": "ABCA/Rawlings JUCO",
+      "position": "P",
+      "name": "Andrew Moberly",
+      "team_short": "Pierce",
+      "player_id": 193
+    },
+    {
+      "season": 2025,
+      "scope": "ABCA/Rawlings NCAA D1",
+      "position": "2B",
+      "name": "AJ Singer",
+      "team_short": "Oregon St.",
+      "player_id": 3523
+    },
+    {
+      "season": 2025,
+      "scope": "ABCA/Rawlings NAIA",
+      "position": "3B",
+      "name": "Chase Nye",
+      "team_short": "Bushnell",
+      "player_id": 2903
+    },
+    {
+      "season": 2025,
+      "scope": "ABCA/Rawlings JUCO",
+      "position": "2B",
+      "name": "Travis Finney",
+      "team_short": "Yakima Valley",
+      "player_id": 12
+    },
+    {
+      "season": 2025,
+      "scope": "ABCA/Rawlings JUCO",
+      "position": "3B",
+      "name": "Cole Rohlmeier",
+      "team_short": "Columbia Basin",
+      "player_id": 47
+    },
+    {
+      "season": 2025,
+      "scope": "ABCA/Rawlings JUCO",
+      "position": "OF",
+      "name": "Tristan Schaefer",
+      "team_short": "Umpqua",
+      "player_id": 73
+    },
+    {
+      "season": 2025,
+      "scope": "ABCA/Rawlings JUCO",
+      "position": "P",
+      "name": "Lathan Haywood",
+      "team_short": "Edmonds",
+      "player_id": 147
+    }
+  ]
+}

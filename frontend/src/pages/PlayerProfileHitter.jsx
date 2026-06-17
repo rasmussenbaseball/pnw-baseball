@@ -216,7 +216,7 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
   const T = usePlayerProfileTheme()
   const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
 
-  const { player, batting_stats, summer_batting, batting_percentiles, fielding_stats, awards, pnw_rankings, position_breakdown, current_summer_assignment } = data
+  const { player, batting_stats, summer_batting, batting_percentiles, fielding_stats, awards, pnw_rankings, gold_gloves, position_breakdown, current_summer_assignment } = data
 
   // Interleave spring + summer rows chronologically.
   const springTagged = (batting_stats || []).map(s => ({ ...s, _kind: 'spring', _typeLabel: s.division_level || 'College', _team: s.team_short || '—' }))
@@ -394,6 +394,15 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
 
             {/* Badges */}
             <div className="flex flex-wrap gap-1.5 mt-3">
+              {(gold_gloves || []).map((g, i) => (
+                <span
+                  key={`gg-${i}`}
+                  className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full bg-amber-100 text-amber-900 border border-amber-300"
+                  title={`${g.season} ${g.scope} Gold Glove${g.mvp ? ' MVP' : ''} (${g.position})`}
+                >
+                  🥇 {String(g.season).slice(-2)} {g.scope} GG · {g.position}{g.mvp ? ' MVP' : ''}
+                </span>
+              ))}
               {(awards || []).map((a, i) => (
                 <span key={i} className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full" style={AWARD_BADGE_STYLE}>
                   {a.category} leader · {a.season}
