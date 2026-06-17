@@ -1304,7 +1304,7 @@ function SprayField({ pull, center, oppo, gb, fb, ld, bats }) {
 
 // Cumulative season trajectory from game logs: OPS (hitter) / ERA (pitcher).
 // Fills the empty space for players with only 1-2 career seasons.
-function buildTrend(gl, isPitcher) {
+function buildTrend(gl, isPitcher, minPts = 6) {
   if (!gl) return null;
   const ipReal = (ip) => { const w = Math.floor(ip); return w + Math.round((ip - w) * 10) / 3; };
   if (isPitcher) {
@@ -1312,7 +1312,7 @@ function buildTrend(gl, isPitcher) {
       .sort((a, b) => (a.game_date || '').localeCompare(b.game_date || ''));
     let er = 0, outs = 0; const pts = [];
     for (const r of rows) { er += r.er || 0; outs += Math.round(ipReal(r.ip || 0) * 3); if (outs > 0) pts.push((9 * er) / (outs / 3)); }
-    return pts.length >= 6 ? { label: 'ERA', points: pts } : null;
+    return pts.length >= minPts ? { label: 'ERA', points: pts } : null;
   }
   const rows = (gl.batting || []).filter((r) => (r.ab || 0) + (r.bb || 0) > 0)
     .sort((a, b) => (a.game_date || '').localeCompare(b.game_date || ''));
@@ -1323,7 +1323,7 @@ function buildTrend(gl, isPitcher) {
     const pa = ab + bb + hbp + sf;
     if (ab > 0 && pa > 0) pts.push((h + bb + hbp) / pa + tb / ab);
   }
-  return pts.length >= 6 ? { label: 'OPS', points: pts } : null;
+  return pts.length >= minPts ? { label: 'OPS', points: pts } : null;
 }
 
 function TrendChart({ trend, w, h }) {
@@ -1598,7 +1598,9 @@ function PortraitCard({
     ...(summerSeasons || []).map((s) => ({ ...s, _summer: true, _tag: s.league_abbrev || 'WCL' })),
   ].sort((a, b) => Number(b.season || 0) - Number(a.season || 0)).slice(0, 6);
   // Short careers (<=2 seasons) get a season-trajectory chart to fill the space.
-  const showTrend = !!(trend && trend.points && trend.points.length >= 6 && sortedSeasons.length <= 2);
+  // buildTrend already gates the minimum point count (6 for spring, 3 for short
+  // summer seasons), so here we just need points to exist.
+  const showTrend = !!(trend && trend.points && trend.points.length >= 3 && sortedSeasons.length <= 2);
   // Rows shrink to always fit the fixed career box (content height ≈ panel − title/padding).
   const careerContentH = showTrend ? 96 : 200;
   const careerRowH = Math.min(46, Math.floor(careerContentH / Math.max(1, sortedSeasons.length)));
@@ -1983,18 +1985,27 @@ export default async function handler(req) {
         }
         // Summer season rows carry no logo of their own; stamp the team logo so the
         // career box shows it on every row.
-        const seasonRows = list.map((r) => ({ ...r, team_logo: r.team_logo || p.team_logo, logo_url: r.logo_url || p.team_logo }));
+        const summerRows = list.map((r) => ({ ...r, team_logo: r.team_logo || p.team_logo, logo_url: r.logo_url || p.team_logo, league_abbrev: r.league_abbrev || p.league_abbr }));
+        // Pull in the linked spring career so the box shows both the spring season
+        // (normal rows) and the summer season (WCL-tagged) — same merge the spring
+        // card does, just from the summer side.
+        let springSeasons = [];
+        const link = data.spring_link;
+        if (link && link.spring_player_id) {
+          const sp = await safeFetch(`${API_BASE}/players/${link.spring_player_id}`);
+          if (sp) springSeasons = isPitcher ? (sp.pitching_stats || []) : (sp.batting_stats || []);
+        }
         // Cumulative trend from this season's game logs — fills the career box for
-        // single-season summer players (same as spring's short-career chart).
-        const trend = buildTrend({ batting: data.game_batting, pitching: data.game_pitching }, isPitcher);
+        // single-season summer players (low minimum, since summer seasons are short).
+        const trend = buildTrend({ batting: data.game_batting, pitching: data.game_pitching }, isPitcher, 3);
         imgW = P_W; imgH = P_H;
         element = (
             <PortraitCard
               player={cardPlayer}
               isPitcher={isPitcher}
               latest={selected}
-              seasons={seasonRows}
-              summerSeasons={[]}
+              seasons={springSeasons.length ? springSeasons : summerRows}
+              summerSeasons={springSeasons.length ? summerRows : []}
               percentiles={isPitcher ? (data.pitching_percentiles || {}) : (data.batting_percentiles || {})}
               headshotSrc={proxiedImageUrl(fixUrl(p.headshot_url))}
               logoSrc={proxiedImageUrl(fixUrl(p.team_logo))}
