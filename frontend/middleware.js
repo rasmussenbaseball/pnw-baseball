@@ -264,12 +264,124 @@ function resolveRoute(pathname) {
         'Year-by-year program history for every Northwest college baseball team.',
     },
     '/draft': {
+      kicker: 'The Game',
+      title: '56-0',
+      subtitle: 'Draft the best roster in the Pacific Northwest. Can you go a perfect 56-0?',
+      pageTitle: '56-0 · The PNW Draft Game',
+      pageDesc:
+        'Spin a team, draft a player, build the best roster in Northwest college baseball. Chase a perfect 56-0 season.',
+    },
+    '/draftboard': {
       kicker: 'MLB Draft',
       title: 'Draft Board',
       subtitle: 'Northwest college prospects on every MLB draft board.',
       pageTitle: 'Draft Board · NW Baseball Stats',
       pageDesc:
         'Northwest college baseball prospects tracked across every MLB draft cycle.',
+    },
+    '/relievers': {
+      kicker: 'Leaderboards',
+      title: 'Reliever Leaders',
+      subtitle: 'Goose Eggs, bullpen WPA, holds, and shutdown relief.',
+      pageTitle: 'Relievers · NW Baseball Stats',
+      pageDesc:
+        'Bullpen leaders across Northwest college baseball — Goose Eggs, holds, WPA, and more.',
+    },
+    '/fielding': {
+      kicker: 'Leaderboards',
+      title: 'Fielding Leaders',
+      subtitle: 'Defensive leaderboards, filterable by position.',
+      pageTitle: 'Fielding · NW Baseball Stats',
+      pageDesc:
+        'Defensive leaderboards across Northwest college baseball, filterable by position.',
+    },
+    '/team-stats': {
+      kicker: 'Teams',
+      title: 'Team Stats',
+      subtitle: 'Team-level hitting and pitching across every program.',
+      pageTitle: 'Team Stats · NW Baseball Stats',
+      pageDesc:
+        'Team-level hitting and pitching stats for every Northwest college baseball program.',
+    },
+    '/player-comps': {
+      kicker: 'Stats',
+      title: 'Player Comps',
+      subtitle: "Each player's closest statistical comparables, NW and MLB.",
+      pageTitle: 'Player Comps · NW Baseball Stats',
+      pageDesc:
+        "Each Northwest college player's closest statistical comparables, in-region and MLB.",
+    },
+    '/top-moments': {
+      kicker: 'Win Probability',
+      title: 'Top Moments',
+      subtitle: "The season's biggest WPA swings and clutch performers.",
+      pageTitle: 'Top Moments · NW Baseball Stats',
+      pageDesc:
+        "The biggest win-probability swings and clutch performances of the Northwest college season.",
+    },
+    '/pro-tracker': {
+      kicker: 'Alumni',
+      title: 'Pro Tracker',
+      subtitle: 'Northwest college alumni in MiLB and MLB, by school.',
+      pageTitle: 'Pro Tracker · NW Baseball Stats',
+      pageDesc:
+        'Every Northwest college baseball alum currently in affiliated pro ball, grouped by school.',
+    },
+    '/recruiting': {
+      kicker: 'Recruiting',
+      title: 'Recruiting Hub',
+      subtitle: 'Every recruiting tool for Northwest college baseball, explained.',
+      pageTitle: 'Recruiting Hub · NW Baseball Stats',
+      pageDesc:
+        'Start here: every Northwest college baseball recruiting tool, explained. Free to browse.',
+    },
+    '/recruiting-classes': {
+      kicker: 'Recruiting',
+      title: 'Recruiting Classes',
+      subtitle: 'Incoming class rankings and breakdowns by program.',
+      pageTitle: 'Recruiting Classes · NW Baseball Stats',
+      pageDesc:
+        'Incoming recruiting class rankings and breakdowns for Northwest college programs.',
+    },
+    '/summer': {
+      kicker: 'Summer Ball',
+      title: 'WCL Hub',
+      subtitle: "Today's games, leaders, and standings from the West Coast League.",
+      pageTitle: 'Summer Ball · NW Baseball Stats',
+      pageDesc:
+        'West Coast League summer baseball — games, leaders, standings, and player pages.',
+    },
+    '/pnw-grid': {
+      kicker: 'The Game',
+      title: 'PNW Grid',
+      subtitle: 'Immaculate Grid for Pacific Northwest baseball.',
+      pageTitle: 'PNW Grid · NW Baseball Stats',
+      pageDesc:
+        'Immaculate Grid for Pacific Northwest college baseball. How deep is your roster knowledge?',
+    },
+    '/team-quiz': {
+      kicker: 'The Game',
+      title: 'Team Quiz',
+      subtitle: 'Test your knowledge of a PNW roster across any season.',
+      pageTitle: 'Team Quiz · NW Baseball Stats',
+      pageDesc:
+        'Test your knowledge of any Northwest college baseball roster across one or more seasons.',
+    },
+    '/park-factors': {
+      kicker: 'Stats',
+      title: 'Park Factors',
+      subtitle: 'How every Northwest ballpark plays.',
+      pageTitle: 'Park Factors · NW Baseball Stats',
+      pageDesc:
+        'Ballpark run, hit, and home-run effects across Northwest college baseball.',
+    },
+    '/historic': {
+      kicker: 'History',
+      title: 'Historic Matchups',
+      subtitle: 'Head-to-head history between any two programs.',
+      pageTitle: 'Historic Matchups · NW Baseball Stats',
+      pageDesc:
+        'All-time head-to-head history between any two Northwest college baseball programs.',
     },
     '/graphics-hub': {
       kicker: 'Graphics',
