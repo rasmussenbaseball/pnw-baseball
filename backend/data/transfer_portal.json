@@ -353,6 +353,17 @@
       "name": "Angel Laya",
       "from": "Oregon",
       "committed_to": null
+    },
+    {
+      "player_id": 3019,
+      "name": "Lance Mittelman",
+      "from": "CWU",
+      "committed_to": "Alcorn State"
+    },
+    {
+      "name": "Jacob Hayes",
+      "from": "Azusa Pacific",
+      "committed_to": "Washington State"
     }
   ]
 }

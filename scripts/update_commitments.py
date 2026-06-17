@@ -63,6 +63,9 @@ COMMITMENTS = [
     # June 15, 2026 batch
     ("Long", "Kaleb", "SW Oregon", "Ave Maria"),
     ("Hansen", "Karsten", "Lower Columbia", "Marshall"),
+    ("McCormack", "Nolan", "Mt. Hood", "Arizona Christian"),
+    ("Bowyer", "Brendan", "Lower Columbia", "Whitworth"),
+    ("Keaton", "Castle", "Spokane", "Fairleigh Dickinson"),
 ]
 
 # (last_name, first_name, team_short_name) — players to set back to uncommitted.
