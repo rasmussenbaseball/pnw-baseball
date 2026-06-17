@@ -102,10 +102,16 @@ function Game({ data }) {
     }
     return !slotFilled('DH') ? 'DH' : null
   }
-  const pitcherSlotsLeft = roster.filter((s) => s.type === 'pitcher' && !s.player).length
   const hitterCount = roster.filter((s) => s.type === 'hitter' && s.player).length
   const pitcherCount = roster.filter((s) => s.type === 'pitcher' && s.player).length
   const filled = hitterCount + pitcherCount
+
+  // Strict staff slotting: SP-only pitchers can ONLY fill the 4 SP slots, RP-only
+  // the 1 RP slot; swing ("both") pitchers can fill either. No cross-fallback.
+  const spOpen = () => roster.some((s) => s.type === 'pitcher' && s.label !== 'RP' && !s.player)
+  const rpOpen = () => roster.some((s) => s.type === 'pitcher' && s.label === 'RP' && !s.player)
+  const canPlacePitcher = (p) =>
+    p.role === 'both' ? (spOpen() || rpOpen()) : p.role === 'RP' ? rpOpen() : spOpen()
 
   // How many legal picks a team offers given the current roster — used to make
   // every settled spin guaranteed-playable (no dead ends).
@@ -115,8 +121,8 @@ function Game({ data }) {
       if (usedPids.has(h.pid)) continue
       if (openSlotFor(h)) n++
     }
-    if (pitcherSlotsLeft > 0) {
-      for (const p of pByTeam[tkey(lvl, team)] || []) if (!usedPids.has(p.pid)) n++
+    for (const p of pByTeam[tkey(lvl, team)] || []) {
+      if (!usedPids.has(p.pid) && canPlacePitcher(p)) n++
     }
     return n
   }
@@ -216,15 +222,13 @@ function Game({ data }) {
     if (dests.length === 1) placeHitterAt(h, dests[0])
     else setChoosing({ kind: 'hitter', player: h, dests })   // pick which spot
   }
-  const spOpen = () => roster.some((s) => s.type === 'pitcher' && s.label !== 'RP' && !s.player)
-  const rpOpen = () => roster.some((s) => s.type === 'pitcher' && s.label === 'RP' && !s.player)
   const placePitcherAs = (p, kind) => {
     if (usedPids.has(p.pid)) return
     const next = roster.map((s) => ({ ...s }))
-    const findSP = () => next.find((s) => s.type === 'pitcher' && s.label !== 'RP' && !s.player)
-    const findRP = () => next.find((s) => s.type === 'pitcher' && s.label === 'RP' && !s.player)
-    const anyOpen = () => next.find((s) => s.type === 'pitcher' && !s.player)
-    const target = kind === 'RP' ? (findRP() || anyOpen()) : (findSP() || anyOpen())
+    // Strict: SP -> an SP slot only; RP -> the RP slot only. No cross-fallback.
+    const target = kind === 'RP'
+      ? next.find((s) => s.type === 'pitcher' && s.label === 'RP' && !s.player)
+      : next.find((s) => s.type === 'pitcher' && s.label !== 'RP' && !s.player)
     if (!target) return
     target.player = p
     setChoosing(null)
@@ -234,14 +238,15 @@ function Game({ data }) {
   const draftPitcher = (p) => {
     if (usedPids.has(p.pid)) return
     const sp = spOpen(), rp = rpOpen()
-    // A swing pitcher (started AND relieved) lets you choose the role when both
-    // slot kinds are open. Pure starters/relievers fill their slot (fallback to
-    // the other kind when their preferred slot is full).
+    // A swing pitcher (started AND relieved) chooses SP or RP when both kinds are
+    // open; pure starters/relievers go strictly to their own slot type.
     if (p.role === 'both' && sp && rp) {
       setChoosing({ kind: 'pitcher', player: p, dests: ['SP', 'RP'] })
     } else if (p.role === 'RP') {
-      placePitcherAs(p, rp ? 'RP' : 'SP')
-    } else {
+      if (rp) placePitcherAs(p, 'RP')
+    } else if (p.role === 'SP') {
+      if (sp) placePitcherAs(p, 'SP')
+    } else { // both, only one kind open
       placePitcherAs(p, sp ? 'SP' : 'RP')
     }
   }
@@ -313,8 +318,7 @@ function Game({ data }) {
                 hNeed={9 - hitterCount} pNeed={5 - pitcherCount}
                 sortH={sortH} sortP={sortP} setSortH={setSortH} setSortP={setSortP}
                 posF={posF} setPosF={setPosF}
-                usedPids={usedPids} openSlotFor={openSlotFor}
-                pitcherSlotsLeft={pitcherSlotsLeft}
+                usedPids={usedPids} openSlotFor={openSlotFor} canPlacePitcher={canPlacePitcher}
                 onDraftH={draftHitter} onDraftP={draftPitcher}
                 choosing={choosing}
                 onChoose={(slot) => choosing.kind === 'pitcher'
@@ -337,8 +341,7 @@ function computeResult(roster, meta) {
   const h = roster.filter((s) => s.type === 'hitter' && s.player).map((s) => s.player)
   const p = roster.filter((s) => s.type === 'pitcher' && s.player).map((s) => s.player)
   const hs = mean(h, 'off')                       // mean offense talent
-  const ipTot = sum(p, 'ip') || 1
-  const ps = p.reduce((s, x) => s + x.pit * x.ip, 0) / ipTot  // IP-weighted pitching talent
+  const ps = mean(p, 'pit')                        // mean pitching talent
   const w = meta.weights || { h: 0.55, p: 0.45 }
   const total = w.h * hs + w.p * ps
 
@@ -357,7 +360,20 @@ function computeResult(roster, meta) {
   }
   wins = Math.max(0, Math.min(56, Math.round(wins)))
 
-  const norm = (v, b) => Math.max(0, Math.min(100, Math.round(((v - b.min) / Math.max(b.max - b.min, 1e-6)) * 100)))
+  // Bar = percentile of this value among realistic rosters, interpolated over
+  // the 21 stored quantile breakpoints (q[0]=p0 ... q[20]=p100).
+  const norm = (v, b) => {
+    const q = b.q
+    if (v <= q[0]) return 0
+    if (v >= q[q.length - 1]) return 100
+    for (let i = 0; i < q.length - 1; i++) {
+      if (v <= q[i + 1]) {
+        const frac = (v - q[i]) / Math.max(q[i + 1] - q[i], 1e-6)
+        return Math.round(((i + frac) / (q.length - 1)) * 100)
+      }
+    }
+    return 100
+  }
   return {
     wins, losses: 56 - wins,
     offBar: norm(hs, meta.off_bar), pitBar: norm(ps, meta.pit_bar),
@@ -459,7 +475,7 @@ function Sorter({ label, val, opts, onChange }) {
 }
 
 function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, setSortH, setSortP,
-  posF, setPosF, usedPids, openSlotFor, pitcherSlotsLeft, onDraftH, onDraftP,
+  posF, setPosF, usedPids, openSlotFor, canPlacePitcher, onDraftH, onDraftP,
   choosing, onChoose, onCancelChoose }) {
   return (
     <div className="picker-card">
@@ -538,7 +554,7 @@ function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, se
               <div className="ecol">No pitchers here at {spin.team}</div>
             ) : pitchers.map((p) => {
               const taken = usedPids.has(p.pid)
-              const dis = taken || pitcherSlotsLeft === 0
+              const dis = taken || !canPlacePitcher(p)
               return (
                 <div key={p.pid} className={'prow' + (dis ? ' dis' : '')} onClick={() => !dis && onDraftP(p)}>
                   <div className="ptop">

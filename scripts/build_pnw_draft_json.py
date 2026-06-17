@@ -257,9 +257,10 @@ def main():
     def hs_of(hs):  # mean offense talent
         return sum(x['off'] for x in hs) / len(hs)
 
-    def ps_of(ps):  # IP-weighted pitching talent
-        tot_ip = sum(x['ip'] for x in ps) or 1.0
-        return sum(x['pit'] * x['ip'] for x in ps) / tot_ip
+    def ps_of(ps):  # mean pitching talent (simple mean, mirrors the hitters'
+        # mean off — IP-weighting buried elite relievers and made staffs read
+        # systematically lower than equivalently-good lineups)
+        return sum(x['pit'] for x in ps) / len(ps)
 
     def total_of(hs, ps):
         return WEIGHT_H * hs_of(hs) + WEIGHT_P * ps_of(ps)
@@ -280,11 +281,12 @@ def main():
     worst_total = total_of(worst_h, worst_p)
 
     random.seed(7)
-    totals = []
+    totals, hs_samp, ps_samp = [], [], []
     for _ in range(8000):
         hs = [random.choice(by_pos[pos] or hitters) for pos in HPOS]
         ps = random.sample(pitchers, N_PITCHERS)
         totals.append(total_of(hs, ps))
+        hs_samp.append(hs_of(hs)); ps_samp.append(ps_of(ps))
     mean = sum(totals) / len(totals)
 
     # ── Engaged-play (greedy) distribution ──
@@ -295,7 +297,7 @@ def main():
     # reaches the low-to-mid 50s instead of stalling in the high 30s.
     pitchers_by_team = {}
     for p in pitchers:
-        pitchers_by_team.setdefault(p['t'], []).append(p)
+        pitchers_by_team.setdefault((p['l'], p['t']), []).append(p)
     off_sorted = sorted(h['off'] for h in hitters)
     pit_sorted = sorted(p['pit'] for p in pitchers)
 
@@ -312,13 +314,13 @@ def main():
             lv = rng.choice(list(teams_by_level)); tm = rng.choice(teams_by_level[lv])
             # best hitter for an open eligible slot (DH counts if open)
             bh = None
-            for h in hByteam_get(tm):
+            for h in hByteam_get(lv, tm):
                 fits = ('DH' in need) or any(pos in need for pos in (h.get('elig') or [h['p']]))
                 if fits and (bh is None or h['off'] > bh['off']):
                     bh = h
             bp = None
             if need_p > 0:
-                for p in pitchers_by_team.get(tm, []):
+                for p in pitchers_by_team.get((lv, tm), []):
                     if bp is None or p['pit'] > bp['pit']:
                         bp = p
             take_h = bh and (not bp or _pct(off_sorted, bh['off']) >= _pct(pit_sorted, bp['pit']))
@@ -328,17 +330,18 @@ def main():
             elif bp:
                 need_p -= 1; ps.append(bp)
         if len(hs) == 9 and len(ps) == 5:
-            return total_of(hs, ps)
+            return total_of(hs, ps), hs_of(hs), ps_of(ps)
         return None
 
     hByteam = {}
     for h in hitters:
-        hByteam.setdefault(h['t'], []).append(h)
-    def hByteam_get(tm):
-        return hByteam.get(tm, [])
+        hByteam.setdefault((h['l'], h['t']), []).append(h)
+    def hByteam_get(lv, tm):
+        return hByteam.get((lv, tm), [])
 
     grng = random.Random(11)
-    gtot = sorted(t for t in (greedy_total(grng) for _ in range(4000)) if t is not None)
+    gres = [r for r in (greedy_total(grng) for _ in range(4000)) if r is not None]
+    gtot = sorted(r[0] for r in gres)
     g50 = gtot[len(gtot) // 2]
     g90 = gtot[int(0.90 * len(gtot))]
     g99 = gtot[int(0.99 * len(gtot))]
@@ -365,9 +368,19 @@ def main():
                 return max(0, min(56, round(w0 + frac * (w1 - w0))))
         return 56
 
-    # 0-100 bar bounds from the worst/best achievable single-roster means
-    off_lo, off_hi = hs_of(worst_h), hs_of(best_h)
-    pit_lo, pit_hi = ps_of(worst_p), ps_of(best_p)
+    # 0-100 bars = PERCENTILE of this roster's offense / pitching among realistic
+    # rosters (random + engaged play). A min/max scale can't make the two bars
+    # symmetric (offense is consistently high and tightly packed; pitching is more
+    # spread, so the same quality read lower). Percentile fixes it by construction:
+    # "better than 85% of rosters" shows 85 on EITHER side. We store 21 quantile
+    # breakpoints per side and the frontend interpolates.
+    def quantiles(vals, n=20):
+        s = sorted(vals)
+        return [round(s[min(len(s) - 1, int(k / n * (len(s) - 1)))], 3) for k in range(n + 1)]
+    pooled_hs = hs_samp + [r[1] for r in gres]
+    pooled_ps = ps_samp + [r[2] for r in gres]
+    off_q = quantiles(pooled_hs)
+    pit_q = quantiles(pooled_ps)
 
     meta = {
         'season': season,
@@ -377,8 +390,8 @@ def main():
         'weights': {'h': WEIGHT_H, 'p': WEIGHT_P},
         'games': 56,
         'win_map': {'anchors': anchors},
-        'off_bar': {'min': round(off_lo, 2), 'max': round(off_hi, 2)},
-        'pit_bar': {'min': round(pit_lo, 2), 'max': round(pit_hi, 2)},
+        'off_bar': {'q': off_q},
+        'pit_bar': {'q': pit_q},
         'best_total': round(best_total, 2), 'worst_total': round(worst_total, 2),
     }
 
