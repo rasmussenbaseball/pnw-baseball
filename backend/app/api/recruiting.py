@@ -913,13 +913,17 @@ _COMMIT_LEVEL_OVERRIDES = {
     "washington": "D1", "university of pacific": "D1", "bradley": "D1",
     "east carolina": "D1", "old dominion": "D1", "western kentucky": "D1",
     "akron": "D1", "saint louis university": "D1", "charleston southern": "D1",
+    "marshall": "D1", "fairleigh dickinson": "D1", "alcorn state": "D1",
     "montana state billings": "D2",
-    "oregon tech": "NAIA", "vanguard university": "NAIA", "tabor college": "NAIA",
+    # Vanguard + Jessup moved from NAIA (GSAC) to D2 (PacWest) — flagged 2026-06-15.
+    "vanguard university": "D2", "jessup university": "D2", "jessup": "D2",
+    "oregon tech": "NAIA", "tabor college": "NAIA",
     "freed-hardeman": "NAIA", "ottawa": "NAIA", "missouri baptist": "NAIA",
     "southwestern christian (oklahoma)": "NAIA", "union commonwealth": "NAIA",
     "friends university": "NAIA", "bellevue university": "NAIA",
+    "ave maria": "NAIA", "arizona christian": "NAIA",
     # Corrections where our teams table has the destination mis-leveled:
-    "jessup university": "NAIA", "jessup": "NAIA", "tennessee wesleyan": "NAIA",
+    "tennessee wesleyan": "NAIA",
     "bethany lutheran": "D3",
 }
 
