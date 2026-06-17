@@ -39,7 +39,7 @@ const HEIGHT = 630;
 
 // Portrait "trading card" download size (fixed for every player).
 const P_W = 1080;
-const P_H = 1350;
+const P_H = 1500;
 
 // New player-profile palette (savant-style cream / navy / maroon / gold),
 // matching frontend/src/components/playerProfile/shared.jsx.
@@ -1184,9 +1184,56 @@ function StackBar({ segments }) {
   );
 }
 
+function MiniStatGrid({ cells }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+      {cells.map((c, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '33.3%',
+            height: 84,
+            gap: 4,
+          }}
+        >
+          <div style={{ display: 'flex', fontSize: 30, fontWeight: 800, color: PROFILE.ink }}>{c.value}</div>
+          <div style={{ display: 'flex', fontSize: 17, color: PROFILE.muted, fontWeight: 600 }}>{c.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LabeledBar({ label, pct, color }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 32 }}>
+      <div style={{ display: 'flex', width: 64, fontSize: 18, fontWeight: 700, color: PROFILE.ink }}>{label}</div>
+      <div style={{ display: 'flex', flex: 1, height: 16, background: PROFILE.track, borderRadius: 8 }}>
+        <div style={{ display: 'flex', width: `${Math.max(2, Math.min(100, pct || 0))}%`, height: 16, background: color, borderRadius: 8 }} />
+      </div>
+      <div style={{ display: 'flex', width: 56, justifyContent: 'flex-end', fontSize: 18, fontWeight: 700, color: PROFILE.muted }}>
+        {pct != null ? Math.round(pct) + '%' : '—'}
+      </div>
+    </div>
+  );
+}
+
+function SplitRow({ label, value, accent }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 38, borderBottom: `1px solid ${PROFILE.track}` }}>
+      <div style={{ display: 'flex', fontSize: 19, color: PROFILE.muted, fontWeight: 600 }}>{label}</div>
+      <div style={{ display: 'flex', fontSize: 22, fontWeight: 800, color: accent || PROFILE.ink }}>{value}</div>
+    </div>
+  );
+}
+
 function PortraitCard({
   player, isPitcher, latest, seasons, percentiles, headshotSrc, logoSrc,
-  awards, careerRankings, pnwRankings, goldGloves, levelLabel,
+  awards, careerRankings, pnwRankings, goldGloves, levelLabel, pbp,
 }) {
   const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
   const team = player.team_name || player.team_short || '';
@@ -1294,6 +1341,96 @@ function PortraitCard({
     ].filter((s) => s.value > 0);
   }
 
+  // ── PBP-derived panels (discipline / batted-ball / splits / clutch) ──
+  const disc = pbp && pbp.discipline ? pbp.discipline : null;
+  const contact =
+    pbp && pbp.contact_profile && (pbp.contact_profile.bb_total || pbp.contact_profile.gb_pct != null)
+      ? pbp.contact_profile : null;
+  const pct1 = (v) => (v == null ? '—' : (v * 100).toFixed(1) + '%');
+  const findSplit = (arr, keys) => {
+    if (!arr) return null;
+    for (const k of keys) {
+      const f = arr.find(
+        (s) => s.filter_key === k || (s.label || '').toLowerCase() === k
+      );
+      if (f) return f;
+    }
+    return null;
+  };
+
+  const discCells = disc
+    ? isPitcher
+      ? [
+          { label: 'Strike%', value: pct1(disc.strike_pct) },
+          { label: '1st-K%', value: pct1(disc.first_pitch_strike_pct) },
+          { label: 'Whiff%', value: pct1(disc.whiff_pct) },
+          { label: 'Called-K%', value: pct1(disc.called_strike_pct) },
+          { label: 'Putaway%', value: pct1(disc.putaway_pct) },
+          { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—' },
+        ]
+      : [
+          { label: 'Swing%', value: pct1(disc.swing_pct) },
+          { label: 'Contact%', value: pct1(disc.contact_pct) },
+          { label: 'Whiff%', value: pct1(disc.whiff_pct) },
+          { label: '1st-K%', value: pct1(disc.first_pitch_strike_pct) },
+          { label: 'Putaway%', value: pct1(disc.putaway_pct) },
+          { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—' },
+        ]
+    : isPitcher
+      ? [
+          { label: 'K/9', value: L.k_per_9 != null ? Number(L.k_per_9).toFixed(1) : '—' },
+          { label: 'BB/9', value: L.bb_per_9 != null ? Number(L.bb_per_9).toFixed(1) : '—' },
+          { label: 'HR/9', value: L.hr_per_9 != null ? Number(L.hr_per_9).toFixed(1) : '—' },
+          { label: 'LOB%', value: L.lob_pct != null ? Math.round(L.lob_pct * 100) + '%' : '—' },
+          { label: 'BABIP', value: PFmt('babip', L.babip_against) },
+          { label: 'FIP-', value: fmtInt(L.era_minus) },
+        ]
+      : [
+          { label: 'BB%', value: L.bb_pct != null ? (L.bb_pct * 100).toFixed(1) + '%' : '—' },
+          { label: 'K%', value: L.k_pct != null ? (L.k_pct * 100).toFixed(1) + '%' : '—' },
+          { label: 'BABIP', value: PFmt('babip', L.babip) },
+          { label: 'ISO', value: PFmt('iso', L.iso) },
+          { label: 'OPS', value: PFmt('ops', L.ops) },
+          { label: 'wRC+', value: fmtInt(L.wrc_plus) },
+        ];
+
+  const battedBars = contact
+    ? [
+        { label: 'GB', pct: contact.gb_pct * 100, color: PROFILE.navy },
+        { label: 'LD', pct: contact.ld_pct * 100, color: PROFILE.maroon },
+        { label: 'FB', pct: contact.fb_pct * 100, color: PROFILE.navyLight },
+        { label: 'Pull', pct: contact.pull_pct * 100, color: PROFILE.gold },
+        { label: 'Oppo', pct: contact.oppo_pct * 100, color: PROFILE.blue },
+      ]
+    : null;
+
+  const vsL = findSplit(pbp && pbp.lr_splits, ['vs_lhp', 'vs_lhb', 'vs lhp', 'vs lhb']);
+  const vsR = findSplit(pbp && pbp.lr_splits, ['vs_rhp', 'vs_rhb', 'vs rhp', 'vs rhb']);
+  const risp = findSplit(pbp && pbp.situational_splits, ['risp']);
+  const splitRows = [];
+  if (vsL) splitRows.push({ label: isPitcher ? 'vs LHB' : 'vs LHP', value: PFmt('ops', vsL.ops) });
+  if (vsR) splitRows.push({ label: isPitcher ? 'vs RHB' : 'vs RHP', value: PFmt('ops', vsR.ops) });
+  if (risp) splitRows.push({ label: 'RISP', value: PFmt('ops', risp.ops) });
+  if (disc) {
+    splitRows.push({ label: 'WPA', value: (disc.total_wpa >= 0 ? '+' : '') + fmt(disc.total_wpa, 2), accent: PROFILE.maroon });
+    splitRows.push({ label: 'Avg LI', value: fmt(disc.avg_li, 2) });
+  }
+  // Fallback so the panel is never empty
+  if (splitRows.length < 3) {
+    splitRows.length = 0;
+    if (isPitcher) {
+      splitRows.push({ label: 'WHIP', value: PFmt('whip', L.whip) });
+      splitRows.push({ label: 'K/9', value: L.k_per_9 != null ? Number(L.k_per_9).toFixed(1) : '—' });
+      splitRows.push({ label: 'BB/9', value: L.bb_per_9 != null ? Number(L.bb_per_9).toFixed(1) : '—' });
+      splitRows.push({ label: 'HR/9', value: L.hr_per_9 != null ? Number(L.hr_per_9).toFixed(1) : '—' });
+    } else {
+      splitRows.push({ label: 'OBP', value: PFmt('obp', L.on_base_pct) });
+      splitRows.push({ label: 'SLG', value: PFmt('slg', L.slugging_pct) });
+      splitRows.push({ label: 'BABIP', value: PFmt('babip', L.babip) });
+      splitRows.push({ label: 'wRC+', value: fmtInt(L.wrc_plus), accent: PROFILE.maroon });
+    }
+  }
+
   // ── Career rows (fallback-aware) ──
   const sortedSeasons = [...(seasons || [])].sort(
     (a, b) => Number(b.season || 0) - Number(a.season || 0)
@@ -1318,7 +1455,7 @@ function PortraitCard({
     const strengths = bars
       .filter((b) => b.pct != null && b.pct >= 60)
       .sort((a, b) => b.pct - a.pct)
-      .slice(0, 5 - accolades.length)
+      .slice(0, 4 - accolades.length)
       .map((b) => ({ text: `${ordinal(Math.round(b.pct))} pct · ${b.label}`, kind: 'strength' }));
     accolades.push(...strengths);
   }
@@ -1368,23 +1505,52 @@ function PortraitCard({
         <StatRow cells={coreCells} top />
         <StatRow cells={advCells} />
 
-        {/* mid row */}
-        <div style={{ display: 'flex', gap: 14, height: 372 }}>
-          <Panel title="Percentile Rankings" w={612} h={372} note={`vs ${levelLabel} · ${L.season || ''}`}>
+        {/* mid row: percentiles | batted-ball (hitter) or stack */}
+        <div style={{ display: 'flex', gap: 14, height: 340 }}>
+          <Panel title="Percentile Rankings" w={612} h={340} note={`vs ${levelLabel} · ${L.season || ''}`}>
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', flex: 1 }}>
               {bars.map((b, i) => (
                 <PBar key={i} label={b.label} value={b.value} pct={b.pct} />
               ))}
             </div>
           </Panel>
-          <Panel title={isPitcher ? 'Batters Faced' : 'How They Reach Base'} w={356} h={372}>
-            <StackBar segments={stack} />
+          {battedBars ? (
+            <Panel title="Batted Ball" w={356} h={340}>
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', flex: 1 }}>
+                {battedBars.map((b, i) => (
+                  <LabeledBar key={i} label={b.label} pct={b.pct} color={b.color} />
+                ))}
+              </div>
+            </Panel>
+          ) : (
+            <Panel title={isPitcher ? 'Batters Faced' : 'How They Reach Base'} w={356} h={340}>
+              <StackBar segments={stack} />
+            </Panel>
+          )}
+        </div>
+
+        {/* pbp row: discipline | splits & clutch */}
+        <div style={{ display: 'flex', gap: 14, height: 300 }}>
+          <Panel
+            title={isPitcher ? 'Command & Misses' : 'Plate Discipline'}
+            w={612}
+            h={300}
+            note={disc ? 'play-by-play (tracked PA)' : 'season rates'}
+          >
+            <MiniStatGrid cells={discCells} />
+          </Panel>
+          <Panel title={(vsL || vsR || risp) ? 'Splits & Clutch' : 'Rates'} w={356} h={300}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {splitRows.map((r, i) => (
+                <SplitRow key={i} label={r.label} value={r.value} accent={r.accent} />
+              ))}
+            </div>
           </Panel>
         </div>
 
-        {/* bottom row */}
-        <div style={{ display: 'flex', gap: 14, height: 300 }}>
-          <Panel title="Career" w={612} h={300}>
+        {/* career row: career | accolades */}
+        <div style={{ display: 'flex', gap: 14, height: 280 }}>
+          <Panel title="Career" w={612} h={280}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 1 }}>
               {sortedSeasons.map((s, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, height: 46, borderBottom: i < sortedSeasons.length - 1 ? `1px solid ${PROFILE.track}` : 'none' }}>
@@ -1398,10 +1564,10 @@ function PortraitCard({
               ))}
             </div>
           </Panel>
-          <Panel title={accolades.some((a) => a.kind !== 'strength') ? 'Accolades' : 'Season Strengths'} w={356} h={300}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {accolades.slice(0, 5).map((a, i) => (
-                <div key={i} style={{ display: 'flex', background: accColor[a.kind], color: accText[a.kind], fontSize: 19, fontWeight: 700, padding: '8px 12px', borderRadius: 10 }}>
+          <Panel title={accolades.some((a) => a.kind !== 'strength') ? 'Accolades' : 'Season Strengths'} w={356} h={280}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {accolades.slice(0, 4).map((a, i) => (
+                <div key={i} style={{ display: 'flex', background: accColor[a.kind], color: accText[a.kind], fontSize: 18, fontWeight: 700, padding: '8px 12px', borderRadius: 10 }}>
                   {a.text}
                 </div>
               ))}
@@ -1464,6 +1630,14 @@ export default async function handler(req) {
         if (format === 'portrait') {
           imgW = P_W; imgH = P_H;
           const levelLabel = player.division_level || player.division_name || 'PNW';
+          // Pull play-by-play panels for the latest season (best-effort).
+          let pbp = null;
+          if (latest && latest.season) {
+            const pbpUrl = isPitcher
+              ? `${API_BASE}/players/${id}/pitch-level-stats-pitcher?season=${latest.season}`
+              : `${API_BASE}/players/${id}/pitch-level-stats?season=${latest.season}`;
+            pbp = await safeFetch(pbpUrl);
+          }
           element = (
             <PortraitCard
               player={player}
@@ -1488,6 +1662,7 @@ export default async function handler(req) {
               )}
               goldGloves={data.gold_gloves || []}
               levelLabel={levelLabel}
+              pbp={pbp}
             />
           );
         } else {
