@@ -19,6 +19,8 @@ const COMMIT_LVL = {
 }
 
 export const BATTING_COLS = [
+  // oWAR leads — it's the default sort, so showing it first makes the ranking obvious.
+  { key: 'offensive_war',  label: 'oWAR', format: 'war',  mono: true },
   { key: 'batting_avg',    label: 'AVG',  format: 'avg',  mono: true },
   { key: 'on_base_pct',    label: 'OBP',  format: 'avg',  mono: true },
   { key: 'slugging_pct',   label: 'SLG',  format: 'avg',  mono: true },
@@ -34,10 +36,11 @@ export const BATTING_COLS = [
   { key: 'swing_pct',      label: 'Swing%',  format: 'pct', mono: true },
   { key: 'air_pull_pct',   label: 'AIRPULL%',format: 'pct', mono: true },
   { key: 'batter_wpa',     label: 'WPA',     format: 'wpa', mono: true },
-  { key: 'offensive_war',  label: 'oWAR', format: 'war',  mono: true },
 ]
 
 export const PITCHING_COLS = [
+  // pWAR leads — it's the default sort, so showing it first makes the ranking obvious.
+  { key: 'pitching_war',   label: 'pWAR', format: 'war',  mono: true },
   { key: 'era',            label: 'ERA',  format: 'era',  mono: true },
   { key: 'fip',            label: 'FIP',  format: 'era',  mono: true },
   { key: 'fip_plus',       label: 'FIP+', format: 'int',  mono: true },
@@ -50,7 +53,6 @@ export const PITCHING_COLS = [
   { key: 'first_pitch_strike_pct', label: 'FPS%', format: 'pct', mono: true },
   { key: 'innings_pitched', label: 'IP',   format: 'ip' },
   { key: 'pitcher_wpa',    label: 'WPA',  format: 'wpa',  mono: true },
-  { key: 'pitching_war',   label: 'pWAR', format: 'war',  mono: true },
 ]
 
 export const HITTER_STAT_COLS = [

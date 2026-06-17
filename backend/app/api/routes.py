@@ -9426,12 +9426,12 @@ _PLAYER_PBP_SELECT = """
                    CASE WHEN (COALESCE(ps2.batters_faced,0)-COALESCE(ps2.walks,0)-COALESCE(ps2.hit_batters,0)) > 0
                         THEN COALESCE(ps2.hits_allowed,0)::numeric
                              / (COALESCE(ps2.batters_faced,0)-COALESCE(ps2.walks,0)-COALESCE(ps2.hit_batters,0)) END AS baa,
-                   CASE WHEN bpbp.pitches > 0 THEN (bpbp.kp+bpbp.fp+bpbp.inp)::numeric/bpbp.pitches END AS swing_pct,
-                   CASE WHEN (bpbp.kp+bpbp.fp+bpbp.inp) > 0 THEN (bpbp.fp+bpbp.inp)::numeric/(bpbp.kp+bpbp.fp+bpbp.inp) END AS contact_pct,
+                   CASE WHEN bpbp.pitches > 0 THEN (bpbp.sp+bpbp.fp+bpbp.inp)::numeric/bpbp.pitches END AS swing_pct,
+                   CASE WHEN (bpbp.sp+bpbp.fp+bpbp.inp) > 0 THEN (bpbp.fp+bpbp.inp)::numeric/(bpbp.sp+bpbp.fp+bpbp.inp) END AS contact_pct,
                    CASE WHEN bpbp.bbtp > 0 THEN bpbp.apc::numeric/bpbp.bbtp END AS air_pull_pct,
                    bpbp.wpa AS batter_wpa,
                    CASE WHEN ppbp.pitches > 0 THEN (ppbp.kp+ppbp.sp+ppbp.fp+ppbp.inp)::numeric/ppbp.pitches END AS strike_pct,
-                   CASE WHEN (ppbp.kp+ppbp.fp+ppbp.inp) > 0 THEN ppbp.kp::numeric/(ppbp.kp+ppbp.fp+ppbp.inp) END AS whiff_pct,
+                   CASE WHEN (ppbp.sp+ppbp.fp+ppbp.inp) > 0 THEN ppbp.sp::numeric/(ppbp.sp+ppbp.fp+ppbp.inp) END AS whiff_pct,
                    CASE WHEN ppbp.tpa > 0 THEN ppbp.f1::numeric/ppbp.tpa END AS first_pitch_strike_pct,
                    ppbp.wpa AS pitcher_wpa,
 """
@@ -9452,7 +9452,10 @@ def _PLAYER_PBP_CTES(batter_pred: str, pitcher_pred: str, with_juco_ids: bool = 
             bpbp AS (
                 SELECT ge.batter_player_id AS pid,
                     COALESCE(SUM(ge.pitches_thrown) FILTER (WHERE ge.pitches_thrown>=1),0) AS pitches,
-                    COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'K',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS kp,
+                    -- 'S' = swinging strike (whiff); 'K' = CALLED strike. Swing%
+                    -- and contact% key off swings, so they must use sp ('S'),
+                    -- NOT called strikes. (Site-wide K/S fix, 2026-06-12.)
+                    COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'S',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS sp,
                     COALESCE(SUM(LENGTH(ge.pitch_sequence)-LENGTH(REPLACE(ge.pitch_sequence,'F',''))) FILTER (WHERE ge.pitches_thrown>=1),0) AS fp,
                     COALESCE(SUM(CASE WHEN ge.was_in_play THEN 1 ELSE 0 END) FILTER (WHERE ge.pitches_thrown>=1),0) AS inp,
                     COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL AND UPPER(plyr.bats) IN ('L','R')) AS bbtp,
