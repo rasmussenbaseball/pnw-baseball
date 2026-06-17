@@ -577,11 +577,17 @@ export default function PlayerGraphic() {
         const summerS = [...new Set([...summerBatting, ...summerPitching].map(s => s.season))].sort((a, b) => b - a)
         const opts = [
           ...springS.map(s => ({ key: `spring:${s}`, season: s, kind: 'spring', label: `${s}` })),
-          ...summerS.map(s => ({ key: `summer:${s}`, season: s, kind: 'summer', label: `${s} WCL (summer)` })),
+          ...summerS.map(s => {
+            // summer stat rows carry the summer player id — route to the dedicated
+            // summer handler so the card renders identically (PBP, splits, ranks).
+            const row = [...summerBatting, ...summerPitching].find(r => r.season === s)
+            return { key: `summer:${s}`, season: s, kind: 'summer', summerPid: row?.player_id, label: `${s} WCL (summer)` }
+          }),
         ]
         const sel = gSel || opts[0]
-        const qs = sel ? `&season=${sel.season}&kind=${sel.kind}` : ''
-        const imgUrl = `/api/og?t=player&id=${playerId}&format=portrait${qs}`
+        const imgUrl = (sel && sel.kind === 'summer' && sel.summerPid)
+          ? `/api/og?t=summerplayer&id=${sel.summerPid}&format=portrait&season=${sel.season}`
+          : `/api/og?t=player&id=${playerId}&format=portrait${sel ? `&season=${sel.season}&kind=${sel.kind}` : ''}`
         return (
           <div className="flex flex-col items-center gap-3">
             {opts.length > 1 && (

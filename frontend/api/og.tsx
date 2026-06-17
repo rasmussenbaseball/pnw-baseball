@@ -1343,7 +1343,7 @@ function TrendChart({ trend, w, h }) {
 
 function PortraitCard({
   player, isPitcher, latest, seasons, summerSeasons, percentiles, headshotSrc, logoSrc,
-  awards, careerRankings, pnwRankings, goldGloves, levelLabel, pbp, trend,
+  awards, careerRankings, pnwRankings, goldGloves, levelLabel, pbp, trend, leagueRankings,
 }) {
   const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
   const team = player.team_name || player.team_short || '';
@@ -1516,7 +1516,7 @@ function PortraitCard({
           { label: 'P/PA', value: disc.pitches_per_pa != null ? disc.pitches_per_pa.toFixed(2) : '—', pctl: null },
         ]
       : [
-          { label: 'Swing%', value: pct1(disc.swing_pct), pctl: null },
+          { label: 'Swing%', value: pct1(disc.swing_pct), pctl: dP('swing_pct', disc.swing_pct, true) },
           { label: 'Contact%', value: pct1(disc.contact_pct), pctl: dP('contact_pct', disc.contact_pct, true) },
           { label: '2K-Contact%', value: twoK ? pct1(twoK.contact_pct) : '—', pctl: twoKpctl },
           { label: 'Putaway%', value: pct1(disc.putaway_pct), pctl: dP('putaway_pct', disc.putaway_pct, false) },
@@ -1612,6 +1612,10 @@ function PortraitCard({
   );
   (pnwRankings || []).slice(0, 3).forEach((r) =>
     accolades.push({ text: `${ordinal(r.rank)} PNW · ${r.category}`, kind: 'pnw' })
+  );
+  // League leaderboard placements (e.g. summer/WCL: "4th WCL · SB").
+  (leagueRankings || []).slice(0, 4).forEach((r) =>
+    accolades.push({ text: `${ordinal(r.rank)} ${levelLabel} · ${r.category}`, kind: 'pnw' })
   );
   (careerRankings || []).slice(0, 3).forEach((r) =>
     accolades.push({ text: `${ordinal(r.rank)} ${player.team_short || 'team'} · ${r.category}`, kind: 'career' })
@@ -1768,10 +1772,11 @@ function PortraitCard({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 1 }}>
               {sortedSeasons.map((s, i) => {
                 const logo = s.logo_url || s.team_logo;
+                const ipVal = s.innings_pitched != null ? s.innings_pitched : s.ip;
                 const line = isPitcher
                   ? (s._summer
-                      ? `${fmtInt(s.games)} G · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K`
-                      : `${fmtInt(s.games)} G · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K · ${PFmt('war', s.pitching_war)} WAR`)
+                      ? `${PFmt('ip', ipVal)} IP · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K`
+                      : `${PFmt('ip', ipVal)} IP · ${PFmt('era', s.era)} ERA · ${fmtInt(s.strikeouts)} K · ${PFmt('war', s.pitching_war)} WAR`)
                   : (s._summer
                       ? `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI`
                       : `${fmtInt(s.games)} G · ${PFmt('avg', s.batting_avg)} · ${fmtInt(s.home_runs)} HR · ${fmtInt(s.rbi)} RBI · ${PFmt('war', s.offensive_war)} WAR`);
@@ -1979,6 +1984,9 @@ export default async function handler(req) {
         // Summer season rows carry no logo of their own; stamp the team logo so the
         // career box shows it on every row.
         const seasonRows = list.map((r) => ({ ...r, team_logo: r.team_logo || p.team_logo, logo_url: r.logo_url || p.team_logo }));
+        // Cumulative trend from this season's game logs — fills the career box for
+        // single-season summer players (same as spring's short-career chart).
+        const trend = buildTrend({ batting: data.game_batting, pitching: data.game_pitching }, isPitcher);
         imgW = P_W; imgH = P_H;
         element = (
             <PortraitCard
@@ -1996,6 +2004,8 @@ export default async function handler(req) {
               goldGloves={[]}
               levelLabel={lvl}
               pbp={pbp}
+              trend={trend}
+              leagueRankings={data.rankings || []}
             />
           );
       }

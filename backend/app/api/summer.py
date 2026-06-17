@@ -1226,6 +1226,69 @@ def search_summer_players(q: str = Query(..., min_length=2), limit: int = Query(
         return [dict(r) for r in cur.fetchall()]
 
 
+def _summer_rankings(cur, player_id, league_id, season, bat_row, pit_row):
+    """Where this player ranks among league+season peers in notable categories
+    (top 10 only). Mirrors the spring pnw_rankings logic so the player graphic
+    can show real leaderboard placements (e.g. "4th WCL · SB") instead of a
+    generic percentile-strengths fallback."""
+    rankings = []
+    min_pa, min_ip = 15, 5
+    bat_cats = [
+        ("wRC+", "wrc_plus", "DESC", "int"),
+        ("HR", "home_runs", "DESC", "int"),
+        ("SB", "stolen_bases", "DESC", "int"),
+        ("oWAR", "offensive_war", "DESC", "float1"),
+        ("AVG", "batting_avg", "DESC", "avg"),
+        ("OPS", "ops", "DESC", "avg"),
+        ("ISO", "iso", "DESC", "avg"),
+        ("RBI", "rbi", "DESC", "int"),
+    ]
+    pit_cats = [
+        ("pWAR", "pitching_war", "DESC", "float1"),
+        ("FIP+", "fip_plus", "DESC", "int"),
+        ("SIERA", "siera", "ASC", "float2"),
+        ("ERA", "era", "ASC", "float2"),
+        ("K", "strikeouts", "DESC", "int"),
+        ("K%", "k_pct", "DESC", "pct"),
+    ]
+
+    def _rank_in(table, col, order, thresh_col, thresh):
+        cur.execute(
+            f"""
+            SELECT r.rank, r.value FROM (
+                SELECT s.player_id,
+                       RANK() OVER (ORDER BY s.{col} {order}) AS rank,
+                       s.{col} AS value
+                FROM {table} s
+                JOIN summer_players sp ON sp.id = s.player_id
+                JOIN summer_teams t    ON t.id = sp.team_id
+                WHERE s.season = %s AND t.league_id = %s
+                  AND s.{thresh_col} >= %s AND s.{col} IS NOT NULL
+            ) r
+            WHERE r.player_id = %s AND r.rank <= 10
+            """,
+            (season, league_id, thresh, player_id),
+        )
+        return cur.fetchone()
+
+    if bat_row:
+        for label, col, order, fmt in bat_cats:
+            row = _rank_in("summer_batting_stats", col, order, "plate_appearances", min_pa)
+            if row:
+                rankings.append({"category": label, "rank": row["rank"],
+                                 "value": float(row["value"]) if row["value"] is not None else None,
+                                 "format": fmt, "type": "batting"})
+    if pit_row:
+        for label, col, order, fmt in pit_cats:
+            row = _rank_in("summer_pitching_stats", col, order, "innings_pitched", min_ip)
+            if row:
+                rankings.append({"category": label, "rank": row["rank"],
+                                 "value": float(row["value"]) if row["value"] is not None else None,
+                                 "format": fmt, "type": "pitching"})
+    rankings.sort(key=lambda r: (r["rank"], r["category"]))
+    return rankings
+
+
 @router.get("/summer/players/{player_id}")
 @cached_endpoint(ttl_seconds=180)
 def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
@@ -1347,6 +1410,10 @@ def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
             cur, league_id, eff_season, bat_row, pit_row
         )
 
+        rankings = _summer_rankings(
+            cur, player_id, league_id, eff_season, bat_row, pit_row
+        )
+
     return {
         "player": dict(player),
         "season": eff_season,
@@ -1361,6 +1428,7 @@ def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
         "pitch_approach": pitch_approach,
         "batting_percentiles": batting_percentiles,
         "pitching_percentiles": pitching_percentiles,
+        "rankings": rankings,
     }
 
 
