@@ -1440,8 +1440,14 @@ export default async function handler(req) {
         const player = data.player;
         const batting = data.batting_stats || [];
         const pitching = data.pitching_stats || [];
+        // Position is free-text ("P", "RHP", "LHP", ...). Treat as a pitcher
+        // when there's pitching data and either no batting data or a pitcher
+        // position — otherwise a pure pitcher (RHP, no batting rows) wrongly
+        // rendered as an all-blank hitter.
+        const posUp = (player.position || '').toUpperCase();
+        const posPitcher = ['P', 'RHP', 'LHP', 'SP', 'RP'].includes(posUp);
         const isPitcher =
-          (player.position || '').toUpperCase() === 'P' && pitching.length > 0;
+          pitching.length > 0 && (batting.length === 0 || posPitcher);
         const list = isPitcher ? pitching : batting;
         // Latest season is highest "season" value
         const latest =
