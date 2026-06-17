@@ -1298,9 +1298,48 @@ function SprayField({ pull, center, oppo, gb, fb, ld, bats }) {
   );
 }
 
+// Cumulative season trajectory from game logs: OPS (hitter) / ERA (pitcher).
+// Fills the empty space for players with only 1-2 career seasons.
+function buildTrend(gl, isPitcher) {
+  if (!gl) return null;
+  const ipReal = (ip) => { const w = Math.floor(ip); return w + Math.round((ip - w) * 10) / 3; };
+  if (isPitcher) {
+    const rows = (gl.pitching || []).filter((r) => r.ip != null)
+      .sort((a, b) => (a.game_date || '').localeCompare(b.game_date || ''));
+    let er = 0, outs = 0; const pts = [];
+    for (const r of rows) { er += r.er || 0; outs += Math.round(ipReal(r.ip || 0) * 3); if (outs > 0) pts.push((9 * er) / (outs / 3)); }
+    return pts.length >= 6 ? { label: 'ERA', points: pts } : null;
+  }
+  const rows = (gl.batting || []).filter((r) => (r.ab || 0) + (r.bb || 0) > 0)
+    .sort((a, b) => (a.game_date || '').localeCompare(b.game_date || ''));
+  let ab = 0, h = 0, bb = 0, hbp = 0, sf = 0, tb = 0; const pts = [];
+  for (const r of rows) {
+    ab += r.ab || 0; h += r.h || 0; bb += r.bb || 0; hbp += r.hbp || 0; sf += r.sf || 0;
+    tb += (r.h || 0) + (r['2b'] || 0) + 2 * (r['3b'] || 0) + 3 * (r.hr || 0);
+    const pa = ab + bb + hbp + sf;
+    if (ab > 0 && pa > 0) pts.push((h + bb + hbp) / pa + tb / ab);
+  }
+  return pts.length >= 6 ? { label: 'OPS', points: pts } : null;
+}
+
+function TrendChart({ trend, w, h }) {
+  const pts = trend.points, n = pts.length;
+  const min = Math.min(...pts), max = Math.max(...pts), range = max - min || 1;
+  const padX = 8, padY = 12;
+  const X = (i) => padX + (i / (n - 1)) * (w - 2 * padX);
+  const Y = (v) => padY + (1 - (v - min) / range) * (h - 2 * padY);
+  const d = pts.map((v, i) => `${i === 0 ? 'M' : 'L'} ${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+      <path d={d} fill="none" stroke={PROFILE.maroon} strokeWidth="3" />
+      <circle cx={X(n - 1).toFixed(1)} cy={Y(pts[n - 1]).toFixed(1)} r="4.5" fill={PROFILE.maroon} />
+    </svg>
+  );
+}
+
 function PortraitCard({
   player, isPitcher, latest, seasons, summerSeasons, percentiles, headshotSrc, logoSrc,
-  awards, careerRankings, pnwRankings, goldGloves, levelLabel, pbp,
+  awards, careerRankings, pnwRankings, goldGloves, levelLabel, pbp, trend,
 }) {
   const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
   const team = player.team_name || player.team_short || '';
@@ -1550,6 +1589,8 @@ function PortraitCard({
     ...(seasons || []).map((s) => ({ ...s, _summer: false })),
     ...(summerSeasons || []).map((s) => ({ ...s, _summer: true, _tag: s.league_abbrev || 'WCL' })),
   ].sort((a, b) => Number(b.season || 0) - Number(a.season || 0)).slice(0, 5);
+  // Short careers (<=2 seasons) get a season-trajectory chart to fill the space.
+  const showTrend = !!(trend && trend.points && trend.points.length >= 6 && sortedSeasons.length <= 2);
 
   // ── Accolades with fallback to computed "season strengths" ──
   const accolades = [];
@@ -1691,9 +1732,10 @@ function PortraitCard({
           </Panel>
         </div>
 
-        {/* career row: career | accolades */}
+        {/* career row: career (+ trend chart for short careers) | accolades */}
         <div style={{ display: 'flex', gap: 14, height: 280 }}>
-          <Panel title="Career" w={612} h={280}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 612 }}>
+          <Panel title="Career" w={612} h={showTrend ? 150 : 280}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 1 }}>
               {sortedSeasons.map((s, i) => {
                 const logo = s.logo_url || s.team_logo;
@@ -1723,6 +1765,14 @@ function PortraitCard({
               })}
             </div>
           </Panel>
+          {showTrend ? (
+            <Panel title={`${trend.label} trend · ${L.season || ''}`} w={612} h={116}>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'center' }}>
+                <TrendChart trend={trend} w={566} h={66} />
+              </div>
+            </Panel>
+          ) : null}
+          </div>
           <Panel title={accolades.some((a) => a.kind !== 'strength') ? 'Accolades' : 'Season Strengths'} w={356} h={280}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {accolades.slice(0, 4).map((a, i) => (
@@ -1795,6 +1845,7 @@ export default async function handler(req) {
 
           let selected = latest;
           let pbp = null;
+          let trend = null;
           let percentiles = isPitcher ? (data.pitching_percentiles || {}) : (data.batting_percentiles || {});
 
           if (kind === 'summer') {
@@ -1816,6 +1867,8 @@ export default async function handler(req) {
                 ? `${API_BASE}/players/${id}/pitch-level-stats-pitcher?season=${selected.season}`
                 : `${API_BASE}/players/${id}/pitch-level-stats?season=${selected.season}`;
               pbp = await safeFetch(pbpUrl);
+              const gl = await safeFetch(`${API_BASE}/players/${id}/gamelogs?season=${selected.season}`);
+              trend = buildTrend(gl, isPitcher);
             }
           }
           element = (
@@ -1840,6 +1893,7 @@ export default async function handler(req) {
               goldGloves={data.gold_gloves || []}
               levelLabel={levelLabel}
               pbp={pbp}
+              trend={trend}
             />
           );
         } else {
