@@ -78,6 +78,7 @@ function Game({ data }) {
   const [reel, setReel] = useState(null)      // {lvl, team} during spin animation
   const [spinning, setSpinning] = useState(false)
   const [note, setNote] = useState(null)
+  const [choosing, setChoosing] = useState(null) // {h, dests} pending slot pick
   const reelTimer = useRef(null)
 
   useEffect(() => () => clearInterval(reelTimer.current), [])
@@ -178,6 +179,7 @@ function Game({ data }) {
   }
 
   const advance = (next) => {
+    setChoosing(null)
     if (next.every((s) => s.player)) {
       setPhase('result')
     } else {
@@ -186,16 +188,29 @@ function Game({ data }) {
     }
   }
 
-  const draftHitter = (h) => {
-    if (usedPids.has(h.pid)) return
-    const slot = openSlotFor(h)
-    if (!slot) return
+  // Open destinations for a hitter: each eligible position still open, plus DH
+  // (any hitter can DH). Drives the slot picker when there's a real choice.
+  const destinationsFor = (h) => {
+    const dests = (h.elig && h.elig.length ? h.elig : [h.p]).filter((pos) => !slotFilled(pos))
+    if (!slotFilled('DH') && !dests.includes('DH')) dests.push('DH')
+    return dests
+  }
+  const placeHitterAt = (h, slot) => {
+    if (usedPids.has(h.pid) || !slot || slotFilled(slot)) return
     const next = roster.map((s) => ({ ...s }))
     const target = next.find((s) => s.type === 'hitter' && s.pos === slot && !s.player)
     if (!target) return
     target.player = h
+    setChoosing(null)
     setRoster(next)
     advance(next)
+  }
+  const draftHitter = (h) => {
+    if (usedPids.has(h.pid)) return
+    const dests = destinationsFor(h)
+    if (dests.length === 0) return
+    if (dests.length === 1) placeHitterAt(h, dests[0])
+    else setChoosing({ h, dests })   // let the user pick which spot
   }
   const draftPitcher = (p) => {
     if (usedPids.has(p.pid)) return
@@ -215,7 +230,7 @@ function Game({ data }) {
   const reset = () => {
     setRoster(emptyRoster())
     setPhase('spin'); setSpin(null); setSkips({ team: 1, level: 1 })
-    setSortH('off'); setSortP('off'); setPosF('all'); setNote(null)
+    setSortH('off'); setSortP('off'); setPosF('all'); setNote(null); setChoosing(null)
   }
 
   // ── Sorted, filtered pick lists for the current team ──
@@ -282,6 +297,9 @@ function Game({ data }) {
                 usedPids={usedPids} openSlotFor={openSlotFor}
                 pitcherSlotsLeft={pitcherSlotsLeft}
                 onDraftH={draftHitter} onDraftP={draftPitcher}
+                choosing={choosing}
+                onChoose={(slot) => placeHitterAt(choosing.h, slot)}
+                onCancelChoose={() => setChoosing(null)}
               />
             )}
           </>
@@ -417,9 +435,21 @@ function Sorter({ label, val, opts, onChange }) {
 }
 
 function Picker({ spin, logos, hitters, pitchers, hNeed, pNeed, sortH, sortP, setSortH, setSortP,
-  posF, setPosF, usedPids, openSlotFor, pitcherSlotsLeft, onDraftH, onDraftP }) {
+  posF, setPosF, usedPids, openSlotFor, pitcherSlotsLeft, onDraftH, onDraftP,
+  choosing, onChoose, onCancelChoose }) {
   return (
     <div className="picker-card">
+      {choosing && (
+        <div className="chooser">
+          <span className="chooser-lbl">Play <strong>{choosing.h.n}</strong> at:</span>
+          <div className="chooser-opts">
+            {choosing.dests.map((slot) => (
+              <button key={slot} className="pfb on" onClick={() => onChoose(slot)}>{slot}</button>
+            ))}
+            <button className="pfb" onClick={onCancelChoose}>Cancel</button>
+          </div>
+        </div>
+      )}
       <div className="phdr">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <TeamLogo logos={logos} team={spin.team} size={18} />
@@ -650,6 +680,11 @@ const SCOPED_CSS = `
 #pnwdraft .bsec:hover{background:#162d48;color:#e8dcc8}
 #pnwdraft .hint{font-size:11px;color:#4a6080;font-family:monospace;text-align:center;margin-top:.6rem}
 #pnwdraft .picker-card{background:#0f1e38;border:1px solid #1e3a5f;border-radius:10px;overflow:hidden;margin-bottom:1rem}
+#pnwdraft .chooser{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:.7rem 1rem;background:#0a2518;border-bottom:1px solid #1e5c35}
+#pnwdraft .chooser-lbl{font-size:12px;color:#cfe8d6}
+#pnwdraft .chooser-lbl strong{color:#5ecf8a}
+#pnwdraft .chooser-opts{display:flex;gap:6px;flex-wrap:wrap}
+#pnwdraft .chooser .pfb{font-size:12px;padding:4px 12px}
 #pnwdraft .phdr{padding:.875rem 1rem;border-bottom:1px solid #1e3a5f;display:flex;align-items:center;justify-content:space-between;background:#080f1c;flex-wrap:wrap;gap:8px}
 #pnwdraft .phdr h3{font-size:14px;color:#e8dcc8}
 #pnwdraft .ssel{font-size:11px;padding:4px 7px;border:1px solid #1e3a5f;border-radius:6px;background:#080f1c;color:#8a9ab0;cursor:pointer;font-family:monospace}
