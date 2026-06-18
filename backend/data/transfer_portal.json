@@ -3,6 +3,30 @@
   "updated": "2026-06-17",
   "players": [
     {
+      "player_id": 3734,
+      "name": "Tyler Jones",
+      "from": "Oregon",
+      "committed_to": null
+    },
+    {
+      "player_id": 10482,
+      "name": "William Kliever",
+      "from": "Pacific",
+      "committed_to": null
+    },
+    {
+      "player_id": 3624,
+      "name": "Collin Clarke",
+      "from": "Oregon",
+      "committed_to": null
+    },
+    {
+      "player_id": 3651,
+      "name": "Trey Morris",
+      "from": "Oregon St.",
+      "committed_to": "Florida"
+    },
+    {
       "player_id": 3505,
       "name": "Burke-Lee Mabeus",
       "from": "Oregon",
