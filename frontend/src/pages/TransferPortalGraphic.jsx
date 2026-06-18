@@ -204,11 +204,15 @@ async function renderBoard(canvas, opts) {
   const rowGap = twoCol ? 6 : Math.min(10, Math.max(4, Math.floor(60 / itemsPerCol) + 2))
   const rowH = Math.floor((bodyH - rowGap * (itemsPerCol - 1)) / itemsPerCol)
 
+  // Scale text with row height so tall (Top 10/20) cards fill nicely instead of
+  // floating small text in the upper-middle with dead space below.
   const fontSize = twoCol
-    ? Math.min(Math.max(Math.floor(colWidth / 30), 11), 16)
-    : Math.min(Math.max(Math.floor(w / 58), 14), 21)
-  const rankSize = twoCol ? fontSize : Math.max(fontSize + 2, 16)
-  const logoSize = Math.min(Math.floor(rowH * 0.6), twoCol ? 26 : 38)
+    ? Math.min(Math.max(Math.round(rowH * 0.20), 12), 19)
+    : Math.min(Math.max(Math.round(rowH * 0.22), 15), 24)
+  const subSize = Math.max(Math.floor(fontSize * 0.64), 9)
+  const threeLine = rowH >= 54          // room for name + meta + commitment
+  const rankSize = twoCol ? Math.max(fontSize - 1, 13) : Math.max(fontSize, 16)
+  const logoSize = Math.min(Math.floor(rowH * 0.6), twoCol ? 34 : 46)
   const extraCols = config.extra || []
   const mainStatW = twoCol ? Math.floor(colWidth * 0.17) : Math.floor(w * 0.105)
   const extraW = twoCol ? Math.floor(colWidth * 0.13) : Math.floor(w * 0.092)
@@ -268,7 +272,7 @@ async function renderBoard(canvas, opts) {
 
     // rank (medallion for top 3 in single col)
     if (isTop3 && !twoCol) {
-      const mr = Math.min(rowH * 0.3, 18)
+      const mr = Math.min(rowH * 0.32, 22)
       ctx.beginPath(); ctx.arc(cellX + rankW / 2, cy, mr, 0, Math.PI * 2)
       ctx.fillStyle = theme.medals[i]; ctx.fill()
       ctx.strokeStyle = theme.medalRing; ctx.lineWidth = 1.5; ctx.stroke()
@@ -292,37 +296,39 @@ async function renderBoard(canvas, opts) {
     }
     cellX += logoW
 
-    // name + meta (+ commitment)
+    // name + meta (+ commitment) — vertically centered around cy
     const statsEndX = x + colWidth - rowPadX
     const nameMaxW = Math.max(statsEndX - (extraCols.length * extraW + mainStatW) - cellX - 12, 60)
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    if (twoCol) {
-      // two lines: name, then meta; for committed rows append the green destination
-      const subSize = Math.floor(fontSize * 0.72)
+    if (threeLine) {
+      // three centered lines: name, meta, commitment
+      const g1 = Math.round(fontSize * 0.74)   // name center -> meta center
+      const g2 = Math.round(subSize * 1.32)    // meta center -> commitment center
+      const c0 = cy - (g1 + g2) / 2            // first line (name) center
       ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name
-      ctx.fillText(trunc(ctx, name, nameMaxW), cellX, cy - subSize * 0.7)
+      ctx.fillText(trunc(ctx, name, nameMaxW), cellX, c0)
+      ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = theme.secondary
+      ctx.fillText(trunc(ctx, meta, nameMaxW), cellX, c0 + g1)
+      ctx.font = `${p.committed_to ? 700 : 500} ${subSize}px ${FONT}`
+      ctx.fillStyle = p.committed_to ? theme.commit : theme.muted
+      ctx.fillText(trunc(ctx, commit, nameMaxW), cellX, c0 + g1 + g2)
+    } else {
+      // compact two lines (dense Top 50): name, then meta with inline green dest
+      const g = Math.round(fontSize * 0.6)
+      ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name
+      ctx.fillText(trunc(ctx, name, nameMaxW), cellX, cy - g)
       const metaBase = p.committed_to ? [p.position, p.team_short || p.team_name].filter(Boolean).join(' · ') : meta
       ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = theme.secondary
       const metaDrawn = trunc(ctx, metaBase, nameMaxW)
-      ctx.fillText(metaDrawn, cellX, cy + subSize * 0.75)
+      ctx.fillText(metaDrawn, cellX, cy + g)
       if (p.committed_to) {
-        const mw = ctx.measureText(metaDrawn + ' ').width   // measured at the SAME 500 font as drawn
+        const mw = ctx.measureText(metaDrawn + ' ').width   // same 500 font as drawn
         const remaining = nameMaxW - mw
         if (remaining > 28) {
           ctx.font = `700 ${subSize}px ${FONT}`; ctx.fillStyle = theme.commit
-          ctx.fillText(trunc(ctx, commit, remaining), cellX + mw, cy + subSize * 0.75)
+          ctx.fillText(trunc(ctx, commit, remaining), cellX + mw, cy + g)
         }
       }
-    } else {
-      // three lines: name, meta, commitment
-      const subSize = Math.floor(fontSize * 0.66)
-      ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name
-      ctx.fillText(trunc(ctx, name, nameMaxW), cellX, cy - fontSize * 0.62)
-      ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = theme.secondary
-      ctx.fillText(trunc(ctx, meta, nameMaxW), cellX, cy + subSize * 0.2)
-      ctx.font = `${p.committed_to ? 700 : 500} ${subSize}px ${FONT}`
-      ctx.fillStyle = p.committed_to ? theme.commit : theme.muted
-      ctx.fillText(trunc(ctx, commit, nameMaxW), cellX, cy + subSize * 1.5)
     }
 
     // stats from right edge
