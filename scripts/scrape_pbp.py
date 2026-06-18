@@ -44,7 +44,7 @@ from app.models.database import get_connection
 
 # Local script imports — same scripts/ dir
 sys.path.insert(0, "scripts")
-from parse_pbp_events import parse_pbp_events  # noqa: E402
+from parse_pbp_events import parse_pbp_events, parse_sidearm_api_pbp  # noqa: E402
 from parse_presto_events import parse_presto_events  # noqa: E402
 from scrape_boxscores import find_player_id  # noqa: E402
 
@@ -326,6 +326,35 @@ def fetch_html_smart(url, timeout=60):
     return fetch_html(url, timeout=timeout)
 
 
+def _sidearm_box_api_url(url):
+    """Map a Sidearm box-score URL to its JSON API endpoint, or None.
+
+    Nuxt box scores (`/.../boxscore/<id>`) render PBP client-side so the HTML
+    has none — but the same numeric id served at `/api/v2/stats/boxscore/<id>`
+    carries `playByPlayInnings`. Legacy `/boxscore.aspx?id=<id>` shares the same
+    API. Presto hosts are excluded (handled via ?view=plays)."""
+    from urllib.parse import urlparse
+    if _is_presto_url(url) or not url:
+        return None
+    m = re.search(r"/boxscore/(\d+)", url) or re.search(r"[?&]id=(\d+)", url)
+    if not m:
+        return None
+    p = urlparse(url)
+    if not p.scheme or not p.netloc:
+        return None
+    return f"{p.scheme}://{p.netloc}/api/v2/stats/boxscore/{m.group(1)}"
+
+
+def _fetch_sidearm_api_json(api_url, timeout=30):
+    resp = requests.get(
+        api_url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 # ─────────────────────────────────────────────────────────────────
 # Team-name → team_id mapping
 # ─────────────────────────────────────────────────────────────────
@@ -509,6 +538,23 @@ def process_game(cur, game, dry_run=False, verbose=False):
     _, meta = parser_fn(html, **parser_kwargs)
     if meta.get("team_fallback_used"):
         log.info("game %d: presto team-name fallback applied (offscreen span missing)", gid)
+
+    # Sidearm Nuxt sites (Oregon, Oregon St., Wash. St., UW, ...) render the box
+    # score with JS, so the HTML carries no play-by-play. Fall back to the JSON
+    # box-score API, which has the same narratives (with pitch sequences).
+    api_json = None
+    if not meta["has_pbp"] and not _is_presto_url(url):
+        api_url = _sidearm_box_api_url(url)
+        if api_url:
+            try:
+                cand = _fetch_sidearm_api_json(api_url)
+                _, api_meta = parse_sidearm_api_pbp(cand)
+                if api_meta.get("has_pbp"):
+                    api_json, meta = cand, api_meta
+                    log.info("game %d: PBP via Sidearm JSON API (%s)", gid, api_url)
+            except Exception as e:
+                log.warning("game %d: Sidearm API PBP fallback failed: %s", gid, e)
+
     if not meta["has_pbp"]:
         # No PBP section — Oregon/OSU/WSU home games etc. Bump counter so
         # we eventually give up after MAX_ATTEMPTS.
@@ -546,8 +592,11 @@ def process_game(cur, game, dry_run=False, verbose=False):
         if team_id in starters_by_team_id:
             starters_by_pbp_name[pbp_name] = starters_by_team_id[team_id]
 
-    # ── Second-pass parse with starters seeded (same parser as before) ──
-    events, _ = parser_fn(html, starters=starters_by_pbp_name, **parser_kwargs)
+    # ── Second-pass parse with starters seeded (same source as the first pass) ──
+    if api_json is not None:
+        events, _ = parse_sidearm_api_pbp(api_json, starters=starters_by_pbp_name)
+    else:
+        events, _ = parser_fn(html, starters=starters_by_pbp_name, **parser_kwargs)
     result["events_total"] = len(events)
 
     # ── Resolve player_ids per event ──

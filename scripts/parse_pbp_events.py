@@ -460,6 +460,64 @@ def _parse_archived_pbp(soup, starters=None):
     return events, meta
 
 
+class _StubTd:
+    """Minimal stand-in for a BeautifulSoup <td> so _process_pbp_row can run on
+    JSON narratives (Sidearm Nuxt API path). Italic-ness — which the row
+    classifier uses to detect substitutions — comes from the API's
+    isASubstitutePlay flag instead of CSS classes."""
+    def __init__(self, italic=False):
+        self._italic = italic
+    def get(self, key, default=None):
+        return (["text-italic"] if self._italic else [])
+    def find(self, *args, **kwargs):
+        return True if self._italic else None
+
+
+def parse_sidearm_api_pbp(api_json, starters=None):
+    """Parse a Sidearm `/api/v2/stats/boxscore/<id>` JSON blob into per-PA events.
+
+    Nuxt Sidearm sites (goducks, osubeavers, wsucougars, ...) render the box
+    score with JavaScript, so the HTML has no play-by-play. The same numeric
+    box id served via the JSON API does — under `playByPlayInnings`, each play a
+    narrative string in the identical format the HTML tables use
+    ("Cooney, R walked (3-1 FBBBB)."). We reuse the shared row classifier so the
+    output matches the HTML parser exactly. Returns (events, meta)."""
+    innings = (api_json or {}).get("playByPlayInnings") or []
+    home = (api_json or {}).get("homeTeamName") or "Home"
+    vis = (api_json or {}).get("visitingTeamName") or "Visiting"
+    meta = {"has_pbp": False, "all_team_names": sorted({home, vis}), "skipped_rows": 0}
+    if not innings:
+        return [], meta
+    meta["has_pbp"] = True
+
+    current_pitcher = dict(starters or {})
+    events, skipped = [], 0
+    for inn in innings:
+        try:
+            inning = int(inn.get("number") or 0)
+        except (TypeError, ValueError):
+            inning = 0
+        # visiting bats in the top, home in the bottom
+        for half, plays, batting, defending in (
+            ("top", inn.get("visitingPlays") or [], vis, home),
+            ("bottom", inn.get("homePlays") or [], home, vis),
+        ):
+            sequence_idx = 0
+            for play in plays:
+                txt = (play.get("narrative") or "").strip()
+                if not txt or txt.lower().startswith("no play"):
+                    continue
+                stub = _StubTd(str(play.get("isASubstitutePlay")).lower() == "true")
+                event, sequence_idx, skip_delta = _process_pbp_row(
+                    txt, stub, inning, half, batting, defending,
+                    current_pitcher, sequence_idx)
+                if event:
+                    events.append(event)
+                skipped += skip_delta
+    meta["skipped_rows"] = skipped
+    return events, meta
+
+
 def parse_pbp_events(html, starters=None):
     """Parse a Sidearm box-score HTML page into per-PA events.
 
