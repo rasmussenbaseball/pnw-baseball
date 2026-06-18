@@ -18,6 +18,7 @@ const GRAPHICS = [
   { to: '/top-performers-graphic',  label: 'Top Performers',        desc: 'Weekly top 10 hitters and pitchers.' },
   { to: '/team-info-graphic',       label: 'Team Info',             desc: 'Full team overview graphic.' },
   { to: '/team-season-recap',       label: 'Team Season Recap',     desc: 'End-of-year highlights: record, WAR leaders, clutch moment.' },
+  { to: '/graphics/portal-tracker', label: 'Portal / JUCO Trackers', desc: 'Top 10/20/50 transfer-portal & NWAC JUCO players, green PNWCBR co-brand.' },
   { to: '/graphics/wcl-leaderboards', label: 'WCL Leaderboards',    desc: 'Player + team stat cards in the summer look.' },
   { to: '/graphics/wcl-standings',  label: 'WCL Standings',         desc: 'WCL standings with record, run differential, and CPI rank in the summer look.' },
   { to: '/summer/recap',            label: 'WCL Daily Recap',       desc: 'A full WCL slate: scores with R/H/E and each game\'s standouts.' },
