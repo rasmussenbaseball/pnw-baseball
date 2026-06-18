@@ -272,6 +272,11 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
               {player.hometown && <><br />From: {player.hometown}</>}
               {player.previous_school && <> &nbsp;|&nbsp; Prev: {player.previous_school}</>}
             </div>
+            {player.is_committed && player.committed_to && (
+              <div className="mt-2 mr-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200">
+                ✓ Committed to {player.committed_to}
+              </div>
+            )}
             {current_summer_assignment && (
               <Link to={current_summer_assignment.summer_player_id ? `?summer=${current_summer_assignment.summer_player_id}` : `/summer/teams/${current_summer_assignment.team_id}`} className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50">
                 {current_summer_assignment.team_logo && <img src={current_summer_assignment.team_logo} alt="" className="w-4 h-4 object-contain" loading="lazy" />}
