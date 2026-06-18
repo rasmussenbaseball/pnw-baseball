@@ -9646,25 +9646,22 @@ def transfer_portal_players(
     stat row shape the JUCO tracker uses so the two pages share a table.
     Premium-tier gated (Coaching tab).
     """
-    import json as _json
-    from pathlib import Path as _Path
-    data_path = _Path(__file__).parent.parent.parent / "data" / "transfer_portal.json"
-    try:
-        with open(data_path) as f:
-            payload = _json.load(f)
-        entries = payload.get("players", [])
-    except Exception:
-        entries = []
-    ids = [int(e["player_id"]) for e in entries if e.get("player_id")]
-    # committed_to now comes from the players table (committed_to column),
-    # which the dev Commitment Editor writes to. The JSON's committed_to is
-    # no longer the source — it was migrated into the DB so interns can
-    # edit/undo commitments live without a deploy. The JSON still defines
-    # WHO is in the portal (player_id + from).
-    # Optional per-entry position override from the JSON. Used for placeholder
-    # players who have no stats and no position in the DB, so the frontend can
-    # still file them on the correct Hitters/Pitchers list.
-    position_map = {int(e["player_id"]): e.get("position") for e in entries if e.get("player_id") and e.get("position")}
+    # Portal MEMBERSHIP now lives in the transfer_portal_members DB table
+    # (migrated off the git-tracked JSON) so the dev Commitment Editor can
+    # add/remove players live without a deploy. committed_to comes from the
+    # players table (committed_to column), also editor-managed.
+    with get_connection() as _mconn:
+        _mcur = _mconn.cursor()
+        _mcur.execute("""
+            CREATE TABLE IF NOT EXISTS transfer_portal_members (
+                player_id INTEGER PRIMARY KEY, from_school TEXT, position TEXT,
+                added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())
+        """)
+        _mcur.execute("SELECT player_id, position FROM transfer_portal_members")
+        _members = _mcur.fetchall()
+    ids = [int(r["player_id"]) for r in _members]
+    # Optional per-entry position override (placeholders missing a DB position).
+    position_map = {int(r["player_id"]): r["position"] for r in _members if r.get("position")}
     if not ids:
         return []
 
