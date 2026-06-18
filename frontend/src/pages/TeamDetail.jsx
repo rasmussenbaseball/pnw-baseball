@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits } from '../hooks/useApi'
+import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers } from '../hooks/useApi'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
 import FavoriteButton from '../components/FavoriteButton'
@@ -270,6 +270,7 @@ export default function TeamDetail() {
 
           {/* Incoming HS recruiting class (only shows if there are commits) */}
           <IncomingClass teamId={teamId} />
+          <IncomingTransfers teamId={teamId} />
         </div>
       )}
 
@@ -289,6 +290,37 @@ export default function TeamDetail() {
 // Compact list of a team's incoming HS commits for 2026. Renders nothing
 // while loading, on error, or when the team has zero commits, so most
 // non-marquee team pages simply don't show the section.
+// Name-only incoming out-of-region transfers (players not in our DB, so no
+// stats). Managed via the dev Commitment Editor. Renders nothing when empty.
+function IncomingTransfers({ teamId }) {
+  const { data } = useIncomingTransfers(teamId)
+  const rows = Array.isArray(data) ? data : []
+  if (!rows.length) return null
+  return (
+    <div className="mb-8">
+      <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100 mb-2">Incoming Transfers</h2>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-4">
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+          {rows.map((r) => (
+            <div key={r.id} className="flex items-center gap-2 py-1 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{r.name}</span>
+              {r.position && (
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">{r.position}</span>
+              )}
+              <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                {r.from_school ? `from ${r.from_school}` : ''}
+              </span>
+              <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 whitespace-nowrap shrink-0">
+                Transfer
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function IncomingClass({ teamId, gradYear = 2026 }) {
   const { data } = useTeamRecruits(teamId, gradYear)
   const commits = data?.commits || []

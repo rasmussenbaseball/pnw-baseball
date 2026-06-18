@@ -675,6 +675,14 @@ export function useTeamRecruits(teamId, gradYear = 2026) {
   )
 }
 
+export function useIncomingTransfers(teamId) {
+  return useApi(
+    teamId ? `/teams/${teamId}/incoming-transfers` : null,
+    {},
+    [teamId]
+  )
+}
+
 /**
  * Top recruiting classes (PUBLIC) - capped leaderboard for the homepage /
  * Recruiting Hub teaser card.

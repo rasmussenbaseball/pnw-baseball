@@ -9741,6 +9741,26 @@ def transfer_portal_players(
         return out
 
 
+@router.get("/teams/{team_id}/incoming-transfers")
+def team_incoming_transfers(team_id: int):
+    """Name-only incoming out-of-region transfers committed to this PNW team
+    (players we don't carry in the DB, so no stats — just name + source school).
+    Managed via the dev Commitment Editor. Public."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS incoming_transfers (
+                id SERIAL PRIMARY KEY, name TEXT NOT NULL, from_school TEXT,
+                to_team_id INTEGER NOT NULL, position TEXT, added_by TEXT,
+                added_at TIMESTAMP NOT NULL DEFAULT now())
+        """)
+        cur.execute(
+            "SELECT id, name, from_school, position FROM incoming_transfers WHERE to_team_id = %s ORDER BY name",
+            (team_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
 # ============================================================
 # PLAYER PROJECTIONS (2027) — dev-gated
 # ============================================================

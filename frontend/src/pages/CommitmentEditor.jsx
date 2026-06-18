@@ -308,6 +308,80 @@ function LinkTab({ setToast }) {
   )
 }
 
+// ── Incoming out-of-region transfers tab (name-only) ──
+function IncomingTab({ pnwTeams, setToast }) {
+  const [list, setList] = useState([])
+  const [name, setName] = useState('')
+  const [fromSchool, setFromSchool] = useState('')
+  const [pos, setPos] = useState('')
+  const [dest, setDest] = useState('')
+  const [destId, setDestId] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => { try { setList(await apiGet('/admin/incoming/list')) } catch { /* */ } }, [])
+  useEffect(() => { load() }, [load])
+
+  const add = async () => {
+    if (!name.trim()) { setToast({ type: 'err', msg: 'Enter a player name.' }); return }
+    if (!destId) { setToast({ type: 'err', msg: 'Pick the destination PNW school from the dropdown.' }); return }
+    setBusy(true)
+    try {
+      await apiPost('/admin/incoming/add', { name: name.trim(), from_school: fromSchool.trim(), to_team_id: destId, position: pos.trim() || null })
+      setToast({ type: 'ok', msg: `${name.trim()} → ${dest}` })
+      setName(''); setFromSchool(''); setPos(''); setDest(''); setDestId(null)
+      load()
+    } catch (e) { setToast({ type: 'err', msg: e.message }) }
+    finally { setBusy(false) }
+  }
+  const remove = async (id) => {
+    try { await apiPost('/admin/incoming/remove', { id }); load() }
+    catch (e) { setToast({ type: 'err', msg: e.message }) }
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500 mb-4">
+        Out-of-region players transferring TO a PNW school (not in our database, so name-only — no stats).
+        They show as an "Incoming Transfers" section on the destination team's page.
+      </p>
+      <div className="flex flex-wrap items-end gap-2 mb-5 p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">Player</div>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Jake Evans"
+            className="px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900 w-44" />
+        </div>
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">Pos</div>
+          <input value={pos} onChange={e => setPos(e.target.value)} placeholder="OF"
+            className="px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900 w-16" />
+        </div>
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">From (old school)</div>
+          <input value={fromSchool} onChange={e => setFromSchool(e.target.value)} placeholder="Long Beach State"
+            className="px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900 w-44" />
+        </div>
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">To (PNW school)</div>
+          <PnwSchoolField value={dest} onChange={(v, id) => { setDest(v); setDestId(id) }} pnwTeams={pnwTeams} />
+        </div>
+        <button onClick={add} disabled={busy} className="px-4 py-1.5 rounded-md bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 disabled:opacity-50">Add</button>
+      </div>
+
+      <div className="space-y-1.5">
+        {list.length === 0 && <div className="text-sm text-gray-400">No incoming transfers yet.</div>}
+        {list.map(r => (
+          <div key={r.id} className="flex items-center gap-2 text-sm border-b border-gray-100 dark:border-gray-800 pb-1.5">
+            <span className="font-semibold text-gray-800 dark:text-gray-200">{r.name}</span>
+            {r.position && <span className="text-[10px] font-bold text-gray-400 uppercase">{r.position}</span>}
+            <span className="text-gray-500">{r.from_school ? `from ${r.from_school}` : ''} → <span className="text-emerald-700 font-medium">{r.to_team}</span></span>
+            <button onClick={() => remove(r.id)} className="ml-auto text-red-500 hover:underline text-xs">remove</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function CommitmentEditor() {
   const [tab, setTab] = useState('commit')
   const [toast, setToast] = useState(null)
@@ -328,9 +402,10 @@ export default function CommitmentEditor() {
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Commitment Editor</h1>
       <p className="text-sm text-gray-500 mb-4">Dev tools: edit commitments &amp; transfer-portal status, and link player pages. Changes go live immediately and are logged.</p>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         <TabBtn id="commit">Commitments &amp; Portal</TabBtn>
         <TabBtn id="link">Link Pages</TabBtn>
+        <TabBtn id="incoming">Incoming Transfers</TabBtn>
       </div>
 
       {toast && (
@@ -339,7 +414,9 @@ export default function CommitmentEditor() {
         </div>
       )}
 
-      {tab === 'commit' ? <CommitmentsTab pnwTeams={pnwTeams} setToast={setToast} /> : <LinkTab setToast={setToast} />}
+      {tab === 'commit' && <CommitmentsTab pnwTeams={pnwTeams} setToast={setToast} />}
+      {tab === 'link' && <LinkTab setToast={setToast} />}
+      {tab === 'incoming' && <IncomingTab pnwTeams={pnwTeams} setToast={setToast} />}
     </div>
   )
 }

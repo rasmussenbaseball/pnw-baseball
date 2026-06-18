@@ -71,6 +71,19 @@ def _ensure_tables(cur):
     )
     cur.execute(
         """
+        CREATE TABLE IF NOT EXISTS incoming_transfers (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            from_school TEXT,
+            to_team_id INTEGER NOT NULL,
+            position TEXT,
+            added_by TEXT,
+            added_at TIMESTAMP NOT NULL DEFAULT now()
+        )
+        """
+    )
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS link_audit (
             id SERIAL PRIMARY KEY,
             editor_email TEXT NOT NULL,
@@ -499,6 +512,63 @@ def link_remove(body: RemoveLink, email: str = Depends(require_developer)):
         )
         conn.commit()
     return {"ok": True, "deleted": deleted}
+
+
+# ─────────────────────────────────────────────────────────────────
+# Incoming out-of-region transfers (name-only — players not in our DB)
+# ─────────────────────────────────────────────────────────────────
+class IncomingAdd(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    from_school: str = Field("", max_length=120)
+    to_team_id: int
+    position: Optional[str] = Field(None, max_length=20)
+
+
+@router.get("/admin/incoming/list")
+def incoming_list(_email: str = Depends(require_developer)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute(
+            """SELECT it.id, it.name, it.from_school, it.to_team_id, it.position, it.added_at,
+                      t.short_name AS to_team
+               FROM incoming_transfers it JOIN teams t ON t.id = it.to_team_id
+               ORDER BY t.short_name, it.name"""
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+@router.post("/admin/incoming/add")
+def incoming_add(body: IncomingAdd, email: str = Depends(require_developer)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute("SELECT short_name FROM teams WHERE id = %s", (body.to_team_id,))
+        t = cur.fetchone()
+        if not t:
+            raise HTTPException(status_code=404, detail="Destination team not found")
+        cur.execute(
+            """INSERT INTO incoming_transfers (name, from_school, to_team_id, position, added_by)
+               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+            (body.name.strip(), body.from_school.strip() or None, body.to_team_id,
+             (body.position or "").strip() or None, email),
+        )
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+    return {"ok": True, "id": new_id, "to_team": t["short_name"]}
+
+
+@router.post("/admin/incoming/remove")
+def incoming_remove(body: dict, email: str = Depends(require_developer)):
+    iid = body.get("id")
+    if not iid:
+        raise HTTPException(status_code=400, detail="id required")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute("DELETE FROM incoming_transfers WHERE id = %s", (iid,))
+        conn.commit()
+    return {"ok": True}
 
 
 # ─────────────────────────────────────────────────────────────────
