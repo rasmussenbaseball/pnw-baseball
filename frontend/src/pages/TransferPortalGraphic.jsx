@@ -143,12 +143,14 @@ async function renderBoard(canvas, opts) {
   ctx.fillStyle = T.rule; ctx.fillRect(0, headerH - 4, W, 4)
 
   // logos: NWBB left, PNWCBR right
-  const [nwLogo, cbrLogo] = await Promise.all([cachedLogo('/images/nw-logo-white.png'), cachedLogo('/images/cbr-logo.jpg')])
-  contain(ctx, nwLogo, pad, 28, 86, 86)
+  const [nwLogo, cbrLogo] = await Promise.all([cachedLogo('/images/nw-logo-white.png'), cachedLogo('/images/cbr-logo.png')])
+  contain(ctx, nwLogo, pad, 30, 84, 84)
+  // PNWCBR logo: the HD transparent mark is dark-green with cut-out lettering,
+  // so it needs a light chip behind it to read against the green header.
   if (cbrLogo) {
-    // white rounded chip so a light logo reads on the green
-    ctx.save(); ctx.fillStyle = '#fff'; roundRect(ctx, W - pad - 92, 28, 92, 92, 12); ctx.fill(); ctx.restore()
-    contain(ctx, cbrLogo, W - pad - 86, 32, 80, 80)
+    const cw = 112, ch = 100, cx = W - pad - cw, cy = 25
+    ctx.save(); ctx.fillStyle = '#ffffff'; roundRect(ctx, cx, cy, cw, ch, 14); ctx.fill(); ctx.restore()
+    contain(ctx, cbrLogo, cx + 8, cy + 7, cw - 16, ch - 14)
   }
 
   // title block (centered)
