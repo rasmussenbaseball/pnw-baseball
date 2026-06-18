@@ -131,6 +131,9 @@ function mulberry32(a) {
 
 async function renderBoard(canvas, opts) {
   const { items, config, title, kicker, subtitle, footerNote, count, twoCol, theme } = opts
+  // Fonts must be ready before measureText/fillText or truncation math is wrong
+  // (text overflows) on a cold render.
+  try { if (document.fonts?.ready) await document.fonts.ready } catch { /* ignore */ }
   const w = SIZE.w, h = SIZE.h
   const dpr = 2
   canvas.width = w * dpr; canvas.height = h * dpr
@@ -291,20 +294,24 @@ async function renderBoard(canvas, opts) {
 
     // name + meta (+ commitment)
     const statsEndX = x + colWidth - rowPadX
-    const nameMaxW = statsEndX - (extraCols.length * extraW + mainStatW) - cellX - 10
+    const nameMaxW = Math.max(statsEndX - (extraCols.length * extraW + mainStatW) - cellX - 12, 60)
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
     if (twoCol) {
-      // two lines: name, then meta (commitment folded in if committed)
+      // two lines: name, then meta; for committed rows append the green destination
       const subSize = Math.floor(fontSize * 0.72)
       ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name
       ctx.fillText(trunc(ctx, name, nameMaxW), cellX, cy - subSize * 0.7)
+      const metaBase = p.committed_to ? [p.position, p.team_short || p.team_name].filter(Boolean).join(' · ') : meta
       ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = theme.secondary
-      const metaShort = p.committed_to ? `${p.position || ''} · ${p.team_short || p.team_name || ''}` : meta
-      ctx.fillText(trunc(ctx, metaShort, nameMaxW), cellX, cy + subSize * 0.75)
+      const metaDrawn = trunc(ctx, metaBase, nameMaxW)
+      ctx.fillText(metaDrawn, cellX, cy + subSize * 0.75)
       if (p.committed_to) {
-        ctx.font = `700 ${subSize}px ${FONT}`; ctx.fillStyle = theme.commit
-        const mw = ctx.measureText((p.committed_to ? `${p.position || ''} · ${p.team_short || p.team_name || ''}` : meta) + '  ').width
-        ctx.fillText(trunc(ctx, commit, Math.max(nameMaxW - mw, 30)), cellX + mw, cy + subSize * 0.75)
+        const mw = ctx.measureText(metaDrawn + ' ').width   // measured at the SAME 500 font as drawn
+        const remaining = nameMaxW - mw
+        if (remaining > 28) {
+          ctx.font = `700 ${subSize}px ${FONT}`; ctx.fillStyle = theme.commit
+          ctx.fillText(trunc(ctx, commit, remaining), cellX + mw, cy + subSize * 0.75)
+        }
       }
     } else {
       // three lines: name, meta, commitment
