@@ -3,6 +3,12 @@
   "updated": "2026-06-17",
   "players": [
     {
+      "player_id": 3505,
+      "name": "Burke-Lee Mabeus",
+      "from": "Oregon",
+      "committed_to": null
+    },
+    {
       "player_id": 3026,
       "name": "Austin Cupic",
       "from": "CWU",
