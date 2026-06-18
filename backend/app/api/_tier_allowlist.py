@@ -34,6 +34,8 @@ DEVELOPER_EMAILS = {
     "connorbroschard@gmail.com",
     "trevorkazahaya@gmail.com",
     "zews2005@outlook.com",
+    "pnwcbr@gmail.com",
+    "jawomack@bushnell.edu",
 }
 
 COMPED_COACH_EMAILS = {

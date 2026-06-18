@@ -63,6 +63,8 @@ export const DEVELOPER_EMAILS = [
   'connorbroschard@gmail.com',
   'trevorkazahaya@gmail.com',
   'zews2005@outlook.com',
+  'pnwcbr@gmail.com',
+  'jawomack@bushnell.edu',
 ]
 
 export function isDeveloper(email) {
