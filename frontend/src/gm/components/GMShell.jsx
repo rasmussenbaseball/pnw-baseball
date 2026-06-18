@@ -488,7 +488,7 @@ function ReportBugModal({ onClose }) {
           <div className="bg-[#1a1a2e] border-2 border-[#3a3a5e] p-3">
             <div className="font-pixel-display text-[9px] tracking-widest text-amber-300">DM US ON SOCIALS</div>
             <div className="font-pixel text-sm text-[#e8e8e8] mt-1">
-              @nwbaseballstats on Instagram &amp; X
+              @nwbbstats on Instagram &amp; X
             </div>
           </div>
         </div>

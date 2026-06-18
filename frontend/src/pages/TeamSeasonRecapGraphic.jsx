@@ -428,7 +428,7 @@ function drawFooter(ctx, theme) {
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = '700 16px -apple-system, sans-serif'
   ctx.fillText('nwbaseballstats.com', 40, H - 26)
   ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,255,255,0.72)'; ctx.font = '500 14px -apple-system, sans-serif'
-  ctx.fillText('@nwbaseballstats', W - 40, H - 26)
+  ctx.fillText('@nwbbstats', W - 40, H - 26)
 }
 
 // ── Main renderer (fixed 1080x1350, proportional middle fill) ──

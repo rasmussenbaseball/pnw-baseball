@@ -266,7 +266,7 @@ function drawFooter(ctx) {
   ctx.font = '500 13px -apple-system, sans-serif'
   ctx.fillStyle = 'rgba(255,255,255,0.7)'
   ctx.textAlign = 'right'
-  ctx.fillText('@nwbaseballstats', W - 40, H - 26)
+  ctx.fillText('@nwbbstats', W - 40, H - 26)
 }
 
 // ── Main canvas drawer (fixed 1080×1350) ───────────────────────

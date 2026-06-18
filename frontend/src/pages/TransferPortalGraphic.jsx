@@ -186,7 +186,7 @@ async function renderBoard(canvas, opts) {
   ctx.fillStyle = theme.footerText; ctx.font = `700 15px ${FONT}`
   ctx.textAlign = 'left'; ctx.fillText('nwbaseballstats.com', 40, footerY + 35)
   ctx.fillStyle = theme.footerMuted; ctx.font = `500 13px ${FONT}`
-  ctx.textAlign = 'right'; ctx.fillText('@nwbaseballstats', w - 40, footerY + 35)
+  ctx.textAlign = 'right'; ctx.fillText('@nwbbstats', w - 40, footerY + 35)
   if (footerNote) { ctx.textAlign = 'center'; ctx.fillText(footerNote, w / 2, footerY + 35) }
 
   // body geometry

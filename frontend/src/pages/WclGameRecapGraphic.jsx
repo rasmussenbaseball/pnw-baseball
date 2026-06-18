@@ -579,7 +579,7 @@ function drawFooter(ctx) {
   ctx.font = '500 14px -apple-system, sans-serif'
   ctx.fillStyle = 'rgba(255,255,255,0.7)'
   ctx.textAlign = 'right'
-  ctx.fillText('@nwbaseballstats', W - 48, H - 25)
+  ctx.fillText('@nwbbstats', W - 48, H - 25)
 }
 
 // ── Main renderer (fixed 1080×1350) ────────────────────────────

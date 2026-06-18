@@ -276,7 +276,7 @@ async function renderStandings(canvas, opts) {
   ctx.font = `500 13px ${FONT}`
   ctx.fillStyle = theme.footerMuted
   ctx.textAlign = 'right'
-  ctx.fillText('@nwbaseballstats', w - 40, footerY + 35)
+  ctx.fillText('@nwbbstats', w - 40, footerY + 35)
   if (footerNote) {
     ctx.textAlign = 'center'
     ctx.fillText(footerNote, w / 2, footerY + 35)
