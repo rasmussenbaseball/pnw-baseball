@@ -914,7 +914,8 @@ _COMMIT_LEVEL_OVERRIDES = {
     "east carolina": "D1", "old dominion": "D1", "western kentucky": "D1",
     "akron": "D1", "saint louis university": "D1", "charleston southern": "D1",
     "marshall": "D1", "fairleigh dickinson": "D1", "alcorn state": "D1",
-    "montana state billings": "D2",
+    "wofford": "D1",
+    "montana state billings": "D2", "rogers state": "D2",
     # Vanguard + Jessup moved from NAIA (GSAC) to D2 (PacWest) — flagged 2026-06-15.
     "vanguard university": "D2", "jessup university": "D2", "jessup": "D2",
     "oregon tech": "NAIA", "tabor college": "NAIA",
