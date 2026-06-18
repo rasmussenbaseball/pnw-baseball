@@ -1,49 +1,53 @@
 // TransferPortalGraphic — /graphics/portal-tracker  (dev/admin only)
 //
-// Shareable leaderboard-style graphic for the Transfer Portal Tracker and the
-// JUCO (NWAC) Tracker, in the green PNWCBR co-brand. Mirrors the WCL leaderboard
-// graphic: a canvas board with density-based stat columns (more players shown =
-// fewer stat columns) so Top 10 / 20 / 50 each stay legible. Hitters and
-// pitchers each get their own stat set; positional filter + hide-committed
-// toggle apply to both boards.
+// Shareable leaderboard graphic for the Transfer Portal Tracker and the JUCO
+// (NWAC) Tracker. Styled after the WCL leaderboard graphic (cream paper, white
+// rounded row cards, rank medallions, column headers, footer strip) but in a
+// green PNWCBR co-brand. Fixed 1080x1080 canvas for EVERY size so all exports
+// are identical dimensions; Top 10 = one column, Top 20/50 = two columns with
+// the rows scaled to fit (the WCL density approach). Density-based stat columns
+// (fewer stats as the list grows) keep each size legible.
 //
 // Data: /transfer-portal and /players/juco/uncommitted (recruiting-tier gated;
-// dev users bypass). We over-fetch then filter/sort/top-N client-side so the
-// controls are responsive without re-hitting the API.
+// dev users bypass). We over-fetch then filter/sort/top-N client-side.
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
-const SIZE = { w: 1080 }
+const SIZE = { w: 1080, h: 1080 }   // ALWAYS this size, every board
 const FONT = "-apple-system, 'Inter', 'Helvetica Neue', sans-serif"
 
-// ── Green / PNWCBR theme ──
-const T = {
-  bg: '#0d2818', bg2: '#13391f',
-  header1: '#15512c', header2: '#1d7a40',
-  rule: '#36c46a',
-  kicker: '#9be8b6', text: '#ffffff', sub: 'rgba(255,255,255,0.72)',
-  rowBg: 'rgba(255,255,255,0.05)', rowAlt: 'rgba(255,255,255,0.08)',
-  rowTop3: 'rgba(54,196,106,0.18)', accent: '#36c46a',
-  name: '#ffffff', meta: 'rgba(255,255,255,0.66)',
-  statMain: '#9be8b6', stat: '#ffffff',
-  footerBg: '#0a1f12', footerText: 'rgba(255,255,255,0.7)',
-  logoFallback: 'rgba(255,255,255,0.12)',
+// ── Green / PNWCBR theme (WCL layout, recolored) ──
+const G = {
+  cream: '#f6f1e3',
+  green: '#15803d', greenMid: '#1f9d4d', greenDeep: '#166534',
+  greenDk: '#0b3d1f', greenLight: '#9be8b6',
+}
+const THEME = {
+  bgStops: [G.cream, G.cream], grain: true,
+  grainDark: 'rgba(11,61,31,0.05)', grainLight: 'rgba(255,255,255,0.6)',
+  headerStops: [G.greenDk, G.green], headerRule: G.greenLight,
+  kicker: G.greenLight, headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+  card: '#ffffff', cardBorder: 'rgba(11,61,31,0.16)', cardAccent: G.greenDeep,
+  name: G.greenDk, secondary: '#5a5a5a', muted: '#8a8a8a', commit: G.green,
+  colHeader: G.greenDeep, mainStat: G.greenDk, mainStatTop3: G.greenDeep,
+  medals: [G.green, G.greenMid, G.greenDeep], medalText: '#ffffff', medalRing: G.greenDk,
+  rank: '#9a9483', logoFallback: '#e6ece7',
+  footerBg: G.greenDk, footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.72)',
 }
 
-// Stat tiers per size — fewer columns as the list grows (leaderboard-graphic feel).
+// Stat tiers per size — fewer columns as the list grows.
 const HIT_TIERS = {
-  10: [['offensive_war','oWAR','war'],['batting_avg','AVG','avg'],['on_base_pct','OBP','avg'],['slugging_pct','SLG','avg'],['ops','OPS','avg'],['wrc_plus','wRC+','int'],['home_runs','HR','int']],
-  20: [['offensive_war','oWAR','war'],['batting_avg','AVG','avg'],['ops','OPS','avg'],['wrc_plus','wRC+','int']],
+  10: [['offensive_war','oWAR','war'],['batting_avg','AVG','avg'],['on_base_pct','OBP','avg'],['slugging_pct','SLG','avg'],['ops','OPS','avg'],['wrc_plus','wRC+','int']],
+  20: [['offensive_war','oWAR','war'],['batting_avg','AVG','avg'],['ops','OPS','avg']],
   50: [['offensive_war','oWAR','war'],['ops','OPS','avg']],
 }
 const PIT_TIERS = {
   10: [['pitching_war','pWAR','war'],['era','ERA','era'],['fip','FIP','era'],['pitch_k_pct','K%','pct'],['pitch_bb_pct','BB%','pct'],['innings_pitched','IP','ip']],
-  20: [['pitching_war','pWAR','war'],['fip','FIP','era'],['pitch_k_pct','K%','pct'],['pitch_bb_pct','BB%','pct']],
+  20: [['pitching_war','pWAR','war'],['fip','FIP','era'],['pitch_k_pct','K%','pct']],
   50: [['pitching_war','pWAR','war'],['fip','FIP','era']],
 }
 const SORT_KEY = { hitters: 'offensive_war', pitchers: 'pitching_war' }
-
 const POSITIONS = {
   hitters: [['all','All'],['C','C'],['IF','IF'],['OF','OF'],['DH','DH']],
   pitchers: [['all','All'],['RHP','RHP'],['LHP','LHP']],
@@ -57,9 +61,18 @@ function fmt(val, format) {
     case 'pct': return (Number(val) * 100).toFixed(1) + '%'
     case 'ip':  return Number(val).toFixed(1)
     case 'war': return Number(val).toFixed(1)
-    case 'int': return val == null ? '-' : Math.round(Number(val)).toString()
+    case 'int': return Math.round(Number(val)).toString()
     default: return String(val)
   }
+}
+function fmtYr(y) {
+  if (!y) return ''
+  const m = { 'R-Fr': 'r-Fr', 'R-So': 'r-So', 'R-Jr': 'r-Jr', 'R-Sr': 'r-Sr' }
+  return m[y] || y
+}
+const isPitcherPos = (pos) => {
+  const u = (pos || '').toUpperCase()
+  return u === 'P' || u === 'RHP' || u === 'LHP' || u === 'SP' || u === 'RP' || u.startsWith('RHP/') || u.startsWith('LHP/') || u.startsWith('P/')
 }
 
 async function authHeaders() {
@@ -69,7 +82,6 @@ async function authHeaders() {
     return t ? { Authorization: `Bearer ${t}` } : {}
   } catch { return {} }
 }
-
 async function loadImg(src) {
   if (!src) return null
   const external = src.startsWith('http') && !src.includes(window.location.hostname)
@@ -108,165 +120,221 @@ function contain(ctx, img, x, y, bw, bh) {
   const dw = img.width * s, dh = img.height * s
   ctx.drawImage(img, x + (bw - dw) / 2, y + (bh - dh) / 2, dw, dh)
 }
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
 
 async function renderBoard(canvas, opts) {
-  const { rows, side, count, statTier, title, subtitle } = opts
-  const twoCol = count >= 40
-  const cols = twoCol ? 2 : 1
-  const perCol = Math.ceil(count / cols)
-
-  const W = SIZE.w
-  const pad = 40
-  const headerH = 150
-  const footerH = 56
-  const rowH = twoCol ? 40 : 54
-  const rowGap = twoCol ? 6 : 8
-  const bodyTop = headerH + 18
-  const bodyH = perCol * rowH + (perCol - 1) * rowGap
-  const H = bodyTop + bodyH + 24 + footerH
-
+  const { items, config, title, kicker, subtitle, footerNote, count, twoCol, theme } = opts
+  const w = SIZE.w, h = SIZE.h
   const dpr = 2
-  canvas.width = W * dpr; canvas.height = H * dpr
-  canvas.style.width = W + 'px'; canvas.style.height = H + 'px'
+  canvas.width = w * dpr; canvas.height = h * dpr
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px'
   const ctx = canvas.getContext('2d')
-  ctx.scale(dpr, dpr)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-  // background
-  const bg = ctx.createLinearGradient(0, 0, 0, H)
-  bg.addColorStop(0, T.bg); bg.addColorStop(1, T.bg2)
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
-
-  // header
-  const hg = ctx.createLinearGradient(0, 0, W, 0)
-  hg.addColorStop(0, T.header1); hg.addColorStop(1, T.header2)
-  ctx.fillStyle = hg; ctx.fillRect(0, 0, W, headerH)
-  ctx.fillStyle = T.rule; ctx.fillRect(0, headerH - 4, W, 4)
-
-  // logos: NWBB left, PNWCBR right
-  const [nwLogo, cbrLogo] = await Promise.all([cachedLogo('/images/nw-logo-white.png'), cachedLogo('/images/cbr-logo.png')])
-  contain(ctx, nwLogo, pad, 30, 84, 84)
-  // PNWCBR logo: the HD transparent mark is dark-green with cut-out lettering,
-  // so it needs a light chip behind it to read against the green header.
-  if (cbrLogo) {
-    const cw = 112, ch = 100, cx = W - pad - cw, cy = 25
-    ctx.save(); ctx.fillStyle = '#ffffff'; roundRect(ctx, cx, cy, cw, ch, 14); ctx.fill(); ctx.restore()
-    contain(ctx, cbrLogo, cx + 8, cy + 7, cw - 16, ch - 14)
+  // background + paper grain
+  ctx.fillStyle = theme.bgStops[0]; ctx.fillRect(0, 0, w, h)
+  if (theme.grain) {
+    const rand = mulberry32(20260618)
+    for (let i = 0; i < 1600; i++) {
+      const x = rand() * w, y = rand() * h, s = rand() < 0.5 ? 1 : 2
+      ctx.fillStyle = rand() < 0.5 ? theme.grainDark : theme.grainLight
+      ctx.fillRect(x, y, s, s)
+    }
   }
 
-  // title block (centered)
-  ctx.textAlign = 'center'
-  ctx.fillStyle = T.kicker
-  ctx.font = `700 16px ${FONT}`
-  ctx.fillText((subtitle || '').toUpperCase(), W / 2, 44)
-  ctx.fillStyle = T.text
-  ctx.font = `900 38px ${FONT}`
-  ctx.fillText(trunc(ctx, title, W - 300), W / 2, 86)
-  ctx.fillStyle = T.sub
-  ctx.font = `600 15px ${FONT}`
-  ctx.fillText(`Top ${count} · sorted by ${statTier[0][1]}`, W / 2, 116)
+  // header band + accent rule
+  const headerH = 150
+  const hg = ctx.createLinearGradient(0, 0, w, headerH)
+  theme.headerStops.forEach((c, i) => hg.addColorStop(i / (theme.headerStops.length - 1), c))
+  ctx.fillStyle = hg; ctx.fillRect(0, 0, w, headerH)
+  ctx.fillStyle = theme.headerRule; ctx.fillRect(0, headerH - 6, w, 6)
 
-  if (!rows.length) {
-    ctx.fillStyle = T.sub; ctx.font = `600 20px ${FONT}`
-    ctx.fillText('No players match these filters.', W / 2, bodyTop + 60)
-    drawFooter()
+  const padX = 48
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = theme.kicker; ctx.font = `900 15px ${FONT}`
+  ctx.fillText(kicker, padX, 48)
+  let titleSize = 46
+  ctx.font = `900 ${titleSize}px ${FONT}`
+  while (titleSize > 24 && ctx.measureText(title).width > w - padX * 2 - 170) {
+    titleSize -= 2; ctx.font = `900 ${titleSize}px ${FONT}`
+  }
+  ctx.fillStyle = theme.headerText; ctx.fillText(title, padX, 102)
+  ctx.fillStyle = theme.headerSub; ctx.font = `600 17px ${FONT}`
+  ctx.fillText(subtitle, padX, 130)
+
+  // PNWCBR logo top-right (transparent mark -> white chip so it reads on green)
+  const cbr = await cachedLogo('/images/cbr-logo.png')
+  if (cbr) {
+    const cw = 96, ch = 86, cx = w - padX - cw, cy = 30
+    ctx.save(); ctx.fillStyle = '#fff'; roundRect(ctx, cx, cy, cw, ch, 12); ctx.fill(); ctx.restore()
+    contain(ctx, cbr, cx + 7, cy + 6, cw - 14, ch - 12)
+  }
+
+  // footer strip
+  const footerH = 56, footerY = h - footerH
+  ctx.fillStyle = theme.footerBg; ctx.fillRect(0, footerY, w, footerH)
+  ctx.fillStyle = theme.footerText; ctx.font = `700 15px ${FONT}`
+  ctx.textAlign = 'left'; ctx.fillText('nwbaseballstats.com', 40, footerY + 35)
+  ctx.fillStyle = theme.footerMuted; ctx.font = `500 13px ${FONT}`
+  ctx.textAlign = 'right'; ctx.fillText('@nwbaseballstats', w - 40, footerY + 35)
+  if (footerNote) { ctx.textAlign = 'center'; ctx.fillText(footerNote, w / 2, footerY + 35) }
+
+  // body geometry
+  const bodyPadX = 36
+  const bodyTop = headerH + 16
+  const bodyBottom = footerY - 14
+  const colHeaderH = 26
+  const bodyH = bodyBottom - bodyTop - colHeaderH
+
+  const renderCount = Math.min(count, Math.max(items.length, 1))
+  const columns = twoCol ? 2 : 1
+  const colGap = twoCol ? 14 : 0
+  const colWidth = (w - bodyPadX * 2 - colGap * (columns - 1)) / columns
+  const itemsPerCol = Math.max(1, Math.ceil(renderCount / columns))
+  const rowGap = twoCol ? 6 : Math.min(10, Math.max(4, Math.floor(60 / itemsPerCol) + 2))
+  const rowH = Math.floor((bodyH - rowGap * (itemsPerCol - 1)) / itemsPerCol)
+
+  const fontSize = twoCol
+    ? Math.min(Math.max(Math.floor(colWidth / 30), 11), 16)
+    : Math.min(Math.max(Math.floor(w / 58), 14), 21)
+  const rankSize = twoCol ? fontSize : Math.max(fontSize + 2, 16)
+  const logoSize = Math.min(Math.floor(rowH * 0.6), twoCol ? 26 : 38)
+  const extraCols = config.extra || []
+  const mainStatW = twoCol ? Math.floor(colWidth * 0.17) : Math.floor(w * 0.105)
+  const extraW = twoCol ? Math.floor(colWidth * 0.13) : Math.floor(w * 0.092)
+  const rankW = twoCol ? Math.floor(colWidth * 0.085) : Math.floor(w * 0.05)
+  const logoW = logoSize + (twoCol ? 6 : 10)
+  const rowPadX = twoCol ? 8 : 14
+
+  if (!items.length) {
+    ctx.fillStyle = theme.name; ctx.font = `700 22px ${FONT}`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('No players match these filters', w / 2, (bodyTop + bodyBottom) / 2)
     return
   }
 
-  // column geometry
-  const colGap = twoCol ? 16 : 0
-  const colW = (W - pad * 2 - colGap * (cols - 1)) / cols
-  // left identity zone fixed, stat columns share the rest
-  const nStats = statTier.length
-  const idW = twoCol ? Math.floor(colW * 0.46) : Math.floor(colW * 0.40)
-  const statsZoneW = colW - idW
-  const statColW = statsZoneW / nStats
+  const logoImgs = await Promise.all(items.slice(0, renderCount).map(p => cachedLogo(p.logo_url)))
 
-  const shown = rows.slice(0, count)
-  const logos = await Promise.all(shown.map(p => cachedLogo(p.logo_url)))
+  // column headers
+  for (let col = 0; col < columns; col++) {
+    const colX = bodyPadX + col * (colWidth + colGap)
+    ctx.font = `800 ${Math.max(Math.floor(fontSize * 0.6), 10)}px ${FONT}`
+    ctx.fillStyle = theme.colHeader
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    const hy = bodyTop + colHeaderH / 2 - 4
+    ctx.fillText('PLAYER', colX + rowPadX + rankW + logoW, hy)
+    let hx = colX + colWidth - rowPadX
+    ctx.textAlign = 'right'
+    for (let ei = extraCols.length - 1; ei >= 0; ei--) { ctx.fillText(extraCols[ei].label.toUpperCase(), hx, hy); hx -= extraW }
+    ctx.fillText(config.label.toUpperCase(), hx, hy)
+  }
 
-  shown.forEach((p, i) => {
-    const c = twoCol ? Math.floor(i / perCol) : 0
-    const ri = twoCol ? i % perCol : i
-    const x = pad + c * (colW + colGap)
-    const y = bodyTop + ri * (rowH + rowGap)
-    const top3 = i < 3
-    ctx.fillStyle = top3 ? T.rowTop3 : (i % 2 ? T.rowAlt : T.rowBg)
-    roundRect(ctx, x, y, colW, rowH, 8); ctx.fill()
-    if (top3) { ctx.fillStyle = T.accent; ctx.fillRect(x, y, 4, rowH) }
+  // rows
+  const rowStartY = bodyTop + colHeaderH
+  for (let i = 0; i < Math.min(renderCount, items.length); i++) {
+    const p = items[i]
+    const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || p.name || '-'
+    const bt = [p.bats, p.throws].filter(Boolean).join('/')
+    const meta = [p.position, p.team_short || p.team_name, bt, fmtYr(p.year_in_school)].filter(Boolean).join(' · ')
+    const commit = p.committed_to ? `→ ${p.committed_to}` : 'Uncommitted'
+    const isTop3 = i < 3
+
+    const col = twoCol ? Math.floor(i / itemsPerCol) : 0
+    const rowInCol = twoCol ? i % itemsPerCol : i
+    const x = bodyPadX + col * (colWidth + colGap)
+    const y = rowStartY + rowInCol * (rowH + rowGap)
+    const r = twoCol ? 8 : 12
+
+    // card + border + accent bar
+    ctx.fillStyle = theme.card; roundRect(ctx, x, y, colWidth, rowH, r); ctx.fill()
+    ctx.strokeStyle = isTop3 ? theme.medals[i] : theme.cardBorder
+    ctx.lineWidth = isTop3 ? 2 : 1; ctx.stroke()
+    ctx.save(); roundRect(ctx, x, y, colWidth, rowH, r); ctx.clip()
+    ctx.fillStyle = isTop3 ? theme.medals[i] : theme.cardAccent
+    ctx.fillRect(x, y, 5, rowH); ctx.restore()
+
+    let cellX = x + rowPadX
     const cy = y + rowH / 2
-    ctx.textBaseline = 'middle'
 
-    // rank
-    ctx.textAlign = 'left'
-    ctx.fillStyle = top3 ? T.accent : T.meta
-    ctx.font = `800 ${twoCol ? 15 : 18}px ${FONT}`
-    let cx = x + 12
-    ctx.fillText(String(i + 1), cx, cy)
-    cx += twoCol ? 24 : 30
+    // rank (medallion for top 3 in single col)
+    if (isTop3 && !twoCol) {
+      const mr = Math.min(rowH * 0.3, 18)
+      ctx.beginPath(); ctx.arc(cellX + rankW / 2, cy, mr, 0, Math.PI * 2)
+      ctx.fillStyle = theme.medals[i]; ctx.fill()
+      ctx.strokeStyle = theme.medalRing; ctx.lineWidth = 1.5; ctx.stroke()
+      ctx.fillStyle = theme.medalText; ctx.font = `900 ${Math.floor(mr * 1.05)}px ${FONT}`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), cellX + rankW / 2, cy + 1)
+    } else {
+      ctx.font = `900 ${rankSize}px ${FONT}`
+      ctx.fillStyle = isTop3 ? theme.medals[i] : theme.rank
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), cellX + rankW / 2, cy)
+    }
+    cellX += rankW
 
     // team logo
-    const ls = twoCol ? 22 : 30
-    if (logos[i]) contain(ctx, logos[i], cx, cy - ls / 2, ls, ls)
-    else { ctx.fillStyle = T.logoFallback; roundRect(ctx, cx, cy - ls / 2, ls, ls, 5); ctx.fill() }
-    cx += ls + 8
+    const li = logoImgs[i]
+    if (li) contain(ctx, li, cellX, cy - logoSize / 2, logoSize, logoSize)
+    else {
+      ctx.fillStyle = theme.logoFallback; roundRect(ctx, cellX, cy - logoSize / 2, logoSize, logoSize, 4); ctx.fill()
+      ctx.font = `700 ${Math.floor(logoSize * 0.34)}px ${FONT}`; ctx.fillStyle = theme.muted
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText((p.team_short || name).slice(0, 3).toUpperCase(), cellX + logoSize / 2, cy)
+    }
+    cellX += logoW
 
-    // name + meta line
-    const nameMaxW = x + idW - cx - 6
-    const nm = `${p.first_name || ''} ${p.last_name || ''}`.trim()
-    ctx.fillStyle = T.name
-    ctx.font = `800 ${twoCol ? 15 : 18}px ${FONT}`
-    ctx.fillText(trunc(ctx, nm, nameMaxW), cx, cy - (twoCol ? 7 : 9))
-    // meta: POS · TEAM · B/T · Yr  (+ commit)
-    const bt = [p.bats, p.throws].filter(Boolean).join('/')
-    const metaBits = [p.position, p.team_short || p.team_name, bt, fmtYr(p.year_in_school)].filter(Boolean)
-    ctx.fillStyle = T.meta
-    ctx.font = `600 ${twoCol ? 11 : 12.5}px ${FONT}`
-    ctx.fillText(trunc(ctx, metaBits.join(' · '), nameMaxW), cx, cy + (twoCol ? 8 : 8))
-    // commitment line (small, accent if committed)
-    const commit = p.committed_to ? `→ ${p.committed_to}` : 'Uncommitted'
-    ctx.fillStyle = p.committed_to ? T.kicker : T.sub
-    ctx.font = `${p.committed_to ? 700 : 500} ${twoCol ? 10.5 : 12}px ${FONT}`
-    ctx.fillText(trunc(ctx, commit, nameMaxW), cx, cy + (twoCol ? 22 : 26))
+    // name + meta (+ commitment)
+    const statsEndX = x + colWidth - rowPadX
+    const nameMaxW = statsEndX - (extraCols.length * extraW + mainStatW) - cellX - 10
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    if (twoCol) {
+      // two lines: name, then meta (commitment folded in if committed)
+      const subSize = Math.floor(fontSize * 0.72)
+      ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name
+      ctx.fillText(trunc(ctx, name, nameMaxW), cellX, cy - subSize * 0.7)
+      ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = theme.secondary
+      const metaShort = p.committed_to ? `${p.position || ''} · ${p.team_short || p.team_name || ''}` : meta
+      ctx.fillText(trunc(ctx, metaShort, nameMaxW), cellX, cy + subSize * 0.75)
+      if (p.committed_to) {
+        ctx.font = `700 ${subSize}px ${FONT}`; ctx.fillStyle = theme.commit
+        const mw = ctx.measureText((p.committed_to ? `${p.position || ''} · ${p.team_short || p.team_name || ''}` : meta) + '  ').width
+        ctx.fillText(trunc(ctx, commit, Math.max(nameMaxW - mw, 30)), cellX + mw, cy + subSize * 0.75)
+      }
+    } else {
+      // three lines: name, meta, commitment
+      const subSize = Math.floor(fontSize * 0.66)
+      ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name
+      ctx.fillText(trunc(ctx, name, nameMaxW), cellX, cy - fontSize * 0.62)
+      ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = theme.secondary
+      ctx.fillText(trunc(ctx, meta, nameMaxW), cellX, cy + subSize * 0.2)
+      ctx.font = `${p.committed_to ? 700 : 500} ${subSize}px ${FONT}`
+      ctx.fillStyle = p.committed_to ? theme.commit : theme.muted
+      ctx.fillText(trunc(ctx, commit, nameMaxW), cellX, cy + subSize * 1.5)
+    }
 
-    // stat columns
-    const sx0 = x + idW
-    statTier.forEach(([key, , f], si) => {
-      const sx = sx0 + si * statColW + statColW / 2
-      ctx.textAlign = 'center'
-      ctx.fillStyle = si === 0 ? T.statMain : T.stat
-      ctx.font = `${si === 0 ? 900 : 700} ${twoCol ? 15 : 19}px ${FONT}`
-      ctx.fillText(fmt(p[key], f), sx, cy - 8)
-      ctx.fillStyle = T.sub
-      ctx.font = `600 ${twoCol ? 9 : 11}px ${FONT}`
-      ctx.fillText(statTier[si][1], sx, cy + (twoCol ? 11 : 13))
-    })
-  })
-
-  drawFooter()
-
-  function drawFooter() {
-    ctx.fillStyle = T.footerBg; ctx.fillRect(0, H - footerH, W, footerH)
-    ctx.fillStyle = T.footerText; ctx.font = `700 13px ${FONT}`
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('NWBASEBALLSTATS.COM  x  PNWCBR', W / 2, H - footerH / 2)
+    // stats from right edge
+    let sX = statsEndX
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'right'
+    for (let ei = extraCols.length - 1; ei >= 0; ei--) {
+      ctx.font = `600 ${Math.floor(fontSize * 0.82)}px ${FONT}`; ctx.fillStyle = theme.secondary
+      ctx.fillText(fmt(p[extraCols[ei].key], extraCols[ei].format), sX, cy); sX -= extraW
+    }
+    ctx.font = `900 ${Math.floor(fontSize * (twoCol ? 1.05 : 1.25))}px ${FONT}`
+    ctx.fillStyle = isTop3 ? theme.mainStatTop3 : theme.mainStat
+    ctx.fillText(fmt(p[config.key], config.format), sX, cy)
   }
 }
 
-function fmtYr(y) {
-  if (!y) return ''
-  const m = { 'Fr': 'Fr', 'So': 'So', 'Jr': 'Jr', 'Sr': 'Sr', 'R-Fr': 'r-Fr', 'R-So': 'r-So', 'R-Jr': 'r-Jr', 'R-Sr': 'r-Sr', 'Gr': 'Gr' }
-  return m[y] || y
-}
-
-const isPitcherPos = (pos) => {
-  const u = (pos || '').toUpperCase()
-  return u === 'P' || u === 'RHP' || u === 'LHP' || u === 'SP' || u === 'RP' || u.startsWith('RHP/') || u.startsWith('LHP/') || u.startsWith('P/')
-}
-
 export default function TransferPortalGraphic() {
-  const [board, setBoard] = useState('portal')        // portal | juco
-  const [side, setSide] = useState('hitters')          // hitters | pitchers
-  const [count, setCount] = useState(10)               // 10 | 20 | 50
+  const [board, setBoard] = useState('portal')
+  const [side, setSide] = useState('hitters')
+  const [count, setCount] = useState(10)
   const [position, setPosition] = useState('all')
   const [hideCommitted, setHideCommitted] = useState(false)
   const [rawRows, setRawRows] = useState([])
@@ -275,10 +343,7 @@ export default function TransferPortalGraphic() {
   const canvasRef = useRef(null)
 
   const SEASON = 2026
-  const title = board === 'portal' ? 'Transfer Portal Tracker' : 'NWAC JUCO Tracker'
-  const subtitle = side === 'hitters' ? 'Top Hitters' : 'Top Pitchers'
 
-  // Fetch the board+side dataset (over-fetch, filter client-side)
   useEffect(() => {
     let alive = true
     setLoading(true); setErr(null)
@@ -298,17 +363,15 @@ export default function TransferPortalGraphic() {
     return () => { alive = false }
   }, [board, side])
 
-  // Derive the filtered/sorted/top-N rows
-  const statTier = (side === 'hitters' ? HIT_TIERS : PIT_TIERS)[count]
+  const tier = (side === 'hitters' ? HIT_TIERS : PIT_TIERS)[count]
   const rows = (() => {
     let r = rawRows.slice()
-    // side: hitters exclude pitchers, pitchers only
     r = r.filter(p => side === 'pitchers' ? isPitcherPos(p.position) : !isPitcherPos(p.position))
     if (position !== 'all') {
       r = r.filter(p => {
         const u = (p.position || '').toUpperCase()
-        if (position === 'IF') return ['1B', '2B', '3B', 'SS', 'IF'].some(x => u === x || u.includes('/' + x))
-        if (position === 'OF') return ['OF', 'LF', 'CF', 'RF'].some(x => u === x || u.includes('/' + x))
+        if (position === 'IF') return ['1B', '2B', '3B', 'SS', 'IF'].some(z => u === z || u.includes('/' + z))
+        if (position === 'OF') return ['OF', 'LF', 'CF', 'RF'].some(z => u === z || u.includes('/' + z))
         return u === position || u.startsWith(position + '/') || u.endsWith('/' + position)
       })
     }
@@ -321,9 +384,16 @@ export default function TransferPortalGraphic() {
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    renderBoard(canvas, { rows, side, count, statTier, title, subtitle })
-      .catch(e => console.error('portal graphic render failed:', e))
-  }, [rows, side, count, statTier, title, subtitle])
+    const config = { key: tier[0][0], label: tier[0][1], format: tier[0][2], extra: tier.slice(1).map(([k, l, f]) => ({ key: k, label: l, format: f })) }
+    const kicker = board === 'portal' ? 'TRANSFER PORTAL · TRACKER' : 'NWAC JUCO · TRACKER'
+    const title = `Top ${count} ${board === 'portal' ? 'Portal' : 'JUCO'} ${side === 'hitters' ? 'Hitters' : 'Pitchers'}`
+    const subtitle = `Sorted by ${tier[0][1]} · ${SEASON}`
+    renderBoard(canvas, {
+      items: rows, config, title, kicker, subtitle,
+      footerNote: 'in partnership with PNWCBR',
+      count, twoCol: count >= 15, theme: THEME,
+    }).catch(e => console.error('portal graphic render failed:', e))
+  }, [rows, side, count, board, tier])
 
   useEffect(() => { if (!loading) redraw() }, [loading, redraw])
 
@@ -347,9 +417,9 @@ export default function TransferPortalGraphic() {
   )
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
+    <div className="max-w-3xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Portal / JUCO Tracker Graphics</h1>
-      <p className="text-sm text-gray-500 mb-4">Green PNWCBR co-branded leaderboard graphics for the Transfer Portal and NWAC JUCO trackers.</p>
+      <p className="text-sm text-gray-500 mb-4">Green PNWCBR co-branded leaderboard graphics for the Transfer Portal and NWAC JUCO trackers. Fixed 1080×1080 for every size.</p>
 
       <div className="flex flex-wrap gap-2 mb-3">
         <Btn on={board === 'portal'} onClick={() => setBoard('portal')}>Transfer Portal</Btn>
@@ -377,7 +447,7 @@ export default function TransferPortalGraphic() {
       <div className="overflow-x-auto">
         <canvas ref={canvasRef} className="rounded-lg shadow-lg max-w-full" style={{ display: loading ? 'none' : 'block' }} />
       </div>
-      <p className="text-xs text-gray-400 mt-2">{rows.length} players match · showing top {Math.min(count, rows.length)}. Fewer stat columns show as the list grows (matches our leaderboard graphics).</p>
+      <p className="text-xs text-gray-400 mt-2">{rows.length} players match · showing top {Math.min(count, rows.length)}. Top 10 = one column; Top 20/50 = two columns (fewer stat columns shown as the list grows).</p>
     </div>
   )
 }
