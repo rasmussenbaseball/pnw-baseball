@@ -3,6 +3,12 @@
   "updated": "2026-06-17",
   "players": [
     {
+      "player_id": 3287,
+      "name": "Kyle Memarian",
+      "from": "Whitworth",
+      "committed_to": "Point Loma"
+    },
+    {
       "player_id": 3026,
       "name": "Austin Cupic",
       "from": "CWU",
