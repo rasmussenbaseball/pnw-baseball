@@ -313,20 +313,24 @@ async function renderBoard(canvas, opts) {
       ctx.fillStyle = p.committed_to ? theme.commit : theme.muted
       ctx.fillText(trunc(ctx, commit, nameMaxW), cellX, c0 + g1 + g2)
     } else {
-      // compact two lines (dense Top 50): name, then meta with inline green dest
-      const g = Math.round(fontSize * 0.6)
-      ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name
-      ctx.fillText(trunc(ctx, name, nameMaxW), cellX, cy - g)
+      // compact two lines (dense Top 50) — sized to the short row so the block
+      // leaves padding above/below instead of filling the whole card.
+      const nameC = Math.min(Math.max(Math.round(rowH * 0.38), 9), 14)
+      const metaC = Math.max(Math.round(nameC * 0.72), 7)
+      const nameY = cy - metaC / 2 - 1   // centers the two-line block around cy
+      const metaY = cy + nameC / 2 + 1
+      ctx.font = `700 ${nameC}px ${FONT}`; ctx.fillStyle = theme.name
+      ctx.fillText(trunc(ctx, name, nameMaxW), cellX, nameY)
       const metaBase = p.committed_to ? [p.position, p.team_short || p.team_name].filter(Boolean).join(' · ') : meta
-      ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = theme.secondary
+      ctx.font = `500 ${metaC}px ${FONT}`; ctx.fillStyle = theme.secondary
       const metaDrawn = trunc(ctx, metaBase, nameMaxW)
-      ctx.fillText(metaDrawn, cellX, cy + g)
+      ctx.fillText(metaDrawn, cellX, metaY)
       if (p.committed_to) {
         const mw = ctx.measureText(metaDrawn + ' ').width   // same 500 font as drawn
         const remaining = nameMaxW - mw
         if (remaining > 28) {
-          ctx.font = `700 ${subSize}px ${FONT}`; ctx.fillStyle = theme.commit
-          ctx.fillText(trunc(ctx, commit, remaining), cellX + mw, cy + g)
+          ctx.font = `700 ${metaC}px ${FONT}`; ctx.fillStyle = theme.commit
+          ctx.fillText(trunc(ctx, commit, remaining), cellX + mw, metaY)
         }
       }
     }
