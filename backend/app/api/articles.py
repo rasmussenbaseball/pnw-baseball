@@ -36,7 +36,7 @@ router = APIRouter()
 # upload article images. Override via env var if needed (comma-separated).
 # ─────────────────────────────────────────────────────────────────
 
-_DEFAULT_AUTHORS = "nate.rasmussen26@gmail.com"
+_DEFAULT_AUTHORS = "nate.rasmussen26@gmail.com,pnwcbr@gmail.com"
 
 
 def _allowed_emails() -> set[str]:

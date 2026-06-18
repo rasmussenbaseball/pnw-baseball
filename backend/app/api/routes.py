@@ -9656,7 +9656,11 @@ def transfer_portal_players(
     except Exception:
         entries = []
     ids = [int(e["player_id"]) for e in entries if e.get("player_id")]
-    committed_map = {int(e["player_id"]): e.get("committed_to") for e in entries if e.get("player_id")}
+    # committed_to now comes from the players table (committed_to column),
+    # which the dev Commitment Editor writes to. The JSON's committed_to is
+    # no longer the source — it was migrated into the DB so interns can
+    # edit/undo commitments live without a deploy. The JSON still defines
+    # WHO is in the portal (player_id + from).
     # Optional per-entry position override from the JSON. Used for placeholder
     # players who have no stats and no position in the DB, so the frontend can
     # still file them on the correct Hitters/Pitchers list.
@@ -9731,9 +9735,8 @@ def transfer_portal_players(
         out = []
         for r in rows:
             d = _add_era_plus(dict(r))
-            # "Committed To" reflects the portal destination we track in the
-            # JSON, not the players-table commitment column.
-            d["committed_to"] = committed_map.get(d["id"])
+            # "Committed To" comes from the players table (committed_to is
+            # already present via SELECT p.*), edited via the Commitment Editor.
             # Position override from the JSON (for placeholders missing a DB position).
             if position_map.get(d["id"]):
                 d["position"] = position_map[d["id"]]

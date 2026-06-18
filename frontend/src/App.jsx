@@ -83,10 +83,12 @@ const GM_EARLY_ACCESS_EMAILS = [
 
 // Article-author allowlist — only these emails see the "Articles" item
 // in the Misc dropdown and reach /articles management routes. Public
-// reading at /news stays open to everyone. All site developers are
-// granted authoring access too (handled in the guard below).
+// reading at /news stays open to everyone. Owner-only: developers/interns
+// are intentionally NOT granted authoring or email-broadcast access.
+// Mirror ARTICLE_AUTHOR_EMAILS in lib/tiers.js + articles.py.
 export const ARTICLE_AUTHOR_EMAILS = [
   'nate.rasmussen26@gmail.com',
+  'pnwcbr@gmail.com',
 ]
 
 function RequireArticleAuthor({ children }) {
@@ -94,7 +96,7 @@ function RequireArticleAuthor({ children }) {
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
   const email = (user.email || '').toLowerCase()
-  if (!ARTICLE_AUTHOR_EMAILS.includes(email) && !isDeveloper(email)) {
+  if (!ARTICLE_AUTHOR_EMAILS.includes(email)) {
     return <Navigate to="/news" replace />
   }
   return children
@@ -188,6 +190,7 @@ const WclRecapGraphic = lazyWithRetry(() => import('./pages/WclRecapGraphic'))
 const WclGameRecapGraphic = lazyWithRetry(() => import('./pages/WclGameRecapGraphic'))
 const WclLeaderboardGraphic = lazyWithRetry(() => import('./pages/WclLeaderboardGraphic'))
 const TransferPortalGraphic = lazyWithRetry(() => import('./pages/TransferPortalGraphic'))
+const CommitmentEditor = lazyWithRetry(() => import('./pages/CommitmentEditor'))
 const WclStandingsGraphic = lazyWithRetry(() => import('./pages/WclStandingsGraphic'))
 import SummerStatsPage from './pages/summer/SummerStatsPage'
 import SummerCpiPage from './pages/summer/SummerCpiPage'
@@ -392,6 +395,7 @@ export default function App() {
           <Route path="/teams" element={<TeamsPage />} />
           <Route path="/projections" element={<RequireDev><TeamProjections /></RequireDev>} />
           <Route path="/trackman-data" element={<RequireDev><TrackManData /></RequireDev>} />
+          <Route path="/commitment-editor" element={<RequireDev><CommitmentEditor /></RequireDev>} />
           <Route path="/pro-tracker" element={<ProTracker />} />
           <Route path="/draft" element={<PnwDraft />} />
           <Route path="/wcl-pickem" element={<WclPickem />} />

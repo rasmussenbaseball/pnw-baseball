@@ -49,6 +49,7 @@ from .api.billing import router as billing_router
 from .api.summer import router as summer_router
 from .api.player_comps import router as player_comps_router
 from .api.pickem import router as pickem_router
+from .api.admin_tools import router as admin_tools_router
 from .models.database import init_db, seed_divisions_and_conferences
 
 class DecimalJSONResponse(JSONResponse):
@@ -106,6 +107,7 @@ app.include_router(billing_router, prefix="/api/v1")
 app.include_router(summer_router, prefix="/api/v1")
 app.include_router(player_comps_router, prefix="/api/v1")
 app.include_router(pickem_router, prefix="/api/v1")
+app.include_router(admin_tools_router, prefix="/api/v1")
 
 
 # ── Edge cache headers ───────────────────────────────────────────

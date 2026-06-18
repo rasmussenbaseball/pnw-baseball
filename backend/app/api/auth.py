@@ -218,3 +218,24 @@ def require_tier(min_tier: str):
         return user_id
 
     return _dep
+
+
+def require_developer(request: Request) -> str:
+    """Strict developer-only gate. Unlike require_tier('dev'), this is
+    enforced regardless of TIER_GATING_ENABLED — it always verifies the
+    token and confirms the email is in DEVELOPER_EMAILS. Returns the
+    lowercased email (handy for audit logging on write endpoints).
+
+    Mirrors the frontend <RequireDev>. Use for internal write tools
+    (commitment editor, etc.) that interns/devs use but must never be
+    reachable by ordinary signed-in users."""
+    token = _extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    from ._tier_allowlist import email_for_token, DEVELOPER_EMAILS
+    email = (email_for_token(token) or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if email not in DEVELOPER_EMAILS:
+        raise HTTPException(status_code=403, detail="Developer access required")
+    return email
