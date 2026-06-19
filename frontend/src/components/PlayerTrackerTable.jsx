@@ -155,7 +155,7 @@ function AwardsCell({ awards }) {
   const acTitle = ac.map(a => `${a.season} All-${a.scope} ${a.team === '1st' ? '1st Team' : a.team === '2nd' ? '2nd Team' : 'Honorable Mention'}${a.position ? ` (${a.position})` : ''}`).join('\n')
   const best = [...ac].sort((a, b) => (_AC_RANK[a.team] ?? 9) - (_AC_RANK[b.team] ?? 9))[0]
   return (
-    <div className="flex items-center gap-1 flex-wrap">
+    <div className="flex items-center gap-1 whitespace-nowrap">
       {gg.length > 0 && (
         <span title={ggTitle} className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">🥇{gg.length > 1 ? ` ${gg.length}` : ''}</span>
       )}
