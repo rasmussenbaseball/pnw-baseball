@@ -60,6 +60,7 @@ def _build(rows, *, value, fmt, desc=True, min_filter=None, n=3):
             "name": r["name"],
             "team": r.get("team_short") or "",
             "level": DISPLAY_LEVEL.get(r.get("db_level"), r.get("db_level")),
+            "logo": r.get("logo"),
             "value": round(float(v), 4),
             "display": fmt(v),
         })
@@ -87,7 +88,7 @@ def home_leaders(
         # ── Batting season rows ──
         cur.execute(f"""
             SELECT p.first_name || ' ' || p.last_name AS name,
-                   t.short_name AS team_short, d.level AS db_level,
+                   t.short_name AS team_short, t.logo_url AS logo, d.level AS db_level,
                    bs.plate_appearances AS pa, bs.offensive_war AS owar,
                    bs.wrc_plus, bs.batting_avg AS avg, bs.home_runs AS hr,
                    bs.stolen_bases AS sb, bs.rbi, bs.k_pct, bs.bb_pct
@@ -104,7 +105,7 @@ def home_leaders(
         # ── Pitching season rows ──
         cur.execute(f"""
             SELECT p.first_name || ' ' || p.last_name AS name,
-                   t.short_name AS team_short, d.level AS db_level,
+                   t.short_name AS team_short, t.logo_url AS logo, d.level AS db_level,
                    ps.innings_pitched AS ip, ps.pitching_war AS pwar,
                    ps.fip_plus, ps.era, ps.k_pct, ps.bb_pct,
                    ps.hits_allowed, ps.batters_faced, ps.walks, ps.hit_batters
@@ -121,7 +122,7 @@ def home_leaders(
         # ── Batter pitch-level aggregates (Contact%, Air-pull%) ──
         cur.execute(f"""
             SELECT p.first_name || ' ' || p.last_name AS name,
-                   t.short_name AS team_short, d.level AS db_level,
+                   t.short_name AS team_short, t.logo_url AS logo, d.level AS db_level,
                    COUNT(*) AS pa,
                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'S',''))),0) AS f_s,
                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'F',''))),0) AS f_f,
@@ -138,7 +139,7 @@ def home_leaders(
             JOIN divisions d ON c.division_id = d.id
             WHERE g.season = %(season)s AND ge.batter_player_id IS NOT NULL
               AND COALESCE(p.is_phantom, false) = false {level_sql}
-            GROUP BY p.id, p.first_name, p.last_name, t.short_name, d.level
+            GROUP BY p.id, p.first_name, p.last_name, t.short_name, t.logo_url, d.level
             HAVING COUNT(*) >= {PBP_MIN_PA} AND SUM(LENGTH(pitch_sequence)) >= {PBP_MIN_SEQ_BAT}
         """, p)
         bat_pbp = []
@@ -151,7 +152,7 @@ def home_leaders(
         # ── Pitcher pitch-level aggregates (Strike%, Whiff%, Putaway%) ──
         cur.execute(f"""
             SELECT p.first_name || ' ' || p.last_name AS name,
-                   t.short_name AS team_short, d.level AS db_level,
+                   t.short_name AS team_short, t.logo_url AS logo, d.level AS db_level,
                    COUNT(*) AS pa,
                    COALESCE(SUM(LENGTH(pitch_sequence)),0) AS seq_len,
                    COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'K',''))),0) AS n_k,
@@ -169,7 +170,7 @@ def home_leaders(
             JOIN divisions d ON c.division_id = d.id
             WHERE g.season = %(season)s AND ge.pitcher_player_id IS NOT NULL
               AND COALESCE(p.is_phantom, false) = false {level_sql}
-            GROUP BY p.id, p.first_name, p.last_name, t.short_name, d.level
+            GROUP BY p.id, p.first_name, p.last_name, t.short_name, t.logo_url, d.level
             HAVING COUNT(*) >= {PBP_MIN_PA} AND SUM(LENGTH(pitch_sequence)) >= {PBP_MIN_SEQ_PIT}
         """, p)
         pit_pbp = []

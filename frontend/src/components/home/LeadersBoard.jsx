@@ -1,12 +1,12 @@
 /**
- * Wide, short "Stat Leaders" board for the top of the homepage. Top 3 in each
- * of 9 hitting + 9 pitching categories, filterable by division. Small text so
- * all 18 categories fit in a couple of rows. Data: /api/v1/home/leaders.
+ * Wide "Stat Leaders" board for the top of the homepage. Top 3 in each of
+ * 9 hitting + 9 pitching categories, filterable by division. Two full-width
+ * rows (hitting, then pitching) so every category column is wide enough to
+ * read; team logos identify each leader. Data: /api/v1/home/leaders.
  */
 import { useState } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { WidgetCard } from './WidgetShell'
-import { divisionBadgeClass } from '../../utils/stats'
 
 const DIVISIONS = ['all', 'D1', 'D2', 'D3', 'NAIA', 'NWAC']
 
@@ -17,26 +17,21 @@ function abbr(name) {
   return `${parts[0][0]}. ${parts.slice(1).join(' ')}`
 }
 
-function LevelChip({ level }) {
-  if (!level) return null
-  return (
-    <span className={`text-[7px] font-bold leading-none px-1 py-px rounded ${divisionBadgeClass(level === 'NWAC' ? 'JUCO' : level)}`}>
-      {level}
-    </span>
-  )
-}
-
-function StatCell({ cat, showLevel }) {
+function StatCell({ cat }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] font-bold uppercase tracking-wide text-nw-teal truncate">{cat.label}</div>
-      <div className="mt-0.5 space-y-px">
-        {cat.leaders.length === 0 && <div className="text-[10px] text-gray-300 dark:text-gray-600">—</div>}
+      <div className="text-[11px] font-bold uppercase tracking-wide text-nw-teal truncate border-b border-gray-100 dark:border-gray-700 pb-0.5 mb-1">
+        {cat.label}
+      </div>
+      <div className="space-y-1">
+        {cat.leaders.length === 0 && <div className="text-xs text-gray-300 dark:text-gray-600">—</div>}
         {cat.leaders.map((l, i) => (
-          <div key={i} className="flex items-baseline gap-1 text-[10px] leading-tight">
-            <span className="text-gray-400 dark:text-gray-500 w-2 shrink-0">{i + 1}</span>
-            <span className="font-medium text-pnw-slate dark:text-gray-200 truncate">{abbr(l.name)}</span>
-            {showLevel && <LevelChip level={l.level} />}
+          <div key={i} className="flex items-center gap-1.5 text-xs leading-tight">
+            <span className="text-gray-400 dark:text-gray-500 w-2 shrink-0 text-[10px]">{i + 1}</span>
+            {l.logo
+              ? <img src={l.logo} alt="" className="w-4 h-4 object-contain shrink-0" onError={(e) => { e.target.style.visibility = 'hidden' }} />
+              : <span className="w-4 shrink-0" />}
+            <span className="font-medium text-pnw-slate dark:text-gray-200 truncate" title={l.name}>{abbr(l.name)}</span>
             <span className="ml-auto font-bold tabular-nums text-gray-700 dark:text-gray-300 shrink-0">{l.display}</span>
           </div>
         ))}
@@ -45,12 +40,12 @@ function StatCell({ cat, showLevel }) {
   )
 }
 
-function Side({ title, cats, showLevel }) {
+function Side({ title, cats }) {
   return (
-    <div className="flex-1 min-w-0">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">{title}</div>
-      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-x-3 gap-y-2">
-        {cats.map((c) => <StatCell key={c.key} cat={c} showLevel={showLevel} />)}
+    <div>
+      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">{title}</div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-x-4 gap-y-3">
+        {cats.map((c) => <StatCell key={c.key} cat={c} />)}
       </div>
     </div>
   )
@@ -67,7 +62,7 @@ export function LeadersBoard() {
           key={d}
           type="button"
           onClick={() => setDivision(d)}
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+          className={`text-[11px] font-bold px-2 py-0.5 rounded transition-colors ${
             division === d ? 'bg-white text-nw-teal' : 'text-white/80 hover:bg-white/20'
           }`}
         >
@@ -82,10 +77,10 @@ export function LeadersBoard() {
       {loading && <div className="py-6 text-center text-xs text-gray-400 animate-pulse">Loading leaders…</div>}
       {error && <div className="py-6 text-center text-xs text-gray-400">Leaders are unavailable right now.</div>}
       {data && !loading && (
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-          <Side title="Hitting" cats={data.hitting} showLevel={division === 'all'} />
-          <div className="hidden lg:block w-px bg-gray-200 dark:bg-gray-700 self-stretch" />
-          <Side title="Pitching" cats={data.pitching} showLevel={division === 'all'} />
+        <div className="space-y-3">
+          <Side title="Hitting" cats={data.hitting} />
+          <div className="h-px bg-gray-200 dark:bg-gray-700" />
+          <Side title="Pitching" cats={data.pitching} />
         </div>
       )}
     </WidgetCard>
