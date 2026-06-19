@@ -8877,6 +8877,90 @@ def _gold_gloves_for(player_ids):
     return out
 
 
+# ── All-Conference honors: computed LIVE from the all-conference generator ──
+# (the same logic that powers the /all-conference page) so a player's profile
+# always matches the generator. Covers the regional conferences the generator
+# builds: GNAC (D2), NWC (D3), CCC (NAIA), and the four NWAC (JUCO) divisions.
+_AC_REAL_KEYS = ["gnac", "nwc", "ccc", "nwac-north", "nwac-east", "nwac-south", "nwac-west"]
+_AC_CONF_LABEL = {
+    "gnac": "GNAC", "nwc": "NWC", "ccc": "CCC",
+    "nwac-north": "NWAC North", "nwac-east": "NWAC East",
+    "nwac-south": "NWAC South", "nwac-west": "NWAC West",
+}
+
+
+def _ac_abbrev_to_key():
+    from .all_conference import ALL_CONF_GROUPS
+    m = {}
+    for k in _AC_REAL_KEYS:
+        for ab in (ALL_CONF_GROUPS[k]["conf_abbrevs"] or []):
+            m[ab.upper()] = k
+    return m
+
+
+def _ac_norm_pos(pos):
+    import re as _re
+    return _re.sub(r"\d+$", "", pos) if pos else pos  # OF1->OF, SP1->SP
+
+
+def _all_conference_for(cur, player_ids):
+    """Live All-Conference honors: replay the generator for each (season,
+    conference) the player has stats in, and record the team they made."""
+    try:
+        pid_set = set(player_ids)
+        if not pid_set:
+            return []
+        ids = list(pid_set)
+        cur.execute(
+            """
+            SELECT DISTINCT s.season, c.abbreviation AS abbrev
+            FROM (
+                SELECT player_id, team_id, season FROM batting_stats WHERE player_id = ANY(%s)
+                UNION
+                SELECT player_id, team_id, season FROM pitching_stats WHERE player_id = ANY(%s)
+            ) s
+            JOIN teams t ON t.id = s.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            """,
+            (ids, ids),
+        )
+        a2k = _ac_abbrev_to_key()
+        pairs = {(r["season"], a2k[(r["abbrev"] or "").upper()])
+                 for r in cur.fetchall() if (r["abbrev"] or "").upper() in a2k}
+        if not pairs:
+            return []
+        from .all_conference import all_conference
+        out, seen = [], set()
+        order = {"1st": 0, "2nd": 1, "HM": 2}
+        for season, key in pairs:
+            try:
+                res = all_conference(conf=key, season=season)
+            except Exception:
+                continue
+            if not isinstance(res, dict) or res.get("error"):
+                continue
+            label = _AC_CONF_LABEL.get(key, key)
+            for container, level in ((res.get("first_team"), "1st"),
+                                     (res.get("second_team"), "2nd"),
+                                     (res.get("honorable_mentions"), "HM")):
+                # first_team/second_team: {slot: player}; honorable_mentions:
+                # {category: [players]}. The KEY is the position slot.
+                for slot, v in (container or {}).items():
+                    pos = _ac_norm_pos(slot)
+                    for pl in (v if isinstance(v, list) else [v]):
+                        if isinstance(pl, dict) and pl.get("player_id") in pid_set:
+                            k = (season, label, level, pos)
+                            if k in seen:
+                                continue
+                            seen.add(k)
+                            out.append({"season": season, "scope": label,
+                                        "team": level, "position": pos})
+        out.sort(key=lambda x: (-x["season"], x["scope"], order.get(x["team"], 9)))
+        return out
+    except Exception:
+        return []
+
+
 @router.get("/players/{player_id}")
 @cached_endpoint(ttl_seconds=1800)
 def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
@@ -9407,6 +9491,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             "awards": all_awards["season_awards"],
             "career_rankings": all_awards["career_rankings"],
             "gold_gloves": _gold_gloves_for(all_player_ids),
+            "all_conference": _all_conference_for(cur, all_player_ids),
             "pnw_rankings": pnw_rankings,
             "position_breakdown": position_breakdown,
             "linked_players": linked_players,

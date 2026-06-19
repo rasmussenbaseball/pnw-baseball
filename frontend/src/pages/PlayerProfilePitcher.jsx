@@ -173,7 +173,7 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
   const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
   const { data: goose } = usePlayerGooseEggs(playerId, SEASON)
 
-  const { player, pitching_stats, summer_pitching, pitching_percentiles, awards, pnw_rankings, gold_gloves, current_summer_assignment } = data
+  const { player, pitching_stats, summer_pitching, pitching_percentiles, awards, pnw_rankings, gold_gloves, all_conference, current_summer_assignment } = data
 
   const springTagged = (pitching_stats || []).map(s => ({ ...s, _kind: 'spring', _typeLabel: s.division_level || 'College', _team: s.team_short || '—' }))
   const summerTagged = (summer_pitching || []).map(s => ({ ...s, _kind: 'summer', _typeLabel: s.league_abbrev || 'Summer', _team: s.team_name || '—' }))
@@ -366,6 +366,15 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
                   title={`${g.season} ${g.scope} Gold Glove${g.mvp ? ' MVP' : ''} (${g.position})`}
                 >
                   🥇 {String(g.season).slice(-2)} {g.scope} GG · {g.position}{g.mvp ? ' MVP' : ''}
+                </span>
+              ))}
+              {(all_conference || []).map((g, i) => (
+                <span
+                  key={`ac-${i}`}
+                  className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full bg-indigo-100 text-indigo-900 border border-indigo-300"
+                  title={`${g.season} All-${g.scope} ${g.team === '1st' ? 'First Team' : g.team === '2nd' ? 'Second Team' : 'Honorable Mention'}${g.position ? ` (${g.position})` : ''}`}
+                >
+                  ⭐ {String(g.season).slice(-2)} All-{g.scope} {g.team}{g.position ? ` · ${g.position}` : ''}
                 </span>
               ))}
               {(awards || []).map((a, i) => (

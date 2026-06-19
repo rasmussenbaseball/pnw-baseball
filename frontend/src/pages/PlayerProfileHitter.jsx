@@ -216,7 +216,7 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
   const T = usePlayerProfileTheme()
   const { data: gameLogs } = usePlayerGameLogs(playerId, SEASON)
 
-  const { player, batting_stats, summer_batting, batting_percentiles, fielding_stats, awards, pnw_rankings, gold_gloves, position_breakdown, current_summer_assignment } = data
+  const { player, batting_stats, summer_batting, batting_percentiles, fielding_stats, awards, pnw_rankings, gold_gloves, all_conference, position_breakdown, current_summer_assignment } = data
 
   // Interleave spring + summer rows chronologically.
   const springTagged = (batting_stats || []).map(s => ({ ...s, _kind: 'spring', _typeLabel: s.division_level || 'College', _team: s.team_short || '—' }))
@@ -414,6 +414,15 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
                   title={`${g.season} ${g.scope} Gold Glove${g.mvp ? ' MVP' : ''} (${g.position})`}
                 >
                   🥇 {String(g.season).slice(-2)} {g.scope} GG · {g.position}{g.mvp ? ' MVP' : ''}
+                </span>
+              ))}
+              {(all_conference || []).map((g, i) => (
+                <span
+                  key={`ac-${i}`}
+                  className="text-[9.5px] font-bold tracking-wide px-2 py-[3px] rounded-full bg-indigo-100 text-indigo-900 border border-indigo-300"
+                  title={`${g.season} All-${g.scope} ${g.team === '1st' ? 'First Team' : g.team === '2nd' ? 'Second Team' : 'Honorable Mention'}${g.position ? ` (${g.position})` : ''}`}
+                >
+                  ⭐ {String(g.season).slice(-2)} All-{g.scope} {g.team}{g.position ? ` · ${g.position}` : ''}
                 </span>
               ))}
               {(awards || []).map((a, i) => (
