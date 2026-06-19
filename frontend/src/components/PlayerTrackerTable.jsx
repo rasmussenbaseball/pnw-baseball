@@ -157,7 +157,9 @@ function AwardsCell({ awards }) {
   return (
     <div className="flex items-center gap-1 whitespace-nowrap">
       {gg.length > 0 && (
-        <span title={ggTitle} className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">🥇{gg.length > 1 ? ` ${gg.length}` : ''}</span>
+        <span title={ggTitle} className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+          🥇 Gold Glove{gg.length > 1 ? 's' : ''}: {gg.map(g => g.scope + (g.mvp ? ' MVP' : '')).join(', ')}
+        </span>
       )}
       {ac.length > 0 && (
         <span title={acTitle} className="text-[9px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-300 whitespace-nowrap">⭐ All-Conf {best?.team || ''}</span>
