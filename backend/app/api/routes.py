@@ -8889,76 +8889,47 @@ _AC_CONF_LABEL = {
 }
 
 
-def _ac_abbrev_to_key():
-    from .all_conference import ALL_CONF_GROUPS
-    m = {}
-    for k in _AC_REAL_KEYS:
-        for ab in (ALL_CONF_GROUPS[k]["conf_abbrevs"] or []):
-            m[ab.upper()] = k
-    return m
-
-
 def _ac_norm_pos(pos):
     import re as _re
     return _re.sub(r"\d+$", "", pos) if pos else pos  # OF1->OF, SP1->SP
 
 
-def _all_conference_for(cur, player_ids):
-    """Live All-Conference honors: replay the generator for each (season,
-    conference) the player has stats in, and record the team they made."""
-    try:
-        pid_set = set(player_ids)
-        if not pid_set:
-            return []
-        ids = list(pid_set)
-        cur.execute(
-            """
-            SELECT DISTINCT s.season, c.abbreviation AS abbrev
-            FROM (
-                SELECT player_id, team_id, season FROM batting_stats WHERE player_id = ANY(%s)
-                UNION
-                SELECT player_id, team_id, season FROM pitching_stats WHERE player_id = ANY(%s)
-            ) s
-            JOIN teams t ON t.id = s.team_id
-            JOIN conferences c ON c.id = t.conference_id
-            """,
-            (ids, ids),
-        )
-        a2k = _ac_abbrev_to_key()
-        pairs = {(r["season"], a2k[(r["abbrev"] or "").upper()])
-                 for r in cur.fetchall() if (r["abbrev"] or "").upper() in a2k}
-        if not pairs:
-            return []
-        from .all_conference import all_conference
-        out, seen = [], set()
-        order = {"1st": 0, "2nd": 1, "HM": 2}
-        for season, key in pairs:
-            try:
-                res = all_conference(conf=key, season=season)
-            except Exception:
-                continue
-            if not isinstance(res, dict) or res.get("error"):
-                continue
-            label = _AC_CONF_LABEL.get(key, key)
-            for container, level in ((res.get("first_team"), "1st"),
-                                     (res.get("second_team"), "2nd"),
-                                     (res.get("honorable_mentions"), "HM")):
-                # first_team/second_team: {slot: player}; honorable_mentions:
-                # {category: [players]}. The KEY is the position slot.
-                for slot, v in (container or {}).items():
-                    pos = _ac_norm_pos(slot)
-                    for pl in (v if isinstance(v, list) else [v]):
-                        if isinstance(pl, dict) and pl.get("player_id") in pid_set:
-                            k = (season, label, level, pos)
-                            if k in seen:
-                                continue
-                            seen.add(k)
-                            out.append({"season": season, "scope": label,
-                                        "team": level, "position": pos})
-        out.sort(key=lambda x: (-x["season"], x["scope"], order.get(x["team"], 9)))
-        return out
-    except Exception:
-        return []
+# All-Conference honors are PRECOMPUTED into backend/data/all_conference_honors.json
+# by scripts/compute_all_conference_honors.py (which replays the generator). The
+# live generator is far too slow to run per profile request (~12s cold per
+# conference), so the profile just does a dict lookup here. Re-run the script when
+# stats change (or at season freeze) to refresh.
+_AC_HONORS_CACHE = {"data": None}
+
+
+def _load_ac_honors():
+    if _AC_HONORS_CACHE["data"] is None:
+        import os as _os, json as _json
+        path = _os.path.join(_os.path.dirname(__file__), "..", "..", "data", "all_conference_honors.json")
+        try:
+            with open(path) as f:
+                _AC_HONORS_CACHE["data"] = _json.load(f).get("honors", [])
+        except Exception:
+            _AC_HONORS_CACHE["data"] = []
+    return _AC_HONORS_CACHE["data"]
+
+
+def _all_conference_for(player_ids):
+    """All-Conference honors for the player, from the precomputed snapshot."""
+    pid_set = set(player_ids)
+    seen, out = set(), []
+    order = {"1st": 0, "2nd": 1, "HM": 2}
+    for h in _load_ac_honors():
+        if h.get("player_id") not in pid_set:
+            continue
+        k = (h["season"], h["scope"], h["team"], h.get("position"))
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append({"season": h["season"], "scope": h["scope"],
+                    "team": h["team"], "position": h.get("position")})
+    out.sort(key=lambda x: (-x["season"], x["scope"], order.get(x["team"], 9)))
+    return out
 
 
 @router.get("/players/{player_id}")
@@ -9491,7 +9462,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
             "awards": all_awards["season_awards"],
             "career_rankings": all_awards["career_rankings"],
             "gold_gloves": _gold_gloves_for(all_player_ids),
-            "all_conference": _all_conference_for(cur, all_player_ids),
+            "all_conference": _all_conference_for(all_player_ids),
             "pnw_rankings": pnw_rankings,
             "position_breakdown": position_breakdown,
             "linked_players": linked_players,
