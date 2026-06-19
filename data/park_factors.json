@@ -651,7 +651,7 @@
       "city": "Eugene",
       "state": "OR",
       "elevation_ft": 430,
-      "surface": "Dirt INF/Grass OF",
+      "surface": "Turf INF/Turf OF",
       "wind": "Light SW",
       "avg_temp_f": 62,
       "dimensions": {
