@@ -142,10 +142,38 @@ export function BoardToggle({ board, onChange, hitterCount = null, pitcherCount 
   )
 }
 
+// Awards cell — gold gloves, all-conference honors, and top-10-in-level stats,
+// from the tracker endpoints' `awards` field. Compact badges with full detail
+// in the tooltip so a coach can scan honors right on the tracker.
+const _AC_RANK = { '1st': 0, '2nd': 1, 'HM': 2 }
+function AwardsCell({ awards }) {
+  const gg = awards?.gold_gloves || []
+  const ac = awards?.all_conference || []
+  const t10 = awards?.top10 || []
+  if (!gg.length && !ac.length && !t10.length) return <span className="text-gray-300 dark:text-gray-600">-</span>
+  const ggTitle = gg.map(g => `${g.season} ${g.scope} Gold Glove${g.mvp ? ' MVP' : ''} (${g.position})`).join('\n')
+  const acTitle = ac.map(a => `${a.season} All-${a.scope} ${a.team === '1st' ? '1st Team' : a.team === '2nd' ? '2nd Team' : 'Honorable Mention'}${a.position ? ` (${a.position})` : ''}`).join('\n')
+  const best = [...ac].sort((a, b) => (_AC_RANK[a.team] ?? 9) - (_AC_RANK[b.team] ?? 9))[0]
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {gg.length > 0 && (
+        <span title={ggTitle} className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">🥇{gg.length > 1 ? ` ${gg.length}` : ''}</span>
+      )}
+      {ac.length > 0 && (
+        <span title={acTitle} className="text-[9px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-300 whitespace-nowrap">⭐ All-Conf {best?.team || ''}</span>
+      )}
+      {t10.length > 0 && (
+        <span title={`Top 10 in their level: ${t10.join(', ')}`} className="text-[9px] font-bold px-1 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-300 whitespace-nowrap">T10 {t10.join('/')}</span>
+      )}
+    </div>
+  )
+}
+
 export default function PlayerTrackerTable({
   rows, statCols, groupLabel, sortBy, sortDir, onSort,
   infoLabel = 'Team', committedHeader = 'Committed',
 }) {
+  const hasAwards = (rows || []).some(r => r && r.awards)
   const sortArrow = (key) => {
     if (!SORTABLE.has(key)) return null
     if (sortBy !== key) return <span className="text-gray-300 ml-0.5">↕</span>
@@ -164,6 +192,11 @@ export default function PlayerTrackerTable({
             <th colSpan={statCols.length} className="bg-nw-teal text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
               {groupLabel}
             </th>
+            {hasAwards && (
+              <th className="bg-nw-teal text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center border-l border-white/10">
+                Honors
+              </th>
+            )}
           </tr>
           {/* Column header row */}
           <tr className="sticky top-[25px] z-20 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
@@ -185,6 +218,9 @@ export default function PlayerTrackerTable({
                 {col.label}{sortArrow(col.key)}
               </th>
             ))}
+            {hasAwards && (
+              <th className="px-2 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left whitespace-nowrap border-l border-gray-200 dark:border-gray-700">Awards</th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -233,6 +269,11 @@ export default function PlayerTrackerTable({
                   {fmtCell(row, col)}
                 </td>
               ))}
+              {hasAwards && (
+                <td className="px-2 py-1 border-l border-gray-100 dark:border-gray-700">
+                  <AwardsCell awards={row.awards} />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

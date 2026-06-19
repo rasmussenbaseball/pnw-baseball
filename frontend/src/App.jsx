@@ -521,7 +521,7 @@ export default function App() {
           <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
           <Route path="/graphics/wcl-leaderboards" element={<RequireAuth><WclLeaderboardGraphic /></RequireAuth>} />
-          <Route path="/graphics/portal-tracker" element={<RequireDev><TransferPortalGraphic /></RequireDev>} />
+          <Route path="/graphics/portal-tracker" element={<RequireTier minTier="recruiting"><TransferPortalGraphic /></RequireTier>} />
           <Route path="/graphics/wcl-standings" element={<RequireAuth><WclStandingsGraphic /></RequireAuth>} />
           <Route path="/graphics-hub" element={<RequireTier minTier="free"><GraphicsHub /></RequireTier>} />
           <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />

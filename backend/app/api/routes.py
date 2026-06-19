@@ -8932,6 +8932,99 @@ def _all_conference_for(player_ids):
     return out
 
 
+# ── Tracker "Awards" column: gold gloves + all-conference + top-10-in-level ──
+# Stats a tracker player can be "top 10 in their level" in. (label, sql, dir)
+_TRACKER_BAT_CATS = [
+    ("wRC+", "bs.wrc_plus", "DESC"), ("HR", "bs.home_runs", "DESC"),
+    ("SB", "bs.stolen_bases", "DESC"), ("oWAR", "bs.offensive_war", "DESC"),
+    ("AVG", "bs.batting_avg", "DESC"), ("OPS", "bs.ops", "DESC"),
+]
+_TRACKER_PIT_CATS = [
+    ("pWAR", "ps.pitching_war", "DESC"), ("FIP+", "ps.fip_plus", "DESC"),
+    ("ERA", "ps.era", "ASC"), ("K", "ps.strikeouts", "DESC"),
+    ("K%", "ps.k_pct", "DESC"), ("WHIP", "ps.whip", "ASC"),
+]
+_TOP10_CACHE = {}  # season -> (map, expires_at)
+
+
+def _top10_by_level(cur, season):
+    """{player_id: [stat labels]} for every player who is top-10 IN THEIR LEVEL
+    in any tracked stat this season. Computed league-wide once and cached
+    (30 min) — the ranking is the same for every tracker request."""
+    import time as _time
+    hit = _TOP10_CACHE.get(season)
+    if hit and hit[1] > _time.time():
+        return hit[0]
+    result = {}
+
+    def _run(table, alias, cats, min_col, min_val):
+        cols = ",\n".join(
+            f"RANK() OVER (PARTITION BY d.level ORDER BY {expr} {dr} NULLS LAST) AS r{i}"
+            for i, (_, expr, dr) in enumerate(cats))
+        cur.execute(
+            f"""
+            SELECT player_id, {", ".join(f"r{i}" for i in range(len(cats)))}
+            FROM (
+                SELECT {alias}.player_id, d.level,
+                       {cols}
+                FROM {table} {alias}
+                JOIN teams t ON {alias}.team_id = t.id
+                JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
+                WHERE {alias}.season = %s AND {alias}.{min_col} >= %s
+            ) z
+            """,
+            (season, min_val),
+        )
+        for row in cur.fetchall():
+            labels = [cats[i][0] for i in range(len(cats)) if (row[f"r{i}"] or 99) <= 10]
+            if labels:
+                result.setdefault(row["player_id"], []).extend(labels)
+
+    try:
+        _run("batting_stats", "bs", _TRACKER_BAT_CATS, "plate_appearances", 30)
+        _run("pitching_stats", "ps", _TRACKER_PIT_CATS, "innings_pitched", 10)
+    except Exception:
+        pass
+    _TOP10_CACHE[season] = (result, _time.time() + 1800)
+    return result
+
+
+def _attach_tracker_awards(cur, rows, season):
+    """Add an `awards` dict (gold_gloves / all_conference / top10) to each
+    tracker row, so coaches see honors right on the tracker."""
+    if not rows:
+        return
+    pid_set = {r.get("id") for r in rows if r.get("id")}
+    if not pid_set:
+        return
+    gg_map, ac_map = {}, {}
+    for a in _load_gold_gloves():
+        if a.get("player_id") in pid_set:
+            gg_map.setdefault(a["player_id"], []).append(
+                {"season": a["season"], "scope": a["scope"], "position": a["position"], "mvp": bool(a.get("mvp"))})
+    for h in _load_ac_honors():
+        if h.get("player_id") in pid_set:
+            ac_map.setdefault(h["player_id"], []).append(
+                {"season": h["season"], "scope": h["scope"], "team": h["team"], "position": h.get("position")})
+    t10 = _top10_by_level(cur, season)
+    for r in rows:
+        pid = r.get("id")
+        # dedup gold-glove rows (MVP listed separately) by (season, scope, position)
+        gg, seen = [], set()
+        for g in gg_map.get(pid, []):
+            k = (g["season"], g["scope"], g["position"])
+            if k in seen:
+                continue
+            seen.add(k)
+            gg.append(g)
+        r["awards"] = {
+            "gold_gloves": gg,
+            "all_conference": ac_map.get(pid, []),
+            "top10": sorted(set(t10.get(pid, []))),
+        }
+
+
 @router.get("/players/{player_id}")
 @cached_endpoint(ttl_seconds=1800)
 def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
@@ -9679,6 +9772,7 @@ def uncommitted_juco_players(
             for r in out:
                 if r.get("committed_to"):
                     r["committed_level"] = levels.get(r["committed_to"].strip().lower())
+        _attach_tracker_awards(cur, out, season)
         return out
 
 
@@ -9794,6 +9888,7 @@ def transfer_portal_players(
             if position_map.get(d["id"]):
                 d["position"] = position_map[d["id"]]
             out.append(d)
+        _attach_tracker_awards(cur, out, season)
         return out
 
 
