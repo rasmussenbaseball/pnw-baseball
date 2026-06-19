@@ -47,12 +47,14 @@ function ContribBar({ label, value }) {
   )
 }
 
-// Colored, to-scale ballpark from the five measured corners (LF/LCF/CF/RCF/RF),
-// each labeled. Grass vs turf is drawn from the surface string; the team logo
-// sits in center field. Estimated dims get a ~ prefix and a dashed wall.
-const GRASS = '#6ba253', TURF = '#33a576', DIRT = '#c0824f'
+// Colored, to-scale ballpark from the five measured corners (LF/LCF/CF/RCF/RF).
+// Real geometry: bases 90 ft apart; the infield "skin" is bounded by the 95 ft
+// grass-line arc from the pitching rubber (the rounded dirt/grass cut). Grass vs
+// turf comes from the surface string; mowing stripes radiate from home; the team
+// logo (HTML overlay) sits in center field. Estimated dims: ~ prefix + dashed wall.
+const GRASS = '#6ba253', GRASS2 = '#5c9147', TURF = '#33a576', TURF2 = '#2c9268', DIRT = '#c0824f'
 
-function FieldShape({ dims, surface, logo }) {
+function FieldShape({ dims, surface, logo, id }) {
   if (!dims || !dims.cf) {
     return <div className="text-[11px] text-gray-400 italic text-center py-6">Dimensions unavailable</div>
   }
@@ -61,68 +63,91 @@ function FieldShape({ dims, surface, logo }) {
   const s = surface || ''
   const ofTurf = /turf\s*of/i.test(s) || /turf\s*inf\/turf/i.test(s)
   const infTurf = /turf\s*inf/i.test(s)
-  const ofFill = ofTurf ? TURF : GRASS
+  const ofA = ofTurf ? TURF : GRASS
+  const ofB = ofTurf ? TURF2 : GRASS2
   const infFill = infTurf ? TURF : DIRT
 
   const corners = [
     { d: dims.lf, deg: -45 }, { d: dims.lcf, deg: -22.5 }, { d: dims.cf, deg: 0 },
     { d: dims.rcf, deg: 22.5 }, { d: dims.rf, deg: 45 },
   ].filter((c) => c.d)
-  const maxD = 420
-  const W = 190, H = 150, cx = W / 2, cy = H - 14, scale = (cy - 24) / maxD
-  const pt = (d, deg) => {
-    const r = (deg * Math.PI) / 180
-    return [cx + d * Math.sin(r) * scale, cy - d * Math.cos(r) * scale]
-  }
-  const wall = corners.map((c) => pt(c.d, c.deg))
-  const [lfx, lfy] = pt(dims.lf || dims.lcf, -45)
-  const [rfx, rfy] = pt(dims.rf || dims.rcf, 45)
-  const home = [cx, cy]
-  const b1 = pt(90, 45), b2 = pt(127.28, 0), b3 = pt(90, -45), mound = pt(60.5, 0)
-  const diamond = [home, b1, b2, b3].map((p) => p.join(',')).join(' ')
+  const W = 200, H = 172, cx = W / 2, cy = H - 16, scale = (cy - 28) / 420
+  const fx = (x) => cx + x * scale
+  const fy = (y) => cy - y * scale
+  const pol = (d, deg) => { const r = (deg * Math.PI) / 180; return [fx(d * Math.sin(r)), fy(d * Math.cos(r))] }
+  const wall = corners.map((c) => pol(c.d, c.deg))
+  const home = [fx(0), fy(0)]
+  const fair = [home, ...wall].map((p) => p.join(',')).join(' ')
+  const mound = [fx(0), fy(60.5)], moundR = 95 * scale
+  const b1 = pol(90, 45), b2 = pol(127.28, 0), b3 = pol(90, -45)
   const stroke = estimated ? '#9ca3af' : '#0e8aa0'
-  const [logoX, logoY] = pt(250, 0)
-  const lr = 13
+  const cpId = `pf-clip-${id}`
+  const [lx, ly] = pol(255, 0)
+
+  const stripes = []
+  const N = 10
+  for (let i = 0; i < N; i++) {
+    const p1 = pol(470, -45 + i * (90 / N))
+    const p2 = pol(470, -45 + (i + 1) * (90 / N))
+    stripes.push(<polygon key={i} points={`${home.join(',')} ${p1.join(',')} ${p2.join(',')}`} fill={i % 2 ? ofB : ofA} />)
+  }
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
-      {/* outfield grass/turf */}
-      <polygon points={[home, ...wall].map((p) => p.join(',')).join(' ')} fill={ofFill} />
-      {/* foul lines */}
-      <line x1={cx} y1={cy} x2={lfx} y2={lfy} stroke="rgba(255,255,255,0.7)" strokeWidth="0.8" />
-      <line x1={cx} y1={cy} x2={rfx} y2={rfy} stroke="rgba(255,255,255,0.7)" strokeWidth="0.8" />
-      {/* infield diamond (dirt or turf) */}
-      <polygon points={diamond} fill={infFill} />
-      {/* dirt cutouts on turf infields; plain mound on dirt */}
-      {infTurf && <circle cx={mound[0]} cy={mound[1]} r="4.5" fill={DIRT} />}
-      {infTurf && <circle cx={cx} cy={cy} r="5" fill={DIRT} />}
-      <circle cx={mound[0]} cy={mound[1]} r="1.6" fill={infTurf ? '#fff' : 'rgba(255,255,255,0.55)'} />
-      {/* bases */}
-      {[b1, b2, b3].map((p, i) => <rect key={i} x={p[0] - 1.3} y={p[1] - 1.3} width="2.6" height="2.6" fill="#fff" transform={`rotate(45 ${p[0]} ${p[1]})`} />)}
-      <circle cx={cx} cy={cy} r="1.8" fill="#fff" />
-      {/* outfield wall */}
-      <polyline points={wall.map((p) => p.join(',')).join(' ')} fill="none"
-        stroke={stroke} strokeWidth="1.8" strokeDasharray={estimated ? '4 2' : 'none'} strokeLinejoin="round" />
-      {/* team logo in center field */}
+    <div className="relative w-full">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
+        <defs><clipPath id={cpId}><polygon points={fair} /></clipPath></defs>
+        <g clipPath={`url(#${cpId})`}>
+          {stripes}
+          {/* infield dirt/turf skin, bounded by the 95 ft grass-line arc */}
+          <circle cx={mound[0]} cy={mound[1]} r={moundR} fill={infFill} />
+          {infTurf ? (
+            <>
+              <path d={`M ${home.join(' ')} L ${b1.join(' ')} L ${b2.join(' ')} L ${b3.join(' ')} Z`} fill="none" stroke={DIRT} strokeWidth={6 * scale} />
+              <circle cx={home[0]} cy={home[1]} r={13 * scale} fill={DIRT} />
+              <circle cx={mound[0]} cy={mound[1]} r={9 * scale} fill={DIRT} />
+              {[b1, b2, b3].map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r={7 * scale} fill={DIRT} />)}
+            </>
+          ) : (
+            <circle cx={mound[0]} cy={mound[1]} r="1.6" fill="rgba(255,255,255,0.45)" />
+          )}
+          {/* bases + home */}
+          {[b1, b2, b3].map((p, i) => <rect key={i} x={p[0] - 1.6} y={p[1] - 1.6} width="3.2" height="3.2" fill="#fff" transform={`rotate(45 ${p[0]} ${p[1]})`} />)}
+          <circle cx={home[0]} cy={home[1]} r="1.9" fill="#fff" />
+          {/* foul lines */}
+          <line x1={home[0]} y1={home[1]} x2={wall[0][0]} y2={wall[0][1]} stroke="rgba(255,255,255,0.65)" strokeWidth="0.8" />
+          <line x1={home[0]} y1={home[1]} x2={wall[4][0]} y2={wall[4][1]} stroke="rgba(255,255,255,0.65)" strokeWidth="0.8" />
+        </g>
+        {/* outfield wall */}
+        <polyline points={wall.map((p) => p.join(',')).join(' ')} fill="none"
+          stroke={stroke} strokeWidth="1.8" strokeDasharray={estimated ? '4 2' : 'none'} strokeLinejoin="round" />
+        {/* corner distance labels */}
+        {corners.map((c, i) => {
+          const [px, py] = wall[i]
+          const r = (c.deg * Math.PI) / 180
+          const tx = px + Math.sin(r) * 9
+          const ty = py - Math.cos(r) * 9 + 2.5
+          const anchor = c.deg < -5 ? 'end' : c.deg > 5 ? 'start' : 'middle'
+          return (
+            <text key={i} x={tx} y={ty} textAnchor={anchor} fontSize="9" fill="currentColor"
+              className="text-gray-600 dark:text-gray-300 font-semibold">{tilde}{c.d}</text>
+          )
+        })}
+      </svg>
+      {/* team logo overlaid in center field */}
       {logo && (
-        <>
-          <circle cx={logoX} cy={logoY} r={lr} fill="#fff" opacity="0.9" />
-          <image href={logo} x={logoX - lr + 1.5} y={logoY - lr + 1.5} width={2 * lr - 3} height={2 * lr - 3} preserveAspectRatio="xMidYMid meet" />
-        </>
+        <img
+          src={logo}
+          alt=""
+          className="absolute pointer-events-none"
+          style={{
+            width: '14%', left: `${(lx / W) * 100}%`, top: `${(ly / H) * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            filter: 'drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff)',
+          }}
+          onError={(e) => { e.target.style.display = 'none' }}
+        />
       )}
-      {/* corner distance labels */}
-      {corners.map((c, i) => {
-        const [px, py] = wall[i]
-        const r = (c.deg * Math.PI) / 180
-        const lx = px + Math.sin(r) * 9
-        const ly = py - Math.cos(r) * 9 + 2.5
-        const anchor = c.deg < -5 ? 'end' : c.deg > 5 ? 'start' : 'middle'
-        return (
-          <text key={i} x={lx} y={ly} textAnchor={anchor} fontSize="8.5" fill="currentColor"
-            className="text-gray-600 dark:text-gray-300 font-semibold">{tilde}{c.d}</text>
-        )
-      })}
-    </svg>
+    </div>
   )
 }
 
@@ -151,7 +176,7 @@ function ParkCard({ park }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 mt-3 items-center">
-        <FieldShape dims={dims} surface={park.surface} logo={park.logo_url} />
+        <FieldShape dims={dims} surface={park.surface} logo={park.logo_url} id={park.team_id} />
         <div className="space-y-1">
           <ContribBar label="Elevation" value={c.elev} />
           <ContribBar label="Dimensions" value={c.dim} />
