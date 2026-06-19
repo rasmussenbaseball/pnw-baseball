@@ -10806,7 +10806,7 @@ def get_park_factors(
         team_info = {}
         cur.execute("""
             SELECT t.id as team_id, t.name as team_name, t.short_name,
-                   t.mascot, t.state, t.city,
+                   t.mascot, t.state, t.city, t.logo_url,
                    c.id as conference_id, c.name as conference_name,
                    d.id as division_id, d.name as division_name
             FROM teams t
@@ -10838,6 +10838,7 @@ def get_park_factors(
         park["division_name"] = info.get("division_name", "")
         park["division_id"] = info.get("division_id")
         park["conference_id"] = info.get("conference_id")
+        park["logo_url"] = info.get("logo_url")
         result.append(park)
 
     # Sort by park factor (highest first) as default
