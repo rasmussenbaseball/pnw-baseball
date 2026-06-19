@@ -684,7 +684,7 @@
       "city": "Tacoma",
       "state": "WA",
       "elevation_ft": 381,
-      "surface": "Dirt INF/Grass OF",
+      "surface": "Turf INF/Grass OF",
       "wind": "Light SW",
       "avg_temp_f": 59,
       "dimensions": {
@@ -849,7 +849,7 @@
       "city": "Longview",
       "state": "WA",
       "elevation_ft": 23,
-      "surface": "Dirt INF/Grass OF",
+      "surface": "Turf INF/Grass OF",
       "wind": "Light N",
       "avg_temp_f": 60.5,
       "dimensions": {
@@ -882,7 +882,7 @@
       "city": "Springfield",
       "state": "OR",
       "elevation_ft": 430,
-      "surface": "Turf INF/Grass OF",
+      "surface": "Turf INF/Turf OF",
       "wind": "Light",
       "avg_temp_f": 62,
       "dimensions": {
@@ -915,7 +915,7 @@
       "city": "Keizer",
       "state": "OR",
       "elevation_ft": 154,
-      "surface": "Dirt INF/Grass OF",
+      "surface": "Turf INF/Turf OF",
       "wind": "Light",
       "avg_temp_f": 62,
       "dimensions": {
@@ -1509,7 +1509,7 @@
       "city": "Eugene",
       "state": "OR",
       "elevation_ft": 430,
-      "surface": "Dirt INF/Grass OF",
+      "surface": "Turf INF/Turf OF",
       "wind": "Light SW",
       "avg_temp_f": 62,
       "dimensions": {
