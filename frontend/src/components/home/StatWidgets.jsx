@@ -2,8 +2,7 @@
  * Homepage stat widgets (June 2026 redesign) — five compact cards built on
  * the shared WidgetShell system:
  *
- *   StandingsWidget   — final conference standings, one carousel slide per conference
- *   WarLeadersWidget  — top hitters/pitchers by WAR, one slide per level
+ *   StandingsWidget   — final standings: one slide per non-D1 conference, plus a single PNW D1 slide
  *   StatLeadersWidget — mixed old-school + advanced leaders, Spring/WCL toggle
  *   RecordsWidget     — PNW record book highlights
  *   CpiWidget         — WCL Composite Power Index top 6
@@ -76,15 +75,26 @@ function CategoryBlock({ cat }) {
 export function StandingsWidget() {
   const { data, loading, error } = useApi('/standings', { season: CURRENT_SEASON })
 
-  // Same set StandingsPage renders: every conference that has teams.
-  // Slide order per Nate: the PNW-local conferences lead (D3 first, then
-  // NAIA, D2, NWAC) and the national D1 conferences come last.
+  // Slide order per Nate: the PNW-local conferences lead (D3 first, then NAIA,
+  // D2, NWAC). D1 comes last as a SINGLE slide showing every PNW D1 team across
+  // conferences, ranked by overall win % (Oregon St. is independent, so there's
+  // no shared conference standing to sort by).
   const LEVEL_ORDER = { D3: 0, NAIA: 1, D2: 2, JUCO: 3, D1: 4 }
-  const conferences = (data?.conferences || [])
-    .filter(c => (c.teams || []).length > 0)
+  const conferences = (data?.conferences || []).filter(c => (c.teams || []).length > 0)
+
+  const nonD1 = conferences
+    .filter(c => c.division_level !== 'D1')
     .sort((a, b) => (LEVEL_ORDER[a.division_level] ?? 9) - (LEVEL_ORDER[b.division_level] ?? 9))
 
-  const slides = conferences.map(conf => (
+  const d1Teams = []
+  conferences
+    .filter(c => c.division_level === 'D1')
+    .forEach(c => (c.teams || []).forEach(t => { if (t.is_pnw) d1Teams.push(t) }))
+  d1Teams.sort((a, b) => (b.win_pct ?? 0) - (a.win_pct ?? 0))
+
+  const rec = (w, l) => (w || l) ? `${w}-${l}` : '-'
+
+  const confSlides = nonD1.map(conf => (
     <div key={conf.conference_id}>
       <div className="flex items-center gap-1.5 mb-1.5">
         <LevelChip level={conf.division_level} />
@@ -94,10 +104,6 @@ export function StandingsWidget() {
       </div>
       <div>
         {conf.teams.slice(0, 9).map((team, i) => {
-          const conf_rec = (team.conf_wins || team.conf_losses)
-            ? `${team.conf_wins}-${team.conf_losses}` : '-'
-          const overall = (team.wins || team.losses)
-            ? `${team.wins}-${team.losses}` : '-'
           const inner = (
             <>
               <span className="w-4 text-[10px] font-bold text-gray-400 tabular-nums shrink-0">{i + 1}</span>
@@ -108,8 +114,8 @@ export function StandingsWidget() {
               <span className="flex-1 min-w-0 text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">
                 {team.short_name}
               </span>
-              <span className="w-10 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{conf_rec}</span>
-              <span className="w-10 text-right text-[11px] tabular-nums text-gray-400">{overall}</span>
+              <span className="w-10 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{rec(team.conf_wins, team.conf_losses)}</span>
+              <span className="w-10 text-right text-[11px] tabular-nums text-gray-400">{rec(team.wins, team.losses)}</span>
             </>
           )
           // Champion (top team) gets the subtle gold left border.
@@ -128,130 +134,46 @@ export function StandingsWidget() {
     </div>
   ))
 
+  const d1Slide = d1Teams.length ? (
+    <div key="d1-pnw">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <LevelChip level="D1" />
+        <span className="text-[11px] font-bold text-gray-700 dark:text-gray-200 truncate">PNW Division I</span>
+      </div>
+      <div>
+        {d1Teams.map((team, i) => (
+          <Link key={team.id} to={`/team/${team.id}`}
+            className="flex items-center gap-2 py-1 px-1 -mx-1 rounded hover:bg-nw-cream dark:hover:bg-gray-700/50">
+            <span className="w-4 text-[10px] font-bold text-gray-400 tabular-nums shrink-0">{i + 1}</span>
+            {team.logo_url
+              ? <img src={team.logo_url} alt="" loading="lazy" className="w-5 h-5 object-contain shrink-0"
+                  onError={(e) => { e.target.style.visibility = 'hidden' }} />
+              : <span className="w-5 shrink-0" />}
+            <span className="flex-1 min-w-0">
+              <span className="block text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{team.short_name}</span>
+              <span className="block text-[9px] text-gray-400 truncate">{team.conference_abbrev || team.conference_name || 'Independent'}</span>
+            </span>
+            <span className="w-10 text-right text-[11px] tabular-nums text-gray-400">{rec(team.conf_wins, team.conf_losses)}</span>
+            <span className="w-10 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{rec(team.wins, team.losses)}</span>
+          </Link>
+        ))}
+      </div>
+      <div className="flex justify-end gap-4 mt-1 text-[8px] uppercase tracking-wider text-gray-400">
+        <span>Conf</span>
+        <span>Overall</span>
+      </div>
+    </div>
+  ) : null
+
+  const slides = d1Slide ? [...confSlides, d1Slide] : confSlides
+
   return (
     <WidgetCard title={`Final ${CURRENT_SEASON} Standings`} to="/standings" linkLabel="Full standings">
       {loading
         ? <WidgetSkeleton rows={7} />
         : (error || !slides.length)
           ? <WidgetNote>Standings are unavailable right now.</WidgetNote>
-          : <Carousel slides={slides} ariaLabel="Conference standings" auto />}
-    </WidgetCard>
-  )
-}
-
-// ════════════════════════════════════════════════════════════════════
-// 2. WarLeadersWidget
-// ════════════════════════════════════════════════════════════════════
-
-const WAR_LEVELS = ['D1', 'D2', 'D3', 'NAIA', 'NWAC']
-
-// 10 fetches (5 levels x batting+pitching) after a divisions lookup — done
-// with plain fetch inside one effect rather than calling useApi in a loop.
-function useWarLeadersByLevel() {
-  const [state, setState] = useState({ loading: true, error: null, levels: [] })
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      try {
-        const dRes = await fetch(`${API_BASE}/divisions`)
-        if (!dRes.ok) throw new Error(`divisions ${dRes.status}`)
-        const divisions = await dRes.json()
-
-        const top3 = async (kind, divisionId, sortBy) => {
-          const qs = new URLSearchParams({
-            season: String(CURRENT_SEASON),
-            division_id: String(divisionId),
-            sort_by: sortBy,
-            sort_dir: 'desc',
-            qualified: 'true',
-            limit: '3',
-          })
-          const r = await fetch(`${API_BASE}/leaderboards/${kind}?${qs.toString()}`)
-          if (!r.ok) return []
-          const j = await r.json()
-          return j?.data || []
-        }
-
-        const levels = await Promise.all(WAR_LEVELS.map(async (label) => {
-          // The divisions table stores NWAC as level 'JUCO'.
-          const dbLevel = label === 'NWAC' ? 'JUCO' : label
-          const div = (divisions || []).find(d => d.level === dbLevel)
-          if (!div) return { label, hitters: [], pitchers: [] }
-          const [hitters, pitchers] = await Promise.all([
-            top3('batting', div.id, 'offensive_war'),
-            top3('pitching', div.id, 'pitching_war'),
-          ])
-          return { label, hitters, pitchers }
-        }))
-
-        if (!cancelled) setState({ loading: false, error: null, levels })
-      } catch (err) {
-        if (!cancelled) setState({ loading: false, error: err.message, levels: [] })
-      }
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [])
-
-  return state
-}
-
-export function WarLeadersWidget() {
-  const { loading, error, levels } = useWarLeadersByLevel()
-
-  const slides = levels
-    .filter(lvl => lvl.hitters.length || lvl.pitchers.length)
-    .map(lvl => (
-      <div key={lvl.label}>
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <LevelChip level={lvl.label === 'NWAC' ? 'JUCO' : lvl.label} />
-          <span className="text-[11px] font-bold text-gray-700 dark:text-gray-200">{lvl.label}</span>
-        </div>
-        {lvl.hitters.length > 0 && (
-          <div className="mb-1.5">
-            <GroupLabel>Top hitters</GroupLabel>
-            {lvl.hitters.map((p, i) => (
-              <PlayerRow
-                key={p.player_id}
-                rank={i + 1}
-                logo={p.logo_url}
-                name={`${p.first_name} ${p.last_name}`}
-                sub={p.team_short}
-                value={p.offensive_war != null ? Number(p.offensive_war).toFixed(1) : '-'}
-                to={`/player/${p.player_id}`}
-              />
-            ))}
-          </div>
-        )}
-        {lvl.pitchers.length > 0 && (
-          <div>
-            <GroupLabel>Top pitchers</GroupLabel>
-            {lvl.pitchers.map((p, i) => (
-              <PlayerRow
-                key={p.player_id}
-                rank={i + 1}
-                logo={p.logo_url}
-                name={`${p.first_name} ${p.last_name}`}
-                sub={p.team_short}
-                value={p.pitching_war != null ? Number(p.pitching_war).toFixed(1) : '-'}
-                to={`/player/${p.player_id}`}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    ))
-
-  return (
-    <WidgetCard title="WAR Leaders by Level" to="/war" linkLabel="Full WAR board">
-      {loading
-        ? <WidgetSkeleton rows={7} />
-        : (error || !slides.length)
-          ? <WidgetNote>WAR leaders are unavailable right now.</WidgetNote>
-          : <Carousel slides={slides} ariaLabel="WAR leaders by level" />}
+          : <Carousel slides={slides} ariaLabel="Conference standings" />}
     </WidgetCard>
   )
 }

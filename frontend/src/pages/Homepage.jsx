@@ -18,7 +18,7 @@
 import { useEffect, useState } from 'react'
 import { CURRENT_SEASON } from '../lib/seasons'
 import {
-  StandingsWidget, WarLeadersWidget,
+  StandingsWidget,
   RecordsWidget, CpiWidget,
 } from '../components/home/StatWidgets'
 import { LeadersBoard } from '../components/home/LeadersBoard'
@@ -58,7 +58,6 @@ export default function Homepage() {
 
 const WIDGETS = {
   standings:  <StandingsWidget />,
-  war:        <WarLeadersWidget />,
   records:    <RecordsWidget />,
   draft:      <DraftBoardWidget />,
   grid:       <GridPreviewWidget />,
@@ -74,15 +73,15 @@ const WIDGETS = {
 const COLUMN_LAYOUTS = {
   3: [
     ['standings', 'records', 'gm', 'percentile'],
-    ['war', 'draft', 'articles', 'cpi', 'pbp'],
+    ['draft', 'articles', 'cpi', 'pbp'],
     ['grid', 'recruiting', 'portal'],
   ],
   2: [
     ['standings', 'draft', 'gm', 'pbp', 'percentile'],
-    ['war', 'records', 'grid', 'articles', 'recruiting', 'cpi', 'portal'],
+    ['records', 'grid', 'articles', 'recruiting', 'cpi', 'portal'],
   ],
   1: [
-    ['standings', 'war', 'records', 'draft', 'grid',
+    ['standings', 'records', 'draft', 'grid',
      'articles', 'recruiting', 'cpi', 'gm', 'portal', 'pbp', 'percentile'],
   ],
 }
