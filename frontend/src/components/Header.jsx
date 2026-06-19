@@ -133,7 +133,7 @@ const NAV = [
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons',
         requires: 'free' },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats',
-        requires: 'premium' },
+        requires: 'free' },
       { to: '/draftboard', label: 'Draft Board', desc: 'PNW college baseball MLB draft board',
         requires: 'premium' },
       { to: '/coaching/juco-tracker', label: 'JUCO Tracker',

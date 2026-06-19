@@ -439,7 +439,7 @@ export default function App() {
           <Route path="/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/portal/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
-          <Route path="/park-factors" element={<RequireTier minTier="premium"><ParkFactors /></RequireTier>} />
+          <Route path="/park-factors" element={<RequireTier minTier="free"><ParkFactors /></RequireTier>} />
 
           {/* Team Scouting + Enhanced Scouting moved into the portal; redirect
               old top-level URLs so any external links and bookmarks still work. */}

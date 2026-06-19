@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParkFactors } from '../hooks/useApi'
-import { ParkBuilder, BattedBallLab, PitchLab, ParkMap, TravelScout, scoreHex } from './parkFactorsTools'
+import { BuilderSuite, ParkMap, TravelScout, scoreHex } from './parkFactorsTools'
 import { airDensityRatio, simulateBattedBall } from '../lib/parkPhysics'
 
 // ───────────────────────── helpers ─────────────────────────
@@ -416,7 +416,7 @@ export default function ParkFactors() {
       </p>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-        {[['leaderboard', 'Leaderboard'], ['builder', 'Park Builder'], ['labs', 'Batted-Ball & Pitch Labs'], ['map', 'Map'], ['travel', 'Travel Scout']].map(([k, label]) => (
+        {[['leaderboard', 'Leaderboard'], ['builder', 'Builder & Labs'], ['map', 'Map'], ['travel', 'Travel Scout']].map(([k, label]) => (
           <button
             key={k}
             type="button"
@@ -435,21 +435,7 @@ export default function ParkFactors() {
       {loading && <div className="text-gray-400 dark:text-gray-500 animate-pulse py-12 text-center">Loading park factors…</div>}
       {error && <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">Failed to load park factors.</div>}
 
-      {section === 'builder' && !loading && !error && (
-        <div className="space-y-2">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Set elevation, outfield depth, temperature, and wind — or load a real park — to project a Park Index.</p>
-          <ParkBuilder teams={teams} />
-        </div>
-      )}
-      {section === 'labs' && !loading && !error && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400">First-order physics calibrated to Statcast norms: how a park's air changes carry distance and pitch movement.</p>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <BattedBallLab teams={teams} />
-            <PitchLab teams={teams} />
-          </div>
-        </div>
-      )}
+      {section === 'builder' && !loading && !error && <BuilderSuite teams={teams} />}
       {section === 'map' && !loading && !error && <ParkMap teams={teams} />}
       {section === 'travel' && !loading && !error && (
         <div className="space-y-2">

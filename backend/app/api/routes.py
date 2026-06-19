@@ -10785,7 +10785,7 @@ def get_park_factors(
     state: Optional[str] = Query(None),
     division_id: Optional[int] = Query(None),
     conference_id: Optional[int] = Query(None),
-    _user: str = Depends(require_tier("premium")),
+    _user: str = Depends(require_tier("free")),
 ):
     """
     Return park factor data for all PNW teams.
