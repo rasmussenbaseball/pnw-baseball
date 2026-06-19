@@ -63,8 +63,12 @@ LEVEL_STR = {
 
 HPOS = ['C', '1B', '2B', 'SS', '3B', 'RF', 'CF', 'LF', 'DH']
 N_PITCHERS = 5
-WEIGHT_H = 0.55
-WEIGHT_P = 0.45
+# Elite pitching is scarce and top-heavy (a handful of aces on a few teams),
+# while good hitting is deep — so a perfect staff was the real wall on a sweep.
+# Lean the blend a little more toward hitting so a strong-but-not-ace staff
+# still leaves a 56-0 in reach.
+WEIGHT_H = 0.60
+WEIGHT_P = 0.40
 
 
 def norm_pos(raw):
@@ -351,13 +355,13 @@ def main():
     # impossible (even 99th-pct engaged play landed ~53). Anchor the sweep halfway
     # between the 99th-pct engaged draft (g99) and the perfect roster (best_total),
     # so a great, lucky build can run the table while it stays the rarest result.
-    sweep_total = g99 + 0.3 * (best_total - g99)
+    sweep_total = g99 + 0.2 * (best_total - g99)
     # Win curve = linear interpolation through monotonic (total, wins) anchors.
     raw_anchors = [
         (worst_total, 2.0),     # careless / worst-possible bottoms out
         (mean, 28.0),           # a random roster is roughly .500
-        (g50, 44.0),            # typical engaged play
-        (g90, 52.0),            # a strong, well-built roster
+        (g50, 46.0),            # typical engaged play
+        (g90, 54.0),            # a strong, well-built roster
         (max(sweep_total, g90 + 1), 56.0),  # elite + lucky -> sweep
     ]
     anchors = []
