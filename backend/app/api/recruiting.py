@@ -1688,36 +1688,48 @@ def _transfer_commits(cur):
             "dest_team_id": tid, "source": "juco",
         })
 
-    # Portal tracker — committed entries from the curated JSON. Entries WITH a
-    # player_id are PNW players we track (stats → WAR). Entries WITHOUT one are
-    # incoming transfers from outside our DB (out-of-region commits to a PNW
-    # school); they carry inline name/from and have no stats, so they list
-    # unrated.
-    portal_entries = [p for p in _load_transfer_portal() if p.get("committed_to")]
-    pid_list = [p["player_id"] for p in portal_entries if p.get("player_id")]
-    prow = {}
-    if pid_list:
-        cur.execute(
-            """SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
-                      p.headshot_url, t.short_name AS prev_school
-               FROM players p JOIN teams t ON t.id = p.team_id
-               WHERE p.id = ANY(%s)""", (pid_list,))
-        prow = {r["id"]: r for r in cur.fetchall()}
-    for pj in portal_entries:
-        tid = _resolve_committed_team_id(cur, pj["committed_to"], cache, pnw_ids)
+    # Four-year PNW players committed to a PNW school (the portal tracker).
+    # DB-driven (players.is_committed + committed_to), mirroring the JUCO loop,
+    # so commitments set via the Commitment Editor show here immediately.
+    cur.execute(
+        """SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
+                  p.committed_to, p.headshot_url, t.short_name AS prev_school
+           FROM players p
+           JOIN teams t ON t.id = p.team_id
+           JOIN conferences c ON t.conference_id = c.id
+           JOIN divisions d ON c.division_id = d.id
+           WHERE d.level <> 'JUCO' AND COALESCE(p.is_committed, 0) = 1
+             AND p.committed_to IS NOT NULL AND p.committed_to <> ''""")
+    for r in cur.fetchall():
+        tid = _resolve_committed_team_id(cur, r["committed_to"], cache, pnw_ids)
         if not tid:
             continue
-        pid = pj.get("player_id")
-        r = prow.get(pid) if pid else None
-        full = f'{r["first_name"]} {r["last_name"]}'.strip() if r else None
         out.append({
-            "player_id": pid,
-            "name": pj.get("name") or full or "Unknown",
-            "position": pj.get("position") or (r["position"] if r else None),
-            "year": r["year_in_school"] if r else None,
-            "previous_school": pj.get("from") or (r["prev_school"] if r else None),
-            "headshot_url": r["headshot_url"] if r else None,
+            "player_id": r["id"],
+            "name": f'{r["first_name"]} {r["last_name"]}'.strip(),
+            "position": r["position"], "year": r["year_in_school"],
+            "previous_school": r["prev_school"], "headshot_url": r["headshot_url"],
             "dest_team_id": tid, "source": "portal",
+        })
+
+    # Out-of-region incoming transfers — players not in our DB (e.g. Carter
+    # Johnstone from Vanderbilt → Oregon). Name-only, no stats, so they list
+    # unrated. Managed via the Commitment Editor (incoming_transfers table);
+    # the same rows power the destination team page's "Incoming Transfers".
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS incoming_transfers (
+            id SERIAL PRIMARY KEY, name TEXT NOT NULL, from_school TEXT,
+            to_team_id INTEGER NOT NULL, position TEXT, added_by TEXT,
+            added_at TIMESTAMP NOT NULL DEFAULT now())
+    """)
+    cur.execute("SELECT name, from_school, to_team_id, position FROM incoming_transfers")
+    for r in cur.fetchall():
+        out.append({
+            "player_id": None,
+            "name": r["name"],
+            "position": r["position"], "year": None,
+            "previous_school": r["from_school"], "headshot_url": None,
+            "dest_team_id": r["to_team_id"], "source": "portal",
         })
     return out
 
