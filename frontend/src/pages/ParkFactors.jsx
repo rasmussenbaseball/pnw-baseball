@@ -311,6 +311,7 @@ function FilterPill({ active, onClick, children }) {
 
 export default function ParkFactors() {
   const { data, loading, error } = useParkFactors()
+  const [section, setSection] = useState('leaderboard') // 'leaderboard' | 'tools'
   const [view, setView] = useState('cards')
   const [div, setDiv] = useState('all')
 
@@ -328,10 +329,42 @@ export default function ParkFactors() {
         weighted by sample size.
       </p>
 
-      {loading && <div className="text-gray-400 dark:text-gray-500 animate-pulse py-12 text-center">Loading park factors…</div>}
-      {error && <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">Failed to load park factors.</div>}
+      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700">
+        {[['leaderboard', 'Leaderboard'], ['tools', 'Interactive Tools']].map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setSection(k)}
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 transition-colors ${
+              section === k
+                ? 'border-nw-teal text-nw-teal'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-pnw-slate dark:hover:text-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {!loading && !error && (
+      {section === 'tools' && (
+        <div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Kai Malloch's full interactive tool — park builder (drag the fences, set elevation/temp/wind),
+            batted-ball & pitch labs, the regional map, and road-trip views. Indices match the leaderboard.
+          </p>
+          <iframe
+            src="/park-factors-tool.html"
+            title="Park Factors interactive tool"
+            className="w-full rounded-xl border border-gray-200 dark:border-gray-700"
+            style={{ height: 'calc(100vh - 230px)', minHeight: 760, background: '#0b1220' }}
+          />
+        </div>
+      )}
+
+      {section === 'leaderboard' && loading && <div className="text-gray-400 dark:text-gray-500 animate-pulse py-12 text-center">Loading park factors…</div>}
+      {section === 'leaderboard' && error && <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">Failed to load park factors.</div>}
+
+      {section === 'leaderboard' && !loading && !error && (
         <>
           <SummaryBar teams={teams} />
 
