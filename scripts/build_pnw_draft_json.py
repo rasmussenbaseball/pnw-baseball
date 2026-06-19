@@ -351,7 +351,7 @@ def main():
     # impossible (even 99th-pct engaged play landed ~53). Anchor the sweep halfway
     # between the 99th-pct engaged draft (g99) and the perfect roster (best_total),
     # so a great, lucky build can run the table while it stays the rarest result.
-    sweep_total = g99 + 0.5 * (best_total - g99)
+    sweep_total = g99 + 0.3 * (best_total - g99)
     # Win curve = linear interpolation through monotonic (total, wins) anchors.
     raw_anchors = [
         (worst_total, 2.0),     # careless / worst-possible bottoms out
