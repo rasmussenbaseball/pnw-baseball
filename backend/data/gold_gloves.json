@@ -1,6 +1,6 @@
 {
-  "_comment": "Curated Gold Glove award winners shown on player profiles. Each entry: season (year), scope (e.g. 'All-NWAC', 'NWAC North', 'CCC', 'ABCA/Rawlings JUCO'), position, player name + team_short for resolution, and optional mvp:true. player_id is filled in by scripts/resolve_gold_gloves.py \u2014 null means unresolved (will not surface on a profile until matched).",
-  "updated": "2026-06-16",
+  "_comment": "Curated Gold Glove award winners shown on player profiles. Each entry: season (year), scope (e.g. 'All-NWAC', 'NWAC North', 'CCC', 'ABCA/Rawlings JUCO'), position, player name + team_short for resolution, and optional mvp:true. player_id is filled in by scripts/resolve_gold_gloves.py — null means unresolved (will not surface on a profile until matched).",
+  "updated": "2026-06-18",
   "awards": [
     {
       "season": 2026,
@@ -558,6 +558,46 @@
       "name": "Lathan Haywood",
       "team_short": "Edmonds",
       "player_id": 147
+    },
+    {
+      "season": 2026,
+      "scope": "ABCA/Rawlings Pacific Region",
+      "position": "C",
+      "name": "Cooper Barrow",
+      "team_short": "Edmonds",
+      "player_id": 897
+    },
+    {
+      "season": 2026,
+      "scope": "ABCA/Rawlings Pacific Region",
+      "position": "CF",
+      "name": "Diego Escandon",
+      "team_short": "Columbia Basin",
+      "player_id": 46
+    },
+    {
+      "season": 2026,
+      "scope": "ABCA/Rawlings Pacific Region",
+      "position": "P",
+      "name": "Cooper Richter",
+      "team_short": "Bellevue",
+      "player_id": 618
+    },
+    {
+      "season": 2026,
+      "scope": "ABCA/Rawlings NAIA",
+      "position": "CF",
+      "name": "Michael O'Daniel",
+      "team_short": "OIT",
+      "player_id": 2790
+    },
+    {
+      "season": 2026,
+      "scope": "ABCA/Rawlings NCAA D1",
+      "position": "P",
+      "name": "Nick Lewis",
+      "team_short": "Wash. St.",
+      "player_id": 3658
     }
   ]
 }
