@@ -97,6 +97,7 @@ export default function PnwPickle() {
   const [answer, setAnswer] = useState(null)
   const [guesses, setGuesses] = useState([])
   const [won, setWon] = useState(false)
+  const [gaveUp, setGaveUp] = useState(false)
 
   const toggleYear = (y) => {
     setYears((prev) => {
@@ -128,6 +129,7 @@ export default function PnwPickle() {
       setAnswer(ans)
       setGuesses([])
       setWon(false)
+      setGaveUp(false)
       setPhase('playing')
     } catch (err) {
       setError(err.message)
@@ -147,11 +149,19 @@ export default function PnwPickle() {
     }
   }
 
+  const giveUp = () => {
+    if (phase !== 'playing') return
+    setGaveUp(true)
+    setWon(false)
+    setPhase('done')
+  }
+
   const playAgain = () => {
     setPhase('setup')
     setGuesses([])
     setAnswer(null)
     setError(null)
+    setGaveUp(false)
   }
 
   const guessedUids = useMemo(() => new Set(guesses.map(uid)), [guesses])
@@ -180,15 +190,26 @@ export default function PnwPickle() {
       </p>
 
       {phase === 'playing' && (
-        <GuessInput
-          pool={pool}
-          guessedUids={guessedUids}
-          onPick={submitGuess}
-        />
+        <>
+          <GuessInput
+            pool={pool}
+            guessedUids={guessedUids}
+            onPick={submitGuess}
+          />
+          <div className="flex justify-end -mt-2 mb-3">
+            <button
+              type="button"
+              onClick={giveUp}
+              className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 underline underline-offset-2"
+            >
+              Give up & reveal answer
+            </button>
+          </div>
+        </>
       )}
 
       {phase === 'done' && (
-        <ResultBanner won={won} answer={answer} count={guesses.length} playAgain={playAgain} />
+        <ResultBanner won={won} gaveUp={gaveUp} answer={answer} count={guesses.length} playAgain={playAgain} />
       )}
 
       <GuessGrid guesses={guesses} answer={answer} />
@@ -420,7 +441,7 @@ function statLine(p) {
   return hit
 }
 
-function ResultBanner({ won, answer, count, playAgain }) {
+function ResultBanner({ won, gaveUp, answer, count, playAgain }) {
   return (
     <div className={`mb-4 p-4 rounded-xl border text-center ${
       won
@@ -428,7 +449,7 @@ function ResultBanner({ won, answer, count, playAgain }) {
         : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
     }`}>
       <div className={`text-lg font-bold ${won ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-        {won ? `🥒 Got it in ${count}!` : 'Out of guesses!'}
+        {won ? `🥒 Got it in ${count}!` : gaveUp ? 'You gave up. The answer was:' : 'Out of guesses!'}
       </div>
       <div className="flex items-center justify-center gap-2 mt-2">
         {answer.logo && <img src={answer.logo} alt="" className="w-6 h-6 object-contain" onError={(e) => { e.target.style.display = 'none' }} />}

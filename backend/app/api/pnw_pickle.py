@@ -24,6 +24,12 @@ pnw_pickle_router = APIRouter(prefix="/pnw-pickle")
 QUALIFIED_PA_PER_GAME = 2.0
 QUALIFIED_IP_PER_GAME = 0.75
 
+# Flat fallback thresholds for seasons that predate game-results data (the
+# `games` table only covers ~2023+, so older seasons have no team-games count
+# to scale the per-game rule against). ~2 PA / 0.75 IP over a ~40-game floor.
+FLAT_MIN_PA = 80
+FLAT_MIN_IP = 30
+
 # Class year → numeric rank, so "close" clues and arrows work. Redshirt
 # variants collapse onto their base year.
 CLASS_RANK = {
@@ -125,7 +131,7 @@ def get_pool(
             JOIN teams t ON t.id = bs.team_id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            JOIN team_games tg ON tg.season = bs.season AND tg.team_id = bs.team_id
+            LEFT JOIN team_games tg ON tg.season = bs.season AND tg.team_id = bs.team_id
             LEFT JOIN player_seasons psn ON psn.player_id = bs.player_id
                  AND psn.season = bs.season AND psn.team_id = bs.team_id
             WHERE bs.offensive_war > 0
@@ -133,11 +139,12 @@ def get_pool(
               AND p.bats IS NOT NULL AND p.bats <> ''
               AND COALESCE(NULLIF(psn.year_in_school, ''), NULLIF(p.year_in_school, '')) IS NOT NULL
               AND p.first_name IS NOT NULL AND p.last_name IS NOT NULL
-              AND bs.plate_appearances >= %(pa_rate)s * tg.g
+              AND bs.plate_appearances >=
+                  CASE WHEN tg.g IS NOT NULL THEN %(pa_rate)s * tg.g ELSE %(flat_pa)s END
               {level_clause}
               {season_clause}
             """,
-            {**params, "pa_rate": QUALIFIED_PA_PER_GAME},
+            {**params, "pa_rate": QUALIFIED_PA_PER_GAME, "flat_pa": FLAT_MIN_PA},
         )
         for r in cur.fetchall():
             key = (r["player_id"], r["season"], r["team_id"])
@@ -185,7 +192,7 @@ def get_pool(
             JOIN teams t ON t.id = ps.team_id
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
-            JOIN team_games tg ON tg.season = ps.season AND tg.team_id = ps.team_id
+            LEFT JOIN team_games tg ON tg.season = ps.season AND tg.team_id = ps.team_id
             LEFT JOIN player_seasons psn ON psn.player_id = ps.player_id
                  AND psn.season = ps.season AND psn.team_id = ps.team_id
             WHERE ps.pitching_war > 0
@@ -195,11 +202,12 @@ def get_pool(
               AND p.first_name IS NOT NULL AND p.last_name IS NOT NULL
               AND (FLOOR(ps.innings_pitched) * 3
                    + ROUND((ps.innings_pitched - FLOOR(ps.innings_pitched)) * 10))
-                  >= %(ip_rate)s * 3 * tg.g
+                  >= CASE WHEN tg.g IS NOT NULL THEN %(ip_rate)s * 3 * tg.g
+                          ELSE %(flat_ip)s * 3 END
               {level_clause}
               {season_clause_p}
             """,
-            {**params, "ip_rate": QUALIFIED_IP_PER_GAME},
+            {**params, "ip_rate": QUALIFIED_IP_PER_GAME, "flat_ip": FLAT_MIN_IP},
         )
         for r in cur.fetchall():
             key = (r["player_id"], r["season"], r["team_id"])
