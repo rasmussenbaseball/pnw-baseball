@@ -258,6 +258,76 @@ export function PitchLab({ teams }) {
   )
 }
 
+// ─────────────────────────── TRAVEL SCOUT ───────────────────────────
+// How the environment changes when a team travels from its home park to an
+// opponent's — index swing, carry & break deltas, Magnus flip, surface change.
+export function TravelScout({ teams }) {
+  const DIVS = ['NWAC', 'NAIA', 'NCAA D1', 'NCAA D2', 'NCAA D3']
+  const [div, setDiv] = useState('NWAC')
+  const inDiv = useMemo(() => teams.filter((t) => t.division === div).sort((a, b) => a.short_name.localeCompare(b.short_name)), [teams, div])
+  const [homeName, setHomeName] = useState('')
+  const [roadName, setRoadName] = useState('')
+  const home = inDiv.find((t) => t.full_name === homeName) || inDiv[0]
+  const road = inDiv.find((t) => t.full_name === roadName && t.full_name !== home?.full_name)
+    || inDiv.find((t) => t.full_name !== home?.full_name)
+  if (!home || !road) return <div className="text-sm text-gray-400 py-8 text-center">Pick a division with at least two parks.</div>
+
+  const carry = (p) => simulateBattedBall(100, 28, airDensityRatio(p.elevation_ft || 0, p.avg_temp_f || 60), 0, 400).carry
+  const brk = (p) => pitchMovement(95, 2400, 0.92, airDensityRatio(p.elevation_ft || 0, p.avg_temp_f || 60))
+  const swing = (road.park_index || 0) - (home.park_index || 0)
+  const dCarry = carry(road) - carry(home)
+  const dBrk = (100 * (brk(road) - brk(home))) / brk(home)
+  const magFlip = (road.elevation_ft >= 2500) !== (home.elevation_ft >= 2500)
+
+  const Sel = ({ value, onChange, label }) => (
+    <label className="flex-1 min-w-0">
+      <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">{label}</div>
+      <select value={value} onChange={(e) => onChange(e.target.value)}
+        className="w-full text-sm px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+        {inDiv.map((t) => <option key={t.team_id} value={t.full_name}>{t.short_name}</option>)}
+      </select>
+    </label>
+  )
+  const Row = ({ label, home: h, road: r, delta, good }) => (
+    <div className="grid grid-cols-3 items-center text-sm py-1.5 border-b border-gray-100 dark:border-gray-700/60">
+      <span className="text-gray-500 dark:text-gray-400 text-xs">{label}</span>
+      <span className="text-center tabular-nums text-gray-700 dark:text-gray-300">{h} <span className="text-gray-300 dark:text-gray-600">→</span> {r}</span>
+      <span className={`text-right font-bold tabular-nums ${good === null ? 'text-gray-500' : good ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>{delta}</span>
+    </div>
+  )
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 max-w-2xl">
+      <h3 className="font-bold text-pnw-slate dark:text-gray-100 mb-3">Travel Scout</h3>
+      <div className="flex flex-wrap gap-1 mb-3">
+        {DIVS.map((d) => (
+          <button key={d} type="button" onClick={() => { setDiv(d); setHomeName(''); setRoadName('') }}
+            className={`text-xs font-semibold px-2 py-1 rounded border ${div === d
+              ? 'bg-pnw-forest text-white border-pnw-forest'
+              : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>{d.replace('NCAA ', '')}</button>
+        ))}
+      </div>
+      <div className="flex gap-3 mb-3">
+        <Sel value={home.full_name} onChange={setHomeName} label="Home park" />
+        <Sel value={road.full_name} onChange={setRoadName} label="Road park" />
+      </div>
+      <div className="flex items-center justify-center gap-2 mb-3">
+        <span className="text-xs text-gray-500 dark:text-gray-400">Run-environment swing</span>
+        <span className={`text-2xl font-bold ${swing >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>{swing >= 0 ? '+' : ''}{swing.toFixed(1)}</span>
+      </div>
+      <Row label="Park Index" home={home.park_index?.toFixed(0)} road={road.park_index?.toFixed(0)} delta={`${swing >= 0 ? '+' : ''}${swing.toFixed(1)}`} good={swing >= 0} />
+      <Row label="100mph/28° carry" home={`${carry(home).toFixed(0)}'`} road={`${carry(road).toFixed(0)}'`} delta={`${dCarry >= 0 ? '+' : ''}${dCarry.toFixed(0)} ft`} good={dCarry >= 0} />
+      <Row label="Breaking-ball move" home={`${brk(home).toFixed(1)}"`} road={`${brk(road).toFixed(1)}"`} delta={`${dBrk >= 0 ? '+' : ''}${dBrk.toFixed(0)}%`} good={dBrk < 0} />
+      <Row label="Surface" home={home.surface || '—'} road={road.surface || '—'} delta={(home.surface || '') === (road.surface || '') ? 'same' : 'changes'} good={null} />
+      {magFlip && (
+        <div className="mt-3 text-[11px] font-semibold px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 inline-block">
+          ⚡ Magnus flip — one of these is a 2,500+ ft altitude park
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────── REGIONAL MAP ───────────────────────────
 export function ParkMap({ teams }) {
   const [hover, setHover] = useState(null)

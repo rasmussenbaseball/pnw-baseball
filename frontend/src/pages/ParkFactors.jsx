@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useParkFactors } from '../hooks/useApi'
-import { ParkBuilder, BattedBallLab, PitchLab, ParkMap } from './parkFactorsTools'
+import { ParkBuilder, BattedBallLab, PitchLab, ParkMap, TravelScout, scoreHex } from './parkFactorsTools'
+import { airDensityRatio, simulateBattedBall } from '../lib/parkPhysics'
 
 // ───────────────────────── helpers ─────────────────────────
 const DIV_ORDER = ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'NWAC']
@@ -55,7 +56,7 @@ function ContribBar({ label, value }) {
 // logo (HTML overlay) sits in center field. Estimated dims: ~ prefix + dashed wall.
 const GRASS = '#6ba253', GRASS2 = '#5c9147', TURF = '#33a576', TURF2 = '#2c9268', DIRT = '#c0824f'
 
-function FieldShape({ dims, surface, logo, id }) {
+function FieldShape({ dims, surface, logo, id, elevation, temp }) {
   if (!dims || !dims.cf) {
     return <div className="text-[11px] text-gray-400 italic text-center py-6">Dimensions unavailable</div>
   }
@@ -92,6 +93,12 @@ function FieldShape({ dims, surface, logo, id }) {
     const p2 = pol(470, -45 + (i + 1) * (90 / N))
     stripes.push(<polygon key={i} points={`${home.join(',')} ${p1.join(',')} ${p2.join(',')}`} fill={i % 2 ? ofB : ofA} />)
   }
+  // Dotted arc = a 100 mph / 28° barrel's carry in this park's air.
+  const carryFt = (elevation != null && temp != null)
+    ? simulateBattedBall(100, 28, airDensityRatio(elevation, temp), 0, dims.cf).carry : null
+  const carryArc = carryFt
+    ? [-45, -33.75, -22.5, -11.25, 0, 11.25, 22.5, 33.75, 45].map((d) => pol(Math.min(carryFt, 415), d).join(',')).join(' ')
+    : null
 
   return (
     <div className="relative w-full">
@@ -118,6 +125,8 @@ function FieldShape({ dims, surface, logo, id }) {
           <line x1={home[0]} y1={home[1]} x2={wall[0][0]} y2={wall[0][1]} stroke="rgba(255,255,255,0.65)" strokeWidth="0.8" />
           <line x1={home[0]} y1={home[1]} x2={wall[4][0]} y2={wall[4][1]} stroke="rgba(255,255,255,0.65)" strokeWidth="0.8" />
         </g>
+        {/* 100mph/28° carry arc in this park's air */}
+        {carryArc && <polyline points={carryArc} fill="none" stroke="#f97316" strokeWidth="1.1" strokeDasharray="3 2" opacity="0.85" />}
         {/* outfield wall */}
         <polyline points={wall.map((p) => p.join(',')).join(' ')} fill="none"
           stroke={stroke} strokeWidth="1.8" strokeDasharray={estimated ? '4 2' : 'none'} strokeLinejoin="round" />
@@ -183,7 +192,7 @@ function ParkCard({ park }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 mt-3 items-center">
-        <FieldShape dims={dims} surface={park.surface} logo={park.logo_url} id={park.team_id} />
+        <FieldShape dims={dims} surface={park.surface} logo={park.logo_url} id={park.team_id} elevation={park.elevation_ft} temp={park.avg_temp_f} />
         <div className="space-y-1">
           <ContribBar label="Elevation" value={c.elev} />
           <ContribBar label="Dimensions" value={c.dim} />
@@ -243,6 +252,74 @@ function SummaryBar({ teams }) {
       <Cell label="Magnus zones" name={`${s.magnus} parks`} sub="2,500+ ft elevation" cls="text-amber-600 dark:text-amber-400" />
       <Cell label="Smallest field" name={s.small?.short_name} sub={`${s.small?.dimensions?.avg_of} ft avg`} />
       <Cell label="Warmest park" name={s.warm?.short_name} sub={`${s.warm?.avg_temp_f}°F avg`} />
+    </div>
+  )
+}
+
+function ScoreDistributionStrip({ teams }) {
+  const idxs = teams.map((t) => t.park_index).filter((v) => v != null)
+  if (!idxs.length) return null
+  const min = Math.floor(Math.min(...idxs)) - 1
+  const max = Math.ceil(Math.max(...idxs)) + 1
+  const z = {
+    pitcher: idxs.filter((v) => v <= 97).length,
+    neutral: idxs.filter((v) => v > 97 && v < 103).length,
+    hitter: idxs.filter((v) => v >= 103).length,
+  }
+  const pos = (v) => `${((v - min) / (max - min)) * 100}%`
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 mb-4">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wide mb-2">
+        <span className="text-gray-400 dark:text-gray-500">Score distribution</span>
+        <span><span className="text-blue-600 dark:text-blue-400 font-bold">{z.pitcher}P</span> · <span className="text-gray-400">{z.neutral}N</span> · <span className="text-red-600 dark:text-red-400 font-bold">{z.hitter}H</span></span>
+      </div>
+      <div className="relative h-6">
+        <div className="absolute left-0 right-0 top-1/2 h-px bg-gray-200 dark:bg-gray-700" />
+        <div className="absolute top-0 bottom-0 w-px bg-gray-300 dark:bg-gray-600" style={{ left: pos(100) }} />
+        {teams.map((t) => t.park_index != null && (
+          <div key={t.team_id} title={`${t.short_name} · ${t.park_index.toFixed(0)}`}
+            className="absolute top-1 bottom-1 w-[2px] rounded-full"
+            style={{ left: pos(t.park_index), background: scoreHex(t.park_index) }} />
+        ))}
+      </div>
+      <div className="flex justify-between text-[9px] text-gray-400 dark:text-gray-500 mt-1"><span>{min}</span><span>100 = avg</span><span>{max}</span></div>
+    </div>
+  )
+}
+
+function Rolodex({ teams }) {
+  const BANDS = ['Strong hitter', 'Hitter', 'Neutral', 'Pitcher', 'Strong pitcher']
+  const byBand = {}
+  teams.forEach((t) => { const b = tilt(t.park_factor_pct).label; (byBand[b] = byBand[b] || []).push(t) })
+  return (
+    <div className="space-y-4">
+      {BANDS.map((b) => {
+        const list = (byBand[b] || []).sort((a, c) => c.park_index - a.park_index)
+        if (!list.length) return null
+        const cls = tilt(list[0].park_factor_pct).cls
+        return (
+          <div key={b}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className={`text-[11px] font-bold uppercase tracking-wide ${cls}`}>{b}</span>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">{list.length} park{list.length > 1 ? 's' : ''}</span>
+              <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {list.map((t) => {
+                const tt = tilt(t.park_factor_pct)
+                return (
+                  <div key={t.team_id} className="shrink-0 w-28 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 text-center">
+                    {t.logo_url && <img src={t.logo_url} alt="" className="w-7 h-7 object-contain mx-auto mb-1" onError={(e) => { e.target.style.visibility = 'hidden' }} />}
+                    <div className="text-[11px] font-semibold text-pnw-slate dark:text-gray-100 truncate">{t.short_name}</div>
+                    <div className={`text-lg font-bold leading-none ${tt.cls}`}>{t.park_index?.toFixed(0)}</div>
+                    <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">{t.division?.replace('NCAA ', '')}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -339,7 +416,7 @@ export default function ParkFactors() {
       </p>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-        {[['leaderboard', 'Leaderboard'], ['builder', 'Park Builder'], ['labs', 'Batted-Ball & Pitch Labs'], ['map', 'Map']].map(([k, label]) => (
+        {[['leaderboard', 'Leaderboard'], ['builder', 'Park Builder'], ['labs', 'Batted-Ball & Pitch Labs'], ['map', 'Map'], ['travel', 'Travel Scout']].map(([k, label]) => (
           <button
             key={k}
             type="button"
@@ -374,12 +451,19 @@ export default function ParkFactors() {
         </div>
       )}
       {section === 'map' && !loading && !error && <ParkMap teams={teams} />}
+      {section === 'travel' && !loading && !error && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400">How the environment shifts when a team leaves home for a conference road park — index swing, carry & break, surface, and altitude.</p>
+          <TravelScout teams={teams} />
+        </div>
+      )}
 
       {section === 'leaderboard' && !loading && !error && (
         <>
           <SummaryBar teams={teams} />
+          <ScoreDistributionStrip teams={teams} />
 
-          <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="flex flex-wrap items-center gap-2 mb-4 mt-4">
             <div className="flex flex-wrap gap-1">
               <FilterPill active={div === 'all'} onClick={() => setDiv('all')}>All</FilterPill>
               {divisions.map((d) => (
@@ -388,17 +472,18 @@ export default function ParkFactors() {
             </div>
             <div className="ml-auto flex gap-1">
               <FilterPill active={view === 'cards'} onClick={() => setView('cards')}>Cards</FilterPill>
+              <FilterPill active={view === 'rolodex'} onClick={() => setView('rolodex')}>Rolodex</FilterPill>
               <FilterPill active={view === 'table'} onClick={() => setView('table')}>Table</FilterPill>
             </div>
           </div>
 
-          {view === 'cards' ? (
+          {view === 'cards' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {filtered.map((p) => <ParkCard key={p.team_id} park={p} />)}
             </div>
-          ) : (
-            <ParkTable teams={filtered} />
           )}
+          {view === 'rolodex' && <Rolodex teams={filtered} />}
+          {view === 'table' && <ParkTable teams={filtered} />}
 
           <div className="mt-6 text-xs text-gray-500 dark:text-gray-400 max-w-3xl leading-relaxed">
             <h2 className="text-sm font-bold text-pnw-slate dark:text-gray-200 mb-1">How it works</h2>
