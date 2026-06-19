@@ -127,14 +127,17 @@ export default function PnwPickle() {
       const resp = await fetch(`/api/v1/pnw-pickle/pool?level=${level}&difficulty=${difficulty}${seasonsParam}`)
       if (!resp.ok) throw new Error(`Request failed (${resp.status})`)
       const data = await resp.json()
-      const players = data.players || []
-      if (players.length < 5) {
-        setError(`Only ${players.length} players match that combo. Pick more years or a broader level.`)
+      // answers = qualified, positive-WAR players (the hidden player is one of
+      // these). guesses = every player in the pool (the search box options).
+      const answers = data.answers || []
+      const guesses = data.guesses || []
+      if (answers.length < 3) {
+        setError(`Only ${answers.length} qualified players match that combo. Pick more years, a broader level, or an easier difficulty.`)
         setPhase('setup')
         return
       }
-      const ans = players[Math.floor(Math.random() * players.length)]
-      setPool(players)
+      const ans = answers[Math.floor(Math.random() * answers.length)]
+      setPool(guesses)
       setAnswer(ans)
       setGuesses([])
       setWon(false)
