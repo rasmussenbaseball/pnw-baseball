@@ -102,7 +102,7 @@ export function StandingsWidget() {
           {conf.conference_name}
         </span>
       </div>
-      <div>
+      <div className="flex flex-col justify-between h-[272px]">
         {conf.teams.slice(0, 9).map((team, i) => {
           const inner = (
             <>
@@ -140,7 +140,7 @@ export function StandingsWidget() {
         <LevelChip level="D1" />
         <span className="text-[11px] font-bold text-gray-700 dark:text-gray-200 truncate">PNW Division I</span>
       </div>
-      <div>
+      <div className="flex flex-col justify-between h-[272px]">
         {d1Teams.map((team, i) => (
           <Link key={team.id} to={`/team/${team.id}`}
             className="flex items-center gap-2 py-1 px-1 -mx-1 rounded hover:bg-nw-cream dark:hover:bg-gray-700/50">
