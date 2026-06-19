@@ -24,15 +24,14 @@ function StatCell({ cat }) {
         {cat.label}
       </div>
       <div className="space-y-1">
-        {cat.leaders.length === 0 && <div className="text-xs text-gray-300 dark:text-gray-600">—</div>}
+        {cat.leaders.length === 0 && <div className="text-[11px] text-gray-300 dark:text-gray-600">—</div>}
         {cat.leaders.map((l, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-xs leading-tight">
-            <span className="text-gray-400 dark:text-gray-500 w-2 shrink-0 text-[10px]">{i + 1}</span>
+          <div key={i} className="flex items-center gap-1 text-[11px] leading-tight tracking-tight">
             {l.logo
-              ? <img src={l.logo} alt="" className="w-4 h-4 object-contain shrink-0" onError={(e) => { e.target.style.visibility = 'hidden' }} />
-              : <span className="w-4 shrink-0" />}
+              ? <img src={l.logo} alt="" className="w-3.5 h-3.5 object-contain shrink-0" onError={(e) => { e.target.style.visibility = 'hidden' }} />
+              : <span className="w-3.5 shrink-0" />}
             <span className="font-medium text-pnw-slate dark:text-gray-200 truncate" title={l.name}>{abbr(l.name)}</span>
-            <span className="ml-auto font-bold tabular-nums text-gray-700 dark:text-gray-300 shrink-0">{l.display}</span>
+            <span className="ml-auto pl-0.5 font-bold tabular-nums text-gray-700 dark:text-gray-300 shrink-0">{l.display}</span>
           </div>
         ))}
       </div>
@@ -44,7 +43,7 @@ function Side({ title, cats }) {
   return (
     <div>
       <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">{title}</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-x-4 gap-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-x-2.5 gap-y-3">
         {cats.map((c) => <StatCell key={c.key} cat={c} />)}
       </div>
     </div>
