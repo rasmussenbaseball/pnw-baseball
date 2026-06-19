@@ -474,6 +474,13 @@ export default function ParkFactors() {
           <div className="mt-6 text-xs text-gray-500 dark:text-gray-400 max-w-3xl leading-relaxed">
             <h2 className="text-sm font-bold text-pnw-slate dark:text-gray-200 mb-1">How it works</h2>
             <p>{data?.methodology}</p>
+            <p className="mt-2">
+              <span className="font-bold text-amber-600 dark:text-amber-400">⚡ Magnus zone</span> — parks at
+              2,500+ ft elevation (4 of them, all inland/altitude sites). The thinner air does two things: fly
+              balls carry noticeably farther, and pitches break less, because the Magnus effect that bends a
+              spinning ball weakens as air density drops. Both tilt these parks toward hitters, which is why
+              they carry a ⚡ badge and show up amber in the labs.
+            </p>
             <p className="mt-2 text-gray-400 dark:text-gray-500">
               Updated {data?.last_updated}. Park Factors model built by Kai Malloch (intern).
             </p>
