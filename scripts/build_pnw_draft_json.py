@@ -360,8 +360,8 @@ def main():
     raw_anchors = [
         (worst_total, 2.0),     # careless / worst-possible bottoms out
         (mean, 28.0),           # a random roster is roughly .500
-        (g50, 46.0),            # typical engaged play
-        (g90, 54.0),            # a strong, well-built roster
+        (g50, 52.0),            # typical engaged play wins big
+        (g90, 55.0),            # a strong, well-built roster
         (max(sweep_total, g90 + 1), 56.0),  # elite + lucky -> sweep
     ]
     anchors = []
