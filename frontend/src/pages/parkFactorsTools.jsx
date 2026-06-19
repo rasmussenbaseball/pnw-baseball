@@ -281,6 +281,16 @@ const PITCHES = [
 ]
 const ELEVS = [0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4108]
 
+// Spin axis (degrees, 0 = pure ride/backspin) → clock face, RHP perspective.
+function clockLabel(deg) {
+  const hoursFloat = ((deg % 360) + 360) % 360 / 30 // 30° per hour, 0° = 12:00
+  let h = Math.floor(hoursFloat)
+  let m = Math.round((hoursFloat - h) * 60)
+  if (m === 60) { m = 0; h += 1 }
+  h = h % 12
+  return `${h === 0 ? 12 : h}:${String(m).padStart(2, '0')}`
+}
+
 function PitchPanel({ elev, temp }) {
   const [name, setName] = useState('4-Seam')
   const [velo, setVelo] = useState(95)
@@ -313,7 +323,7 @@ function PitchPanel({ elev, temp }) {
         <div className="space-y-2">
           <Slider label="Velocity" value={velo} min={70} max={102} onChange={setVelo} display={`${velo} mph`} />
           <Slider label="Spin rate" value={rpm} min={400} max={3200} step={50} onChange={setRpm} display={`${rpm.toLocaleString()} rpm`} />
-          <Slider label="Spin axis (clock)" value={axis} min={0} max={359} onChange={setAxis} display={axisHint(axis)} />
+          <Slider label="Spin axis" value={axis} min={0} max={359} onChange={setAxis} display={`${clockLabel(axis)} · ${axisHint(axis)}`} />
           <Slider label="Spin efficiency" value={eff} min={5} max={100} onChange={setEff} display={`${eff}%`} />
         </div>
         <div className="flex flex-col items-center justify-center gap-1">
@@ -328,15 +338,16 @@ function PitchPanel({ elev, temp }) {
       {/* movement at every elevation */}
       <div className="mt-3">
         <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">Movement at every elevation</div>
-        <div className="flex items-end gap-1 h-24">
+        <div className="flex items-end gap-1">
           {ELEVS.map((e, i) => {
-            const h = (elevMoves[i] / maxMv) * 100
+            const barPx = Math.max(3, Math.round((elevMoves[i] / maxMv) * 90))
             const inMagnus = e >= 2500
             const isHere = e === nearRow
             return (
               <div key={e} className="flex-1 flex flex-col items-center justify-end" title={`${e.toLocaleString()} ft: ${elevMoves[i].toFixed(1)} in`}>
-                <div className="w-full rounded-t" style={{ height: `${h}%`, background: isHere ? '#13b1c6' : inMagnus ? '#f59e0b' : '#cbd5e1', minHeight: 2 }} />
-                <div className="text-[7px] text-gray-400 dark:text-gray-500 mt-0.5">{e >= 4108 ? '4.1k*' : e >= 1000 ? `${(e / 1000)}k` : e}</div>
+                <div className="text-[8px] font-semibold text-gray-500 dark:text-gray-400 tabular-nums">{elevMoves[i].toFixed(1)}</div>
+                <div className="w-full rounded-t" style={{ height: `${barPx}px`, background: isHere ? '#13b1c6' : inMagnus ? '#f59e0b' : '#cbd5e1' }} />
+                <div className="text-[7px] text-gray-400 dark:text-gray-500 mt-0.5">{e >= 4108 ? '4.1k*' : e >= 1000 ? `${e / 1000}k` : e}</div>
               </div>
             )
           })}
