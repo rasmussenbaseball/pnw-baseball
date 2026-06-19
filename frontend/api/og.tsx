@@ -1867,8 +1867,16 @@ export default async function handler(req) {
         // rendered as an all-blank hitter.
         const posUp = (player.position || '').toUpperCase();
         const posPitcher = ['P', 'RHP', 'LHP', 'SP', 'RP'].includes(posUp);
-        const isPitcher =
+        let isPitcher =
           pitching.length > 0 && (batting.length === 0 || posPitcher);
+        // Two-way override: ?role=batting|pitching lets the caller pick which
+        // side to render (auto-detect otherwise defaults two-way players to
+        // hitting). Validate against spring OR summer data on that side.
+        const roleParam = (url.searchParams.get('role') || '').toLowerCase();
+        const hasPit = pitching.length > 0 || (data.summer_pitching || []).length > 0;
+        const hasBat = batting.length > 0 || (data.summer_batting || []).length > 0;
+        if (roleParam === 'pitching' && hasPit) isPitcher = true;
+        else if (roleParam === 'batting' && hasBat) isPitcher = false;
         const list = isPitcher ? pitching : batting;
         // Latest season is highest "season" value
         const latest =
@@ -1976,7 +1984,12 @@ export default async function handler(req) {
         const pitching = data.pitching || [];
         const posUp = (p.position || '').toUpperCase();
         const posPitcher = ['P', 'RHP', 'LHP', 'SP', 'RP'].includes(posUp);
-        const isPitcher = pitching.length > 0 && (batting.length === 0 || posPitcher);
+        let isPitcher = pitching.length > 0 && (batting.length === 0 || posPitcher);
+        // Two-way override: ?role=batting|pitching (auto-detect otherwise
+        // defaults two-way summer players like an RF/P to hitting).
+        const roleParam = (url.searchParams.get('role') || '').toLowerCase();
+        if (roleParam === 'pitching' && pitching.length > 0) isPitcher = true;
+        else if (roleParam === 'batting' && batting.length > 0) isPitcher = false;
         const list = isPitcher ? pitching : batting;
         let selected = list.length
           ? [...list].sort((a, b) => Number(b.season || 0) - Number(a.season || 0))[0]

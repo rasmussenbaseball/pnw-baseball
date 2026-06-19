@@ -406,6 +406,26 @@ function AwardBadge({ rank, category, value, type, format, variant = 'award', te
 }
 
 
+// Hitting/Pitching toggle for two-way players. Auto-detect defaults to hitting,
+// so "Hitting" is active when role is null.
+function RoleToggle({ role, setRole }) {
+  const active = role || 'batting'
+  return (
+    <div className="inline-flex bg-gray-200 rounded-lg p-0.5">
+      <button
+        type="button"
+        onClick={() => setRole('batting')}
+        className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${active === 'batting' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+      >Hitting</button>
+      <button
+        type="button"
+        onClick={() => setRole('pitching')}
+        className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${active === 'pitching' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+      >Pitching</button>
+    </div>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MAIN PAGE COMPONENT
 // ═══════════════════════════════════════════════════════════════
@@ -420,11 +440,24 @@ export default function PlayerGraphic() {
   const [teamInfo, setTeamInfo] = useState(null)
   const [gSel, setGSel] = useState(null) // graphic season selection {season, kind}
   const [summerId, setSummerId] = useState(null) // summer-only player selection
+  const [graphicRole, setGraphicRole] = useState(null) // null=auto, 'batting'|'pitching' (two-way override)
+  const [summerTwoWay, setSummerTwoWay] = useState(false)
   const onPick = (p) => {
     setGSel(null)
+    setGraphicRole(null)
     if (p && p._summer) { setSummerId(p.id); setPlayerId(null) }
     else { setPlayerId(p?.id ?? p); setSummerId(null) }
   }
+
+  // Detect a two-way summer-only player so we can offer a hitting/pitching toggle.
+  useEffect(() => {
+    setSummerTwoWay(false)
+    if (!summerId) return
+    fetch(`/api/v1/summer/players/${summerId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setSummerTwoWay((d.batting || []).length > 0 && (d.pitching || []).length > 0) })
+      .catch(() => {})
+  }, [summerId])
   const cardRef = useRef(null)
 
   const percentileSeason = selectedSeason === 'career' ? 'career' : selectedSeason === 'latest' ? null : selectedSeason
@@ -559,11 +592,13 @@ export default function PlayerGraphic() {
 
       {/* ═══ SUMMER-ONLY PLAYER GRAPHIC ═══ */}
       {summerId && (() => {
-        const imgUrl = `/api/og?t=summerplayer&id=${summerId}&format=portrait`
+        const roleQ = graphicRole ? `&role=${graphicRole}` : ''
+        const imgUrl = `/api/og?t=summerplayer&id=${summerId}&format=portrait${roleQ}`
         return (
           <div className="flex flex-col items-center gap-3">
+            {summerTwoWay && <RoleToggle role={graphicRole} setRole={setGraphicRole} />}
             <img src={imgUrl} alt="Player graphic" style={{ width: 'min(540px, 100%)', borderRadius: 12, border: '1px solid #e5e7eb' }} />
-            <a href={imgUrl} download={`player-summer-${summerId}.png`} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-nw-teal text-white text-sm font-semibold hover:opacity-90">
+            <a href={imgUrl} download={`player-summer-${summerId}-${graphicRole || 'auto'}.png`} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-nw-teal text-white text-sm font-semibold hover:opacity-90">
               📸 Download graphic
             </a>
             <p className="text-xs text-gray-400">Summer (WCL) player. On mobile, long-press the image to save.</p>
@@ -585,20 +620,28 @@ export default function PlayerGraphic() {
           }),
         ]
         const sel = gSel || opts[0]
+        // Two-way for the selected season type → offer a hitting/pitching toggle.
+        const twoWay = sel && sel.kind === 'summer'
+          ? (summerBatting.length > 0 && summerPitching.length > 0)
+          : (hasBatting && hasPitching)
+        const roleQ = graphicRole ? `&role=${graphicRole}` : ''
         const imgUrl = (sel && sel.kind === 'summer' && sel.summerPid)
-          ? `/api/og?t=summerplayer&id=${sel.summerPid}&format=portrait&season=${sel.season}`
-          : `/api/og?t=player&id=${playerId}&format=portrait${sel ? `&season=${sel.season}&kind=${sel.kind}` : ''}`
+          ? `/api/og?t=summerplayer&id=${sel.summerPid}&format=portrait&season=${sel.season}${roleQ}`
+          : `/api/og?t=player&id=${playerId}&format=portrait${sel ? `&season=${sel.season}&kind=${sel.kind}` : ''}${roleQ}`
         return (
           <div className="flex flex-col items-center gap-3">
-            {opts.length > 1 && (
-              <select
-                value={sel ? sel.key : ''}
-                onChange={e => setGSel(opts.find(o => o.key === e.target.value) || null)}
-                className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
-              >
-                {opts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-            )}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {opts.length > 1 && (
+                <select
+                  value={sel ? sel.key : ''}
+                  onChange={e => setGSel(opts.find(o => o.key === e.target.value) || null)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
+                >
+                  {opts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
+              )}
+              {twoWay && <RoleToggle role={graphicRole} setRole={setGraphicRole} />}
+            </div>
             <img
               src={imgUrl}
               alt="Player graphic"
