@@ -47,17 +47,20 @@ function ContribBar({ label, value }) {
   )
 }
 
-// To-scale outfield shape from the five measured corners (LF, LCF, CF, RCF, RF).
+// To-scale outfield shape from the five measured corners (LF, LCF, CF, RCF, RF),
+// each labeled with its distance. Estimated dims are prefixed with ~ and drawn dashed.
 function FieldShape({ dims }) {
   if (!dims || !dims.cf) {
     return <div className="text-[11px] text-gray-400 italic text-center py-6">Dimensions unavailable</div>
   }
+  const estimated = dims.status === 'estimated'
+  const tilde = estimated ? '~' : ''
   const corners = [
     { d: dims.lf, deg: -45 }, { d: dims.lcf, deg: -22.5 }, { d: dims.cf, deg: 0 },
     { d: dims.rcf, deg: 22.5 }, { d: dims.rf, deg: 45 },
   ].filter((c) => c.d)
   const maxD = 420
-  const W = 150, H = 120, cx = W / 2, cy = H - 8, scale = (H - 18) / maxD
+  const W = 180, H = 132, cx = W / 2, cy = H - 12, scale = (H - 34) / maxD
   const pt = (d, deg) => {
     const r = (deg * Math.PI) / 180
     return [cx + d * Math.sin(r) * scale, cy - d * Math.cos(r) * scale]
@@ -65,7 +68,6 @@ function FieldShape({ dims }) {
   const wall = corners.map((c) => pt(c.d, c.deg))
   const [lfx, lfy] = pt(dims.lf || dims.lcf, -45)
   const [rfx, rfy] = pt(dims.rf || dims.rcf, 45)
-  const estimated = dims.status === 'estimated'
   const stroke = estimated ? '#9ca3af' : '#13b1c6'
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
@@ -74,7 +76,17 @@ function FieldShape({ dims }) {
       <polyline points={wall.map((p) => p.join(',')).join(' ')} fill="rgba(19,177,198,0.08)"
         stroke={stroke} strokeWidth="1.6" strokeDasharray={estimated ? '4 2' : 'none'} strokeLinejoin="round" />
       <circle cx={cx} cy={cy} r="2.4" fill="#00687a" />
-      <text x={cx} y={pt(dims.cf, 0)[1] - 3} textAnchor="middle" fontSize="8" fill="currentColor" className="text-gray-500 dark:text-gray-400">{dims.cf}</text>
+      {corners.map((c, i) => {
+        const [px, py] = wall[i]
+        const r = (c.deg * Math.PI) / 180
+        const lx = px + Math.sin(r) * 9
+        const ly = py - Math.cos(r) * 9 + 2.5
+        const anchor = c.deg < -5 ? 'end' : c.deg > 5 ? 'start' : 'middle'
+        return (
+          <text key={i} x={lx} y={ly} textAnchor={anchor} fontSize="8.5" fill="currentColor"
+            className="text-gray-600 dark:text-gray-300 font-semibold">{tilde}{c.d}</text>
+        )
+      })}
     </svg>
   )
 }
@@ -209,7 +221,7 @@ function ParkTable({ teams }) {
                 </td>
                 {COLS.map((c) => (
                   <td key={c.k} className={`px-3 py-2 text-right tabular-nums ${c.k === 'park_index' ? `font-bold ${t.cls}` : 'text-gray-700 dark:text-gray-300'}`}>
-                    {c.fmt(c.get ? c.get(p) : p[c.k])}
+                    {c.k === 'avg_of' && p.dimensions?.status === 'estimated' ? '~' : ''}{c.fmt(c.get ? c.get(p) : p[c.k])}
                   </td>
                 ))}
               </tr>

@@ -100,7 +100,7 @@
         "rcf": 370,
         "rf": 328,
         "avg_of": 359.2,
-        "status": "confirmed"
+        "status": "estimated"
       },
       "home_road_split_pct": 25.9,
       "home_road_games": 155,
@@ -1156,7 +1156,7 @@
         "rcf": 375,
         "rf": 330,
         "avg_of": 360,
-        "status": "confirmed"
+        "status": "estimated"
       },
       "home_road_split_pct": -1.5,
       "home_road_games": 160,
@@ -1453,7 +1453,7 @@
         "rcf": 365,
         "rf": 330,
         "avg_of": 355,
-        "status": "confirmed"
+        "status": "estimated"
       },
       "home_road_split_pct": -5.1,
       "home_road_games": 152,
@@ -1486,7 +1486,7 @@
         "rcf": 360,
         "rf": 335,
         "avg_of": 354,
-        "status": "confirmed"
+        "status": "estimated"
       },
       "home_road_split_pct": -3.5,
       "home_road_games": 84,
@@ -1882,7 +1882,7 @@
         "rcf": 370,
         "rf": 330,
         "avg_of": 360,
-        "status": "confirmed"
+        "status": "estimated"
       },
       "home_road_split_pct": -26.1,
       "home_road_games": 196,
