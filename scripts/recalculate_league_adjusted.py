@@ -566,9 +566,15 @@ def recalculate_all(season, verbose=False, multi_year=True):
         top_pitchers = cur.fetchall()
 
         for pit in top_pitchers:
+            # Guard None stats (sparse historical seasons can leave a leader with
+            # null fip_plus/era_minus); the verification print shouldn't crash the run.
+            if pit['fip_plus'] is None:
+                continue
+            era_minus = pit['era_minus'] if pit['era_minus'] is not None else 0
+            era = pit['era'] if pit['era'] is not None else 0.0
             print(f"  {pit['first_name']:12s} {pit['last_name']:15s} {pit['short_name']:18s} "
                   f"{pit['level']:5s} FIP+={pit['fip_plus']:6.1f} FIP={pit['fip']:.2f} "
-                  f"ERA={pit['era']:.2f} ERA-={pit['era_minus']:.0f} IP={pit['innings_pitched']}")
+                  f"ERA={era:.2f} ERA-={era_minus:.0f} IP={pit['innings_pitched']}")
 
     print("\n=== Done ===")
 
