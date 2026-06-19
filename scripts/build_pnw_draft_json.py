@@ -312,6 +312,8 @@ def main():
     def greedy_total(rng):
         need = set(HPOS); need_p = N_PITCHERS
         hs, ps = [], []
+        taken = set()  # each player can only be drafted once (re-spinning a team
+        # must not let you stack its ace repeatedly — that inflated the scale)
         guard = 0
         while (need or need_p > 0) and guard < 500:
             guard += 1
@@ -319,20 +321,24 @@ def main():
             # best hitter for an open eligible slot (DH counts if open)
             bh = None
             for h in hByteam_get(lv, tm):
+                if h['pid'] in taken:
+                    continue
                 fits = ('DH' in need) or any(pos in need for pos in (h.get('elig') or [h['p']]))
                 if fits and (bh is None or h['off'] > bh['off']):
                     bh = h
             bp = None
             if need_p > 0:
                 for p in pitchers_by_team.get((lv, tm), []):
+                    if p['pid'] in taken:
+                        continue
                     if bp is None or p['pit'] > bp['pit']:
                         bp = p
             take_h = bh and (not bp or _pct(off_sorted, bh['off']) >= _pct(pit_sorted, bp['pit']))
             if take_h:
                 slot = next((pos for pos in (bh.get('elig') or [bh['p']]) if pos in need), 'DH')
-                need.discard(slot); hs.append(bh)
+                need.discard(slot); hs.append(bh); taken.add(bh['pid'])
             elif bp:
-                need_p -= 1; ps.append(bp)
+                need_p -= 1; ps.append(bp); taken.add(bp['pid'])
         if len(hs) == 9 and len(ps) == 5:
             return total_of(hs, ps), hs_of(hs), ps_of(ps)
         return None
