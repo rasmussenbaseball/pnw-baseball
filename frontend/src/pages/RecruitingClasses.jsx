@@ -394,6 +394,8 @@ export default function RecruitingClasses() {
   const [gradYear, setGradYear] = useState(2026)
   const [view, setView] = useState('hs')
   const [expanded, setExpanded] = useState(null)
+  const [levelFilter, setLevelFilter] = useState('all')
+  const [confFilter, setConfFilter] = useState('all')
 
   const { data: hsData, loading: hsLoading, error: hsError } = useRecruitingClasses(gradYear)
   const { data: trData, loading: trLoading, error: trError } = useRecruitingTransfers(gradYear)
@@ -409,6 +411,7 @@ export default function RecruitingClasses() {
     for (const c of hsData?.classes || []) {
       m.set(c.team_id, {
         team_id: c.team_id, name: c.name, logo_url: c.logo_url, division: c.division,
+        conference: c.conference,
         class_score: c.class_score, hs_commits: c.commits,
         transfer_count: 0, transfer_rating: 0, transfers: [],
       })
@@ -418,6 +421,7 @@ export default function RecruitingClasses() {
       if (ex) { ex.transfer_count = t.transfer_count; ex.transfer_rating = t.transfer_rating; ex.transfers = t.transfers }
       else m.set(t.team_id, {
         team_id: t.team_id, name: t.name, logo_url: t.logo_url, division: t.division,
+        conference: t.conference,
         class_score: null, hs_commits: 0,
         transfer_count: t.transfer_count, transfer_rating: t.transfer_rating, transfers: t.transfers,
       })
@@ -429,15 +433,36 @@ export default function RecruitingClasses() {
     return rows.sort((a, b) => b.combined_score - a.combined_score || a.name.localeCompare(b.name))
   }, [hsData, trData])
 
+  // Level + conference filter options, derived from the union of all programs.
+  const LEVEL_ORDER = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
+  const levelOptions = useMemo(() => {
+    const s = new Set(combinedRows.map((r) => r.division).filter(Boolean))
+    return LEVEL_ORDER.filter((l) => s.has(l))
+  }, [combinedRows])
+  const confOptions = useMemo(() => {
+    const s = new Set(combinedRows
+      .filter((r) => levelFilter === 'all' || r.division === levelFilter)
+      .map((r) => r.conference).filter(Boolean))
+    return [...s].sort()
+  }, [combinedRows, levelFilter])
+
+  const matchRow = (r) =>
+    (levelFilter === 'all' || r.division === levelFilter) &&
+    (confFilter === 'all' || r.conference === confFilter)
+  const classesF = useMemo(() => classes.filter(matchRow), [classes, levelFilter, confFilter])
+  const transferTeamsF = useMemo(() => transferTeams.filter(matchRow), [transferTeams, levelFilter, confFilter])
+  const combinedRowsF = useMemo(() => combinedRows.filter(matchRow), [combinedRows, levelFilter, confFilter])
+
   const switchView = (v) => { setView(v); setExpanded(null) }
   const toggle = (teamId) => setExpanded((cur) => (cur === teamId ? null : teamId))
 
   const loading = view === 'transfers' ? trLoading : view === 'combined' ? (hsLoading || trLoading) : hsLoading
   const error = view === 'transfers' ? trError : view === 'combined' ? (hsError || trError) : hsError
   const isEmpty =
-    view === 'hs' ? classes.length === 0
-      : view === 'transfers' ? transferTeams.length === 0
-        : combinedRows.length === 0
+    view === 'hs' ? classesF.length === 0
+      : view === 'transfers' ? transferTeamsF.length === 0
+        : combinedRowsF.length === 0
+  const filtersActive = levelFilter !== 'all' || confFilter !== 'all'
 
   const activeBlurb = VIEWS.find((v) => v.key === view)?.blurb
 
@@ -474,6 +499,32 @@ export default function RecruitingClasses() {
             {GRAD_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="levelFilter" className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Level</label>
+          <select
+            id="levelFilter"
+            value={levelFilter}
+            onChange={(e) => { setLevelFilter(e.target.value); setConfFilter('all'); setExpanded(null) }}
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-nw-teal"
+          >
+            <option value="all">All levels</option>
+            {levelOptions.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+        {confOptions.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="confFilter" className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Conference</label>
+            <select
+              id="confFilter"
+              value={confFilter}
+              onChange={(e) => { setConfFilter(e.target.value); setExpanded(null) }}
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-nw-teal max-w-[200px]"
+            >
+              <option value="all">All conferences</option>
+              {confOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {loading && <div className="text-center py-12 text-gray-400 dark:text-gray-500">Loading recruiting classes...</div>}
@@ -481,18 +532,19 @@ export default function RecruitingClasses() {
 
       {!loading && !error && isEmpty && (
         <div className="text-center py-12 text-gray-400 dark:text-gray-500">
-          {view === 'transfers' ? 'No transfer commitments tracked yet.' : `No commits found for ${gradYear}.`}
+          {filtersActive ? 'No programs match these filters.'
+            : view === 'transfers' ? 'No transfer commitments tracked yet.' : `No commits found for ${gradYear}.`}
         </div>
       )}
 
       {!loading && !error && !isEmpty && view === 'hs' && (
-        <HSBoard classes={classes} gradYear={gradYear} expanded={expanded} toggle={toggle} />
+        <HSBoard classes={classesF} gradYear={gradYear} expanded={expanded} toggle={toggle} />
       )}
       {!loading && !error && !isEmpty && view === 'transfers' && (
-        <TransfersBoard teams={transferTeams} expanded={expanded} toggle={toggle} />
+        <TransfersBoard teams={transferTeamsF} expanded={expanded} toggle={toggle} />
       )}
       {!loading && !error && !isEmpty && view === 'combined' && (
-        <CombinedBoard rows={combinedRows} gradYear={gradYear} expanded={expanded} toggle={toggle} />
+        <CombinedBoard rows={combinedRowsF} gradYear={gradYear} expanded={expanded} toggle={toggle} />
       )}
 
       {/* Legend */}

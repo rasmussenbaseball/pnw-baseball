@@ -1448,7 +1448,7 @@ def _class_summary_rows(cur, grad_year, limit=None):
     cur.execute(
         """
         SELECT t.id AS team_id, t.name, t.short_name, t.logo_url,
-               d.level AS division,
+               d.level AS division, c.name AS conference,
                COUNT(*) AS commits,
                COUNT(r.recruit_score) AS scored_commits,
                COUNT(*) FILTER (WHERE r.bbnw_state_rank IS NOT NULL
@@ -1460,7 +1460,7 @@ def _class_summary_rows(cur, grad_year, limit=None):
         JOIN conferences c ON t.conference_id = c.id
         JOIN divisions d ON c.division_id = d.id
         WHERE r.grad_year = %s AND t.state IN %s
-        GROUP BY t.id, t.name, t.short_name, t.logo_url, d.level
+        GROUP BY t.id, t.name, t.short_name, t.logo_url, d.level, c.name
         ORDER BY (COUNT(r.recruit_score) >= %s) DESC,
                  class_score DESC NULLS LAST, ranked DESC
         """,
@@ -1837,14 +1837,15 @@ def recruiting_transfers(
         ids = sorted({c["dest_team_id"] for c in commits})
         if ids:
             cur.execute(
-                """SELECT t.id, t.name, t.short_name, t.logo_url, d.level AS division
+                """SELECT t.id, t.name, t.short_name, t.logo_url, d.level AS division,
+                          c.name AS conference
                    FROM teams t JOIN conferences c ON t.conference_id = c.id
                    JOIN divisions d ON c.division_id = d.id
                    WHERE t.id = ANY(%s)""", (ids,))
             for r in cur.fetchall():
                 teams[r["id"]] = {"team_id": r["id"], "name": r["name"],
                                   "short_name": r["short_name"], "logo_url": r["logo_url"],
-                                  "division": r["division"], "transfers": []}
+                                  "division": r["division"], "conference": r["conference"], "transfers": []}
         for c in commits:
             t = teams.get(c["dest_team_id"])
             if t is not None:
