@@ -18,9 +18,10 @@
 import { useEffect, useState } from 'react'
 import { CURRENT_SEASON } from '../lib/seasons'
 import {
-  StandingsWidget, WarLeadersWidget, StatLeadersWidget,
+  StandingsWidget, WarLeadersWidget,
   RecordsWidget, CpiWidget,
 } from '../components/home/StatWidgets'
+import { LeadersBoard } from '../components/home/LeadersBoard'
 import {
   DraftBoardWidget, GridPreviewWidget, ArticlesWidget,
   RecruitingHubWidget, GmPreviewWidget, PortalPreviewWidget,
@@ -30,6 +31,11 @@ import {
 export default function Homepage() {
   return (
     <div className="max-w-7xl mx-auto">
+      {/* Wide stat-leaders board across the very top */}
+      <div className="mb-4">
+        <LeadersBoard />
+      </div>
+
       <WidgetColumns />
 
       {/* pricing strip — always full width below the columns */}
@@ -53,7 +59,6 @@ export default function Homepage() {
 const WIDGETS = {
   standings:  <StandingsWidget />,
   war:        <WarLeadersWidget />,
-  statLeaders: <StatLeadersWidget />,
   records:    <RecordsWidget />,
   draft:      <DraftBoardWidget />,
   grid:       <GridPreviewWidget />,
@@ -70,14 +75,14 @@ const COLUMN_LAYOUTS = {
   3: [
     ['standings', 'records', 'gm', 'percentile'],
     ['war', 'draft', 'articles', 'cpi', 'pbp'],
-    ['statLeaders', 'grid', 'recruiting', 'portal'],
+    ['grid', 'recruiting', 'portal'],
   ],
   2: [
-    ['standings', 'statLeaders', 'draft', 'gm', 'pbp', 'percentile'],
+    ['standings', 'draft', 'gm', 'pbp', 'percentile'],
     ['war', 'records', 'grid', 'articles', 'recruiting', 'cpi', 'portal'],
   ],
   1: [
-    ['standings', 'war', 'statLeaders', 'records', 'draft', 'grid',
+    ['standings', 'war', 'records', 'draft', 'grid',
      'articles', 'recruiting', 'cpi', 'gm', 'portal', 'pbp', 'percentile'],
   ],
 }

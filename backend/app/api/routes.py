@@ -588,6 +588,9 @@ router.include_router(quiz_router)
 from .pnw_pickle import pnw_pickle_router
 router.include_router(pnw_pickle_router)
 
+from .home_leaders import home_leaders_router
+router.include_router(home_leaders_router)
+
 
 # ============================================================
 # SITE-WIDE STATS (player/game counts for About page)
