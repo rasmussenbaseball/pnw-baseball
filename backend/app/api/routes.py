@@ -585,6 +585,9 @@ router.include_router(favorites_router)
 from .quiz import quiz_router
 router.include_router(quiz_router)
 
+from .pnw_pickle import pnw_pickle_router
+router.include_router(pnw_pickle_router)
+
 
 # ============================================================
 # SITE-WIDE STATS (player/game counts for About page)

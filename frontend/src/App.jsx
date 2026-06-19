@@ -300,6 +300,7 @@ import Percentiles from './pages/Percentiles'
 import PlayerComps from './pages/PlayerComps'
 import TeamQuiz from './pages/TeamQuiz'
 const FieldGuessr = lazyWithRetry(() => import('./pages/FieldGuessr'))  // image-based ballpark guessing game
+const PnwPickle = lazyWithRetry(() => import('./pages/PnwPickle'))  // guess-the-player game
 
 // ─── GM (new section, isolated from existing site code) ───
 // GM dynasty game pages — lazy-loaded so visitors to the main analytics
@@ -520,6 +521,7 @@ export default function App() {
           <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
           <Route path="/team-quiz" element={<RequireAuth><TeamQuiz /></RequireAuth>} />
           <Route path="/fieldguessr" element={<RequireAuth><FieldGuessr /></RequireAuth>} />
+          <Route path="/pnw-pickle" element={<RequireAuth><PnwPickle /></RequireAuth>} />
           <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
           <Route path="/graphics/wcl-leaderboards" element={<RequireAuth><WclLeaderboardGraphic /></RequireAuth>} />
