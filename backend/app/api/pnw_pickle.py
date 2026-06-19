@@ -112,7 +112,8 @@ def get_pool(
             WITH {team_games_cte}
             SELECT
                 p.id AS player_id, p.first_name, p.last_name,
-                p.position, p.bats, p.throws, p.year_in_school,
+                p.position, p.bats, p.throws,
+                COALESCE(NULLIF(psn.year_in_school, ''), NULLIF(p.year_in_school, '')) AS year_in_school,
                 bs.season, bs.team_id,
                 t.short_name AS team_short, t.name AS team_name, t.logo_url,
                 c.abbreviation AS conference, d.level AS db_level,
@@ -125,10 +126,12 @@ def get_pool(
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             JOIN team_games tg ON tg.season = bs.season AND tg.team_id = bs.team_id
+            LEFT JOIN player_seasons psn ON psn.player_id = bs.player_id
+                 AND psn.season = bs.season AND psn.team_id = bs.team_id
             WHERE bs.offensive_war > 0
               AND COALESCE(p.is_phantom, false) = false
               AND p.bats IS NOT NULL AND p.bats <> ''
-              AND p.year_in_school IS NOT NULL AND p.year_in_school <> ''
+              AND COALESCE(NULLIF(psn.year_in_school, ''), NULLIF(p.year_in_school, '')) IS NOT NULL
               AND p.first_name IS NOT NULL AND p.last_name IS NOT NULL
               AND bs.plate_appearances >= %(pa_rate)s * tg.g
               {level_clause}
@@ -169,7 +172,8 @@ def get_pool(
             WITH {team_games_cte}
             SELECT
                 p.id AS player_id, p.first_name, p.last_name,
-                p.position, p.bats, p.throws, p.year_in_school,
+                p.position, p.bats, p.throws,
+                COALESCE(NULLIF(psn.year_in_school, ''), NULLIF(p.year_in_school, '')) AS year_in_school,
                 ps.season, ps.team_id,
                 t.short_name AS team_short, t.name AS team_name, t.logo_url,
                 c.abbreviation AS conference, d.level AS db_level,
@@ -182,10 +186,12 @@ def get_pool(
             JOIN conferences c ON t.conference_id = c.id
             JOIN divisions d ON c.division_id = d.id
             JOIN team_games tg ON tg.season = ps.season AND tg.team_id = ps.team_id
+            LEFT JOIN player_seasons psn ON psn.player_id = ps.player_id
+                 AND psn.season = ps.season AND psn.team_id = ps.team_id
             WHERE ps.pitching_war > 0
               AND COALESCE(p.is_phantom, false) = false
               AND p.throws IS NOT NULL AND p.throws <> ''
-              AND p.year_in_school IS NOT NULL AND p.year_in_school <> ''
+              AND COALESCE(NULLIF(psn.year_in_school, ''), NULLIF(p.year_in_school, '')) IS NOT NULL
               AND p.first_name IS NOT NULL AND p.last_name IS NOT NULL
               AND (FLOOR(ps.innings_pitched) * 3
                    + ROUND((ps.innings_pitched - FLOOR(ps.innings_pitched)) * 10))
