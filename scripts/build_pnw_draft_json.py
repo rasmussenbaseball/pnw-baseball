@@ -346,13 +346,19 @@ def main():
     g90 = gtot[int(0.90 * len(gtot))]
     g99 = gtot[int(0.99 * len(gtot))]
 
+    # 56-0 (a sweep) should be a reachable apex for elite drafting, not only the
+    # literal theoretical-best roster. Pegging it to best_total made it virtually
+    # impossible (even 99th-pct engaged play landed ~53). Anchor the sweep halfway
+    # between the 99th-pct engaged draft (g99) and the perfect roster (best_total),
+    # so a great, lucky build can run the table while it stays the rarest result.
+    sweep_total = g99 + 0.5 * (best_total - g99)
     # Win curve = linear interpolation through monotonic (total, wins) anchors.
     raw_anchors = [
         (worst_total, 2.0),     # careless / worst-possible bottoms out
         (mean, 28.0),           # a random roster is roughly .500
         (g50, 44.0),            # typical engaged play
         (g90, 52.0),            # a strong, well-built roster
-        (max(best_total, g99 + 1), 56.0),  # near-perfect -> sweep
+        (max(sweep_total, g90 + 1), 56.0),  # elite + lucky -> sweep
     ]
     anchors = []
     for tot, w in raw_anchors:
