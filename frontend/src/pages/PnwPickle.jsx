@@ -96,6 +96,7 @@ const CELL = {
 export default function PnwPickle() {
   const [phase, setPhase] = useState('setup') // setup | loading | playing | done
   const [level, setLevel] = useState('all')
+  const [difficulty, setDifficulty] = useState('medium') // easy | medium | hard
   const [years, setYears] = useState(() => new Set(PICKLE_SEASONS)) // default all years
   const [error, setError] = useState(null)
 
@@ -123,7 +124,7 @@ export default function PnwPickle() {
       // Always send the explicit season list so excluded years (2018-2021)
       // never leak in via the backend's "no seasons = all years" default.
       const seasonsParam = `&seasons=${[...years].join(',')}`
-      const resp = await fetch(`/api/v1/pnw-pickle/pool?level=${level}${seasonsParam}`)
+      const resp = await fetch(`/api/v1/pnw-pickle/pool?level=${level}&difficulty=${difficulty}${seasonsParam}`)
       if (!resp.ok) throw new Error(`Request failed (${resp.status})`)
       const data = await resp.json()
       const players = data.players || []
@@ -178,6 +179,7 @@ export default function PnwPickle() {
     return (
       <SetupScreen
         level={level} setLevel={setLevel}
+        difficulty={difficulty} setDifficulty={setDifficulty}
         years={years} toggleYear={toggleYear} allYears={allYears}
         setYears={setYears}
         startGame={startGame} loading={phase === 'loading'} error={error}
@@ -239,20 +241,51 @@ export default function PnwPickle() {
 
 // ─────────────────── SETUP ───────────────────
 
-function SetupScreen({ level, setLevel, years, toggleYear, allYears, setYears, startGame, loading, error }) {
+const DIFFICULTIES = [
+  { id: 'easy', label: 'Easy', desc: 'Stars only (2.0+ WAR, 1.3+ for pitchers)' },
+  { id: 'medium', label: 'Medium', desc: 'Solid contributors (0.8+ WAR)' },
+  { id: 'hard', label: 'Hard', desc: 'Anyone with positive WAR (0.1+)' },
+]
+
+function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggleYear, allYears, setYears, startGame, loading, error }) {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mb-2">PNW Pickle</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
         Guess the mystery Pacific Northwest college player in {MAX_GUESSES} tries. Each guess
         reveals how close you are on level, team, class, position, handedness, year, and stats
-        (AVG/HR for hitters, ERA/K for pitchers, WAR for everyone). Pool is qualified players
-        with a positive WAR, so they should be names you remember.
+        (AVG/HR for hitters, ERA/K for pitchers, WAR for everyone). Pick a difficulty to set how
+        good the mystery player has to be, so they should be names you remember.
       </p>
 
       <section className="mb-6">
         <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-          1. Player pool
+          1. Difficulty
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {DIFFICULTIES.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setDifficulty(d.id)}
+              className={`px-3 py-2.5 rounded-lg border-2 text-left transition-colors ${
+                difficulty === d.id
+                  ? 'bg-pnw-forest text-white border-pnw-forest shadow-md'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-nw-teal'
+              }`}
+            >
+              <div className="font-semibold text-sm">{d.label}</div>
+              <div className={`text-xs mt-0.5 ${difficulty === d.id ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>
+                {d.desc}
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+          2. Player pool
         </h2>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           {LEVELS.map((l) => (
@@ -275,7 +308,7 @@ function SetupScreen({ level, setLevel, years, toggleYear, allYears, setYears, s
       <section className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            2. Seasons
+            3. Seasons
           </h2>
           <button
             type="button"

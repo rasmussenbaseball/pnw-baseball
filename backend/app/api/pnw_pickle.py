@@ -30,6 +30,16 @@ QUALIFIED_IP_PER_GAME = 0.75
 FLAT_MIN_PA = 80
 FLAT_MIN_IP = 30
 
+# Difficulty = minimum WAR to enter the pool. Pitchers use a lower bar than
+# hitters (~0.65x) since college pitching WAR runs lower. Easy = only the most
+# memorable stars; Hard = anyone with meaningfully positive WAR.
+DIFFICULTY = {
+    "easy":   {"hit": 2.0, "pit": 1.3},
+    "medium": {"hit": 0.8, "pit": 0.5},
+    "hard":   {"hit": 0.1, "pit": 0.1},
+}
+DEFAULT_DIFFICULTY = "medium"
+
 # Class year → numeric rank, so "close" clues and arrows work. Redshirt
 # variants collapse onto their base year.
 CLASS_RANK = {
@@ -75,10 +85,13 @@ def _level_label(db_level: str) -> str:
 def get_pool(
     level: str = Query("all", description="all | D1 | D2 | D3 | NAIA | NWAC"),
     seasons: Optional[str] = Query(None, description="CSV of years, e.g. 2024,2025; omit for all"),
+    difficulty: str = Query(DEFAULT_DIFFICULTY, description="easy | medium | hard"),
 ):
     """Return the full qualified player-season pool for the chosen scope."""
     level = (level or "all").upper()
     db_level = LEVEL_TO_DB.get(level) if level != "ALL" else None
+
+    war_min = DIFFICULTY.get((difficulty or "").lower(), DIFFICULTY[DEFAULT_DIFFICULTY])
 
     season_list = None
     if seasons:
@@ -134,7 +147,7 @@ def get_pool(
             LEFT JOIN team_games tg ON tg.season = bs.season AND tg.team_id = bs.team_id
             LEFT JOIN player_seasons psn ON psn.player_id = bs.player_id
                  AND psn.season = bs.season AND psn.team_id = bs.team_id
-            WHERE bs.offensive_war > 0
+            WHERE bs.offensive_war >= %(war_min)s
               AND COALESCE(p.is_phantom, false) = false
               AND p.bats IS NOT NULL AND p.bats <> ''
               AND COALESCE(NULLIF(psn.year_in_school, ''), NULLIF(p.year_in_school, '')) IS NOT NULL
@@ -144,7 +157,8 @@ def get_pool(
               {level_clause}
               {season_clause}
             """,
-            {**params, "pa_rate": QUALIFIED_PA_PER_GAME, "flat_pa": FLAT_MIN_PA},
+            {**params, "pa_rate": QUALIFIED_PA_PER_GAME, "flat_pa": FLAT_MIN_PA,
+             "war_min": war_min["hit"]},
         )
         for r in cur.fetchall():
             key = (r["player_id"], r["season"], r["team_id"])
@@ -195,7 +209,7 @@ def get_pool(
             LEFT JOIN team_games tg ON tg.season = ps.season AND tg.team_id = ps.team_id
             LEFT JOIN player_seasons psn ON psn.player_id = ps.player_id
                  AND psn.season = ps.season AND psn.team_id = ps.team_id
-            WHERE ps.pitching_war > 0
+            WHERE ps.pitching_war >= %(war_min)s
               AND COALESCE(p.is_phantom, false) = false
               AND p.throws IS NOT NULL AND p.throws <> ''
               AND COALESCE(NULLIF(psn.year_in_school, ''), NULLIF(p.year_in_school, '')) IS NOT NULL
@@ -207,7 +221,8 @@ def get_pool(
               {level_clause}
               {season_clause_p}
             """,
-            {**params, "ip_rate": QUALIFIED_IP_PER_GAME, "flat_ip": FLAT_MIN_IP},
+            {**params, "ip_rate": QUALIFIED_IP_PER_GAME, "flat_ip": FLAT_MIN_IP,
+             "war_min": war_min["pit"]},
         )
         for r in cur.fetchall():
             key = (r["player_id"], r["season"], r["team_id"])
