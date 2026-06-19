@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParkFactors } from '../hooks/useApi'
+import { ParkBuilder, BattedBallLab, PitchLab, ParkMap } from './parkFactorsTools'
 
 // ───────────────────────── helpers ─────────────────────────
 const DIV_ORDER = ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'NWAC']
@@ -162,7 +163,13 @@ function ParkCard({ park }) {
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-bold text-pnw-slate dark:text-gray-100 truncate">{park.short_name}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-pnw-slate dark:text-gray-100 truncate">{park.short_name}</span>
+            {park.elevation_ft >= 2500 && (
+              <span title="Magnus zone — 2,500+ ft elevation noticeably boosts carry & break"
+                className="text-[9px] font-bold px-1 py-px rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 whitespace-nowrap">⚡ Magnus</span>
+            )}
+          </div>
           <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{park.stadium}</div>
           <div className="text-[11px] text-gray-400 dark:text-gray-500">{park.city}{park.state && !park.city?.includes(park.state) ? `, ${park.state}` : ''} · {park.division}</div>
         </div>
@@ -216,8 +223,9 @@ function SummaryBar({ teams }) {
     const sorted = [...teams].sort((a, b) => (b.park_index || 0) - (a.park_index || 0))
     const byElev = [...teams].sort((a, b) => (b.elevation_ft || 0) - (a.elevation_ft || 0))[0]
     const small = [...teams].sort((a, b) => (a.dimensions?.avg_of || 999) - (b.dimensions?.avg_of || 999))[0]
-    const confirmed = teams.filter((t) => t.dimensions?.status === 'confirmed').length
-    return { hitter: sorted[0], pitcher: sorted[sorted.length - 1], byElev, small, confirmed, total: teams.length }
+    const warm = [...teams].sort((a, b) => (b.avg_temp_f || 0) - (a.avg_temp_f || 0))[0]
+    const magnus = teams.filter((t) => (t.elevation_ft || 0) >= 2500).length
+    return { hitter: sorted[0], pitcher: sorted[sorted.length - 1], byElev, small, warm, magnus, total: teams.length }
   }, [teams])
   if (!s) return null
   const Cell = ({ label, name, sub, cls }) => (
@@ -228,12 +236,13 @@ function SummaryBar({ teams }) {
     </div>
   )
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
       <Cell label="Most hitter" name={s.hitter?.short_name} sub={`index ${s.hitter?.park_index?.toFixed(0)}`} cls="text-red-600 dark:text-red-400" />
       <Cell label="Most pitcher" name={s.pitcher?.short_name} sub={`index ${s.pitcher?.park_index?.toFixed(0)}`} cls="text-blue-600 dark:text-blue-400" />
       <Cell label="Highest elevation" name={s.byElev?.short_name} sub={`${s.byElev?.elevation_ft?.toLocaleString()} ft`} cls="text-amber-600 dark:text-amber-400" />
+      <Cell label="Magnus zones" name={`${s.magnus} parks`} sub="2,500+ ft elevation" cls="text-amber-600 dark:text-amber-400" />
       <Cell label="Smallest field" name={s.small?.short_name} sub={`${s.small?.dimensions?.avg_of} ft avg`} />
-      <Cell label="Measured dims" name={`${s.confirmed}/${s.total}`} sub="parks confirmed" />
+      <Cell label="Warmest park" name={s.warm?.short_name} sub={`${s.warm?.avg_temp_f}°F avg`} />
     </div>
   )
 }
@@ -329,13 +338,13 @@ export default function ParkFactors() {
         weighted by sample size.
       </p>
 
-      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700">
-        {[['leaderboard', 'Leaderboard'], ['tools', 'Interactive Tools']].map(([k, label]) => (
+      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+        {[['leaderboard', 'Leaderboard'], ['builder', 'Park Builder'], ['labs', 'Batted-Ball & Pitch Labs'], ['map', 'Map']].map(([k, label]) => (
           <button
             key={k}
             type="button"
             onClick={() => setSection(k)}
-            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 whitespace-nowrap transition-colors ${
               section === k
                 ? 'border-nw-teal text-nw-teal'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-pnw-slate dark:hover:text-gray-200'
@@ -346,23 +355,25 @@ export default function ParkFactors() {
         ))}
       </div>
 
-      {section === 'tools' && (
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            Kai Malloch's full interactive tool — park builder (drag the fences, set elevation/temp/wind),
-            batted-ball & pitch labs, the regional map, and road-trip views. Indices match the leaderboard.
-          </p>
-          <iframe
-            src="/park-factors-tool.html"
-            title="Park Factors interactive tool"
-            className="w-full rounded-xl border border-gray-200 dark:border-gray-700"
-            style={{ height: 'calc(100vh - 230px)', minHeight: 760, background: '#0b1220' }}
-          />
+      {loading && <div className="text-gray-400 dark:text-gray-500 animate-pulse py-12 text-center">Loading park factors…</div>}
+      {error && <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">Failed to load park factors.</div>}
+
+      {section === 'builder' && !loading && !error && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Set elevation, outfield depth, temperature, and wind — or load a real park — to project a Park Index.</p>
+          <ParkBuilder teams={teams} />
         </div>
       )}
-
-      {section === 'leaderboard' && loading && <div className="text-gray-400 dark:text-gray-500 animate-pulse py-12 text-center">Loading park factors…</div>}
-      {section === 'leaderboard' && error && <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">Failed to load park factors.</div>}
+      {section === 'labs' && !loading && !error && (
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">First-order physics calibrated to Statcast norms: how a park's air changes carry distance and pitch movement.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <BattedBallLab teams={teams} />
+            <PitchLab teams={teams} />
+          </div>
+        </div>
+      )}
+      {section === 'map' && !loading && !error && <ParkMap teams={teams} />}
 
       {section === 'leaderboard' && !loading && !error && (
         <>
