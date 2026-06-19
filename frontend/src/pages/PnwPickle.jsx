@@ -2,6 +2,12 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { SEASONS } from '../lib/seasons'
 import { divisionBadgeClass } from '../utils/stats'
 
+// Only offer seasons that actually have a qualifying player pool. Per-season
+// class data (and game results for the 4-year schools) only exist from 2022
+// on, so 2018-2021 produce empty/near-empty pools — leave them out.
+const PICKLE_MIN_SEASON = 2022
+const PICKLE_SEASONS = SEASONS.filter((y) => y >= PICKLE_MIN_SEASON)
+
 const LEVELS = [
   { id: 'all', label: 'All PNW' },
   { id: 'D1', label: 'D1' },
@@ -90,7 +96,7 @@ const CELL = {
 export default function PnwPickle() {
   const [phase, setPhase] = useState('setup') // setup | loading | playing | done
   const [level, setLevel] = useState('all')
-  const [years, setYears] = useState(() => new Set(SEASONS)) // default all years
+  const [years, setYears] = useState(() => new Set(PICKLE_SEASONS)) // default all years
   const [error, setError] = useState(null)
 
   const [pool, setPool] = useState([])
@@ -107,14 +113,16 @@ export default function PnwPickle() {
       return next
     })
   }
-  const allYears = years.size === SEASONS.length
+  const allYears = years.size === PICKLE_SEASONS.length
 
   const startGame = async () => {
     if (years.size === 0) { setError('Pick at least one year.'); return }
     setError(null)
     setPhase('loading')
     try {
-      const seasonsParam = allYears ? '' : `&seasons=${[...years].join(',')}`
+      // Always send the explicit season list so excluded years (2018-2021)
+      // never leak in via the backend's "no seasons = all years" default.
+      const seasonsParam = `&seasons=${[...years].join(',')}`
       const resp = await fetch(`/api/v1/pnw-pickle/pool?level=${level}${seasonsParam}`)
       if (!resp.ok) throw new Error(`Request failed (${resp.status})`)
       const data = await resp.json()
@@ -271,14 +279,14 @@ function SetupScreen({ level, setLevel, years, toggleYear, allYears, setYears, s
           </h2>
           <button
             type="button"
-            onClick={() => setYears(allYears ? new Set() : new Set(SEASONS))}
+            onClick={() => setYears(allYears ? new Set() : new Set(PICKLE_SEASONS))}
             className="text-xs font-semibold text-nw-teal hover:underline"
           >
             {allYears ? 'Clear all' : 'Select all'}
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          {SEASONS.map((y) => {
+          {PICKLE_SEASONS.map((y) => {
             const on = years.has(y)
             return (
               <button
