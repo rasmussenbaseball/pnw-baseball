@@ -266,6 +266,98 @@ export function RecentMovesWidget() {
   )
 }
 
+// ─── New on the site (recent additions carousel) ────────────────
+
+function NewBadge() {
+  return (
+    <span className="text-[8px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-full
+                     bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+      New
+    </span>
+  )
+}
+
+// A 3-slide carousel previewing the most recently added pages. Each slide shows
+// a small representative mock of the page + a link. Order = newest first.
+export function NewFeaturesWidget() {
+  const slides = [
+    // 1. WCL Portal Tracker (newest)
+    <div key="wcl" className="min-h-[150px]">
+      <div className="flex items-center gap-2 mb-2">
+        <NewBadge />
+        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">WCL Portal Tracker</span>
+      </div>
+      <div className="rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden mb-2">
+        <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-900/40 text-[8px] font-bold uppercase tracking-wider text-gray-400">
+          <span>Player</span><span>Spring</span><span>WCL WAR</span>
+        </div>
+        {[['RHP · Sweets', 'Bushnell', '2.4'], ['OF · Knights', 'Gonzaga', '1.9']].map(([who, spring, war], i) => (
+          <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-2 px-2 py-1 text-[10px] border-t border-gray-100 dark:border-gray-700 items-center">
+            <span className="text-gray-700 dark:text-gray-300 truncate">{who}</span>
+            <span className="text-gray-400 truncate">{spring}</span>
+            <span className="font-bold tabular-nums text-nw-teal text-right">{war}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
+        West Coast League players in the transfer portal, shown with their summer (WCL) stats.
+      </p>
+      <LinkChip to="/coaching/wcl-portal">Open the WCL portal</LinkChip>
+    </div>,
+
+    // 2. Pro Tracker
+    <div key="pro" className="min-h-[150px]">
+      <div className="flex items-center gap-2 mb-2">
+        <NewBadge />
+        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Pro Tracker</span>
+      </div>
+      <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-2 mb-2 space-y-1.5">
+        {[['MLB', '#0a7d4f'], ['AAA', '#2563eb'], ['AA', '#9333ea']].map(([lvl, c]) => (
+          <div key={lvl} className="flex items-center gap-2">
+            <span className="text-[8px] font-extrabold text-white px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: c }}>{lvl}</span>
+            <div className="flex-1 h-2 rounded bg-gray-100 dark:bg-gray-700" />
+            <span className="w-4 h-4 rounded-full bg-gray-100 dark:bg-gray-700 shrink-0" />
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
+        Every PNW college alum playing pro ball (MiLB + MLB), grouped by school.
+      </p>
+      <LinkChip to="/pro-tracker">See PNW pros</LinkChip>
+    </div>,
+
+    // 3. Recruiting Classes
+    <div key="rc" className="min-h-[150px]">
+      <div className="flex items-center gap-2 mb-2">
+        <NewBadge />
+        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Recruiting Classes</span>
+      </div>
+      <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-2 mb-2 space-y-1.5">
+        {[['1', 88], ['2', 85], ['3', 81]].map(([rank, score]) => (
+          <div key={rank} className="flex items-center gap-2">
+            <span className="w-3 text-[10px] font-bold text-gray-400 tabular-nums shrink-0">{rank}</span>
+            <span className="w-4 h-4 rounded bg-gray-100 dark:bg-gray-700 shrink-0" />
+            <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+              <div className="h-full rounded-full bg-nw-teal" style={{ width: `${score}%` }} />
+            </div>
+            <span className="text-[11px] font-bold tabular-nums text-nw-teal w-6 text-right">{score}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
+        Every PNW program's incoming class, rated and ranked from PBR + BBNW recruit scores.
+      </p>
+      <LinkChip to="/recruiting-classes">View class rankings</LinkChip>
+    </div>,
+  ]
+
+  return (
+    <WidgetCard title="New on the site" accent="summer">
+      <Carousel slides={slides} ariaLabel="Recently added features" />
+    </WidgetCard>
+  )
+}
+
 // ─── 5. PNW Coach Sim (GM game) ─────────────────────────────────
 
 // Example pixel-art player portraits straight from the sim (PixelHeadshot is the

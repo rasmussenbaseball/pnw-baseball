@@ -25,7 +25,7 @@ import { LeadersBoard } from '../components/home/LeadersBoard'
 import {
   DraftBoardWidget, GridPreviewWidget, ArticlesWidget,
   RecentMovesWidget, GmPreviewWidget, PortalPreviewWidget,
-  TiersWidget,
+  NewFeaturesWidget, TiersWidget,
 } from '../components/home/FeatureWidgets'
 
 export default function Homepage() {
@@ -63,6 +63,7 @@ const WIDGETS = {
   grid:        <GridPreviewWidget />,
   articles:    <ArticlesWidget />,
   recentMoves: <RecentMovesWidget />,
+  newFeatures: <NewFeaturesWidget />,
   gm:          <GmPreviewWidget />,
   portal:      <PortalPreviewWidget />,
 }
@@ -70,15 +71,15 @@ const WIDGETS = {
 const COLUMN_LAYOUTS = {
   3: [
     ['standings', 'recentMoves', 'portal'],
-    ['draft', 'articles', 'grid'],
+    ['newFeatures', 'draft', 'articles', 'grid'],
     ['records', 'gm'],
   ],
   2: [
-    ['standings', 'draft', 'articles', 'portal'],
+    ['standings', 'newFeatures', 'draft', 'articles', 'portal'],
     ['gm', 'records', 'recentMoves', 'grid'],
   ],
   1: [
-    ['standings', 'records', 'draft', 'grid',
+    ['standings', 'newFeatures', 'records', 'draft', 'grid',
      'articles', 'recentMoves', 'gm', 'portal'],
   ],
 }
