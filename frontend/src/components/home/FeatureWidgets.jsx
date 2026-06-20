@@ -392,7 +392,7 @@ export function NewFeaturesWidget() {
         )) : <PreviewSkeleton rows={3} />}
       </div>
       <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
-        The top incoming class in each division (D1, D2, NAIA), rated from PBR + BBNW recruit scores.
+        The top incoming recruiting class in each division (D1, D2, NAIA).
       </p>
       <LinkChip to="/recruiting-classes">View class rankings</LinkChip>
     </div>,

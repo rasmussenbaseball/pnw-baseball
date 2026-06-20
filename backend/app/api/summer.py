@@ -29,6 +29,7 @@ from ..models.database import get_connection
 from ..stats.cpi import compute_cpi
 from .auth import require_tier
 from .leverage import compute_li
+from ._positions import normalize_position
 
 
 router = APIRouter()
@@ -1320,6 +1321,7 @@ def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
         player = cur.fetchone()
         if not player:
             raise HTTPException(status_code=404, detail="Summer player not found")
+        player["position"] = normalize_position(player.get("position"))
 
         # Season totals
         cur.execute(
@@ -3529,14 +3531,16 @@ def wcl_portal_players(
     for r in rows:
         if r.get("committed_level") == "JUCO":
             r["committed_level"] = "NWAC"
+        r["position"] = normalize_position(r.get("position"))
     return rows
 
 
 @router.get("/wcl-portal/preview")
-def wcl_portal_preview(limit: int = Query(3, ge=1, le=6)):
+def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
+                       season: int = Query(CURRENT_SEASON)):
     """Public teaser for the homepage 'New on the site' card: a few WCL portal
-    players with their best summer WAR + spring school. No tier gate (teaser
-    only exposes name/pos/school/WAR, not the full tracker)."""
+    players with their CURRENT-season (default 2026) summer WAR + spring school.
+    No tier gate (teaser only exposes name/pos/school/WAR, not the full tracker)."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -3548,16 +3552,16 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6)):
             """
             SELECT sp.id, sp.first_name, sp.last_name, sp.position,
                    COALESCE(sp.assigned_school, lt.short_name) AS school,
-                   (SELECT b.offensive_war FROM summer_batting_stats b
-                      WHERE b.player_id = sp.id ORDER BY b.season DESC LIMIT 1) AS owar,
-                   (SELECT p.pitching_war FROM summer_pitching_stats p
-                      WHERE p.player_id = sp.id ORDER BY p.season DESC LIMIT 1) AS pwar
+                   bs.offensive_war AS owar, ps.pitching_war AS pwar
             FROM wcl_portal_members w
             JOIN summer_players sp ON sp.id = w.summer_player_id
             LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
             LEFT JOIN players spr ON spr.id = spl.spring_player_id
             LEFT JOIN teams lt ON lt.id = spr.team_id
-            """
+            LEFT JOIN summer_batting_stats bs ON bs.player_id = sp.id AND bs.season = %s AND bs.team_id = sp.team_id
+            LEFT JOIN summer_pitching_stats ps ON ps.player_id = sp.id AND ps.season = %s AND ps.team_id = sp.team_id
+            """,
+            (season, season),
         )
         rows = [dict(r) for r in cur.fetchall()]
     out = []
@@ -3566,7 +3570,8 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6)):
             + (float(r["pwar"]) if r["pwar"] is not None else 0.0)
         out.append({
             "name": f"{r['first_name']} {r['last_name']}".strip(),
-            "position": r["position"], "school": r["school"], "war": round(war, 1),
+            "position": normalize_position(r["position"]), "school": r["school"],
+            "war": round(war, 1),
         })
     out.sort(key=lambda x: x["war"], reverse=True)
     return {"players": out[:limit]}

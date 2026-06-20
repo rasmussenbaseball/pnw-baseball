@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .auth import require_commitment_editor
+from ._positions import normalize_position
 from ..models.database import get_connection
 
 router = APIRouter()
@@ -418,6 +419,7 @@ def summer_search(q: str = Query(..., min_length=2), _email: str = Depends(requi
     for r in rows:
         r["name"] = f"{r.get('first_name', '') or ''} {r.get('last_name', '') or ''}".strip()
         r["in_wcl_portal"] = bool(r.get("in_wcl_portal"))
+        r["position"] = normalize_position(r.get("position"))
         if r.get("linked_level") == "JUCO":
             r["linked_level"] = "NWAC"
         # Effective school shown in the editor: a manual assignment wins, else
