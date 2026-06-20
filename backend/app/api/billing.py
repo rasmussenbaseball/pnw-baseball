@@ -456,11 +456,9 @@ def create_checkout_session(
         },
     }
 
-    # 7-day free trial only on Premium monthly (per spec, 2026-05-25).
-    # Coach pays up front; Premium yearly users already get the "2 months
-    # free" discount so we skip the trial there.
-    if body.tier == "premium" and body.interval == "monthly":
-        params["subscription_data"]["trial_period_days"] = 7
+    # Free trials were retired 2026-06-20 — new checkouts bill immediately on
+    # every tier/interval. Subscriptions already in a Stripe trial keep it until
+    # it ends (we don't touch existing subs here).
 
     # Use existing customer if we have one (returning subscriber upgrading);
     # otherwise let Stripe create a new customer and pre-fill their email.

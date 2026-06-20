@@ -75,7 +75,6 @@ const TIERS = [
       'Recruiting guides, map & hometown search',
       'Recruiting class rankings + MLB Draft Board',
       'Premium articles (full season recaps, scouting reads)',
-      '7-day free trial on monthly',
     ],
   },
   {
@@ -173,7 +172,6 @@ const FEATURES = [
   { feat: 'MLB Draft Board',                   tiers: { none: false, free: false, premium: true, recruiting: true, coach: true } },
   { feat: 'Recruiting Quiz + NWAC Advancement guide',
                                                tiers: { none: false, free: false, premium: true, recruiting: true, coach: true } },
-  { feat: '7-day free trial on monthly',       tiers: { none: false, free: false, premium: true, recruiting: false, coach: true } },
 
   { section: 'Recruiting ($10/mo)' },
   { feat: 'JUCO Tracker (NWAC transfer targets)',
@@ -207,7 +205,7 @@ const FEATURES = [
 const FAQ = [
   {
     q: "How does billing work?",
-    a: "Card billed through Stripe on the same day each month (or each year for the annual plan). You can switch plans, update your card, or cancel anytime from your account page. Premium monthly includes a 7-day free trial.",
+    a: "Card billed through Stripe on the same day each month (or each year for the annual plan). You can switch plans, update your card, or cancel anytime from your account page.",
   },
   {
     q: "Can I cancel anytime?",
@@ -498,10 +496,8 @@ function TierCTA({ tier, interval, isCurrent, user, busy, onSubscribe }) {
     )
   }
 
-  // Paid tiers (Premium / Coach): real Stripe checkout button.
-  // Premium monthly gets a "7-day free trial" hint because that's the
-  // only path that ships with a trial per spec.
-  const trialHint = tier.slug === 'premium' && interval === 'monthly'
+  // Paid tiers (Premium / Coach): real Stripe checkout button. Free trials were
+  // retired 2026-06-20, so every path bills immediately.
   return (
     <button
       onClick={onSubscribe}
@@ -510,11 +506,7 @@ function TierCTA({ tier, interval, isCurrent, user, busy, onSubscribe }) {
                  bg-nw-teal hover:bg-nw-teal-dark text-white transition-colors
                  disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      {busy
-        ? 'Loading…'
-        : trialHint
-          ? 'Start 7-day free trial'
-          : `Subscribe ${interval === 'yearly' ? 'yearly' : 'monthly'}`}
+      {busy ? 'Loading…' : `Subscribe ${interval === 'yearly' ? 'yearly' : 'monthly'}`}
     </button>
   )
 }

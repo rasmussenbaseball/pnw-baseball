@@ -269,7 +269,7 @@ export default function RecruitingHub() {
         <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
           <PlanCard
             name="Premium" price="5" per="mo" highlight
-            note="Or $50/year. 7-day free trial on monthly."
+            note="Or $50/year."
             cta="Start with Premium" to="/pricing"
             points={[
               'Recruit Matchmaker, Recruiting Guide, and the program book',
