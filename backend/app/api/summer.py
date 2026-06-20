@@ -645,7 +645,11 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
         )
         record = dict(cur.fetchone() or {"wins": 0, "losses": 0})
 
-        # Last 10 games
+        # Recent games — the most recent games that have actually been PLAYED
+        # (date on/before today). Without the date guard, ORDER BY date DESC
+        # surfaces the FUTURE end-of-season schedule (Aug) instead of recent
+        # results. Fall back to the upcoming schedule only if nothing's been
+        # played yet.
         cur.execute(
             """
             SELECT g.id, g.game_date, g.status,
@@ -654,12 +658,28 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
                    g.away_score, g.home_score
             FROM summer_games g
             WHERE (g.away_team_id = %s OR g.home_team_id = %s) AND g.season = %s
+              AND g.game_date <= CURRENT_DATE
             ORDER BY g.game_date DESC
             LIMIT 12
             """,
             (team_id, team_id, season),
         )
         recent = [dict(r) for r in cur.fetchall()]
+        if not recent:
+            cur.execute(
+                """
+                SELECT g.id, g.game_date, g.status,
+                       g.away_team_id, g.home_team_id,
+                       g.away_team_name, g.home_team_name,
+                       g.away_score, g.home_score
+                FROM summer_games g
+                WHERE (g.away_team_id = %s OR g.home_team_id = %s) AND g.season = %s
+                ORDER BY g.game_date ASC
+                LIMIT 12
+                """,
+                (team_id, team_id, season),
+            )
+            recent = [dict(r) for r in cur.fetchall()]
 
         # Roster — the full {season} roster (scraped from wclstats into
         # summer_players.roster_year) PLUS anyone with {season} game stats.
@@ -673,6 +693,10 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
                    p.position, p.bats, p.throws, p.college, p.year_in_school,
                    p.hometown, p.roster_year, p.assigned_school,
                    lt.short_name AS linked_school,
+                   spr2.position AS sp_position, spr2.hometown AS sp_hometown,
+                   spr2.throws AS sp_throws, spr2.bats AS sp_bats,
+                   EXISTS (SELECT 1 FROM wcl_portal_members wpm
+                           WHERE wpm.summer_player_id = p.id) AS in_wcl_portal,
                    b.plate_appearances, b.batting_avg, b.on_base_pct,
                    b.slugging_pct, b.ops, b.games AS bat_games, b.home_runs, b.rbi,
                    pt.innings_pitched, pt.era, pt.whip, pt.strikeouts AS p_strikeouts,
@@ -720,7 +744,12 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
             else:
                 row["role"] = "pitcher" if pos in PITCHER_POS else "hitter"
             row["has_stats"] = bool(pa > 0 or ip > 0)
-            row["position"] = normalize_position(row.get("position"))
+            # Backfill missing roster metadata from the linked PNW spring player
+            # (some summer rows only carry stats, no bio fields).
+            row["position"] = normalize_position(row.get("position") or row.get("sp_position"))
+            row["hometown"] = row.get("hometown") or row.get("sp_hometown")
+            row["throws"] = row.get("throws") or row.get("sp_throws")
+            row["bats"] = row.get("bats") or row.get("sp_bats")
             # Curated assigned school wins, else the auto-linked PNW spring team.
             row["school"] = row.get("assigned_school") or row.get("linked_school")
             roster.append(row)

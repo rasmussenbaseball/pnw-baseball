@@ -205,7 +205,15 @@ export default function SummerTeamDetail() {
             )
           }
           const home = p => <td className="px-1.5 py-1 text-left text-gray-600 dark:text-gray-400 truncate max-w-[150px]" title={p.hometown || ''}>{p.hometown || ''}</td>
-          const school = p => <td className="px-1.5 py-1 text-left text-gray-600 dark:text-gray-400 truncate max-w-[120px]" title={p.school || ''}>{p.school || '—'}</td>
+          const school = p => (
+            <td className="px-1.5 py-1 text-left text-gray-600 dark:text-gray-400 max-w-[140px]" title={p.school || ''}>
+              {p.in_wcl_portal && (
+                <Link to="/coaching/wcl-portal"
+                  className="mr-1 inline-flex items-center text-[8px] font-black uppercase tracking-wide text-white bg-amber-500 hover:bg-amber-600 rounded-[3px] px-1 py-[1px] align-middle">Portal</Link>
+              )}
+              <span className="align-middle">{p.school || (p.in_wcl_portal ? '' : '—')}</span>
+            </td>
+          )
           const era2 = v => (v != null ? Number(v).toFixed(2) : '—')
           return (
             <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4">
