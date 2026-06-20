@@ -193,7 +193,6 @@ const TransferPortalGraphic = lazyWithRetry(() => import('./pages/TransferPortal
 const CommitmentEditor = lazyWithRetry(() => import('./pages/CommitmentEditor'))
 const WclStandingsGraphic = lazyWithRetry(() => import('./pages/WclStandingsGraphic'))
 import SummerStatsPage from './pages/summer/SummerStatsPage'
-import SummerCpiPage from './pages/summer/SummerCpiPage'
 import SummerScoreboardPage from './pages/summer/SummerScoreboardPage'
 import SummerStandingsPage from './pages/summer/SummerStandingsPage'
 import SummerTeamsPage from './pages/summer/SummerTeamsPage'
@@ -377,7 +376,8 @@ export default function App() {
               Drop the RequireDev wrappers when ready to ship publicly. */}
           <Route path="/summer" element={<RequireAuth><SummerHub /></RequireAuth>} />
           <Route path="/summer/stats" element={<RequireAuth><SummerStatsPage /></RequireAuth>} />
-          <Route path="/summer/cpi" element={<RequireAuth><SummerCpiPage /></RequireAuth>} />
+          {/* Power Index merged into the Standings page (2026-06) */}
+          <Route path="/summer/cpi" element={<Navigate to="/summer/standings" replace />} />
           <Route path="/summer/scoreboard" element={<RequireAuth><SummerScoreboardPage /></RequireAuth>} />
           <Route path="/summer/standings" element={<RequireAuth><SummerStandingsPage /></RequireAuth>} />
           <Route path="/summer/teams" element={<RequireAuth><SummerTeamsPage /></RequireAuth>} />
