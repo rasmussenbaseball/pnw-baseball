@@ -83,7 +83,7 @@ export function StandingsWidget() {
   const cpiCell = (id) => {
     const v = cpiById[id]
     return (
-      <span className={`w-8 text-right text-[10px] tabular-nums shrink-0 ${
+      <span className={`w-7 text-right text-[10px] tabular-nums whitespace-nowrap shrink-0 ${
         v == null ? 'text-gray-300 dark:text-gray-600'
           : v >= 100 ? 'text-nw-teal dark:text-nw-teal-light font-semibold' : 'text-gray-400'
       }`}>{v ?? '-'}</span>
@@ -130,8 +130,8 @@ export function StandingsWidget() {
                 {team.short_name}
               </span>
               {cpiCell(team.id)}
-              <span className="w-9 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{rec(team.conf_wins, team.conf_losses)}</span>
-              <span className="w-9 text-right text-[11px] tabular-nums text-gray-400">{rec(team.wins, team.losses)}</span>
+              <span className="w-11 text-right text-xs font-bold tabular-nums whitespace-nowrap shrink-0 text-nw-teal dark:text-nw-teal-light">{rec(team.conf_wins, team.conf_losses)}</span>
+              <span className="w-11 text-right text-[11px] tabular-nums whitespace-nowrap shrink-0 text-gray-400">{rec(team.wins, team.losses)}</span>
             </>
           )
           // Champion (top team) gets the subtle gold left border.
@@ -171,8 +171,8 @@ export function StandingsWidget() {
               <span className="block text-[9px] text-gray-400 truncate">{team.conference_abbrev || team.conference_name || 'Independent'}</span>
             </span>
             {cpiCell(team.id)}
-            <span className="w-9 text-right text-[11px] tabular-nums text-gray-400">{rec(team.conf_wins, team.conf_losses)}</span>
-            <span className="w-9 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{rec(team.wins, team.losses)}</span>
+            <span className="w-11 text-right text-[11px] tabular-nums whitespace-nowrap shrink-0 text-gray-400">{rec(team.conf_wins, team.conf_losses)}</span>
+            <span className="w-11 text-right text-xs font-bold tabular-nums whitespace-nowrap shrink-0 text-nw-teal dark:text-nw-teal-light">{rec(team.wins, team.losses)}</span>
           </Link>
         ))}
       </div>
