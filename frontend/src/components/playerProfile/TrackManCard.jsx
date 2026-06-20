@@ -35,6 +35,14 @@ const f2 = (v) => (v == null ? '—' : Number(v).toFixed(2))
 const pct = (v) => (v == null ? '—' : `${Number(v).toFixed(1)}%`)
 const spin = (v) => (v == null ? '—' : Math.round(Number(v)).toLocaleString())
 
+// Stuff+-style grade chip color: 100 neutral, >100 red (better), <100 blue.
+function gradeColor(g) {
+  if (g == null) return { bg: 'transparent', fg: 'inherit' }
+  const t = (Math.max(50, Math.min(150, g)) - 100) / 50
+  if (t >= 0) return { bg: `rgba(214,62,62,${0.14 + 0.55 * t})`, fg: t > 0.5 ? '#fff' : 'inherit' }
+  return { bg: `rgba(29,78,216,${0.14 + 0.55 * -t})`, fg: -t > 0.5 ? '#fff' : 'inherit' }
+}
+
 // ── Horizontal-break (x) vs induced-vertical-break (y) scatter ──
 function MovementPlot({ pitches, T }) {
   const SIZE = 300, M = 26, R = 25 // domain ±25 inches
@@ -78,8 +86,8 @@ function MovementPlot({ pitches, T }) {
 }
 
 const COLS = [
-  ['Pitch', 'l'], ['Usage', 'r'], ['Velo', 'r'], ['Spin', 'r'], ['IVB', 'r'], ['HB', 'r'],
-  ['Tilt', 'r'], ['Ext', 'r'], ['RelHt', 'r'], ['RelSide', 'r'], ['Zone%', 'r'], ['Whiff%', 'r'], ['Chase%', 'r'],
+  ['Pitch', 'l'], ['Grade', 'r'], ['Usage', 'r'], ['Velo', 'r'], ['Spin', 'r'], ['IVB', 'r'], ['HB', 'r'],
+  ['Tilt', 'r'], ['Ext', 'r'], ['RelHt', 'r'], ['RelSide', 'r'], ['VAA', 'r'], ['Zone%', 'r'], ['Whiff%', 'r'], ['Chase%', 'r'],
 ]
 
 export default function TrackManCard({ endpoint }) {
@@ -134,6 +142,14 @@ export default function TrackManCard({ endpoint }) {
                       <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: m.c }} />
                       {p.pitch_type}
                     </td>
+                    <td className="py-1.5 px-1.5 text-right">
+                      {p.pitch_grade == null ? <span style={{ color: T.textMuted }}>—</span> : (
+                        <span className="inline-block min-w-[30px] px-1.5 py-0.5 rounded font-bold"
+                              style={gradeColor(Number(p.pitch_grade)) && { background: gradeColor(Number(p.pitch_grade)).bg, color: gradeColor(Number(p.pitch_grade)).fg }}>
+                          {Math.round(p.pitch_grade)}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1.5 px-1.5 text-right">{pct(p.usage_pct)}</td>
                     <td className="py-1.5 px-1.5 text-right font-semibold">{f1(p.velo)}</td>
                     <td className="py-1.5 px-1.5 text-right">{spin(p.spin)}</td>
@@ -143,6 +159,7 @@ export default function TrackManCard({ endpoint }) {
                     <td className="py-1.5 px-1.5 text-right">{f2(p.extension)}</td>
                     <td className="py-1.5 px-1.5 text-right">{f2(p.rel_height)}</td>
                     <td className="py-1.5 px-1.5 text-right">{f2(p.rel_side)}</td>
+                    <td className="py-1.5 px-1.5 text-right">{f1(p.est_vaa)}</td>
                     <td className="py-1.5 px-1.5 text-right">{pct(p.in_zone_pct)}</td>
                     <td className="py-1.5 px-1.5 text-right">{pct(p.whiff_pct)}</td>
                     <td className="py-1.5 px-1.5 text-right">{pct(p.chase_pct)}</td>

@@ -1145,8 +1145,8 @@ def _trackman_payload(cur, summer_player_id, season):
     cur.execute(
         """
         SELECT pitch_type, pitch_count, usage_pct, velo, spin, ivb, hb, tilt,
-               extension, rel_height, rel_side, in_zone_pct, whiff_pct, chase_pct,
-               source_file
+               extension, rel_height, rel_side, est_vaa, in_zone_pct, whiff_pct,
+               chase_pct, pitch_grade, source_file
         FROM trackman_pitches
         WHERE summer_player_id = %s AND season = %s
         ORDER BY pitch_count DESC NULLS LAST
@@ -1181,11 +1181,12 @@ def trackman_all_pitches(_user: str = Depends(require_tier("dev"))):
             SELECT tp.summer_player_id, sp.first_name, sp.last_name, sp.throws,
                    st.name AS team, tp.season, tp.pitch_type, tp.pitch_count,
                    tp.usage_pct, tp.velo, tp.spin, tp.ivb, tp.hb, tp.tilt,
-                   tp.extension, tp.rel_height, tp.rel_side,
-                   tp.in_zone_pct, tp.whiff_pct, tp.chase_pct
+                   tp.extension, tp.rel_height, tp.rel_side, tp.est_vaa,
+                   tp.in_zone_pct, tp.whiff_pct, tp.chase_pct, tp.pitch_grade
             FROM trackman_pitches tp
             JOIN summer_players sp ON sp.id = tp.summer_player_id
             JOIN summer_teams st   ON st.id = tp.team_id
+            WHERE tp.pitch_count >= 5
             ORDER BY sp.last_name, sp.first_name, tp.pitch_count DESC NULLS LAST
             """
         )

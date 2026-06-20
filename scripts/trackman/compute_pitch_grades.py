@@ -1,0 +1,300 @@
+"""Compute a Stuff+-style PITCH GRADE for every trackman_pitches row.
+
+Approach (a small, honest "learning" model — no black box):
+
+1. ESTIMATED VAA. We have no measured vertical approach angle, so we compute a
+   location-neutral geometric estimate from release height, extension, velo and
+   induced vertical break (IVB), evaluated at a fixed reference plate height.
+   Fixing the crossing height removes pitch *location* from the metric (the
+   thing the user wanted), leaving a pure shape/geometry VAA.
+
+2. FEATURES, standardized WITHIN pitch type (so "good IVB" is judged against
+   other pitches of the same type): velo, ivb, |hb|, spin, extension, est_vaa,
+   |rel_side|, rel_height.
+
+3. LEARNED WEIGHTS. Within each pitch family (fastball / breaking / offspeed /
+   undefined) we fit a ridge regression of whiff% on those standardized
+   features, weighted by pitch_count (a 60-pitch sample counts more than a
+   5-pitch one). Ridge lambda is chosen by count-weighted 5-fold CV. The fitted
+   linear predictor IS the stuff signal.
+
+4. GRADE. The predictor is re-standardized within pitch type to mean 100,
+   sd 25, so ~95% of pitches land 50-150 and 100 = average for that pitch type
+   (Stuff+ convention). Whiff is the training target; whiff AND chase are used
+   to VALIDATE (out-of-fold correlation).
+
+Usage:
+    PYTHONPATH=backend python3 scripts/trackman/compute_pitch_grades.py            # report only
+    PYTHONPATH=backend python3 scripts/trackman/compute_pitch_grades.py --commit   # write pitch_grade + est_vaa
+"""
+import math
+import sys
+
+import numpy as np
+
+from app.models.database import get_connection
+
+COMMIT = "--commit" in sys.argv
+MIN_PITCHES = 5
+Z_REF_FT = 2.4          # reference plate-crossing height (mid-zone) for VAA
+GRADE_MEAN, GRADE_SD = 100.0, 25.0
+
+FAMILY = {
+    "Four Seam": "FB", "Sinker": "FB", "Cutter": "FB",
+    "Slider": "BB", "Curveball": "BB",
+    "Changeup": "OFF", "Splitter": "OFF",
+    "Undefined": "UND",
+}
+# rel_height is intentionally excluded: est_vaa is computed from it (+ ivb/velo/
+# ext), so keeping both creates severe multicollinearity and unstable weights.
+FEATURES = ["velo", "ivb", "hb_abs", "spin", "extension", "est_vaa", "rel_side_abs", "velo_sep"]
+FB_TYPES = {"Four Seam", "Sinker", "Cutter"}
+SHRINK_TARGET = 0.25     # cv_r at/above which a pitch type earns full grade spread
+
+
+def estimate_vaa(velo, ext, rel_height, ivb):
+    """Geometric vertical approach angle (degrees, negative = downward) at a
+    fixed mid-zone crossing height. Constant-acceleration trajectory: IVB sets
+    the Magnus vertical accel, gravity does the rest, solve for the release
+    vertical velocity that crosses Z_REF_FT, then read the angle at the plate."""
+    if None in (velo, ext, rel_height, ivb):
+        return None
+    v0 = float(velo) * 1.4667                 # mph -> ft/s
+    if v0 <= 0:
+        return None
+    y0 = 60.5 - float(ext)                     # release distance to plate tip (ft)
+    vy = 0.955 * v0                            # avg horizontal speed (≈ -9% drag over flight)
+    t = y0 / vy
+    a_magnus = 2.0 * (float(ivb) / 12.0) / (t * t)   # ft/s^2 from IVB (in -> ft)
+    a_z = -32.17 + a_magnus
+    dz = Z_REF_FT - float(rel_height)
+    vz0 = (dz - 0.5 * a_z * t * t) / t
+    vz_plate = vz0 + a_z * t
+    vy_plate = 0.92 * v0                       # horizontal speed near the plate
+    return math.degrees(math.atan2(vz_plate, vy_plate))
+
+
+def wmean(x, w):
+    return float(np.average(x, weights=w)) if len(x) else 0.0
+
+
+def wstd(x, w):
+    m = wmean(x, w)
+    v = float(np.average((x - m) ** 2, weights=w))
+    return math.sqrt(v) if v > 0 else 1.0
+
+
+def wcorr(x, y, w):
+    if len(x) < 3:
+        return float("nan")
+    mx, my = wmean(x, w), wmean(y, w)
+    cov = np.average((x - mx) * (y - my), weights=w)
+    vx = np.average((x - mx) ** 2, weights=w)
+    vy = np.average((y - my) ** 2, weights=w)
+    if vx <= 0 or vy <= 0:
+        return float("nan")
+    return float(cov / math.sqrt(vx * vy))
+
+
+def ridge_fit(X, y, w, lam):
+    """Weighted ridge on already weighted-centered X, y. Returns coef vector."""
+    W = np.diag(w)
+    A = X.T @ W @ X + lam * np.eye(X.shape[1])
+    b = X.T @ W @ y
+    return np.linalg.solve(A, b)
+
+
+def cv_lambda(X, y, w, grid, folds=5):
+    """Pick lambda by count-weighted k-fold out-of-fold correlation."""
+    n = len(y)
+    rng = np.arange(n)
+    fold_id = rng % folds
+    best_lam, best_r = grid[0], -1e9
+    for lam in grid:
+        preds = np.zeros(n)
+        for f in range(folds):
+            tr, te = fold_id != f, fold_id == f
+            if tr.sum() < X.shape[1] + 2 or te.sum() == 0:
+                continue
+            mx = np.average(X[tr], axis=0, weights=w[tr])
+            my = wmean(y[tr], w[tr])
+            coef = ridge_fit(X[tr] - mx, y[tr] - my, w[tr], lam)
+            preds[te] = (X[te] - mx) @ coef + my
+        r = wcorr(preds, y, w)
+        if not math.isnan(r) and r > best_r:
+            best_r, best_lam = r, lam
+    return best_lam, best_r
+
+
+def main():
+    with get_connection() as conn:
+        _run(conn)
+
+
+def _run(conn):
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT id, summer_player_id, season, pitch_type, pitch_count, velo, spin,
+                  ivb, hb, extension, rel_height, rel_side, whiff_pct, chase_pct
+           FROM trackman_pitches"""
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+
+    # Per-pitcher primary fastball velo (max FB-family velo, else max overall) so
+    # we can derive velo separation — a strong whiff driver for offspeed/breaking.
+    fb_velo = {}
+    for r in rows:
+        if r["velo"] is None:
+            continue
+        key = (r["summer_player_id"], r["season"])
+        v = float(r["velo"])
+        is_fb = r["pitch_type"] in FB_TYPES
+        cur_best = fb_velo.get(key)
+        if cur_best is None or (is_fb and not cur_best[1]) or (v > cur_best[0] and is_fb == cur_best[1]):
+            fb_velo[key] = (v, is_fb)
+    fb_velo = {k: v[0] for k, v in fb_velo.items()}
+
+    # Feature build + est_vaa for every row that has the physical inputs.
+    gradeable = []
+    for r in rows:
+        r["est_vaa"] = estimate_vaa(r["velo"], r["extension"], r["rel_height"], r["ivb"])
+        feats_ok = all(r.get(k) is not None for k in
+                       ("velo", "ivb", "hb", "spin", "extension", "rel_height")) and r["est_vaa"] is not None
+        r["_ok"] = feats_ok and (r["pitch_count"] or 0) >= MIN_PITCHES and r["pitch_type"] in FAMILY
+        if r["_ok"]:
+            r["hb_abs"] = abs(float(r["hb"]))
+            r["rel_side_abs"] = abs(float(r["rel_side"])) if r["rel_side"] is not None else 0.0
+            for k in ("velo", "ivb", "spin", "extension", "rel_height"):
+                r[k] = float(r[k])
+            r["velo_sep"] = fb_velo.get((r["summer_player_id"], r["season"]), r["velo"]) - r["velo"]
+            gradeable.append(r)
+
+    # Standardize each feature WITHIN pitch type.
+    types = sorted({r["pitch_type"] for r in gradeable})
+    norm = {}  # (ptype, feat) -> (mean, std) count-weighted
+    for pt in types:
+        sub = [r for r in gradeable if r["pitch_type"] == pt]
+        w = np.array([r["pitch_count"] for r in sub], float)
+        for f in FEATURES:
+            x = np.array([r[f] for r in sub], float)
+            norm[(pt, f)] = (wmean(x, w), wstd(x, w))
+    for r in gradeable:
+        r["_z"] = np.array([(r[f] - norm[(r["pitch_type"], f)][0]) / norm[(r["pitch_type"], f)][1]
+                            for f in FEATURES], float)
+
+    # Training target = a "stuff outcome" composite of whiff% and chase%, each
+    # standardized within pitch type then averaged. Using BOTH bat-missing
+    # signals denoises the target and rescues pitch types (e.g. curveballs) that
+    # generate outs via chase below the zone more than via in-zone whiffs.
+    for pt in types:
+        sub = [r for r in gradeable if r["pitch_type"] == pt]
+        w = np.array([r["pitch_count"] for r in sub], float)
+        for col in ("whiff_pct", "chase_pct"):
+            idx = [i for i, r in enumerate(sub) if r[col] is not None]
+            if len(idx) >= 5:
+                vals = np.array([float(sub[i][col]) for i in idx])
+                ww = w[idx]
+                m, s = wmean(vals, ww), wstd(vals, ww)
+                for i in idx:
+                    sub[i]["_z_" + col] = (float(sub[i][col]) - m) / s
+    for r in gradeable:
+        zs = [r[k] for k in ("_z_whiff_pct", "_z_chase_pct") if k in r]
+        r["_target"] = float(np.mean(zs)) if zs else None
+
+    # Fit a SEPARATE model PER PITCH TYPE. Two ways each pitch is unique:
+    #   (1) coefficients — a four-seam and a sinker miss bats by opposite shapes;
+    #   (2) the OUTCOME that signals "stuff" — fastballs do it via in-zone whiff,
+    #       curveballs more via chase below the zone. So each type picks its own
+    #       training target (whiff / chase / both) by cross-validation.
+    # Ridge + CV'd lambda regularizes small-sample types toward a flat ~100.
+    grid = [1, 3, 10, 30, 100, 300, 1000]
+    shrink = {}
+    targets = {"whiff": "_z_whiff_pct", "chase": "_z_chase_pct", "stuff": "_target"}
+    print(f"{'pitch_type':<11} {'n':>5} {'target':>7} {'lambda':>7} {'cv_r':>7} {'shrink':>7}   top weights")
+    for pt in types:
+        members = [r for r in gradeable if r["pitch_type"] == pt]
+        best = None  # (cv_r, target_name, lam, coef, mx, my)
+        for tname, tkey in targets.items():
+            tr = [r for r in members if r.get(tkey) is not None]
+            if len(tr) < 20:
+                continue
+            X = np.array([r["_z"] for r in tr])
+            y = np.array([r[tkey] for r in tr])
+            w = np.array([r["pitch_count"] for r in tr], float)
+            lam, cv_r = cv_lambda(X, y, w, grid)
+            if best is None or cv_r > best[0]:
+                mx = np.average(X, axis=0, weights=w)
+                my = wmean(y, w)
+                coef = ridge_fit(X - mx, y - my, w, lam)
+                best = (cv_r, tname, lam, coef, mx, my, len(tr))
+        if best is None:
+            for r in members:
+                r["_pred"] = 0.0
+            shrink[pt] = 0.0
+            print(f"{pt:<11} {len(members):>5}   (too few to fit — flat 100)")
+            continue
+        cv_r, tname, lam, coef, mx, my, ntr = best
+        for r in members:
+            r["_pred"] = float((r["_z"] - mx) @ coef + my)
+        shrink[pt] = max(0.0, min(1.0, cv_r / SHRINK_TARGET))
+        top = sorted(zip(FEATURES, coef), key=lambda kv: -abs(kv[1]))[:3]
+        wtxt = ", ".join(f"{f}={c:+.2f}" for f, c in top)
+        print(f"{pt:<11} {ntr:>5} {tname:>7} {lam:>7.1f} {cv_r:>7.3f} {shrink[pt]:>7.2f}   {wtxt}")
+
+    # Grade = predictor standardized within pitch type -> mean 100, sd 25, scaled
+    # by the type's CV confidence (low cv_r collapses toward 100), clamped to a
+    # sane Stuff+-style range.
+    for pt in types:
+        sub = [r for r in gradeable if r["pitch_type"] == pt]
+        w = np.array([r["pitch_count"] for r in sub], float)
+        preds = np.array([r["_pred"] for r in sub], float)
+        m, s = wmean(preds, w), wstd(preds, w)
+        for r in sub:
+            z = (r["_pred"] - m) / s
+            g = GRADE_MEAN + GRADE_SD * shrink[pt] * z
+            r["pitch_grade"] = round(max(20.0, min(180.0, g)), 1)
+
+    # ---- Validation ----
+    allr = gradeable
+    g = np.array([r["pitch_grade"] for r in allr])
+    w = np.array([r["pitch_count"] for r in allr], float)
+    wh = np.array([float(r["whiff_pct"]) if r["whiff_pct"] is not None else np.nan for r in allr])
+    ch = np.array([float(r["chase_pct"]) if r["chase_pct"] is not None else np.nan for r in allr])
+    print("\n=== validation (count-weighted Pearson r) ===")
+    mwh = ~np.isnan(wh)
+    mch = ~np.isnan(ch)
+    print(f"  grade vs whiff : {wcorr(g[mwh], wh[mwh], w[mwh]):.3f}  (n={mwh.sum()})")
+    print(f"  grade vs chase : {wcorr(g[mch], ch[mch], w[mch]):.3f}  (n={mch.sum()})")
+    print("  per pitch type (grade vs whiff):")
+    for pt in types:
+        idx = [i for i, r in enumerate(allr) if r["pitch_type"] == pt and r["whiff_pct"] is not None]
+        if len(idx) >= 5:
+            ii = np.array(idx)
+            print(f"    {pt:<10} r={wcorr(g[ii], wh[ii], w[ii]):+.3f}  n={len(idx)}  "
+                  f"grade {min(r['pitch_grade'] for r in allr if r['pitch_type']==pt):.0f}-"
+                  f"{max(r['pitch_grade'] for r in allr if r['pitch_type']==pt):.0f}")
+
+    if COMMIT:
+        cur.execute("ALTER TABLE trackman_pitches ADD COLUMN IF NOT EXISTS pitch_grade numeric")
+        cur.execute("ALTER TABLE trackman_pitches ADD COLUMN IF NOT EXISTS est_vaa numeric")
+        cur.execute("UPDATE trackman_pitches SET pitch_grade = NULL")  # clear stale (e.g. now <5)
+        n = 0
+        for r in gradeable:
+            cur.execute(
+                "UPDATE trackman_pitches SET pitch_grade=%s, est_vaa=%s WHERE id=%s",
+                (r["pitch_grade"], round(r["est_vaa"], 2), r["id"]),
+            )
+            n += 1
+        # est_vaa for sub-5 rows too (harmless, useful), grade stays null
+        for r in rows:
+            if not r["_ok"] and r["est_vaa"] is not None:
+                cur.execute("UPDATE trackman_pitches SET est_vaa=%s WHERE id=%s",
+                            (round(r["est_vaa"], 2), r["id"]))
+        conn.commit()
+        print(f"\nCOMMITTED pitch_grade for {n} rows (>= {MIN_PITCHES} pitches).")
+    else:
+        print(f"\nDRY RUN — {len(gradeable)} gradeable rows. Re-run with --commit to write.")
+
+
+if __name__ == "__main__":
+    main()

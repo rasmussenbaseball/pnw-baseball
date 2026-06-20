@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS trackman_pitches (
     in_zone_pct       NUMERIC(5,1),
     whiff_pct         NUMERIC(5,1),
     chase_pct         NUMERIC(5,1),
+    est_vaa           NUMERIC,        -- geometric vertical approach angle estimate (deg), compute_pitch_grades.py
+    pitch_grade       NUMERIC,        -- Stuff+-style grade (100 = avg for type), compute_pitch_grades.py
     source_file       TEXT,
     created_at        TIMESTAMP DEFAULT now(),
     updated_at        TIMESTAMP DEFAULT now(),

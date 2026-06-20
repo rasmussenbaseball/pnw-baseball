@@ -14,11 +14,21 @@ const PITCH_COLOR = {
 }
 const dot = (pt) => PITCH_COLOR[pt] || '#9aa0a8'
 
+// Stuff+-style grade color: 100 neutral, >100 red (better), <100 blue (worse).
+function gradeColor(g) {
+  if (g == null) return { bg: 'transparent', fg: 'inherit' }
+  const p = Math.max(50, Math.min(150, g))
+  const t = (p - 100) / 50            // -1 .. +1
+  if (t >= 0) return { bg: `rgba(214,62,62,${0.12 + 0.55 * t})`, fg: t > 0.5 ? '#fff' : 'inherit' }
+  return { bg: `rgba(29,78,216,${0.12 + 0.55 * -t})`, fg: -t > 0.5 ? '#fff' : 'inherit' }
+}
+
 const COLS = [
   { key: 'player', label: 'Player', align: 'left', type: 'str' },
   { key: 'team', label: 'Team', align: 'left', type: 'str' },
   { key: 'throws', label: 'T', align: 'center', type: 'str' },
   { key: 'pitch_type', label: 'Pitch', align: 'left', type: 'str' },
+  { key: 'pitch_grade', label: 'Grade', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : Math.round(v) },
   { key: 'pitch_count', label: '#', align: 'right', type: 'num', fmt: (v) => v ?? '—' },
   { key: 'usage_pct', label: 'Usage', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : `${(+v).toFixed(1)}%` },
   { key: 'velo', label: 'Velo', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : (+v).toFixed(1) },
@@ -29,6 +39,7 @@ const COLS = [
   { key: 'extension', label: 'Ext', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : (+v).toFixed(2) },
   { key: 'rel_height', label: 'RelHt', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : (+v).toFixed(2) },
   { key: 'rel_side', label: 'RelSide', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : (+v).toFixed(2) },
+  { key: 'est_vaa', label: 'est VAA', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : (+v).toFixed(1) },
   { key: 'in_zone_pct', label: 'Zone%', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : `${(+v).toFixed(1)}` },
   { key: 'whiff_pct', label: 'Whiff%', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : `${(+v).toFixed(1)}` },
   { key: 'chase_pct', label: 'Chase%', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : `${(+v).toFixed(1)}` },
@@ -43,7 +54,7 @@ export default function TrackManData() {
   const [throws, setThrows] = useState('')
   const [q, setQ] = useState('')
   const [minN, setMinN] = useState(0)
-  const [sortKey, setSortKey] = useState('velo')
+  const [sortKey, setSortKey] = useState('pitch_grade')
   const [sortDir, setSortDir] = useState('desc')
 
   const rows = data?.pitches || []
@@ -84,7 +95,9 @@ export default function TrackManData() {
               style={{ background: '#fde68a', color: '#92400e' }}>🔒 Dev only</span>
       </div>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Every pitch-shape row we've ingested. One row per pitcher per pitch type, averaged. Click a column to sort.
+        Every pitch-shape row we've ingested (5+ pitches). One row per pitcher per pitch type, averaged.
+        <strong> Grade</strong> is a Stuff+-style score (100 = average for that pitch type, ~50–150 range) learned from
+        each type's whiff/chase outcomes. Click a column to sort.
       </p>
 
       {/* Filters */}
@@ -138,15 +151,28 @@ export default function TrackManData() {
             <tbody>
               {filtered.map((r, i) => (
                 <tr key={i} className="border-t border-gray-100 dark:border-gray-800 hover:bg-teal-50/40 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200">
-                  {COLS.map(c => (
-                    <td key={c.key} className={`px-2 py-1.5 whitespace-nowrap ${c.align === 'left' ? 'text-left' : c.align === 'center' ? 'text-center' : 'text-right'} ${c.key === 'velo' ? 'font-semibold' : ''}`}>
-                      {c.key === 'pitch_type'
-                        ? <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: dot(r.pitch_type) }} />{r.pitch_type}</span>
-                        : c.key === 'player'
-                          ? <a className="hover:text-nw-teal hover:underline" href={`/summer/players/${r.summer_player_id}`}>{r.player}</a>
-                          : (c.fmt ? c.fmt(r[c.key]) : r[c.key])}
-                    </td>
-                  ))}
+                  {COLS.map(c => {
+                    if (c.key === 'pitch_grade') {
+                      const gc = gradeColor(r.pitch_grade)
+                      return (
+                        <td key={c.key} className="px-2 py-1.5 text-right">
+                          <span className="inline-block min-w-[34px] px-1.5 py-0.5 rounded font-bold tabular-nums"
+                                style={{ background: gc.bg, color: gc.fg }}>
+                            {c.fmt(r.pitch_grade)}
+                          </span>
+                        </td>
+                      )
+                    }
+                    return (
+                      <td key={c.key} className={`px-2 py-1.5 whitespace-nowrap ${c.align === 'left' ? 'text-left' : c.align === 'center' ? 'text-center' : 'text-right'} ${c.key === 'velo' ? 'font-semibold' : ''}`}>
+                        {c.key === 'pitch_type'
+                          ? <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: dot(r.pitch_type) }} />{r.pitch_type}</span>
+                          : c.key === 'player'
+                            ? <a className="hover:text-nw-teal hover:underline" href={`/summer/players/${r.summer_player_id}`}>{r.player}</a>
+                            : (c.fmt ? c.fmt(r[c.key]) : r[c.key])}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
               {filtered.length === 0 && (
