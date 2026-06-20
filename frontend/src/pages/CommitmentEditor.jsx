@@ -382,6 +382,121 @@ function IncomingTab({ pnwTeams, setToast }) {
   )
 }
 
+// ── WCL summer players: assign a spring school + WCL portal membership ──
+const wclMeta = (p) => [p.position, p.team_short, p.league,
+  [p.bats, p.throws].filter(Boolean).join('/'), p.year_in_school].filter(Boolean).join(' · ')
+
+function WclPlayerRow({ player, pnwTeams, onChanged, setToast }) {
+  const [school, setSchool] = useState(player.assigned_school || '')
+  const [teamId, setTeamId] = useState(player.assigned_school_team_id || null)
+  const [busy, setBusy] = useState(false)
+
+  const run = async (fn) => { setBusy(true); try { await fn() } catch (e) { setToast({ type: 'err', msg: e.message }) } finally { setBusy(false) } }
+
+  const save = () => run(async () => {
+    const val = school.trim()
+    if (!val) { setToast({ type: 'err', msg: 'Enter a school first.' }); return }
+    const r = await apiPost('/admin/summer/school/set', { summer_player_id: player.id, school: val, school_team_id: teamId })
+    setToast({ type: 'ok', msg: `${player.name} → ${r.school}${r.matched_pnw ? ' (PNW)' : ''}` })
+    onChanged(player.id, { assigned_school: r.school })
+  })
+  const clear = () => run(async () => {
+    await apiPost('/admin/summer/school/clear', { summer_player_id: player.id })
+    setToast({ type: 'ok', msg: `${player.name} school cleared` }); setSchool(''); setTeamId(null)
+    onChanged(player.id, { assigned_school: null })
+  })
+  const togglePortal = () => run(async () => {
+    const r = await apiPost(player.in_wcl_portal ? '/admin/wcl-portal/remove' : '/admin/wcl-portal/add', { summer_player_id: player.id })
+    setToast({ type: 'ok', msg: `${player.name} ${r.in_wcl_portal ? 'added to' : 'removed from'} WCL portal` })
+    onChanged(player.id, { in_wcl_portal: r.in_wcl_portal })
+  })
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
+      {player.logo_url ? <img src={player.logo_url} alt="" className="w-9 h-9 object-contain flex-shrink-0" /> : <div className="w-9 h-9 rounded bg-gray-100 dark:bg-gray-700 flex-shrink-0" />}
+      <div className="min-w-[170px] flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-gray-900 dark:text-gray-100">{player.name}</span>
+          {player.assigned_school
+            ? <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800">🎓 {player.assigned_school}</span>
+            : <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">No school</span>}
+          {player.in_wcl_portal && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">In WCL portal</span>}
+        </div>
+        <div className="text-xs text-gray-500">{wclMeta(player)}</div>
+      </div>
+      <PnwSchoolField value={school} onChange={(v, id) => { setSchool(v); setTeamId(id) }} pnwTeams={pnwTeams} />
+      <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-md bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 disabled:opacity-50">Save</button>
+      {player.assigned_school && (
+        <button onClick={clear} disabled={busy} className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 disabled:opacity-50">Clear</button>
+      )}
+      <button onClick={togglePortal} disabled={busy}
+        className={`px-3 py-1.5 rounded-md text-sm font-semibold border disabled:opacity-50 ${player.in_wcl_portal
+          ? 'border-amber-300 text-amber-700 hover:bg-amber-50'
+          : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-amber-400 hover:text-amber-700'}`}>
+        {player.in_wcl_portal ? 'Remove from WCL portal' : 'Add to WCL portal'}
+      </button>
+    </div>
+  )
+}
+
+function WclTab({ pnwTeams, setToast }) {
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [recent, setRecent] = useState([])
+  const debounceRef = useRef(null)
+
+  const loadRecent = useCallback(async () => { try { setRecent(await apiGet('/admin/wcl/recent')) } catch { /* */ } }, [])
+  useEffect(() => { loadRecent() }, [loadRecent])
+
+  useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return }
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true)
+      try { setResults(await apiGet(`/admin/summer/search?q=${encodeURIComponent(q.trim())}`)) }
+      catch { setResults([]) } finally { setSearching(false) }
+    }, 280)
+    return () => clearTimeout(debounceRef.current)
+  }, [q])
+
+  const onChanged = (id, patch) => { setResults(rs => rs.map(p => p.id === id ? { ...p, ...patch } : p)); loadRecent() }
+
+  return (
+    <>
+      <p className="text-sm text-gray-500 mb-3">
+        Assign a spring school to any WCL player (PNW schools autocomplete; type any other school as free text),
+        and add players to the WCL Transfer Portal Tracker.
+      </p>
+      <input value={q} onChange={e => setQ(e.target.value)} autoFocus placeholder="Search a WCL player by name…"
+        className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 mb-3" />
+      <div className="space-y-2 mb-8">
+        {searching && <div className="text-sm text-gray-400 py-4 text-center">Searching…</div>}
+        {!searching && q.trim().length >= 2 && results.length === 0 && <div className="text-sm text-gray-400 py-4 text-center">No WCL players found.</div>}
+        {results.map(p => <WclPlayerRow key={p.id} player={p} pnwTeams={pnwTeams} onChanged={onChanged} setToast={setToast} />)}
+      </div>
+      {recent.length > 0 && (
+        <div>
+          <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">Recent WCL edits</h2>
+          <div className="space-y-1.5">
+            {recent.map(r => (
+              <div key={r.id} className="flex flex-wrap items-center gap-x-2 text-sm text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800 pb-1.5">
+                <span className="font-medium text-gray-800 dark:text-gray-200">{r.name}</span>
+                {r.team_short && <span className="text-gray-400">({r.team_short})</span>}
+                {r.action === 'school_set' && <span>→ <span className="text-sky-700 font-medium">{r.detail}</span></span>}
+                {r.action === 'school_clear' && <span className="text-red-500">school cleared</span>}
+                {r.action === 'portal_add' && <span className="text-amber-600">added to WCL portal</span>}
+                {r.action === 'portal_remove' && <span className="text-gray-500">removed from WCL portal</span>}
+                <span className="text-gray-400 ml-auto text-xs">{r.editor_email} · {fmtTime(r.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function CommitmentEditor() {
   const [tab, setTab] = useState('commit')
   const [toast, setToast] = useState(null)
@@ -404,6 +519,7 @@ export default function CommitmentEditor() {
 
       <div className="flex gap-2 mb-4 flex-wrap">
         <TabBtn id="commit">Commitments &amp; Portal</TabBtn>
+        <TabBtn id="wcl">WCL Players</TabBtn>
         <TabBtn id="link">Link Pages</TabBtn>
         <TabBtn id="incoming">Incoming Transfers</TabBtn>
       </div>
@@ -415,6 +531,7 @@ export default function CommitmentEditor() {
       )}
 
       {tab === 'commit' && <CommitmentsTab pnwTeams={pnwTeams} setToast={setToast} />}
+      {tab === 'wcl' && <WclTab pnwTeams={pnwTeams} setToast={setToast} />}
       {tab === 'link' && <LinkTab setToast={setToast} />}
       {tab === 'incoming' && <IncomingTab pnwTeams={pnwTeams} setToast={setToast} />}
     </div>

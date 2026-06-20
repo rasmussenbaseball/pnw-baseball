@@ -3429,3 +3429,97 @@ def summer_player_pitch_level_stats_pitcher(
             "opp_contact_profile": opp_contact_profile,
             "opp_spray_chart": opp_spray_chart,
         }
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# WCL Transfer Portal Tracker — summer players added to the WCL portal via the
+# Commitment Editor, served with their SUMMER (WCL) stats in the same row shape
+# the JUCO / Transfer Portal trackers use so they share PlayerTrackerTable.
+# Recruiting-tier gated (Coaching tab). Allows non-PNW spring players: the
+# "school" is the curated summer_players.assigned_school.
+# ─────────────────────────────────────────────────────────────────────────
+_WCL_PORTAL_SORT = {
+    "total_war", "offensive_war", "batting_avg", "on_base_pct", "slugging_pct",
+    "woba", "wrc_plus", "home_runs", "rbi", "stolen_bases", "plate_appearances",
+    "bat_k_pct", "bat_bb_pct", "pitching_war", "era", "fip", "innings_pitched",
+}
+
+
+@router.get("/wcl-portal")
+def wcl_portal_players(
+    season: int = Query(CURRENT_SEASON),
+    position: Optional[str] = None,
+    sort_by: str = Query("total_war"),
+    sort_dir: str = Query("desc"),
+    bats: Optional[str] = None,
+    throws: Optional[str] = None,
+    _user: str = Depends(require_tier("recruiting")),
+):
+    with get_connection() as _mc:
+        _mcur = _mc.cursor()
+        _mcur.execute(
+            """CREATE TABLE IF NOT EXISTS wcl_portal_members (
+                 summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
+                 position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
+        )
+        _mcur.execute("SELECT summer_player_id FROM wcl_portal_members")
+        ids = [int(r["summer_player_id"]) for r in _mcur.fetchall()]
+    if not ids:
+        return []
+
+    if sort_by not in _WCL_PORTAL_SORT:
+        sort_by = "total_war"
+    direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT sp.id, sp.first_name, sp.last_name, sp.position, sp.bats, sp.throws,
+                   sp.year_in_school,
+                   st.short_name AS team_short, st.name AS team_name, st.logo_url,
+                   l.abbreviation AS league,
+                   sp.assigned_school AS committed_to, ad.level AS committed_level,
+                   bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
+                   bs.woba, bs.wrc_plus, bs.offensive_war,
+                   bs.home_runs, bs.rbi, bs.stolen_bases, bs.plate_appearances,
+                   bs.k_pct AS bat_k_pct, bs.bb_pct AS bat_bb_pct,
+                   ps.era, ps.fip, ps.whip, ps.innings_pitched, ps.strikeouts AS pitch_k,
+                   ps.pitching_war,
+                   COALESCE(bs.offensive_war, 0) + COALESCE(ps.pitching_war, 0) AS total_war
+            FROM summer_players sp
+            JOIN summer_teams st ON sp.team_id = st.id
+            JOIN summer_leagues l ON l.id = st.league_id
+            LEFT JOIN teams at2 ON at2.id = sp.assigned_school_team_id
+            LEFT JOIN conferences ac ON ac.id = at2.conference_id
+            LEFT JOIN divisions ad ON ad.id = ac.division_id
+            LEFT JOIN summer_batting_stats bs ON bs.player_id = sp.id AND bs.season = %s AND bs.team_id = sp.team_id
+            LEFT JOIN summer_pitching_stats ps ON ps.player_id = sp.id AND ps.season = %s AND ps.team_id = sp.team_id
+            WHERE sp.id = ANY(%s)
+        """
+        params: list = [season, season, ids]
+        if position:
+            if position == "P":
+                query += " AND (sp.position IN ('RHP','LHP','P') OR sp.position LIKE 'RHP/%%' OR sp.position LIKE 'LHP/%%' OR sp.position LIKE 'P/%%')"
+            elif position == "OF":
+                query += " AND (sp.position IN ('OF','LF','CF','RF') OR sp.position LIKE '%%/OF' OR sp.position LIKE '%%/LF' OR sp.position LIKE '%%/CF' OR sp.position LIKE '%%/RF')"
+            elif position == "IF":
+                query += " AND (sp.position IN ('IF','1B','2B','3B','SS') OR sp.position LIKE '%%/IF' OR sp.position LIKE '%%/1B' OR sp.position LIKE '%%/2B' OR sp.position LIKE '%%/3B' OR sp.position LIKE '%%/SS')"
+            else:
+                query += " AND (sp.position = %s OR sp.position LIKE %s OR sp.position LIKE %s)"
+                params.extend([position, f"{position}/%", f"%/{position}"])
+        if bats:
+            query += " AND sp.bats = %s"
+            params.append(bats)
+        if throws:
+            query += " AND sp.throws = %s"
+            params.append(throws)
+
+        query += f" ORDER BY {sort_by} {direction} NULLS LAST, sp.last_name ASC"
+        cur.execute(query, params)
+        rows = [dict(r) for r in cur.fetchall()]
+
+    # NWAC display label for a JUCO assigned school (matches the rest of the site).
+    for r in rows:
+        if r.get("committed_level") == "JUCO":
+            r["committed_level"] = "NWAC"
+    return rows

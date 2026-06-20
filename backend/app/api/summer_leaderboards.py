@@ -102,7 +102,7 @@ def summer_batting_leaderboard(
         cur = conn.cursor()
         query = """
             SELECT sbs.*,
-                   sp.first_name, sp.last_name, sp.position, sp.college,
+                   sp.first_name, sp.last_name, sp.position, COALESCE(sp.assigned_school, sp.college) AS college,
                    sp.year_in_school,
                    st.name as team_name, st.short_name as team_short,
                    st.logo_url, st.city as team_city,
@@ -204,7 +204,7 @@ def summer_pitching_leaderboard(
         cur = conn.cursor()
         query = """
             SELECT sps.*,
-                   sp.first_name, sp.last_name, sp.position, sp.college,
+                   sp.first_name, sp.last_name, sp.position, COALESCE(sp.assigned_school, sp.college) AS college,
                    sp.year_in_school,
                    st.name as team_name, st.short_name as team_short,
                    st.logo_url, st.city as team_city,

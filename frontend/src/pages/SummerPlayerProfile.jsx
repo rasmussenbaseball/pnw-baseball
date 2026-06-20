@@ -349,7 +349,9 @@ function SummerHero({ identity, summerPlayer, season, contextBox, children, righ
   const T = usePlayerProfileTheme()
   const first = identity.first_name || summerPlayer.first_name
   const last = identity.last_name || summerPlayer.last_name
-  const college = summerPlayer.college || identity.team_name
+  // Curated assigned_school (set in the Commitment Editor) wins, then the
+  // confirmed spring-link team, then the stale Pointstreak free-text college.
+  const college = summerPlayer.assigned_school || identity.team_name || summerPlayer.college
   return (
     <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
       <div className="p-5 flex flex-col">

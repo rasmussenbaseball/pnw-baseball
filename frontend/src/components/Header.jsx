@@ -142,6 +142,9 @@ const NAV = [
       { to: '/coaching/transfer-portal', label: 'Transfer Portal Tracker',
         desc: 'PNW four-year players who have entered the transfer portal',
         requires: 'recruiting' },
+      { to: '/coaching/wcl-portal', label: 'WCL Portal Tracker',
+        desc: 'West Coast League players in the portal, with summer stats',
+        requires: 'recruiting' },
     ],
   },
   {

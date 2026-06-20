@@ -95,6 +95,33 @@ def _ensure_tables(cur):
         )
         """
     )
+    # WCL summer players: a curated spring school (works for non-PNW players the
+    # auto-linker can't resolve) + membership in the WCL transfer-portal tracker.
+    cur.execute("ALTER TABLE summer_players ADD COLUMN IF NOT EXISTS assigned_school TEXT")
+    cur.execute("ALTER TABLE summer_players ADD COLUMN IF NOT EXISTS assigned_school_team_id INTEGER")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wcl_portal_members (
+            summer_player_id INTEGER PRIMARY KEY,
+            from_school TEXT,
+            position TEXT,
+            added_by TEXT,
+            added_at TIMESTAMP NOT NULL DEFAULT now()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wcl_audit (
+            id SERIAL PRIMARY KEY,
+            summer_player_id INTEGER NOT NULL,
+            editor_email TEXT NOT NULL,
+            action TEXT NOT NULL,            -- school_set | school_clear | portal_add | portal_remove
+            detail TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT now()
+        )
+        """
+    )
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -321,6 +348,179 @@ def portal_remove(body: PlayerIdBody, email: str = Depends(require_developer)):
         _audit_commit(cur, body.player_id, email, "portal_remove", None, None)
         conn.commit()
     return {"ok": True, "player_id": body.player_id, "in_portal": False}
+
+
+# ─────────────────────────────────────────────────────────────────
+# WCL summer players — school assignment + WCL transfer-portal tracker
+# ─────────────────────────────────────────────────────────────────
+class SummerSchool(BaseModel):
+    summer_player_id: int
+    school: str = Field(..., min_length=1, max_length=120)
+    # When the editor picks a PNW school from the autocomplete it sends the team
+    # id — we store the canonical short_name + team id (for logo/level chip).
+    school_team_id: Optional[int] = None
+
+
+class SummerIdBody(BaseModel):
+    summer_player_id: int
+
+
+def _audit_wcl(cur, spid, email, action, detail):
+    cur.execute(
+        "INSERT INTO wcl_audit (summer_player_id, editor_email, action, detail) VALUES (%s, %s, %s, %s)",
+        (spid, email, action, detail),
+    )
+
+
+@router.get("/admin/summer/search")
+def summer_search(q: str = Query(..., min_length=2), _email: str = Depends(require_developer)):
+    """Search WCL/summer players for school assignment + WCL-portal toggling.
+    Unlike the spring search this hits summer_players, so EVERY WCL player is
+    reachable (including non-PNW spring players the auto-linker can't resolve)."""
+    search = f"%{q.strip()}%"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute(
+            """
+            SELECT sp.id, sp.first_name, sp.last_name, sp.position, sp.year_in_school,
+                   sp.bats, sp.throws, sp.college,
+                   sp.assigned_school, sp.assigned_school_team_id,
+                   st.short_name AS team_short, st.name AS team_name, st.logo_url,
+                   l.abbreviation AS league,
+                   (wpm.summer_player_id IS NOT NULL) AS in_wcl_portal
+            FROM summer_players sp
+            JOIN summer_teams st ON sp.team_id = st.id
+            JOIN summer_leagues l ON l.id = st.league_id
+            LEFT JOIN wcl_portal_members wpm ON wpm.summer_player_id = sp.id
+            WHERE sp.first_name NOT IN ('Total:', 'Total')
+              AND sp.id IN (
+                SELECT id FROM summer_players
+                WHERE first_name ILIKE %s OR last_name ILIKE %s
+                   OR (first_name || ' ' || last_name) ILIKE %s
+                OFFSET 0
+            )
+            ORDER BY sp.last_name, sp.first_name
+            LIMIT 25
+            """,
+            (search, search, search),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["name"] = f"{r.get('first_name', '') or ''} {r.get('last_name', '') or ''}".strip()
+        r["in_wcl_portal"] = bool(r.get("in_wcl_portal"))
+        # what the editor field pre-fills: the curated school (NOT the stale
+        # Pointstreak `college`, which we never trust).
+        r["school"] = r.get("assigned_school") or None
+    return rows
+
+
+@router.post("/admin/summer/school/set")
+def summer_school_set(body: SummerSchool, email: str = Depends(require_developer)):
+    """Assign a spring school to a WCL player. PNW destinations normalize to the
+    team's canonical short_name (and store the team id for logo + level chip)."""
+    school = body.school.strip()
+    if not school:
+        raise HTTPException(status_code=400, detail="school is required")
+    team_id = None
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute("SELECT id FROM summer_players WHERE id = %s", (body.summer_player_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Summer player not found")
+        if body.school_team_id is not None:
+            cur.execute(
+                "SELECT id, short_name FROM teams WHERE id = %s AND state = ANY(%s)",
+                (body.school_team_id, _PNW_STATES),
+            )
+            t = cur.fetchone()
+            if t:
+                school = t["short_name"]; team_id = t["id"]
+        if team_id is None:
+            t = _resolve_pnw_exact(cur, school)
+            if t:
+                school = t["short_name"]; team_id = t["id"]
+        cur.execute(
+            "UPDATE summer_players SET assigned_school = %s, assigned_school_team_id = %s WHERE id = %s",
+            (school, team_id, body.summer_player_id),
+        )
+        _audit_wcl(cur, body.summer_player_id, email, "school_set", school)
+        conn.commit()
+    return {"ok": True, "summer_player_id": body.summer_player_id, "school": school,
+            "matched_pnw": bool(team_id)}
+
+
+@router.post("/admin/summer/school/clear")
+def summer_school_clear(body: SummerIdBody, email: str = Depends(require_developer)):
+    """Remove a WCL player's curated school."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute(
+            "UPDATE summer_players SET assigned_school = NULL, assigned_school_team_id = NULL WHERE id = %s",
+            (body.summer_player_id,),
+        )
+        _audit_wcl(cur, body.summer_player_id, email, "school_clear", None)
+        conn.commit()
+    return {"ok": True, "summer_player_id": body.summer_player_id, "school": None}
+
+
+@router.post("/admin/wcl-portal/add")
+def wcl_portal_add(body: SummerIdBody, email: str = Depends(require_developer)):
+    """Add a WCL player to the WCL Transfer Portal Tracker."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute(
+            """SELECT sp.position, st.short_name FROM summer_players sp
+               JOIN summer_teams st ON sp.team_id = st.id WHERE sp.id = %s""",
+            (body.summer_player_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Summer player not found")
+        cur.execute(
+            """INSERT INTO wcl_portal_members (summer_player_id, from_school, position, added_by)
+               VALUES (%s, %s, %s, %s) ON CONFLICT (summer_player_id) DO NOTHING""",
+            (body.summer_player_id, row.get("short_name"), row.get("position"), email),
+        )
+        _audit_wcl(cur, body.summer_player_id, email, "portal_add", None)
+        conn.commit()
+    return {"ok": True, "summer_player_id": body.summer_player_id, "in_wcl_portal": True}
+
+
+@router.post("/admin/wcl-portal/remove")
+def wcl_portal_remove(body: SummerIdBody, email: str = Depends(require_developer)):
+    """Remove a WCL player from the WCL Transfer Portal Tracker."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute("DELETE FROM wcl_portal_members WHERE summer_player_id = %s", (body.summer_player_id,))
+        _audit_wcl(cur, body.summer_player_id, email, "portal_remove", None)
+        conn.commit()
+    return {"ok": True, "summer_player_id": body.summer_player_id, "in_wcl_portal": False}
+
+
+@router.get("/admin/wcl/recent")
+def wcl_recent(limit: int = Query(15, ge=1, le=50), _email: str = Depends(require_developer)):
+    """Recent WCL school / portal edits for the editor's activity feed."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute(
+            """SELECT wa.id, wa.summer_player_id, wa.editor_email, wa.action, wa.detail, wa.created_at,
+                      sp.first_name, sp.last_name, st.short_name AS team_short
+               FROM wcl_audit wa
+               LEFT JOIN summer_players sp ON sp.id = wa.summer_player_id
+               LEFT JOIN summer_teams st ON st.id = sp.team_id
+               ORDER BY wa.created_at DESC LIMIT %s""",
+            (limit,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["name"] = f"{r.get('first_name', '') or ''} {r.get('last_name', '') or ''}".strip() or f"Player {r['summer_player_id']}"
+    return rows
 
 
 # ─────────────────────────────────────────────────────────────────

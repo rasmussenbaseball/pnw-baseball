@@ -214,6 +214,7 @@ import ScatterPlot from './pages/ScatterPlot'
 import PlayerSearch from './pages/PlayerSearch'
 import JucoTracker from './pages/JucoTracker'
 import TransferPortalTracker from './pages/TransferPortalTracker'
+import WclTransferTracker from './pages/WclTransferTracker'
 import PlayerDetail from './pages/PlayerDetail'
 // Social-graphic generators: admin/author tools (RequireAuth), never on a
 // visitor's path — lazy so their ~8k lines stay out of the main bundle.
@@ -436,6 +437,7 @@ export default function App() {
               tab (premium). Old standalone + portal URLs redirect here. */}
           <Route path="/coaching/juco-tracker" element={<RequireTier minTier="recruiting"><JucoTracker /></RequireTier>} />
           <Route path="/coaching/transfer-portal" element={<RequireTier minTier="recruiting"><TransferPortalTracker /></RequireTier>} />
+          <Route path="/coaching/wcl-portal" element={<RequireTier minTier="recruiting"><WclTransferTracker /></RequireTier>} />
           <Route path="/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/portal/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
