@@ -68,6 +68,14 @@ export const DEVELOPER_EMAILS = [
   'cameronkundig@gmail.com',
 ]
 
+// Commitment Editor — narrower than the dev tier. Only these accounts may open
+// the commitment / portal / freshman / link tools, even though DEVELOPER_EMAILS
+// unlocks every other internal tool.
+export const COMMITMENT_EDITOR_EMAILS = [
+  'nate.rasmussen26@gmail.com',
+  'pnwcbr@gmail.com',
+]
+
 export function isDeveloper(email) {
   if (!email) return false
   return DEVELOPER_EMAILS.includes(email.toLowerCase())

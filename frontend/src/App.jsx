@@ -8,7 +8,7 @@ import { PreviewProvider } from './context/PreviewContext'
 import PreviewBanner from './components/PreviewBanner'
 import MaintenanceLockout from './components/MaintenanceLockout'
 import GlobalRouteLoader from './components/GlobalRouteLoader'
-import { isDeveloper } from './lib/tiers'
+import { isDeveloper, COMMITMENT_EDITOR_EMAILS } from './lib/tiers'
 import Header from './components/Header'
 import EmailPrefsPopup from './components/EmailPrefsPopup'
 
@@ -398,7 +398,7 @@ export default function App() {
           <Route path="/teams" element={<TeamsPage />} />
           <Route path="/projections" element={<RequireDev><TeamProjections /></RequireDev>} />
           <Route path="/trackman-data" element={<RequireDev><TrackManData /></RequireDev>} />
-          <Route path="/commitment-editor" element={<RequireDev><CommitmentEditor /></RequireDev>} />
+          <Route path="/commitment-editor" element={<RequireDev emails={COMMITMENT_EDITOR_EMAILS}><CommitmentEditor /></RequireDev>} />
           <Route path="/pro-tracker" element={<ProTracker />} />
           <Route path="/draft" element={<PnwDraft />} />
           <Route path="/wcl-pickem" element={<WclPickem />} />

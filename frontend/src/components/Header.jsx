@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import { useTier } from '../hooks/useTier'
-import { tierMeets, TIER_META, DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS } from '../lib/tiers'
+import { tierMeets, TIER_META, DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, COMMITMENT_EDITOR_EMAILS } from '../lib/tiers'
 import { isGmFreePlay } from '../lib/gmPromo'
 
 // During the launch-week free-play promo the NW Coaching Simulator is open
@@ -174,7 +174,7 @@ const NAV = [
       // Dev tools — visible to site developers + interns (DEVELOPER_EMAILS).
       { to: '/commitment-editor', label: 'Commitment Editor',
         desc: 'Search an NWAC or transfer player and update / undo their commitment, live',
-        requireEmail: DEVELOPER_EMAILS },
+        requireEmail: COMMITMENT_EDITOR_EMAILS },
       { to: '/trackman-data', label: 'TrackMan Data',
         desc: 'Filterable pitch-shape stat tables (velo, movement, whiff/chase) across all ingested WCL teams',
         requireEmail: DEVELOPER_EMAILS },

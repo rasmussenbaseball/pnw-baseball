@@ -239,3 +239,20 @@ def require_developer(request: Request) -> str:
     if email not in DEVELOPER_EMAILS:
         raise HTTPException(status_code=403, detail="Developer access required")
     return email
+
+
+def require_commitment_editor(request: Request) -> str:
+    """Commitment Editor gate — narrower than require_developer. Only the owner
+    and designated editors (COMMITMENT_EDITOR_EMAILS) may use the commitment /
+    portal / freshman / link write tools, even though the broader dev tier
+    unlocks every other internal tool. Returns the lowercased email for audit."""
+    token = _extract_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    from ._tier_allowlist import email_for_token, COMMITMENT_EDITOR_EMAILS
+    email = (email_for_token(token) or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if email not in COMMITMENT_EDITOR_EMAILS:
+        raise HTTPException(status_code=403, detail="Commitment editor access required")
+    return email

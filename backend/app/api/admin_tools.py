@@ -2,7 +2,7 @@
 Admin tools — dev-only write endpoints for small site edits.
 
 Used by DEVELOPER_EMAILS (Nate + interns / friends) via the Commitment Editor
-page (/commitment-editor). Three capabilities, all gated by require_developer
+page (/commitment-editor). Three capabilities, all gated by require_commitment_editor
 (strict — always enforced, not subject to soft-mode tier gating):
 
   1. Commitments — set / clear a player's commitment. Writes the players table
@@ -31,7 +31,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .auth import require_developer
+from .auth import require_commitment_editor
 from ..models.database import get_connection
 
 router = APIRouter()
@@ -158,7 +158,7 @@ def _resolve_pnw_exact(cur, text):
 
 
 @router.get("/admin/teams/pnw")
-def pnw_team_search(q: str = Query("", description="filter by name"), _email: str = Depends(require_developer)):
+def pnw_team_search(q: str = Query("", description="filter by name"), _email: str = Depends(require_commitment_editor)):
     """PNW teams for the commitment autocomplete. Returns every PNW team
     (optionally filtered) so the editor can pick the exact destination."""
     ql = q.strip().lower()
@@ -177,7 +177,7 @@ def pnw_team_search(q: str = Query("", description="filter by name"), _email: st
 # Player search (commitment + portal panel)
 # ─────────────────────────────────────────────────────────────────
 @router.get("/admin/commitment/search")
-def commitment_search(q: str = Query(..., min_length=2), _email: str = Depends(require_developer)):
+def commitment_search(q: str = Query(..., min_length=2), _email: str = Depends(require_commitment_editor)):
     """Search players by name. Returns level, current commitment, and whether
     the player is in the transfer portal, so the editor shows full status."""
     search = f"%{q.strip()}%"
@@ -244,7 +244,7 @@ def _audit_commit(cur, player_id, email, action, old, new):
 
 
 @router.post("/admin/commitment/set")
-def commitment_set(body: SetCommitment, email: str = Depends(require_developer)):
+def commitment_set(body: SetCommitment, email: str = Depends(require_commitment_editor)):
     """Set a player's commitment. PNW destinations are normalized to the
     team's canonical short_name so the player lands on the right 2027 roster."""
     school = body.committed_to.strip()
@@ -290,7 +290,7 @@ def commitment_set(body: SetCommitment, email: str = Depends(require_developer))
 
 
 @router.post("/admin/commitment/clear")
-def commitment_clear(body: PlayerIdBody, email: str = Depends(require_developer)):
+def commitment_clear(body: PlayerIdBody, email: str = Depends(require_commitment_editor)):
     """Undo a commitment — set the player back to uncommitted."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -313,7 +313,7 @@ def commitment_clear(body: PlayerIdBody, email: str = Depends(require_developer)
 # Transfer portal membership
 # ─────────────────────────────────────────────────────────────────
 @router.post("/admin/portal/add")
-def portal_add(body: PlayerIdBody, email: str = Depends(require_developer)):
+def portal_add(body: PlayerIdBody, email: str = Depends(require_commitment_editor)):
     """Add a player to the Transfer Portal Tracker. from_school is derived from
     their current team."""
     with get_connection() as conn:
@@ -339,7 +339,7 @@ def portal_add(body: PlayerIdBody, email: str = Depends(require_developer)):
 
 
 @router.post("/admin/portal/remove")
-def portal_remove(body: PlayerIdBody, email: str = Depends(require_developer)):
+def portal_remove(body: PlayerIdBody, email: str = Depends(require_commitment_editor)):
     """Remove a player from the Transfer Portal Tracker."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -373,7 +373,7 @@ def _audit_wcl(cur, spid, email, action, detail):
 
 
 @router.get("/admin/summer/search")
-def summer_search(q: str = Query(..., min_length=2), _email: str = Depends(require_developer)):
+def summer_search(q: str = Query(..., min_length=2), _email: str = Depends(require_commitment_editor)):
     """Search WCL/summer players for school assignment + WCL-portal toggling.
     Unlike the spring search this hits summer_players, so EVERY WCL player is
     reachable (including non-PNW spring players the auto-linker can't resolve)."""
@@ -427,7 +427,7 @@ def summer_search(q: str = Query(..., min_length=2), _email: str = Depends(requi
 
 
 @router.post("/admin/summer/school/set")
-def summer_school_set(body: SummerSchool, email: str = Depends(require_developer)):
+def summer_school_set(body: SummerSchool, email: str = Depends(require_commitment_editor)):
     """Assign a spring school to a WCL player. PNW destinations normalize to the
     team's canonical short_name (and store the team id for logo + level chip)."""
     school = body.school.strip()
@@ -463,7 +463,7 @@ def summer_school_set(body: SummerSchool, email: str = Depends(require_developer
 
 
 @router.post("/admin/summer/school/clear")
-def summer_school_clear(body: SummerIdBody, email: str = Depends(require_developer)):
+def summer_school_clear(body: SummerIdBody, email: str = Depends(require_commitment_editor)):
     """Remove a WCL player's curated school."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -478,7 +478,7 @@ def summer_school_clear(body: SummerIdBody, email: str = Depends(require_develop
 
 
 @router.post("/admin/wcl-portal/add")
-def wcl_portal_add(body: SummerIdBody, email: str = Depends(require_developer)):
+def wcl_portal_add(body: SummerIdBody, email: str = Depends(require_commitment_editor)):
     """Add a WCL player to the WCL Transfer Portal Tracker."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -502,7 +502,7 @@ def wcl_portal_add(body: SummerIdBody, email: str = Depends(require_developer)):
 
 
 @router.post("/admin/wcl-portal/remove")
-def wcl_portal_remove(body: SummerIdBody, email: str = Depends(require_developer)):
+def wcl_portal_remove(body: SummerIdBody, email: str = Depends(require_commitment_editor)):
     """Remove a WCL player from the WCL Transfer Portal Tracker."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -514,7 +514,7 @@ def wcl_portal_remove(body: SummerIdBody, email: str = Depends(require_developer
 
 
 @router.get("/admin/wcl/recent")
-def wcl_recent(limit: int = Query(15, ge=1, le=50), _email: str = Depends(require_developer)):
+def wcl_recent(limit: int = Query(15, ge=1, le=50), _email: str = Depends(require_commitment_editor)):
     """Recent WCL school / portal edits for the editor's activity feed."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -549,7 +549,7 @@ class FreshmanAdd(BaseModel):
 
 
 @router.post("/admin/freshman/add")
-def freshman_add(body: FreshmanAdd, email: str = Depends(require_developer)):
+def freshman_add(body: FreshmanAdd, email: str = Depends(require_commitment_editor)):
     """Add an incoming freshman PBR/BBNW didn't catch. Listed in the recruiting
     class as an unrated commit (no PBR/BBNW data => no class-weight impact)."""
     parts = body.name.strip().split()
@@ -587,7 +587,7 @@ def freshman_add(body: FreshmanAdd, email: str = Depends(require_developer)):
 
 
 @router.get("/admin/freshman/list")
-def freshman_list(_email: str = Depends(require_developer)):
+def freshman_list(_email: str = Depends(require_commitment_editor)):
     """Every manually-added incoming freshman, for the editor list."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -606,7 +606,7 @@ def freshman_list(_email: str = Depends(require_developer)):
 
 
 @router.post("/admin/freshman/remove")
-def freshman_remove(body: dict, email: str = Depends(require_developer)):
+def freshman_remove(body: dict, email: str = Depends(require_commitment_editor)):
     """Remove a manually-added freshman. Guarded to manual rows so a scraped
     recruit can never be deleted through this endpoint."""
     rid = body.get("id")
@@ -624,7 +624,7 @@ def freshman_remove(body: dict, email: str = Depends(require_developer)):
 # Player-page linking
 # ─────────────────────────────────────────────────────────────────
 @router.get("/admin/link/search")
-def link_search(q: str = Query(..., min_length=2), _email: str = Depends(require_developer)):
+def link_search(q: str = Query(..., min_length=2), _email: str = Depends(require_commitment_editor)):
     """Search spring AND summer players for the linking tool, each annotated
     with its existing link(s) so the editor can link or unlink."""
     search = f"%{q.strip()}%"
@@ -743,7 +743,7 @@ class RemoveLink(BaseModel):
 
 
 @router.post("/admin/link/create")
-def link_create(body: CreateLink, email: str = Depends(require_developer)):
+def link_create(body: CreateLink, email: str = Depends(require_commitment_editor)):
     a, b = body.a, body.b
     if a.kind == b.kind == "spring" and a.id == b.id:
         raise HTTPException(status_code=400, detail="Can't link a player to itself")
@@ -793,7 +793,7 @@ def link_create(body: CreateLink, email: str = Depends(require_developer)):
 
 
 @router.post("/admin/link/remove")
-def link_remove(body: RemoveLink, email: str = Depends(require_developer)):
+def link_remove(body: RemoveLink, email: str = Depends(require_commitment_editor)):
     if body.table not in ("player_links", "summer_player_links"):
         raise HTTPException(status_code=400, detail="Bad table")
     with get_connection() as conn:
@@ -822,7 +822,7 @@ class IncomingAdd(BaseModel):
 
 
 @router.get("/admin/incoming/list")
-def incoming_list(_email: str = Depends(require_developer)):
+def incoming_list(_email: str = Depends(require_commitment_editor)):
     with get_connection() as conn:
         cur = conn.cursor()
         _ensure_tables(cur)
@@ -836,7 +836,7 @@ def incoming_list(_email: str = Depends(require_developer)):
 
 
 @router.post("/admin/incoming/add")
-def incoming_add(body: IncomingAdd, email: str = Depends(require_developer)):
+def incoming_add(body: IncomingAdd, email: str = Depends(require_commitment_editor)):
     with get_connection() as conn:
         cur = conn.cursor()
         _ensure_tables(cur)
@@ -856,7 +856,7 @@ def incoming_add(body: IncomingAdd, email: str = Depends(require_developer)):
 
 
 @router.post("/admin/incoming/remove")
-def incoming_remove(body: dict, email: str = Depends(require_developer)):
+def incoming_remove(body: dict, email: str = Depends(require_commitment_editor)):
     iid = body.get("id")
     if not iid:
         raise HTTPException(status_code=400, detail="id required")
@@ -872,7 +872,7 @@ def incoming_remove(body: dict, email: str = Depends(require_developer)):
 # Recent activity (shown in the editor)
 # ─────────────────────────────────────────────────────────────────
 @router.get("/admin/commitment/recent")
-def commitment_recent(limit: int = Query(15, le=50), _email: str = Depends(require_developer)):
+def commitment_recent(limit: int = Query(15, le=50), _email: str = Depends(require_commitment_editor)):
     with get_connection() as conn:
         cur = conn.cursor()
         _ensure_tables(cur)

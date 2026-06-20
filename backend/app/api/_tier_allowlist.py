@@ -39,6 +39,14 @@ DEVELOPER_EMAILS = {
     "cameronkundig@gmail.com",
 }
 
+# Commitment Editor — narrower than the dev tier. Only these accounts may
+# read/write the commitment / portal / freshman / link tools, even though the
+# broader DEVELOPER_EMAILS set unlocks every other internal tool.
+COMMITMENT_EDITOR_EMAILS = {
+    "nate.rasmussen26@gmail.com",
+    "pnwcbr@gmail.com",
+}
+
 COMPED_COACH_EMAILS = {
     "ethan.stacy@gmail.com",
     "jhussey1703@gmail.com",

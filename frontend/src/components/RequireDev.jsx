@@ -10,14 +10,22 @@
 
 import { Link, useLocation } from 'react-router-dom'
 import { useTier } from '../hooks/useTier'
+import { useAuth } from '../context/AuthContext'
 
 
-export default function RequireDev({ children, fallback }) {
+// Optional `emails` prop: when provided, pass-through requires the signed-in
+// email to be on that list (stricter than the dev tier — used for the
+// Commitment Editor). Without it, the gate is the dev tier as before.
+export default function RequireDev({ children, fallback, emails }) {
   const { tier, loading } = useTier()
+  const { user } = useAuth()
   const location = useLocation()
 
   if (loading) return null
-  if (tier === 'dev') return children
+  const ok = emails
+    ? !!user?.email && emails.map(e => e.toLowerCase()).includes(user.email.toLowerCase())
+    : tier === 'dev'
+  if (ok) return children
 
   if (fallback) return fallback
   return (
