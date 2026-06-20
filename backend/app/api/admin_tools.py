@@ -535,6 +535,92 @@ def wcl_recent(limit: int = Query(15, ge=1, le=50), _email: str = Depends(requir
 
 
 # ─────────────────────────────────────────────────────────────────
+# Incoming freshmen — manual recruits PBR/BBNW missed
+# ─────────────────────────────────────────────────────────────────
+# Added straight into the `recruits` table with recruit_score = NULL and
+# sources = ['manual'], so they appear in a team's Recruiting Class but DON'T
+# move class_score (which averages over rated, ranked-state commits only).
+class FreshmanAdd(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    to_team_id: int
+    position: Optional[str] = Field(None, max_length=20)
+    state: Optional[str] = Field(None, max_length=4)
+    grad_year: int = 2026
+
+
+@router.post("/admin/freshman/add")
+def freshman_add(body: FreshmanAdd, email: str = Depends(require_developer)):
+    """Add an incoming freshman PBR/BBNW didn't catch. Listed in the recruiting
+    class as an unrated commit (no PBR/BBNW data => no class-weight impact)."""
+    parts = body.name.strip().split()
+    if not parts:
+        raise HTTPException(status_code=400, detail="name is required")
+    first = parts[0]
+    last = " ".join(parts[1:]) if len(parts) > 1 else parts[0]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, short_name FROM teams WHERE id = %s", (body.to_team_id,))
+        team = cur.fetchone()
+        if not team:
+            raise HTTPException(status_code=404, detail="Destination team not found")
+        cur.execute(
+            """
+            INSERT INTO recruits
+                (first_name, last_name, position, grad_year, state,
+                 committed_team_id, committed_raw, recruit_score, sources, last_seen)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, ARRAY['manual'], now())
+            ON CONFLICT (first_name, last_name, grad_year) DO UPDATE SET
+                committed_team_id = EXCLUDED.committed_team_id,
+                position          = COALESCE(EXCLUDED.position, recruits.position),
+                state             = COALESCE(EXCLUDED.state, recruits.state),
+                sources           = CASE WHEN 'manual' = ANY(recruits.sources)
+                                         THEN recruits.sources ELSE array_append(recruits.sources, 'manual') END,
+                last_seen         = now()
+            RETURNING id
+            """,
+            (first, last, (body.position or None), body.grad_year,
+             (body.state or None), team["id"], team["short_name"]),
+        )
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+    return {"ok": True, "id": new_id, "to_team": team["short_name"]}
+
+
+@router.get("/admin/freshman/list")
+def freshman_list(_email: str = Depends(require_developer)):
+    """Every manually-added incoming freshman, for the editor list."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT r.id, r.first_name, r.last_name, r.position, r.state, r.grad_year,
+                      t.short_name AS to_team
+               FROM recruits r
+               LEFT JOIN teams t ON t.id = r.committed_team_id
+               WHERE 'manual' = ANY(r.sources)
+               ORDER BY t.short_name, r.last_name, r.first_name"""
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["name"] = f"{r.get('first_name', '') or ''} {r.get('last_name', '') or ''}".strip()
+    return rows
+
+
+@router.post("/admin/freshman/remove")
+def freshman_remove(body: dict, email: str = Depends(require_developer)):
+    """Remove a manually-added freshman. Guarded to manual rows so a scraped
+    recruit can never be deleted through this endpoint."""
+    rid = body.get("id")
+    if not rid:
+        raise HTTPException(status_code=400, detail="id is required")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM recruits WHERE id = %s AND 'manual' = ANY(sources)", (rid,))
+        deleted = cur.rowcount
+        conn.commit()
+    return {"ok": True, "deleted": deleted}
+
+
+# ─────────────────────────────────────────────────────────────────
 # Player-page linking
 # ─────────────────────────────────────────────────────────────────
 @router.get("/admin/link/search")

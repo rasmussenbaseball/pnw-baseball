@@ -377,7 +377,11 @@ def _parse_player_rows(table, col_map):
         player_cell = cells[col_map["Player"]]
         player_link = player_cell.find("a")
         player_name = player_link.get_text(strip=True) if player_link else player_cell.get_text(strip=True)
-        if not player_name or player_name in ("Player", "Totals", "TOTALS", "Total"):
+        # Skip team-total / header / placeholder rows. Compare on letters only so
+        # punctuation variants ("Total:", "Totals.") and jersey placeholders
+        # ("Player 38") are all caught — these had leaked in as fake players.
+        _norm = re.sub(r"[^a-z]", "", (player_name or "").lower())
+        if not player_name or _norm in ("player", "total", "totals"):
             continue
 
         # Pointstreak prefixes released/inactive players with "x " — strip it

@@ -382,6 +382,91 @@ function IncomingTab({ pnwTeams, setToast }) {
   )
 }
 
+// ── Incoming freshmen PBR/BBNW missed (recruiting class, unrated) ──
+function FreshmenTab({ pnwTeams, setToast }) {
+  const [list, setList] = useState([])
+  const [name, setName] = useState('')
+  const [pos, setPos] = useState('')
+  const [state, setState] = useState('')
+  const [gradYear, setGradYear] = useState(2026)
+  const [dest, setDest] = useState('')
+  const [destId, setDestId] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => { try { setList(await apiGet('/admin/freshman/list')) } catch { /* */ } }, [])
+  useEffect(() => { load() }, [load])
+
+  const add = async () => {
+    if (!name.trim()) { setToast({ type: 'err', msg: 'Enter a player name.' }); return }
+    if (!destId) { setToast({ type: 'err', msg: 'Pick the destination PNW school from the dropdown.' }); return }
+    setBusy(true)
+    try {
+      await apiPost('/admin/freshman/add', {
+        name: name.trim(), position: pos.trim() || null, state: state.trim() || null,
+        grad_year: Number(gradYear) || 2026, to_team_id: destId,
+      })
+      setToast({ type: 'ok', msg: `${name.trim()} → ${dest} (unrated freshman)` })
+      setName(''); setPos(''); setState(''); setDest(''); setDestId(null)
+      load()
+    } catch (e) { setToast({ type: 'err', msg: e.message }) }
+    finally { setBusy(false) }
+  }
+  const remove = async (id) => {
+    try { await apiPost('/admin/freshman/remove', { id }); load() }
+    catch (e) { setToast({ type: 'err', msg: e.message }) }
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500 mb-4">
+        Incoming freshmen PBR and BBNW didn't catch (e.g. an out-of-state commit). They show in the destination
+        school's Recruiting Class as an unrated commit and do NOT affect its class rating (we have no PBR/BBNW data).
+      </p>
+      <div className="flex flex-wrap items-end gap-2 mb-5 p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">Player</div>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Tyler Thompson"
+            className="px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900 w-44" />
+        </div>
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">Pos</div>
+          <input value={pos} onChange={e => setPos(e.target.value)} placeholder="OF"
+            className="px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900 w-16" />
+        </div>
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">State</div>
+          <input value={state} onChange={e => setState(e.target.value)} placeholder="CA"
+            className="px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900 w-16" />
+        </div>
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">Class</div>
+          <input type="number" value={gradYear} onChange={e => setGradYear(e.target.value)}
+            className="px-2.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900 w-20" />
+        </div>
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">School (PNW)</div>
+          <PnwSchoolField value={dest} onChange={(v, id) => { setDest(v); setDestId(id) }} pnwTeams={pnwTeams} />
+        </div>
+        <button onClick={add} disabled={busy} className="px-4 py-1.5 rounded-md bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 disabled:opacity-50">Add</button>
+      </div>
+
+      <div className="space-y-1.5">
+        {list.length === 0 && <div className="text-sm text-gray-400">No manually-added freshmen yet.</div>}
+        {list.map(r => (
+          <div key={r.id} className="flex items-center gap-2 text-sm border-b border-gray-100 dark:border-gray-800 pb-1.5">
+            <span className="font-semibold text-gray-800 dark:text-gray-200">{r.name}</span>
+            {r.position && <span className="text-[10px] font-bold text-gray-400 uppercase">{r.position}</span>}
+            <span className="text-gray-500">
+              {r.state ? `${r.state} · ` : ''}Class of {r.grad_year} → <span className="text-emerald-700 font-medium">{r.to_team}</span>
+            </span>
+            <button onClick={() => remove(r.id)} className="ml-auto text-red-500 hover:underline text-xs">remove</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── WCL summer players: assign a spring school + WCL portal membership ──
 const wclMeta = (p) => [p.position, p.team_short, p.league,
   [p.bats, p.throws].filter(Boolean).join('/'), p.year_in_school].filter(Boolean).join(' · ')
@@ -524,6 +609,7 @@ export default function CommitmentEditor() {
       <div className="flex gap-2 mb-4 flex-wrap">
         <TabBtn id="commit">Commitments &amp; Portal</TabBtn>
         <TabBtn id="wcl">WCL Players</TabBtn>
+        <TabBtn id="freshmen">Incoming Freshmen</TabBtn>
         <TabBtn id="link">Link Pages</TabBtn>
         <TabBtn id="incoming">Incoming Transfers</TabBtn>
       </div>
@@ -536,6 +622,7 @@ export default function CommitmentEditor() {
 
       {tab === 'commit' && <CommitmentsTab pnwTeams={pnwTeams} setToast={setToast} />}
       {tab === 'wcl' && <WclTab pnwTeams={pnwTeams} setToast={setToast} />}
+      {tab === 'freshmen' && <FreshmenTab pnwTeams={pnwTeams} setToast={setToast} />}
       {tab === 'link' && <LinkTab setToast={setToast} />}
       {tab === 'incoming' && <IncomingTab pnwTeams={pnwTeams} setToast={setToast} />}
     </div>
