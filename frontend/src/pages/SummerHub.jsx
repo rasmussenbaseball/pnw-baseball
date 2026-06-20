@@ -277,9 +277,9 @@ function LeaderTopFive({ cat, endpoint }) {
 // Sub-views
 // ─────────────────────────────────────────────────────────────
 
-export function Scoreboard() {
+export function Scoreboard({ daysBack = 14, daysAhead = 7 }) {
   const { data, loading, error } = useApi('/summer/scoreboard', {
-    league: LEAGUE, season: SEASON, days_back: 14, days_ahead: 7,
+    league: LEAGUE, season: SEASON, days_back: daysBack, days_ahead: daysAhead,
   })
   if (loading) return <SkeletonRows />
   if (error) return <ErrorState msg={error} />
@@ -1044,7 +1044,8 @@ export default function SummerHub() {
         <Standings />
       </div>
 
-      {/* Recent results — same Scoreboard widget the dedicated page uses */}
+      {/* Recent results — past + today only (no future games); the dedicated
+          scoreboard page keeps the upcoming window. */}
       <div className="mb-6">
         <div className="flex items-baseline justify-between mb-2">
           <div className="text-[11px] font-bold tracking-widest uppercase text-gray-500 dark:text-gray-400">
@@ -1054,7 +1055,7 @@ export default function SummerHub() {
             Full scoreboard →
           </Link>
         </div>
-        <Scoreboard />
+        <Scoreboard daysBack={10} daysAhead={0} />
       </div>
 
     </div>

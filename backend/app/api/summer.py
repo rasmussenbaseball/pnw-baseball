@@ -681,8 +681,9 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
             )
             recent = [dict(r) for r in cur.fetchall()]
 
-        # Roster — the full {season} roster (scraped from wclstats into
-        # summer_players.roster_year) PLUS anyone with {season} game stats.
+        # Roster — only players who have actually APPEARED in a {season} game
+        # (a summer_game_batting/pitching row). Bench/roster-only players who
+        # never played are intentionally excluded.
         # Each player gets a `role` (pitcher / hitter / two-way) derived from
         # PA vs IP (position breaks ties for no-stat bench players), so pitchers
         # stop showing up as 0-for hitters. Both batting and pitching lines are
@@ -716,8 +717,7 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
             LEFT JOIN teams lt ON lt.id = spr2.team_id
             WHERE p.team_id = %s
               AND (
-                p.roster_year = %s
-                OR EXISTS (SELECT 1 FROM summer_game_batting gb
+                EXISTS (SELECT 1 FROM summer_game_batting gb
                         JOIN summer_games g ON g.id = gb.game_id
                         WHERE gb.player_id = p.id AND gb.team_id = %s AND g.season = %s)
                 OR EXISTS (SELECT 1 FROM summer_game_pitching gp
@@ -726,7 +726,7 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
               )
             ORDER BY p.last_name, p.first_name
             """,
-            (season, season, season, season, team_id, season, team_id, season, team_id, season),
+            (season, season, season, season, team_id, team_id, season, team_id, season),
         )
         PITCHER_POS = {"P", "RHP", "LHP", "SP", "RP"}
         roster = []
