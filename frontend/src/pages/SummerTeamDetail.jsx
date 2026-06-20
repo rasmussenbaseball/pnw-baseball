@@ -149,7 +149,7 @@ export default function SummerTeamDetail() {
                         <Link to={`/summer/players/${p.player_id}`} className="hover:underline">{p.first_name} {p.last_name}</Link>
                       </td>
                       <td className="px-1.5 py-1 text-right tabular-nums">{p.innings_pitched != null ? Number(p.innings_pitched).toFixed(1) : '—'}</td>
-                      <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.wins)}-{fmtInt(p.losses)}</td>
+                      <td className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap">{fmtInt(p.wins)}-{fmtInt(p.losses)}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.saves)}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums">{fmtInt(p.strikeouts)}</td>
                       <td className="px-1.5 py-1 text-right tabular-nums font-bold">{p.era != null ? Number(p.era).toFixed(2) : '—'}</td>
@@ -271,7 +271,7 @@ export default function SummerTeamDetail() {
                                   {home(p)}
                                   {school(p)}
                                   <td className="px-1.5 py-1 text-right tabular-nums">{p.innings_pitched ?? '—'}</td>
-                                  <td className="px-1.5 py-1 text-right tabular-nums">{(p.p_wins != null || p.p_losses != null) ? `${p.p_wins ?? 0}-${p.p_losses ?? 0}` : '—'}</td>
+                                  <td className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap">{(p.p_wins != null || p.p_losses != null) ? `${p.p_wins ?? 0}-${p.p_losses ?? 0}` : '—'}</td>
                                   <td className="px-1.5 py-1 text-right tabular-nums">{p.p_saves ?? '—'}</td>
                                   <td className="px-1.5 py-1 text-right tabular-nums">{p.p_strikeouts ?? '—'}</td>
                                   <td className="px-1.5 py-1 text-right tabular-nums font-bold">{era2(p.era)}</td>
