@@ -5,6 +5,7 @@
 
 import { Link, useParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { titleName, fmtYr } from '../utils/summerDisplay'
 
 const fmtAvg = v => v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')
 const fmtInt = v => v == null ? '—' : Math.round(v)
@@ -191,7 +192,7 @@ export default function SummerTeamDetail() {
               <td className="px-1.5 py-1 font-semibold whitespace-nowrap">
                 <Link to={target}
                   className={`hover:underline ${p.has_stats ? 'text-nw-teal dark:text-teal-300' : 'text-gray-400 dark:text-gray-500'}`}>
-                  {p.first_name} {p.last_name}
+                  {titleName(p.first_name, p.last_name)}
                 </Link>
                 {p.pnw_spring && (
                   <span title="Plays 2026 PNW college ball — click for full profile"
@@ -204,6 +205,7 @@ export default function SummerTeamDetail() {
             )
           }
           const home = p => <td className="px-1.5 py-1 text-left text-gray-600 dark:text-gray-400 truncate max-w-[150px]" title={p.hometown || ''}>{p.hometown || ''}</td>
+          const school = p => <td className="px-1.5 py-1 text-left text-gray-600 dark:text-gray-400 truncate max-w-[120px]" title={p.school || ''}>{p.school || '—'}</td>
           const era2 = v => (v != null ? Number(v).toFixed(2) : '—')
           return (
             <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 sm:p-4">
@@ -219,16 +221,17 @@ export default function SummerTeamDetail() {
                         <div className="overflow-x-auto -mx-1">
                           <table className="w-full text-[12px]">
                             <thead><tr className="border-b border-gray-200 dark:border-gray-700">
-                              {['Player','Pos','Yr','Hometown','G','AVG','OBP','OPS','HR','RBI'].map((h, i) => (
-                                <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i < 4 ? 'text-left' : 'text-right'}`}>{h}</th>))}
+                              {['Player','Pos','Yr','Hometown','School','G','AVG','OBP','OPS','HR','RBI'].map((h, i) => (
+                                <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i < 5 ? 'text-left' : 'text-right'}`}>{h}</th>))}
                             </tr></thead>
                             <tbody>
                               {hitters.map(p => (
                                 <tr key={p.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                   {nameCell(p)}
                                   <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400 uppercase">{p.position || ''}</td>
-                                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{p.year_in_school || ''}</td>
+                                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{fmtYr(p.year_in_school)}</td>
                                   {home(p)}
+                                  {school(p)}
                                   <td className="px-1.5 py-1 text-right tabular-nums">{p.bat_games ?? '—'}</td>
                                   <td className="px-1.5 py-1 text-right tabular-nums">{p.batting_avg != null ? fmtAvg(p.batting_avg) : '—'}</td>
                                   <td className="px-1.5 py-1 text-right tabular-nums">{p.on_base_pct != null ? fmtAvg(p.on_base_pct) : '—'}</td>
@@ -248,16 +251,17 @@ export default function SummerTeamDetail() {
                         <div className="overflow-x-auto -mx-1">
                           <table className="w-full text-[12px]">
                             <thead><tr className="border-b border-gray-200 dark:border-gray-700">
-                              {['Pitcher','T','Yr','Hometown','IP','W-L','SV','K','ERA','WHIP'].map((h, i) => (
-                                <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i < 4 ? 'text-left' : 'text-right'}`}>{h}</th>))}
+                              {['Pitcher','T','Yr','Hometown','School','IP','W-L','SV','K','ERA','WHIP'].map((h, i) => (
+                                <th key={h} className={`px-1.5 py-1.5 font-bold text-gray-500 dark:text-gray-400 uppercase text-[10px] ${i < 5 ? 'text-left' : 'text-right'}`}>{h}</th>))}
                             </tr></thead>
                             <tbody>
                               {pitchers.map(p => (
                                 <tr key={p.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                   {nameCell(p)}
                                   <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{p.throws || ''}</td>
-                                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{p.year_in_school || ''}</td>
+                                  <td className="px-1.5 py-1 text-left text-gray-500 dark:text-gray-400">{fmtYr(p.year_in_school)}</td>
                                   {home(p)}
+                                  {school(p)}
                                   <td className="px-1.5 py-1 text-right tabular-nums">{p.innings_pitched ?? '—'}</td>
                                   <td className="px-1.5 py-1 text-right tabular-nums">{(p.p_wins != null || p.p_losses != null) ? `${p.p_wins ?? 0}-${p.p_losses ?? 0}` : '—'}</td>
                                   <td className="px-1.5 py-1 text-right tabular-nums">{p.p_saves ?? '—'}</td>

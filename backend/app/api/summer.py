@@ -671,7 +671,8 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
             """
             SELECT p.id, p.first_name, p.last_name, p.jersey_number,
                    p.position, p.bats, p.throws, p.college, p.year_in_school,
-                   p.hometown, p.roster_year,
+                   p.hometown, p.roster_year, p.assigned_school,
+                   lt.short_name AS linked_school,
                    b.plate_appearances, b.batting_avg, b.on_base_pct,
                    b.slugging_pct, b.ops, b.games AS bat_games, b.home_runs, b.rbi,
                    pt.innings_pitched, pt.era, pt.whip, pt.strikeouts AS p_strikeouts,
@@ -687,6 +688,8 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
             LEFT JOIN summer_pitching_stats pt
                    ON pt.player_id = p.id AND pt.season = %s AND pt.team_id = p.team_id
             LEFT JOIN summer_player_links spl ON spl.summer_player_id = p.id
+            LEFT JOIN players spr2 ON spr2.id = spl.spring_player_id
+            LEFT JOIN teams lt ON lt.id = spr2.team_id
             WHERE p.team_id = %s
               AND (
                 p.roster_year = %s
@@ -717,6 +720,9 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
             else:
                 row["role"] = "pitcher" if pos in PITCHER_POS else "hitter"
             row["has_stats"] = bool(pa > 0 or ip > 0)
+            row["position"] = normalize_position(row.get("position"))
+            # Curated assigned school wins, else the auto-linked PNW spring team.
+            row["school"] = row.get("assigned_school") or row.get("linked_school")
             roster.append(row)
 
     return {

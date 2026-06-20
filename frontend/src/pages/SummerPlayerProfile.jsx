@@ -28,6 +28,7 @@ import {
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
 import TrackManCard from '../components/playerProfile/TrackManCard'
+import { titleName } from '../utils/summerDisplay'
 
 // ── Percentile + radar configs (summer subset of the spring sets) ──
 const BAT_PCT_METRICS = [
@@ -366,7 +367,7 @@ function SummerHero({ identity, summerPlayer, season, contextBox, children, righ
 
         <div className="mt-9">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <h1 className="text-[22px] font-bold tracking-tight" style={{ color: T.text }}>{first} {last}</h1>
+            <h1 className="text-[22px] font-bold tracking-tight" style={{ color: T.text }}>{titleName(first, last)}</h1>
             {summerPlayer.jersey_number && <span className="text-base font-bold" style={{ color: T.textMuted }}>#{summerPlayer.jersey_number}</span>}
             <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">{summerPlayer.league_abbr}</span>
           </div>
