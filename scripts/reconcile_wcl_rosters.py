@@ -100,6 +100,36 @@ def main():
                           rp["year_in_school"] or "", rp["bats"] or "", rp["throws"] or "", e["id"]))
                 upd += 1
             elif not hits:
+                # Last-name match failed (e.g. a hyphen/punctuation/casing diff
+                # the norm missed). Before inserting a bench row, do a direct
+                # case-insensitive full-name check so we UPDATE instead of
+                # spawning a duplicate.
+                cur.execute(
+                    """SELECT id FROM summer_players
+                       WHERE lower(trim(first_name)) = lower(trim(%s))
+                         AND lower(trim(last_name)) = lower(trim(%s))
+                         AND team_id = %s
+                       ORDER BY id LIMIT 1""",
+                    (rp["first_name"], rp["last_name"], tid),
+                )
+                dup = cur.fetchone()
+                if dup:
+                    used.add(dup["id"])
+                    if args.commit:
+                        cur.execute("""
+                            UPDATE summer_players SET
+                              first_name = %s, last_name = %s,
+                              hometown       = COALESCE(NULLIF(%s,''), hometown),
+                              position       = COALESCE(NULLIF(%s,''), position),
+                              year_in_school = COALESCE(NULLIF(%s,''), year_in_school),
+                              bats           = COALESCE(NULLIF(%s,''), bats),
+                              throws         = COALESCE(NULLIF(%s,''), throws),
+                              roster_year = 2026, updated_at = now()
+                            WHERE id = %s
+                        """, (rp["first_name"], rp["last_name"], rp["hometown"] or "", rp["position"] or "",
+                              rp["year_in_school"] or "", rp["bats"] or "", rp["throws"] or "", dup["id"]))
+                    upd += 1
+                    continue
                 if args.commit:
                     cur.execute("""
                         INSERT INTO summer_players

@@ -85,7 +85,7 @@ def _run(conn):
                        college         = COALESCE(NULLIF(cn.college, ''), dp.college),
                        bats            = COALESCE(NULLIF(cn.bats, ''), dp.bats),
                        throws          = COALESCE(NULLIF(cn.throws, ''), dp.throws),
-                       headshot_url    = COALESCE(NULLIF(cn.headshot_url, ''), dp.headshot_url),
+                       roster_year     = COALESCE(cn.roster_year, dp.roster_year),
                        assigned_school = COALESCE(cn.assigned_school, dp.assigned_school),
                        assigned_school_team_id = COALESCE(cn.assigned_school_team_id, dp.assigned_school_team_id)
                    FROM summer_players dp
