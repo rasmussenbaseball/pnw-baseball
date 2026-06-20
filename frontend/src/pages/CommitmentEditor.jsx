@@ -391,6 +391,10 @@ function WclPlayerRow({ player, pnwTeams, onChanged, setToast }) {
   const [teamId, setTeamId] = useState(player.assigned_school_team_id || null)
   const [busy, setBusy] = useState(false)
 
+  // Manual assignment wins; otherwise fall back to the auto-linked PNW school.
+  const effSchool = player.assigned_school || player.linked_school
+  const fromLink = !player.assigned_school && !!player.linked_school
+
   const run = async (fn) => { setBusy(true); try { await fn() } catch (e) { setToast({ type: 'err', msg: e.message }) } finally { setBusy(false) } }
 
   const save = () => run(async () => {
@@ -417,8 +421,8 @@ function WclPlayerRow({ player, pnwTeams, onChanged, setToast }) {
       <div className="min-w-[170px] flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-gray-900 dark:text-gray-100">{player.name}</span>
-          {player.assigned_school
-            ? <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800">🎓 {player.assigned_school}</span>
+          {effSchool
+            ? <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800">🎓 {effSchool}{fromLink ? ' · linked' : ''}</span>
             : <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">No school</span>}
           {player.in_wcl_portal && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">In WCL portal</span>}
         </div>

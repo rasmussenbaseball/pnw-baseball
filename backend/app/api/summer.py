@@ -3478,7 +3478,8 @@ def wcl_portal_players(
                    sp.year_in_school,
                    st.short_name AS team_short, st.name AS team_name, st.logo_url,
                    l.abbreviation AS league,
-                   sp.assigned_school AS committed_to, ad.level AS committed_level,
+                   COALESCE(sp.assigned_school, lt.short_name) AS committed_to,
+                   COALESCE(ad.level, ld.level) AS committed_level,
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
                    bs.woba, bs.wrc_plus, bs.offensive_war,
                    bs.home_runs, bs.rbi, bs.stolen_bases, bs.plate_appearances,
@@ -3492,6 +3493,12 @@ def wcl_portal_players(
             LEFT JOIN teams at2 ON at2.id = sp.assigned_school_team_id
             LEFT JOIN conferences ac ON ac.id = at2.conference_id
             LEFT JOIN divisions ad ON ad.id = ac.division_id
+            -- fall back to the auto-linked PNW spring school when not manually assigned
+            LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
+            LEFT JOIN players spr ON spr.id = spl.spring_player_id
+            LEFT JOIN teams lt ON lt.id = spr.team_id
+            LEFT JOIN conferences lc ON lc.id = lt.conference_id
+            LEFT JOIN divisions ld ON ld.id = lc.division_id
             LEFT JOIN summer_batting_stats bs ON bs.player_id = sp.id AND bs.season = %s AND bs.team_id = sp.team_id
             LEFT JOIN summer_pitching_stats ps ON ps.player_id = sp.id AND ps.season = %s AND ps.team_id = sp.team_id
             WHERE sp.id = ANY(%s)

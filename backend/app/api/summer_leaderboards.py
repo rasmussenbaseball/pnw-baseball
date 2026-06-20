@@ -117,6 +117,7 @@ def summer_batting_leaderboard(
               AND sbs.plate_appearances >= %s
               AND sbs.at_bats >= %s
               AND sp.first_name NOT ILIKE '%%total%%'
+              AND sp.first_name NOT ILIKE '%%total%%'
               AND sp.last_name NOT ILIKE '%%total%%'
         """
         params: list = [season, min_pa, min_ab]
@@ -138,6 +139,7 @@ def summer_batting_leaderboard(
             WHERE sbs.season = %s
               AND sbs.plate_appearances >= %s
               AND sbs.at_bats >= %s
+              AND sp.first_name NOT ILIKE '%%total%%'
               AND sp.first_name NOT ILIKE '%%total%%'
               AND sp.last_name NOT ILIKE '%%total%%'
         """

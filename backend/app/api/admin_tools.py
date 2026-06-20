@@ -388,11 +388,20 @@ def summer_search(q: str = Query(..., min_length=2), _email: str = Depends(requi
                    sp.assigned_school, sp.assigned_school_team_id,
                    st.short_name AS team_short, st.name AS team_name, st.logo_url,
                    l.abbreviation AS league,
+                   lt.short_name AS linked_school, lt.id AS linked_school_team_id,
+                   ld.level AS linked_level,
                    (wpm.summer_player_id IS NOT NULL) AS in_wcl_portal
             FROM summer_players sp
             JOIN summer_teams st ON sp.team_id = st.id
             JOIN summer_leagues l ON l.id = st.league_id
             LEFT JOIN wcl_portal_members wpm ON wpm.summer_player_id = sp.id
+            -- existing spring link (auto-matched PNW school) so already-linked
+            -- players show their school instead of reading "No school".
+            LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
+            LEFT JOIN players spr ON spr.id = spl.spring_player_id
+            LEFT JOIN teams lt ON lt.id = spr.team_id
+            LEFT JOIN conferences lc ON lc.id = lt.conference_id
+            LEFT JOIN divisions ld ON ld.id = lc.division_id
             WHERE sp.first_name NOT IN ('Total:', 'Total')
               AND sp.id IN (
                 SELECT id FROM summer_players
@@ -409,9 +418,11 @@ def summer_search(q: str = Query(..., min_length=2), _email: str = Depends(requi
     for r in rows:
         r["name"] = f"{r.get('first_name', '') or ''} {r.get('last_name', '') or ''}".strip()
         r["in_wcl_portal"] = bool(r.get("in_wcl_portal"))
-        # what the editor field pre-fills: the curated school (NOT the stale
-        # Pointstreak `college`, which we never trust).
-        r["school"] = r.get("assigned_school") or None
+        if r.get("linked_level") == "JUCO":
+            r["linked_level"] = "NWAC"
+        # Effective school shown in the editor: a manual assignment wins, else
+        # the auto-linked PNW school (so linked players don't read "No school").
+        r["school"] = r.get("assigned_school") or r.get("linked_school") or None
     return rows
 
 
