@@ -248,3 +248,41 @@ def home_leaders(
     result = {"division": division, "season": season, "hitting": hitting, "pitching": pitching}
     _CACHE[ck] = (time.time(), result)
     return result
+
+
+@home_leaders_router.get("/faces")
+def home_faces(season: int = Query(CURRENT_SEASON), limit: int = Query(8, ge=1, le=16)):
+    """A handful of recognizable PNW players (top WAR) that HAVE a headshot —
+    used to decorate the homepage Coach Sim widget with pixelated faces."""
+    ck = ("faces", season, limit)
+    hit = _CACHE.get(ck)
+    if hit and (time.time() - hit[0]) < _TTL:
+        return hit[1]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT p.id AS player_id,
+                   p.first_name || ' ' || p.last_name AS name,
+                   p.headshot_url, t.short_name AS team,
+                   GREATEST(COALESCE(bs.offensive_war, 0), COALESCE(ps.pitching_war, 0)) AS war
+            FROM players p
+            JOIN teams t ON t.id = p.team_id
+            LEFT JOIN batting_stats  bs ON bs.player_id = p.id AND bs.season = %(season)s
+            LEFT JOIN pitching_stats ps ON ps.player_id = p.id AND ps.season = %(season)s
+            WHERE p.headshot_url IS NOT NULL AND p.headshot_url <> ''
+              AND COALESCE(p.is_phantom, FALSE) = FALSE
+              AND (bs.player_id IS NOT NULL OR ps.player_id IS NOT NULL)
+            ORDER BY war DESC
+            LIMIT %(limit)s
+            """,
+            {"season": season, "limit": limit},
+        )
+        faces = [
+            {"player_id": r["player_id"], "name": r["name"],
+             "headshot_url": r["headshot_url"], "team": r["team"]}
+            for r in cur.fetchall()
+        ]
+    result = {"season": season, "faces": faces}
+    _CACHE[ck] = (time.time(), result)
+    return result

@@ -367,6 +367,7 @@ const RECORD_SLIDES = [
     records: [
       ['batting', 'single_season', 'hr'],
       ['batting', 'single_season', 'avg'],
+      ['batting', 'single_season', 'rbi'],
       ['batting', 'single_season', 'sb'],
     ],
   },
@@ -376,14 +377,25 @@ const RECORD_SLIDES = [
       ['pitching', 'single_season', 'strikeouts'],
       ['pitching', 'single_season', 'era'],
       ['pitching', 'single_season', 'wins'],
+      ['pitching', 'single_season', 'saves'],
     ],
   },
   {
-    title: 'Career marks',
+    title: 'Career hitting',
     records: [
       ['batting', 'career', 'hits'],
       ['batting', 'career', 'hr'],
+      ['batting', 'career', 'rbi'],
+      ['batting', 'career', 'sb'],
+    ],
+  },
+  {
+    title: 'Career pitching',
+    records: [
       ['pitching', 'career', 'strikeouts'],
+      ['pitching', 'career', 'wins'],
+      ['pitching', 'career', 'saves'],
+      ['pitching', 'career', 'era'],
     ],
   },
 ]

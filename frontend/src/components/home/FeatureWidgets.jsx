@@ -10,7 +10,7 @@
  *    /recruiting-classes (the public-facing class rankings page) instead.
  */
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   WidgetCard, Carousel, PillToggle, GroupLabel, WidgetSkeleton, WidgetNote,
@@ -207,79 +207,97 @@ export function ArticlesWidget() {
   )
 }
 
-// ─── 4. Recruiting Hub ──────────────────────────────────────────
+// ─── 4. Recent Moves (transfer + JUCO portal commitments) ───────
 
-export function RecruitingHubWidget() {
-  const { data } = useApi('/commitments', { limit: 3 })
-  const commits = (data?.commitments || []).slice(0, 3)
-
-  const slides = [
-    // Slide 1 — Commitment Tracker (leads per Nate: fresh commits are the hook)
-    <div key="commits" className="min-h-[120px]">
-      <GroupLabel>Commitment Tracker</GroupLabel>
-      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-1.5">
-        Every PNW commitment as it happens, with stats attached.
-      </p>
-      {commits.length > 0 && (
-        <div className="mb-2">
-          {commits.map((c, i) => (
-            <div key={i} className="flex items-center gap-1.5 py-0.5 text-[11px]">
-              <span className="font-semibold text-gray-800 dark:text-gray-100 truncate">
-                {c.first_name} {c.last_name}
-              </span>
-              <span className="text-gray-400 truncate">
-                {c.team_short} → {c.committed_to}
-              </span>
-              <span className="ml-auto text-[10px] text-gray-400 tabular-nums whitespace-nowrap">
-                {fmtShortDate(c.commitment_date)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-      <LinkChip to="/news/commitments">Track commitments</LinkChip>
-    </div>,
-
-    // Slide 2 — Recruiting Guide
-    <div key="guide" className="min-h-[120px]">
-      <GroupLabel>Recruiting Guide</GroupLabel>
-      <div className="text-xs font-bold text-gray-800 dark:text-gray-100 mb-1">
-        Know the path before you walk it
-      </div>
-      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
-        How PNW recruiting actually works, level by level: timelines, roster math, and what
-        coaches at each division look for.
-      </p>
-      <LinkChip to="/recruiting/guide">Read the guide</LinkChip>
-    </div>,
-
-    // Slide 3 — Rankings & Map
-    <div key="rankings" className="min-h-[120px]">
-      <GroupLabel>Rankings &amp; Map</GroupLabel>
-      <div className="text-xs font-bold text-gray-800 dark:text-gray-100 mb-1">
-        Who's building the best classes?
-      </div>
-      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
-        Recruiting class rankings for every PNW program, plus an interactive map of where
-        each roster comes from.
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        <LinkChip to="/recruiting-classes">Class rankings</LinkChip>
-        <LinkChip to="/recruiting/map">Recruiting map</LinkChip>
-      </div>
-    </div>,
-  ]
+export function RecentMovesWidget() {
+  const { data, loading, error } = useApi('/commitments', { level: 'all', limit: 5 })
+  const moves = (data?.commitments || []).slice(0, 5)
 
   return (
-    <WidgetCard title="Recruiting Hub" to="/recruiting" linkLabel="Explore recruiting">
-      <Carousel slides={slides} ariaLabel="Recruiting hub highlights" />
+    <WidgetCard title="Recent Moves" to="/news/commitments" linkLabel="All commitments">
+      {loading ? (
+        <WidgetSkeleton rows={5} />
+      ) : error ? (
+        <WidgetNote>Couldn't load recent moves right now.</WidgetNote>
+      ) : moves.length === 0 ? (
+        <WidgetNote>No recent commitments yet — check back soon.</WidgetNote>
+      ) : (
+        <div className="space-y-0.5">
+          {moves.map((m) => {
+            const juco = m.division_level === 'JUCO'
+            const inner = (
+              <>
+                {m.team_logo ? (
+                  <img src={m.team_logo} alt="" loading="lazy" className="w-5 h-5 object-contain shrink-0"
+                    onError={(e) => { e.target.style.visibility = 'hidden' }} />
+                ) : <span className="w-5 shrink-0" />}
+                <span className="flex-1 min-w-0">
+                  <span className="block text-xs font-semibold text-gray-800 dark:text-gray-100 truncate leading-tight">
+                    {m.first_name} {m.last_name}
+                  </span>
+                  <span className="block text-[10px] text-gray-400 truncate leading-tight">
+                    {m.team_short} → {m.committed_to}
+                  </span>
+                </span>
+                <span className="flex flex-col items-end shrink-0">
+                  <span className={`text-[8px] font-bold uppercase tracking-wider px-1 py-px rounded ${
+                    juco
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                      : 'bg-nw-teal/10 text-nw-teal dark:bg-nw-teal/20 dark:text-nw-teal-light'
+                  }`}>{juco ? 'JUCO' : 'Portal'}</span>
+                  <span className="text-[9px] text-gray-400 tabular-nums mt-0.5">{fmtShortDate(m.commitment_date)}</span>
+                </span>
+              </>
+            )
+            const cls = 'flex items-center gap-2 py-1'
+            return m.player_id ? (
+              <Link key={m.player_id} to={`/player/${m.player_id}`}
+                className={`${cls} hover:bg-nw-cream dark:hover:bg-gray-700/50 rounded px-1 -mx-1`}>
+                {inner}
+              </Link>
+            ) : (
+              <div key={`${m.first_name}-${m.last_name}`} className={cls}>{inner}</div>
+            )
+          })}
+        </div>
+      )}
     </WidgetCard>
   )
 }
 
 // ─── 5. PNW Coach Sim (GM game) ─────────────────────────────────
 
+// Renders a (possibly cross-origin) headshot as chunky pixel art by drawing it
+// tiny on a canvas, then nearest-neighbor upscaling it back. Cross-origin draws
+// taint the canvas but we never read pixels back, so display still works.
+function PixelFace({ src, size = 40, px = 13 }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const cv = ref.current
+    if (!cv || !src) return
+    const ctx = cv.getContext('2d')
+    const img = new Image()
+    cv.style.display = 'none' // reveal only once a real image paints
+    img.onload = () => {
+      ctx.imageSmoothingEnabled = false
+      ctx.clearRect(0, 0, size, size)
+      ctx.drawImage(img, 0, 0, px, px)                       // downsample
+      ctx.drawImage(cv, 0, 0, px, px, 0, 0, size, size)      // nearest-neighbor upscale
+      cv.style.display = ''
+    }
+    img.onerror = () => {}
+    img.src = src
+  }, [src, size, px])
+  return (
+    <canvas ref={ref} width={size} height={size}
+      className="rounded border border-[#3a3a5e] bg-[#0f0f1e] shrink-0"
+      style={{ imageRendering: 'pixelated' }} />
+  )
+}
+
 export function GmPreviewWidget() {
+  const { data: facesData } = useApi('/home/faces', { limit: 6 })
+  const faces = facesData?.faces || []
   const MODES = [
     ['TRADITIONAL', 'Take over any of the 57 real PNW programs — Gonzaga to Grays Harbor — and build a dynasty.'],
     ['STORY MODE', 'Start as an unknown JUCO assistant. Win, interview, and climb the career ladder to a D1 job.'],
@@ -294,6 +312,19 @@ export function GmPreviewWidget() {
           <span className="text-[9px] font-bold uppercase tracking-widest text-[#fbbf24]">Choose your career</span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#fbbf24] animate-pulse" />
         </div>
+        {/* Pixel-art faces of real PNW stars — your future roster */}
+        {faces.length > 0 && (
+          <div className="mb-2.5">
+            <div className="flex gap-1.5">
+              {faces.map((f) => (
+                <Link key={f.player_id} to={`/player/${f.player_id}`} title={`${f.name} · ${f.team}`}>
+                  <PixelFace src={f.headshot_url} />
+                </Link>
+              ))}
+            </div>
+            <div className="text-[8px] uppercase tracking-widest text-gray-500 mt-1">Real PNW players, pixel-art rosters</div>
+          </div>
+        )}
         {/* Three ways to play — the game's real headline */}
         <div className="space-y-1.5 mb-2.5">
           {MODES.map(([name, desc]) => (
@@ -374,101 +405,6 @@ export function PortalPreviewWidget() {
       </div>
       <p className="text-[11px] text-gray-500 dark:text-gray-400">
         Game-prep PDFs and matchup data built from play-by-play.
-      </p>
-    </WidgetCard>
-  )
-}
-
-// ─── 7. Play-by-Play teaser ─────────────────────────────────────
-
-export function PbpTeaserWidget() {
-  // 5-zone fan: origin (50,68), r=60, slice edges every 18° from -45° to 45°.
-  const wedges = [
-    { d: 'M50 68 L7.57 25.57 A60 60 0 0 1 22.76 14.54 Z', hot: true },   // pull
-    { d: 'M50 68 L22.76 14.54 A60 60 0 0 1 40.61 8.74 Z', hot: false },
-    { d: 'M50 68 L40.61 8.74 A60 60 0 0 1 59.39 8.74 Z', hot: true },    // center
-    { d: 'M50 68 L59.39 8.74 A60 60 0 0 1 77.24 14.54 Z', hot: false },
-    { d: 'M50 68 L77.24 14.54 A60 60 0 0 1 92.43 25.57 Z', hot: false },
-  ]
-  return (
-    <WidgetCard title="Play-by-Play Data" to="/hitting" linkLabel="Explore the data">
-      <div className="flex items-center gap-3">
-        <svg viewBox="0 0 100 72" className="w-24 shrink-0" aria-hidden="true">
-          {wedges.map((w, i) => (
-            <path
-              key={i}
-              d={w.d}
-              className={w.hot
-                ? 'fill-nw-teal/80'
-                : 'fill-gray-100 dark:fill-gray-700'}
-              stroke="currentColor"
-              strokeWidth="0.75"
-              strokeLinejoin="round"
-              style={{ color: 'rgba(120,120,120,0.35)' }}
-            />
-          ))}
-          <text x="23" y="36" textAnchor="middle" className="fill-white" fontSize="7" fontWeight="700">42%</text>
-          <text x="23" y="43" textAnchor="middle" className="fill-white" fontSize="5">Pull</text>
-          <text x="50" y="28" textAnchor="middle" className="fill-white" fontSize="7" fontWeight="700">24%</text>
-          <text x="50" y="35" textAnchor="middle" className="fill-white" fontSize="5">Mid</text>
-        </svg>
-        <div className="min-w-0">
-          <div className="flex flex-wrap gap-1 mb-1.5">
-            {['Contact%', 'Whiff%', 'Air-Pull%'].map(s => (
-              <span
-                key={s}
-                className="px-1.5 py-0.5 rounded-full text-[9px] font-bold tabular-nums
-                           bg-nw-teal/10 text-nw-teal dark:bg-nw-teal/20 dark:text-nw-teal-light"
-              >
-                {s}
-              </span>
-            ))}
-          </div>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
-            Per-pitch outcomes tracked for 90% of PNW games.
-          </p>
-        </div>
-      </div>
-    </WidgetCard>
-  )
-}
-
-// ─── 8. Savant-style percentiles teaser ─────────────────────────
-
-export function PercentileTeaserWidget() {
-  // Static demo values with the savant red (good) → blue (poor) ramp.
-  const bars = [
-    { label: 'wOBACON', v: 94, color: '#d22d49' },
-    { label: 'Whiff%', v: 88, color: '#c75d6e' },
-    { label: 'Contact%', v: 71, color: '#8f9bb3' },
-    { label: 'Speed', v: 55, color: '#5d99c6' },
-  ]
-  return (
-    <WidgetCard title="Savant-Style Percentiles" to="/percentiles" linkLabel="See percentiles">
-      <GroupLabel>Sample player</GroupLabel>
-      <div className="space-y-2.5 mt-1">
-        {bars.map(b => (
-          <div key={b.label}>
-            <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 mb-0.5">{b.label}</div>
-            <div className="relative h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 mr-2.5">
-              <div
-                className="absolute inset-y-0 left-0 rounded-full"
-                style={{ width: `${b.v}%`, backgroundColor: b.color }}
-              />
-              <div
-                className="absolute top-1/2 -translate-y-1/2 w-[18px] h-[18px] rounded-full
-                           flex items-center justify-center text-[9px] font-bold text-white tabular-nums
-                           ring-2 ring-white dark:ring-gray-800"
-                style={{ left: `calc(${b.v}% - 9px)`, backgroundColor: b.color }}
-              >
-                {b.v}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2.5">
-        Every player page ranks 15+ metrics against their division.
       </p>
     </WidgetCard>
   )

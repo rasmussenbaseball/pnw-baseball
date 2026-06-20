@@ -19,13 +19,13 @@ import { useEffect, useState } from 'react'
 import { CURRENT_SEASON } from '../lib/seasons'
 import {
   StandingsWidget,
-  RecordsWidget, CpiWidget,
+  RecordsWidget,
 } from '../components/home/StatWidgets'
 import { LeadersBoard } from '../components/home/LeadersBoard'
 import {
   DraftBoardWidget, GridPreviewWidget, ArticlesWidget,
-  RecruitingHubWidget, GmPreviewWidget, PortalPreviewWidget,
-  PbpTeaserWidget, PercentileTeaserWidget, TiersWidget,
+  RecentMovesWidget, GmPreviewWidget, PortalPreviewWidget,
+  TiersWidget,
 } from '../components/home/FeatureWidgets'
 
 export default function Homepage() {
@@ -57,32 +57,29 @@ export default function Homepage() {
 // here (estimate heights from the rendered page, not the code).
 
 const WIDGETS = {
-  standings:  <StandingsWidget />,
-  records:    <RecordsWidget />,
-  draft:      <DraftBoardWidget />,
-  grid:       <GridPreviewWidget />,
-  articles:   <ArticlesWidget />,
-  recruiting: <RecruitingHubWidget />,
-  cpi:        <CpiWidget />,
-  gm:         <GmPreviewWidget />,
-  portal:     <PortalPreviewWidget />,
-  pbp:        <PbpTeaserWidget />,
-  percentile: <PercentileTeaserWidget />,
+  standings:   <StandingsWidget />,
+  records:     <RecordsWidget />,
+  draft:       <DraftBoardWidget />,
+  grid:        <GridPreviewWidget />,
+  articles:    <ArticlesWidget />,
+  recentMoves: <RecentMovesWidget />,
+  gm:          <GmPreviewWidget />,
+  portal:      <PortalPreviewWidget />,
 }
 
 const COLUMN_LAYOUTS = {
   3: [
-    ['standings', 'records', 'gm', 'percentile'],
-    ['draft', 'articles', 'cpi', 'pbp'],
-    ['grid', 'recruiting', 'portal'],
+    ['standings', 'recentMoves', 'portal'],
+    ['draft', 'articles', 'grid'],
+    ['records', 'gm'],
   ],
   2: [
-    ['standings', 'draft', 'gm', 'pbp', 'percentile'],
-    ['records', 'grid', 'articles', 'recruiting', 'cpi', 'portal'],
+    ['standings', 'draft', 'articles', 'portal'],
+    ['gm', 'records', 'recentMoves', 'grid'],
   ],
   1: [
     ['standings', 'records', 'draft', 'grid',
-     'articles', 'recruiting', 'cpi', 'gm', 'portal', 'pbp', 'percentile'],
+     'articles', 'recentMoves', 'gm', 'portal'],
   ],
 }
 

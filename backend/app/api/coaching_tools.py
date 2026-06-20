@@ -1277,10 +1277,13 @@ def list_commitments(
         the school is shown as plain text (no logo).
     Sorted by `updated_at DESC` so the freshest commitments rise to top.
     """
+    all_levels = (level or "").strip().lower() == "all"
+    level_clause = "" if all_levels else "AND d.level = %s"
+    sql_params = [limit] if all_levels else [level, limit]
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            """
+            f"""
             SELECT p.id            AS player_id,
                    p.first_name,
                    p.last_name,
@@ -1309,11 +1312,11 @@ def list_commitments(
               AND p.committed_to <> ''
               AND COALESCE(p.is_phantom, FALSE) = FALSE
               AND t.is_active = 1
-              AND d.level = %s
+              {level_clause}
             ORDER BY COALESCE(p.commitment_date, p.updated_at) DESC, p.last_name ASC
             LIMIT %s
             """,
-            (level, limit),
+            sql_params,
         )
         rows = [dict(r) for r in cur.fetchall()]
         if not rows:
