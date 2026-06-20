@@ -251,15 +251,11 @@ function ordinal(n) {
 // the team logo or initials.
 function proxiedImageUrl(rawUrl) {
   if (!rawUrl) return null;
-  // For images already on our own domain (team logos in /logos/*,
-  // headshots in /headshots/*) skip the proxy and let Satori fetch
-  // directly — same-origin, no redirects.
-  if (
-    rawUrl.startsWith(SITE_DOMAIN + '/logos/') ||
-    rawUrl.startsWith(SITE_DOMAIN + '/headshots/')
-  ) {
-    return rawUrl;
-  }
+  // Route EVERY image (including same-domain /logos/* and /headshots/*) through
+  // /api/img. Letting Satori fetch the static /logos/*.png directly proved
+  // unreliable in the OG renderer (team logos came back blank), while the proxy
+  // returns a clean, same-origin image response every time.
+  if (rawUrl.includes('/api/img?')) return rawUrl;
   return `${SITE_DOMAIN}/api/img?url=${encodeURIComponent(rawUrl)}`;
 }
 
