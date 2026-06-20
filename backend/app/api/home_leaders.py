@@ -64,6 +64,7 @@ def _build(rows, *, value, fmt, desc=True, qualify=None, n=3):
     out = []
     for v, r in pool[:n]:
         out.append({
+            "player_id": r["player_id"],
             "name": r["name"],
             "team": r.get("team_short") or "",
             "level": DISPLAY_LEVEL.get(r.get("db_level"), r.get("db_level")),
