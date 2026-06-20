@@ -47,7 +47,13 @@ FAMILY = {
 }
 # rel_height is intentionally excluded: est_vaa is computed from it (+ ivb/velo/
 # ext), so keeping both creates severe multicollinearity and unstable weights.
-FEATURES = ["velo", "ivb", "hb_abs", "spin", "extension", "est_vaa", "rel_side_abs", "velo_sep"]
+# Separation features (vs the pitcher's own fastball) encode the domain rules:
+#   velo_sep  — offspeed wants velo gap; sinker/cutter want SMALL gap (bridge).
+#   ivb_sep   — changeup/splitter want big IVB drop vs the FB ("kill ride").
+#   mov_sep   — cutter bridges, breaking balls should DIVERGE from the FB plane
+#               (avoid predictable, in-line shapes).
+FEATURES = ["velo", "ivb", "hb_abs", "spin", "extension", "est_vaa", "rel_side_abs",
+            "velo_sep", "ivb_sep", "mov_sep"]
 FB_TYPES = {"Four Seam", "Sinker", "Cutter"}
 SHRINK_TARGET = 0.25     # cv_r at/above which a pitch type earns full grade spread
 
@@ -140,19 +146,21 @@ def _run(conn):
     )
     rows = [dict(r) for r in cur.fetchall()]
 
-    # Per-pitcher primary fastball velo (max FB-family velo, else max overall) so
-    # we can derive velo separation — a strong whiff driver for offspeed/breaking.
-    fb_velo = {}
+    # Per-pitcher primary fastball REFERENCE SHAPE (velo, ivb, hb) so we can
+    # derive separation features. Prefer Four Seam, else any FB-family, else the
+    # most-thrown pitch; tie-break on pitch_count.
+    from collections import defaultdict
+    by_pitcher = defaultdict(list)
     for r in rows:
-        if r["velo"] is None:
-            continue
-        key = (r["summer_player_id"], r["season"])
-        v = float(r["velo"])
-        is_fb = r["pitch_type"] in FB_TYPES
-        cur_best = fb_velo.get(key)
-        if cur_best is None or (is_fb and not cur_best[1]) or (v > cur_best[0] and is_fb == cur_best[1]):
-            fb_velo[key] = (v, is_fb)
-    fb_velo = {k: v[0] for k, v in fb_velo.items()}
+        if r["velo"] is not None:
+            by_pitcher[(r["summer_player_id"], r["season"])].append(r)
+    fb_ref = {}
+    for key, rs in by_pitcher.items():
+        fbs = [r for r in rs if r["pitch_type"] in FB_TYPES]
+        pool = fbs if fbs else rs
+        best = max(pool, key=lambda r: (r["pitch_type"] == "Four Seam",
+                                        r["pitch_type"] in FB_TYPES, r["pitch_count"] or 0))
+        fb_ref[key] = best
 
     # Feature build + est_vaa for every row that has the physical inputs.
     gradeable = []
@@ -166,7 +174,13 @@ def _run(conn):
             r["rel_side_abs"] = abs(float(r["rel_side"])) if r["rel_side"] is not None else 0.0
             for k in ("velo", "ivb", "spin", "extension", "rel_height"):
                 r[k] = float(r[k])
-            r["velo_sep"] = fb_velo.get((r["summer_player_id"], r["season"]), r["velo"]) - r["velo"]
+            fb = fb_ref.get((r["summer_player_id"], r["season"]))
+            fb_velo = float(fb["velo"]) if fb and fb["velo"] is not None else r["velo"]
+            fb_ivb = float(fb["ivb"]) if fb and fb["ivb"] is not None else r["ivb"]
+            fb_hb = float(fb["hb"]) if fb and fb["hb"] is not None else float(r["hb"])
+            r["velo_sep"] = fb_velo - r["velo"]
+            r["ivb_sep"] = fb_ivb - r["ivb"]
+            r["mov_sep"] = math.hypot(r["ivb"] - fb_ivb, float(r["hb"]) - fb_hb)
             gradeable.append(r)
 
     # Standardize each feature WITHIN pitch type.
@@ -207,7 +221,7 @@ def _run(conn):
     #       curveballs more via chase below the zone. So each type picks its own
     #       training target (whiff / chase / both) by cross-validation.
     # Ridge + CV'd lambda regularizes small-sample types toward a flat ~100.
-    grid = [1, 3, 10, 30, 100, 300, 1000]
+    grid = [3, 10, 30, 100, 300, 1000]
     shrink = {}
     targets = {"whiff": "_z_whiff_pct", "chase": "_z_chase_pct", "stuff": "_target"}
     print(f"{'pitch_type':<11} {'n':>5} {'target':>7} {'lambda':>7} {'cv_r':>7} {'shrink':>7}   top weights")
@@ -236,10 +250,15 @@ def _run(conn):
         cv_r, tname, lam, coef, mx, my, ntr = best
         for r in members:
             r["_pred"] = float((r["_z"] - mx) @ coef + my)
-        shrink[pt] = max(0.0, min(1.0, cv_r / SHRINK_TARGET))
-        top = sorted(zip(FEATURES, coef), key=lambda kv: -abs(kv[1]))[:3]
-        wtxt = ", ".join(f"{f}={c:+.2f}" for f, c in top)
-        print(f"{pt:<11} {ntr:>5} {tname:>7} {lam:>7.1f} {cv_r:>7.3f} {shrink[pt]:>7.2f}   {wtxt}")
+        # Confidence = CV predictiveness, discounted by sample size so a tiny-n
+        # type (e.g. 21 splitters) can't earn full grade spread off a lucky CV.
+        reliability = min(1.0, ntr / 60.0)
+        shrink[pt] = max(0.0, min(1.0, cv_r / SHRINK_TARGET)) * reliability
+        short = {"hb_abs": "|hb|", "extension": "ext", "est_vaa": "vaa", "rel_side_abs": "|rs|",
+                 "velo_sep": "vsep", "ivb_sep": "isep", "mov_sep": "msep"}
+        top = sorted(zip(FEATURES, coef), key=lambda kv: -abs(kv[1]))
+        wtxt = " ".join(f"{short.get(f, f)}{c:+.2f}" for f, c in top)
+        print(f"{pt:<11} {ntr:>5} {tname:>7} {lam:>6.0f} {cv_r:>6.3f} {shrink[pt]:>5.2f}  {wtxt}")
 
     # Grade = predictor standardized within pitch type -> mean 100, sd 25, scaled
     # by the type's CV confidence (low cv_r collapses toward 100), clamped to a
