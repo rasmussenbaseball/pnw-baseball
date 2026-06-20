@@ -945,3 +945,69 @@ def get_reverse_comps(
     out["season"] = season
     out["config"] = _config(side)
     return out
+
+
+@router.get("/home/comps-showcase")
+@cached_endpoint(ttl_seconds=1800)
+def comps_showcase(seed: int = Query(0, ge=0, le=999)):
+    """Homepage Player Comps widget. Two parts:
+      forward — a few top PNW players (by WAR) each with their closest MLB comp.
+      reverse — one 2026 MLB hitter (rotated by `seed`) with the closest PNW
+                player-seasons. The frontend passes a small random seed so the
+                MLB player rotates per visit (bounded cache: ~20 variants)."""
+    season = SEASON_DEFAULT
+    opts = {"positionMatchMode": "any", "matchHandedness": False,
+            "includeSmallSamples": True, "filters": {}}
+    out = {"season": season, "forward": [], "reverse": None}
+
+    # ── Top PNW players (2 hitters by oWAR, 1 pitcher by pWAR) ──
+    targets = []
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT bs.player_id FROM batting_stats bs
+               JOIN players p ON p.id = bs.player_id
+               JOIN teams t ON t.id = bs.team_id
+               WHERE bs.season = %s AND t.state IN ('WA','OR','ID','MT','BC')
+                 AND COALESCE(p.is_phantom, false) = false
+               ORDER BY bs.offensive_war DESC NULLS LAST LIMIT 2""",
+            (season,),
+        )
+        targets += [(r["player_id"], "hitter") for r in cur.fetchall()]
+        cur.execute(
+            """SELECT ps.player_id FROM pitching_stats ps
+               JOIN players p ON p.id = ps.player_id
+               JOIN teams t ON t.id = ps.team_id
+               WHERE ps.season = %s AND t.state IN ('WA','OR','ID','MT','BC')
+                 AND COALESCE(p.is_phantom, false) = false
+               ORDER BY ps.pitching_war DESC NULLS LAST LIMIT 1""",
+            (season,),
+        )
+        targets += [(r["player_id"], "pitcher") for r in cur.fetchall()]
+
+    for pid, side in targets:
+        c = compute_comps(pid, side, "mlb", season, opts, limit=1)
+        sel, res = c.get("selectedPlayer"), (c.get("results") or [])
+        if sel and res:
+            r = res[0]
+            out["forward"].append({
+                "player": {"id": sel["id"], "name": sel["name"],
+                           "team": sel.get("team"), "side": side},
+                "comp": {"name": r["name"], "team": r.get("team"),
+                         "season": r.get("season"), "score": r["similarityScore"]},
+            })
+
+    # ── Reverse: a 2026 MLB hitter, rotated by seed → closest PNW seasons ──
+    mlb = _eligible(_load_mlb_pool("hitter"), "hitter", include_small=True)
+    pool2026 = [m for m in mlb if (m.get("season") == 2026)] or mlb
+    if pool2026:
+        pick = pool2026[seed % len(pool2026)]
+        rc = compute_reverse_comps(pick["id"], "hitter", season, opts, limit=3)
+        sel, res = rc.get("selectedPlayer"), (rc.get("results") or [])
+        if sel:
+            out["reverse"] = {
+                "mlb": {"name": sel["name"], "team": sel.get("team"), "season": sel.get("season")},
+                "comps": [{"id": r["id"], "name": r["name"], "team": r.get("team"),
+                           "level": r.get("level"), "score": r["similarityScore"]} for r in res],
+            }
+    return out

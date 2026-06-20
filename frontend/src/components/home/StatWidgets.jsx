@@ -74,6 +74,21 @@ function CategoryBlock({ cat }) {
 
 export function StandingsWidget() {
   const { data, loading, error } = useApi('/standings', { season: CURRENT_SEASON })
+  // CPI (Composite Power Index, 100 = division average) per team, merged in by id.
+  const { data: ratings } = useApi('/team-ratings', { season: CURRENT_SEASON })
+  const cpiById = {}
+  ;(ratings || []).forEach(div => (div.teams || []).forEach(t => {
+    if (t.cpi != null) cpiById[t.id] = Math.round(t.cpi)
+  }))
+  const cpiCell = (id) => {
+    const v = cpiById[id]
+    return (
+      <span className={`w-8 text-right text-[10px] tabular-nums shrink-0 ${
+        v == null ? 'text-gray-300 dark:text-gray-600'
+          : v >= 100 ? 'text-nw-teal dark:text-nw-teal-light font-semibold' : 'text-gray-400'
+      }`}>{v ?? '-'}</span>
+    )
+  }
 
   // Slide order per Nate: the PNW-local conferences lead (D3 first, then NAIA,
   // D2, NWAC). D1 comes last as a SINGLE slide showing every PNW D1 team across
@@ -114,8 +129,9 @@ export function StandingsWidget() {
               <span className="flex-1 min-w-0 text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">
                 {team.short_name}
               </span>
-              <span className="w-10 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{rec(team.conf_wins, team.conf_losses)}</span>
-              <span className="w-10 text-right text-[11px] tabular-nums text-gray-400">{rec(team.wins, team.losses)}</span>
+              {cpiCell(team.id)}
+              <span className="w-9 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{rec(team.conf_wins, team.conf_losses)}</span>
+              <span className="w-9 text-right text-[11px] tabular-nums text-gray-400">{rec(team.wins, team.losses)}</span>
             </>
           )
           // Champion (top team) gets the subtle gold left border.
@@ -127,7 +143,8 @@ export function StandingsWidget() {
             : <div key={team.id} className={cls}>{inner}</div>
         })}
       </div>
-      <div className="flex justify-end gap-4 mt-1 text-[8px] uppercase tracking-wider text-gray-400">
+      <div className="flex justify-end gap-3 mt-1 text-[8px] uppercase tracking-wider text-gray-400">
+        <span>CPI</span>
         <span>Conf</span>
         <span>Overall</span>
       </div>
@@ -153,12 +170,14 @@ export function StandingsWidget() {
               <span className="block text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{team.short_name}</span>
               <span className="block text-[9px] text-gray-400 truncate">{team.conference_abbrev || team.conference_name || 'Independent'}</span>
             </span>
-            <span className="w-10 text-right text-[11px] tabular-nums text-gray-400">{rec(team.conf_wins, team.conf_losses)}</span>
-            <span className="w-10 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{rec(team.wins, team.losses)}</span>
+            {cpiCell(team.id)}
+            <span className="w-9 text-right text-[11px] tabular-nums text-gray-400">{rec(team.conf_wins, team.conf_losses)}</span>
+            <span className="w-9 text-right text-xs font-bold tabular-nums text-nw-teal dark:text-nw-teal-light">{rec(team.wins, team.losses)}</span>
           </Link>
         ))}
       </div>
-      <div className="flex justify-end gap-4 mt-1 text-[8px] uppercase tracking-wider text-gray-400">
+      <div className="flex justify-end gap-3 mt-1 text-[8px] uppercase tracking-wider text-gray-400">
+        <span>CPI</span>
         <span>Conf</span>
         <span>Overall</span>
       </div>

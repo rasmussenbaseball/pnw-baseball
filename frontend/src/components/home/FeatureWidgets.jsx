@@ -526,6 +526,115 @@ export function PortalPreviewWidget() {
   )
 }
 
+// ─── 56-0 PNW Draft game ────────────────────────────────────────
+
+export function DraftGameWidget() {
+  return (
+    <WidgetCard title="56-0 · The PNW Draft" to="/draft" linkLabel="Play 56-0" accent="dark">
+      <div className="rounded-lg bg-gradient-to-br from-[#0a2518] to-[#1e5c35] border border-emerald-900/60 p-4 text-center mb-2">
+        <div className="text-4xl font-black tracking-tight text-[#e8c96a] leading-none" style={{ fontFamily: 'Georgia, serif' }}>56-0</div>
+        <p className="text-[11px] text-emerald-50/90 leading-snug mt-2">
+          Spin a team, draft a player, build the best roster in the Pacific Northwest. One shot at a perfect season.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-1 mb-2">
+        {['14 picks', '9 hitters + 5 arms', 'Every PNW team', '5 levels'].map(s => (
+          <span key={s} className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{s}</span>
+        ))}
+      </div>
+      <LinkChip to="/draft">Build your roster</LinkChip>
+    </WidgetCard>
+  )
+}
+
+// ─── PNW Pickle (guess the player) ──────────────────────────────
+
+export function PnwPickleWidget() {
+  return (
+    <WidgetCard title="PNW Pickle" to="/pnw-pickle" linkLabel="Play Pickle" accent="summer">
+      <p className="text-[12px] text-gray-600 dark:text-gray-300 leading-snug mb-2">
+        Guess the mystery PNW player from the clues: team, position, class, handedness, and stats.
+      </p>
+      <div className="flex gap-1.5 mb-2">
+        {['Team', 'Pos', 'Class', 'B/T', 'Stats'].map(c => (
+          <div key={c} className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 py-1.5 text-center">
+            <div className="text-sm font-black text-gray-300 dark:text-gray-600 leading-none">?</div>
+            <div className="text-[7px] font-bold uppercase tracking-wider text-gray-400 mt-1">{c}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">A new player every day. How few guesses do you need?</p>
+      <LinkChip to="/pnw-pickle">Guess today's player</LinkChip>
+    </WidgetCard>
+  )
+}
+
+// ─── Player Comps (PNW ↔ MLB comparables) ───────────────────────
+
+export function ComparablesWidget() {
+  // Small random seed → the reverse MLB player rotates each visit (bounded so
+  // the backend only caches ~20 variants).
+  const [seed] = useState(() => Math.floor(Math.random() * 20))
+  const { data } = useApi('/home/comps-showcase', { seed }, [seed])
+  const forward = data?.forward || []
+  const reverse = data?.reverse
+
+  const pct = (s) => `${Math.round(s)}%`
+
+  const slides = [
+    // 1. PNW player → MLB comp
+    <div key="fwd" className="min-h-[150px]">
+      <GroupLabel className="mb-1.5">Top PNW players, MLB comps</GroupLabel>
+      {forward.length ? (
+        <div className="space-y-1 mb-2">
+          {forward.map((f, i) => (
+            <Link key={i} to={`/player-comps?player_id=${f.player.id}&pool=mlb&side=${f.player.side}`}
+              className="block py-1 px-1 -mx-1 rounded hover:bg-nw-cream dark:hover:bg-gray-700/50">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{f.player.name}</span>
+                <span className="text-[10px] font-bold text-nw-teal tabular-nums shrink-0">{pct(f.comp.score)} match</span>
+              </div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">≈ {f.comp.name}{f.comp.team ? ` · ${f.comp.team}` : ''}</div>
+            </Link>
+          ))}
+        </div>
+      ) : <WidgetSkeleton rows={3} />}
+      <LinkChip to="/player-comps">Compare any player</LinkChip>
+    </div>,
+
+    // 2. MLB player → closest PNW players (rotates per visit)
+    <div key="rev" className="min-h-[150px]">
+      <GroupLabel className="mb-1.5">An MLB hitter's closest PNW comps</GroupLabel>
+      {reverse ? (
+        <div className="mb-2">
+          <div className="text-xs font-bold text-gray-800 dark:text-gray-100 mb-1">
+            {reverse.mlb.name}
+            <span className="text-[10px] font-normal text-gray-400 ml-1.5">{reverse.mlb.team}{reverse.mlb.season ? ` · ${reverse.mlb.season}` : ''}</span>
+          </div>
+          <div className="space-y-0.5">
+            {reverse.comps.map((c, i) => (
+              <Link key={i} to={`/player/${c.id}`}
+                className="flex items-center justify-between gap-2 py-0.5 px-1 -mx-1 rounded text-[11px] hover:bg-nw-cream dark:hover:bg-gray-700/50">
+                <span className="truncate text-gray-700 dark:text-gray-300">
+                  {c.name}{c.team ? <span className="text-gray-400"> · {c.team}</span> : ''}
+                </span>
+                <span className="text-nw-teal font-bold tabular-nums shrink-0">{pct(c.score)}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : <WidgetSkeleton rows={4} />}
+      <LinkChip to="/player-comps">Find PNW comps</LinkChip>
+    </div>,
+  ]
+
+  return (
+    <WidgetCard title="Player Comps" to="/player-comps" linkLabel="Comp tool" accent="indigo">
+      <Carousel slides={slides} ariaLabel="Player comparables" />
+    </WidgetCard>
+  )
+}
+
 // ─── 9. Choose Your Tier ────────────────────────────────────────
 
 // Mirrors the real tier data in pages/Pricing.jsx — keep in sync.

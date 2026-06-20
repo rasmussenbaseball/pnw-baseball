@@ -25,7 +25,8 @@ import { LeadersBoard } from '../components/home/LeadersBoard'
 import {
   DraftBoardWidget, GridPreviewWidget, ArticlesWidget,
   RecentMovesWidget, GmPreviewWidget, PortalPreviewWidget,
-  NewFeaturesWidget, TiersWidget,
+  NewFeaturesWidget, DraftGameWidget, PnwPickleWidget, ComparablesWidget,
+  TiersWidget,
 } from '../components/home/FeatureWidgets'
 
 export default function Homepage() {
@@ -64,23 +65,26 @@ const WIDGETS = {
   articles:    <ArticlesWidget />,
   recentMoves: <RecentMovesWidget />,
   newFeatures: <NewFeaturesWidget />,
+  comps:       <ComparablesWidget />,
+  draftGame:   <DraftGameWidget />,
+  pickle:      <PnwPickleWidget />,
   gm:          <GmPreviewWidget />,
   portal:      <PortalPreviewWidget />,
 }
 
 const COLUMN_LAYOUTS = {
   3: [
-    ['standings', 'recentMoves', 'portal'],
-    ['newFeatures', 'draft', 'articles', 'grid'],
-    ['records', 'gm'],
+    ['standings', 'recentMoves', 'portal', 'pickle'],
+    ['newFeatures', 'comps', 'draft', 'articles', 'grid'],
+    ['records', 'draftGame', 'gm'],
   ],
   2: [
-    ['standings', 'newFeatures', 'draft', 'articles', 'portal'],
-    ['gm', 'records', 'recentMoves', 'grid'],
+    ['standings', 'newFeatures', 'comps', 'draft', 'articles', 'portal'],
+    ['gm', 'draftGame', 'records', 'pickle', 'recentMoves', 'grid'],
   ],
   1: [
-    ['standings', 'newFeatures', 'records', 'draft', 'grid',
-     'articles', 'recentMoves', 'gm', 'portal'],
+    ['standings', 'newFeatures', 'comps', 'records', 'draft', 'draftGame',
+     'pickle', 'grid', 'articles', 'recentMoves', 'gm', 'portal'],
   ],
 }
 
