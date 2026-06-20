@@ -625,9 +625,12 @@ export default function PlayerGraphic() {
           ? (summerBatting.length > 0 && summerPitching.length > 0)
           : (hasBatting && hasPitching)
         const roleQ = graphicRole ? `&role=${graphicRole}` : ''
-        const imgUrl = (sel && sel.kind === 'summer' && sel.summerPid)
+        // Cache-bust token: og images are cached hard (max-age 1yr, immutable),
+        // so bump GFX_VERSION after any template/logo change to force fresh renders.
+        const GFX_VERSION = '2'
+        const imgUrl = ((sel && sel.kind === 'summer' && sel.summerPid)
           ? `/api/og?t=summerplayer&id=${sel.summerPid}&format=portrait&season=${sel.season}${roleQ}`
-          : `/api/og?t=player&id=${playerId}&format=portrait${sel ? `&season=${sel.season}&kind=${sel.kind}` : ''}${roleQ}`
+          : `/api/og?t=player&id=${playerId}&format=portrait${sel ? `&season=${sel.season}&kind=${sel.kind}` : ''}${roleQ}`) + `&gv=${GFX_VERSION}`
         return (
           <div className="flex flex-col items-center gap-3">
             <div className="flex flex-wrap items-center justify-center gap-2">
