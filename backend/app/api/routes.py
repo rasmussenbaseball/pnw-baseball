@@ -7378,27 +7378,132 @@ def _compute_percentile(value, sorted_values, higher_is_better):
 
 
 # Stat definitions: (response_key, display_label, raw_field, higher_is_better)
+# Advanced / PBP-driven set (2026+). PBP fields (air_pull_pct, contact_pct,
+# two_strike_contact_pct, wpa, strike_pct, first_pitch_strike_pct, whiff_pct,
+# putaway_pct, opp_air_pull_pct) are computed from game_events and merged onto
+# each qualified player in the endpoint.
 HITTER_PERCENTILE_STATS = [
-    ("war",      "WAR",     "war",        True),
-    ("woba",     "wOBA",    "woba",       True),
-    ("wobacon",  "wOBACON", "wobacon",    True),
-    ("wrc_plus", "wRC+",    "wrc_plus",   True),
-    ("iso",      "ISO",     "iso",        True),
-    ("bb_pct",   "BB%",     "bb_pct",     True),
-    ("k_pct",    "K%",      "k_pct",      False),   # lower = better
-    ("hr_per_pa","HR/PA",   "hr_per_pa",  True),
-    ("sb_per_pa","SB/PA",   "sb_per_pa",  True),
+    ("woba",                   "wOBA",       "woba",                   True),
+    ("wobacon",                "wOBACON",    "wobacon",                True),
+    ("air_pull_pct",           "AIRPULL%",   "air_pull_pct",           True),
+    ("contact_pct",            "CONTACT%",   "contact_pct",            True),
+    ("two_strike_contact_pct", "2K-CONTACT%", "two_strike_contact_pct", True),
+    ("wpa",                    "WPA",        "wpa",                    True),
+    ("bb_pct",                 "BB%",        "bb_pct",                 True),
+    ("k_pct",                  "K%",         "k_pct",                  False),  # lower = better
 ]
 
 PITCHER_PERCENTILE_STATS = [
-    ("war",       "WAR",    "war",        True),
-    ("fip",       "FIP",    "fip",        False),   # lower = better
-    ("xfip",      "xFIP",   "xfip",       False),
-    ("siera",     "SIERA",  "siera",      False),
-    ("k_bb_pct",  "K-BB%",  "k_bb_pct",   True),
-    ("hr_per_pa", "HR/PA",  "hr_per_pa",  False),
-    ("baa",       "BAA",    "baa",        False),   # lower = better
+    ("fip",                    "FIP",          "fip",                  False),  # lower = better
+    ("xfip",                   "xFIP",         "xfip",                 False),  # lower = better
+    ("k_bb_pct",               "K-BB%",        "k_bb_pct",             True),
+    ("strike_pct",             "STRIKE%",      "strike_pct",           True),
+    ("first_pitch_strike_pct", "FPS%",         "first_pitch_strike_pct", True),
+    ("whiff_pct",              "WHIFF%",       "whiff_pct",            True),
+    ("putaway_pct",            "PUTAWAY%",     "putaway_pct",          True),
+    ("opp_air_pull_pct",       "OPP AIRPULL%", "opp_air_pull_pct",     False),  # lower = better
 ]
+
+
+def _bulk_pbp_batting(cur, player_ids, season):
+    """League-wide batter PBP metrics (Contact%, AIRPULL%, 2K-Contact%, WPA)
+    for the given player_ids in one grouped query over game_events. Mirrors the
+    per-player formulas in _compute_2026_pbp_batting_percentiles. 2026+ only."""
+    if not player_ids:
+        return {}
+    cur.execute(
+        """
+        SELECT ge.batter_player_id AS pid,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS f_s,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS f_f,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS f_in_play,
+          COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+          COUNT(*) FILTER (
+            WHERE bb_type IN ('LD','FB')
+              AND ((UPPER(p.bats) = 'R' AND field_zone = 'LEFT')
+                OR (UPPER(p.bats) = 'L' AND field_zone = 'RIGHT'))
+          ) AS air_pull,
+          COALESCE(SUM(CASE WHEN strikes_before = 2 THEN LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', '')) ELSE 0 END), 0) AS ts_f_s,
+          COALESCE(SUM(CASE WHEN strikes_before = 2 THEN LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', '')) ELSE 0 END), 0) AS ts_f_f,
+          COUNT(*) FILTER (WHERE strikes_before = 2 AND was_in_play AND pitches_thrown IS NOT NULL) AS ts_in_play,
+          SUM(wpa_batter) FILTER (WHERE wpa_batter IS NOT NULL) AS wpa
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        JOIN players p ON p.id = ge.batter_player_id
+        WHERE ge.batter_player_id = ANY(%s) AND g.season = %s
+        GROUP BY ge.batter_player_id
+        """,
+        (player_ids, season),
+    )
+    out = {}
+    for r in cur.fetchall():
+        swings = (r["f_s"] or 0) + (r["f_f"] or 0) + (r["f_in_play"] or 0)
+        contact = (r["f_f"] or 0) + (r["f_in_play"] or 0)
+        bb_total = r["bb_total"] or 0
+        ts_swings = (r["ts_f_s"] or 0) + (r["ts_f_f"] or 0) + (r["ts_in_play"] or 0)
+        ts_contact = (r["ts_f_f"] or 0) + (r["ts_in_play"] or 0)
+        out[r["pid"]] = {
+            "contact_pct": (contact / swings) if swings > 0 else None,
+            "air_pull_pct": ((r["air_pull"] or 0) / bb_total) if bb_total > 0 else None,
+            "two_strike_contact_pct": (ts_contact / ts_swings) if ts_swings > 0 else None,
+            "wpa": float(r["wpa"]) if r["wpa"] is not None else None,
+        }
+    return out
+
+
+def _bulk_pbp_pitching(cur, player_ids, season):
+    """League-wide pitcher PBP metrics (Strike%, FPS%, Whiff%, Putaway%,
+    Opp AIRPULL%) for the given player_ids in one grouped query. Mirrors the
+    per-player formulas in _compute_2026_pbp_pitching_percentiles. 2026+ only."""
+    if not player_ids:
+        return {}
+    cur.execute(
+        """
+        SELECT ge.pitcher_player_id AS pid,
+          COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
+          COALESCE(SUM(pitches_thrown), 0) AS pitches,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))), 0) AS pk,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))), 0) AS ps,
+          COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))), 0) AS pf,
+          COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS p_inplay,
+          COUNT(*) FILTER (
+              WHERE pitches_thrown >= 1 AND
+                    (LEFT(pitch_sequence, 1) IN ('K', 'S', 'F')
+                     OR (pitch_sequence = '' AND was_in_play))
+          ) AS f1_strikes,
+          COALESCE(SUM(CASE WHEN strikes_before = 2 THEN 1 ELSE 0 END), 0) AS two_strike_pa,
+          COALESCE(SUM(CASE WHEN strikes_before = 2 AND result_type IN
+              ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END), 0) AS two_strike_k,
+          COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bb_total,
+          COUNT(*) FILTER (
+            WHERE bb_type IN ('LD','FB')
+              AND ((UPPER(b.bats) = 'R' AND field_zone = 'LEFT')
+                OR (UPPER(b.bats) = 'L' AND field_zone = 'RIGHT'))
+          ) AS opp_air_pull
+        FROM game_events ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players b ON b.id = ge.batter_player_id
+        WHERE ge.pitcher_player_id = ANY(%s) AND g.season = %s
+        GROUP BY ge.pitcher_player_id
+        """,
+        (player_ids, season),
+    )
+    out = {}
+    for r in cur.fetchall():
+        pitches = r["pitches"] or 0
+        swings = (r["ps"] or 0) + (r["pf"] or 0) + (r["p_inplay"] or 0)
+        strikes = (r["pk"] or 0) + (r["ps"] or 0) + (r["pf"] or 0) + (r["p_inplay"] or 0)
+        tracked = r["tracked_pa"] or 0
+        bb_total = r["bb_total"] or 0
+        ts_pa = r["two_strike_pa"] or 0
+        out[r["pid"]] = {
+            "strike_pct": (strikes / pitches) if pitches > 0 else None,
+            "whiff_pct": ((r["ps"] or 0) / swings) if swings > 0 else None,
+            "first_pitch_strike_pct": ((r["f1_strikes"] or 0) / tracked) if tracked > 0 else None,
+            "putaway_pct": ((r["two_strike_k"] or 0) / ts_pa) if ts_pa > 0 else None,
+            "opp_air_pull_pct": ((r["opp_air_pull"] or 0) / bb_total) if bb_total > 0 else None,
+        }
+    return out
 
 
 @router.get("/leaderboards/percentiles")
@@ -7416,9 +7521,9 @@ def percentile_leaderboard(
     field that averages all of that player's non-null percentiles
     (a rough "well-roundedness" score).
 
-    Qualification thresholds match the leaderboards:
-      - hitters: 2.0 PA per team game
-      - pitchers: 0.75 IP per team game
+    Qualification thresholds (absolute):
+      - hitters: 60+ PA
+      - pitchers: 15+ IP
 
     Benchmarks (the sorted list each player is ranked against) are built
     **only from qualified players at that level**, so a reliever with 2
@@ -7465,8 +7570,7 @@ def percentile_leaderboard(
                     ON tss.team_id = bs.team_id AND tss.season = bs.season
                 WHERE bs.season = %s
                   AND d.level = %s
-                  AND bs.plate_appearances >= {QUALIFIED_PA_PER_GAME}
-                        * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+                  AND bs.plate_appearances >= 60
                 """,
                 (season, level),
             )
@@ -7503,14 +7607,21 @@ def percentile_leaderboard(
                     ON tss.team_id = ps.team_id AND tss.season = ps.season
                 WHERE ps.season = %s
                   AND d.level = %s
-                  AND ps.innings_pitched >= {QUALIFIED_IP_PER_GAME}
-                        * (COALESCE(tss.wins,0) + COALESCE(tss.losses,0) + COALESCE(tss.ties,0))
+                  AND ps.innings_pitched >= 15
                 """,
                 (season, level),
             )
             stat_defs = PITCHER_PERCENTILE_STATS
 
         players = [dict(r) for r in cur.fetchall()]
+
+        # Merge PBP-derived advanced stats (from game_events) onto each
+        # qualified player. 2026+ only — pre-PBP seasons leave these null.
+        pids = [p["player_id"] for p in players]
+        pbp = (_bulk_pbp_batting(cur, pids, season) if ptype == "hitter"
+               else _bulk_pbp_pitching(cur, pids, season))
+        for p in players:
+            p.update(pbp.get(p["player_id"], {}))
 
     # Build sorted benchmark arrays from qualified players only (nulls dropped)
     benchmarks = {}

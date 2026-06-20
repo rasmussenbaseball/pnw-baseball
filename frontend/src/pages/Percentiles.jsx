@@ -101,9 +101,11 @@ export default function Percentiles() {
         <div>
           <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100">Percentile Rankings</h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">
-            Every qualified player ranked against others at their division level.
-            Red = best, blue = worst. The Avg column averages all percentiles in
-            the row for a quick well-roundedness score. Click any column to sort.
+            Advanced + play-by-play metrics, every qualified player ranked against
+            others at their division level. Red = best, blue = worst. The Avg
+            column averages all percentiles in the row for a quick well-roundedness
+            score. Click any column to sort. Qualifiers: hitters 60+ PA, pitchers
+            15+ IP.
           </p>
         </div>
         <StatsLastUpdated />
