@@ -10,8 +10,9 @@
  *    /recruiting-classes (the public-facing class rankings page) instead.
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import PixelHeadshot from '../../gm/components/PixelHeadshot'
 import {
   WidgetCard, Carousel, PillToggle, GroupLabel, WidgetSkeleton, WidgetNote,
 } from './WidgetShell'
@@ -267,37 +268,18 @@ export function RecentMovesWidget() {
 
 // ─── 5. PNW Coach Sim (GM game) ─────────────────────────────────
 
-// Renders a (possibly cross-origin) headshot as chunky pixel art by drawing it
-// tiny on a canvas, then nearest-neighbor upscaling it back. Cross-origin draws
-// taint the canvas but we never read pixels back, so display still works.
-function PixelFace({ src, size = 40, px = 13 }) {
-  const ref = useRef(null)
-  useEffect(() => {
-    const cv = ref.current
-    if (!cv || !src) return
-    const ctx = cv.getContext('2d')
-    const img = new Image()
-    cv.style.display = 'none' // reveal only once a real image paints
-    img.onload = () => {
-      ctx.imageSmoothingEnabled = false
-      ctx.clearRect(0, 0, size, size)
-      ctx.drawImage(img, 0, 0, px, px)                       // downsample
-      ctx.drawImage(cv, 0, 0, px, px, 0, 0, size, size)      // nearest-neighbor upscale
-      cv.style.display = ''
-    }
-    img.onerror = () => {}
-    img.src = src
-  }, [src, size, px])
-  return (
-    <canvas ref={ref} width={size} height={size}
-      className="rounded border border-[#3a3a5e] bg-[#0f0f1e] shrink-0"
-      style={{ imageRendering: 'pixelated' }} />
-  )
-}
+// Example pixel-art player portraits straight from the sim (PixelHeadshot is the
+// same component the GM game renders for its generated players). Fixed seeds +
+// varied cap/jersey colors so the strip looks like a mixed roster.
+const SIM_FACES = [
+  { id: 'sim-a', capColor: '#1a2f5e', jerseyColor: '#c8102e' },
+  { id: 'sim-b', capColor: '#0a3d2a', jerseyColor: '#f0a000' },
+  { id: 'sim-c', capColor: '#3a1010', jerseyColor: '#d8d8d8' },
+  { id: 'sim-d', capColor: '#101a3a', jerseyColor: '#5aa0d0' },
+  { id: 'sim-e', capColor: '#2a2a2a', jerseyColor: '#fbbf24' },
+]
 
 export function GmPreviewWidget() {
-  const { data: facesData } = useApi('/home/faces', { limit: 6 })
-  const faces = facesData?.faces || []
   const MODES = [
     ['TRADITIONAL', 'Take over any of the 57 real PNW programs — Gonzaga to Grays Harbor — and build a dynasty.'],
     ['STORY MODE', 'Start as an unknown JUCO assistant. Win, interview, and climb the career ladder to a D1 job.'],
@@ -312,19 +294,14 @@ export function GmPreviewWidget() {
           <span className="text-[9px] font-bold uppercase tracking-widest text-[#fbbf24]">Choose your career</span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#fbbf24] animate-pulse" />
         </div>
-        {/* Pixel-art faces of real PNW stars — your future roster */}
-        {faces.length > 0 && (
-          <div className="mb-2.5">
-            <div className="flex gap-1.5">
-              {faces.map((f) => (
-                <Link key={f.player_id} to={`/player/${f.player_id}`} title={`${f.name} · ${f.team}`}>
-                  <PixelFace src={f.headshot_url} />
-                </Link>
-              ))}
+        {/* Sample generated players — the sim's own pixel-art portraits */}
+        <div className="flex gap-1.5 mb-2.5">
+          {SIM_FACES.map((f) => (
+            <div key={f.id} className="rounded overflow-hidden border border-[#3a3a5e] bg-[#0f0f1e] shrink-0">
+              <PixelHeadshot playerId={f.id} capColor={f.capColor} jerseyColor={f.jerseyColor} size={40} />
             </div>
-            <div className="text-[8px] uppercase tracking-widest text-gray-500 mt-1">Real PNW players, pixel-art rosters</div>
-          </div>
-        )}
+          ))}
+        </div>
         {/* Three ways to play — the game's real headline */}
         <div className="space-y-1.5 mb-2.5">
           {MODES.map(([name, desc]) => (
