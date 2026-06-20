@@ -324,6 +324,42 @@ def update_players_from_roster(cur, roster, team_db_id):
             ))
             updated += 1
         else:
+            # No Pointstreak-id match. Before inserting, try a case-insensitive,
+            # whitespace-trimmed name match so a row created by the stats scrape
+            # (or an earlier scrape with slightly different casing) gets UPDATED
+            # instead of duplicated. Exact-match-only here is what produced the
+            # 500+ duplicate roster rows.
+            cur.execute(
+                """SELECT id FROM summer_players
+                   WHERE lower(trim(first_name)) = lower(trim(%s))
+                     AND lower(trim(last_name)) = lower(trim(%s))
+                     AND team_id = %s
+                   ORDER BY id LIMIT 1""",
+                (info.get("first_name", ""), info.get("last_name", ""), team_db_id),
+            )
+            existing = cur.fetchone()
+            if existing:
+                cur.execute("""
+                    UPDATE summer_players SET
+                        first_name = %s, last_name = %s, college = %s,
+                        year_in_school = %s, jersey_number = %s, bats = %s,
+                        throws = %s,
+                        pointstreak_player_id = COALESCE(pointstreak_player_id, %s),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (
+                    info.get("first_name", ""),
+                    info.get("last_name", ""),
+                    info.get("college"),
+                    info.get("year_in_school"),
+                    info.get("jersey_number"),
+                    info.get("bats"),
+                    info.get("throws"),
+                    ps_player_id,
+                    existing["id"],
+                ))
+                updated += 1
+                continue
             # Player exists on roster but not in stats — create a record anyway
             cur.execute("""
                 INSERT INTO summer_players (
@@ -570,9 +606,15 @@ def ensure_player_in_db(cur, player_data, team_db_id):
         if row:
             return row["id"]
 
-    # Try to find by name + team
+    # Try to find by name + team (case-insensitive, whitespace-trimmed so minor
+    # casing/spacing differences between the stats and roster feeds don't spawn
+    # duplicate rows). ORDER BY id keeps it deterministic.
     cur.execute(
-        "SELECT id FROM summer_players WHERE first_name = %s AND last_name = %s AND team_id = %s",
+        """SELECT id FROM summer_players
+           WHERE lower(trim(first_name)) = lower(trim(%s))
+             AND lower(trim(last_name)) = lower(trim(%s))
+             AND team_id = %s
+           ORDER BY id LIMIT 1""",
         (player_data["first_name"], player_data["last_name"], team_db_id),
     )
     row = cur.fetchone()

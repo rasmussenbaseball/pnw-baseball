@@ -750,8 +750,14 @@ def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
             row["hometown"] = row.get("hometown") or row.get("sp_hometown")
             row["throws"] = row.get("throws") or row.get("sp_throws")
             row["bats"] = row.get("bats") or row.get("sp_bats")
-            # Curated assigned school wins, else the auto-linked PNW spring team.
-            row["school"] = row.get("assigned_school") or row.get("linked_school")
+            # School must reflect the 2026 spring team. Curated assigned_school
+            # wins. Otherwise only trust the auto-linked school when that spring
+            # player actually has 2026 stats — for transfers (e.g. portal guys)
+            # the link points at their OLD school, so we leave it blank until a
+            # 2026 school is assigned.
+            row["school"] = row.get("assigned_school") or (
+                row.get("linked_school") if row.get("pnw_spring") else None
+            )
             roster.append(row)
 
     return {
