@@ -279,25 +279,78 @@ function NewBadge() {
 
 // A 3-slide carousel previewing the most recently added pages. Each slide shows
 // a small representative mock of the page + a link. Order = newest first.
+// Level chip colors — covers pro levels (MLB/AAA/AA…) and divisions (D1/D2/NAIA).
+const LVL_CHIP = {
+  MLB: 'bg-emerald-600 text-white',
+  AAA: 'bg-blue-600 text-white',
+  AA: 'bg-purple-600 text-white',
+  'High-A': 'bg-sky-600 text-white', A: 'bg-sky-700 text-white', 'Low-A': 'bg-sky-800 text-white',
+  D1: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
+  D2: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  NAIA: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  D3: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
+}
+const lvlChip = (lvl) => LVL_CHIP[lvl] || 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+
+function SlideHead({ children }) {
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <NewBadge />
+      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{children}</span>
+    </div>
+  )
+}
+
+function PreviewSkeleton({ rows = 3 }) {
+  return (
+    <div className="space-y-1.5 py-1">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-3 rounded bg-gray-100 dark:bg-gray-700 animate-pulse" />
+      ))}
+    </div>
+  )
+}
+
 export function NewFeaturesWidget() {
+  // Real data: a few WCL portal players, top PNW pros, and the top class per
+  // division. Public/teaser endpoints so it works for every visitor.
+  const { data: wcl } = useApi('/wcl-portal/preview', { limit: 3 })
+  const { data: pro } = useApi('/pro-alumni')
+  const { data: rcD1 } = useApi('/recruiting/classes/top', { level: 'D1', limit: 1 })
+  const { data: rcD2 } = useApi('/recruiting/classes/top', { level: 'D2', limit: 1 })
+  const { data: rcNAIA } = useApi('/recruiting/classes/top', { level: 'NAIA', limit: 1 })
+
+  const wclPlayers = (wcl?.players || []).slice(0, 3)
+
+  // Flatten the by-school pro list, dedupe by name, MLB first, take 3.
+  const seen = new Set()
+  const proPlayers = []
+  for (const t of (pro?.teams || [])) {
+    for (const p of (t.players || [])) {
+      if (seen.has(p.name)) continue
+      seen.add(p.name); proPlayers.push(p)
+    }
+  }
+  proPlayers.sort((a, b) => (a.level === 'MLB' ? 0 : 1) - (b.level === 'MLB' ? 0 : 1))
+  const pros = proPlayers.slice(0, 3)
+
+  const classes = [rcD1, rcD2, rcNAIA].map(d => d?.classes?.[0]).filter(Boolean)
+
   const slides = [
     // 1. WCL Portal Tracker (newest)
     <div key="wcl" className="min-h-[150px]">
-      <div className="flex items-center gap-2 mb-2">
-        <NewBadge />
-        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">WCL Portal Tracker</span>
-      </div>
+      <SlideHead>WCL Portal Tracker</SlideHead>
       <div className="rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden mb-2">
         <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-900/40 text-[8px] font-bold uppercase tracking-wider text-gray-400">
-          <span>Player</span><span>Spring</span><span>WCL WAR</span>
+          <span>Player</span><span>Spring</span><span>WAR</span>
         </div>
-        {[['RHP · Sweets', 'Bushnell', '2.4'], ['OF · Knights', 'Gonzaga', '1.9']].map(([who, spring, war], i) => (
+        {wclPlayers.length ? wclPlayers.map((p, i) => (
           <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-2 px-2 py-1 text-[10px] border-t border-gray-100 dark:border-gray-700 items-center">
-            <span className="text-gray-700 dark:text-gray-300 truncate">{who}</span>
-            <span className="text-gray-400 truncate">{spring}</span>
-            <span className="font-bold tabular-nums text-nw-teal text-right">{war}</span>
+            <span className="text-gray-700 dark:text-gray-300 truncate">{p.name}{p.position ? ` · ${p.position}` : ''}</span>
+            <span className="text-gray-400 truncate">{p.school || '—'}</span>
+            <span className="font-bold tabular-nums text-nw-teal text-right">{Number(p.war).toFixed(1)}</span>
           </div>
-        ))}
+        )) : <div className="p-2"><PreviewSkeleton rows={2} /></div>}
       </div>
       <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
         West Coast League players in the transfer portal, shown with their summer (WCL) stats.
@@ -307,18 +360,15 @@ export function NewFeaturesWidget() {
 
     // 2. Pro Tracker
     <div key="pro" className="min-h-[150px]">
-      <div className="flex items-center gap-2 mb-2">
-        <NewBadge />
-        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Pro Tracker</span>
-      </div>
+      <SlideHead>Pro Tracker</SlideHead>
       <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-2 mb-2 space-y-1.5">
-        {[['MLB', '#0a7d4f'], ['AAA', '#2563eb'], ['AA', '#9333ea']].map(([lvl, c]) => (
-          <div key={lvl} className="flex items-center gap-2">
-            <span className="text-[8px] font-extrabold text-white px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: c }}>{lvl}</span>
-            <div className="flex-1 h-2 rounded bg-gray-100 dark:bg-gray-700" />
-            <span className="w-4 h-4 rounded-full bg-gray-100 dark:bg-gray-700 shrink-0" />
+        {pros.length ? pros.map((p, i) => (
+          <div key={i} className="flex items-center gap-2 text-[11px]">
+            <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded shrink-0 ${lvlChip(p.level)}`}>{p.level}</span>
+            <span className="flex-1 truncate font-semibold text-gray-800 dark:text-gray-100">{p.name}</span>
+            <span className="text-gray-400 truncate max-w-[45%] text-right">{p.current_team}</span>
           </div>
-        ))}
+        )) : <PreviewSkeleton rows={3} />}
       </div>
       <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
         Every PNW college alum playing pro ball (MiLB + MLB), grouped by school.
@@ -328,24 +378,21 @@ export function NewFeaturesWidget() {
 
     // 3. Recruiting Classes
     <div key="rc" className="min-h-[150px]">
-      <div className="flex items-center gap-2 mb-2">
-        <NewBadge />
-        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Recruiting Classes</span>
-      </div>
+      <SlideHead>Recruiting Classes</SlideHead>
       <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-2 mb-2 space-y-1.5">
-        {[['1', 88], ['2', 85], ['3', 81]].map(([rank, score]) => (
-          <div key={rank} className="flex items-center gap-2">
-            <span className="w-3 text-[10px] font-bold text-gray-400 tabular-nums shrink-0">{rank}</span>
-            <span className="w-4 h-4 rounded bg-gray-100 dark:bg-gray-700 shrink-0" />
-            <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-              <div className="h-full rounded-full bg-nw-teal" style={{ width: `${score}%` }} />
-            </div>
-            <span className="text-[11px] font-bold tabular-nums text-nw-teal w-6 text-right">{score}</span>
+        {classes.length ? classes.map((c, i) => (
+          <div key={i} className="flex items-center gap-2 text-[11px]">
+            <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded shrink-0 ${lvlChip(c.division)}`}>{c.division}</span>
+            {c.logo_url
+              ? <img src={c.logo_url} alt="" className="w-4 h-4 object-contain shrink-0" onError={(e) => { e.target.style.visibility = 'hidden' }} />
+              : <span className="w-4 shrink-0" />}
+            <span className="flex-1 truncate font-semibold text-gray-800 dark:text-gray-100">{c.short_name}</span>
+            <span className="font-bold tabular-nums text-nw-teal">{c.class_score}</span>
           </div>
-        ))}
+        )) : <PreviewSkeleton rows={3} />}
       </div>
       <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mb-2">
-        Every PNW program's incoming class, rated and ranked from PBR + BBNW recruit scores.
+        The top incoming class in each division (D1, D2, NAIA), rated from PBR + BBNW recruit scores.
       </p>
       <LinkChip to="/recruiting-classes">View class rankings</LinkChip>
     </div>,

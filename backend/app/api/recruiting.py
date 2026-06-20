@@ -1439,14 +1439,20 @@ def _combined_rank(bbnw_rank, pbr_rank):
 _MIN_RANKED_FOR_CLASS = 3
 
 
-def _class_summary_rows(cur, grad_year, limit=None):
+def _class_summary_rows(cur, grad_year, limit=None, level=None):
     """Per-school class summary. class_score is the AVERAGE recruit_score over
     commits from states we have rankings for (recruit_score IS NOT NULL) — so
     landing more players never inflates a class, and commits from no-ranking
     states (per recruiting_constants.RANKED_STATES) are excluded, not
-    penalized. Ranked by that average. Shared by the premium board + teaser."""
+    penalized. Ranked by that average. Shared by the premium board + teaser.
+    Pass `level` (D1/D2/D3/NAIA) to restrict to one division."""
+    level_clause = "AND d.level = %s" if level else ""
+    params = [grad_year, _PNW_STATES]
+    if level:
+        params.append(level)
+    params.append(_MIN_RANKED_FOR_CLASS)
     cur.execute(
-        """
+        f"""
         SELECT t.id AS team_id, t.name, t.short_name, t.logo_url,
                d.level AS division, c.name AS conference,
                COUNT(*) AS commits,
@@ -1459,12 +1465,12 @@ def _class_summary_rows(cur, grad_year, limit=None):
         JOIN teams t ON r.committed_team_id = t.id
         JOIN conferences c ON t.conference_id = c.id
         JOIN divisions d ON c.division_id = d.id
-        WHERE r.grad_year = %s AND t.state IN %s
+        WHERE r.grad_year = %s AND t.state IN %s {level_clause}
         GROUP BY t.id, t.name, t.short_name, t.logo_url, d.level, c.name
         ORDER BY (COUNT(r.recruit_score) >= %s) DESC,
                  class_score DESC NULLS LAST, ranked DESC
         """,
-        (grad_year, _PNW_STATES, _MIN_RANKED_FOR_CLASS),
+        params,
     )
     rows = [dict(r) for r in cur.fetchall()]
 
@@ -1523,12 +1529,16 @@ def recruiting_classes(
 def recruiting_classes_top(
     grad_year: int = Query(2026, description="Recruiting class year"),
     limit: int = Query(5, ge=1, le=15),
+    level: Optional[str] = Query(None, description="Restrict to a division (D1/D2/D3/NAIA)"),
 ):
     """PUBLIC teaser: the top recruiting classes (drives signups to the
-    premium board). Same summary shape, capped to `limit`."""
+    premium board). Same summary shape, capped to `limit`. Pass `level` to get
+    the top class within one division (e.g. the homepage 'New on the site' card
+    shows the top D1 / D2 / NAIA class)."""
     with get_connection() as conn:
         cur = conn.cursor()
-        return {"grad_year": grad_year, "classes": _class_summary_rows(cur, grad_year, limit=limit)}
+        return {"grad_year": grad_year, "level": level,
+                "classes": _class_summary_rows(cur, grad_year, limit=limit, level=level)}
 
 
 @router.get("/recruiting/classes/{team_id}")
