@@ -32,12 +32,12 @@ export default function OpponentTrends() {
       {/* Selectors */}
       <div className="flex flex-wrap gap-2 items-end mb-5">
         <select value={divisionId} onChange={e => { setDivisionId(e.target.value); setSelectedTeamId(null) }}
-          className="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm">
           <option value="">All Divisions</option>
           {(divisions || []).map(d => <option key={d.id} value={d.id}>{d.level}</option>)}
         </select>
         <select value={selectedTeamId || ''} onChange={e => setSelectedTeamId(e.target.value ? Number(e.target.value) : null)}
-          className="rounded border border-gray-300 px-2 py-1.5 text-sm min-w-[200px]">
+          className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm min-w-[200px]">
           <option value="">Choose a team...</option>
           {sortedTeams.map(t => <option key={t.id} value={t.id}>{t.short_name || t.name}</option>)}
         </select>
@@ -160,10 +160,10 @@ function LineupTable({ title, sub, data, accent }) {
   )
 
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-lg border ${accent ? 'border-blue-200' : 'border-gray-100 dark:border-gray-700'} overflow-hidden`}>
-      <div className={`px-3 py-2 ${accent ? 'bg-blue-50 border-b border-blue-100' : 'bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700'}`}>
+    <div className={`bg-white dark:bg-gray-800 rounded-lg border ${accent ? 'border-blue-200 dark:border-blue-900/50' : 'border-gray-100 dark:border-gray-700'} overflow-hidden`}>
+      <div className={`px-3 py-2 ${accent ? 'bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-900/50' : 'bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700'}`}>
         <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{title}</span>
-        <span className="text-[10px] text-gray-400 ml-2">{sub}</span>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-2">{sub}</span>
       </div>
       <table className="w-full text-xs">
         <thead>

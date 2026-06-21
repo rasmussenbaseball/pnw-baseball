@@ -357,7 +357,7 @@ function SummerHero({ identity, summerPlayer, season, contextBox, children, righ
     <div className="grid lg:grid-cols-[1.1fr_1fr] rounded-md overflow-hidden mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
       <div className="p-5 flex flex-col">
         <div className="relative h-20 -mx-5 -mt-5" style={{ background: HERO_GRADIENT }}>
-          <div className="absolute -bottom-7 left-[18px] w-[70px] h-[70px] rounded-full bg-gray-300 border-[3px] border-white flex items-center justify-center text-2xl font-bold text-gray-500 overflow-hidden">
+          <div className="absolute -bottom-7 left-[18px] w-[70px] h-[70px] rounded-full bg-gray-300 dark:bg-gray-600 border-[3px] border-white dark:border-gray-800 flex items-center justify-center text-2xl font-bold text-gray-500 dark:text-gray-300 overflow-hidden">
             {identity.headshot_url
               ? <img src={identity.headshot_url} alt="" className="w-full h-full object-cover" />
               : <span>{first?.[0]}{last?.[0]}</span>}

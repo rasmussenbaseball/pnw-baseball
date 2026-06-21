@@ -100,7 +100,7 @@ export default function Percentiles() {
       <div className="flex items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100">Percentile Rankings</h1>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1">
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
             Advanced + play-by-play metrics, every qualified player ranked against
             others at their division level. Red = best, blue = worst. The Avg
             column averages all percentiles in the row for a quick well-roundedness
@@ -113,13 +113,13 @@ export default function Percentiles() {
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4 mt-3">
-        <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
           {TYPES.map(t => (
             <button
               key={t.key}
               onClick={() => { setType(t.key); setSortKey('avg_pct') }}
               className={`px-4 py-1.5 text-sm font-semibold transition-colors ${
-                type === t.key ? 'bg-nw-teal text-white' : 'text-gray-700 hover:bg-gray-50'
+                type === t.key ? 'bg-nw-teal text-white' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
               }`}
             >
               {t.label}
@@ -127,13 +127,13 @@ export default function Percentiles() {
           ))}
         </div>
 
-        <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
           {LEVELS.map(lv => (
             <button
               key={lv}
               onClick={() => setLevel(lv)}
               className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
-                level === lv ? 'bg-nw-teal text-white' : 'text-gray-700 hover:bg-gray-50'
+                level === lv ? 'bg-nw-teal text-white' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
               }`}
             >
               {lv}
@@ -148,19 +148,19 @@ export default function Percentiles() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search player or team..."
-          className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
+          className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
         />
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-600 mb-3">
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-600 dark:text-gray-400 mb-3">
         <span>
           Ranked among {data?.qualified_count ?? 0} qualified {type === 'hitter' ? 'hitters' : 'pitchers'} in {level}.
         </span>
         <div className="flex items-center gap-1 ml-auto">
           <span>Worst</span>
           <div
-            className="w-28 h-3 rounded border border-gray-200"
+            className="w-28 h-3 rounded border border-gray-200 dark:border-gray-700"
             style={{
               background: `linear-gradient(to right, ${percentileColor(0)}, ${percentileColor(50)}, ${percentileColor(100)})`,
             }}
@@ -175,7 +175,7 @@ export default function Percentiles() {
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead className="bg-nw-teal text-white sticky top-0 z-10">
             <tr>
@@ -224,11 +224,11 @@ export default function Percentiles() {
               </tr>
             )}
             {!loading && filtered.map((p, idx) => (
-              <tr key={`${p.player_id}-${p.team_id}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className={`px-2 py-2 text-center text-gray-500 text-xs font-mono ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+              <tr key={`${p.player_id}-${p.team_id}`} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}>
+                <td className={`px-2 py-2 text-center text-gray-500 text-xs font-mono ${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}`}>
                   {idx + 1}
                 </td>
-                <td className={`px-3 py-2 sticky left-0 z-10 min-w-[200px] ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                <td className={`px-3 py-2 sticky left-0 z-10 min-w-[200px] ${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}`}>
                   <div className="flex items-center gap-2">
                     <Link to={`/team/${p.team_id}`} className="shrink-0">
                       {p.logo_url ? (
