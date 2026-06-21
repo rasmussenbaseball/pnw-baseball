@@ -40,11 +40,13 @@ MIN_PITCHES = 5
 Z_REF_FT = 2.4          # reference plate-crossing height (mid-zone) for VAA
 GRADE_MEAN, GRADE_SD = 100.0, 25.0
 
+# Gradeable pitch types. "Undefined" is intentionally excluded — it's an
+# unclassified grab-bag, not a real pitch shape, so it neither grades nor appears
+# on the leaderboard.
 FAMILY = {
     "Four Seam": "FB", "Sinker": "FB", "Cutter": "FB",
     "Slider": "BB", "Curveball": "BB",
     "Changeup": "OFF", "Splitter": "OFF",
-    "Undefined": "UND",
 }
 # rel_height is intentionally excluded: est_vaa is computed from it (+ ivb/velo/
 # ext), so keeping both creates severe multicollinearity and unstable weights.

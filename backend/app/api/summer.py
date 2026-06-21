@@ -1187,6 +1187,7 @@ def trackman_all_pitches(_user: str = Depends(require_tier("dev"))):
             JOIN summer_players sp ON sp.id = tp.summer_player_id
             JOIN summer_teams st   ON st.id = tp.team_id
             WHERE tp.pitch_count >= 5
+              AND tp.pitch_type <> 'Undefined'
             ORDER BY sp.last_name, sp.first_name, tp.pitch_count DESC NULLS LAST
             """
         )
