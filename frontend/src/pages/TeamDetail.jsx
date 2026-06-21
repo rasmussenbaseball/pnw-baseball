@@ -3,7 +3,6 @@ import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers, useTeamInfoGraphic, useBattingPbpLeaderboard, usePitchingPbpLeaderboard } from '../hooks/useApi'
 import TeamAdvanced from '../components/TeamAdvanced'
 import StatsTable from '../components/StatsTable'
-import StatPresetBar from '../components/StatPresetBar'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
@@ -47,6 +46,11 @@ export default function TeamDetail() {
   const { data: history, loading: historyLoading } = useTeamHistory(teamId)
   const { data: futureData } = useTeamFutureGames(teamId, 15)
   const { data: ig } = useTeamInfoGraphic(teamId, season)
+  // PBP availability is fetched up front so the unified view toggle can disable
+  // (cross off) "Play-by-Play" for seasons with no pitch-sequence coverage.
+  const pbpParams = { season, team_id: Number(teamId), min_pa: 0, limit: 300, sort_by: 'tracked_pa', sort_dir: 'desc' }
+  const pbpBatRes = useBattingPbpLeaderboard(pbpParams)
+  const pbpPitRes = usePitchingPbpLeaderboard(pbpParams)
 
   const team = result?.team || history?.team
   const batting = result?.batting || []
@@ -184,18 +188,20 @@ export default function TeamDetail() {
 
           {/* Batting */}
           <StatSection
-            title="Batting" side="bat" teamId={teamId} season={season} rows={batting}
+            title="Batting" rows={batting}
             boxColumns={TEAM_BAT_COLUMNS} presets={TEAM_BATTING_PRESETS}
             pbpColumns={TEAM_BAT_PBP_COLUMNS} defaultSort="plate_appearances"
             csvName={`nwbb_${teamId}_batting_${season}`}
+            pbpRows={pbpBatRes.data?.data || []} pbpLoading={pbpBatRes.loading}
           />
 
           {/* Pitching */}
           <StatSection
-            title="Pitching" side="pit" teamId={teamId} season={season} rows={pitching}
+            title="Pitching" rows={pitching}
             boxColumns={TEAM_PIT_COLUMNS} presets={TEAM_PITCHING_PRESETS}
             pbpColumns={TEAM_PIT_PBP_COLUMNS} defaultSort="innings_pitched"
             csvName={`nwbb_${teamId}_pitching_${season}`}
+            pbpRows={pbpPitRes.data?.data || []} pbpLoading={pbpPitRes.loading}
           />
 
           {/* Incoming class: transfers (JUCO/portal) + HS commits, unified */}
@@ -799,84 +805,74 @@ function SnapCell({ label, value, accent = false, strong = false }) {
   )
 }
 
-function ModeToggle({ mode, setMode }) {
+// Unified view toggle: Standard | Advanced | Play-by-Play, all in one place.
+// Play-by-Play is crossed off + disabled when the season has no PBP coverage.
+function ViewToggle({ view, setView, pbpAvailable, pbpLoading }) {
+  const opts = [['Standard', 'Standard'], ['Advanced', 'Advanced'], ['pbp', 'Play-by-Play']]
   return (
     <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-semibold">
-      {[['box', 'Box Score'], ['pbp', 'Play-by-Play']].map(([m, label]) => (
-        <button key={m} onClick={() => setMode(m)}
-          className={`px-3 py-1.5 transition-colors ${mode === m
-            ? 'bg-nw-teal text-white'
-            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-          {label}
-        </button>
-      ))}
+      {opts.map(([key, label]) => {
+        const active = view === key
+        const disabled = key === 'pbp' && !pbpLoading && !pbpAvailable
+        return (
+          <button key={key} onClick={() => !disabled && setView(key)} disabled={disabled}
+            title={disabled ? 'No play-by-play data for this season' : undefined}
+            className={`px-3 py-1.5 transition-colors ${active
+              ? 'bg-nw-teal text-white'
+              : disabled
+                ? 'bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 line-through cursor-not-allowed'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+            {label}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-function StatSection({ title, side, teamId, season, rows, boxColumns, presets, pbpColumns, defaultSort, csvName }) {
-  const [mode, setMode] = useState('box')
-  const [preset, setPreset] = useState('Standard')
+function StatSection({ title, rows, boxColumns, presets, pbpColumns, defaultSort, csvName, pbpRows, pbpLoading }) {
+  const pbpAvailable = (pbpRows?.length || 0) > 0
+  const [view, setView] = useState('Standard')   // 'Standard' | 'Advanced' | 'pbp'
+  const isPbp = view === 'pbp'
+
+  // If PBP is selected but the (newly chosen) season has no coverage, fall back.
+  useEffect(() => {
+    if (isPbp && !pbpLoading && !pbpAvailable) setView('Standard')
+  }, [isPbp, pbpLoading, pbpAvailable])
+
+  const data = isPbp ? pbpRows : rows
+  const columns = isPbp ? pbpColumns : boxColumns
+  const visible = isPbp ? pbpColumns.map(c => c.key) : presets[view]
+
   const [sortKey, setSortKey] = useState(defaultSort)
   const [sortDir, setSortDir] = useState('desc')
-  const sorted = useMemo(() => [...rows].sort((a, b) => {
-    const av = a[sortKey] ?? -Infinity, bv = b[sortKey] ?? -Infinity
+  // Default sort key differs per view (box vs PBP); use a safe per-view key.
+  const effSortKey = (columns.some(c => c.key === sortKey)) ? sortKey : (isPbp ? 'tracked_pa' : defaultSort)
+  const sorted = useMemo(() => [...(data || [])].sort((a, b) => {
+    const av = a[effSortKey] ?? -Infinity, bv = b[effSortKey] ?? -Infinity
     return sortDir === 'asc' ? av - bv : bv - av
-  }), [rows, sortKey, sortDir])
+  }), [data, effSortKey, sortDir])
+
   return (
     <div className="mb-6 sm:mb-8">
       <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">{title}</h2>
         <div className="flex items-center gap-2">
-          <ModeToggle mode={mode} setMode={setMode} />
-          {mode === 'box' && <ExportCSVButton data={sorted} columns={boxColumns} filename={csvName} />}
+          <ViewToggle view={view} setView={setView} pbpAvailable={pbpAvailable} pbpLoading={pbpLoading} />
+          <ExportCSVButton data={sorted} columns={columns} filename={`${csvName}${isPbp ? '_pbp' : ''}`} />
         </div>
       </div>
-      {mode === 'box' ? (
-        <>
-          <StatPresetBar presets={presets} activePreset={preset} onSelect={setPreset} />
-          <StatsTable data={sorted} columns={boxColumns} visibleColumns={presets[preset]}
-            sortBy={sortKey} sortDir={sortDir}
-            onSort={(k, d) => { setSortKey(k); setSortDir(d) }} loading={false} offset={0} />
-        </>
-      ) : side === 'bat'
-        ? <BatPbpTable teamId={teamId} season={season} columns={pbpColumns} />
-        : <PitPbpTable teamId={teamId} season={season} columns={pbpColumns} />}
+      {isPbp && !pbpLoading && !pbpAvailable ? (
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center text-sm text-gray-400 dark:text-gray-500">
+          No play-by-play data tracked for this team this season yet.
+        </div>
+      ) : (
+        <StatsTable data={sorted} columns={columns} visibleColumns={visible}
+          sortBy={effSortKey} sortDir={sortDir}
+          onSort={(k, d) => { setSortKey(k); setSortDir(d) }}
+          loading={isPbp && pbpLoading} offset={0} />
+      )}
     </div>
-  )
-}
-
-function BatPbpTable({ teamId, season, columns }) {
-  const { data, loading } = useBattingPbpLeaderboard(
-    { season, team_id: Number(teamId), min_pa: 0, limit: 300, sort_by: 'tracked_pa', sort_dir: 'desc' })
-  return <PbpTableInner data={data} loading={loading} columns={columns} />
-}
-
-function PitPbpTable({ teamId, season, columns }) {
-  const { data, loading } = usePitchingPbpLeaderboard(
-    { season, team_id: Number(teamId), min_pa: 0, limit: 300, sort_by: 'tracked_pa', sort_dir: 'desc' })
-  return <PbpTableInner data={data} loading={loading} columns={columns} />
-}
-
-function PbpTableInner({ data, loading, columns }) {
-  const [sortKey, setSortKey] = useState('tracked_pa')
-  const [sortDir, setSortDir] = useState('desc')
-  const rows = data?.data || (Array.isArray(data) ? data : []) || []
-  const sorted = useMemo(() => [...rows].sort((a, b) => {
-    const av = a[sortKey] ?? -Infinity, bv = b[sortKey] ?? -Infinity
-    return sortDir === 'asc' ? av - bv : bv - av
-  }), [rows, sortKey, sortDir])
-  if (!loading && rows.length === 0) {
-    return (
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center text-sm text-gray-400 dark:text-gray-500">
-        No play-by-play data tracked for this team this season yet.
-      </div>
-    )
-  }
-  return (
-    <StatsTable data={sorted} columns={columns} visibleColumns={columns.map(c => c.key)}
-      sortBy={sortKey} sortDir={sortDir}
-      onSort={(k, d) => { setSortKey(k); setSortDir(d) }} loading={loading} offset={0} />
   )
 }
 
