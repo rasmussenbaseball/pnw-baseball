@@ -41,6 +41,7 @@ function gradeColor(g) {
 const COLS = [
   { key: 'player', label: 'Player', align: 'left', type: 'str' },
   { key: 'team', label: 'Team', align: 'left', type: 'str' },
+  { key: 'spring_team', label: 'Spring', align: 'left', type: 'str', fmt: (v) => v || '—' },
   { key: 'throws', label: 'T', align: 'center', type: 'str' },
   { key: 'pitch_type', label: 'Pitch', align: 'left', type: 'str' },
   { key: 'pitch_grade', label: 'Grade', align: 'right', type: 'num', fmt: (v) => v == null ? '—' : Math.round(v) },
@@ -70,6 +71,8 @@ export default function TrackManData() {
   const [throws, setThrows] = useState('')
   const [q, setQ] = useState('')
   const [minN, setMinN] = useState(0)
+  const [portalOnly, setPortalOnly] = useState(false)
+  const [jucoOnly, setJucoOnly] = useState(false)
   const [sortKey, setSortKey] = useState('pitch_grade')
   const [sortDir, setSortDir] = useState('desc')
 
@@ -82,7 +85,9 @@ export default function TrackManData() {
       (!pitch || r.pitch_type === pitch) &&
       (!throws || r.throws === throws) &&
       (!ql || r.player.toLowerCase().includes(ql)) &&
-      ((r.pitch_count || 0) >= minN)
+      ((r.pitch_count || 0) >= minN) &&
+      (!portalOnly || r.in_portal) &&
+      (!jucoOnly || r.is_juco)
     )
     const col = COLS.find(c => c.key === sortKey)
     const dir = sortDir === 'asc' ? 1 : -1
@@ -95,7 +100,7 @@ export default function TrackManData() {
       return String(av).localeCompare(String(bv)) * dir
     })
     return out
-  }, [rows, team, pitch, throws, q, minN, sortKey, sortDir])
+  }, [rows, team, pitch, throws, q, minN, portalOnly, jucoOnly, sortKey, sortDir])
 
   // Arsenal view: group graded pitches by pitcher, usage-weighted overall grade.
   const arsenals = useMemo(() => {
@@ -104,7 +109,7 @@ export default function TrackManData() {
     for (const r of rows) {
       if (r.pitch_grade == null) continue
       const key = `${r.summer_player_id}-${r.season}`
-      if (!byP[key]) byP[key] = { id: r.summer_player_id, player: r.player, team: r.team, throws: r.throws, in_portal: r.in_portal, pitches: [] }
+      if (!byP[key]) byP[key] = { id: r.summer_player_id, player: r.player, team: r.team, throws: r.throws, in_portal: r.in_portal, is_juco: r.is_juco, spring_team: r.spring_team, pitches: [] }
       byP[key].pitches.push(r)
     }
     let out = Object.values(byP).map(a => {
@@ -121,10 +126,11 @@ export default function TrackManData() {
     out = out.filter(a =>
       a.arsenal != null && a.total >= 20 && a.nTypes >= 2 &&
       (!team || a.team === team) && (!throws || a.throws === throws) &&
-      (!ql || a.player.toLowerCase().includes(ql)) && (a.total >= minN))
+      (!ql || a.player.toLowerCase().includes(ql)) && (a.total >= minN) &&
+      (!portalOnly || a.in_portal) && (!jucoOnly || a.is_juco))
     out.sort((x, y) => y.arsenal - x.arsenal)
     return out
-  }, [rows, team, throws, q, minN])
+  }, [rows, team, throws, q, minN, portalOnly, jucoOnly])
 
   const onSort = (key) => {
     if (key === sortKey) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return }
@@ -179,9 +185,17 @@ export default function TrackManData() {
           <input type="number" min="0" className={SELECT + ' w-20'} value={minN}
                  onChange={e => setMinN(Number(e.target.value) || 0)} />
         </label>
-        {(team || pitch || throws || q || minN) && (
+        <button onClick={() => setPortalOnly(v => !v)}
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold border ${portalOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}>
+          Portal
+        </button>
+        <button onClick={() => setJucoOnly(v => !v)}
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold border ${jucoOnly ? 'bg-nw-teal text-white border-nw-teal' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}>
+          JUCO
+        </button>
+        {(team || pitch || throws || q || minN || portalOnly || jucoOnly) && (
           <button className="text-xs text-nw-teal underline"
-                  onClick={() => { setTeam(''); setPitch(''); setThrows(''); setQ(''); setMinN(0) }}>
+                  onClick={() => { setTeam(''); setPitch(''); setThrows(''); setQ(''); setMinN(0); setPortalOnly(false); setJucoOnly(false) }}>
             clear
           </button>
         )}
@@ -249,6 +263,7 @@ export default function TrackManData() {
                 <th className="px-2 py-2 text-right font-semibold w-10">#</th>
                 <th className="px-2 py-2 text-left font-semibold">Pitcher</th>
                 <th className="px-2 py-2 text-left font-semibold">Team</th>
+                <th className="px-2 py-2 text-left font-semibold">Spring</th>
                 <th className="px-2 py-2 text-center font-semibold">T</th>
                 <th className="px-2 py-2 text-right font-semibold">Arsenal</th>
                 <th className="px-2 py-2 text-right font-semibold whitespace-nowrap"># P</th>
@@ -268,6 +283,7 @@ export default function TrackManData() {
                       </span>
                     </td>
                     <td className="px-2 py-2 text-left text-gray-500 dark:text-gray-400 whitespace-nowrap">{a.team}</td>
+                    <td className="px-2 py-2 text-left text-gray-600 dark:text-gray-300 whitespace-nowrap">{a.spring_team || '—'}</td>
                     <td className="px-2 py-2 text-center text-gray-500 dark:text-gray-400">{a.throws || ''}</td>
                     <td className="px-2 py-2 text-right">
                       <span className="inline-block min-w-[40px] px-2 py-1 rounded font-bold text-[15px] tabular-nums"
@@ -293,7 +309,7 @@ export default function TrackManData() {
                 )
               })}
               {arsenals.length === 0 && (
-                <tr><td colSpan={7} className="px-2 py-10 text-center text-gray-400">No pitchers match these filters (need 2+ graded pitches, 20+ tracked).</td></tr>
+                <tr><td colSpan={8} className="px-2 py-10 text-center text-gray-400">No pitchers match these filters (need 2+ graded pitches, 20+ tracked).</td></tr>
               )}
             </tbody>
           </table>

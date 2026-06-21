@@ -1184,19 +1184,43 @@ def trackman_all_pitches(_user: str = Depends(require_tier("dev"))):
                    tp.extension, tp.rel_height, tp.rel_side, tp.est_vaa,
                    tp.in_zone_pct, tp.whiff_pct, tp.chase_pct, tp.pitch_grade,
                    EXISTS (SELECT 1 FROM wcl_portal_members wpm
-                           WHERE wpm.summer_player_id = tp.summer_player_id) AS in_portal
+                           WHERE wpm.summer_player_id = tp.summer_player_id) AS in_portal,
+                   sp.assigned_school, lt.short_name AS linked_school,
+                   ad.level AS assigned_level, ld.level AS linked_level,
+                   (EXISTS (SELECT 1 FROM batting_stats bx WHERE bx.player_id = spr.id AND bx.season = %s)
+                    OR EXISTS (SELECT 1 FROM pitching_stats px WHERE px.player_id = spr.id AND px.season = %s)
+                   ) AS linked_has_cur
             FROM trackman_pitches tp
             JOIN summer_players sp ON sp.id = tp.summer_player_id
             JOIN summer_teams st   ON st.id = tp.team_id
+            LEFT JOIN summer_player_links spl ON spl.summer_player_id = tp.summer_player_id
+            LEFT JOIN players spr ON spr.id = spl.spring_player_id
+            LEFT JOIN teams lt ON lt.id = spr.team_id
+            LEFT JOIN conferences lc ON lc.id = lt.conference_id
+            LEFT JOIN divisions ld ON ld.id = lc.division_id
+            LEFT JOIN teams at2 ON at2.id = sp.assigned_school_team_id
+            LEFT JOIN conferences ac ON ac.id = at2.conference_id
+            LEFT JOIN divisions ad ON ad.id = ac.division_id
             WHERE tp.pitch_count >= 5
               AND tp.pitch_type <> 'Undefined'
             ORDER BY sp.last_name, sp.first_name, tp.pitch_count DESC NULLS LAST
-            """
+            """,
+            (CURRENT_SEASON, CURRENT_SEASON),
         )
         rows = []
         for r in cur.fetchall():
             d = dict(r)
             d["player"] = f"{d.pop('first_name')} {d.pop('last_name')}"
+            # Spring team resolved to the current season (curated assigned school
+            # wins; auto-linked school only if that spring player has 2026 stats).
+            cur_link = d.pop("linked_has_cur", False)
+            linked_school = d.pop("linked_school", None)
+            linked_level = d.pop("linked_level", None)
+            assigned_school = d.pop("assigned_school", None)
+            assigned_level = d.pop("assigned_level", None)
+            d["spring_team"] = assigned_school or (linked_school if cur_link else None)
+            level = assigned_level or (linked_level if cur_link else None)
+            d["is_juco"] = level == "JUCO"
             rows.append(d)
         return {
             "pitches": rows,

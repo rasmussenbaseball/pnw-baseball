@@ -66,6 +66,7 @@ export const DEVELOPER_EMAILS = [
   'pnwcbr@gmail.com',
   'jawomack@bushnell.edu',
   'cameronkundig@gmail.com',
+  'tommy.richards@wsu.edu',
 ]
 
 // Commitment Editor — narrower than the dev tier. Only these accounts may open
