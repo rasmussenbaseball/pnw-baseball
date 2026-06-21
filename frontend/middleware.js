@@ -400,6 +400,198 @@ function resolveRoute(pathname) {
       pageDesc:
         'Coach & Scout subscriber portal — scouting reports, JUCO tracker, lineup helper, and more.',
     },
+    '/trackman-data': {
+      kicker: 'Pitch Lab',
+      title: 'TrackMan Data',
+      subtitle: 'Pitch shapes, Stuff+ grades, and arsenal rankings.',
+      pageTitle: 'TrackMan Data · NW Baseball Stats',
+      pageDesc:
+        'Pitch-shape data, Stuff+-style pitch grades, and full arsenal rankings for Northwest summer-ball arms.',
+    },
+    '/coaching/wcl-portal': {
+      kicker: 'Transfer Portal',
+      title: 'WCL Transfer Portal',
+      subtitle: 'West Coast League players on the move, with summer stats.',
+      pageTitle: 'WCL Transfer Portal · NW Baseball Stats',
+      pageDesc:
+        'Every West Coast League player in the transfer portal, with their summer stats and spring school.',
+    },
+    '/coaching/transfer-portal': {
+      kicker: 'Transfer Portal',
+      title: 'Transfer Portal Tracker',
+      subtitle: 'NCAA transfers into and out of Northwest programs.',
+      pageTitle: 'Transfer Portal Tracker · NW Baseball Stats',
+      pageDesc:
+        'Track NCAA transfers across Northwest college baseball, with stats and destinations.',
+    },
+    '/coaching/juco-tracker': {
+      kicker: 'JUCO',
+      title: 'JUCO Tracker',
+      subtitle: 'Junior-college players headed to four-year programs.',
+      pageTitle: 'JUCO Tracker · NW Baseball Stats',
+      pageDesc:
+        'Junior-college baseball players and their commitments to four-year Northwest programs.',
+    },
+    '/wcl-pickem': {
+      kicker: 'The Game',
+      title: "WCL Pick 'Em",
+      subtitle: 'Weekly confidence pool for the West Coast League.',
+      pageTitle: "WCL Pick 'Em · NW Baseball Stats",
+      pageDesc:
+        'Make your weekly West Coast League picks and climb the confidence-pool leaderboard.',
+    },
+    '/fieldguessr': {
+      kicker: 'The Game',
+      title: 'FieldGuessr',
+      subtitle: 'Guess the Northwest college ballpark from a photo.',
+      pageTitle: 'FieldGuessr · NW Baseball Stats',
+      pageDesc:
+        'A daily guessing game: name the Northwest college baseball ballpark from a single photo.',
+    },
+    '/pnw-pickle': {
+      kicker: 'The Game',
+      title: 'PNW Pickle',
+      subtitle: 'Guess the Northwest college baseball player.',
+      pageTitle: 'PNW Pickle · NW Baseball Stats',
+      pageDesc:
+        'A daily guess-the-player game for Northwest college baseball. How few clues do you need?',
+    },
+    '/compare': {
+      kicker: 'Stats',
+      title: 'Player Compare',
+      subtitle: 'Stack any two players side by side.',
+      pageTitle: 'Player Compare · NW Baseball Stats',
+      pageDesc:
+        'Compare any two Northwest college baseball players head-to-head across every stat.',
+    },
+    '/glossary': {
+      kicker: 'Reference',
+      title: 'Stat Glossary',
+      subtitle: 'Every metric on the site, explained.',
+      pageTitle: 'Stat Glossary · NW Baseball Stats',
+      pageDesc:
+        'Plain-English definitions for every traditional and advanced stat used on NW Baseball Stats.',
+    },
+    '/all-conference': {
+      kicker: 'Awards',
+      title: 'All-Conference Teams',
+      subtitle: 'Data-driven all-conference selections by league.',
+      pageTitle: 'All-Conference · NW Baseball Stats',
+      pageDesc:
+        'Data-driven all-conference teams across every Northwest college baseball league.',
+    },
+    '/conference-standings': {
+      kicker: 'Conferences',
+      title: 'Conference Standings',
+      subtitle: 'League-by-league records and seeding.',
+      pageTitle: 'Conference Standings · NW Baseball Stats',
+      pageDesc: 'Conference-only standings and playoff seeding across every Northwest league.',
+    },
+    '/opponent-trends': {
+      kicker: 'Scouting',
+      title: 'Opponent Trends',
+      subtitle: 'How teams perform against different styles.',
+      pageTitle: 'Opponent Trends · NW Baseball Stats',
+      pageDesc: 'Opponent-adjusted performance trends for Northwest college baseball teams.',
+    },
+    '/tournament-bracket': {
+      kicker: 'Postseason',
+      title: 'Tournament Bracket',
+      subtitle: 'Live conference and national tournament brackets.',
+      pageTitle: 'Tournament Bracket · NW Baseball Stats',
+      pageDesc: 'Conference and national postseason brackets for Northwest college baseball.',
+    },
+    '/broadcasts': {
+      kicker: 'Watch',
+      title: 'Broadcasts',
+      subtitle: 'Where to stream Northwest college baseball.',
+      pageTitle: 'Broadcasts · NW Baseball Stats',
+      pageDesc: 'Streaming and broadcast links for Northwest college baseball games.',
+    },
+    '/daily-scores': {
+      kicker: 'Today',
+      title: 'Daily Scores',
+      subtitle: "Every Northwest college result, day by day.",
+      pageTitle: 'Daily Scores · NW Baseball Stats',
+      pageDesc: 'Daily scoreboard for every Northwest college baseball game.',
+    },
+    '/results': {
+      kicker: 'Results',
+      title: 'Recent Results',
+      subtitle: 'Final scores from around the Northwest.',
+      pageTitle: 'Results · NW Baseball Stats',
+      pageDesc: 'Recent final scores across Northwest college baseball.',
+    },
+    '/players': {
+      kicker: 'Players',
+      title: 'Player Search',
+      subtitle: 'Find any Northwest college baseball player.',
+      pageTitle: 'Players · NW Baseball Stats',
+      pageDesc: 'Search every Northwest college baseball player by name, team, or position.',
+    },
+    '/summer/standings': {
+      kicker: 'Summer Ball',
+      title: 'WCL Standings',
+      subtitle: 'West Coast League standings and College Power Index.',
+      pageTitle: 'WCL Standings · NW Baseball Stats',
+      pageDesc: 'West Coast League standings, records, and College Power Index.',
+    },
+    '/summer/scoreboard': {
+      kicker: 'Summer Ball',
+      title: 'WCL Scoreboard',
+      subtitle: 'Recent and upcoming West Coast League games.',
+      pageTitle: 'WCL Scoreboard · NW Baseball Stats',
+      pageDesc: 'Scores and schedule for the West Coast League summer season.',
+    },
+    '/summer/stats': {
+      kicker: 'Summer Ball',
+      title: 'WCL Leaders',
+      subtitle: 'West Coast League hitting and pitching leaders.',
+      pageTitle: 'WCL Stats · NW Baseball Stats',
+      pageDesc: 'West Coast League statistical leaders for the summer season.',
+    },
+    '/summer/cpi': {
+      kicker: 'Summer Ball',
+      title: 'WCL College Power Index',
+      subtitle: 'Which colleges send the most WCL talent.',
+      pageTitle: 'WCL College Power Index · NW Baseball Stats',
+      pageDesc: 'Ranking the colleges that produce the most West Coast League production.',
+    },
+    '/summer/pnw-alumni': {
+      kicker: 'Summer Ball',
+      title: 'WCL PNW Alumni',
+      subtitle: 'Northwest college players in the West Coast League.',
+      pageTitle: 'WCL PNW Alumni · NW Baseball Stats',
+      pageDesc: 'Northwest college baseball players competing in the West Coast League.',
+    },
+    '/recruiting/rankings': {
+      kicker: 'Recruiting',
+      title: 'Recruiting Rankings',
+      subtitle: 'Ranked incoming recruits across the Northwest.',
+      pageTitle: 'Recruiting Rankings · NW Baseball Stats',
+      pageDesc: 'Ranked incoming recruits headed to Northwest college baseball programs.',
+    },
+    '/recruiting/map': {
+      kicker: 'Recruiting',
+      title: 'Recruiting Map',
+      subtitle: 'Where Northwest programs pull their talent from.',
+      pageTitle: 'Recruiting Map · NW Baseball Stats',
+      pageDesc: 'A geographic map of where Northwest college programs recruit their players.',
+    },
+    '/recruiting/guide': {
+      kicker: 'Recruiting',
+      title: 'Recruiting Guide',
+      subtitle: 'How to get recruited by a Northwest program.',
+      pageTitle: 'Recruiting Guide · NW Baseball Stats',
+      pageDesc: 'A complete guide to getting recruited by Northwest college baseball programs.',
+    },
+    '/recruiting/quiz': {
+      kicker: 'Recruiting',
+      title: 'Find Your Fit',
+      subtitle: 'A quiz to match you with Northwest programs.',
+      pageTitle: 'Recruiting Quiz · NW Baseball Stats',
+      pageDesc: 'Answer a few questions to find the Northwest college programs that fit you best.',
+    },
   };
 
   if (staticRoutes[pathname]) {
