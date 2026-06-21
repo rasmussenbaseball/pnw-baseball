@@ -16,6 +16,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { renderToStaticMarkup } from 'react-dom/server'
+import RichEditor from '../../components/RichEditor'
 import { useAuth } from '../../context/AuthContext'
 import { useMyArticle, useArticleMutations } from '../../hooks/useArticles'
 
@@ -51,6 +53,7 @@ export default function ArticleEditor() {
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
   const [bodyMd, setBodyMd] = useState('')
+  const [bodyHtml, setBodyHtml] = useState('')
   const [hero, setHero] = useState('')
   const [authorName, setAuthorName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -85,6 +88,14 @@ export default function ArticleEditor() {
     setTitle(existing.title || '')
     setSubtitle(existing.subtitle || '')
     setBodyMd(existing.body_md || '')
+    // Prefer the rich (HTML) body; for legacy markdown-only articles, convert to
+    // HTML once so they can be edited in the rich editor without losing content.
+    setBodyHtml(
+      existing.body_html
+      || (existing.body_md
+        ? renderToStaticMarkup(<ReactMarkdown remarkPlugins={[remarkGfm]}>{existing.body_md}</ReactMarkdown>)
+        : '')
+    )
     setHero(existing.hero_image_url || '')
     setAuthorName(existing.author_name || '')
     setStatus(existing.status || 'draft')
@@ -218,7 +229,8 @@ export default function ArticleEditor() {
       const payload = {
         title: title.trim(),
         subtitle: subtitle.trim() || null,
-        body_md: bodyMd,
+        body_html: bodyHtml,
+        body_md: '',   // rich editor is the source of truth now; clear legacy md
         hero_image_url: hero.trim() || null,
         author_name: authorName.trim(),
         requires_tier: requiresTier,
@@ -297,43 +309,11 @@ export default function ArticleEditor() {
                className="text-[11px] text-nw-teal hover:underline">View on /news →</a>
           )}
 
-          {/* Middle cluster — markdown formatting */}
-          <div className="flex items-center gap-0.5 ml-auto mr-auto sm:ml-4 sm:mr-auto">
-            <ToolBtn label="H2"    title="Heading 2"        onClick={() => prefixLine('## ')} disabled={isPreview} />
-            <ToolBtn label="B"     title="Bold"             onClick={() => wrapSelection('**')} disabled={isPreview} bold />
-            <ToolBtn label="I"     title="Italic"           onClick={() => wrapSelection('*')} disabled={isPreview} italic />
-            <ToolDivider />
-            <ToolBtn label="Link"  title="Insert link"      onClick={insertLink} disabled={isPreview} />
-            <ToolBtn label="Image" title="Insert image"
-                     onClick={() => fileInputRef.current?.click()}
-                     disabled={isPreview || uploading} />
-            {uploading && <span className="text-[10px] text-gray-500 ml-1">Uploading…</span>}
-            <ToolDivider />
-            <ToolBtn label="❝"     title="Block quote"      onClick={() => prefixLine('> ')} disabled={isPreview} />
-            <ToolBtn label="•"     title="Bullet list"      onClick={() => prefixLine('- ')} disabled={isPreview} />
-            <ToolBtn label="1."    title="Numbered list"    onClick={() => prefixLine('1. ')} disabled={isPreview} />
-            <ToolBtn label="</>"   title="Inline code"      onClick={() => wrapSelection('`')} disabled={isPreview} mono />
-            <ToolDivider />
-            <ToolBtn
-              label="🔒"
-              title="Insert free-preview break — content above is free, below is paywalled"
-              onClick={insertPaywallBreak}
-              disabled={isPreview || requiresTier === 'free'}
-            />
-          </div>
+          {/* Formatting now lives in the editor itself (select text for the
+              bubble menu, or click + on an empty line for blocks/paywall). */}
+          <div className="flex-1" />
 
           {/* Right cluster */}
-          <button
-            onClick={() => setIsPreview((v) => !v)}
-            className={`text-xs font-semibold px-3 py-1.5 rounded transition-colors ${
-              isPreview
-                ? 'bg-gray-900 text-white hover:bg-black'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-            title={isPreview ? 'Back to editing' : 'Preview as published'}
-          >
-            {isPreview ? 'Editing' : 'Preview'}
-          </button>
           <button
             onClick={save}
             disabled={!canSave || saving}
@@ -384,59 +364,38 @@ export default function ArticleEditor() {
                  onChange={handleHeroFile} className="hidden" />
 
           <div className="px-8 sm:px-12 py-8 sm:py-10">
-            {isPreview ? (
-              <PreviewView
-                title={title} subtitle={subtitle} authorName={authorName}
-                publishedAt={existing?.published_at} bodyMd={bodyMd}
+            {/* Title — borderless, looks like a real headline */}
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Article title"
+              className="w-full border-0 outline-none focus:ring-0 text-3xl sm:text-4xl font-extrabold
+                         text-gray-900 leading-tight placeholder-gray-300 px-0 py-1 bg-transparent"
+            />
+            {/* Subtitle */}
+            <input
+              type="text"
+              value={subtitle}
+              onChange={(e) => setSubtitle(e.target.value)}
+              placeholder="Optional subtitle / dek"
+              className="w-full border-0 outline-none focus:ring-0 text-lg sm:text-xl font-normal
+                         text-gray-600 leading-snug placeholder-gray-300 px-0 py-1 mt-1 bg-transparent"
+            />
+            {/* Byline strip */}
+            <div className="flex items-center gap-2 mt-3 mb-6 pb-4 border-b border-gray-200">
+              <span className="text-[11px] uppercase tracking-wider text-gray-500">By</span>
+              <input
+                type="text"
+                value={authorName}
+                onChange={(e) => setAuthorName(e.target.value)}
+                placeholder="Author name"
+                className="border-0 outline-none focus:ring-0 text-sm font-semibold text-gray-800
+                           placeholder-gray-400 px-0 py-0.5 bg-transparent"
               />
-            ) : (
-              <>
-                {/* Title — borderless, looks like a real headline */}
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Article title"
-                  className="w-full border-0 outline-none focus:ring-0 text-3xl sm:text-4xl font-extrabold
-                             text-gray-900 leading-tight placeholder-gray-300 px-0 py-1 bg-transparent"
-                />
-                {/* Subtitle */}
-                <input
-                  type="text"
-                  value={subtitle}
-                  onChange={(e) => setSubtitle(e.target.value)}
-                  placeholder="Optional subtitle / dek"
-                  className="w-full border-0 outline-none focus:ring-0 text-lg sm:text-xl font-normal
-                             text-gray-600 leading-snug placeholder-gray-300 px-0 py-1 mt-1 bg-transparent"
-                />
-                {/* Byline strip */}
-                <div className="flex items-center gap-2 mt-3 mb-6 pb-4 border-b border-gray-200">
-                  <span className="text-[11px] uppercase tracking-wider text-gray-500">By</span>
-                  <input
-                    type="text"
-                    value={authorName}
-                    onChange={(e) => setAuthorName(e.target.value)}
-                    placeholder="Author name"
-                    className="border-0 outline-none focus:ring-0 text-sm font-semibold text-gray-800
-                               placeholder-gray-400 px-0 py-0.5 bg-transparent"
-                  />
-                </div>
-                {/* Body — borderless, prose-styled, auto-growing */}
-                <textarea
-                  ref={textareaRef}
-                  value={bodyMd}
-                  onChange={(e) => { setBodyMd(e.target.value); autoGrow() }}
-                  onFocus={autoGrow}
-                  spellCheck="true"
-                  placeholder="Start writing your article. Use the toolbar to format. Click Preview at any time to see how it'll look on /news."
-                  className="w-full border-0 outline-none focus:ring-0 resize-none
-                             text-base sm:text-[17px] leading-relaxed text-gray-800
-                             placeholder-gray-300 px-0 py-1 bg-transparent
-                             font-sans"
-                  style={{ minHeight: '480px' }}
-                />
-              </>
-            )}
+            </div>
+            {/* Body — Google-Docs-style rich editor (WYSIWYG) */}
+            <RichEditor value={bodyHtml} onChange={setBodyHtml} uploadImage={uploadImage} />
           </div>
         </div>
 

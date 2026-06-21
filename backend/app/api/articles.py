@@ -88,6 +88,7 @@ class ArticleCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     subtitle: Optional[str] = Field(None, max_length=300)
     body_md: str = Field(default="")
+    body_html: Optional[str] = None   # rich-editor (TipTap) HTML; preferred over body_md when set
     hero_image_url: Optional[str] = None
     author_name: str = Field(..., min_length=1, max_length=120)
     slug: Optional[str] = None  # auto-generated from title if omitted
@@ -98,6 +99,7 @@ class ArticleUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     subtitle: Optional[str] = Field(None, max_length=300)
     body_md: Optional[str] = None
+    body_html: Optional[str] = None
     hero_image_url: Optional[str] = None
     author_name: Optional[str] = Field(None, min_length=1, max_length=120)
     slug: Optional[str] = None
@@ -123,6 +125,8 @@ _SLUG_RE = re.compile(r"[^a-z0-9]+")
 # an unlocked viewer fetches, the marker itself is stripped so the body
 # reads continuously.
 PAYWALL_MARKER = "<!-- nwbb:paywall -->"
+# Rich-editor (TipTap) paywall break serializes to an <hr data-paywall> element.
+PAYWALL_MARKER_HTML_RE = re.compile(r"<hr[^>]*data-paywall[^>]*>", re.IGNORECASE)
 
 
 def _slugify(text: str) -> str:
@@ -180,12 +184,25 @@ def _row_to_summary(r: dict) -> dict:
         "published_at": r["published_at"].isoformat() if r["published_at"] else None,
         "created_at": r["created_at"].isoformat() if r["created_at"] else None,
         "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
-        "excerpt": _read_excerpt(r.get("body_md") or ""),
+        "excerpt": _read_excerpt(r.get("body_md") or "") or _html_excerpt(r.get("body_html") or ""),
     }
 
 
+def _html_excerpt(body_html: str, max_chars: int = 200) -> str:
+    """Plain-text excerpt from rich-editor HTML (strip tags, collapse space)."""
+    if not body_html:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", body_html)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > max_chars:
+        text = text[: max_chars - 1].rsplit(" ", 1)[0] + "…"
+    return text
+
+
 def _row_to_full(r: dict) -> dict:
-    return {**_row_to_summary(r), "body_md": r["body_md"] or ""}
+    return {**_row_to_summary(r),
+            "body_md": r["body_md"] or "",
+            "body_html": r.get("body_html") or ""}
 
 
 def _tier_meets(actual: str, required: str) -> bool:
@@ -285,7 +302,7 @@ def list_published_articles(limit: int = 50):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, slug, title, subtitle, body_md, hero_image_url,
+            SELECT id, slug, title, subtitle, body_md, body_html, hero_image_url,
                    author_id, author_name, status, requires_tier,
                    published_at, created_at, updated_at
             FROM articles
@@ -309,7 +326,7 @@ def get_published_article(slug: str, request: Request):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, slug, title, subtitle, body_md, hero_image_url,
+            SELECT id, slug, title, subtitle, body_md, body_html, hero_image_url,
                    author_id, author_name, status, requires_tier,
                    published_at, created_at, updated_at
             FROM articles
@@ -328,29 +345,27 @@ def get_published_article(slug: str, request: Request):
         is_author = bool(viewer_user_id) and str(r.get("author_id")) == str(viewer_user_id)
         full = _row_to_full(r)
         raw_body = full.get("body_md") or ""
+        raw_html = full.get("body_html") or ""
         has_marker = PAYWALL_MARKER in raw_body
+        has_marker_html = bool(PAYWALL_MARKER_HTML_RE.search(raw_html))
 
         # Authors always see their own articles unlocked — even paywalled
         # ones — so they can preview the rendered output. The published
         # version still locks for everyone else.
         if is_author or _tier_meets(actual, required):
-            # Unlocked viewer: strip the marker so the body reads
-            # continuously without the invisible HTML comment.
+            # Unlocked viewer: strip the break marker so the body reads
+            # continuously (works for both markdown and rich-HTML bodies).
             full["body_md"] = raw_body.replace(PAYWALL_MARKER, "").strip()
+            full["body_html"] = PAYWALL_MARKER_HTML_RE.sub("", raw_html)
             full["locked"] = False
-            full["has_preview_break"] = has_marker  # informational for the editor
+            full["has_preview_break"] = has_marker or has_marker_html
         else:
-            # Locked viewer: send everything before the marker as a
-            # free preview. If there's no marker, the body is fully
-            # hidden (existing behavior — frontend will show the
+            # Locked viewer: send only the free preview (everything before
+            # the break). No marker → body fully hidden (frontend shows the
             # excerpt + paywall card).
-            if has_marker:
-                preview_md = raw_body.split(PAYWALL_MARKER, 1)[0].rstrip()
-                full["body_md"] = preview_md
-                full["has_preview_break"] = True
-            else:
-                full["body_md"] = ""
-                full["has_preview_break"] = False
+            full["body_md"] = raw_body.split(PAYWALL_MARKER, 1)[0].rstrip() if has_marker else ""
+            full["body_html"] = PAYWALL_MARKER_HTML_RE.split(raw_html, 1)[0] if has_marker_html else ""
+            full["has_preview_break"] = has_marker or has_marker_html
             full["locked"] = True
             full["viewer_tier"] = actual
         return full
@@ -371,7 +386,7 @@ def list_my_articles(author: dict = Depends(_resolve_author)):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, slug, title, subtitle, body_md, hero_image_url,
+            SELECT id, slug, title, subtitle, body_md, body_html, hero_image_url,
                    author_id, author_name, status, requires_tier,
                    published_at, created_at, updated_at
             FROM articles
@@ -390,7 +405,7 @@ def get_my_article(article_id: int, author: dict = Depends(_resolve_author)):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, slug, title, subtitle, body_md, hero_image_url,
+            SELECT id, slug, title, subtitle, body_md, body_html, hero_image_url,
                    author_id, author_name, status, requires_tier,
                    published_at, created_at, updated_at
             FROM articles WHERE id = %s
@@ -415,16 +430,16 @@ def create_article(body: ArticleCreate, author: dict = Depends(_resolve_author))
         cur.execute(
             """
             INSERT INTO articles
-              (slug, title, subtitle, body_md, hero_image_url,
+              (slug, title, subtitle, body_md, body_html, hero_image_url,
                author_id, author_name, status, requires_tier)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'draft', %s)
-            RETURNING id, slug, title, subtitle, body_md, hero_image_url,
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'draft', %s)
+            RETURNING id, slug, title, subtitle, body_md, body_html, hero_image_url,
                       author_id, author_name, status, requires_tier,
                       published_at, created_at, updated_at
             """,
             (slug, body.title.strip(), (body.subtitle or "").strip() or None,
-             body.body_md or "", body.hero_image_url, author["user_id"],
-             body.author_name.strip(), body.requires_tier or "free"),
+             body.body_md or "", body.body_html or None, body.hero_image_url,
+             author["user_id"], body.author_name.strip(), body.requires_tier or "free"),
         )
         row = dict(cur.fetchone())
         conn.commit()
@@ -456,6 +471,8 @@ def update_article(
             sets.append("subtitle = %s"); params.append((body.subtitle or "").strip() or None)
         if body.body_md is not None:
             sets.append("body_md = %s"); params.append(body.body_md)
+        if body.body_html is not None:
+            sets.append("body_html = %s"); params.append(body.body_html or None)
         if body.hero_image_url is not None:
             sets.append("hero_image_url = %s"); params.append(body.hero_image_url or None)
         if body.author_name is not None:
@@ -469,7 +486,7 @@ def update_article(
         if not sets:
             # No-op; still return the current row.
             cur.execute(
-                """SELECT id, slug, title, subtitle, body_md, hero_image_url,
+                """SELECT id, slug, title, subtitle, body_md, body_html, hero_image_url,
                           author_id, author_name, status, requires_tier,
                           published_at, created_at, updated_at
                    FROM articles WHERE id = %s""",
@@ -481,7 +498,7 @@ def update_article(
         params.append(article_id)
         cur.execute(
             f"""UPDATE articles SET {', '.join(sets)} WHERE id = %s
-                RETURNING id, slug, title, subtitle, body_md, hero_image_url,
+                RETURNING id, slug, title, subtitle, body_md, body_html, hero_image_url,
                           author_id, author_name, status, requires_tier,
                           published_at, created_at, updated_at""",
             tuple(params),
@@ -525,7 +542,7 @@ def toggle_publish(
             """UPDATE articles
                SET status = %s, published_at = %s, updated_at = NOW()
                WHERE id = %s
-               RETURNING id, slug, title, subtitle, body_md, hero_image_url,
+               RETURNING id, slug, title, subtitle, body_md, body_html, hero_image_url,
                          author_id, author_name, status, requires_tier,
                          published_at, created_at, updated_at""",
             (new_status, stamp, article_id),

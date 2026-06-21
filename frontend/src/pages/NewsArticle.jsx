@@ -98,7 +98,10 @@ export default function NewsArticle() {
           is empty and we fall back to the excerpt. */}
       {isLocked ? (
         <>
-          {data.body_md ? (
+          {data.body_html ? (
+            <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800 dark:text-gray-200 dark:prose-invert"
+                 dangerouslySetInnerHTML={{ __html: data.body_html }} />
+          ) : data.body_md ? (
             <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800 dark:text-gray-200 dark:prose-invert">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {data.body_md}
@@ -113,15 +116,18 @@ export default function NewsArticle() {
           {/* Decorative fade above the paywall so the preview text doesn't
               feel like it was abruptly chopped off. Only render when there's
               actual preview content above. */}
-          {data.body_md && <PreviewFade />}
+          {(data.body_html || data.body_md) && <PreviewFade />}
 
           <PaywallCard
             requiredTier={requiredTier}
             signedIn={!!user}
-            hasPreview={!!data.body_md}
+            hasPreview={!!(data.body_html || data.body_md)}
             from={location.pathname}
           />
         </>
+      ) : data.body_html ? (
+        <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800 dark:text-gray-200 dark:prose-invert"
+             dangerouslySetInnerHTML={{ __html: data.body_html }} />
       ) : (
         <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800 dark:text-gray-200 dark:prose-invert">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
