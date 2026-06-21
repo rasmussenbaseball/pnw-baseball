@@ -72,6 +72,8 @@ COMPED_COACH_EMAILS = {
     "marshallchaser@gmail.com",
     # June 17, 2026 (per Nate)
     "taylorp4546@gmail.com",
+    # June 20, 2026 (per Nate)
+    "ebutcher07.19@gmail.com",
 }
 
 
