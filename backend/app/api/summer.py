@@ -3523,8 +3523,11 @@ def wcl_portal_players(
                    sp.year_in_school,
                    st.short_name AS team_short, st.name AS team_name, st.logo_url,
                    l.abbreviation AS league,
-                   COALESCE(sp.assigned_school, lt.short_name) AS committed_to,
-                   COALESCE(ad.level, ld.level) AS committed_level,
+                   sp.assigned_school, lt.short_name AS linked_school,
+                   ad.level AS assigned_level, ld.level AS linked_level,
+                   (EXISTS (SELECT 1 FROM batting_stats bx WHERE bx.player_id = spr.id AND bx.season = %s)
+                    OR EXISTS (SELECT 1 FROM pitching_stats px WHERE px.player_id = spr.id AND px.season = %s)
+                   ) AS linked_has_cur,
                    bs.batting_avg, bs.on_base_pct, bs.slugging_pct, bs.ops,
                    bs.woba, bs.wrc_plus, bs.offensive_war,
                    bs.home_runs, bs.rbi, bs.stolen_bases, bs.plate_appearances,
@@ -3548,7 +3551,7 @@ def wcl_portal_players(
             LEFT JOIN summer_pitching_stats ps ON ps.player_id = sp.id AND ps.season = %s AND ps.team_id = sp.team_id
             WHERE sp.id = ANY(%s)
         """
-        params: list = [season, season, ids]
+        params: list = [season, season, season, season, ids]
         if position:
             if position == "P":
                 query += " AND (sp.position IN ('RHP','LHP','P') OR sp.position LIKE 'RHP/%%' OR sp.position LIKE 'LHP/%%' OR sp.position LIKE 'P/%%')"
@@ -3570,8 +3573,17 @@ def wcl_portal_players(
         cur.execute(query, params)
         rows = [dict(r) for r in cur.fetchall()]
 
-    # NWAC display label for a JUCO assigned school (matches the rest of the site).
+    # Resolve the spring school to 2026: curated assigned_school wins; the
+    # auto-linked spring school is only trusted when that spring player actually
+    # has CURRENT-season stats (transfers' links point at their OLD school).
     for r in rows:
+        cur_link = r.pop("linked_has_cur", False)
+        linked_school = r.pop("linked_school", None)
+        linked_level = r.pop("linked_level", None)
+        assigned_school = r.pop("assigned_school", None)
+        assigned_level = r.pop("assigned_level", None)
+        r["committed_to"] = assigned_school or (linked_school if cur_link else None)
+        r["committed_level"] = assigned_level or (linked_level if cur_link else None)
         if r.get("committed_level") == "JUCO":
             r["committed_level"] = "NWAC"
         r["position"] = normalize_position(r.get("position"))
@@ -3594,7 +3606,10 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
         cur.execute(
             """
             SELECT sp.id, sp.first_name, sp.last_name, sp.position,
-                   COALESCE(sp.assigned_school, lt.short_name) AS school,
+                   sp.assigned_school, lt.short_name AS linked_school,
+                   (EXISTS (SELECT 1 FROM batting_stats bx WHERE bx.player_id = spr.id AND bx.season = %s)
+                    OR EXISTS (SELECT 1 FROM pitching_stats px WHERE px.player_id = spr.id AND px.season = %s)
+                   ) AS linked_has_cur,
                    bs.offensive_war AS owar, ps.pitching_war AS pwar
             FROM wcl_portal_members w
             JOIN summer_players sp ON sp.id = w.summer_player_id
@@ -3604,16 +3619,18 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
             LEFT JOIN summer_batting_stats bs ON bs.player_id = sp.id AND bs.season = %s AND bs.team_id = sp.team_id
             LEFT JOIN summer_pitching_stats ps ON ps.player_id = sp.id AND ps.season = %s AND ps.team_id = sp.team_id
             """,
-            (season, season),
+            (season, season, season, season),
         )
         rows = [dict(r) for r in cur.fetchall()]
     out = []
     for r in rows:
         war = (float(r["owar"]) if r["owar"] is not None else 0.0) \
             + (float(r["pwar"]) if r["pwar"] is not None else 0.0)
+        # Only trust the auto-linked school when the spring player has 2026 stats.
+        school = r["assigned_school"] or (r["linked_school"] if r["linked_has_cur"] else None)
         out.append({
             "name": f"{r['first_name']} {r['last_name']}".strip(),
-            "position": normalize_position(r["position"]), "school": r["school"],
+            "position": normalize_position(r["position"]), "school": school,
             "war": round(war, 1),
         })
     out.sort(key=lambda x: x["war"], reverse=True)
