@@ -75,9 +75,140 @@ def _build(rows, *, value, fmt, desc=True, qualify=None, n=3):
     return out
 
 
+def _wcl_leaders(season):
+    """WCL (summer) version of the leaders board — same 9+9 category shape, from
+    the summer_* tables + summer_game_events PBP. Flat qualification floors since
+    summer seasons are short / often in progress."""
+    MIN_PA, MIN_IP_OUTS = 30, 30          # 30 PA / 10 IP
+    PBP_BAT, PBP_PIT = 40, 60
+
+    def _ip_outs(ip):
+        if ip is None:
+            return 0
+        whole = math.floor(ip)
+        return whole * 3 + round((ip - whole) * 10)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT bs.player_id, sp.first_name || ' ' || sp.last_name AS name,
+                   st.short_name AS team_short, st.logo_url AS logo,
+                   bs.plate_appearances AS pa, bs.offensive_war AS owar, bs.wrc_plus,
+                   bs.batting_avg AS avg, bs.home_runs AS hr, bs.stolen_bases AS sb,
+                   bs.rbi, bs.k_pct, bs.bb_pct
+            FROM summer_batting_stats bs
+            JOIN summer_players sp ON sp.id = bs.player_id
+            JOIN summer_teams st ON st.id = bs.team_id
+            WHERE bs.season = %(s)s AND st.league_id = 1
+        """, {"s": season})
+        bat = cur.fetchall()
+        qbat = {r["player_id"] for r in bat if (r["pa"] or 0) >= MIN_PA}
+
+        cur.execute("""
+            SELECT ps.player_id, sp.first_name || ' ' || sp.last_name AS name,
+                   st.short_name AS team_short, st.logo_url AS logo,
+                   ps.innings_pitched AS ip, ps.pitching_war AS pwar, ps.fip_plus,
+                   ps.era, ps.baa, ps.k_pct, ps.bb_pct
+            FROM summer_pitching_stats ps
+            JOIN summer_players sp ON sp.id = ps.player_id
+            JOIN summer_teams st ON st.id = ps.team_id
+            WHERE ps.season = %(s)s AND st.league_id = 1
+        """, {"s": season})
+        pit = cur.fetchall()
+        qpit = {r["player_id"] for r in pit if _ip_outs(r["ip"]) >= MIN_IP_OUTS}
+
+        # Batter PBP (Contact%, Air-Pull%)
+        cur.execute("""
+            SELECT sp.id AS player_id, sp.first_name || ' ' || sp.last_name AS name,
+                   st.short_name AS team_short, st.logo_url AS logo,
+                   COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'S',''))),0) AS f_s,
+                   COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'F',''))),0) AS f_f,
+                   COALESCE(SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END),0) AS f_in_play,
+                   COUNT(*) FILTER (WHERE bb_type IN ('LD','FB')
+                        AND ((UPPER(sp.bats)='R' AND field_zone='LEFT')
+                          OR (UPPER(sp.bats)='L' AND field_zone='RIGHT'))) AS air_pull_n,
+                   COUNT(*) FILTER (WHERE bb_type IS NOT NULL AND UPPER(sp.bats) IN ('L','R')) AS air_denom_n
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            JOIN summer_players sp ON sp.id = ge.batter_player_id
+            JOIN summer_teams st ON st.id = sp.team_id
+            WHERE g.season = %(s)s AND ge.pitches_thrown >= 1 AND st.league_id = 1
+            GROUP BY sp.id, sp.first_name, sp.last_name, st.short_name, st.logo_url
+            HAVING SUM(LENGTH(pitch_sequence)) >= %(min)s
+        """, {"s": season, "min": PBP_BAT})
+        bat_pbp = []
+        for r in cur.fetchall():
+            if r["player_id"] not in qbat:
+                continue
+            swings = r["f_s"] + r["f_f"] + r["f_in_play"]
+            bat_pbp.append({**r,
+                "contact": (r["f_f"] + r["f_in_play"]) / swings if swings else None,
+                "airpull": r["air_pull_n"] / r["air_denom_n"] if (r["air_denom_n"] or 0) >= 5 else None})
+
+        # Pitcher PBP (Strike%, Whiff%, Putaway%)
+        cur.execute("""
+            SELECT sp.id AS player_id, sp.first_name || ' ' || sp.last_name AS name,
+                   st.short_name AS team_short, st.logo_url AS logo,
+                   COALESCE(SUM(pitches_thrown),0) AS pitches,
+                   COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'K',''))),0) AS n_k,
+                   COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'S',''))),0) AS f_s,
+                   COALESCE(SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence,'F',''))),0) AS f_f,
+                   COALESCE(SUM(CASE WHEN was_in_play THEN 1 ELSE 0 END),0) AS p_inplay,
+                   COALESCE(SUM(CASE WHEN strikes_before=2 THEN 1 ELSE 0 END),0) AS ts_pa,
+                   COALESCE(SUM(CASE WHEN strikes_before=2 AND result_type IN
+                        ('strikeout_swinging','strikeout_looking') THEN 1 ELSE 0 END),0) AS ts_k
+            FROM summer_game_events ge
+            JOIN summer_games g ON g.id = ge.game_id
+            JOIN summer_players sp ON sp.id = ge.pitcher_player_id
+            JOIN summer_teams st ON st.id = sp.team_id
+            WHERE g.season = %(s)s AND ge.pitches_thrown >= 1 AND st.league_id = 1
+            GROUP BY sp.id, sp.first_name, sp.last_name, st.short_name, st.logo_url
+            HAVING SUM(LENGTH(pitch_sequence)) >= %(min)s
+        """, {"s": season, "min": PBP_PIT})
+        pit_pbp = []
+        for r in cur.fetchall():
+            if r["player_id"] not in qpit:
+                continue
+            swings = r["f_s"] + r["f_f"] + r["p_inplay"]
+            strikes = r["n_k"] + r["f_s"] + r["f_f"] + r["p_inplay"]
+            pit_pbp.append({**r,
+                "strike": strikes / r["pitches"] if r["pitches"] else None,
+                "whiff": r["f_s"] / swings if swings else None,
+                "putaway": r["ts_k"] / r["ts_pa"] if (r["ts_pa"] or 0) >= 5 else None})
+
+    def kbb(r):
+        if r["k_pct"] is None or r["bb_pct"] is None:
+            return None
+        return r["k_pct"] - r["bb_pct"]
+
+    hitting = [
+        {"key": "owar", "label": "oWAR", "leaders": _build(bat, value=lambda r: r["owar"], fmt=lambda v: f"{v:.1f}", qualify=qbat)},
+        {"key": "wrc_plus", "label": "wRC+", "leaders": _build(bat, value=lambda r: r["wrc_plus"], fmt=lambda v: f"{v:.0f}", qualify=qbat)},
+        {"key": "avg", "label": "AVG", "leaders": _build(bat, value=lambda r: r["avg"], fmt=_avg3, qualify=qbat)},
+        {"key": "hr", "label": "HR", "leaders": _build(bat, value=lambda r: r["hr"], fmt=lambda v: f"{v:.0f}", qualify=qbat)},
+        {"key": "sb", "label": "SB", "leaders": _build(bat, value=lambda r: r["sb"], fmt=lambda v: f"{v:.0f}", qualify=qbat)},
+        {"key": "rbi", "label": "RBI", "leaders": _build(bat, value=lambda r: r["rbi"], fmt=lambda v: f"{v:.0f}", qualify=qbat)},
+        {"key": "contact", "label": "Contact%", "leaders": _build(bat_pbp, value=lambda r: r["contact"], fmt=_pct)},
+        {"key": "airpull", "label": "Air-Pull%", "leaders": _build(bat_pbp, value=lambda r: r["airpull"], fmt=_pct)},
+        {"key": "kbb", "label": "K%-BB%", "leaders": _build(bat, value=kbb, fmt=_pct, desc=False, qualify=qbat)},
+    ]
+    pitching = [
+        {"key": "pwar", "label": "pWAR", "leaders": _build(pit, value=lambda r: r["pwar"], fmt=lambda v: f"{v:.1f}", qualify=qpit)},
+        {"key": "fip_plus", "label": "FIP+", "leaders": _build(pit, value=lambda r: r["fip_plus"], fmt=lambda v: f"{v:.0f}", qualify=qpit)},
+        {"key": "era", "label": "ERA", "leaders": _build(pit, value=lambda r: r["era"], fmt=lambda v: f"{v:.2f}", desc=False, qualify=qpit)},
+        {"key": "baa", "label": "BAA", "leaders": _build(pit, value=lambda r: r["baa"], fmt=_avg3, desc=False, qualify=qpit)},
+        {"key": "k_pct", "label": "K%", "leaders": _build(pit, value=lambda r: r["k_pct"], fmt=_pct, qualify=qpit)},
+        {"key": "bb_pct", "label": "BB%", "leaders": _build(pit, value=lambda r: r["bb_pct"], fmt=_pct, desc=False, qualify=qpit)},
+        {"key": "strike", "label": "Strike%", "leaders": _build(pit_pbp, value=lambda r: r["strike"], fmt=_pct)},
+        {"key": "whiff", "label": "Whiff%", "leaders": _build(pit_pbp, value=lambda r: r["whiff"], fmt=_pct)},
+        {"key": "putaway", "label": "Putaway%", "leaders": _build(pit_pbp, value=lambda r: r["putaway"], fmt=_pct)},
+    ]
+    return {"division": "WCL", "season": season, "hitting": hitting, "pitching": pitching}
+
+
 @home_leaders_router.get("/leaders")
 def home_leaders(
-    division: str = Query("all", description="all | D1 | D2 | D3 | NAIA | NWAC"),
+    division: str = Query("all", description="all | D1 | D2 | D3 | NAIA | NWAC | WCL"),
     season: int = Query(CURRENT_SEASON),
 ):
     division = (division or "all").upper()
@@ -85,6 +216,11 @@ def home_leaders(
     hit = _CACHE.get(ck)
     if hit and (time.time() - hit[0]) < _TTL:
         return hit[1]
+
+    if division == "WCL":
+        result = _wcl_leaders(season)
+        _CACHE[ck] = (time.time(), result)
+        return result
 
     db_level = LEVEL_TO_DB.get(division) if division != "ALL" else None
     level_sql = "AND d.level = %(lvl)s" if db_level else ""

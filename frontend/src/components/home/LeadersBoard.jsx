@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { WidgetCard } from './WidgetShell'
 
-const DIVISIONS = ['all', 'D1', 'D2', 'D3', 'NAIA', 'NWAC']
+const DIVISIONS = ['all', 'D1', 'D2', 'D3', 'NAIA', 'NWAC', 'WCL']
 
 // "Jason Wright" -> "J. Wright"
 function abbr(name) {
@@ -75,7 +75,10 @@ export function LeadersBoard() {
   )
 
   return (
-    <WidgetCard title="Stat Leaders" to="/stat-leaders" linkLabel="Full leaders" controls={pills}>
+    <WidgetCard title="Stat Leaders"
+      to={division === 'WCL' ? '/summer/stats' : '/stat-leaders'}
+      linkLabel={division === 'WCL' ? 'WCL leaders' : 'Full leaders'}
+      controls={pills}>
       {loading && <div className="py-6 text-center text-xs text-gray-400 animate-pulse">Loading leaders…</div>}
       {error && <div className="py-6 text-center text-xs text-gray-400">Leaders are unavailable right now.</div>}
       {data && !loading && (
