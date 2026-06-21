@@ -18,7 +18,9 @@ const LEVELS = [
 ]
 const MAX_GUESSES = 8
 
-const uid = (p) => `${p.player_id}-${p.season}-${p.team}`
+// Role is part of the identity: a two-way player is split into a Hitter option
+// and a Pitcher option (same player_id/season/team), so role keeps them distinct.
+const uid = (p) => `${p.player_id}-${p.season}-${p.team}-${p.role}`
 
 const fmt2 = (v) => (v == null ? '—' : Number(v).toFixed(2))
 const fmt3 = (v) => (v == null ? '—' : Number(v).toFixed(3).replace(/^0/, ''))
@@ -412,7 +414,7 @@ function GuessInput({ pool, guessedUids, onPick }) {
               )}
               <span className="font-medium text-pnw-slate dark:text-gray-100">{p.name}</span>
               <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
-                {p.season} {p.team} · {p.level}
+                {p.season} {p.team} · {p.role}
               </span>
             </button>
           ))}

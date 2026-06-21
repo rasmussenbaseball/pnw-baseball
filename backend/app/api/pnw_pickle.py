@@ -110,7 +110,14 @@ def get_pool(
         )
     """
 
-    entries = {}  # (player_id, season, team_id) -> entry (with internal flags)
+    # Two-way players are split into a Hitter option and a Pitcher option, each
+    # judged on its own side's WAR/qualification. A second side only becomes its
+    # own option when it's substantial (qualified or above these floors) — a
+    # position player's mop-up inning shouldn't spawn a junk pitcher option.
+    MEANINGFUL_PA = 40
+    MEANINGFUL_OUTS = 30   # 10 IP
+    hits = {}   # (player_id, season, team_id) -> side dict
+    pits = {}
 
     with get_connection() as conn:
         cur = conn.cursor()
@@ -150,30 +157,32 @@ def get_pool(
             tg = r["team_games"]
             min_pa = QUALIFIED_PA_PER_GAME * tg if tg else FLAT_MIN_PA
             qualified = (r["plate_appearances"] or 0) >= min_pa
-            entries[key] = {
-                "player_id": r["player_id"],
-                "name": f"{r['first_name']} {r['last_name']}".strip(),
-                "season": r["season"],
-                "team": r["team_short"] or r["team_name"],
-                "teamName": r["team_name"],
-                "logo": r["logo_url"],
-                "conference": r["conference"],
-                "level": _level_label(r["db_level"]),
-                "position": r["position"] or "",
-                "posGroup": _pos_group(r["position"] or ""),
-                "bats": r["bats"],
-                "throws": r["throws"] or "",
-                "classYear": r["year_in_school"],
-                "classRank": CLASS_RANK.get(r["year_in_school"], 0),
-                "role": "Hitter",
+            hits[key] = {
+                "common": {
+                    "player_id": r["player_id"],
+                    "name": f"{r['first_name']} {r['last_name']}".strip(),
+                    "season": r["season"],
+                    "team": r["team_short"] or r["team_name"],
+                    "teamName": r["team_name"],
+                    "logo": r["logo_url"],
+                    "conference": r["conference"],
+                    "level": _level_label(r["db_level"]),
+                    "position": r["position"] or "",
+                    "bats": r["bats"],
+                    "throws": r["throws"] or "",
+                    "classYear": r["year_in_school"],
+                    "classRank": CLASS_RANK.get(r["year_in_school"], 0),
+                },
                 "war": round(owar, 1),
+                "qualified": qualified,
+                "pa": r["plate_appearances"] or 0,
+                "answer": qualified and owar >= war_min["hit"],
                 "stats": {
                     "AVG": r["batting_avg"], "OBP": r["on_base_pct"],
                     "SLG": r["slugging_pct"], "OPS": r["ops"], "HR": r["home_runs"],
                     "RBI": r["rbi"], "SB": r["stolen_bases"],
                     "PA": r["plate_appearances"], "oWAR": round(owar, 1),
                 },
-                "_answer": qualified and owar >= war_min["hit"],
             }
 
         # ── Pitchers: every in-scope pitcher-season ──
@@ -209,22 +218,10 @@ def get_pool(
             pwar = float(r["war"] or 0)
             tg = r["team_games"]
             min_outs = QUALIFIED_IP_PER_GAME * 3 * tg if tg else FLAT_MIN_IP * 3
-            qualified = _ip_outs(r["innings_pitched"]) >= min_outs
-            p_answer = qualified and pwar >= war_min["pit"]
-            pstats = {
-                "ERA": r["era"], "WHIP": r["whip"], "SO": r["strikeouts"],
-                "BB": r["walks"], "IP": r["innings_pitched"], "W": r["wins"],
-                "SV": r["saves"], "pWAR": round(pwar, 1),
-            }
-            if key in entries:
-                e = entries[key]
-                e["role"] = "Two-Way"
-                e["stats"].update(pstats)
-                if pwar > e["war"]:
-                    e["war"] = round(pwar, 1)
-                e["_answer"] = e["_answer"] or p_answer
-            else:
-                entries[key] = {
+            outs = _ip_outs(r["innings_pitched"])
+            qualified = outs >= min_outs
+            pits[key] = {
+                "common": {
                     "player_id": r["player_id"],
                     "name": f"{r['first_name']} {r['last_name']}".strip(),
                     "season": r["season"],
@@ -234,18 +231,60 @@ def get_pool(
                     "conference": r["conference"],
                     "level": _level_label(r["db_level"]),
                     "position": r["position"] or "",
-                    "posGroup": _pos_group(r["position"] or ""),
                     "bats": r["bats"] or "",
                     "throws": r["throws"],
                     "classYear": r["year_in_school"],
                     "classRank": CLASS_RANK.get(r["year_in_school"], 0),
-                    "role": "Pitcher",
-                    "war": round(pwar, 1),
-                    "stats": pstats,
-                    "_answer": p_answer,
-                }
+                },
+                "war": round(pwar, 1),
+                "qualified": qualified,
+                "outs": outs,
+                "answer": qualified and pwar >= war_min["pit"],
+                "stats": {
+                    "ERA": r["era"], "WHIP": r["whip"], "SO": r["strikeouts"],
+                    "BB": r["walks"], "IP": r["innings_pitched"], "W": r["wins"],
+                    "SV": r["saves"], "pWAR": round(pwar, 1),
+                },
+            }
 
-    all_entries = list(entries.values())
+    # ── Assemble entries; split true two-way seasons into two options ──
+    def _hitter_entry(h):
+        e = dict(h["common"])
+        pg = _pos_group(e["position"]) or ""
+        if pg == "P":   # listed as a pitcher but graded here as a hitter
+            pg = "UT"
+        e.update({"posGroup": pg, "role": "Hitter", "war": h["war"],
+                  "stats": h["stats"], "_answer": h["answer"]})
+        return e
+
+    def _pitcher_entry(p, force_pos=False):
+        e = dict(p["common"])
+        if force_pos:   # two-way's listed position is a fielding spot — show P
+            e["position"] = "P"
+        e.update({"posGroup": "P", "role": "Pitcher", "war": p["war"],
+                  "stats": p["stats"], "_answer": p["answer"]})
+        return e
+
+    all_entries = []
+    for key in set(hits) | set(pits):
+        h, p = hits.get(key), pits.get(key)
+        if h and p:
+            h_real = h["qualified"] or h["pa"] >= MEANINGFUL_PA
+            p_real = p["qualified"] or p["outs"] >= MEANINGFUL_OUTS
+            if h_real and p_real:           # true two-way → split into two options
+                all_entries.append(_hitter_entry(h))
+                all_entries.append(_pitcher_entry(p, force_pos=True))
+            elif p_real:                    # really a pitcher; drop trivial hitting
+                all_entries.append(_pitcher_entry(p, force_pos=True))
+            elif h_real:                    # really a hitter; drop mop-up pitching
+                all_entries.append(_hitter_entry(h))
+            else:                           # neither side meaningful — keep one guessable
+                all_entries.append(_hitter_entry(h) if h["pa"] * 3 >= p["outs"]
+                                   else _pitcher_entry(p, force_pos=True))
+        elif h:
+            all_entries.append(_hitter_entry(h))
+        else:
+            all_entries.append(_pitcher_entry(p))
     # Answers keep full statlines (used for the reveal). Guesses only need the
     # grid clue fields (AVG/HR/ERA/SO + WAR), so trim them to keep the payload
     # small even when guessing across every player in a big scope.
