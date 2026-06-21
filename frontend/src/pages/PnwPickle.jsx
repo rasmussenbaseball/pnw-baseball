@@ -26,6 +26,80 @@ const fmt2 = (v) => (v == null ? '—' : Number(v).toFixed(2))
 const fmt3 = (v) => (v == null ? '—' : Number(v).toFixed(3).replace(/^0/, ''))
 const fmtIP = (v) => (v == null ? '—' : Number(v).toFixed(1))
 
+// ─────────────────── PICKLE MASCOT (pixel art) ───────────────────
+// Cartoon, pixelated pickle with a face + an "NW" baseball cap. Rendered as a
+// crisp-edges SVG pixel grid so it stays blocky at any size.
+const PX = {
+  '.': null, N: '#173b66', B: '#0d2342', D: '#2c6a22', G: '#57a83a', H: '#84cf55', K: '#13220e',
+}
+const PICKLE_GRID = [
+  '..............',
+  '....NNNNNN....',
+  '...NNNNNNNN...',
+  '...NNNNNNNN...',
+  '..BBBBBBBBBB..',
+  '....DGGGGD....',
+  '...DGGGGGGD...',
+  '...DGHHGGGD...',
+  '...DGGGGGGD...',
+  '...DGKGGKGD...',
+  '...DGGGGGGD...',
+  '...DGKGGKGD...',
+  '...DGGKKGGD...',
+  '...DGGGGGGD...',
+  '...DGHHGGGD...',
+  '....DGGGGD....',
+  '....DGGGGD....',
+  '.....DDDD.....',
+]
+export function PickleMascot({ size = 120, className = '' }) {
+  const cell = 10
+  const W = 14 * cell
+  const H = PICKLE_GRID.length * cell
+  const rects = []
+  PICKLE_GRID.forEach((row, r) => {
+    for (let c = 0; c < row.length; c++) {
+      const fill = PX[row[c]]
+      if (fill) rects.push(<rect key={`${r}-${c}`} x={c * cell} y={r * cell} width={cell} height={cell} fill={fill} />)
+    }
+  })
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={size} height={size * H / W} shapeRendering="crispEdges"
+         className={className} role="img" aria-label="PNW Pickle mascot">
+      {rects}
+      <text x={W / 2} y={36} textAnchor="middle" fontFamily="'Courier New', monospace"
+            fontWeight="900" fontSize="20" fill="#ffffff">NW</text>
+    </svg>
+  )
+}
+
+// Full-bleed green "pickle world" shell — gives the page its own identity.
+function PickleShell({ subtitle, children }) {
+  return (
+    <div
+      className="w-screen relative left-1/2 -translate-x-1/2 -mt-3 sm:-mt-6 pb-14 min-h-[calc(100vh-3.5rem)] overflow-hidden"
+      style={{ background: 'radial-gradient(120% 90% at 50% 0%, #7ccb4f 0%, #4a9a31 38%, #256017 100%)' }}
+    >
+      {/* faint polka texture */}
+      <div className="absolute inset-0 opacity-[0.08] pointer-events-none"
+           style={{ backgroundImage: 'radial-gradient(#ffffff 1.5px, transparent 1.5px)', backgroundSize: '22px 22px' }} />
+      <div className="relative max-w-4xl mx-auto px-3 sm:px-5">
+        <div className="flex flex-col items-center text-center pt-6 pb-5">
+          <PickleMascot size={116} className="drop-shadow-[3px_4px_0_rgba(15,46,18,0.5)]" />
+          <h1 className="mt-3 text-4xl sm:text-5xl font-black uppercase tracking-tight text-white"
+              style={{ textShadow: '3px 3px 0 #15400f, -1px -1px 0 #15400f' }}>
+            PNW Pickle
+          </h1>
+          {subtitle && <p className="text-green-50 text-sm sm:text-base mt-1.5 font-medium max-w-xl">{subtitle}</p>}
+        </div>
+        <div className="bg-[#fcfbf4] dark:bg-gray-900 rounded-3xl shadow-2xl ring-2 ring-[#15400f]/30 p-4 sm:p-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Per-column comparison: returns { state, arrow } ──
 //   state: 'hit' (exact) | 'close' (near) | 'miss' (wrong) | 'na' (not comparable)
 // Stat columns are role-specific: a hitter has no ERA, a pitcher has no AVG,
@@ -193,10 +267,9 @@ export default function PnwPickle() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate">PNW Pickle</h1>
-        <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">
+    <PickleShell subtitle="Guess the hidden Pacific Northwest player.">
+      <div className="flex items-center justify-end mb-1">
+        <div className="text-sm font-bold text-pnw-forest dark:text-green-300">
           Guess {Math.min(guesses.length + (phase === 'done' ? 0 : 1), MAX_GUESSES)} / {MAX_GUESSES}
         </div>
       </div>
@@ -240,7 +313,7 @@ export default function PnwPickle() {
           </button>
         </div>
       )}
-    </div>
+    </PickleShell>
   )
 }
 
@@ -254,8 +327,8 @@ const DIFFICULTIES = [
 
 function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggleYear, allYears, setYears, startGame, loading, error }) {
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate mb-2">PNW Pickle</h1>
+    <PickleShell subtitle="Pick a difficulty and a player pool, then guess the mystery player.">
+      <div className="max-w-2xl mx-auto">
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
         Guess the mystery Pacific Northwest college player in {MAX_GUESSES} tries. Each guess
         reveals how close you are on level, team, class, position, handedness, year, and stats
@@ -358,7 +431,8 @@ function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggle
       >
         {loading ? 'Loading…' : '🥒 Start Game'}
       </button>
-    </div>
+      </div>
+    </PickleShell>
   )
 }
 
