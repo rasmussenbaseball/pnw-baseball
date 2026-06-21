@@ -3615,7 +3615,31 @@ def wcl_portal_players(
                  position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
         )
         _mcur.execute("SELECT summer_player_id FROM wcl_portal_members")
-        ids = [int(r["summer_player_id"]) for r in _mcur.fetchall()]
+        ids = {int(r["summer_player_id"]) for r in _mcur.fetchall()}
+
+        # Auto-include uncommitted NWAC (JUCO) sophomores playing in the WCL this
+        # season — they're aging out of juco and effectively in the portal. Same
+        # criteria as the JUCO tracker (level=JUCO, sophomore, not committed).
+        _mcur.execute(
+            """
+            SELECT DISTINCT spl.summer_player_id
+            FROM summer_player_links spl
+            JOIN players p ON p.id = spl.spring_player_id
+            JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            JOIN summer_players sp ON sp.id = spl.summer_player_id
+            JOIN summer_teams stt ON stt.id = sp.team_id AND stt.league_id = 1
+            WHERE d.level = 'JUCO'
+              AND COALESCE(p.is_committed, 0) <> 1
+              AND lower(COALESCE(p.year_in_school, '')) LIKE '%%so%%'
+              AND (EXISTS (SELECT 1 FROM summer_batting_stats b WHERE b.player_id = sp.id AND b.season = %s)
+                   OR EXISTS (SELECT 1 FROM summer_pitching_stats ps WHERE ps.player_id = sp.id AND ps.season = %s))
+            """,
+            (season, season),
+        )
+        ids |= {int(r["summer_player_id"]) for r in _mcur.fetchall()}
+        ids = sorted(ids)
     if not ids:
         return []
 

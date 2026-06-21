@@ -59,8 +59,9 @@ export default function WclTransferTracker() {
     <div>
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">WCL Transfer Portal Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        West Coast League players in the transfer portal, shown with their summer (WCL) stats. Includes players whose
-        spring school is outside the Pacific Northwest. Two-way players appear on both tables.
+        West Coast League players in the transfer portal, shown with their summer (WCL) stats. Includes players added
+        manually plus every uncommitted NWAC sophomore playing in the WCL (they're aging out of juco). Players whose
+        spring school is outside the Pacific Northwest are included too. Two-way players appear on both tables.
       </p>
 
       {/* Filters */}
