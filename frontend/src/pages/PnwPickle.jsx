@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { SEASONS } from '../lib/seasons'
+import { SEASONS, CURRENT_SEASON } from '../lib/seasons'
 import { divisionBadgeClass } from '../utils/stats'
 
 // Only offer seasons that actually have a qualifying player pool. Per-season
@@ -173,7 +173,10 @@ export default function PnwPickle() {
   const [phase, setPhase] = useState('setup') // setup | loading | playing | done
   const [level, setLevel] = useState('all')
   const [difficulty, setDifficulty] = useState('medium') // easy | medium | hard
-  const [years, setYears] = useState(() => new Set(PICKLE_SEASONS)) // default all years
+  // Default to just the current season; players can add older years if they want.
+  const [years, setYears] = useState(() => new Set([
+    PICKLE_SEASONS.includes(CURRENT_SEASON) ? CURRENT_SEASON : PICKLE_SEASONS[PICKLE_SEASONS.length - 1],
+  ]))
   const [error, setError] = useState(null)
 
   const [pool, setPool] = useState([])
