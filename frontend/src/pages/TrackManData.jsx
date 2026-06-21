@@ -20,6 +20,15 @@ const PITCH_CODE = {
 }
 const code = (pt) => PITCH_CODE[pt] || (pt || '?').slice(0, 2).toUpperCase()
 
+function PortalChip() {
+  return (
+    <a href="/coaching/wcl-portal" title="In the WCL transfer portal"
+       className="inline-flex items-center text-[8px] font-black uppercase tracking-wide text-white bg-amber-500 hover:bg-amber-600 rounded-[3px] px-1 py-[1px] align-middle">
+      Portal
+    </a>
+  )
+}
+
 // Stuff+-style grade color: 100 neutral, >100 red (better), <100 blue (worse).
 function gradeColor(g) {
   if (g == null) return { bg: 'transparent', fg: 'inherit' }
@@ -95,7 +104,7 @@ export default function TrackManData() {
     for (const r of rows) {
       if (r.pitch_grade == null) continue
       const key = `${r.summer_player_id}-${r.season}`
-      if (!byP[key]) byP[key] = { id: r.summer_player_id, player: r.player, team: r.team, throws: r.throws, pitches: [] }
+      if (!byP[key]) byP[key] = { id: r.summer_player_id, player: r.player, team: r.team, throws: r.throws, in_portal: r.in_portal, pitches: [] }
       byP[key].pitches.push(r)
     }
     let out = Object.values(byP).map(a => {
@@ -217,7 +226,7 @@ export default function TrackManData() {
                         {c.key === 'pitch_type'
                           ? <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: dot(r.pitch_type) }} />{r.pitch_type}</span>
                           : c.key === 'player'
-                            ? <a className="hover:text-nw-teal hover:underline" href={`/summer/players/${r.summer_player_id}`}>{r.player}</a>
+                            ? <span className="inline-flex items-center gap-1.5"><a className="hover:text-nw-teal hover:underline" href={`/summer/players/${r.summer_player_id}`}>{r.player}</a>{r.in_portal && <PortalChip />}</span>
                             : (c.fmt ? c.fmt(r[c.key]) : r[c.key])}
                       </td>
                     )
@@ -253,7 +262,10 @@ export default function TrackManData() {
                   <tr key={a.id} className="border-t border-gray-100 dark:border-gray-800 hover:bg-teal-50/40 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200">
                     <td className="px-2 py-2 text-right text-gray-400 tabular-nums">{i + 1}</td>
                     <td className="px-2 py-2 whitespace-nowrap">
-                      <a className="font-semibold hover:text-nw-teal hover:underline" href={`/summer/players/${a.id}`}>{a.player}</a>
+                      <span className="inline-flex items-center gap-1.5">
+                        <a className="font-semibold hover:text-nw-teal hover:underline" href={`/summer/players/${a.id}`}>{a.player}</a>
+                        {a.in_portal && <PortalChip />}
+                      </span>
                     </td>
                     <td className="px-2 py-2 text-left text-gray-500 dark:text-gray-400 whitespace-nowrap">{a.team}</td>
                     <td className="px-2 py-2 text-center text-gray-500 dark:text-gray-400">{a.throws || ''}</td>

@@ -1182,7 +1182,9 @@ def trackman_all_pitches(_user: str = Depends(require_tier("dev"))):
                    st.name AS team, tp.season, tp.pitch_type, tp.pitch_count,
                    tp.usage_pct, tp.velo, tp.spin, tp.ivb, tp.hb, tp.tilt,
                    tp.extension, tp.rel_height, tp.rel_side, tp.est_vaa,
-                   tp.in_zone_pct, tp.whiff_pct, tp.chase_pct, tp.pitch_grade
+                   tp.in_zone_pct, tp.whiff_pct, tp.chase_pct, tp.pitch_grade,
+                   EXISTS (SELECT 1 FROM wcl_portal_members wpm
+                           WHERE wpm.summer_player_id = tp.summer_player_id) AS in_portal
             FROM trackman_pitches tp
             JOIN summer_players sp ON sp.id = tp.summer_player_id
             JOIN summer_teams st   ON st.id = tp.team_id
