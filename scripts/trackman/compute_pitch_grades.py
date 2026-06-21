@@ -55,7 +55,16 @@ FAMILY = {
 #   ivb_sep   — changeup/splitter want big IVB drop vs the FB ("kill ride").
 #   mov_sep   — cutter bridges, breaking balls should DIVERGE from the FB plane
 #               (avoid predictable, in-line shapes).
-FEATURES = ["velo", "ivb", "hb_abs", "spin", "extension", "est_vaa", "rel_side_abs",
+# ivb_adj / vaa_adj are SLOT-ADJUSTED: raw IVB and est-VAA are mostly set by arm
+# slot (a submariner's slider rises with a flat VAA — normal for that release but
+# it looks like a terrible over-the-top slider), so we use the residual vs what
+# the release point predicts. Pitches are then judged on shape relative to their
+# own slot. (Raw ivb/est_vaa are still stored/shown and used for the separations.)
+# Slot-adjusted est-VAA is the single vertical-axis feature (IVB is geometrically
+# the same axis, so using both would be collinear; VAA is the stronger predictor
+# and the metric we care about). vaa_adj = VAA relative to what the arm slot
+# predicts, so submarine/sidearm shapes aren't judged on an over-the-top scale.
+FEATURES = ["velo", "vaa_adj", "hb_abs", "spin", "extension", "rel_side_abs",
             "velo_sep", "ivb_sep", "mov_sep"]
 FB_TYPES = {"Four Seam", "Sinker", "Cutter"}
 
@@ -65,11 +74,11 @@ FB_TYPES = {"Four Seam", "Sinker", "Cutter"}
 # when the small-sample whiff/chase data is too weak to learn them. CV decides
 # how much the data is allowed to override the prior.
 PRIORS = {
-    "Four Seam": {"velo": 0.10, "spin": 0.10, "ivb": 0.08, "est_vaa": 0.07},
-    "Sinker":    {"velo": 0.05, "spin": 0.07, "ivb": -0.06, "hb_abs": 0.06, "ivb_sep": 0.06},
+    "Four Seam": {"velo": 0.10, "spin": 0.10, "vaa_adj": 0.14},
+    "Sinker":    {"velo": 0.05, "spin": 0.07, "vaa_adj": -0.06, "hb_abs": 0.06, "ivb_sep": 0.06},
     "Cutter":    {"velo": 0.10, "spin": 0.06, "mov_sep": 0.10},
     "Slider":    {"velo": 0.11, "spin": 0.16, "hb_abs": 0.08, "mov_sep": 0.06},
-    "Curveball": {"velo": 0.13, "spin": 0.18, "mov_sep": 0.06, "ivb": -0.06},
+    "Curveball": {"velo": 0.13, "spin": 0.18, "mov_sep": 0.06, "vaa_adj": -0.06},
     "Changeup":  {"velo_sep": 0.12, "ivb_sep": 0.10, "spin": -0.12, "mov_sep": 0.05},
     "Splitter":  {"velo_sep": 0.10, "ivb_sep": 0.10, "spin": -0.12},
 }
@@ -214,8 +223,33 @@ def _run(conn):
             r["mov_sep"] = math.hypot(r["ivb"] - fb_ivb, float(r["hb"]) - fb_hb)
             gradeable.append(r)
 
-    # Standardize each feature WITHIN pitch type.
+    # Slot-adjust IVB and est-VAA: regress each on the release point
+    # (rel_height, |rel_side|) within pitch type and keep the RESIDUAL, so a
+    # pitch is judged on shape relative to its own arm slot (fixes submarine /
+    # sidearm breaking balls being graded against an over-the-top norm).
     types = sorted({r["pitch_type"] for r in gradeable})
+    for pt in types:
+        sub = [r for r in gradeable if r["pitch_type"] == pt]
+        w = np.array([r["pitch_count"] for r in sub], float)
+        Xs = np.array([[1.0, float(r["rel_height"]), abs(float(r["rel_side"] or 0.0))] for r in sub])
+        W = np.diag(w)
+        # Partial adjustment (ALPHA): subtract only ALPHA of the slot-explained
+        # deviation. ALPHA=1 fully neutralizes slot (over-corrects, costs the
+        # real "over-the-top ride -> whiffs" signal); ALPHA=0 ignores slot. ~0.6
+        # removes most of the submarine penalty while keeping absolute ride.
+        ALPHA = 0.6
+        for raw, adj in (("est_vaa", "vaa_adj"),):
+            y = np.array([float(r[raw]) for r in sub])
+            ybar = wmean(y, w)
+            try:
+                coef = np.linalg.solve(Xs.T @ W @ Xs + 1e-6 * np.eye(3), Xs.T @ W @ y)
+                slot_effect = Xs @ coef - ybar
+            except np.linalg.LinAlgError:
+                slot_effect = np.zeros(len(sub))
+            for r, yi, se in zip(sub, y, slot_effect):
+                r[adj] = float(yi - ALPHA * se)
+
+    # Standardize each feature WITHIN pitch type.
     norm = {}  # (ptype, feat) -> (mean, std) count-weighted
     for pt in types:
         sub = [r for r in gradeable if r["pitch_type"] == pt]
@@ -286,8 +320,8 @@ def _run(conn):
         # type (e.g. 21 splitters) can't earn full grade spread off a lucky CV.
         reliability = min(1.0, ntr / 60.0)
         shrink[pt] = max(0.0, min(1.0, cv_r / SHRINK_TARGET)) * reliability
-        short = {"hb_abs": "|hb|", "extension": "ext", "est_vaa": "vaa", "rel_side_abs": "|rs|",
-                 "velo_sep": "vsep", "ivb_sep": "isep", "mov_sep": "msep"}
+        short = {"hb_abs": "|hb|", "extension": "ext", "ivb_adj": "ivb", "vaa_adj": "vaa",
+                 "rel_side_abs": "|rs|", "velo_sep": "vsep", "ivb_sep": "isep", "mov_sep": "msep"}
         top = sorted(zip(FEATURES, coef), key=lambda kv: -abs(kv[1]))
         wtxt = " ".join(f"{short.get(f, f)}{c:+.2f}" for f, c in top)
         print(f"{pt:<11} {ntr:>5} {tname:>7} {lam:>6.0f} {cv_r:>6.3f} {shrink[pt]:>5.2f}  {wtxt}")
