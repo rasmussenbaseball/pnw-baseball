@@ -3512,8 +3512,89 @@ def summer_player_pitch_level_stats_pitcher(
 _WCL_PORTAL_SORT = {
     "total_war", "offensive_war", "batting_avg", "on_base_pct", "slugging_pct",
     "woba", "wrc_plus", "home_runs", "rbi", "stolen_bases", "plate_appearances",
-    "bat_k_pct", "bat_bb_pct", "pitching_war", "era", "fip", "innings_pitched",
+    "bat_k_pct", "bat_bb_pct", "contact_pct", "swing_pct", "air_pull_pct", "batter_wpa",
+    "pitching_war", "era", "fip", "fip_plus", "siera", "baa", "pitch_k_pct", "pitch_bb_pct",
+    "whiff_pct", "strike_pct", "first_pitch_strike_pct", "pitcher_wpa", "innings_pitched",
 }
+
+
+def _wcl_pbp_batting(cur, ids, season):
+    """Per-batter summer PBP rates (Contact%, Swing%, AIRPULL%, WPA) from
+    summer_game_events — same formulas the spring trackers use. Fractions."""
+    if not ids:
+        return {}
+    cur.execute(
+        """
+        SELECT ge.batter_player_id AS pid,
+               SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f,
+               SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))) AS s,
+               SUM(COALESCE(pitches_thrown, 0)) AS pitches,
+               COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+               COUNT(*) FILTER (WHERE bb_type IS NOT NULL AND UPPER(sp.bats) IN ('L','R')) AS bb_total,
+               COUNT(*) FILTER (WHERE bb_type IN ('LD','FB')
+                   AND ((UPPER(sp.bats) = 'R' AND field_zone = 'LEFT')
+                     OR (UPPER(sp.bats) = 'L' AND field_zone = 'RIGHT'))) AS air_pull,
+               SUM(wpa_batter) FILTER (WHERE wpa_batter IS NOT NULL) AS wpa
+        FROM summer_game_events ge
+        JOIN summer_games g ON g.id = ge.game_id
+        LEFT JOIN summer_players sp ON sp.id = ge.batter_player_id
+        WHERE ge.batter_player_id = ANY(%s) AND g.season = %s
+        GROUP BY ge.batter_player_id
+        """,
+        (ids, season),
+    )
+    out = {}
+    for r in cur.fetchall():
+        s = int(r["s"] or 0); f = int(r["f"] or 0); in_play = int(r["in_play"] or 0)
+        pitches = int(r["pitches"] or 0); bb_total = int(r["bb_total"] or 0)
+        swings = s + f + in_play
+        out[r["pid"]] = {
+            "contact_pct": ((f + in_play) / swings) if swings > 0 else None,
+            "swing_pct": (swings / pitches) if pitches > 0 else None,
+            "air_pull_pct": (int(r["air_pull"] or 0) / bb_total) if bb_total > 0 else None,
+            "batter_wpa": float(r["wpa"]) if r["wpa"] is not None else None,
+        }
+    return out
+
+
+def _wcl_pbp_pitching(cur, ids, season):
+    """Per-pitcher summer PBP rates (Whiff%, Strike%, FPS%, WPA) from
+    summer_game_events — same formulas the spring trackers use. Fractions."""
+    if not ids:
+        return {}
+    cur.execute(
+        """
+        SELECT ge.pitcher_player_id AS pid,
+               SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'K', ''))) AS k,
+               SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'F', ''))) AS f,
+               SUM(LENGTH(pitch_sequence) - LENGTH(REPLACE(pitch_sequence, 'S', ''))) AS s,
+               SUM(COALESCE(pitches_thrown, 0)) AS pitches,
+               COUNT(*) FILTER (WHERE was_in_play AND pitches_thrown IS NOT NULL) AS in_play,
+               COUNT(*) FILTER (WHERE pitches_thrown >= 1) AS tracked_pa,
+               COUNT(*) FILTER (WHERE pitches_thrown >= 1
+                   AND (LEFT(pitch_sequence, 1) IN ('K','S','F')
+                        OR (pitch_sequence = '' AND was_in_play))) AS f1,
+               SUM(wpa_pitcher) FILTER (WHERE wpa_pitcher IS NOT NULL) AS wpa
+        FROM summer_game_events ge
+        JOIN summer_games g ON g.id = ge.game_id
+        WHERE ge.pitcher_player_id = ANY(%s) AND g.season = %s
+        GROUP BY ge.pitcher_player_id
+        """,
+        (ids, season),
+    )
+    out = {}
+    for r in cur.fetchall():
+        k = int(r["k"] or 0); s = int(r["s"] or 0); f = int(r["f"] or 0)
+        in_play = int(r["in_play"] or 0); pitches = int(r["pitches"] or 0)
+        tracked = int(r["tracked_pa"] or 0)
+        swings = s + f + in_play
+        out[r["pid"]] = {
+            "whiff_pct": (s / swings) if swings > 0 else None,
+            "strike_pct": ((k + s + f + in_play) / pitches) if pitches > 0 else None,
+            "first_pitch_strike_pct": (int(r["f1"] or 0) / tracked) if tracked > 0 else None,
+            "pitcher_wpa": float(r["wpa"]) if r["wpa"] is not None else None,
+        }
+    return out
 
 
 @router.get("/wcl-portal")
@@ -3558,7 +3639,9 @@ def wcl_portal_players(
                    bs.woba, bs.wrc_plus, bs.offensive_war,
                    bs.home_runs, bs.rbi, bs.stolen_bases, bs.plate_appearances,
                    bs.k_pct AS bat_k_pct, bs.bb_pct AS bat_bb_pct,
-                   ps.era, ps.fip, ps.whip, ps.innings_pitched, ps.strikeouts AS pitch_k,
+                   ps.era, ps.fip, ps.fip_plus, ps.siera, ps.baa, ps.whip,
+                   ps.innings_pitched, ps.strikeouts AS pitch_k,
+                   ps.k_pct AS pitch_k_pct, ps.bb_pct AS pitch_bb_pct,
                    ps.pitching_war,
                    COALESCE(bs.offensive_war, 0) + COALESCE(ps.pitching_war, 0) AS total_war
             FROM summer_players sp
@@ -3595,9 +3678,30 @@ def wcl_portal_players(
             query += " AND sp.throws = %s"
             params.append(throws)
 
-        query += f" ORDER BY {sort_by} {direction} NULLS LAST, sp.last_name ASC"
+        # ORDER in SQL is just a stable default; final sort happens in Python
+        # below because several columns (PBP rates) are computed after the query.
+        query += " ORDER BY total_war DESC NULLS LAST, sp.last_name ASC"
         cur.execute(query, params)
         rows = [dict(r) for r in cur.fetchall()]
+
+        # PBP-derived columns from summer_game_events (same set the spring
+        # JUCO/transfer trackers show). Merged per player by id.
+        row_ids = [r["id"] for r in rows]
+        bat_pbp = _wcl_pbp_batting(cur, row_ids, season)
+        pit_pbp = _wcl_pbp_pitching(cur, row_ids, season)
+        for r in rows:
+            r.update(bat_pbp.get(r["id"], {}))
+            r.update(pit_pbp.get(r["id"], {}))
+
+    # Final sort (handles the PBP columns too); None sorts last either direction.
+    asc = sort_dir.lower() == "asc"
+
+    def _sort_key(r):
+        v = r.get(sort_by)
+        if v is None:
+            return (1, 0.0)
+        return (0, float(v) if asc else -float(v))
+    rows.sort(key=_sort_key)
 
     # Resolve the spring school to 2026: curated assigned_school wins; the
     # auto-linked spring school is only trusted when that spring player actually

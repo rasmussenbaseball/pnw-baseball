@@ -1,26 +1,17 @@
 import { useApi } from '../hooks/useApi'
 import { usePersistedState } from '../hooks/usePersistedState'
 import PlayerTrackerTable, {
-  BoardToggle, BATTING_COLS, PITCHING_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
+  BoardToggle, HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
 import { CURRENT_SEASON } from '../lib/seasons'
 
 /**
  * WCL Transfer Portal Tracker — West Coast League summer players added to the
- * portal via the Commitment Editor. Same look/behavior as the JUCO and
- * Transfer Portal trackers, but the stat columns are SUMMER (WCL) stats and the
- * roster is not limited to PNW spring players. "WCL Team" = where they play in
- * the summer; "Spring School" = the curated school assigned in the editor.
+ * portal via the Commitment Editor. Same look/behavior AND the same full stat
+ * columns (season + PBP) as the JUCO and Transfer Portal trackers, but the stats
+ * are SUMMER (WCL) and the roster isn't limited to PNW spring players. "WCL Team"
+ * = where they play in the summer; "Spring School" = the curated 2026 school.
  */
-
-// Trim the shared column sets to the stats the summer tables actually carry, so
-// the table isn't a wall of dashes. Order/format come from the shared defs.
-const TOTAL = { key: 'total_war', label: 'WAR', format: 'war', mono: true }
-const WCL_HIT_KEYS = new Set(['offensive_war', 'batting_avg', 'on_base_pct', 'slugging_pct',
-  'woba', 'wrc_plus', 'home_runs', 'rbi', 'stolen_bases', 'plate_appearances', 'bat_k_pct', 'bat_bb_pct'])
-const WCL_PIT_KEYS = new Set(['pitching_war', 'era', 'fip', 'innings_pitched'])
-const WCL_HIT_COLS = [...BATTING_COLS.filter(c => WCL_HIT_KEYS.has(c.key)), TOTAL]
-const WCL_PIT_COLS = [...PITCHING_COLS.filter(c => WCL_PIT_KEYS.has(c.key)), TOTAL]
 
 const wclHref = (row) => `/summer/players/${row.id}`
 
@@ -121,11 +112,11 @@ export default function WclTransferTracker() {
           Loading WCL portal...
         </div>
       ) : board === 'hitters' ? (
-        <PlayerTrackerTable rows={hitters} statCols={WCL_HIT_COLS} groupLabel="WCL Hitting"
+        <PlayerTrackerTable rows={hitters} statCols={HITTER_STAT_COLS} groupLabel="WCL Hitting"
           sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
           infoLabel="WCL Team" committedHeader="Spring School" playerHref={wclHref} />
       ) : (
-        <PlayerTrackerTable rows={pitchers} statCols={WCL_PIT_COLS} groupLabel="WCL Pitching"
+        <PlayerTrackerTable rows={pitchers} statCols={PITCHER_STAT_COLS} groupLabel="WCL Pitching"
           sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
           infoLabel="WCL Team" committedHeader="Spring School" playerHref={wclHref} />
       )}
