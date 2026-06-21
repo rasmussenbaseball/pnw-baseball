@@ -431,6 +431,11 @@ def create_checkout_session(
     params = {
         "mode": "subscription",
         "line_items": [{"price": price_id, "quantity": 1}],
+        # Stripe Tax: auto-calculate + collect sales tax (WA registered; other
+        # states monitored for nexus). Requires a buyer address, so we collect
+        # billing address at checkout.
+        "automatic_tax": {"enabled": True},
+        "billing_address_collection": "required",
         "success_url": f"{site}/account?upgraded=true&session_id={{CHECKOUT_SESSION_ID}}",
         "cancel_url":  f"{site}/pricing?canceled=true",
         # client_reference_id echoes back on the checkout.session.completed
@@ -464,6 +469,10 @@ def create_checkout_session(
     # otherwise let Stripe create a new customer and pre-fill their email.
     if customer_id:
         params["customer"] = customer_id
+        # Required when passing an existing customer with automatic_tax: lets
+        # Checkout save the collected billing address back to the customer so
+        # tax can be computed for them.
+        params["customer_update"] = {"address": "auto"}
     elif user_email:
         params["customer_email"] = user_email
 
