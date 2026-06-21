@@ -253,6 +253,89 @@ def resolve_commit(name, tname_map):
     return None
 
 
+def _incoming_side(pos):
+    """Crude hitter/pitcher split for a roster-only incoming player. Pure
+    pitcher designations -> pitcher; everything else (incl. two-way / unknown)
+    goes on the hitter side so it still shows up somewhere."""
+    if pos and pos.strip().upper() in ("RHP", "LHP", "P", "SP", "RP"):
+        return "pit"
+    return "bat"
+
+
+def add_incoming_no_data(rows, target):
+    """Append roster-only rows for incoming FRESHMEN (committed recruits) and
+    stat-less incoming TRANSFERS. Neither has college history to project, so
+    they're written with proj.no_data=True: they appear on the team's projected
+    roster (so the full incoming class is visible) but are explicitly flagged
+    "no projection yet" on the page. Synthetic player_ids (large offsets) keep
+    them from colliding with real players.player_id and with each other.
+
+    Called AFTER all model post-processing (PT/IP allocation, WAR, breakout) so
+    these zero-data rows never perturb the projections."""
+    seen_ids = {(r["team_id"], r["player_id"], r["side"]) for r in rows}
+    # If a transfer/recruit already projects on that team from real stats, skip
+    # the duplicate roster-only row.
+    seen_names = {(r["team_id"], (r["name"] or "").strip().lower()) for r in rows}
+    n_fr = n_tr = 0
+    with get_connection() as conn:
+        cur = conn.cursor()
+        tname_map = team_name_map(cur)
+        cur.execute("""SELECT t.id, d.level FROM teams t
+                       JOIN conferences c ON c.id=t.conference_id
+                       JOIN divisions d ON d.id=c.division_id""")
+        lvl = {r["id"]: r["level"] for r in cur.fetchall()}
+
+        # Freshmen: committed recruits entering college for `target` (they grad
+        # high school in target-1).
+        cur.execute("""SELECT id, first_name, last_name, position, committed_team_id,
+                              bbnw_state_rank, pbr_state_rank, state
+                       FROM recruits
+                       WHERE committed_team_id IS NOT NULL AND grad_year = %s""",
+                    (target - 1,))
+        for r in cur.fetchall():
+            tid = r["committed_team_id"]
+            name = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+            side = _incoming_side(r["position"])
+            pid = 90_000_000 + int(r["id"])
+            if (tid, pid, side) in seen_ids or (tid, name.lower()) in seen_names:
+                continue
+            rank = r["bbnw_state_rank"] or r["pbr_state_rank"]
+            proj = {"no_data": True, "insufficient": True, "is_freshman": True,
+                    "class_2027": "Fr", "level": lvl.get(tid),
+                    "state_rank": rank, "recruit_state": r["state"],
+                    ("PT" if side == "bat" else "BF"): 0}
+            rows.append({"season": target, "team_id": tid, "player_id": pid,
+                         "canonical_id": pid, "side": side, "name": name or "?",
+                         "pos": r["position"], "class_last": None, "is_incoming": True,
+                         "from_team_id": None, "sort_val": -1e9, "proj": proj})
+            seen_ids.add((tid, pid, side))
+            n_fr += 1
+
+        # Stat-less incoming transfers (manually tracked; no stats in our DB).
+        cur.execute("""SELECT id, name, from_school, to_team_id, position
+                       FROM incoming_transfers WHERE to_team_id IS NOT NULL""")
+        for r in cur.fetchall():
+            tid = r["to_team_id"]
+            name = (r["name"] or "").strip()
+            side = _incoming_side(r["position"])
+            pid = 91_000_000 + int(r["id"])
+            if (tid, pid, side) in seen_ids or (tid, name.lower()) in seen_names:
+                continue
+            dest = resolve_commit(r["from_school"], tname_map)
+            proj = {"no_data": True, "insufficient": True, "is_transfer": True,
+                    "class_2027": None, "level": lvl.get(tid),
+                    "from_school": r["from_school"],
+                    ("PT" if side == "bat" else "BF"): 0}
+            rows.append({"season": target, "team_id": tid, "player_id": pid,
+                         "canonical_id": pid, "side": side, "name": name or "?",
+                         "pos": r["position"], "class_last": None, "is_incoming": True,
+                         "from_team_id": (dest[0] if dest else None),
+                         "sort_val": -1e9, "proj": proj})
+            seen_ids.add((tid, pid, side))
+            n_tr += 1
+    print(f"  + {n_fr} incoming freshmen, {n_tr} stat-less transfers (no_data roster rows)")
+
+
 def proj_pt(hist, a, b, c):
     s = {int(r["season"]): r["wt_n"] for _, r in hist.iterrows()}
     return a * s.get(TARGET - 1, 0) + b * s.get(TARGET - 2, 0) + c
@@ -1099,6 +1182,9 @@ def main():
     expand_to_achievable(rows, workload)
     add_breakout(rows)
     add_war(rows, pos_fracs)
+    # Roster-only incoming freshmen + stat-less transfers (no projection). Added
+    # last so they never affect PT/IP allocation, WAR, or breakout above.
+    add_incoming_no_data(rows, TARGET)
 
     # write to DB
     with get_connection() as conn:

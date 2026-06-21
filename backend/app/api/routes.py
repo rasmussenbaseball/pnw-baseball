@@ -10036,7 +10036,7 @@ def team_incoming_transfers(team_id: int):
 @router.get("/projections/teams")
 @cached_endpoint(ttl_seconds=1800)
 def projections_teams(season: int = Query(2027),
-                      _user: str = Depends(require_tier("dev"))):
+                      _user: str = Depends(require_tier("premium"))):
     """Teams that have projections for the season, for the page's team picker."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -10060,7 +10060,7 @@ def projections_teams(season: int = Query(2027),
 @router.get("/teams/{team_id}/projections")
 @cached_endpoint(ttl_seconds=1800)
 def team_projections(team_id: int, season: int = Query(2027),
-                     _user: str = Depends(require_tier("dev"))):
+                     _user: str = Depends(require_tier("premium"))):
     """2027 projected hitters + pitchers for a team (returning + incoming
     transfers). Each row's `proj` holds the full projected stat line."""
     with get_connection() as conn:

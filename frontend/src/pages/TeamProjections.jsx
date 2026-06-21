@@ -44,8 +44,16 @@ function Confidence({ rel }) {
 }
 
 function Incoming({ row }) {
+  const p = row.proj || {}
+  // Committed high-school recruit (no college history yet) — green "freshman" tag.
+  if (p.is_freshman) {
+    const rank = p.state_rank
+    return <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+      title={`Incoming freshman${p.recruit_state ? ` from ${p.recruit_state}` : ''}${rank ? ` · #${rank} in state` : ''}`}>🎓 Fr{rank ? ` · #${rank}` : ''}</span>
+  }
   if (!row.is_incoming) return null
-  return <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={row.from_team ? `Incoming from ${row.from_team}` : 'Incoming transfer'}>{row.from_team ? `↙ ${row.from_team}` : 'Incoming'}</span>
+  const from = row.from_team || p.from_school
+  return <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={from ? `Incoming from ${from}` : 'Incoming transfer'}>{from ? `↙ ${from}` : 'Incoming'}</span>
 }
 
 // tiny up/down arrow vs 2026 actual, colored by whether it's an improvement
@@ -213,7 +221,11 @@ function Table({ rows, side, expanded, toggle, norm }) {
                   <td className={TD}>{r.pos || '–'}</td>
                   {p.no_data ? <>
                     <td className={TD}>{(isBat ? p.PT : p.BF) ?? '–'}</td>
-                    <td colSpan={span - 4} className="px-2.5 py-2 text-left text-[11px] italic text-gray-400">not enough data to project (2026 sample too small)</td>
+                    <td colSpan={span - 4} className="px-2.5 py-2 text-left text-[11px] italic text-gray-400">
+                      {p.is_freshman ? 'incoming freshman — no projection yet'
+                        : p.is_transfer ? 'incoming transfer — no projection yet'
+                        : 'not enough data to project (2026 sample too small)'}
+                    </td>
                   </> : <>
                   {isBat ? <>
                     <td className={TD}>{p.PT ?? '–'}</td><td className={TD}>{p.H ?? '–'}</td>
@@ -258,7 +270,7 @@ export default function TeamProjections() {
   const { data: teams } = useProjectionTeams(SEASON)
   const [picked, setPicked] = useState(null)
   const [expanded, setExpanded] = useState(null)
-  const [norm, setNorm] = useState(false)
+  const [norm, setNorm] = useState(true)
   const effectiveTeamId = picked || teams?.[0]?.id || null
   const { data: payload, loading } = useTeamProjections(effectiveTeamId, SEASON)
   const toggle = (id) => setExpanded((cur) => (cur === id ? null : id))
@@ -276,10 +288,10 @@ export default function TeamProjections() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">2027 Projections</h1>
-            <span className="rounded bg-nw-teal/10 text-nw-teal text-[10px] font-bold px-1.5 py-0.5 uppercase">Dev</span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Returning players + incoming transfers. Graduating seniors and departed NWAC sophomores excluded.
+            Returning players + incoming transfers and freshmen. Graduating seniors and departed NWAC sophomores excluded.
+            Incoming players with no college stats yet are listed but flagged "no projection yet."
             Click any player for their 2026 → 2027 change and floor/ceiling outcomes.
           </p>
         </div>
