@@ -58,6 +58,26 @@ FAMILY = {
 FEATURES = ["velo", "ivb", "hb_abs", "spin", "extension", "est_vaa", "rel_side_abs",
             "velo_sep", "ivb_sep", "mov_sep"]
 FB_TYPES = {"Four Seam", "Sinker", "Cutter"}
+
+# Domain PRIORS (coefficient in z-target per z-feature units). The ridge shrinks
+# toward THESE instead of toward zero, so known-but-noisy effects (spin & velo
+# matter, especially on breaking balls; spin is killed on offspeed) survive even
+# when the small-sample whiff/chase data is too weak to learn them. CV decides
+# how much the data is allowed to override the prior.
+PRIORS = {
+    "Four Seam": {"velo": 0.10, "spin": 0.10, "ivb": 0.08, "est_vaa": 0.07},
+    "Sinker":    {"velo": 0.05, "spin": 0.07, "ivb": -0.06, "hb_abs": 0.06, "ivb_sep": 0.06},
+    "Cutter":    {"velo": 0.10, "spin": 0.06, "mov_sep": 0.10},
+    "Slider":    {"velo": 0.11, "spin": 0.16, "hb_abs": 0.08, "mov_sep": 0.06},
+    "Curveball": {"velo": 0.13, "spin": 0.18, "mov_sep": 0.06, "ivb": -0.06},
+    "Changeup":  {"velo_sep": 0.12, "ivb_sep": 0.10, "spin": -0.12, "mov_sep": 0.05},
+    "Splitter":  {"velo_sep": 0.10, "ivb_sep": 0.10, "spin": -0.12},
+}
+
+
+def prior_vec(pt):
+    p = PRIORS.get(pt, {})
+    return np.array([p.get(f, 0.0) for f in FEATURES], float)
 # cv_r at/above which a pitch type earns FULL grade spread. Set low so every
 # type with real (CV-positive) signal gets the same spread — that keeps the
 # cross-type leaderboard fair (no type dominates the top just because its model
@@ -110,15 +130,18 @@ def wcorr(x, y, w):
     return float(cov / math.sqrt(vx * vy))
 
 
-def ridge_fit(X, y, w, lam):
-    """Weighted ridge on already weighted-centered X, y. Returns coef vector."""
+def ridge_fit(X, y, w, lam, b0=None):
+    """Weighted ridge on already weighted-centered X, y, shrinking the slope
+    coefficients toward prior b0 (default zero). Returns coef vector."""
     W = np.diag(w)
     A = X.T @ W @ X + lam * np.eye(X.shape[1])
     b = X.T @ W @ y
+    if b0 is not None:
+        b = b + lam * b0
     return np.linalg.solve(A, b)
 
 
-def cv_lambda(X, y, w, grid, folds=5):
+def cv_lambda(X, y, w, grid, b0=None, folds=5):
     """Pick lambda by count-weighted k-fold out-of-fold correlation."""
     n = len(y)
     rng = np.arange(n)
@@ -132,7 +155,7 @@ def cv_lambda(X, y, w, grid, folds=5):
                 continue
             mx = np.average(X[tr], axis=0, weights=w[tr])
             my = wmean(y[tr], w[tr])
-            coef = ridge_fit(X[tr] - mx, y[tr] - my, w[tr], lam)
+            coef = ridge_fit(X[tr] - mx, y[tr] - my, w[tr], lam, b0)
             preds[te] = (X[te] - mx) @ coef + my
         r = wcorr(preds, y, w)
         if not math.isnan(r) and r > best_r:
@@ -229,12 +252,13 @@ def _run(conn):
     #       curveballs more via chase below the zone. So each type picks its own
     #       training target (whiff / chase / both) by cross-validation.
     # Ridge + CV'd lambda regularizes small-sample types toward a flat ~100.
-    grid = [3, 10, 30, 100, 300, 1000]
+    grid = [3, 10, 30, 100, 300, 1000, 3000]
     shrink = {}
     targets = {"whiff": "_z_whiff_pct", "chase": "_z_chase_pct", "stuff": "_target"}
     print(f"{'pitch_type':<11} {'n':>5} {'target':>7} {'lambda':>7} {'cv_r':>7} {'shrink':>7}   top weights")
     for pt in types:
         members = [r for r in gradeable if r["pitch_type"] == pt]
+        b0 = prior_vec(pt)
         best = None  # (cv_r, target_name, lam, coef, mx, my)
         for tname, tkey in targets.items():
             tr = [r for r in members if r.get(tkey) is not None]
@@ -243,11 +267,11 @@ def _run(conn):
             X = np.array([r["_z"] for r in tr])
             y = np.array([r[tkey] for r in tr])
             w = np.array([r["pitch_count"] for r in tr], float)
-            lam, cv_r = cv_lambda(X, y, w, grid)
+            lam, cv_r = cv_lambda(X, y, w, grid, b0)
             if best is None or cv_r > best[0]:
                 mx = np.average(X, axis=0, weights=w)
                 my = wmean(y, w)
-                coef = ridge_fit(X - mx, y - my, w, lam)
+                coef = ridge_fit(X - mx, y - my, w, lam, b0)
                 best = (cv_r, tname, lam, coef, mx, my, len(tr))
         if best is None:
             for r in members:
