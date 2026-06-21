@@ -30,7 +30,45 @@ window.addEventListener('vite:preloadError', (event) => {
   }
 })
 
-function CrashFallback() {
+// A stale code-split chunk can also detonate INSIDE React.lazy after the
+// per-route recovery above has already used its one reload (e.g. several
+// redeploys land within seconds, so the fresh build is itself stale on the
+// retry). Those surface here as React.lazy errors like "undefined is not an
+// object (evaluating '…_result.default')" / "reading 'default'" / a failed
+// dynamic import. As a last resort, reload once more on that signature, with a
+// SEPARATE wider guard so a genuinely-broken build still can't reload-loop —
+// after the cap it falls through to the crash UI.
+const CHUNK_ERROR_RE =
+  /_result\.default|reading 'default'|dynamically imported module|importing a module|Failed to fetch|Load failed|ChunkLoadError/i
+
+function isChunkError(error) {
+  return CHUNK_ERROR_RE.test(String(error?.message || error || ''))
+}
+
+function tryChunkRecovery() {
+  const KEY = 'nwbb_chunk_recover_ts'
+  const WINDOW_MS = 60000   // wider than the 10s per-route guard
+  let last = 0
+  try { last = Number(sessionStorage.getItem(KEY) || 0) } catch { /* storage blocked */ }
+  if (Date.now() - last > WINDOW_MS) {
+    try { sessionStorage.setItem(KEY, String(Date.now())) } catch { /* storage blocked */ }
+    window.location.reload()
+    return true
+  }
+  return false
+}
+
+function CrashFallback({ error }) {
+  // If this looks like a stale-chunk crash, quietly reload to the current build
+  // instead of showing the error screen (guarded so it can't loop).
+  const recovering = isChunkError(error) && tryChunkRecovery()
+  if (recovering) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white px-4">
+        <div className="text-gray-500">Updating to the latest version…</div>
+      </div>
+    )
+  }
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4">
       <div className="max-w-md text-center">
@@ -56,7 +94,7 @@ function CrashFallback() {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <Sentry.ErrorBoundary fallback={<CrashFallback />} showDialog={false}>
+    <Sentry.ErrorBoundary fallback={({ error }) => <CrashFallback error={error} />} showDialog={false}>
       <BrowserRouter>
         <App />
       </BrowserRouter>
