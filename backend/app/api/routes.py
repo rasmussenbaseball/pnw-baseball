@@ -10010,10 +10010,15 @@ def transfer_portal_players(
 
 
 @router.get("/teams/{team_id}/incoming-transfers")
+@cached_endpoint(ttl_seconds=900)
 def team_incoming_transfers(team_id: int):
-    """Name-only incoming out-of-region transfers committed to this PNW team
-    (players we don't carry in the DB, so no stats — just name + source school).
-    Managed via the dev Commitment Editor. Public."""
+    """Incoming transfers committed to this PNW team. Two sources merged:
+      - DB players (JUCO/NWAC + four-year portal) whose `committed_to` resolves
+        to this team — these carry their origin school/level + a stat line.
+      - Name-only out-of-region transfers from the `incoming_transfers` table
+        (players we don't carry in the DB, managed via the Commitment Editor).
+    Public. Returns a flat list, newest-talent-ish first (DB players, then
+    name-only), each tagged with `kind`."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -10022,11 +10027,77 @@ def team_incoming_transfers(team_id: int):
                 to_team_id INTEGER NOT NULL, position TEXT, added_by TEXT,
                 added_at TIMESTAMP NOT NULL DEFAULT now())
         """)
+
+        # Team name variants used to resolve the free-text players.committed_to.
+        cur.execute("SELECT short_name, name, school_name FROM teams WHERE id = %s", (team_id,))
+        trow = cur.fetchone()
+        variants = []
+        if trow:
+            variants = [v.strip().lower() for v in
+                        (trow["short_name"], trow["name"], trow["school_name"]) if v]
+
+        players = []
+        if variants:
+            # DB players who committed TO this team (NWAC/JUCO + portal). Exact
+            # match on a name variant avoids Oregon/Oregon St-type cross-talk.
+            cur.execute("""
+                SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
+                       p.bats, p.throws, p.team_id AS from_team_id,
+                       t.short_name AS from_team, t.logo_url AS from_logo, d.level AS from_level
+                FROM players p
+                JOIN teams t ON t.id = p.team_id
+                JOIN conferences c ON c.id = t.conference_id
+                JOIN divisions d ON d.id = c.division_id
+                WHERE p.is_committed = 1
+                  AND lower(trim(p.committed_to)) = ANY(%s)
+                ORDER BY p.last_name, p.first_name
+            """, (variants,))
+            prows = [dict(r) for r in cur.fetchall()]
+            pids = [r["id"] for r in prows] or [0]
+
+            # Most-recent-season batting + pitching stat line for each, so the
+            # team page can show what kind of player is coming in.
+            cur.execute("""
+                SELECT DISTINCT ON (player_id) player_id, season,
+                       plate_appearances AS pa, batting_avg AS avg, on_base_pct AS obp,
+                       slugging_pct AS slg, home_runs AS hr, stolen_bases AS sb,
+                       wrc_plus, offensive_war AS owar
+                FROM batting_stats WHERE player_id = ANY(%s)
+                ORDER BY player_id, season DESC
+            """, (pids,))
+            bat = {r["player_id"]: dict(r) for r in cur.fetchall()}
+            cur.execute("""
+                SELECT DISTINCT ON (player_id) player_id, season,
+                       innings_pitched AS ip, era, fip, strikeouts AS k,
+                       k_pct, bb_pct, pitching_war AS pwar
+                FROM pitching_stats WHERE player_id = ANY(%s)
+                ORDER BY player_id, season DESC
+            """, (pids,))
+            pit = {r["player_id"]: dict(r) for r in cur.fetchall()}
+
+            for r in prows:
+                b = bat.get(r["id"]); p = pit.get(r["id"])
+                # A pitcher if their position says so OR they only have pitching.
+                pos = (r["position"] or "").upper()
+                is_pit = pos in ("P", "RHP", "LHP", "SP", "RP") or (p and not b)
+                players.append({
+                    "kind": "player", "player_id": r["id"],
+                    "name": f"{r['first_name']} {r['last_name']}".strip(),
+                    "position": r["position"], "year_in_school": r["year_in_school"],
+                    "from_team": r["from_team"], "from_team_id": r["from_team_id"],
+                    "from_logo": r["from_logo"], "from_level": r["from_level"],
+                    "side": "pit" if is_pit else "bat",
+                    "bat": b, "pit": p,
+                })
+
+        # Name-only out-of-region transfers (no DB stats).
         cur.execute(
             "SELECT id, name, from_school, position FROM incoming_transfers WHERE to_team_id = %s ORDER BY name",
             (team_id,),
         )
-        return [dict(r) for r in cur.fetchall()]
+        name_only = [{"kind": "name", **dict(r)} for r in cur.fetchall()]
+
+        return players + name_only
 
 
 # ============================================================

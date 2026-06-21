@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers } from '../hooks/useApi'
+import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers, useTeamInfoGraphic } from '../hooks/useApi'
+import TeamAdvanced from '../components/TeamAdvanced'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
 import FavoriteButton from '../components/FavoriteButton'
@@ -41,6 +42,7 @@ export default function TeamDetail() {
   const { data: rankings } = useTeamRankings(teamId, season)
   const { data: history, loading: historyLoading } = useTeamHistory(teamId)
   const { data: futureData } = useTeamFutureGames(teamId, 15)
+  const { data: ig } = useTeamInfoGraphic(teamId, season)
 
   const [batPreset, setBatPreset] = useState('Standard')
   const [pitPreset, setPitPreset] = useState('Standard')
@@ -109,27 +111,7 @@ export default function TeamDetail() {
       <Link to="/teams" className="text-sm text-nw-teal-light hover:underline mb-3 inline-block">&larr; All Teams</Link>
 
       {/* Team header */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4 sm:p-5 mb-4">
-        <div className="flex items-center gap-2 sm:gap-3 mb-2">
-          {team.logo_url && (
-            <img
-              src={team.logo_url}
-              alt=""
-              className="w-8 h-8 sm:w-10 sm:h-10 object-contain shrink-0"
-              loading="lazy"
-              onError={(e) => { e.target.style.display = 'none' }}
-            />
-          )}
-          <span className={`px-2 py-0.5 rounded text-xs font-bold ${divisionBadgeClass(team.division_level)}`}>
-            {team.division_level}
-          </span>
-          <h1 className="text-lg sm:text-2xl font-bold text-nw-teal dark:text-gray-100">{team.name}</h1>
-          <FavoriteButton type="team" targetId={team.id} />
-        </div>
-        <div className="text-xs sm:text-sm text-gray-500">
-          {team.city}, {team.state} · {team.conference_name}
-        </div>
-      </div>
+      <HeroHeader team={team} ig={ig} />
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-4 sm:mb-6 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
@@ -179,6 +161,9 @@ export default function TeamDetail() {
           {rankings && rankings.composite && (
             <RankingsCard rankings={rankings} />
           )}
+
+          {/* Advanced, Savant-style team look (percentiles vs division, leaders, clutch) */}
+          <TeamAdvanced teamId={teamId} season={season} />
 
           {/* Upcoming Games */}
           {futureData?.games?.length > 0 && (
@@ -268,9 +253,8 @@ export default function TeamDetail() {
             />
           </div>
 
-          {/* Incoming HS recruiting class (only shows if there are commits) */}
-          <IncomingClass teamId={teamId} />
-          <IncomingTransfers teamId={teamId} />
+          {/* Incoming class: transfers (JUCO/portal) + HS commits, unified */}
+          <IncomingClassSection teamId={teamId} />
         </div>
       )}
 
@@ -287,53 +271,70 @@ export default function TeamDetail() {
 // INCOMING RECRUITING CLASS (HS commits)
 // ============================================================
 
-// Compact list of a team's incoming HS commits for 2026. Renders nothing
-// while loading, on error, or when the team has zero commits, so most
-// non-marquee team pages simply don't show the section.
-// Name-only incoming out-of-region transfers (players not in our DB, so no
-// stats). Managed via the dev Commitment Editor. Renders nothing when empty.
-function IncomingTransfers({ teamId }) {
-  const { data } = useIncomingTransfers(teamId)
-  const rows = Array.isArray(data) ? data : []
-  if (!rows.length) return null
+// Level badge color for an incoming transfer's ORIGIN level.
+function levelBadgeClass(level) {
+  switch (level) {
+    case 'D1': return 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+    case 'D2': return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    case 'D3': return 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+    case 'NAIA': return 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+    case 'JUCO': return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+    default: return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  }
+}
+
+const fmtSlash = (v) => v == null ? null : (v >= 1 ? v.toFixed(3) : v.toFixed(3).replace(/^0\./, '.'))
+
+// One incoming transfer row. DB players (kind 'player') link to their profile
+// and show origin school/level + a compact stat line; name-only transfers show
+// just name + source school.
+function TransferRow({ t }) {
+  const isPlayer = t.kind === 'player'
+  const b = t.bat, p = t.pit
+  let statLine = null
+  if (isPlayer && t.side === 'pit' && p) {
+    statLine = [p.era != null && `${p.era.toFixed(2)} ERA`, p.ip != null && `${Number(p.ip).toFixed(1)} IP`,
+                p.k != null && `${p.k} K`].filter(Boolean).join(' · ')
+  } else if (isPlayer && b) {
+    const ops = (b.obp != null && b.slg != null) ? fmtSlash(b.obp + b.slg) : null
+    statLine = [fmtSlash(b.avg) && `${fmtSlash(b.avg)} AVG`, ops && `${ops} OPS`,
+                b.hr != null && `${b.hr} HR`].filter(Boolean).join(' · ')
+  }
   return (
-    <div className="mb-8">
-      <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100 mb-2">Incoming Transfers</h2>
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-4">
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
-          {rows.map((r) => (
-            <div key={r.id} className="flex items-center gap-2 py-1 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
-              <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{r.name}</span>
-              {r.position && (
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">{r.position}</span>
-              )}
-              <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                {r.from_school ? `from ${r.from_school}` : ''}
-              </span>
-              <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 whitespace-nowrap shrink-0">
-                Transfer
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="flex items-center gap-2 py-1.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+      {isPlayer ? (
+        <Link to={`/player/${t.player_id}`} className="text-xs font-semibold text-nw-teal dark:text-gray-100 hover:underline whitespace-nowrap">{t.name}</Link>
+      ) : (
+        <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{t.name}</span>
+      )}
+      {t.position && <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase shrink-0">{t.position}</span>}
+      <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
+        {isPlayer
+          ? <>from <span className="font-medium text-gray-600 dark:text-gray-300">{t.from_team}</span>{statLine ? ` · ${statLine}` : ''}</>
+          : (t.from_school ? `from ${t.from_school}` : '')}
+      </span>
+      <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap shrink-0 ${isPlayer ? levelBadgeClass(t.from_level) : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
+        {isPlayer ? (t.from_level || 'Transfer') : 'Transfer'}
+      </span>
     </div>
   )
 }
 
-function IncomingClass({ teamId, gradYear = 2026 }) {
-  const { data } = useTeamRecruits(teamId, gradYear)
-  const commits = data?.commits || []
-  if (!commits.length) return null
+// Unified Incoming Class: incoming transfers (JUCO/portal + name-only) and HS
+// commits in one section. Renders nothing when the team has neither.
+function IncomingClassSection({ teamId, gradYear = 2026 }) {
+  const { data: transferData } = useIncomingTransfers(teamId)
+  const { data: recruitData } = useTeamRecruits(teamId, gradYear)
+  const transfers = Array.isArray(transferData) ? transferData : []
+  const commits = recruitData?.commits || []
+  if (!transfers.length && !commits.length) return null
 
-  // class_score is now a 0-100 average of the ranked commits (or null if the
-  // class has no scored commits). Show it as the headline rating when present.
-  const classScore = data?.class_score
-  const scoredCount = data?.scored_count
+  const classScore = recruitData?.class_score
+  const scoredCount = recruitData?.scored_count
 
   return (
     <div className="mb-8">
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex items-center gap-2 flex-wrap">
         <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">Incoming Class ({gradYear})</h2>
         {classScore != null && (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-nw-teal dark:text-nw-teal-light">
@@ -348,30 +349,47 @@ function IncomingClass({ teamId, gradYear = 2026 }) {
           All classes &rarr;
         </Link>
       </div>
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-4">
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
-          {commits.map((c) => {
-            const rank = c.state_rank
-            return (
-              <div key={c.id} className="flex items-center gap-2 py-1 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
-                <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
-                {c.position && (
-                  <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">{c.position}</span>
-                )}
-                <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                  {[c.high_school, c.state].filter(Boolean).join(', ')}
-                </span>
-                {rank != null ? (
-                  <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap shrink-0">
-                    State Rank #{rank}
-                  </span>
-                ) : c.recruit_score == null ? (
-                  <span className="text-[10px] italic text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">No ranking</span>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-4 space-y-4">
+        {transfers.length > 0 && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1.5">
+              Transfers <span className="text-gray-400 dark:text-gray-500">· {transfers.length}</span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-x-6">
+              {transfers.map((t) => <TransferRow key={`${t.kind}-${t.player_id || t.id}`} t={t} />)}
+            </div>
+          </div>
+        )}
+        {commits.length > 0 && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1.5">
+              High School Commits <span className="text-gray-400 dark:text-gray-500">· {commits.length}</span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-x-6">
+              {commits.map((c) => {
+                const rank = c.state_rank
+                return (
+                  <div key={c.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
+                    {c.position && (
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase shrink-0">{c.position}</span>
+                    )}
+                    <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                      {[c.high_school, c.state].filter(Boolean).join(', ')}
+                    </span>
+                    {rank != null ? (
+                      <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap shrink-0">
+                        State #{rank}
+                      </span>
+                    ) : c.recruit_score == null ? (
+                      <span className="text-[10px] italic text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">No ranking</span>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -818,6 +836,78 @@ function CareerLeaderboards({ leaders, type }) {
 // ============================================================
 // SHARED COMPONENTS
 // ============================================================
+
+// Modern gradient hero with identity + headline stats pulled from the
+// /teams/{id}/info-graphic payload (record, run diff, pythag, ranks).
+function HeroHeader({ team, ig }) {
+  const r = ig?.record || {}
+  const rk = ig?.rankings || {}
+  const wins = r.wins ?? 0, losses = r.losses ?? 0, ties = r.ties ?? 0
+  const recordStr = ties ? `${wins}-${losses}-${ties}` : `${wins}-${losses}`
+  const winPct = (wins + losses) > 0 ? wins / (wins + losses) : null
+  const runDiff = r.run_diff
+  return (
+    <div className="rounded-2xl shadow-lg overflow-hidden mb-4 sm:mb-6 bg-gradient-to-br from-nw-teal to-nw-teal-dark text-white">
+      <div className="px-4 sm:px-6 pt-5 pb-4 flex items-start gap-3 sm:gap-5">
+        {team.logo_url && (
+          <img src={team.logo_url} alt="" loading="lazy"
+            className="h-16 w-16 sm:h-20 sm:w-20 object-contain bg-white/95 rounded-xl p-1.5 shadow-sm shrink-0"
+            onError={(e) => { e.target.style.display = 'none' }} />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] sm:text-[11px] uppercase tracking-widest text-white/70 mb-1 flex items-center flex-wrap gap-x-2 gap-y-1">
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${divisionBadgeClass(team.division_level)}`}>{team.division_level}</span>
+            <span>{[team.city && `${team.city}, ${team.state}`, team.conference_name].filter(Boolean).join(' · ')}</span>
+            {ig?.head_coach?.name && <span>· {ig.head_coach.name}</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-3xl font-bold leading-tight truncate">{team.name}</h1>
+            <FavoriteButton type="team" targetId={team.id} />
+          </div>
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-2 mt-3">
+            <HeroStat label="Record" value={recordStr} hint={winPct != null ? `${(winPct * 100).toFixed(1)}%` : ''} />
+            {(r.conf_wins != null || r.conf_losses != null) && (
+              <HeroStat label="Conference" value={`${r.conf_wins ?? 0}-${r.conf_losses ?? 0}`} />
+            )}
+            {runDiff != null && (
+              <HeroStat label="Run Diff" value={`${runDiff >= 0 ? '+' : ''}${runDiff}`}
+                hint={r.runs_for != null ? `${r.runs_for} for / ${r.runs_against} ag` : ''} good={runDiff >= 0} />
+            )}
+            {r.pythagorean_wins != null && (
+              <HeroStat label="Pythag W-L" value={`${r.pythagorean_wins}-${r.pythagorean_losses}`} />
+            )}
+            {rk.conference_rank != null && (
+              <HeroStat label="Conf Rank" value={`#${rk.conference_rank}`}
+                hint={rk.conference_total ? `of ${rk.conference_total}` : ''} />
+            )}
+            {rk.national_rank != null && (
+              <HeroStat label="National" value={`#${rk.national_rank}`}
+                hint={rk.national_percentile != null ? `${Math.round(rk.national_percentile)}th pct` : ''} />
+            )}
+            {rk.power_rating != null && (
+              <HeroStat label="Power" value={rk.power_rating.toFixed(1)}
+                hint={rk.power_rating_div_rank ? `#${rk.power_rating_div_rank} in ${team.division_level}` : ''} />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HeroStat({ label, value, hint, good }) {
+  const valueClass = good === true ? 'text-emerald-200' : good === false ? 'text-rose-200' : 'text-white'
+  return (
+    <div className="leading-none">
+      <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">{label}</div>
+      <div className="flex items-baseline gap-1.5">
+        <span className={`text-lg sm:text-2xl font-bold tabular-nums ${valueClass}`}>{value}</span>
+        {hint && <span className="text-[10px] text-white/60">{hint}</span>}
+      </div>
+    </div>
+  )
+}
+
 
 function SummaryCell({ label, value, highlight = false }) {
   return (
