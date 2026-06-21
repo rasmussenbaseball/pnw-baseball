@@ -3518,6 +3518,27 @@ _WCL_PORTAL_SORT = {
 }
 
 
+_YEAR_ABBR = {
+    "freshman": "Fr", "fr": "Fr", "fr.": "Fr",
+    "sophomore": "So", "so": "So", "so.": "So",
+    "junior": "Jr", "jr": "Jr", "jr.": "Jr",
+    "senior": "Sr", "sr": "Sr", "sr.": "Sr",
+    "graduate": "Gr", "grad": "Gr", "gr": "Gr", "gr.": "Gr",
+    "red shirt freshman": "R-Fr", "rs fr": "R-Fr", "r-fr": "R-Fr", "redshirt freshman": "R-Fr",
+    "red shirt sophomore": "R-So", "rs so": "R-So", "r-so": "R-So", "redshirt sophomore": "R-So",
+    "red shirt junior": "R-Jr", "rs jr": "R-Jr", "r-jr": "R-Jr",
+    "red shirt senior": "R-Sr", "rs sr": "R-Sr", "r-sr": "R-Sr",
+}
+
+
+def _abbrev_year(y):
+    """Summer rosters store full class words ('Sophomore'); abbreviate to match
+    the spring trackers ('So') so the narrow Yr column doesn't truncate."""
+    if not y:
+        return y
+    return _YEAR_ABBR.get(str(y).strip().lower(), y)
+
+
 def _wcl_pbp_batting(cur, ids, season):
     """Per-batter summer PBP rates (Contact%, Swing%, AIRPULL%, WPA) from
     summer_game_events — same formulas the spring trackers use. Fractions."""
@@ -3741,6 +3762,7 @@ def wcl_portal_players(
         if r.get("committed_level") == "JUCO":
             r["committed_level"] = "NWAC"
         r["position"] = normalize_position(r.get("position"))
+        r["year_in_school"] = _abbrev_year(r.get("year_in_school"))
     return rows
 
 

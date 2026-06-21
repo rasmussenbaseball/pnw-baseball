@@ -189,7 +189,7 @@ export default function PlayerTrackerTable({
         <thead>
           {/* Category header row */}
           <tr className="sticky top-0 z-20 bg-nw-teal">
-            <th colSpan={7} style={{width:488,minWidth:488,maxWidth:488}} className="sticky left-0 z-30 bg-nw-teal text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
+            <th colSpan={7} style={{width:500,minWidth:500,maxWidth:500}} className="sticky left-0 z-30 bg-nw-teal text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-left border-r border-white/10">
               Player Info
             </th>
             <th colSpan={statCols.length} className="bg-nw-teal text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-1 text-center">
@@ -208,8 +208,8 @@ export default function PlayerTrackerTable({
             <th style={{width:90,minWidth:90,maxWidth:90}} className="sticky left-[168px] z-30 bg-gray-50 dark:bg-gray-900 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">{infoLabel}</th>
             <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[258px] z-30 bg-gray-50 dark:bg-gray-900 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Pos</th>
             <th style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[298px] z-30 bg-gray-50 dark:bg-gray-900 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">B/T</th>
-            <th style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[330px] z-30 bg-gray-50 dark:bg-gray-900 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Yr</th>
-            <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[358px] z-30 bg-gray-50 dark:bg-gray-900 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left border-r border-gray-200 dark:border-gray-700">{committedHeader}</th>
+            <th style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[330px] z-30 bg-gray-50 dark:bg-gray-900 px-1 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left">Yr</th>
+            <th style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[370px] z-30 bg-gray-50 dark:bg-gray-900 px-1.5 py-1.5 text-gray-500 dark:text-gray-400 font-semibold text-left border-r border-gray-200 dark:border-gray-700">{committedHeader}</th>
             {statCols.map(col => (
               <th
                 key={col.key}
@@ -249,8 +249,8 @@ export default function PlayerTrackerTable({
               </td>
               <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[258px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.position || '-'}</td>
               <td style={{width:32,minWidth:32,maxWidth:32}} className="sticky left-[298px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.bats || '-'}/{row.throws || '-'}</td>
-              <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-[330px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
-              <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[358px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
+              <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[330px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
+              <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[370px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
                 {row.committed_to ? (
                   <span title={`${row.committed_to}${row.committed_level ? ' (' + row.committed_level + ')' : ''}`} className="inline-flex items-center gap-1 max-w-full align-middle">
                     {row.committed_level && (
