@@ -396,7 +396,7 @@ export default function App() {
 
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />
-          <Route path="/projections" element={<RequireDev><TeamProjections /></RequireDev>} />
+          <Route path="/projections" element={<RequireTier minTier="premium"><TeamProjections /></RequireTier>} />
           <Route path="/trackman-data" element={<RequireDev><TrackManData /></RequireDev>} />
           <Route path="/commitment-editor" element={<RequireDev emails={COMMITMENT_EDITOR_EMAILS}><CommitmentEditor /></RequireDev>} />
           <Route path="/pro-tracker" element={<ProTracker />} />
