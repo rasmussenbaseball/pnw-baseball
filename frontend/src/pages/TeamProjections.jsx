@@ -208,6 +208,21 @@ function Table({ rows, side, expanded, toggle, norm }) {
             const p = norm ? normLine(r.proj || {}, isBat) : (r.proj || {})
             const a = r.actual_2026 || {}
             const open = expanded === r.player_id
+            if (p.is_pool) {
+              return (
+                <tr key={r.player_id} className="border-b border-gray-100 dark:border-gray-800 bg-nw-teal/[0.04] dark:bg-nw-teal/[0.08]">
+                  <td className={TDL + ' italic text-gray-600 dark:text-gray-300'}>
+                    <span className="mr-1">➕</span>{r.name}
+                  </td>
+                  <td className={TD}>–</td>
+                  <td className={TD}>–</td>
+                  <td className={TD + ' font-semibold text-gray-700 dark:text-gray-200'}>{isBat ? (p.PT ?? '–') : f1(p.IP)}</td>
+                  <td colSpan={span - 4} className="px-2.5 py-2 text-left text-[11px] italic text-gray-500 dark:text-gray-400">
+                    projected {isBat ? 'at-bats' : 'innings'} for incoming freshmen &amp; transfers (no individual projections)
+                  </td>
+                </tr>
+              )
+            }
             return (
               <Fragment key={r.player_id}>
                 <tr onClick={() => toggle(r.player_id)}

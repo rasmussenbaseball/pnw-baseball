@@ -569,17 +569,39 @@ def load_prior_workload(cur, season):
     return {r["cid"]: float(r["ip"] or 0) for r in cur.fetchall()}
 
 
-def allocate_hitter_pa(rows, workload):
-    """Distribute each team's PA so the team total equals its LEVEL AVERAGE,
-    split by depth-chart playing-time share and capped at the level's realistic
-    individual max. Each spot goes to whoever played it most last year, the rest
-    fill in (OF interchangeable; 1B/3B and 2B/SS/3B interchangeable), the best
-    idle bat DHs, everyone rests, the deep bench gets a sliver."""
+def _level_quality(rows):
+    """{(side, level): (mean, std)} of a quality metric among projected players
+    (pitchers: -ERA, hitters: wOBA). Lets the allocators dock a low-quality
+    returner's workload against his LEVEL, not just against his teammates."""
+    acc = {}
+    for r in rows:
+        p = r["proj"]
+        if p.get("no_data"):
+            continue
+        if r["side"] == "pit" and p.get("ERA") is not None:
+            acc.setdefault(("pit", p["level"]), []).append(-float(p["ERA"]))
+        elif r["side"] == "bat" and p.get("wOBA") is not None:
+            acc.setdefault(("bat", p["level"]), []).append(float(p["wOBA"]))
+    out = {}
+    for k, a in acc.items():
+        arr = np.array(a, dtype=float)
+        out[k] = (float(arr.mean()), float(arr.std()) or 1e-9)
+    return out
+
+
+def allocate_hitter_pa(rows, workload, qlev):
+    """Distribute each team's PA. Each returner gets the REALISTIC at-bats his
+    depth-chart role + projected quality earn (a poor projected hitter is docked,
+    not handed 150+ PA just to fill a thin lineup); incoming transfers are
+    discounted into open spots. The at-bats the returning roster doesn't merit
+    become an 'incoming freshmen & transfers' pool (returned per team) instead of
+    being force-fed to returners. Returns {team_id: pool_pa}."""
+    pools = {}
     by_team = {}
     for r in rows:
         if r["side"] == "bat":
             by_team.setdefault(r["team_id"], []).append(r)
-    for team_rows in by_team.values():
+    for tid, team_rows in by_team.items():
         players = []
         for r in team_rows:
             pg = r["proj"].get("pos_games") or {}
@@ -634,60 +656,115 @@ def allocate_hitter_pa(rows, workload):
                 alloc[k] = _DC["FLOOR"]
         lvl = players[0]["r"]["proj"]["level"]
         wl = workload.get(lvl) or {"pa": 1900, "pa_cap": 240}
-        pas = _waterfill(alloc, wl["pa"], wl["pa_cap"])   # team PA -> level average
+        total = wl["pa"]; pcap = wl["pa_cap"]
+        per_slot = total / 9.0               # PA of one full-time lineup spot
+        qm, qs = qlev.get(("bat", lvl), (0.0, 1e-9))
+        merit = [0.0] * len(players)
+        for k, p in enumerate(players):
+            z = (p["woba"] - qm) / qs
+            gate = 1.0 if z >= 0 else max(0.30, 1.0 + 0.45 * z)   # poor hitters shed PA
+            merit[k] = min(pcap, alloc[k] * per_slot * gate)
+        sm = sum(merit)
+        pool = 0.0
+        if sm > total:                       # deep returning roster -> scale to fit
+            sc = total / sm
+            merit = [m * sc for m in merit]
+        else:                                # thin roster -> remainder to incoming pool
+            pool = total - sm
         for k, p in enumerate(players):
             r = p["r"]
-            pa = round(pas[k])
+            pa = round(merit[k])
             if r["proj"].get("insufficient"):
                 pa = min(pa, 45)
             r["proj"]["PT"] = pa
+        pools[tid] = pool
+    return pools
 
 
-def allocate_pitcher_ip(rows, workload, prior_ip):
-    """Distribute each team's innings so the staff total equals its LEVEL AVERAGE.
-    Returners are ANCHORED to the role they actually held in 2026 (a returning ace
-    keeps ~his innings, and a good returner is never weighted below last year);
-    incoming transfers are judged on talent but DISCOUNTED, so they compete for the
-    leftover innings a returning staff needs filled rather than displacing proven
-    returners. Each arm is capped at the level's realistic individual max."""
+def allocate_pitcher_ip(rows, workload, prior_ip, qlev):
+    """Distribute each team's innings. Returners are ANCHORED to the role they
+    actually held in 2026 (a returning ace keeps ~his innings; a good returner
+    never below last year) and a POOR projected returner is docked instead of
+    being handed 40+ innings he isn't good enough for. Incoming transfers are
+    talent-ranked but DISCOUNTED. The innings the returning staff doesn't merit
+    become an 'incoming freshmen & transfers' pool (returned per team) rather than
+    being force-fed to a thin returning staff. Returns {team_id: pool_ip}."""
+    pools = {}
     by_team = {}
     for r in rows:
         if r["side"] == "pit":
             by_team.setdefault(r["team_id"], []).append(r)
-    for team_rows in by_team.values():
+    for tid, team_rows in by_team.items():
         lvl = team_rows[0]["proj"]["level"]
         wl = workload.get(lvl)
         if not wl:
             continue
         ipbf = wl["ip_per_bf"]; shape = wl["ip_shape"]; cap = wl["ip_cap"]; total = wl["ip"]
-        # quality score (-ERA via sort_val) + strike-throwing durability
-        qz = _zscores([r["sort_val"] for r in team_rows])
+        qm, qs = qlev.get(("pit", lvl), (0.0, 1e-9))
         sz = _zscores([(r["proj"].get("p_strike") or 0.62) for r in team_rows])
-        score = qz + 0.4 * sz
-        weights = [0.0] * len(team_rows)
-        for i, (r, z) in enumerate(zip(team_rows, score)):
-            # innings the staff shape implies for an arm of this projected talent
-            pct = float(min(0.97, max(0.03, 0.5 + 0.5 * np.tanh(0.9 * z))))
+        merit = [0.0] * len(team_rows)
+        for i, r in enumerate(team_rows):
+            era = r["proj"].get("ERA")
+            q = -float(era) if era is not None else -float(r.get("sort_val") or 0)
+            z = (q - qm) / qs                      # level-relative quality (higher=better)
+            pct = float(min(0.97, max(0.03, 0.5 + 0.5 * np.tanh(0.9 * z + 0.2 * sz[i]))))
             shape_ip = float(np.quantile(shape, pct))
+            gate = 1.0 if z >= 0 else max(0.30, 1.0 + 0.45 * z)   # poor arms shed innings
             if r.get("is_incoming"):
-                # transfer: talent-ranked but discounted -> fills team need, doesn't
-                # vacuum a returner's load.
-                weights[i] = TRANS_IP_DISCOUNT * shape_ip
+                # transfer: talent-ranked but discounted -> fills team need.
+                merit[i] = min(cap, TRANS_IP_DISCOUNT * shape_ip)
             else:
                 pi = prior_ip.get(r["canonical_id"], 0.0)
-                if pi >= 15:                       # had a real role in 2026 -> anchor it
-                    w = pi
-                    if z > 0:                      # good returners flex UP with quality,
-                        w = pi * (1.0 + 0.12 * np.tanh(z))   # never below last year
-                    weights[i] = max(w, 0.5 * shape_ip)
+                if pi >= 15:                       # real role in 2026 -> anchor to it
+                    w = pi * (1.0 + 0.12 * np.tanh(z)) if z > 0 else pi * gate
+                    merit[i] = min(cap, w)
                 else:                               # limited/no prior role: talent-based
-                    weights[i] = shape_ip
-        ips = _waterfill(weights, total, cap)
+                    merit[i] = min(cap, 0.6 * shape_ip * gate)
+        sm = sum(merit)
+        pool = 0.0
+        if sm > total:                             # deep returning staff -> scale to fit
+            sc = total / sm
+            merit = [m * sc for m in merit]
+        else:                                      # thin staff -> remainder to incoming pool
+            pool = total - sm
         for k, r in enumerate(team_rows):
-            ip = ips[k]
+            ip = merit[k]
             if r["proj"].get("insufficient"):
                 ip = min(ip, 12)
             r["proj"]["PT"] = round(ip / ipbf) if ipbf else round(ip / 0.217)
+        pools[tid] = pool
+    return pools
+
+
+def _pool_row(tid, side, level, amount):
+    """A synthetic roster row carrying the team's pooled incoming workload."""
+    pid = (95_000_000 if side == "bat" else 96_000_000) + int(tid)
+    proj = {"is_pool": True, "no_data": True, "level": level}
+    proj["PT" if side == "bat" else "IP"] = amount
+    return {"season": TARGET, "team_id": tid, "player_id": pid, "canonical_id": pid,
+            "side": side, "name": "Incoming freshmen & transfers", "pos": None,
+            "class_last": None, "is_incoming": True, "from_team_id": None,
+            "sort_val": -2e9, "proj": proj}
+
+
+def add_pool_rows(rows, pools_pa, pools_ip):
+    """One row per team/side carrying the PA/IP the returning roster didn't merit
+    -- the workload that goes to incoming freshmen & transfers we don't project
+    individually. Keeps team totals realistic and visibly takes weight off
+    returners on thin rosters."""
+    lvl_by_team = {}
+    for r in rows:
+        lvl_by_team.setdefault(r["team_id"], r["proj"].get("level"))
+    n = 0
+    for tid, pa in pools_pa.items():
+        if pa and pa >= 10:
+            rows.append(_pool_row(tid, "bat", lvl_by_team.get(tid), round(pa)))
+            n += 1
+    for tid, ip in pools_ip.items():
+        if ip and ip >= 8:
+            rows.append(_pool_row(tid, "pit", lvl_by_team.get(tid), round(ip)))
+            n += 1
+    print(f"  + {n} incoming-pool workload rows")
 
 
 def expand_to_achievable(rows, workload):
@@ -1224,14 +1301,17 @@ def main():
         cur = conn.cursor()
         workload = team_workload(cur)             # per-level team PA/IP + caps
         prior_ip = load_prior_workload(cur, TARGET - 1)   # returner 2026 innings
-    allocate_hitter_pa(rows, workload)
-    allocate_pitcher_ip(rows, workload, prior_ip)
+    qlev = _level_quality(rows)                   # per-level quality baselines (gate poor returners)
+    pools_pa = allocate_hitter_pa(rows, workload, qlev)
+    pools_ip = allocate_pitcher_ip(rows, workload, prior_ip, qlev)
     expand_to_achievable(rows, workload)
     add_breakout(rows)
     add_war(rows, pos_fracs)
     # Roster-only incoming freshmen + stat-less transfers (no projection). Added
     # last so they never affect PT/IP allocation, WAR, or breakout above.
     add_incoming_no_data(rows, TARGET)
+    # Pooled workload (PA/IP the returning roster didn't merit) -> incoming class.
+    add_pool_rows(rows, pools_pa, pools_ip)
 
     # write to DB
     with get_connection() as conn:
