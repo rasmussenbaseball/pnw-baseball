@@ -569,6 +569,41 @@ export function PnwPickleWidget() {
   )
 }
 
+// ─── Games (56-0 + PNW Pickle combined) ─────────────────────────
+
+export function GamesWidget() {
+  return (
+    <WidgetCard title="Games" accent="dark">
+      {/* 56-0 */}
+      <Link to="/draft"
+        className="block rounded-lg bg-gradient-to-br from-[#0a2518] to-[#1e5c35] border border-emerald-900/60 p-3 text-center mb-2.5 hover:brightness-110 transition">
+        <div className="text-3xl font-black tracking-tight text-[#e8c96a] leading-none" style={{ fontFamily: 'Georgia, serif' }}>56-0</div>
+        <p className="text-[10px] text-emerald-50/90 leading-snug mt-1.5">
+          Draft the best roster in the Pacific Northwest. One shot at a perfect season.
+        </p>
+        <div className="text-[10px] font-bold text-[#e8c96a] mt-1.5">Play 56-0 →</div>
+      </Link>
+      {/* PNW Pickle */}
+      <Link to="/pnw-pickle"
+        className="block rounded-lg border border-gray-200 dark:border-gray-700 p-3 hover:border-nw-teal dark:hover:border-teal-400 transition">
+        <div className="font-bold text-sm text-gray-900 dark:text-gray-100">PNW Pickle</div>
+        <p className="text-[11px] text-gray-600 dark:text-gray-300 leading-snug mt-1">
+          Guess the mystery PNW player from the clues. A new player every day.
+        </p>
+        <div className="flex gap-1 mt-1.5">
+          {['Team', 'Pos', 'Class', 'B/T', 'Stats'].map(c => (
+            <div key={c} className="flex-1 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 py-1 text-center">
+              <div className="text-xs font-black text-gray-300 dark:text-gray-600 leading-none">?</div>
+              <div className="text-[6px] font-bold uppercase tracking-wider text-gray-400 mt-0.5">{c}</div>
+            </div>
+          ))}
+        </div>
+        <div className="text-[10px] font-bold text-nw-teal dark:text-teal-300 mt-1.5">Guess today's player →</div>
+      </Link>
+    </WidgetCard>
+  )
+}
+
 // ─── Player Comps (PNW ↔ MLB comparables) ───────────────────────
 
 export function ComparablesWidget() {
