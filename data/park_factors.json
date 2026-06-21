@@ -1579,25 +1579,25 @@
       "wind": "Moderate W",
       "avg_temp_f": 57.5,
       "dimensions": {
-        "lf": 324,
-        "lcf": 360,
-        "cf": 383,
-        "rcf": 332,
-        "rf": 309,
-        "avg_of": 341.6,
-        "status": "confirmed"
+        "lf": 325,
+        "lcf": 370,
+        "cf": 400,
+        "rcf": 370,
+        "rf": 325,
+        "avg_of": 358.0,
+        "status": "coach-reported"
       },
       "home_road_split_pct": -12.6,
       "home_road_games": 139,
       "effects": {
         "elevation_pct": 0.77,
-        "dimension_pct": 1.68,
+        "dimension_pct": -1.6,
         "temperature_pct": -1.12,
-        "conditions_pct": 1.32,
+        "conditions_pct": -1.95,
         "observed_weight": 0.317
       },
-      "park_index": 94.8,
-      "park_factor_pct": -5.2
+      "park_index": 92.6,
+      "park_factor_pct": -7.4
     },
     {
       "team_id": 482,
