@@ -72,6 +72,16 @@ FIT_MIN = 50
 LOW_N = 60
 INSUF_N = 20
 POOR_Q = 0.25                       # 25th-percentile-quality anchor
+
+# Workload discount for incoming transfers. A returning starter has earned his
+# role; an incoming transfer (esp. JUCO->4yr) is judged on talent but should NOT
+# be handed a returner's workload — not every NWAC starter starts at the next
+# level. So a transfer competes for ~half the innings/at-bats his projected
+# talent alone would imply, which lets him fill a returning team's NEED (open
+# innings from graduation) without vacuuming a returning ace's load.
+TRANS_IP_DISCOUNT = 0.5             # pitchers: fraction of talent-implied innings
+TRANS_PA_GAMES_MULT = 0.6          # hitters: prior games weigh less when claiming a job
+TRANS_PA_WOBA_MULT = 0.85          # hitters: must be clearly better to take at-bats
 # stats where a HIGH value is bad (so "poor" = the high quantile)
 LOW_GOOD = {"bat": {"k_pct"},
             "pit": {"bb_pct", "hr_bf", "babip_against", "whip_rate", "era_rate"}}
@@ -544,6 +554,21 @@ _SLOT_SRC = {"C": ["C"], "1B": ["1B", "3B"], "2B": ["2B", "SS", "3B"],
 _DC = dict(CAP=0.90, PRIMARY=0.80, BACKUP_MAX=0.34, DH_MAX=0.60, FLOOR=0.05)
 
 
+def load_prior_workload(cur, season):
+    """canonical_id -> player's actual IP in `season` (notation-corrected, so
+    6.2 reads as 6.667 not 6.2). Used to anchor a returner's projected workload
+    to the role he already held, instead of re-deciding it from quality alone."""
+    cur.execute("""
+        WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
+        SELECT COALESCE(c.cid, p.player_id) AS cid,
+               SUM(FLOOR(p.innings_pitched)
+                   + (p.innings_pitched - FLOOR(p.innings_pitched)) * 10/3.0) AS ip
+        FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
+        WHERE p.season = %s GROUP BY 1
+    """, (season,))
+    return {r["cid"]: float(r["ip"] or 0) for r in cur.fetchall()}
+
+
 def allocate_hitter_pa(rows, workload):
     """Distribute each team's PA so the team total equals its LEVEL AVERAGE,
     split by depth-chart playing-time share and capped at the level's realistic
@@ -561,12 +586,18 @@ def allocate_hitter_pa(rows, workload):
             if not pg:
                 toks = [t.strip() for t in (r.get("pos") or "").upper().split("/") if t.strip()]
                 pg = {t: 1 for t in toks}
-            players.append({"r": r, "woba": r["proj"].get("wOBA", 0) or 0, "games": pg})
+            inc = bool(r.get("is_incoming"))
+            players.append({"r": r, "woba": r["proj"].get("wOBA", 0) or 0, "games": pg,
+                            # transfers' prior games count for less when claiming a
+                            # job (NWAC reps != ready to start at the new level) and
+                            # they must be clearly better to take a returner's at-bats.
+                            "gmult": TRANS_PA_GAMES_MULT if inc else 1.0,
+                            "wmult": TRANS_PA_WOBA_MULT if inc else 1.0})
         if not players:
             continue
-        cg = lambda p, s: sum(p["games"].get(x, 0) for x in _SLOT_SRC[s])
+        cg = lambda p, s: sum(p["games"].get(x, 0) for x in _SLOT_SRC[s]) * p["gmult"]
         primary, claimed = {}, {}
-        claims = sorted(((p["games"].get(s, 0), p["woba"], i, s)
+        claims = sorted(((p["games"].get(s, 0) * p["gmult"], p["woba"] * p["wmult"], i, s)
                          for i, p in enumerate(players) for s in _FIELD_SLOTS if p["games"].get(s, 0) > 0),
                         reverse=True)
         for _, _, i, s in claims:
@@ -584,7 +615,7 @@ def allocate_hitter_pa(rows, workload):
         for s in _FIELD_SLOTS:
             rem = 1.0 - (alloc[claimed[s]] if s in claimed else 0.0)
             backups = sorted((k for k, p in enumerate(players) if primary.get(k) != s and cg(p, s) > 0 and cap[k] > 1e-6),
-                             key=lambda k: (cg(players[k], s), players[k]["woba"]), reverse=True)
+                             key=lambda k: (cg(players[k], s), players[k]["woba"] * players[k]["wmult"]), reverse=True)
             for k in backups:
                 if rem <= 1e-6:
                     break
@@ -592,7 +623,7 @@ def allocate_hitter_pa(rows, workload):
                 if t > 0:
                     alloc[k] += t; cap[k] -= t; rem -= t
         dh = 1.0
-        for k in sorted(range(len(players)), key=lambda k: -players[k]["woba"]):
+        for k in sorted(range(len(players)), key=lambda k: -players[k]["woba"] * players[k]["wmult"]):
             if dh <= 1e-6:
                 break
             t = min(cap[k], dh, _DC["DH_MAX"])
@@ -612,10 +643,13 @@ def allocate_hitter_pa(rows, workload):
             r["proj"]["PT"] = pa
 
 
-def allocate_pitcher_ip(rows, workload):
-    """Distribute each team's innings so the staff total equals its LEVEL AVERAGE,
-    split by quality + strike-throwing durability (shaped like a real staff: an ace
-    ~80-90 IP down to mop-up), capped at the level's realistic individual max."""
+def allocate_pitcher_ip(rows, workload, prior_ip):
+    """Distribute each team's innings so the staff total equals its LEVEL AVERAGE.
+    Returners are ANCHORED to the role they actually held in 2026 (a returning ace
+    keeps ~his innings, and a good returner is never weighted below last year);
+    incoming transfers are judged on talent but DISCOUNTED, so they compete for the
+    leftover innings a returning staff needs filled rather than displacing proven
+    returners. Each arm is capped at the level's realistic individual max."""
     by_team = {}
     for r in rows:
         if r["side"] == "pit":
@@ -625,19 +659,30 @@ def allocate_pitcher_ip(rows, workload):
         wl = workload.get(lvl)
         if not wl:
             continue
-        ipbf = wl["ip_per_bf"]; shape = wl["ip_shape"]
-        # rank by quality (-ERA via sort_val) + strike-throwing durability
+        ipbf = wl["ip_per_bf"]; shape = wl["ip_shape"]; cap = wl["ip_cap"]; total = wl["ip"]
+        # quality score (-ERA via sort_val) + strike-throwing durability
         qz = _zscores([r["sort_val"] for r in team_rows])
         sz = _zscores([(r["proj"].get("p_strike") or 0.62) for r in team_rows])
         score = qz + 0.4 * sz
-        order = list(np.argsort(score))          # ascending; best last
-        n = len(team_rows)
-        # weight each arm by the actual IP-distribution value at his staff rank
-        weights = [0.0] * n
-        for rank, gi in enumerate(order):
-            pctile = (rank + 0.5) / n            # 0=worst .. ~1=ace
-            weights[gi] = float(np.quantile(shape, pctile))
-        ips = _waterfill(weights, wl["ip"], wl["ip_cap"])
+        weights = [0.0] * len(team_rows)
+        for i, (r, z) in enumerate(zip(team_rows, score)):
+            # innings the staff shape implies for an arm of this projected talent
+            pct = float(min(0.97, max(0.03, 0.5 + 0.5 * np.tanh(0.9 * z))))
+            shape_ip = float(np.quantile(shape, pct))
+            if r.get("is_incoming"):
+                # transfer: talent-ranked but discounted -> fills team need, doesn't
+                # vacuum a returner's load.
+                weights[i] = TRANS_IP_DISCOUNT * shape_ip
+            else:
+                pi = prior_ip.get(r["canonical_id"], 0.0)
+                if pi >= 15:                       # had a real role in 2026 -> anchor it
+                    w = pi
+                    if z > 0:                      # good returners flex UP with quality,
+                        w = pi * (1.0 + 0.12 * np.tanh(z))   # never below last year
+                    weights[i] = max(w, 0.5 * shape_ip)
+                else:                               # limited/no prior role: talent-based
+                    weights[i] = shape_ip
+        ips = _waterfill(weights, total, cap)
         for k, r in enumerate(team_rows):
             ip = ips[k]
             if r["proj"].get("insufficient"):
@@ -1176,9 +1221,11 @@ def main():
                              "sort_val": round(float(sort_val), 5), "proj": line})
 
     with get_connection() as conn:
-        workload = team_workload(conn.cursor())   # per-level team PA/IP + caps
+        cur = conn.cursor()
+        workload = team_workload(cur)             # per-level team PA/IP + caps
+        prior_ip = load_prior_workload(cur, TARGET - 1)   # returner 2026 innings
     allocate_hitter_pa(rows, workload)
-    allocate_pitcher_ip(rows, workload)
+    allocate_pitcher_ip(rows, workload, prior_ip)
     expand_to_achievable(rows, workload)
     add_breakout(rows)
     add_war(rows, pos_fracs)
