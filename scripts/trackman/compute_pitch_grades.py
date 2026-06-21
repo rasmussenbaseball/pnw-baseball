@@ -29,6 +29,7 @@ Usage:
 """
 import math
 import sys
+from statistics import NormalDist
 
 import numpy as np
 
@@ -55,7 +56,12 @@ FAMILY = {
 FEATURES = ["velo", "ivb", "hb_abs", "spin", "extension", "est_vaa", "rel_side_abs",
             "velo_sep", "ivb_sep", "mov_sep"]
 FB_TYPES = {"Four Seam", "Sinker", "Cutter"}
-SHRINK_TARGET = 0.25     # cv_r at/above which a pitch type earns full grade spread
+# cv_r at/above which a pitch type earns FULL grade spread. Set low so every
+# type with real (CV-positive) signal gets the same spread — that keeps the
+# cross-type leaderboard fair (no type dominates the top just because its model
+# happened to validate a bit higher). Only near-dead or tiny-sample types
+# compress (the latter via the n/60 reliability factor below).
+SHRINK_TARGET = 0.12
 
 
 def estimate_vaa(velo, ext, rel_height, ivb):
@@ -260,18 +266,20 @@ def _run(conn):
         wtxt = " ".join(f"{short.get(f, f)}{c:+.2f}" for f, c in top)
         print(f"{pt:<11} {ntr:>5} {tname:>7} {lam:>6.0f} {cv_r:>6.3f} {shrink[pt]:>5.2f}  {wtxt}")
 
-    # Grade = predictor standardized within pitch type -> mean 100, sd 25, scaled
-    # by the type's CV confidence (low cv_r collapses toward 100), clamped to a
-    # sane Stuff+-style range.
+    # Grade = predictor RANK-normalized within pitch type to an identical bell
+    # curve (mean 100, sd 25), then scaled by the type's CV confidence. Using the
+    # rank (not raw mean/sd) gives every pitch type the SAME grade distribution —
+    # no type's skew or variance can flood the cross-type leaderboard — while the
+    # confidence shrink keeps low-signal types (curveball) from promoting noise.
+    nd = NormalDist()
     for pt in types:
         sub = [r for r in gradeable if r["pitch_type"] == pt]
-        w = np.array([r["pitch_count"] for r in sub], float)
-        preds = np.array([r["_pred"] for r in sub], float)
-        m, s = wmean(preds, w), wstd(preds, w)
-        for r in sub:
-            z = (r["_pred"] - m) / s
-            g = GRADE_MEAN + GRADE_SD * shrink[pt] * z
-            r["pitch_grade"] = round(max(20.0, min(180.0, g)), 1)
+        n = len(sub)
+        order = sorted(range(n), key=lambda i: sub[i]["_pred"])
+        for rank, i in enumerate(order):
+            pctl = min(0.9995, max(0.0005, (rank + 0.5) / n))
+            g = GRADE_MEAN + GRADE_SD * shrink[pt] * nd.inv_cdf(pctl)
+            sub[i]["pitch_grade"] = round(max(20.0, min(180.0, g)), 1)
 
     # ---- Validation ----
     allr = gradeable
