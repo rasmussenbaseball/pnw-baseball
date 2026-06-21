@@ -840,7 +840,18 @@ function StatSection({ title, rows, boxColumns, presets, pbpColumns, defaultSort
     if (isPbp && !pbpLoading && !pbpAvailable) setView('Standard')
   }, [isPbp, pbpLoading, pbpAvailable])
 
-  const data = isPbp ? pbpRows : rows
+  // The PBP leaderboard rows don't carry jersey numbers; the box rows do.
+  // Map them on by player_id so the "#" column shows jerseys in PBP view too.
+  const jerseyById = useMemo(() => {
+    const m = {}
+    for (const r of rows) m[r.player_id] = r.jersey_number
+    return m
+  }, [rows])
+  const pbpWithJersey = useMemo(
+    () => (pbpRows || []).map(r => ({ ...r, jersey_number: jerseyById[r.player_id] })),
+    [pbpRows, jerseyById])
+
+  const data = isPbp ? pbpWithJersey : rows
   const columns = isPbp ? pbpColumns : boxColumns
   const visible = isPbp ? pbpColumns.map(c => c.key) : presets[view]
 
