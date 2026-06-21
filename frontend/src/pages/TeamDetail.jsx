@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers, useTeamInfoGraphic } from '../hooks/useApi'
+import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers, useTeamInfoGraphic, useBattingPbpLeaderboard, usePitchingPbpLeaderboard } from '../hooks/useApi'
 import TeamAdvanced from '../components/TeamAdvanced'
 import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
@@ -9,12 +9,16 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
 import SeasonSelect from '../components/SeasonSelect'
 import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
-import { BATTING_COLUMNS, PITCHING_COLUMNS,
+import { BATTING_COLUMNS, PITCHING_COLUMNS, BATTING_PBP_COLUMNS, PITCHING_PBP_COLUMNS,
          formatStat, divisionBadgeClass, ipSum } from '../utils/stats'
 
 // Team-specific columns: strip out team_short and division_level since we're on a team page
 const TEAM_BAT_COLUMNS = BATTING_COLUMNS.filter(c => c.key !== 'team_short' && c.key !== 'division_level')
 const TEAM_PIT_COLUMNS = PITCHING_COLUMNS.filter(c => c.key !== 'team_short' && c.key !== 'division_level')
+// PBP (play-by-play) views — same column sets as the PBP leaderboards, minus
+// the team/level columns that are redundant on a single team's page.
+const TEAM_BAT_PBP_COLUMNS = BATTING_PBP_COLUMNS.filter(c => c.key !== 'team_short' && c.key !== 'division_level')
+const TEAM_PIT_PBP_COLUMNS = PITCHING_PBP_COLUMNS.filter(c => c.key !== 'team_short' && c.key !== 'division_level')
 
 const TEAM_BATTING_PRESETS = {
   'Standard': ['games', 'plate_appearances', 'at_bats', 'hits', 'doubles', 'triples', 'home_runs', 'runs', 'rbi', 'walks', 'strikeouts', 'stolen_bases', 'batting_avg', 'on_base_pct', 'slugging_pct', 'ops'],
@@ -44,30 +48,9 @@ export default function TeamDetail() {
   const { data: futureData } = useTeamFutureGames(teamId, 15)
   const { data: ig } = useTeamInfoGraphic(teamId, season)
 
-  const [batPreset, setBatPreset] = useState('Standard')
-  const [pitPreset, setPitPreset] = useState('Standard')
-
-  const [batSort, setBatSort] = useState('plate_appearances')
-  const [batSortDir, setBatSortDir] = useState('desc')
-  const [pitSort, setPitSort] = useState('innings_pitched')
-  const [pitSortDir, setPitSortDir] = useState('desc')
-
   const team = result?.team || history?.team
   const batting = result?.batting || []
   const pitching = result?.pitching || []
-
-  // Client-side sort since the data comes pre-loaded for one team
-  const sortedBatting = [...batting].sort((a, b) => {
-    const av = a[batSort] ?? -Infinity
-    const bv = b[batSort] ?? -Infinity
-    return batSortDir === 'asc' ? av - bv : bv - av
-  })
-
-  const sortedPitching = [...pitching].sort((a, b) => {
-    const av = a[pitSort] ?? -Infinity
-    const bv = b[pitSort] ?? -Infinity
-    return pitSortDir === 'asc' ? av - bv : bv - av
-  })
 
   // Treat data as "stale" while the just-clicked team is still
   // loading but `team` still holds the previously loaded team. Without
@@ -140,20 +123,20 @@ export default function TeamDetail() {
       {/* Current Season Tab */}
       {activeTab === 'season' && (
         <div>
-          {/* Summary row */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
-            <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
-              <div className="text-xs sm:text-sm text-gray-500">{season} Season</div>
+          {/* Season snapshot */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 sm:mb-6">
+            <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40">
+              <div className="text-sm font-bold text-nw-teal dark:text-gray-100 uppercase tracking-wide">{season} Snapshot</div>
               <SeasonSelect value={season} onChange={setSeason} label="Season" id="team-season" />
             </div>
-            <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm">
-              <SummaryCell label="Batters" value={batting.length} />
-              <SummaryCell label="Pitchers" value={pitching.length} />
-              <SummaryCell label="Team PA" value={teamPA.toLocaleString()} />
-              <SummaryCell label="Team IP" value={teamIP.toFixed(1)} />
-              <SummaryCell label="Total oWAR" value={teamOWAR.toFixed(1)} highlight />
-              <SummaryCell label="Total pWAR" value={teamPWAR.toFixed(1)} highlight />
-              <SummaryCell label="Total WAR" value={(teamOWAR + teamPWAR).toFixed(1)} highlight />
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 divide-x divide-y sm:divide-y-0 divide-gray-100 dark:divide-gray-700">
+              <SnapCell label="Batters" value={batting.length} />
+              <SnapCell label="Pitchers" value={pitching.length} />
+              <SnapCell label="Team PA" value={teamPA.toLocaleString()} />
+              <SnapCell label="Team IP" value={teamIP.toFixed(1)} />
+              <SnapCell label="oWAR" value={teamOWAR.toFixed(1)} accent />
+              <SnapCell label="pWAR" value={teamPWAR.toFixed(1)} accent />
+              <SnapCell label="Total WAR" value={(teamOWAR + teamPWAR).toFixed(1)} accent strong />
             </div>
           </div>
 
@@ -199,59 +182,21 @@ export default function TeamDetail() {
             </div>
           )}
 
-          {/* Batting table */}
-          <div className="mb-6 sm:mb-8">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">Batting</h2>
-              <ExportCSVButton
-                data={sortedBatting}
-                columns={TEAM_BAT_COLUMNS}
-                filename={`nwbb_${teamId}_batting_${season}`}
-              />
-            </div>
-            <StatPresetBar
-              presets={TEAM_BATTING_PRESETS}
-              activePreset={batPreset}
-              onSelect={setBatPreset}
-            />
-            <StatsTable
-              data={sortedBatting}
-              columns={TEAM_BAT_COLUMNS}
-              visibleColumns={TEAM_BATTING_PRESETS[batPreset]}
-              sortBy={batSort}
-              sortDir={batSortDir}
-              onSort={(key, dir) => { setBatSort(key); setBatSortDir(dir) }}
-              loading={false}
-              offset={0}
-            />
-          </div>
+          {/* Batting */}
+          <StatSection
+            title="Batting" side="bat" teamId={teamId} season={season} rows={batting}
+            boxColumns={TEAM_BAT_COLUMNS} presets={TEAM_BATTING_PRESETS}
+            pbpColumns={TEAM_BAT_PBP_COLUMNS} defaultSort="plate_appearances"
+            csvName={`nwbb_${teamId}_batting_${season}`}
+          />
 
-          {/* Pitching table */}
-          <div className="mb-8">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">Pitching</h2>
-              <ExportCSVButton
-                data={sortedPitching}
-                columns={TEAM_PIT_COLUMNS}
-                filename={`nwbb_${teamId}_pitching_${season}`}
-              />
-            </div>
-            <StatPresetBar
-              presets={TEAM_PITCHING_PRESETS}
-              activePreset={pitPreset}
-              onSelect={setPitPreset}
-            />
-            <StatsTable
-              data={sortedPitching}
-              columns={TEAM_PIT_COLUMNS}
-              visibleColumns={TEAM_PITCHING_PRESETS[pitPreset]}
-              sortBy={pitSort}
-              sortDir={pitSortDir}
-              onSort={(key, dir) => { setPitSort(key); setPitSortDir(dir) }}
-              loading={false}
-              offset={0}
-            />
-          </div>
+          {/* Pitching */}
+          <StatSection
+            title="Pitching" side="pit" teamId={teamId} season={season} rows={pitching}
+            boxColumns={TEAM_PIT_COLUMNS} presets={TEAM_PITCHING_PRESETS}
+            pbpColumns={TEAM_PIT_PBP_COLUMNS} defaultSort="innings_pitched"
+            csvName={`nwbb_${teamId}_pitching_${season}`}
+          />
 
           {/* Incoming class: transfers (JUCO/portal) + HS commits, unified */}
           <IncomingClassSection teamId={teamId} />
@@ -502,8 +447,8 @@ function TeamHistoryTab({ history, loading, teamId }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
-                <th className="text-left py-2 px-2">Year</th>
+              <tr className="bg-nw-teal/10 dark:bg-gray-900/50 text-[11px] text-nw-teal dark:text-gray-300 uppercase tracking-wide">
+                <th className="text-left py-2 px-2 rounded-l-lg">Year</th>
                 <th className="text-center py-2 px-2">Record</th>
                 <th className="text-center py-2 px-2">Win%</th>
                 <th className="text-center py-2 px-2">Conf</th>
@@ -519,13 +464,13 @@ function TeamHistoryTab({ history, loading, teamId }) {
               </tr>
             </thead>
             <tbody>
-              {seasons.map((s) => {
+              {seasons.map((s, i) => {
                 const w = s.wins || 0
                 const l = s.losses || 0
                 const winPct = w + l > 0 ? (w / (w + l)).toFixed(3) : '-'
                 const diff = s.run_differential || 0
                 return (
-                  <tr key={s.season} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:bg-gray-900/40">
+                  <tr key={s.season} className={`border-b border-gray-100 dark:border-gray-700/60 hover:bg-nw-teal/5 dark:hover:bg-gray-700/40 transition-colors ${i % 2 ? 'bg-gray-50/50 dark:bg-gray-900/20' : ''}`}>
                     <td className="py-2 px-2 font-semibold text-nw-teal dark:text-gray-100">{s.season}</td>
                     <td className="text-center py-2 px-2">
                       {w}-{l}{s.ties ? `-${s.ties}` : ''}
@@ -580,7 +525,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
           const pitLeaders = ['ERA', 'K', 'FIP', 'W', 'SV', 'pWAR'].filter(k => leaders[k])
 
           return (
-            <div key={s.season} className="mb-5 last:mb-0">
+            <div key={s.season} className="mb-3 last:mb-0 rounded-lg border border-gray-100 dark:border-gray-700 p-3 bg-gray-50/40 dark:bg-gray-900/20">
               <h3 className="text-sm font-bold text-nw-teal dark:text-gray-100 mb-2 flex items-center gap-2">
                 {s.season}
                 <span className="text-xs font-normal text-gray-400">
@@ -603,7 +548,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
                           <Link
                             key={cat}
                             to={`/player/${l.player_id}`}
-                            className="text-xs hover:bg-gray-50 dark:bg-gray-900/40 rounded px-1"
+                            className="text-xs inline-flex items-center gap-1 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-0.5 hover:border-nw-teal/60 transition-colors"
                           >
                             <span className="text-gray-500">{cat}:</span>{' '}
                             <span className="font-semibold text-nw-teal dark:text-gray-100">{val}</span>{' '}
@@ -628,7 +573,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
                           <Link
                             key={cat}
                             to={`/player/${l.player_id}`}
-                            className="text-xs hover:bg-gray-50 dark:bg-gray-900/40 rounded px-1"
+                            className="text-xs inline-flex items-center gap-1 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-0.5 hover:border-nw-teal/60 transition-colors"
                           >
                             <span className="text-gray-500">{cat}:</span>{' '}
                             <span className="font-semibold text-nw-teal dark:text-gray-100">{val}</span>{' '}
@@ -751,8 +696,8 @@ function SingleSeasonRecords({ leaders, type }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {categories.map((cat) => (
-        <div key={cat} className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
-          <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{cat}</div>
+        <div key={cat} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 p-3 hover:shadow-sm transition-shadow">
+          <div className="text-[11px] font-bold text-nw-teal dark:text-nw-teal-light uppercase tracking-wider mb-2 pb-1.5 border-b border-gray-200 dark:border-gray-700">{cat}</div>
           <div className="space-y-1">
             {leaders[cat].slice(0, 5).map((player, i) => (
               <div key={`${player.player_id}-${player.season}`} className="flex items-center gap-2 text-xs">
@@ -796,8 +741,8 @@ function CareerLeaderboards({ leaders, type }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {categories.map((cat) => (
-        <div key={cat} className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
-          <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">{cat}</div>
+        <div key={cat} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 p-3 hover:shadow-sm transition-shadow">
+          <div className="text-[11px] font-bold text-nw-teal dark:text-nw-teal-light uppercase tracking-wider mb-2 pb-1.5 border-b border-gray-200 dark:border-gray-700">{cat}</div>
           <div className="space-y-1">
             {leaders[cat].slice(0, 5).map((player, i) => {
               const val = cat === 'AVG' ? player.value.toFixed(3)
@@ -836,6 +781,105 @@ function CareerLeaderboards({ leaders, type }) {
 // ============================================================
 // SHARED COMPONENTS
 // ============================================================
+
+// ============================================================
+// SEASON STAT TABLES (Box Score / Play-by-Play toggle)
+// ============================================================
+
+function SnapCell({ label, value, accent = false, strong = false }) {
+  return (
+    <div className="px-3 py-3 text-center">
+      <div className={`text-lg sm:text-xl font-bold tabular-nums ${
+        strong ? 'text-nw-teal-dark dark:text-nw-teal-light'
+          : accent ? 'text-nw-teal dark:text-nw-teal-light' : 'text-gray-900 dark:text-gray-100'}`}>
+        {value}
+      </div>
+      <div className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mt-0.5">{label}</div>
+    </div>
+  )
+}
+
+function ModeToggle({ mode, setMode }) {
+  return (
+    <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-semibold">
+      {[['box', 'Box Score'], ['pbp', 'Play-by-Play']].map(([m, label]) => (
+        <button key={m} onClick={() => setMode(m)}
+          className={`px-3 py-1.5 transition-colors ${mode === m
+            ? 'bg-nw-teal text-white'
+            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function StatSection({ title, side, teamId, season, rows, boxColumns, presets, pbpColumns, defaultSort, csvName }) {
+  const [mode, setMode] = useState('box')
+  const [preset, setPreset] = useState('Standard')
+  const [sortKey, setSortKey] = useState(defaultSort)
+  const [sortDir, setSortDir] = useState('desc')
+  const sorted = useMemo(() => [...rows].sort((a, b) => {
+    const av = a[sortKey] ?? -Infinity, bv = b[sortKey] ?? -Infinity
+    return sortDir === 'asc' ? av - bv : bv - av
+  }), [rows, sortKey, sortDir])
+  return (
+    <div className="mb-6 sm:mb-8">
+      <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">{title}</h2>
+        <div className="flex items-center gap-2">
+          <ModeToggle mode={mode} setMode={setMode} />
+          {mode === 'box' && <ExportCSVButton data={sorted} columns={boxColumns} filename={csvName} />}
+        </div>
+      </div>
+      {mode === 'box' ? (
+        <>
+          <StatPresetBar presets={presets} activePreset={preset} onSelect={setPreset} />
+          <StatsTable data={sorted} columns={boxColumns} visibleColumns={presets[preset]}
+            sortBy={sortKey} sortDir={sortDir}
+            onSort={(k, d) => { setSortKey(k); setSortDir(d) }} loading={false} offset={0} />
+        </>
+      ) : side === 'bat'
+        ? <BatPbpTable teamId={teamId} season={season} columns={pbpColumns} />
+        : <PitPbpTable teamId={teamId} season={season} columns={pbpColumns} />}
+    </div>
+  )
+}
+
+function BatPbpTable({ teamId, season, columns }) {
+  const { data, loading } = useBattingPbpLeaderboard(
+    { season, team_id: Number(teamId), min_pa: 0, limit: 300, sort_by: 'tracked_pa', sort_dir: 'desc' })
+  return <PbpTableInner data={data} loading={loading} columns={columns} />
+}
+
+function PitPbpTable({ teamId, season, columns }) {
+  const { data, loading } = usePitchingPbpLeaderboard(
+    { season, team_id: Number(teamId), min_pa: 0, limit: 300, sort_by: 'tracked_pa', sort_dir: 'desc' })
+  return <PbpTableInner data={data} loading={loading} columns={columns} />
+}
+
+function PbpTableInner({ data, loading, columns }) {
+  const [sortKey, setSortKey] = useState('tracked_pa')
+  const [sortDir, setSortDir] = useState('desc')
+  const rows = data?.data || (Array.isArray(data) ? data : []) || []
+  const sorted = useMemo(() => [...rows].sort((a, b) => {
+    const av = a[sortKey] ?? -Infinity, bv = b[sortKey] ?? -Infinity
+    return sortDir === 'asc' ? av - bv : bv - av
+  }), [rows, sortKey, sortDir])
+  if (!loading && rows.length === 0) {
+    return (
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center text-sm text-gray-400 dark:text-gray-500">
+        No play-by-play data tracked for this team this season yet.
+      </div>
+    )
+  }
+  return (
+    <StatsTable data={sorted} columns={columns} visibleColumns={columns.map(c => c.key)}
+      sortBy={sortKey} sortDir={sortDir}
+      onSort={(k, d) => { setSortKey(k); setSortDir(d) }} loading={loading} offset={0} />
+  )
+}
+
 
 // Modern gradient hero with identity + headline stats pulled from the
 // /teams/{id}/info-graphic payload (record, run diff, pythag, ranks).
@@ -921,129 +965,117 @@ function SummaryCell({ label, value, highlight = false }) {
 }
 
 
+function RankChip({ text, color }) {
+  const cls = color === 'green'
+    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    : 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+  return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${cls}`}>{text}</span>
+}
+
+function PctBar({ label, pct, color }) {
+  return (
+    <div className="mt-3 text-left">
+      <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-1">
+        <span>{label}</span>
+        <span className="font-semibold text-gray-700 dark:text-gray-200">{pct.toFixed(1)}%</span>
+      </div>
+      <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  )
+}
+
+function RankTile({ accent, label, rank, sub, chips = [], children }) {
+  const live = chips.filter(Boolean)
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col bg-gray-50/40 dark:bg-gray-900/30">
+      <div className={`h-1 bg-gradient-to-r ${accent}`} />
+      <div className="p-3 text-center flex-1">
+        <div className="text-3xl font-black text-nw-teal dark:text-gray-100 leading-none">{rank}</div>
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">{label}</div>
+        {sub && <div className="text-[10px] text-gray-400 dark:text-gray-500">{sub}</div>}
+        {live.length > 0 && (
+          <div className="flex justify-center gap-2 mt-2">
+            {live.map(([txt, color], i) => <RankChip key={i} text={txt} color={color} />)}
+          </div>
+        )}
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function RankingsCard({ rankings }) {
   const comp = rankings.composite
   const pear = rankings.sources?.pear
   const cbr = rankings.sources?.cbr
   const divLevel = rankings.division_level
-
-  // Determine total teams in division (use max from sources)
   const totalTeams = Math.max(pear?.total_teams || 0, cbr?.total_teams || 0)
+  const pctColor = (p) => p >= 75 ? '#16a34a' : p >= 50 ? '#ca8a04' : p >= 25 ? '#ea580c' : '#dc2626'
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
-      <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100 mb-4">Rankings</h2>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-        {/* National Rank */}
-        <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4 text-center">
-          <div className="text-3xl font-bold text-nw-teal dark:text-gray-100">
-            #{Math.round(comp.composite_rank)}
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            National Rank ({divLevel})
-          </div>
-          {totalTeams > 0 && (
-            <div className="text-xs text-gray-400">out of {totalTeams} teams</div>
-          )}
-          <div className="flex justify-center gap-3 mt-2">
-            {comp.pear_rank && (
-              <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded">
-                Pear #{comp.pear_rank}
-              </span>
-            )}
-            {comp.cbr_rank && (
-              <span className="text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">
-                CBR #{comp.cbr_rank}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Conference Rank */}
-        <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4 text-center">
-          <div className="text-3xl font-bold text-nw-teal dark:text-gray-100">
-            {rankings.conference_rank ? `#${rankings.conference_rank}` : '-'}
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            Conference Rank
-          </div>
-          {rankings.conference_total && (
-            <div className="text-xs text-gray-400">
-              out of {rankings.conference_total} in {rankings.conference_abbrev || rankings.conference_name}
-            </div>
-          )}
-          {rankings.conference_standings && rankings.conference_standings.length > 0 && (
-            <div className="mt-2 text-left">
-              {rankings.conference_standings.map((t) => (
-                <div
-                  key={t.team_id}
-                  className={`text-xs py-0.5 px-1.5 rounded ${
-                    t.team_id === rankings.team_id
-                      ? 'bg-nw-teal-light/10 text-nw-teal-light font-semibold'
-                      : 'text-gray-500'
-                  }`}
-                >
-                  {t.rank}. {t.short_name}{' '}
-                  <span className="text-gray-400">
-                    ({t.conf_wins + t.conf_losses > 0
-                      ? `${t.conf_wins}-${t.conf_losses}`
-                      : `${t.wins}-${t.losses}`})
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Strength of Schedule */}
-        <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4 text-center">
-          <div className="text-3xl font-bold text-nw-teal dark:text-gray-100">
-            {comp.composite_sos_rank ? `#${Math.round(comp.composite_sos_rank)}` : '-'}
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            Strength of Schedule
-          </div>
-          {totalTeams > 0 && comp.composite_sos_rank && (
-            <div className="text-xs text-gray-400">out of {totalTeams} teams</div>
-          )}
-          <div className="flex justify-center gap-3 mt-2">
-            {pear?.sos_rank && (
-              <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded">
-                Pear #{pear.sos_rank}
-              </span>
-            )}
-            {cbr?.sos_rank && (
-              <span className="text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">
-                CBR #{cbr.sos_rank}
-              </span>
-            )}
-          </div>
-        </div>
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 sm:mb-6">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 flex items-baseline justify-between gap-2">
+        <div className="text-sm font-bold text-nw-teal dark:text-gray-100 uppercase tracking-wide">Rankings</div>
+        <StatsLastUpdated />
       </div>
+      <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* National */}
+        <RankTile
+          accent="from-nw-teal to-nw-teal-dark"
+          label={`National Rank · ${divLevel}`}
+          rank={comp.composite_rank != null ? `#${Math.round(comp.composite_rank)}` : '-'}
+          sub={totalTeams ? `of ${totalTeams} teams` : ''}
+          chips={[comp.pear_rank && [`Pear #${comp.pear_rank}`, 'green'],
+                  comp.cbr_rank && [`CBR #${comp.cbr_rank}`, 'purple']]}
+        >
+          {comp.national_percentile != null && (
+            <PctBar label="National percentile" pct={comp.national_percentile} color={pctColor(comp.national_percentile)} />
+          )}
+        </RankTile>
 
-      {/* National Percentile bar */}
-      {comp.national_percentile != null && (
-        <div className="mt-2">
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-            <span>National Percentile ({divLevel})</span>
-            <span className="font-semibold text-nw-teal dark:text-gray-100">{comp.national_percentile.toFixed(1)}%</span>
-          </div>
-          <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${comp.national_percentile}%`,
-                backgroundColor: comp.national_percentile >= 75 ? '#16a34a'
-                  : comp.national_percentile >= 50 ? '#ca8a04'
-                  : comp.national_percentile >= 25 ? '#ea580c' : '#dc2626'
-              }}
-            />
+        {/* Conference + mini standings */}
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50/40 dark:bg-gray-900/30">
+          <div className="h-1 bg-gradient-to-r from-indigo-500 to-indigo-700" />
+          <div className="p-3">
+            <div className="text-center">
+              <div className="text-3xl font-black text-nw-teal dark:text-gray-100 leading-none">
+                {rankings.conference_rank ? `#${rankings.conference_rank}` : '-'}
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                Conference Rank{rankings.conference_total ? ` · ${rankings.conference_abbrev || rankings.conference_name}` : ''}
+              </div>
+            </div>
+            {rankings.conference_standings && rankings.conference_standings.length > 0 && (
+              <div className="mt-2.5 space-y-0.5">
+                {rankings.conference_standings.map((t) => (
+                  <div key={t.team_id}
+                    className={`flex items-center justify-between text-[11px] rounded px-1.5 py-0.5 ${
+                      t.team_id === rankings.team_id
+                        ? 'bg-nw-teal/10 text-nw-teal dark:text-nw-teal-light font-semibold border-l-2 border-nw-teal'
+                        : 'text-gray-500 dark:text-gray-400'}`}>
+                    <span className="truncate">{t.rank}. {t.short_name}</span>
+                    <span className="text-gray-400 tabular-nums shrink-0 ml-2">
+                      {t.conf_wins + t.conf_losses > 0 ? `${t.conf_wins}-${t.conf_losses}` : `${t.wins}-${t.losses}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      <StatsLastUpdated className="mt-4" />
+        {/* Strength of schedule */}
+        <RankTile
+          accent="from-amber-400 to-amber-600"
+          label="Strength of Schedule"
+          rank={comp.composite_sos_rank ? `#${Math.round(comp.composite_sos_rank)}` : '-'}
+          sub={totalTeams && comp.composite_sos_rank ? `of ${totalTeams} teams` : ''}
+          chips={[pear?.sos_rank && [`Pear #${pear.sos_rank}`, 'green'],
+                  cbr?.sos_rank && [`CBR #${cbr.sos_rank}`, 'purple']]}
+        />
+      </div>
     </div>
   )
 }
