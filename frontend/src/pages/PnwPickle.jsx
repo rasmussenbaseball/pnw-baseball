@@ -307,7 +307,7 @@ export default function PnwPickle() {
           <button
             type="button"
             onClick={playAgain}
-            className="px-8 py-2.5 bg-pnw-green text-white font-semibold rounded-lg hover:bg-pnw-forest transition-colors"
+            className="px-8 py-2.5 bg-green-600 text-white font-bold rounded-xl shadow-[2px_3px_0_#15400f] hover:bg-green-700 active:translate-y-px transition-colors"
           >
             ↩ Play Again
           </button>
@@ -337,7 +337,7 @@ function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggle
       </p>
 
       <section className="mb-6">
-        <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+        <h2 className="text-sm font-bold text-green-800 dark:text-green-300 uppercase tracking-wide mb-2">
           1. Difficulty
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -348,8 +348,8 @@ function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggle
               onClick={() => setDifficulty(d.id)}
               className={`px-3 py-2.5 rounded-lg border-2 text-left transition-colors ${
                 difficulty === d.id
-                  ? 'bg-pnw-forest text-white border-pnw-forest shadow-md'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-nw-teal'
+                  ? 'bg-green-700 text-white border-green-800 shadow-[2px_3px_0_#15400f]'
+                  : 'bg-white dark:bg-gray-800 border-green-200 dark:border-green-900/50 text-green-900 dark:text-green-200 hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
               }`}
             >
               <div className="font-semibold text-sm">{d.label}</div>
@@ -362,7 +362,7 @@ function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggle
       </section>
 
       <section className="mb-6">
-        <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+        <h2 className="text-sm font-bold text-green-800 dark:text-green-300 uppercase tracking-wide mb-2">
           2. Player pool
         </h2>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -373,8 +373,8 @@ function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggle
               onClick={() => setLevel(l.id)}
               className={`px-3 py-2.5 rounded-lg border-2 text-sm font-semibold transition-colors ${
                 level === l.id
-                  ? 'bg-pnw-forest text-white border-pnw-forest shadow-md'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-nw-teal'
+                  ? 'bg-green-700 text-white border-green-800 shadow-[2px_3px_0_#15400f]'
+                  : 'bg-white dark:bg-gray-800 border-green-200 dark:border-green-900/50 text-green-900 dark:text-green-200 hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
               }`}
             >
               {l.label}
@@ -385,13 +385,13 @@ function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggle
 
       <section className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          <h2 className="text-sm font-bold text-green-800 dark:text-green-300 uppercase tracking-wide">
             3. Seasons
           </h2>
           <button
             type="button"
             onClick={() => setYears(allYears ? new Set() : new Set(PICKLE_SEASONS))}
-            className="text-xs font-semibold text-nw-teal hover:underline"
+            className="text-xs font-bold text-green-700 dark:text-green-400 hover:underline"
           >
             {allYears ? 'Clear all' : 'Select all'}
           </button>
@@ -406,8 +406,8 @@ function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggle
                 onClick={() => toggleYear(y)}
                 className={`px-3.5 py-2 rounded-lg border-2 text-sm font-semibold transition-colors ${
                   on
-                    ? 'bg-nw-teal/10 border-nw-teal text-pnw-slate dark:text-gray-100'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-nw-teal'
+                    ? 'bg-green-600 text-white border-green-700 shadow-[1px_2px_0_#15400f]'
+                    : 'bg-white dark:bg-gray-800 border-green-200 dark:border-green-900/50 text-green-800 dark:text-green-300 hover:border-green-500'
                 }`}
               >
                 {y}
@@ -427,7 +427,7 @@ function SetupScreen({ level, setLevel, difficulty, setDifficulty, years, toggle
         type="button"
         onClick={startGame}
         disabled={loading}
-        className="px-6 py-2.5 bg-pnw-green text-white font-semibold rounded-lg hover:bg-pnw-forest disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+        className="px-6 py-2.5 bg-green-600 text-white font-bold rounded-xl shadow-[2px_3px_0_#15400f] hover:bg-green-700 active:translate-y-px disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
       >
         {loading ? 'Loading…' : '🥒 Start Game'}
       </button>
@@ -471,7 +471,7 @@ function GuessInput({ pool, guessedUids, onPick }) {
         onChange={(e) => { setQ(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
         placeholder="Type a player's name to guess…"
-        className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-nw-teal/30"
+        className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
       />
       {open && matches.length > 0 && (
         <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-72 overflow-y-auto">
@@ -480,7 +480,7 @@ function GuessInput({ pool, guessedUids, onPick }) {
               key={uid(p)}
               type="button"
               onClick={() => pick(p)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-nw-teal/10 border-b border-gray-100 dark:border-gray-700 last:border-0"
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-green-100 dark:hover:bg-green-900/30 border-b border-gray-100 dark:border-gray-700 last:border-0"
             >
               {p.logo && (
                 <img src={p.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0"
