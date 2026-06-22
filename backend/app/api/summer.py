@@ -3704,6 +3704,17 @@ def wcl_portal_players(
             LEFT JOIN summer_batting_stats bs ON bs.player_id = sp.id AND bs.season = %s AND bs.team_id = sp.team_id
             LEFT JOIN summer_pitching_stats ps ON ps.player_id = sp.id AND ps.season = %s AND ps.team_id = sp.team_id
             WHERE sp.id = ANY(%s)
+              -- Drop players who have committed: a curated destination school
+              -- (set via the WCL Players editor, e.g. Saelens -> Utah Valley) or
+              -- a linked spring player flagged committed. Keeps the portal to
+              -- genuinely-available players only.
+              AND sp.assigned_school IS NULL
+              AND sp.assigned_school_team_id IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM summer_player_links spl2
+                  JOIN players p2 ON p2.id = spl2.spring_player_id
+                  WHERE spl2.summer_player_id = sp.id AND COALESCE(p2.is_committed, 0) = 1
+              )
         """
         params: list = [season, season, season, season, ids]
         if position:
@@ -3794,6 +3805,13 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
             LEFT JOIN teams lt ON lt.id = spr.team_id
             LEFT JOIN summer_batting_stats bs ON bs.player_id = sp.id AND bs.season = %s AND bs.team_id = sp.team_id
             LEFT JOIN summer_pitching_stats ps ON ps.player_id = sp.id AND ps.season = %s AND ps.team_id = sp.team_id
+            -- Exclude committed players (mirrors the full tracker filter).
+            WHERE sp.assigned_school IS NULL AND sp.assigned_school_team_id IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM summer_player_links spl2
+                  JOIN players p2 ON p2.id = spl2.spring_player_id
+                  WHERE spl2.summer_player_id = sp.id AND COALESCE(p2.is_committed, 0) = 1
+              )
             """,
             (season, season, season, season),
         )
