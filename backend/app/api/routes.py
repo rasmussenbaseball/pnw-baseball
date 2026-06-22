@@ -9216,17 +9216,23 @@ def _cmp_fielding(rows, career):
         if pos in ("", "ALL", "TOT", "TOTAL"):
             continue
         agg = by_pos.setdefault(pos, {"position": pos, "games": 0, "innings": 0.0,
-                                      "putouts": 0, "assists": 0, "errors": 0, "double_plays": 0})
+                                      "putouts": 0, "assists": 0, "errors": 0, "double_plays": 0,
+                                      "caught_stealing_by": 0, "stolen_bases_against": 0, "passed_balls": 0})
         agg["games"] += r.get("games") or 0
         agg["innings"] += float(r.get("innings") or 0)
         agg["putouts"] += r.get("putouts") or 0
         agg["assists"] += r.get("assists") or 0
         agg["errors"] += r.get("errors") or 0
         agg["double_plays"] += r.get("double_plays") or 0
+        agg["caught_stealing_by"] += r.get("caught_stealing_by") or 0
+        agg["stolen_bases_against"] += r.get("stolen_bases_against") or 0
+        agg["passed_balls"] += r.get("passed_balls") or 0
     out = []
     for agg in by_pos.values():
         tc = agg["putouts"] + agg["assists"] + agg["errors"]
         agg["fielding_pct"] = round((agg["putouts"] + agg["assists"]) / tc, 3) if tc else None
+        cs, sba = agg["caught_stealing_by"], agg["stolen_bases_against"]
+        agg["cs_pct"] = round(cs / (cs + sba), 3) if (cs + sba) else None
         agg["innings"] = round(agg["innings"], 1)
         out.append(agg)
     out.sort(key=lambda x: -x["innings"])

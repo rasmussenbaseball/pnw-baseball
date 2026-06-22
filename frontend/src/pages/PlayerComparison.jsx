@@ -48,6 +48,13 @@ const FLD_ROWS = [
   ['errors', 'E', 'int', true],
   ['double_plays', 'DP', 'int', false],
 ]
+// Catcher-only rows (shown when any selected player has caught).
+const CATCHER_ROWS = [
+  ['caught_stealing_by', 'CS', 'int', false],
+  ['stolen_bases_against', 'SBA', 'int', true],
+  ['cs_pct', 'CS%', 'pct', false],
+  ['passed_balls', 'PB', 'int', true],
+]
 // Play-by-play discipline (season only). 5th element = neutral (no leader/color
 // for descriptive rates that aren't clearly better/worse).
 const PBP_HIT_ROWS = [
@@ -103,13 +110,19 @@ export default function PlayerComparison() {
 
   // Per-player overall fielding totals (sum across positions), for comparable rows.
   const fielding = useMemo(() => players.map(p => {
-    const t = { putouts: 0, assists: 0, errors: 0, double_plays: 0, has: false }
+    const t = { putouts: 0, assists: 0, errors: 0, double_plays: 0,
+                caught_stealing_by: 0, stolen_bases_against: 0, passed_balls: 0, has: false }
     for (const f of (p.fielding || [])) {
       t.putouts += f.putouts || 0; t.assists += f.assists || 0
-      t.errors += f.errors || 0; t.double_plays += f.double_plays || 0; t.has = true
+      t.errors += f.errors || 0; t.double_plays += f.double_plays || 0
+      t.caught_stealing_by += f.caught_stealing_by || 0
+      t.stolen_bases_against += f.stolen_bases_against || 0
+      t.passed_balls += f.passed_balls || 0; t.has = true
     }
     const tc = t.putouts + t.assists + t.errors
     t.fielding_pct = tc ? (t.putouts + t.assists) / tc : null
+    const csa = t.caught_stealing_by + t.stolen_bases_against
+    t.cs_pct = csa ? t.caught_stealing_by / csa : null
     return t.has ? t : {}
   }), [players])
 
@@ -165,6 +178,7 @@ export default function PlayerComparison() {
   const anyBatting = players.some(p => p.batting)
   const anyPitching = players.some(p => p.pitching)
   const anyFielding = fielding.some(f => f.has)
+  const anyCatcher = fielding.some(f => (f.caught_stealing_by || 0) + (f.stolen_bases_against || 0) + (f.passed_balls || 0) > 0)
   const anyBattingPbp = mode === 'season' && players.some(p => p.batting_pbp)
   const anyPitchingPbp = mode === 'season' && players.some(p => p.pitching_pbp)
 
@@ -264,6 +278,7 @@ export default function PlayerComparison() {
               {anyPitching && <><SectionHead title="Pitching" />{PIT_ROWS.map(def => <Row key={def[0]} group="pitching" def={def} />)}</>}
               {anyPitchingPbp && <><SectionHead title="Pitching — PBP" />{PBP_PIT_ROWS.map(def => <Row key={'ppbp_' + def[0]} group="pitching_pbp" def={def} />)}</>}
               {anyFielding && <><SectionHead title="Fielding (all positions)" />{FLD_ROWS.map(def => <Row key={def[0]} group="fielding" def={def} />)}</>}
+              {anyCatcher && <><SectionHead title="Catching" />{CATCHER_ROWS.map(def => <Row key={'c_' + def[0]} group="fielding" def={def} />)}</>}
             </tbody>
           </table>
         </div>
