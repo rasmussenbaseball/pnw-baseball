@@ -191,7 +191,7 @@ function PlayerProfile({ rapsodoId, onBack }) {
 
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
-  const { player, arsenal, plot, sessions, n_sessions } = data
+  const { player, arsenal, plot, sessions, n_sessions, suggestions } = data
 
   return (
     <div className="mt-2">
@@ -208,6 +208,8 @@ function PlayerProfile({ rapsodoId, onBack }) {
           {n_sessions} session{n_sessions === 1 ? '' : 's'} · {plot.length} reliable pitches
         </span>
       </div>
+
+      <CoachingNotes suggestions={suggestions} />
 
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-2">
@@ -234,6 +236,35 @@ function PlayerProfile({ rapsodoId, onBack }) {
         failed reads are excluded from the averages. Rapsodo infers movement from spin, so it can
         under-read seam-shifted-wake pitches (e.g. heavy sinkers).
       </p>
+    </div>
+  )
+}
+
+function CoachingNotes({ suggestions }) {
+  if (!suggestions?.length) return null
+  const style = {
+    flag: 'border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20',
+    strength: 'border-green-300 dark:border-green-700/60 bg-green-50 dark:bg-green-900/20',
+    note: 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40',
+  }
+  const dot = { flag: 'bg-amber-500', strength: 'bg-green-500', note: 'bg-gray-400' }
+  const label = { flag: 'Fix', strength: 'Strength', note: 'Note' }
+  return (
+    <div className="mb-6">
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Coaching notes</h3>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {suggestions.map((s, i) => (
+          <div key={i} className={`rounded-xl border px-4 py-3 ${style[s.kind] || style.note}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`inline-block w-2 h-2 rounded-full ${dot[s.kind] || dot.note}`} />
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label[s.kind] || label.note}</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100">{s.title}</span>
+            </div>
+            <p className="text-sm text-gray-700 dark:text-gray-300 leading-snug">{s.detail}</p>
+            {s.caveat && <p className="mt-1.5 text-xs italic text-gray-500 dark:text-gray-400">{s.caveat}</p>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from ..models.database import get_connection
 from ..stats.rapsodo_parse import parse_text, aggregate_arsenal
+from ..stats.rapsodo_suggest import generate_suggestions
 from .auth import require_tier
 
 router = APIRouter(tags=["rapsodo"])
@@ -193,6 +194,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
         "plot": plot,
         "trend": trend,
         "n_sessions": len(sessions),
+        "suggestions": generate_suggestions(arsenal, player.get("handedness"), len(ok)),
     }
 
 
