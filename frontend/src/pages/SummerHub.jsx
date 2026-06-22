@@ -285,26 +285,42 @@ export function Scoreboard({ daysBack = 14, daysAhead = 7 }) {
   if (error) return <ErrorState msg={error} />
   if (!data?.length) return <EmptyState msg="No games in the window." />
 
-  // Group by date
+  // Group by date, then split into recent RESULTS (today and earlier, newest
+  // first) and UPCOMING games (future, soonest first). game_date is yyyy-mm-dd,
+  // so plain string compare is chronological. This keeps the most recent
+  // results at the top instead of leading with scheduled games.
+  const today = todayKey()
   const byDate = {}
   for (const g of data) {
     if (!byDate[g.game_date]) byDate[g.game_date] = []
     byDate[g.game_date].push(g)
   }
-  const dates = Object.keys(byDate).sort().reverse()
+  const allDates = Object.keys(byDate)
+  const pastDates = allDates.filter(d => d <= today).sort().reverse()
+  const futureDates = allDates.filter(d => d > today).sort()
+
+  const dateBlock = d => (
+    <div key={d}>
+      <div className="text-xs font-bold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-2">
+        {fmtDate(d)}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {byDate[d].map(g => <GameCard key={g.id} g={g} />)}
+      </div>
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-5">
-      {dates.map(d => (
-        <div key={d}>
-          <div className="text-xs font-bold tracking-wider text-gray-500 dark:text-gray-400 uppercase mb-2">
-            {fmtDate(d)}
+      {pastDates.map(dateBlock)}
+      {futureDates.length > 0 && (
+        <div className="flex flex-col gap-5">
+          <div className="text-[11px] font-bold tracking-wider text-nw-teal dark:text-teal-400 uppercase border-t border-gray-200 dark:border-gray-700 pt-4">
+            Upcoming
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {byDate[d].map(g => <GameCard key={g.id} g={g} />)}
-          </div>
+          {futureDates.map(dateBlock)}
         </div>
-      ))}
+      )}
     </div>
   )
 }
