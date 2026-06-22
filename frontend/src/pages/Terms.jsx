@@ -4,7 +4,7 @@
 // professional review before relying on it.
 
 const EFFECTIVE = 'June 22, 2026'
-const CONTACT = 'nate.rasmussen26@gmail.com'
+const CONTACT = 'info@nwbaseballstats.com'
 
 function Section({ title, children }) {
   return (
@@ -125,7 +125,17 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="11. Contact">
+        <Section title="11. Governing law and disputes">
+          <p>
+            NW Baseball Stats is operated from Washington State. These Terms are governed by the laws of
+            the State of Washington, without regard to its conflict-of-laws rules. You agree that any
+            dispute arising out of or relating to these Terms or the Service will be brought exclusively
+            in the state or federal courts located in Washington, and you consent to the personal
+            jurisdiction of those courts.
+          </p>
+        </Section>
+
+        <Section title="12. Contact">
           <p>
             Questions about these Terms? Email{' '}
             <a href={`mailto:${CONTACT}`} className="text-nw-teal dark:text-teal-400 font-semibold hover:underline">{CONTACT}</a>.

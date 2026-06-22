@@ -3,7 +3,7 @@
 // professional review before relying on it.
 
 const EFFECTIVE = 'June 22, 2026'
-const CONTACT = 'nate.rasmussen26@gmail.com'
+const CONTACT = 'info@nwbaseballstats.com'
 
 function Section({ title, children }) {
   return (
