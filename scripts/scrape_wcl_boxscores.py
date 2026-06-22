@@ -77,8 +77,15 @@ def get_league_id(cur, abbr):
 def games_needing_boxscore(cur, league_id, season, rescrape=False, limit=None):
     """Return summer_games rows whose box score we haven't ingested.
 
-    Definition of "haven't ingested": no summer_game_batting rows exist
-    for that game_id. (Rescrape mode ignores this check.)
+    Definition of "haven't ingested": status is 'final' AND no
+    summer_game_batting rows exist for that game_id. (Rescrape mode ignores
+    this check.)
+
+    The status='final' guard is essential: without it, every SCHEDULED
+    (not-yet-played) game has no batting rows and therefore gets re-fetched
+    on every run forever. With ~300 future games on the schedule mid-season
+    and wclstats.com billing ~10 ScraperAPI credits/request, that silently
+    burned ~6,000+ credits/day on box scores that don't exist yet.
     """
     if rescrape:
         cur.execute(
@@ -101,6 +108,7 @@ def games_needing_boxscore(cur, league_id, season, rescrape=False, limit=None):
             LEFT JOIN summer_game_batting b ON b.game_id = g.id
             WHERE g.league_id = %s AND g.season = %s
               AND g.source_url IS NOT NULL
+              AND g.status = 'final'
               AND b.id IS NULL
             GROUP BY g.id
             ORDER BY g.game_date DESC
