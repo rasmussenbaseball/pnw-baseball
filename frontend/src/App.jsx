@@ -585,19 +585,12 @@ export default function App() {
       {!isPortal && !isGm && (
       <footer className="border-t border-gray-200 mt-12 bg-nw-teal text-white">
         <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
             {/* Brand */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-bold">NW Baseball Stats</span>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-nw-teal text-white uppercase tracking-wider">Beta</span>
-              </div>
-              <p className="text-xs text-white/70 leading-relaxed mb-3">
-                Advanced analytics for every level of Pacific Northwest college baseball.
-              </p>
-              <p className="text-xs text-white/70 mb-3">
-                For more info on the site, go here:{' '}
-                <a href="/about" className="text-white font-semibold hover:underline">About →</a>
+            <div className="col-span-2 lg:col-span-1">
+              <div className="text-sm font-bold mb-2">NW Baseball Stats</div>
+              <p className="text-xs text-white/70 leading-relaxed mb-3 max-w-xs">
+                Advanced analytics for every level of Pacific Northwest college baseball, plus recruiting and summer-ball coverage.
               </p>
               <p className="text-xs text-white/70">
                 Created by{' '}
@@ -605,14 +598,28 @@ export default function App() {
               </p>
             </div>
 
-            {/* Links */}
+            {/* Explore */}
+            <div>
+              <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Explore</p>
+              <div className="space-y-1.5">
+                <Link to="/stat-leaders" className="block text-xs text-white/80 hover:text-white transition-colors">Stat Leaders</Link>
+                <Link to="/standings" className="block text-xs text-white/80 hover:text-white transition-colors">Standings</Link>
+                <Link to="/players" className="block text-xs text-white/80 hover:text-white transition-colors">Players</Link>
+                <Link to="/recruiting" className="block text-xs text-white/80 hover:text-white transition-colors">Recruiting</Link>
+                <Link to="/summer" className="block text-xs text-white/80 hover:text-white transition-colors">Summer / WCL</Link>
+                <Link to="/scoreboard" className="block text-xs text-white/80 hover:text-white transition-colors">Scoreboard</Link>
+              </div>
+            </div>
+
+            {/* Site */}
             <div>
               <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Site</p>
               <div className="space-y-1.5">
-                <a href="/about" className="block text-xs text-white/80 hover:text-white transition-colors">About & The Team</a>
+                <Link to="/about" className="block text-xs text-white/80 hover:text-white transition-colors">About & The Team</Link>
                 <a href="/about#behind" className="block text-xs text-white/80 hover:text-white transition-colors">Behind the Curtain</a>
                 <a href="/about#glossary" className="block text-xs text-white/80 hover:text-white transition-colors">Stat Glossary</a>
-                <a href="/about#environments" className="block text-xs text-white/80 hover:text-white transition-colors">Run Environments</a>
+                <Link to="/pricing" className="block text-xs text-white/80 hover:text-white transition-colors">Pricing</Link>
+                <Link to="/feature-request" className="block text-xs text-white/80 hover:text-white transition-colors">Feedback</Link>
               </div>
             </div>
 
@@ -620,9 +627,9 @@ export default function App() {
             <div>
               <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Data Sources</p>
               <div className="space-y-1.5 mb-4">
-                <p className="text-xs text-white/70">D1/D2/D3/NAIA via Sidearm Sports</p>
+                <p className="text-xs text-white/70">NCAA D1&ndash;D3 &amp; NAIA via Sidearm Sports</p>
                 <p className="text-xs text-white/70">NWAC via PrestoSports</p>
-                <p className="text-xs text-white/70">Summer leagues via PointStreak</p>
+                <p className="text-xs text-white/70">Summer leagues (WCL) via wclstats.com</p>
               </div>
               <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Follow</p>
               <div className="flex items-center gap-3">
