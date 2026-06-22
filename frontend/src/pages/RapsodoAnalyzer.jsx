@@ -192,7 +192,7 @@ function PlayerProfile({ rapsodoId, onBack }) {
 
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
-  const { player, arsenal, plot, locations, sessions, n_sessions, suggestions } = data
+  const { player, arsenal, plot, locations, arm, sessions, n_sessions, suggestions } = data
 
   return (
     <div className="mt-2">
@@ -239,6 +239,8 @@ function PlayerProfile({ rapsodoId, onBack }) {
           <SessionList sessions={sessions} />
         </div>
       </div>
+
+      <ArmSlotPanel arm={arm} />
 
       <p className="mt-6 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
         Shapes are tendencies, not verdicts. Pitch labels are inferred from velocity, movement,
@@ -295,6 +297,7 @@ function ArsenalTable({ arsenal }) {
             <th className="px-3 py-2 font-medium text-right">IVB</th>
             <th className="px-3 py-2 font-medium text-right">Arm HB</th>
             <th className="px-3 py-2 font-medium">Tilt</th>
+            <th className="px-3 py-2 font-medium text-right">Stuff*</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -312,10 +315,15 @@ function ArsenalTable({ arsenal }) {
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.ivb)}</td>
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.arm_hb)}</td>
               <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{a.tilt || '–'}</td>
+              <td className={`px-3 py-2 text-right font-medium ${a.stuff == null ? 'text-gray-400' : a.stuff >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>{a.stuff ?? '–'}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      <p className="px-3 py-2 text-[11px] text-gray-400">
+        * Stuff is an experimental v0 shape grade: 100 = MLB average <em>for that pitch type</em>.
+        Not comparable across pitch types, and it ignores command. Pending a trained model.
+      </p>
     </div>
   )
 }
@@ -437,5 +445,55 @@ function StrikeZonePlot({ points }) {
         />
       ))}
     </svg>
+  )
+}
+
+// Release-point plot: rel_side (ft) on x, rel_height (ft) on y, catcher's view.
+function ReleasePlot({ points }) {
+  const W = 200, H = 200, PAD = 22
+  const XMIN = -3.5, XMAX = 3.5, YMIN = 3, YMAX = 7
+  const sx = (v) => PAD + ((v - XMIN) / (XMAX - XMIN)) * (W - 2 * PAD)
+  const sy = (v) => PAD + ((YMAX - v) / (YMAX - YMIN)) * (H - 2 * PAD)
+  if (!points?.length) return null
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[220px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <line x1={sx(0)} y1={PAD} x2={sx(0)} y2={H - PAD} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="1" />
+      {points.map((p, i) => (
+        <circle key={i} cx={sx(p.rel_side)} cy={sy(p.rel_height)} r="3.5"
+          fill={colorFor(p.pitch)} fillOpacity="0.7" stroke={colorFor(p.pitch)} strokeWidth="1" />
+      ))}
+      <text x={W - 6} y={H - 6} textAnchor="end" className="fill-gray-400 text-[9px]">side (ft)</text>
+      <text x={6} y={14} className="fill-gray-400 text-[9px]">height (ft)</text>
+    </svg>
+  )
+}
+
+function ArmSlotPanel({ arm }) {
+  if (!arm) return null
+  const Metric = ({ label, value }) => (
+    <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 px-3 py-2">
+      <div className="text-[11px] text-gray-500">{label}</div>
+      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{value}</div>
+    </div>
+  )
+  const spread = Math.max(arm.rel_height_sd || 0, arm.rel_side_sd || 0) * 12
+  return (
+    <div className="mt-6">
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Arm slot &amp; release</h3>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div>
+          <ReleasePlot points={arm.points} />
+          <p className="mt-1 text-xs text-gray-400">Release point per pitch (catcher's view). Tight clusters tunnel better.</p>
+        </div>
+        <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-2 content-start">
+          <Metric label="Slot (approx)" value={arm.slot || '–'} />
+          <Metric label="Release height" value={arm.rel_height != null ? `${fmt(arm.rel_height, 2)} ft` : '–'} />
+          <Metric label="Release side" value={arm.rel_side != null ? `${fmt(arm.rel_side, 2)} ft` : '–'} />
+          <Metric label="Consistency" value={`${arm.consistency} (±${fmt(spread, 1)} in)`} />
+          <Metric label="Extension" value={arm.extension != null ? `${fmt(arm.extension, 2)} ft` : '–'} />
+          <Metric label="Avg VAA" value={arm.vaa != null ? `${fmt(arm.vaa, 1)}°` : '–'} />
+        </div>
+      </div>
+    </div>
   )
 }

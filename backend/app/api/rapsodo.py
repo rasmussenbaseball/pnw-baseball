@@ -8,6 +8,8 @@ lives in app.stats.rapsodo_parse. See RAPSODO_TOOL_DESIGN.md.
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from ..models.database import get_connection
+from ..stats import rapsodo_stuff
+from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_parse import parse_text, aggregate_arsenal
 from ..stats.rapsodo_suggest import generate_suggestions
 from .auth import require_tier
@@ -170,6 +172,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
 
     ok = [r for r in rows if r["quality"] == "ok" and r["pitch"]]
     arsenal = aggregate_arsenal(ok)
+    rapsodo_stuff.annotate(arsenal, rapsodo_stuff.fb_from_arsenal(arsenal))
 
     # movement-plot points: reliable pitches with a shape (ok + low_confidence)
     plot = [
@@ -210,8 +213,10 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
         "arsenal": arsenal,
         "plot": plot,
         "locations": locations,
+        "arm": arm_profile(ok),
         "trend": trend,
         "n_sessions": len(sessions),
+        "stuff_version": rapsodo_stuff.VERSION,
         "suggestions": generate_suggestions(arsenal, player.get("handedness"), len(ok)),
     }
 
