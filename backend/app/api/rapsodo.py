@@ -19,7 +19,8 @@ _PITCH_FIELDS = [
     "pitch_no", "thrown_at", "raw_label", "pitch", "quality", "velo", "total_spin",
     "active_spin", "spin_eff", "spin_confidence", "gyro", "ivb", "hb_raw", "arm_hb",
     "movement_basis", "tilt", "tilt_deg", "rel_height", "rel_side", "extension",
-    "vaa", "haa", "bauer", "intent", "is_strike",
+    "rel_angle", "horiz_angle", "vaa", "haa", "sz_side", "sz_height",
+    "bauer", "intent", "is_strike",
 ]
 
 
@@ -51,14 +52,15 @@ def _ingest(cur, owner, parsed):
         """INSERT INTO rapsodo_sessions
              (owner_user_id, player_db_id, rapsodo_player_id, session_date, device_serial,
               device_generation, intent_tags, fastball_velo, n_pitches,
-              qc_ok, qc_low_confidence, qc_partial, qc_failed, source_file)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+              qc_ok, qc_low_confidence, qc_partial, qc_failed, qc_warmup, source_file)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
            RETURNING id""",
         (owner, player_db_id, rapsodo_pid, parsed.get("session_date"),
          parsed.get("device_serial"), parsed.get("device_generation"),
          ", ".join(parsed.get("intent_tags") or []) or None, parsed.get("fastball_velo"),
          parsed.get("n_pitches"), qc.get("ok", 0), qc.get("low_confidence", 0),
-         qc.get("partial", 0), qc.get("failed", 0), parsed.get("source_file")),
+         qc.get("partial", 0), qc.get("failed", 0), qc.get("warmup", 0),
+         parsed.get("source_file")),
     )
     session_id = cur.fetchone()["id"]
 
@@ -146,7 +148,8 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
 
         cur.execute(
             """SELECT id, session_date, device_generation, intent_tags, fastball_velo,
-                      n_pitches, qc_ok, qc_low_confidence, qc_partial, qc_failed, source_file
+                      n_pitches, qc_ok, qc_low_confidence, qc_partial, qc_failed, qc_warmup,
+                      source_file
                FROM rapsodo_sessions
                WHERE owner_user_id=%s AND player_db_id=%s
                ORDER BY session_date DESC NULLS LAST, id DESC""",
@@ -156,7 +159,8 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
 
         cur.execute(
             """SELECT pitch, quality, velo, total_spin, spin_eff, ivb, hb_raw, arm_hb,
-                      gyro, tilt, rel_height, rel_side, extension, vaa, thrown_at, session_id
+                      gyro, tilt, rel_height, rel_side, extension, rel_angle, horiz_angle,
+                      vaa, sz_side, sz_height, is_strike, thrown_at, session_id
                FROM rapsodo_pitches
                WHERE owner_user_id=%s AND player_db_id=%s
                ORDER BY thrown_at""",
@@ -181,6 +185,19 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
         and r["quality"] in ("ok", "low_confidence")
     ]
 
+    # location map: plate-crossing point per reliable pitch
+    locations = [
+        {
+            "pitch": r["pitch"],
+            "sz_side": _ff(r["sz_side"]),
+            "sz_height": _ff(r["sz_height"]),
+            "is_strike": r["is_strike"],
+        }
+        for r in rows
+        if r["sz_side"] is not None and r["sz_height"] is not None
+        and r["quality"] in ("ok", "low_confidence") and r["pitch"]
+    ]
+
     trend = [
         {"session_date": str(s["session_date"]) if s["session_date"] else None,
          "fastball_velo": _ff(s["fastball_velo"]), "n_pitches": s["n_pitches"]}
@@ -192,6 +209,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
         "sessions": sessions,
         "arsenal": arsenal,
         "plot": plot,
+        "locations": locations,
         "trend": trend,
         "n_sessions": len(sessions),
         "suggestions": generate_suggestions(arsenal, player.get("handedness"), len(ok)),

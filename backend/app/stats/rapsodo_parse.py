@@ -21,6 +21,7 @@ FB_VELO_BAND = 5.0          # pitches within this many mph of session top velo =
 RIDE_IVB = 17.0             # 4-seam "carries" at/above this induced vertical break
 SINK_IVB = 10.0             # sinker territory below this IVB with strong arm-side run
 ARM_SIDE_RUN = 14.0         # inches of arm-side HB that counts as a "running" pitch
+WARMUP_GAP = 11.0           # a fastball-SHAPED pitch this many mph below the FB baseline = warmup lob
 
 _DATE_FMT = "%a %b %d %Y %I:%M:%S %p"   # "Sun Dec 28 2025 1:13:36 AM"
 
@@ -151,8 +152,12 @@ def normalize_pitch(r):
         "rel_height": _f(r.get("Release Height")),
         "rel_side": _f(r.get("Release Side")),
         "extension": _f(r.get("Release Extension (ft)")),
+        "rel_angle": _f(r.get("Release Angle")),
+        "horiz_angle": _f(r.get("Horizontal Angle")),
         "vaa": _f(r.get("Vertical Approach Angle")),
         "haa": _f(r.get("Horizontal Approach Angle")),
+        "sz_side": _f(r.get("Strike Zone Side")),
+        "sz_height": _f(r.get("Strike Zone Height")),
         "bauer": bauer,
         "intent": (r.get("Intent Type") or "").strip() or None,
         "is_strike": (r.get("Is Strike") or "").strip() or None,
@@ -240,23 +245,54 @@ def classify(p, fb, hand):
     return "unclassified"
 
 
-def reclassify(pitches, hand=None):
-    """Recompute the `pitch` label for a session's already-normalized pitch
-    dicts (e.g. rows read back from the DB). Returns a list of labels aligned
-    with `pitches`. Lets classifier improvements be applied retroactively
-    without re-uploading the CSV.
+def _is_warmup(p, fb):
+    """A fastball-SHAPED pitch thrown well below the fastball baseline is almost
+    always a warmup lob / sub-max toss, not a real offspeed (a real curve/change
+    is slow because of its shape, not effort). Flag those so they don't pollute
+    the arsenal, plots, or suggestions."""
+    if not fb or p.get("velo") is None or p.get("ivb") is None or p.get("arm_hb") is None:
+        return False
+    eff = p.get("spin_eff")
+    return (p["velo"] <= fb["velo"] - WARMUP_GAP        # way slower than the FB
+            and (eff is None or eff >= 85)              # ...but spun like a fastball
+            and p["ivb"] >= fb["ivb"] - 4               # ...keeps the FB's ride (a changeup kills it)
+            and p["arm_hb"] >= -2)                      # ...arm-side / straight, not breaking
 
-    DB rows come back as Decimal; classify/_fastball_centroid do float math, so
-    coerce the numeric fields to float at this boundary."""
+
+def classify_session(pitches, hand=None):
+    """Label every pitch in a session and flip clear warmup lobs to quality
+    'warmup'. Mutates each pitch's `pitch` and `quality`. Returns the fastball
+    centroid. Shared by the CSV parse path and the DB re-classify path so both
+    stay in lockstep."""
+    cand = [p for p in pitches if p.get("quality") in ("ok", "warmup")]
+    fb = _fastball_centroid(cand)
+    for p in pitches:
+        q = p.get("quality")
+        if q in ("ok", "warmup"):
+            if _is_warmup(p, fb):
+                p["quality"], p["pitch"] = "warmup", None
+            else:
+                p["quality"], p["pitch"] = "ok", classify(p, fb, hand)
+        elif q == "low_confidence":
+            p["pitch"] = classify(p, fb, hand)
+        else:
+            p["pitch"] = None
+    return fb
+
+
+def reclassify(pitches, hand=None):
+    """Re-run classification + lob-filtering on already-normalized pitch dicts
+    (e.g. rows read back from the DB), so classifier improvements apply
+    retroactively without re-uploading. Returns [{pitch, quality}] aligned with
+    `pitches`. DB rows are Decimal; coerce the numeric fields to float here since
+    classify/_fastball_centroid do float math."""
     def _fnum(v):
         return float(v) if v is not None else None
     norm = [{**p, "velo": _fnum(p.get("velo")), "ivb": _fnum(p.get("ivb")),
              "arm_hb": _fnum(p.get("arm_hb")), "spin_eff": _fnum(p.get("spin_eff")),
              "gyro": _fnum(p.get("gyro"))} for p in pitches]
-    ok = [p for p in norm if p.get("quality") == "ok"]
-    fb = _fastball_centroid(ok)
-    return [classify(p, fb, hand) if p.get("quality") in ("ok", "low_confidence") else None
-            for p in norm]
+    classify_session(norm, hand)
+    return [{"pitch": p.get("pitch"), "quality": p.get("quality")} for p in norm]
 
 
 def _mean(vals):
@@ -314,11 +350,9 @@ def parse_rows(all_rows, source_name):
     for p in pitches:
         p["arm_hb"] = round(p["hb_raw"] * flip, 1) if p["hb_raw"] is not None else None
 
-    ok = [p for p in pitches if p["quality"] == "ok"]
-    fb = _fastball_centroid(ok)
+    fb = classify_session(pitches, hand)
     fb_velo = fb["velo"] if fb else None
-    for p in pitches:
-        p["pitch"] = classify(p, fb, hand) if p["quality"] in ("ok", "low_confidence") else None
+    ok = [p for p in pitches if p["quality"] == "ok"]   # warmups now excluded
 
     arsenal = aggregate_arsenal(ok)
 

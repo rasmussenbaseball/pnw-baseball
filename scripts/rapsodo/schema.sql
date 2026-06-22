@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS rapsodo_sessions (
     qc_low_confidence  INTEGER DEFAULT 0,
     qc_partial         INTEGER DEFAULT 0,
     qc_failed          INTEGER DEFAULT 0,
+    qc_warmup          INTEGER DEFAULT 0,
     source_file        TEXT,
     created_at         TIMESTAMP DEFAULT now(),
     UNIQUE (owner_user_id, rapsodo_player_id, source_file)   -- re-uploading a file replaces it
@@ -72,8 +73,12 @@ CREATE TABLE IF NOT EXISTS rapsodo_pitches (
     rel_height         NUMERIC(4,2),
     rel_side           NUMERIC(4,2),
     extension          NUMERIC(4,2),
+    rel_angle          NUMERIC(5,2),   -- vertical launch angle at release (deg)
+    horiz_angle        NUMERIC(5,2),   -- horizontal launch angle at release (deg)
     vaa                NUMERIC(5,2),
     haa                NUMERIC(5,2),
+    sz_side            NUMERIC(6,2),   -- plate-crossing location, horizontal (in)
+    sz_height          NUMERIC(6,2),   -- plate-crossing location, vertical (in)
     bauer              NUMERIC(5,1),
     intent             TEXT,
     is_strike          TEXT,

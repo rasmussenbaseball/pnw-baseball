@@ -28,12 +28,23 @@ def main():
                 (sid,),
             )
             rows = [dict(r) for r in cur.fetchall()]
-            for r, label in zip(rows, reclassify(rows)):
-                if label != r["pitch"]:
+            results = reclassify(rows)
+            qc = {"ok": 0, "low_confidence": 0, "partial": 0, "failed": 0, "warmup": 0}
+            for r, new in zip(rows, results):
+                qc[new["quality"]] = qc.get(new["quality"], 0) + 1
+                if new["pitch"] != r["pitch"] or new["quality"] != r["quality"]:
                     changed += 1
-                    print(f"  session {sid} pitch {r['id']}: {r['pitch']} -> {label}")
+                    print(f"  session {sid} pitch {r['id']}: "
+                          f"{r['pitch']}/{r['quality']} -> {new['pitch']}/{new['quality']}")
                     if a.commit:
-                        cur.execute("UPDATE rapsodo_pitches SET pitch=%s WHERE id=%s", (label, r["id"]))
+                        cur.execute("UPDATE rapsodo_pitches SET pitch=%s, quality=%s WHERE id=%s",
+                                    (new["pitch"], new["quality"], r["id"]))
+            if a.commit:
+                cur.execute(
+                    """UPDATE rapsodo_sessions SET qc_ok=%s, qc_low_confidence=%s,
+                       qc_partial=%s, qc_failed=%s, qc_warmup=%s WHERE id=%s""",
+                    (qc["ok"], qc["low_confidence"], qc["partial"], qc["failed"], qc["warmup"], sid),
+                )
         verb = "UPDATED" if a.commit else "WOULD UPDATE"
         print(f"\n{verb} {changed} pitches across {len(sids)} sessions")
         if not a.commit and changed:

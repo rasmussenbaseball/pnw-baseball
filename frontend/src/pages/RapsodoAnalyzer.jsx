@@ -128,7 +128,8 @@ function UploadZone({ onDone }) {
               <li key={i} className="text-gray-600 dark:text-gray-400">
                 <span className="font-medium text-gray-800 dark:text-gray-200">{r.player_name}</span>{' '}
                 ({handLabel(r.handedness)}) — {r.session_date}, {r.n_pitches} pitches,{' '}
-                {r.qc?.ok || 0} clean / {(r.qc?.low_confidence || 0) + (r.qc?.partial || 0) + (r.qc?.failed || 0)} flagged
+                {r.qc?.ok || 0} clean{r.qc?.warmup ? `, ${r.qc.warmup} warmup` : ''} /{' '}
+                {(r.qc?.low_confidence || 0) + (r.qc?.partial || 0) + (r.qc?.failed || 0)} flagged
               </li>
             ))}
             {report.errors?.map((e, i) => (
@@ -191,7 +192,7 @@ function PlayerProfile({ rapsodoId, onBack }) {
 
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
-  const { player, arsenal, plot, sessions, n_sessions, suggestions } = data
+  const { player, arsenal, plot, locations, sessions, n_sessions, suggestions } = data
 
   return (
     <div className="mt-2">
@@ -212,12 +213,21 @@ function PlayerProfile({ rapsodoId, onBack }) {
       <CoachingNotes suggestions={suggestions} />
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-2">
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Movement profile</h3>
-          <MovementPlot points={plot} arsenal={arsenal} />
-          <p className="mt-2 text-xs text-gray-400">
-            Pitcher's view: arm side →, ride ↑. One dot per pitch; rings = lower-confidence reads.
-          </p>
+        <div className="lg:col-span-2 space-y-6">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Movement profile</h3>
+            <MovementPlot points={plot} arsenal={arsenal} />
+            <p className="mt-2 text-xs text-gray-400">
+              Pitcher's view: arm side →, ride ↑. One dot per pitch; rings = lower-confidence reads.
+            </p>
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Location</h3>
+            <StrikeZonePlot points={locations} />
+            <p className="mt-2 text-xs text-gray-400">
+              Plate-crossing point per pitch (catcher's view). Box = nominal strike zone. Warmups excluded.
+            </p>
+          </div>
         </div>
 
         <div className="lg:col-span-3">
@@ -321,7 +331,9 @@ function SessionList({ sessions }) {
           {s.intent_tags && <span className="rounded bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-300">{s.intent_tags}</span>}
           <span className="text-gray-500">FB ~{fmt(s.fastball_velo)} mph</span>
           <span className="ml-auto text-xs text-gray-400">
-            {s.qc_ok} clean · {s.qc_low_confidence + s.qc_partial + s.qc_failed} flagged · {s.n_pitches} total
+            {s.qc_ok} clean
+            {s.qc_warmup ? ` · ${s.qc_warmup} warmup` : ''}
+            {' · '}{s.qc_low_confidence + s.qc_partial + s.qc_failed} flagged · {s.n_pitches} total
           </span>
         </li>
       ))}
@@ -384,6 +396,46 @@ function MovementPlot({ points, arsenal }) {
       ))}
       <text x={W - PAD} y={sy(0) - 5} textAnchor="end" className="fill-gray-400 text-[9px]">arm side →</text>
       <text x={sx(0) + 4} y={PAD + 8} className="fill-gray-400 text-[9px]">ride ↑</text>
+    </svg>
+  )
+}
+
+// Strike-zone / location plot. sz_side (horizontal in) on x, sz_height (in) on y.
+function StrikeZonePlot({ points }) {
+  const W = 300, H = 360, PAD = 26
+  const XMIN = -18, XMAX = 18, YMIN = 8, YMAX = 52
+  const sx = (v) => PAD + ((v - XMIN) / (XMAX - XMIN)) * (W - 2 * PAD)
+  const sy = (v) => PAD + ((YMAX - v) / (YMAX - YMIN)) * (H - 2 * PAD)
+  const clamp = (px, lo, hi) => Math.max(lo, Math.min(hi, px))
+  if (!points?.length) {
+    return (
+      <div className="flex h-[200px] items-center justify-center rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-xs text-gray-400 text-center px-4">
+        No location data yet. Re-upload this player's session to capture plate location.
+      </div>
+    )
+  }
+  // nominal zone: 17" wide (±8.5), knees ~18" to letters ~42"
+  const zx = sx(-8.5), zw = sx(8.5) - sx(-8.5), zy = sy(42), zh = sy(18) - sy(42)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[330px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <rect x={zx} y={zy} width={zw} height={zh} className="fill-none stroke-gray-400 dark:stroke-gray-500" strokeWidth="1.5" />
+      {/* zone thirds */}
+      <line x1={zx + zw / 3} y1={zy} x2={zx + zw / 3} y2={zy + zh} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="1" />
+      <line x1={zx + (2 * zw) / 3} y1={zy} x2={zx + (2 * zw) / 3} y2={zy + zh} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="1" />
+      <line x1={zx} y1={zy + zh / 3} x2={zx + zw} y2={zy + zh / 3} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="1" />
+      <line x1={zx} y1={zy + (2 * zh) / 3} x2={zx + zw} y2={zy + (2 * zh) / 3} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="1" />
+      {points.map((p, i) => (
+        <circle
+          key={i}
+          cx={clamp(sx(p.sz_side), 4, W - 4)}
+          cy={clamp(sy(p.sz_height), 4, H - 4)}
+          r="4"
+          fill={colorFor(p.pitch)}
+          fillOpacity={p.is_strike === 'Y' ? 0.85 : 0.4}
+          stroke={colorFor(p.pitch)}
+          strokeWidth="1"
+        />
+      ))}
     </svg>
   )
 }
