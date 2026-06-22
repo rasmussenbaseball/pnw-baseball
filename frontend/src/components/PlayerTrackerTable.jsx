@@ -175,6 +175,10 @@ export default function PlayerTrackerTable({
   rows, statCols, groupLabel, sortBy, sortDir, onSort,
   infoLabel = 'Team', committedHeader = 'Committed',
   playerHref = (row) => `/player/${row.id}`,
+  // Out-of-region recruit players live in isolated tables and have no profile
+  // page (and their ids would collide with real players.id), so the tracker
+  // turns linking off for those boards and renders plain text instead.
+  linkPlayers = true,
 }) {
   const hasAwards = (rows || []).some(r => r && r.awards)
   const sortArrow = (key) => {
@@ -232,9 +236,15 @@ export default function PlayerTrackerTable({
               <td style={{width:28,minWidth:28,maxWidth:28}} className="sticky left-0 z-10 bg-inherit px-1 py-1 text-gray-400 dark:text-gray-500 text-right text-[10px] border-r border-gray-100 dark:border-gray-700">{i + 1}</td>
               <td style={{width:140,minWidth:140,maxWidth:140}} className="sticky left-[28px] z-10 bg-inherit px-1.5 py-1 font-medium overflow-hidden">
                 <span className="flex items-center whitespace-nowrap">
-                  <Link to={playerHref(row)} className="text-nw-teal hover:underline truncate">
-                    {row.first_name} {row.last_name}
-                  </Link>
+                  {linkPlayers ? (
+                    <Link to={playerHref(row)} className="text-nw-teal hover:underline truncate">
+                      {row.first_name} {row.last_name}
+                    </Link>
+                  ) : (
+                    <span className="text-gray-800 dark:text-gray-100 truncate">
+                      {row.first_name} {row.last_name}
+                    </span>
+                  )}
                   {isTwoWay(row) && <TwoWayIcon />}
                 </span>
               </td>

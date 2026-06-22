@@ -220,10 +220,12 @@ export default function JucoTracker() {
         </div>
       ) : board === 'hitters' ? (
         <PlayerTrackerTable rows={hitters} statCols={HITTER_STAT_COLS} groupLabel="Hitting"
-          sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed" />
+          sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed"
+          linkPlayers={isNwac} />
       ) : (
         <PlayerTrackerTable rows={pitchers} statCols={PITCHER_STAT_COLS} groupLabel="Pitching"
-          sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed" />
+          sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed"
+          linkPlayers={isNwac} />
       )}
 
       {isNwac && <StatsLastUpdated levels={['JUCO']} className="mt-3" />}
