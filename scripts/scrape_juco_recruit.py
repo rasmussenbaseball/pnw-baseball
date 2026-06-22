@@ -84,6 +84,10 @@ def fetch(url, retries=5):
         try:
             resp = session.get(url, timeout=60, headers={"X-Requested-With": "XMLHttpRequest"})
             _last_request = time.time()
+            # 404 = genuinely absent (e.g. a /stats/<year> path a site doesn't use).
+            # Don't burn retries on it — let the caller try its fallback URL.
+            if resp.status_code == 404:
+                return None
             # Throttle signatures: HTTP 459 or a tiny stub body
             if resp.status_code in (429, 459) or len(resp.text) < 2000:
                 raise requests.RequestException(f"throttled (status={resp.status_code}, {len(resp.text)}b)")
@@ -370,24 +374,43 @@ def _find_table(soup, must_have):
 
 
 def _parse_sidearm_roster(html):
-    """Roster table: # | full name | ht. | wt. | pos. | bat/throw | class | hometown."""
+    """Parse a Sidearm roster table. Header labels vary by school, e.g.
+    pos./pos, class/academic year, bat/throw / b/t, hometown / 'hometown / high
+    school', so match flexibly rather than on exact column names."""
     if not html:
         return {}
     soup = BeautifulSoup(html, "html.parser")
-    tbl = _find_table(soup, ("full name", "pos.", "class"))
+    tbl = None
+    for t in soup.find_all("table"):
+        heads = [_clean(th.get_text()).lower() for th in t.find_all("th")]
+        has_name = "full name" in heads or "name" in heads
+        has_pos = any(h in ("pos.", "pos", "position") for h in heads)
+        if has_name and has_pos:
+            tbl = t
+            break
     if tbl is None:
         return {}
+
+    def pick(r, *keys):
+        for k in keys:
+            if r.get(k):
+                return r.get(k)
+        return None
+
     out = {}
     for r in _rows_from_table(tbl):
         nm = _name_key(r.get("name") or r.get("full name") or "")
         if not nm:
             continue
-        bats, throws = _split_pair(r.get("bat/throw"))
+        bt = pick(r, "bat/throw", "b/t")
+        bats, throws = _split_pair(bt) if bt else (None, None)
         out[nm] = {
-            "position": r.get("pos."), "year": r.get("class"),
+            "position": pick(r, "pos.", "pos", "position"),
+            "year": pick(r, "class", "academic year", "yr", "year"),
             "bats": bats, "throws": throws,
-            "height": r.get("ht."), "weight": r.get("wt."),
-            "hometown": r.get("hometown"), "#": r.get("#"),
+            "height": pick(r, "ht.", "ht"), "weight": pick(r, "wt.", "wt"),
+            "hometown": pick(r, "hometown", "hometown / high school"),
+            "#": r.get("#"),
         }
     return out
 
@@ -406,7 +429,13 @@ def _fetch_sidearm(team, season_year):
     """A Sidearm school site: one HTML stats page (batting + pitching tables) +
     a roster page. Column names differ from Presto and some are combined."""
     base = team["stats_url"].rstrip("/")
-    soup = BeautifulSoup(fetch(f"{base}/stats/{season_year}") or "", "html.parser")
+    # Stats page path varies: some sites use /stats/<year>, others /stats (current).
+    soup = BeautifulSoup("", "html.parser")
+    for path in (f"/stats/{season_year}", "/stats"):
+        s = BeautifulSoup(fetch(f"{base}{path}") or "", "html.parser")
+        if _find_table(s, ("avg", "ab", "ob%")) is not None:
+            soup = s
+            break
     batting_raw = _rows_from_table(_find_table(soup, ("avg", "ab", "ob%")))
     pitch_raw   = _rows_from_table(_find_table(soup, ("era", "ip", "whip")))
 
@@ -436,7 +465,11 @@ def _fetch_sidearm(team, season_year):
                       "hr": r.get("hr"), "hbp": r.get("hbp"), "wp": r.get("wp"), "bf": None,
                       "era": r.get("era"), "whip": r.get("whip"), "k/9": None})
 
-    roster = _parse_sidearm_roster(fetch(f"{base}/roster/{season_year}"))
+    roster = {}
+    for path in (f"/roster/{season_year}", "/roster"):
+        roster = _parse_sidearm_roster(fetch(f"{base}{path}"))
+        if roster:
+            break
     return base, batting, pitch, roster, ext_by_name
 
 
