@@ -105,17 +105,26 @@ def _clean(text):
 
 
 def parse_category_table(html):
-    """Return a list of row dicts keyed by lowercased header text.
+    """Parse the first stats <table> in a fragment/page into row dicts.
 
-    The category-template fragment is a single <table>. We map the header
-    <th> row to each data row's cells. Player name comes from the cell that
-    holds a /players/ link.
+    The Presto category-template fragment is a single <table>; Sidearm pages
+    have many, so callers that need a specific one use _rows_from_table directly.
     """
     if not html:
         return []
     soup = BeautifulSoup(html, "html.parser")
-    table = soup.find("table")
-    rows = table.find_all("tr") if table else soup.find_all("tr")
+    return _rows_from_table(soup.find("table"))
+
+
+def _rows_from_table(table):
+    """Map a stats <table>'s header <th> row onto each data row's cells.
+
+    Returns row dicts keyed by lowercased header text, with row['name'] taken
+    from a roster/player anchor or the player/name column.
+    """
+    if table is None:
+        return []
+    rows = table.find_all("tr")
     if not rows:
         return []
 
@@ -129,26 +138,39 @@ def parse_category_table(html):
     if not header:
         return []
 
+    name_cols = ("player", "full name", "name")
+    stat_headers = [h for h in header if h not in name_cols]
+
     out = []
     for tr in rows:
         tds = tr.find_all("td")
-        if len(tds) < 5:
-            continue
-        cells = [_clean(td.get_text(" ")) for td in tds]
-        # Align cells to header (Presto sometimes leads with a rank/blank th-less col)
-        offset = len(cells) - len(header)
-        if offset > 0:
-            cells = cells[offset:]
-        row = dict(zip(header, cells))
-        # Player name: prefer the /players/ anchor text
-        link = tr.find("a", href=re.compile(r"/players/"))
-        if link:
-            row["name"] = _clean(link.get_text())
-        elif "name" in row:
-            row["name"] = row.get("name")
-        # Skip the "Totals" / "Opponents" summary rows
+        row_th = tr.find("th")          # Sidearm puts the player name in a row-header <th>
+        link = tr.find("a", href=re.compile(r"/players/|/roster/"))
+        link_txt = _clean(link.get_text()) if link else ""
+
+        if row_th is not None and tds and len(tds) == len(stat_headers):
+            # Sidearm layout: name in the row-header <th>, the <td> cells are the
+            # stat columns. The name is the <th>'s own anchor (href="#"); the row's
+            # /roster/ link is a separate "View Bio" button, so don't use link_txt.
+            th_a = row_th.find("a")
+            row = dict(zip(stat_headers, [_clean(td.get_text(" ")) for td in tds]))
+            row["name"] = _clean(th_a.get_text()) if th_a else _clean(row_th.get_text())
+        else:
+            # Presto / standard layout: every cell (incl. name) is a <td>.
+            if len(tds) < 5:
+                continue
+            cells = [_clean(td.get_text(" ")) for td in tds]
+            offset = len(cells) - len(header)   # Presto sometimes leads with a rank col
+            if offset > 0:
+                cells = cells[offset:]
+            row = dict(zip(header, cells))
+            row["name"] = link_txt or row.get("name") or row.get("player") or row.get("full name")
+
+        # Skip summary rows + misaligned rows whose "name" is really a stat.
         nm = (row.get("name") or "").lower()
-        if not nm or nm in ("totals", "total", "opponents", "opponent"):
+        if not nm or nm in ("totals", "total", "opponents", "opponent", "team", "tm"):
+            continue
+        if not re.search(r"[A-Za-z]", nm):
             continue
         out.append(row)
     return out
@@ -178,19 +200,30 @@ def parse_roster_table(html):
                 link = tr.find("a", href=re.compile(r"/players/"))
                 nm = _clean(link.get_text()) if link else row.get("name", "")
                 if nm:
-                    out[nm.lower()] = row
+                    out[_name_key(nm)] = row
             return out
     return {}
 
 
 def parse_full_name(full):
-    parts = _clean(full).split()
+    full = _clean(full)
+    # Sidearm stats tables render names "Last, First"; Presto uses "First Last".
+    if "," in full:
+        last, first = full.split(",", 1)
+        return first.strip(), last.strip()
+    parts = full.split()
     if not parts:
         return "", ""
     if len(parts) == 1:
         return parts[0], parts[0]
     # treat suffix tokens as part of last name
     return parts[0], " ".join(parts[1:])
+
+
+def _name_key(full):
+    """Canonical 'first last' key so 'Blackwell, Beau' and 'Beau Blackwell' match."""
+    first, last = parse_full_name(full)
+    return f"{first} {last}".strip().lower()
 
 
 def safe_int(v):
@@ -319,22 +352,107 @@ def upsert_pitching(cur, pid, team_id, season, p):
 # Driver
 # ============================================================
 
-def scrape_team(cur, team, season_str, season_year, dry_run=False):
-    base = team["stats_url"].format(season=season_str)
-    name = team["school_name"]
-    logger.info(f"{'='*52}\nScraping {name}  ({base})")
+def _split_pair(v):
+    """Split a combined Sidearm cell like '20-18' / '5-7' into (first, second)."""
+    if not v:
+        return None, None
+    parts = re.split(r"[-/]", str(v))
+    return (parts[0].strip() or None if parts else None,
+            parts[1].strip() or None if len(parts) > 1 else None)
 
+
+def _find_table(soup, must_have):
+    for t in soup.find_all("table"):
+        heads = {_clean(th.get_text()).lower() for th in t.find_all("th")}
+        if all(h in heads for h in must_have):
+            return t
+    return None
+
+
+def _parse_sidearm_roster(html):
+    """Roster table: # | full name | ht. | wt. | pos. | bat/throw | class | hometown."""
+    if not html:
+        return {}
+    soup = BeautifulSoup(html, "html.parser")
+    tbl = _find_table(soup, ("full name", "pos.", "class"))
+    if tbl is None:
+        return {}
+    out = {}
+    for r in _rows_from_table(tbl):
+        nm = _name_key(r.get("name") or r.get("full name") or "")
+        if not nm:
+            continue
+        bats, throws = _split_pair(r.get("bat/throw"))
+        out[nm] = {
+            "position": r.get("pos."), "year": r.get("class"),
+            "bats": bats, "throws": throws,
+            "height": r.get("ht."), "weight": r.get("wt."),
+            "hometown": r.get("hometown"), "#": r.get("#"),
+        }
+    return out
+
+
+def _fetch_presto(team, season_str):
+    base = team["stats_url"].format(season=season_str)
     batting = parse_category_table(fetch(f"{base}?tmpl=brief-category-template&pos=h&r=0"))
     ext     = parse_category_table(fetch(f"{base}?tmpl=brief-category-template&pos=he&r=0"))
     pitch   = parse_category_table(fetch(f"{base}?tmpl=brief-category-template&pos=p&r=0"))
     roster  = parse_roster_table(fetch(f"{base}?view=lineup&r=0&pos=h"))
-    logger.info(f"  batting={len(batting)}  ext={len(ext)}  pitching={len(pitch)}  roster={len(roster)}")
+    ext_by_name = {_name_key(e.get("name", "")): e for e in ext}
+    return base, batting, pitch, roster, ext_by_name
 
-    ext_by_name = {(_clean(e.get("name", "")).lower()): e for e in ext}
+
+def _fetch_sidearm(team, season_year):
+    """A Sidearm school site: one HTML stats page (batting + pitching tables) +
+    a roster page. Column names differ from Presto and some are combined."""
+    base = team["stats_url"].rstrip("/")
+    soup = BeautifulSoup(fetch(f"{base}/stats/{season_year}") or "", "html.parser")
+    batting_raw = _rows_from_table(_find_table(soup, ("avg", "ab", "ob%")))
+    pitch_raw   = _rows_from_table(_find_table(soup, ("era", "ip", "whip")))
+
+    batting, ext_by_name = [], {}
+    for r in batting_raw:
+        gp, _gs = _split_pair(r.get("gp-gs"))
+        sb, att = _split_pair(r.get("sb-att"))
+        cs = None
+        if safe_int(sb) is not None and safe_int(att) is not None:
+            cs = safe_int(att) - safe_int(sb)
+        b = {"name": r.get("name"), "#": r.get("#"), "g": gp,
+             "ab": r.get("ab"), "r": r.get("r"), "h": r.get("h"), "2b": r.get("2b"),
+             "3b": r.get("3b"), "hr": r.get("hr"), "rbi": r.get("rbi"), "bb": r.get("bb"),
+             "k": r.get("so"), "sb": sb, "cs": cs,
+             "avg": r.get("avg"), "obp": r.get("ob%"), "slg": r.get("slg%")}
+        batting.append(b)
+        ext_by_name[_name_key(b["name"] or "")] = {
+            "hbp": r.get("hbp"), "sf": r.get("sf"), "sh": r.get("sh"), "tb": r.get("tb"), "pa": None}
+
+    pitch = []
+    for r in pitch_raw:
+        app, gs = _split_pair(r.get("app-gs"))
+        w, l = _split_pair(r.get("w-l"))
+        pitch.append({"name": r.get("name"), "#": r.get("#"), "app": app, "gs": gs,
+                      "w": w, "l": l, "sv": r.get("sv"), "ip": r.get("ip"), "h": r.get("h"),
+                      "r": r.get("r"), "er": r.get("er"), "bb": r.get("bb"), "k": r.get("so"),
+                      "hr": r.get("hr"), "hbp": r.get("hbp"), "wp": r.get("wp"), "bf": None,
+                      "era": r.get("era"), "whip": r.get("whip"), "k/9": None})
+
+    roster = _parse_sidearm_roster(fetch(f"{base}/roster/{season_year}"))
+    return base, batting, pitch, roster, ext_by_name
+
+
+def scrape_team(cur, team, season_str, season_year, dry_run=False):
+    name = team["school_name"]
+    fmt = (team.get("stats_format") or "").lower()
+    if fmt == "sidearm_html":
+        base, batting, pitch, roster, ext_by_name = _fetch_sidearm(team, season_year)
+    else:  # presto_njcaa / presto_cccaa
+        base, batting, pitch, roster, ext_by_name = _fetch_presto(team, season_str)
+    logger.info(f"{'='*52}\nScraping {name}  [{fmt or 'presto'}]  ({base})")
+    logger.info(f"  batting={len(batting)}  pitching={len(pitch)}  roster={len(roster)}")
 
     def bio(stat_row):
         """Merge roster bio for a player, preferring roster over the (often blank) stats row."""
-        r = roster.get(_clean(stat_row.get("name", "")).lower(), {})
+        r = roster.get(_name_key(stat_row.get("name", "")), {})
         return dict(
             position=r.get("position") or stat_row.get("pos") or None,
             year_in_school=norm_year(r.get("year") or stat_row.get("yr")),
@@ -358,7 +476,7 @@ def scrape_team(cur, team, season_str, season_year, dry_run=False):
             n_bat += 1
             continue
         pid = upsert_player(cur, team["id"], first, last, **bio(b))
-        upsert_batting(cur, pid, team["id"], season_year, b, ext_by_name.get(_clean(b.get("name","")).lower(), {}))
+        upsert_batting(cur, pid, team["id"], season_year, b, ext_by_name.get(_name_key(b.get("name","")), {}))
         n_bat += 1
 
     for p in pitch:
