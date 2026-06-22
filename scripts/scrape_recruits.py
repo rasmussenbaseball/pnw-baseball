@@ -207,6 +207,18 @@ def norm_name(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
+# Manual destination corrections for recruits the SOURCES mislabel — keyed by
+# (norm first, norm last, grad_year) -> committed_team_id, reapplied every scrape
+# so the fix sticks (the upsert otherwise overwrites committed_team_id).
+# Pacific (OR, id 17) vs University of the Pacific / UOP (CA D1, id 32857): PBR
+# tags some UOP commits as "Pacific Boxers" (Pacific OR's mascot), so the string
+# alone can't disambiguate. Add a line here when a recruit is confirmed mis-homed.
+RECRUIT_DEST_OVERRIDES = {
+    ("nick", "schikore", 2026): 32857,       # UOP (CA), not Pacific OR
+    ("luke", "van de braak", 2026): 32857,   # UOP (CA), not Pacific OR
+}
+
+
 def derive_bbnw_slug(school_name):
     """Derive a BBNW /schools/{slug} slug from a school_name.
 
@@ -701,6 +713,17 @@ def run(grad_year, state_filter, dry_run):
     if dup_count:
         logger.info("Collapsed %d duplicate commit row(s) on (name, grad_year).",
                     dup_count)
+
+    # Apply manual destination corrections (mislabeled sources, e.g. UOP commits
+    # tagged "Pacific Boxers"). Reapplied every run so the fix survives re-scrapes.
+    for r in all_recruits:
+        ov = RECRUIT_DEST_OVERRIDES.get(
+            (norm_name(r["first_name"]), norm_name(r["last_name"]), r["grad_year"]))
+        if ov and r["committed_team_id"] != ov:
+            logger.info("Override dest: %s %s (%s) -> team %s",
+                        r["first_name"], r["last_name"], r["grad_year"], ov)
+            r["committed_team_id"] = ov
+            r["committed_raw"] = "University of the Pacific (CA)"
 
     # Per-school commit totals (BBNW + any PBR-only adds) for reporting.
     per_school_counts = {}
