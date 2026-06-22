@@ -244,11 +244,19 @@ def reclassify(pitches, hand=None):
     """Recompute the `pitch` label for a session's already-normalized pitch
     dicts (e.g. rows read back from the DB). Returns a list of labels aligned
     with `pitches`. Lets classifier improvements be applied retroactively
-    without re-uploading the CSV."""
-    ok = [p for p in pitches if p.get("quality") == "ok"]
+    without re-uploading the CSV.
+
+    DB rows come back as Decimal; classify/_fastball_centroid do float math, so
+    coerce the numeric fields to float at this boundary."""
+    def _fnum(v):
+        return float(v) if v is not None else None
+    norm = [{**p, "velo": _fnum(p.get("velo")), "ivb": _fnum(p.get("ivb")),
+             "arm_hb": _fnum(p.get("arm_hb")), "spin_eff": _fnum(p.get("spin_eff")),
+             "gyro": _fnum(p.get("gyro"))} for p in pitches]
+    ok = [p for p in norm if p.get("quality") == "ok"]
     fb = _fastball_centroid(ok)
     return [classify(p, fb, hand) if p.get("quality") in ("ok", "low_confidence") else None
-            for p in pitches]
+            for p in norm]
 
 
 def _mean(vals):
