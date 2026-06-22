@@ -64,12 +64,23 @@ export const PITCHER_STAT_COLS = [
   { key: 'total_war', label: 'WAR', format: 'war', mono: true },
 ]
 
+// WCL Transfer Portal Tracker only: TrackMan arsenal grade (count-weighted
+// avg of per-pitch Stuff+-style grades, 100 = avg) + avg fastball velo, right
+// after WAR. Kept separate from the shared PITCHER_STAT_COLS so they don't
+// appear on the JUCO / transfer trackers, which have no TrackMan data.
+export const WCL_PITCHER_STAT_COLS = [
+  ...PITCHER_STAT_COLS,
+  { key: 'arsenal_grade', label: 'ARS', format: 'int',  mono: true },
+  { key: 'avg_fb_velo',   label: 'FBv', format: 'velo', mono: true },
+]
+
 // Every displayed stat column is sortable. Derive the set from the column
 // definitions so it can never drift from what's actually shown.
 export const SORTABLE = new Set([
   'total_war',
   ...BATTING_COLS.map(c => c.key),
   ...PITCHING_COLS.map(c => c.key),
+  'arsenal_grade', 'avg_fb_velo',   // WCL portal TrackMan columns
 ])
 // Lower-is-better stats sort ascending by default when first clicked.
 export const ASC_DEFAULT = new Set(['era', 'fip', 'siera', 'baa'])
@@ -102,6 +113,7 @@ function fmtCell(row, col) {
   if (col.format === 'int') return val != null ? Math.round(val) : '-'
   if (col.format === 'ip') return val ? formatStat(val, 'ip') : '-'
   if (col.format === 'wpa') return val != null ? (val >= 0 ? '+' : '') + Number(val).toFixed(2) : '-'
+  if (col.format === 'velo') return val != null ? Number(val).toFixed(1) : '-'
   if (col.format) return formatStat(val, col.format)
   return val ?? '-'
 }

@@ -1,7 +1,7 @@
 import { useApi } from '../hooks/useApi'
 import { usePersistedState } from '../hooks/usePersistedState'
 import PlayerTrackerTable, {
-  BoardToggle, HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
+  BoardToggle, HITTER_STAT_COLS, WCL_PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
 import { CURRENT_SEASON } from '../lib/seasons'
 
@@ -117,7 +117,7 @@ export default function WclTransferTracker() {
           sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
           infoLabel="WCL Team" committedHeader="Spring School" playerHref={wclHref} />
       ) : (
-        <PlayerTrackerTable rows={pitchers} statCols={PITCHER_STAT_COLS} groupLabel="WCL Pitching"
+        <PlayerTrackerTable rows={pitchers} statCols={WCL_PITCHER_STAT_COLS} groupLabel="WCL Pitching"
           sortBy={sortBy} sortDir={sortDir} onSort={handleSort}
           infoLabel="WCL Team" committedHeader="Spring School" playerHref={wclHref} />
       )}

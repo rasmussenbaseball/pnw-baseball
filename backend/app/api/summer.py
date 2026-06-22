@@ -3515,6 +3515,7 @@ _WCL_PORTAL_SORT = {
     "bat_k_pct", "bat_bb_pct", "contact_pct", "swing_pct", "air_pull_pct", "batter_wpa",
     "pitching_war", "era", "fip", "fip_plus", "siera", "baa", "pitch_k_pct", "pitch_bb_pct",
     "whiff_pct", "strike_pct", "first_pitch_strike_pct", "pitcher_wpa", "innings_pitched",
+    "arsenal_grade", "avg_fb_velo",
 }
 
 
@@ -3688,7 +3689,8 @@ def wcl_portal_players(
                    ps.innings_pitched, ps.strikeouts AS pitch_k,
                    ps.k_pct AS pitch_k_pct, ps.bb_pct AS pitch_bb_pct,
                    ps.pitching_war,
-                   COALESCE(bs.offensive_war, 0) + COALESCE(ps.pitching_war, 0) AS total_war
+                   COALESCE(bs.offensive_war, 0) + COALESCE(ps.pitching_war, 0) AS total_war,
+                   tm.arsenal_grade, tm.avg_fb_velo
             FROM summer_players sp
             JOIN summer_teams st ON sp.team_id = st.id
             JOIN summer_leagues l ON l.id = st.league_id
@@ -3703,6 +3705,19 @@ def wcl_portal_players(
             LEFT JOIN divisions ld ON ld.id = lc.division_id
             LEFT JOIN summer_batting_stats bs ON bs.player_id = sp.id AND bs.season = %s AND bs.team_id = sp.team_id
             LEFT JOIN summer_pitching_stats ps ON ps.player_id = sp.id AND ps.season = %s AND ps.team_id = sp.team_id
+            -- TrackMan arsenal grade (count-weighted avg of per-pitch grades) and
+            -- avg fastball velo (Four Seam / Sinker / Cutter), per pitcher. Most
+            -- pitchers have no TrackMan data, so this is a LEFT JOIN -> NULL -> '-'.
+            LEFT JOIN (
+                SELECT summer_player_id,
+                       (SUM(pitch_grade * pitch_count) / NULLIF(SUM(pitch_count), 0))::float8 AS arsenal_grade,
+                       (SUM(velo * pitch_count) FILTER (WHERE pitch_type IN ('Four Seam','Sinker','Cutter'))
+                        / NULLIF(SUM(pitch_count) FILTER (WHERE pitch_type IN ('Four Seam','Sinker','Cutter')), 0)
+                       )::float8 AS avg_fb_velo
+                FROM trackman_pitches
+                WHERE season = %s
+                GROUP BY summer_player_id
+            ) tm ON tm.summer_player_id = sp.id
             WHERE sp.id = ANY(%s)
               -- Drop players whose linked spring player is flagged committed
               -- (the canonical is_committed flag the Commitment Editor sets).
@@ -3717,7 +3732,7 @@ def wcl_portal_players(
                   WHERE spl2.summer_player_id = sp.id AND COALESCE(p2.is_committed, 0) = 1
               )
         """
-        params: list = [season, season, season, season, ids]
+        params: list = [season, season, season, season, season, ids]
         if position:
             if position == "P":
                 query += " AND (sp.position IN ('RHP','LHP','P') OR sp.position LIKE 'RHP/%%' OR sp.position LIKE 'LHP/%%' OR sp.position LIKE 'P/%%')"
