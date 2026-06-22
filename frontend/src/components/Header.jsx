@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import { useTier } from '../hooks/useTier'
+import { usePreview, AUTHOR_EMAILS } from '../context/PreviewContext'
 import { tierMeets, TIER_META, DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, COMMITMENT_EDITOR_EMAILS } from '../lib/tiers'
 import { isGmFreePlay } from '../lib/gmPromo'
 
@@ -720,6 +721,80 @@ function NavTab({ section, isActive, user }) {
   )
 }
 
+// ─── Dev-only "View site as tier" toggle (every page) ───
+// Lets the owner/devs preview the site as any tier. "Dev (You)" clears the
+// override and falls back to the real dev view. Only renders for AUTHOR_EMAILS.
+const PREVIEW_TIERS = [
+  { id: null,         label: 'Dev (You)',  hint: 'Your real dev tier — full access' },
+  { id: 'anonymous',  label: 'Anonymous',  hint: 'Signed-out visitor' },
+  { id: 'free',       label: 'Free',       hint: 'Free account' },
+  { id: 'premium',    label: 'Premium',    hint: '$5/mo subscriber' },
+  { id: 'recruiting', label: 'Recruiting', hint: '$10/mo college coach' },
+  { id: 'coach',      label: 'Coach',      hint: '$25/mo Coach & Scout' },
+]
+
+function HeaderTierToggle() {
+  const { realUser } = useAuth()
+  const { previewTier, setPreviewTier } = usePreview()
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const isAuthor = !!realUser?.email && AUTHOR_EMAILS.includes(realUser.email)
+  if (!isAuthor) return null
+
+  const current = PREVIEW_TIERS.find(t => t.id === (previewTier || null)) || PREVIEW_TIERS[0]
+  const previewing = !!previewTier
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Preview the site as a different tier (dev only)"
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
+          previewing ? 'bg-amber-400 text-amber-950 hover:bg-amber-300' : 'bg-white/10 text-teal-100 hover:bg-white/20'}`}
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z" />
+          <circle cx="12" cy="12" r="2.5" />
+        </svg>
+        <span>{previewing ? `As: ${current.label}` : 'View as'}</span>
+        <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 py-1 z-[60]">
+          <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-700">
+            View site as
+          </div>
+          {PREVIEW_TIERS.map(t => {
+            const sel = (previewTier || null) === t.id
+            return (
+              <button
+                key={t.id || 'dev'}
+                onClick={() => { setPreviewTier(t.id); setOpen(false) }}
+                className={`w-full text-left px-3 py-2 flex flex-col transition-colors ${
+                  sel ? 'bg-nw-teal/10 text-nw-teal dark:text-nw-teal-light font-semibold'
+                      : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+              >
+                <span className="text-sm">{t.label}{sel ? ' ✓' : ''}</span>
+                <span className="text-[10px] text-gray-400 dark:text-gray-500 font-normal">{t.hint}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Header ───
 export default function Header() {
   const location = useLocation()
@@ -792,6 +867,7 @@ export default function Header() {
                 />
               ))}
             </nav>
+            <HeaderTierToggle />
             <div className="ml-2 border-l border-white/15 pl-2">
               <SearchBar />
             </div>
@@ -862,6 +938,7 @@ export default function Header() {
 
           {/* Mobile: search + menu button */}
           <div className="lg:hidden flex items-center gap-1">
+            <HeaderTierToggle />
             <SearchBar mobile />
             <button
               className="p-2 rounded hover:bg-white/10 transition-colors"
