@@ -48,6 +48,29 @@ const FLD_ROWS = [
   ['errors', 'E', 'int', true],
   ['double_plays', 'DP', 'int', false],
 ]
+// Play-by-play discipline (season only). 5th element = neutral (no leader/color
+// for descriptive rates that aren't clearly better/worse).
+const PBP_HIT_ROWS = [
+  ['swing_pct', 'Swing%', 'pct', false, true],
+  ['contact_pct', 'Contact%', 'pct', false, false],
+  ['whiff_pct', 'Whiff%', 'pct', true, false],
+  ['putaway_pct', 'Putaway%', 'pct', true, false],
+  ['air_pull_pct', 'AirPull%', 'pct', false, false],
+  ['first_pitch_strike_pct', '1P-Str%', 'pct', false, true],
+  ['gb_pct', 'GB%', 'pct', false, true],
+  ['fb_pct', 'FB%', 'pct', false, true],
+  ['ld_pct', 'LD%', 'pct', false, true],
+  ['pitches_per_pa', 'P/PA', 'rate', false, true],
+]
+const PBP_PIT_ROWS = [
+  ['whiff_pct', 'Whiff%', 'pct', false, false],
+  ['strike_pct', 'Strike%', 'pct', false, false],
+  ['called_strike_pct', 'CStr%', 'pct', false, true],
+  ['first_pitch_strike_pct', '1P-Str%', 'pct', false, false],
+  ['putaway_pct', 'Putaway%', 'pct', false, false],
+  ['gb_pct', 'GB%', 'pct', false, true],
+  ['opp_air_pull_pct', 'Opp AirPull%', 'pct', true, false],
+]
 
 function fmt(format, v) {
   if (v == null || v === '') return '—'
@@ -102,20 +125,20 @@ export default function PlayerComparison() {
 
   // Renders one stat row across all player columns.
   const Row = ({ group, def }) => {
-    const [key, label, format, lower] = def
+    const [key, label, format, lower, neutral] = def
     const vals = players.map((p, i) => {
       const v = valOf(p, i, group, key)
       return v == null || v === '' ? null : Number(v)
     })
     const present = vals.filter(v => v != null)
-    const best = present.length ? (lower ? Math.min(...present) : Math.max(...present)) : null
+    const best = (!neutral && present.length) ? (lower ? Math.min(...present) : Math.max(...present)) : null
     return (
       <tr className="border-b border-gray-100 dark:border-gray-700/60">
         <td className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900 px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">{label}</td>
         {players.map((p, i) => {
           const v = vals[i]
-          const isLeader = v != null && v === best && players.length > 1
-          const avg = leagueAvgs[group]?.[p.division_level]?.[key]
+          const isLeader = !neutral && v != null && v === best && players.length > 1
+          const avg = neutral ? null : leagueAvgs[group]?.[p.division_level]?.[key]
           let cls = 'text-gray-800 dark:text-gray-100'
           if (v != null && avg != null) {
             const better = lower ? v < avg : v > avg
@@ -142,6 +165,8 @@ export default function PlayerComparison() {
   const anyBatting = players.some(p => p.batting)
   const anyPitching = players.some(p => p.pitching)
   const anyFielding = fielding.some(f => f.has)
+  const anyBattingPbp = mode === 'season' && players.some(p => p.batting_pbp)
+  const anyPitchingPbp = mode === 'season' && players.some(p => p.pitching_pbp)
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
@@ -235,14 +260,16 @@ export default function PlayerComparison() {
             </thead>
             <tbody>
               {anyBatting && <><SectionHead title="Hitting" />{HIT_ROWS.map(def => <Row key={def[0]} group="batting" def={def} />)}</>}
+              {anyBattingPbp && <><SectionHead title="Plate Discipline (PBP)" />{PBP_HIT_ROWS.map(def => <Row key={'bpbp_' + def[0]} group="batting_pbp" def={def} />)}</>}
               {anyPitching && <><SectionHead title="Pitching" />{PIT_ROWS.map(def => <Row key={def[0]} group="pitching" def={def} />)}</>}
+              {anyPitchingPbp && <><SectionHead title="Pitching — PBP" />{PBP_PIT_ROWS.map(def => <Row key={'ppbp_' + def[0]} group="pitching_pbp" def={def} />)}</>}
               {anyFielding && <><SectionHead title="Fielding (all positions)" />{FLD_ROWS.map(def => <Row key={def[0]} group="fielding" def={def} />)}</>}
             </tbody>
           </table>
         </div>
       )}
       {mode === 'career' && selected.length > 0 && (
-        <p className="text-[11px] text-gray-400 mt-2">Career = all seasons in our database, summed (rates recomputed). Above/below coloring uses the current-season division average as the benchmark.</p>
+        <p className="text-[11px] text-gray-400 mt-2">Career = all seasons in our database, summed (rates recomputed). Above/below coloring uses the current-season division average. Play-by-play stats are season-only, so they show in the {CURRENT_SEASON} view.</p>
       )}
     </div>
   )

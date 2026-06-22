@@ -9316,6 +9316,48 @@ def compare_players(
         for lvl in league_avgs["pitching"]:
             league_avgs["pitching"][lvl]["fip_plus"] = 100.0
 
+        # ── Play-by-play discipline (Contact%, Whiff%, Swing%, Strike%, ...) ──
+        # PBP is season-scoped everywhere on the site (no career aggregation), so
+        # we only compute it in season mode. Reuse the pitch-level baseline
+        # helpers via a lazy import (pitch_level imports from routes, so a
+        # top-level import here would be circular). Per-player = filtered to one
+        # id; league average = filter "TRUE" over the division.
+        league_avgs["batting_pbp"], league_avgs["pitching_pbp"] = {}, {}
+        pbp_hit, pbp_pit = {}, {}
+        if not career:
+            from .pitch_level import (_compute_pitch_level_baseline,
+                                      _compute_pitcher_pitch_level_baseline)
+            divs = {bios[p]["division_level"] for p in pid_list
+                    if bios.get(p) and bios[p].get("division_level")}
+            for lvl in divs:
+                w = DEFAULT_WEIGHTS.get(lvl, DEFAULT_WEIGHTS["D1"])
+                try:
+                    league_avgs["batting_pbp"][lvl] = _compute_pitch_level_baseline(cur, season, lvl, "TRUE", w)
+                except Exception:
+                    pass
+                try:
+                    league_avgs["pitching_pbp"][lvl] = _compute_pitcher_pitch_level_baseline(cur, season, lvl, "TRUE", w)
+                except Exception:
+                    pass
+            for pid in pid_list:
+                bio = bios.get(pid)
+                if not bio:
+                    continue
+                lvl = bio.get("division_level") or "D1"
+                w = DEFAULT_WEIGHTS.get(lvl, DEFAULT_WEIGHTS["D1"])
+                try:
+                    h = _compute_pitch_level_baseline(cur, season, lvl, f"ge.batter_player_id = {int(pid)}", w)
+                    if h and (h.get("pa") or 0) > 0:
+                        pbp_hit[pid] = h
+                except Exception:
+                    pass
+                try:
+                    p = _compute_pitcher_pitch_level_baseline(cur, season, lvl, f"ge.pitcher_player_id = {int(pid)}", w)
+                    if p and (p.get("pa") or 0) > 0:
+                        pbp_pit[pid] = p
+                except Exception:
+                    pass
+
         players = []
         for pid in pid_list:
             bio = bios.get(pid)
@@ -9341,6 +9383,8 @@ def compare_players(
                 "batting": _cmp_clean(batting),
                 "pitching": _cmp_clean(pitching),
                 "fielding": _cmp_fielding(fld_by_pid.get(pid, []), career),
+                "batting_pbp": pbp_hit.get(pid),
+                "pitching_pbp": pbp_pit.get(pid),
             })
 
         return {"mode": mode, "season": season, "league_averages": league_avgs, "players": players}
