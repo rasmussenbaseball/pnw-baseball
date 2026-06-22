@@ -9951,17 +9951,22 @@ def uncommitted_juco_recruit_ext(
     """Out-of-region JUCO players (California / Scenic West) for the tracker.
 
     Reads ONLY the isolated juco_recruit_* tables. Row shape matches the
-    NWAC tracker endpoint where the stats exist; advanced stats are absent.
+    NWAC tracker endpoint. Advanced stats (wOBA/wRC+/oWAR, FIP/FIP+/pWAR, K%,
+    BB%) are computed from season totals by recompute_juco_recruit_advanced.py
+    — no PBP, so the pitch-level columns (Contact%, Whiff%, WPA...) stay null.
     """
-    # Only traditional/rate columns exist here; map anything else to a sane default.
+    # Whitelisted sort keys = the columns/aliases we actually return.
     ext_sortable = {
         "batting_avg", "on_base_pct", "slugging_pct", "ops", "home_runs", "rbi",
         "stolen_bases", "plate_appearances", "era", "innings_pitched", "pitch_k",
+        "woba", "wrc_plus", "offensive_war", "bat_k_pct", "bat_bb_pct",
+        "fip", "fip_plus", "pitching_war", "pitch_k_pct", "pitch_bb_pct", "total_war",
     }
     if sort_by not in ext_sortable:
         sort_by = "ops"
     direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
-    if sort_by == "era" and sort_dir.lower() not in ("asc", "desc"):
+    # Lower-is-better stats default to ascending.
+    if sort_by in ("era", "fip") and sort_dir.lower() not in ("asc", "desc"):
         direction = "ASC"
 
     with get_connection() as conn:
@@ -9974,8 +9979,12 @@ def uncommitted_juco_recruit_ext(
                    t.logo_url, t.conference_name, t.conference_abbr, t.state AS team_state,
                    b.batting_avg, b.on_base_pct, b.slugging_pct, b.ops,
                    b.home_runs, b.rbi, b.stolen_bases, b.plate_appearances,
+                   b.woba, b.wrc_plus, b.offensive_war,
+                   b.k_pct AS bat_k_pct, b.bb_pct AS bat_bb_pct,
                    pp.era, pp.whip, pp.innings_pitched, pp.strikeouts AS pitch_k,
-                   NULL::numeric AS total_war
+                   pp.fip, pp.fip_plus, pp.pitching_war,
+                   pp.k_pct AS pitch_k_pct, pp.bb_pct AS pitch_bb_pct,
+                   COALESCE(b.offensive_war, 0) + COALESCE(pp.pitching_war, 0) AS total_war
             FROM juco_recruit_players p
             JOIN juco_recruit_teams t ON t.id = p.team_id
             LEFT JOIN juco_recruit_batting  b  ON b.player_id = p.id AND b.season = %s

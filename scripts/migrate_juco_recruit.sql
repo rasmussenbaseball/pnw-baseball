@@ -105,6 +105,15 @@ CREATE TABLE IF NOT EXISTS juco_recruit_batting (
     on_base_pct       NUMERIC,
     slugging_pct      NUMERIC,
     ops               NUMERIC,
+    -- Advanced (computed from season totals by recompute_juco_recruit_advanced.py;
+    -- league-relative to the conference, no PBP needed).
+    woba              NUMERIC,
+    wrc_plus          NUMERIC,
+    iso               NUMERIC,
+    babip             NUMERIC,
+    bb_pct            NUMERIC,
+    k_pct             NUMERIC,
+    offensive_war     NUMERIC,
     created_at        TIMESTAMPTZ DEFAULT now(),
     updated_at        TIMESTAMPTZ DEFAULT now(),
     UNIQUE (player_id, season)
@@ -141,6 +150,15 @@ CREATE TABLE IF NOT EXISTS juco_recruit_pitching (
     whip               NUMERIC,
     k_per_9            NUMERIC,
     bb_per_9           NUMERIC,
+    -- Advanced (computed from season totals; league-relative, no PBP).
+    fip                NUMERIC,
+    xfip               NUMERIC,
+    k_pct              NUMERIC,
+    bb_pct             NUMERIC,
+    k_bb_pct           NUMERIC,
+    fip_plus           NUMERIC,
+    era_minus          NUMERIC,
+    pitching_war       NUMERIC,
     created_at         TIMESTAMPTZ DEFAULT now(),
     updated_at         TIMESTAMPTZ DEFAULT now(),
     UNIQUE (player_id, season)
