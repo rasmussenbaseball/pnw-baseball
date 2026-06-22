@@ -345,54 +345,73 @@ def _school_from_team(name, mascot):
 
 
 def _resolve_colleges(cur, player_ids, season):
-    """player_id -> CONFIRMED current (>= `season`) school, else None.
+    """summer player_id -> the school string to show on the recap graphic.
 
-    We only show a school we can confirm the player played for in the current
-    season. Players transfer, and our spring DB stores one row per (player,
-    team), so a 2026 summer record can be linked to a 2022 JUCO row. So: among
-    all spring records sharing the linked player's name, take the team from the
-    most recent stats season, and emit it ONLY if that season is >= the game's
-    season (i.e. they played there this year). We deliberately do NOT fall back
-    to the raw Pointstreak `college` string — it has no season and is often
-    stale (e.g. an out-of-region school from an old roster), so when we can't
-    confirm the current school we leave it blank rather than show stale data.
+    Priority (highest wins):
+      1. 'Portal'  — the player is in the WCL transfer portal (wcl_portal_members)
+      2. assigned_school — the curated school from the Commitment Editor. This is
+         the source of truth for the current season and, unlike the spring
+         cross-link, also covers NON-PNW schools (e.g. CSU San Bernardino), which
+         have no row in our `teams` table.
+      3. the auto-linked PNW spring school, emitted ONLY when we can confirm the
+         player has stats there in `season` or later (transfers otherwise link to
+         a stale old-season row).
+    Anything we can't resolve stays blank rather than showing stale data.
     """
     ids = sorted({p for p in player_ids if p})
-    if not ids or not season:
+    if not ids:
         return {}
     out = {}
-    cur.execute(
-        """
-        WITH linked AS (
-            SELECT DISTINCT ON (lk.summer_player_id)
-                   lk.summer_player_id AS spid,
-                   lower(spr.first_name) AS fn, lower(spr.last_name) AS ln
-            FROM summer_player_links lk
-            JOIN players spr ON spr.id = lk.spring_player_id
-            WHERE lk.summer_player_id = ANY(%s)
-            ORDER BY lk.summer_player_id, lk.confidence DESC NULLS LAST
-        ),
-        cand AS (
-            SELECT l.spid, p.id AS pid, p.team_id,
-                   GREATEST(
-                     COALESCE((SELECT MAX(season) FROM batting_stats b WHERE b.player_id = p.id), 0),
-                     COALESCE((SELECT MAX(season) FROM pitching_stats pt WHERE pt.player_id = p.id), 0)
-                   ) AS last_season
-            FROM linked l
-            JOIN players p ON lower(p.first_name) = l.fn AND lower(p.last_name) = l.ln
+
+    # 3) Auto-linked PNW spring school (confirmed current-season) — lowest priority.
+    if season:
+        cur.execute(
+            """
+            WITH linked AS (
+                SELECT DISTINCT ON (lk.summer_player_id)
+                       lk.summer_player_id AS spid,
+                       lower(spr.first_name) AS fn, lower(spr.last_name) AS ln
+                FROM summer_player_links lk
+                JOIN players spr ON spr.id = lk.spring_player_id
+                WHERE lk.summer_player_id = ANY(%s)
+                ORDER BY lk.summer_player_id, lk.confidence DESC NULLS LAST
+            ),
+            cand AS (
+                SELECT l.spid, p.id AS pid, p.team_id,
+                       GREATEST(
+                         COALESCE((SELECT MAX(season) FROM batting_stats b WHERE b.player_id = p.id), 0),
+                         COALESCE((SELECT MAX(season) FROM pitching_stats pt WHERE pt.player_id = p.id), 0)
+                       ) AS last_season
+                FROM linked l
+                JOIN players p ON lower(p.first_name) = l.fn AND lower(p.last_name) = l.ln
+            )
+            SELECT DISTINCT ON (c.spid) c.spid, t.name, t.mascot, c.last_season
+            FROM cand c JOIN teams t ON t.id = c.team_id
+            ORDER BY c.spid, c.last_season DESC, c.pid DESC
+            """,
+            (ids,),
         )
-        SELECT DISTINCT ON (c.spid) c.spid, t.name, t.mascot, c.last_season
-        FROM cand c JOIN teams t ON t.id = c.team_id
-        ORDER BY c.spid, c.last_season DESC, c.pid DESC
-        """,
+        for r in cur.fetchall():
+            if (r["last_season"] or 0) < season:
+                continue
+            sch = _school_from_team(r["name"], r["mascot"])
+            if sch:
+                out[r["spid"]] = sch
+
+    # 2) Curated assigned_school overrides the linked guess (covers non-PNW schools).
+    cur.execute(
+        "SELECT id, assigned_school FROM summer_players "
+        "WHERE id = ANY(%s) AND assigned_school IS NOT NULL AND btrim(assigned_school) <> ''",
         (ids,),
     )
     for r in cur.fetchall():
-        if (r["last_season"] or 0) < season:
-            continue  # can't confirm they played there this season -> leave blank
-        sch = _school_from_team(r["name"], r["mascot"])
-        if sch:
-            out[r["spid"]] = sch
+        out[r["id"]] = r["assigned_school"].strip()
+
+    # 1) Portal status wins over any school.
+    cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE summer_player_id = ANY(%s)", (ids,))
+    for r in cur.fetchall():
+        out[r["summer_player_id"]] = "Portal"
+
     return out
 
 

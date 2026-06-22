@@ -486,9 +486,12 @@ function drawPerformerCard(ctx, x, y, w, h, item, accent) {
   const role = item.kind === 'pitcher'
     ? (p.is_starter ? 'SP' : 'RP')
     : (p.position ? String(p.position).toUpperCase() : '')
-  // College / school, shown right-aligned on the name line when known. Clean
-  // PNW names come from the spring cross-link, so this naturally flags PNWers.
+  // School, shown right-aligned on the name line when known. The backend
+  // resolves it by priority: 'Portal' (transfer portal) -> curated school
+  // (PNW or non-PNW) -> confirmed PNW spring link. Portal renders in gold so
+  // it reads as a status rather than a school.
   const college = p.college || ''
+  const isPortal = college === 'Portal'
   ctx.font = '700 14px -apple-system, sans-serif'
   const collegeW = college ? ctx.measureText(college).width : 0
   const rightLimit = x + w - 16 - (college ? collegeW + 14 : 0)
@@ -509,7 +512,7 @@ function drawPerformerCard(ctx, x, y, w, h, item, accent) {
   }
   if (college) {
     ctx.font = '700 14px -apple-system, sans-serif'
-    ctx.fillStyle = C.blue
+    ctx.fillStyle = isPortal ? C.gold_deep : C.blue
     ctx.textAlign = 'right'
     ctx.fillText(college, x + w - 16, nameY)
     ctx.textAlign = 'left'
