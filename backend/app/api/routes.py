@@ -16,6 +16,7 @@ import re
 import threading
 from bisect import bisect_left, bisect_right
 from datetime import datetime, date, timedelta
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from fastapi.responses import JSONResponse, FileResponse
@@ -9140,6 +9141,209 @@ def _attach_tracker_awards(cur, rows, season):
             "all_conference": ac_map.get(pid, []),
             "top10": sorted(set(t10.get(pid, []))),
         }
+
+
+# ── Player Comparison (coaching tool) ──────────────────────────────────
+# Side-by-side comparison of up to 5 players. Only rate/advanced stats get a
+# league-average benchmark (for above/below coloring); counting stats use the
+# per-row leader highlight on the frontend.
+_CMP_BAT_AVG_STATS = ["batting_avg", "on_base_pct", "slugging_pct", "ops", "iso",
+                      "bb_pct", "k_pct", "woba", "wrc_plus", "offensive_war"]
+_CMP_PIT_AVG_STATS = ["era", "whip", "k_pct", "bb_pct", "k_bb_pct", "fip",
+                      "fip_plus", "baa", "k_per_9", "pitching_war"]
+# Real pitching_stats columns we can AVG() directly (k_bb_pct + baa are derived).
+_CMP_PIT_DB_STATS = ["era", "whip", "k_pct", "bb_pct", "fip", "fip_plus", "k_per_9", "pitching_war"]
+
+
+def _cmp_pitch_derive(p):
+    """Add the derived pitching rates (k_bb_pct, baa) that aren't DB columns."""
+    if not p:
+        return p
+    kp, bp = p.get("k_pct"), p.get("bb_pct")
+    if kp is not None and bp is not None:
+        p["k_bb_pct"] = float(kp) - float(bp)
+    if p.get("baa") is None:
+        den = (p.get("batters_faced") or 0) - (p.get("walks") or 0) - (p.get("hit_batters") or 0)
+        p["baa"] = (float(p.get("hits_allowed") or 0) / den) if den > 0 else None
+    return p
+_CMP_STAT_DROP = {"id", "player_id", "team_id", "season", "created_at", "updated_at"}
+
+
+def _cmp_clean(stats):
+    """Coerce a stat dict to JSON-friendly floats, dropping meta columns."""
+    if not stats:
+        return None
+    out = {}
+    for k, v in stats.items():
+        if k in _CMP_STAT_DROP:
+            continue
+        if isinstance(v, Decimal):
+            out[k] = float(v)
+        elif isinstance(v, (int, float)) or v is None or isinstance(v, str):
+            out[k] = v
+    return out
+
+
+def _cmp_positions(rows):
+    """game_batting position rows -> [{position, games, percentage}] (excludes P)."""
+    total = sum(r["games"] for r in rows)
+    if not total:
+        return []
+    out, unknown = [], 0
+    for r in rows:
+        raw = r["position"]
+        if not raw or not raw.strip() or raw.strip() == "-":
+            unknown += r["games"]; continue
+        norm = normalize_position(raw)
+        if not norm or norm == "P":
+            continue
+        ex = next((p for p in out if p["position"] == norm), None)
+        if ex:
+            ex["games"] += r["games"]
+        else:
+            out.append({"position": norm, "games": r["games"]})
+    for p in out:
+        p["percentage"] = round(p["games"] / total * 100, 1)
+    out.sort(key=lambda x: -x["games"])
+    return out
+
+
+def _cmp_fielding(rows, career):
+    """fielding_stats rows -> per-position lines (career-summed when career)."""
+    by_pos = {}
+    for r in rows:
+        pos = (r.get("position") or "").strip().upper()
+        if pos in ("", "ALL", "TOT", "TOTAL"):
+            continue
+        agg = by_pos.setdefault(pos, {"position": pos, "games": 0, "innings": 0.0,
+                                      "putouts": 0, "assists": 0, "errors": 0, "double_plays": 0})
+        agg["games"] += r.get("games") or 0
+        agg["innings"] += float(r.get("innings") or 0)
+        agg["putouts"] += r.get("putouts") or 0
+        agg["assists"] += r.get("assists") or 0
+        agg["errors"] += r.get("errors") or 0
+        agg["double_plays"] += r.get("double_plays") or 0
+    out = []
+    for agg in by_pos.values():
+        tc = agg["putouts"] + agg["assists"] + agg["errors"]
+        agg["fielding_pct"] = round((agg["putouts"] + agg["assists"]) / tc, 3) if tc else None
+        agg["innings"] = round(agg["innings"], 1)
+        out.append(agg)
+    out.sort(key=lambda x: -x["innings"])
+    return out
+
+
+@router.get("/players/compare")
+def compare_players(
+    ids: str = Query(..., description="Comma-separated player ids (1-5)"),
+    mode: str = Query("season", description="'season' or 'career'"),
+    season: int = Query(CURRENT_SEASON),
+    _user: str = Depends(require_tier("premium")),
+):
+    """Side-by-side stat comparison for up to 5 players (season or career)."""
+    pid_list = [int(t) for t in (ids or "").split(",") if t.strip().isdigit()][:5]
+    if not pid_list:
+        return {"mode": mode, "season": season, "league_averages": {"batting": {}, "pitching": {}}, "players": []}
+    career = (mode == "career")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT p.id, p.first_name, p.last_name, p.position, p.bats, p.throws,
+                   p.year_in_school, p.headshot_url, p.hometown,
+                   t.short_name AS team_short, t.logo_url, t.state AS team_state,
+                   d.level AS division_level, c.abbreviation AS conference_abbrev
+            FROM players p
+            LEFT JOIN teams t ON t.id = p.team_id
+            LEFT JOIN conferences c ON c.id = t.conference_id
+            LEFT JOIN divisions d ON d.id = c.division_id
+            WHERE p.id = ANY(%s)
+        """, (pid_list,))
+        bios = {r["id"]: dict(r) for r in cur.fetchall()}
+
+        def fetch_by_pid(table):
+            sql = f"SELECT * FROM {table} WHERE player_id = ANY(%s)"
+            params = [pid_list]
+            if not career:
+                sql += " AND season = %s"; params.append(season)
+            cur.execute(sql, params)
+            out = {}
+            for r in cur.fetchall():
+                out.setdefault(r["player_id"], []).append(dict(r))
+            return out
+
+        bat_by_pid = fetch_by_pid("batting_stats")
+        pit_by_pid = fetch_by_pid("pitching_stats")
+        fld_by_pid = fetch_by_pid("fielding_stats")
+
+        pos_sql = ("""SELECT gb.player_id, gb.position,
+                             COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) AS games
+                      FROM game_batting gb JOIN games g ON g.id = gb.game_id
+                      WHERE gb.player_id = ANY(%s)""" +
+                   ("" if career else " AND g.season = %s") +
+                   " GROUP BY gb.player_id, gb.position")
+        cur.execute(pos_sql, [pid_list] if career else [pid_list, season])
+        pos_by_pid = {}
+        for r in cur.fetchall():
+            pos_by_pid.setdefault(r["player_id"], []).append(r)
+
+        # League averages per division (for the chosen season — also used as the
+        # benchmark in career mode, i.e. "vs a typical current player").
+        league_avgs = {"batting": {}, "pitching": {}}
+        bat_sel = ", ".join(f"AVG({s}) AS {s}" for s in _CMP_BAT_AVG_STATS)
+        cur.execute(f"""SELECT d.level, {bat_sel}
+            FROM batting_stats bs JOIN teams t ON t.id = bs.team_id
+            JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
+            WHERE bs.season = %s AND bs.plate_appearances >= 10 GROUP BY d.level""", (season,))
+        for r in cur.fetchall():
+            league_avgs["batting"][r["level"]] = {s: (float(r[s]) if r[s] is not None else None) for s in _CMP_BAT_AVG_STATS}
+        pit_sel = ", ".join(f"AVG({s}) AS {s}" for s in _CMP_PIT_DB_STATS)
+        cur.execute(f"""SELECT d.level, {pit_sel}
+            FROM pitching_stats ps JOIN teams t ON t.id = ps.team_id
+            JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
+            WHERE ps.season = %s AND ps.innings_pitched >= 5 GROUP BY d.level""", (season,))
+        for r in cur.fetchall():
+            avg = {s: (float(r[s]) if r[s] is not None else None) for s in _CMP_PIT_DB_STATS}
+            if avg.get("k_pct") is not None and avg.get("bb_pct") is not None:
+                avg["k_bb_pct"] = avg["k_pct"] - avg["bb_pct"]  # baa has no league benchmark (leader-only)
+            league_avgs["pitching"][r["level"]] = avg
+
+        # wRC+ and FIP+ are index stats defined so 100 = league average; use that
+        # as the benchmark rather than the (skewed) simple mean of qualified players.
+        for lvl in league_avgs["batting"]:
+            league_avgs["batting"][lvl]["wrc_plus"] = 100.0
+        for lvl in league_avgs["pitching"]:
+            league_avgs["pitching"][lvl]["fip_plus"] = 100.0
+
+        players = []
+        for pid in pid_list:
+            bio = bios.get(pid)
+            if not bio:
+                continue
+            bat_seasons = bat_by_pid.get(pid, [])
+            pit_seasons = pit_by_pid.get(pid, [])
+            if career:
+                batting = _aggregate_career_batting(bat_seasons) if bat_seasons else None
+                pitching = _aggregate_career_pitching(pit_seasons) if pit_seasons else None
+            else:
+                batting = bat_seasons[0] if bat_seasons else None
+                pitching = _cmp_pitch_derive(_add_era_plus(pit_seasons[0])) if pit_seasons else None
+            players.append({
+                "id": pid,
+                "first_name": bio["first_name"], "last_name": bio["last_name"],
+                "team_short": bio["team_short"], "logo_url": bio["logo_url"],
+                "team_state": bio["team_state"], "division_level": bio["division_level"],
+                "conference_abbrev": bio["conference_abbrev"], "bats": bio["bats"],
+                "throws": bio["throws"], "year_in_school": bio["year_in_school"],
+                "headshot_url": bio["headshot_url"], "primary_position": bio["position"],
+                "positions": _cmp_positions(pos_by_pid.get(pid, [])),
+                "batting": _cmp_clean(batting),
+                "pitching": _cmp_clean(pitching),
+                "fielding": _cmp_fielding(fld_by_pid.get(pid, []), career),
+            })
+
+        return {"mode": mode, "season": season, "league_averages": league_avgs, "players": players}
 
 
 @router.get("/players/{player_id}")
