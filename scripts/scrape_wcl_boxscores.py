@@ -306,6 +306,49 @@ def insert_pitching(cur, game_id, team_id, is_home, rows, player_lookup):
 
 # ── Entry point ────────────────────────────────────────────────
 
+def _norm_team(s):
+    return re.sub(r"[^a-z]", "", (s or "").lower())
+
+
+def _team_match(a, b):
+    """Loose similarity between two team names (0 = none, higher = better)."""
+    a, b = _norm_team(a), _norm_team(b)
+    if not a or not b:
+        return 0
+    if a == b:
+        return 3
+    if a in b or b in a:
+        return 2
+    return 0
+
+
+def _maybe_unflip(parsed, game):
+    """The parser labels home/away by table ORDER (table[0]=away), but a few
+    PrestoSports box scores emit the tables in the opposite order. Detect that
+    by matching the parsed team names against the game's scheduled home/away,
+    and if they're reversed, swap every away_*/home_* field so the lineups,
+    scores, and line scores all land on the correct team. (Fixes the duplicate
+    'same player on both teams' bug — e.g. AppleSox/Riverhawks 2026-06-17.)"""
+    pa, ph = parsed.get("away_team_name"), parsed.get("home_team_name")
+    ga, gh = game.get("away_team_name"), game.get("home_team_name")
+    if not (pa and ph and ga and gh):
+        return parsed
+    straight = _team_match(pa, ga) + _team_match(ph, gh)
+    flipped  = _team_match(pa, gh) + _team_match(ph, ga)
+    if flipped > straight:
+        logger.warning(
+            f"     box-score lineups are reversed vs schedule (parsed away={pa!r} "
+            f"home={ph!r}; game away={ga!r} home={gh!r}) — swapping to correct teams"
+        )
+        swapped = dict(parsed)
+        for k in list(parsed.keys()):
+            if k.startswith("away_"):
+                hk = "home_" + k[len("away_"):]
+                swapped[k], swapped[hk] = parsed.get(hk), parsed.get(k)
+        return swapped
+    return parsed
+
+
 def scrape_game(session, cur, game):
     """Fetch + parse + write one summer_games row's box score."""
     url = game["source_url"]
@@ -317,6 +360,9 @@ def scrape_game(session, cur, game):
     if not parsed:
         logger.warning(f"     no data parsed, skipping")
         return False
+
+    # Correct box scores whose home/away tables are in reversed order.
+    parsed = _maybe_unflip(parsed, game)
 
     # 1) Update game header
     update_game_header(cur, game["id"], parsed)
