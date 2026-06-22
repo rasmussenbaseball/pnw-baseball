@@ -9893,6 +9893,136 @@ def uncommitted_juco_players(
         return out
 
 
+# ============================================================
+# JUCO Tracker — out-of-region recruit conferences (isolated data)
+#
+# California (CCCAA) + Scenic West (NJCAA Region 18) JUCO players live in
+# the dedicated juco_recruit_* tables, scraped ONLY for recruiting. These
+# two endpoints are the ONLY readers of those tables, so the data never
+# surfaces anywhere else on the site (leaderboards, search, team pages...).
+# Stats are PrestoSports season totals — traditional + rate only, no
+# PBP/WAR/wRC+ (those sources don't exist for these conferences), so the
+# advanced columns render '-' in the tracker table.
+# ============================================================
+
+@router.get("/players/juco/recruit-conferences")
+def juco_recruit_conferences(
+    season: int = Query(...),
+    _user: str = Depends(require_tier("recruiting")),
+):
+    """List the out-of-region JUCO conferences that have data for `season`,
+    for the tracker's conference dropdown."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT t.conference_name,
+                   MIN(t.conference_abbr) AS conference_abbr,
+                   MIN(t.governing_body)  AS governing_body,
+                   COUNT(DISTINCT t.id)   AS team_count,
+                   COUNT(DISTINCT p.id)   AS player_count
+            FROM juco_recruit_teams t
+            JOIN juco_recruit_players p ON p.team_id = t.id
+            WHERE EXISTS (SELECT 1 FROM juco_recruit_batting  b  WHERE b.player_id = p.id AND b.season = %s)
+               OR EXISTS (SELECT 1 FROM juco_recruit_pitching pp WHERE pp.player_id = p.id AND pp.season = %s)
+            GROUP BY t.conference_name
+            ORDER BY t.conference_name
+            """,
+            [season, season],
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+@router.get("/players/juco/recruit-ext")
+def uncommitted_juco_recruit_ext(
+    season: int = Query(...),
+    conference: Optional[str] = Query(None, description="conference_name from /recruit-conferences; omit for all ext conferences"),
+    position: Optional[str] = None,
+    year_in_school: Optional[str] = Query(None, description="'Fr' or 'So'"),
+    sort_by: str = Query("ops"),
+    sort_dir: str = Query("desc"),
+    min_ab: int = Query(0),
+    min_ip: float = Query(0),
+    bats: Optional[str] = None,
+    throws: Optional[str] = None,
+    limit: int = Query(500),
+    _user: str = Depends(require_tier("recruiting")),
+):
+    """Out-of-region JUCO players (California / Scenic West) for the tracker.
+
+    Reads ONLY the isolated juco_recruit_* tables. Row shape matches the
+    NWAC tracker endpoint where the stats exist; advanced stats are absent.
+    """
+    # Only traditional/rate columns exist here; map anything else to a sane default.
+    ext_sortable = {
+        "batting_avg", "on_base_pct", "slugging_pct", "ops", "home_runs", "rbi",
+        "stolen_bases", "plate_appearances", "era", "innings_pitched", "pitch_k",
+    }
+    if sort_by not in ext_sortable:
+        sort_by = "ops"
+    direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
+    if sort_by == "era" and sort_dir.lower() not in ("asc", "desc"):
+        direction = "ASC"
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
+                   p.bats, p.throws, p.hometown, p.previous_school,
+                   p.is_committed, p.committed_to,
+                   t.school_name AS team_name, t.short_name AS team_short,
+                   t.logo_url, t.conference_name, t.conference_abbr, t.state AS team_state,
+                   b.batting_avg, b.on_base_pct, b.slugging_pct, b.ops,
+                   b.home_runs, b.rbi, b.stolen_bases, b.plate_appearances,
+                   pp.era, pp.whip, pp.innings_pitched, pp.strikeouts AS pitch_k,
+                   NULL::numeric AS total_war
+            FROM juco_recruit_players p
+            JOIN juco_recruit_teams t ON t.id = p.team_id
+            LEFT JOIN juco_recruit_batting  b  ON b.player_id = p.id AND b.season = %s
+            LEFT JOIN juco_recruit_pitching pp ON pp.player_id = p.id AND pp.season = %s
+            WHERE t.is_active
+              AND (b.player_id IS NOT NULL OR pp.player_id IS NOT NULL)
+        """
+        params: list = [season, season]
+
+        if conference:
+            query += " AND t.conference_name = %s"
+            params.append(conference)
+        if year_in_school in ("Fr", "So"):
+            query += " AND p.year_in_school = %s"
+            params.append(year_in_school)
+        if position:
+            if position == 'P':
+                query += " AND (UPPER(p.position) IN ('P','RHP','LHP','SP','RP') OR UPPER(p.position) LIKE 'RHP/%%' OR UPPER(p.position) LIKE 'LHP/%%')"
+            elif position == 'OF':
+                query += " AND (UPPER(p.position) IN ('OF','LF','CF','RF') OR UPPER(p.position) LIKE '%%/OF')"
+            elif position == 'IF':
+                query += " AND (UPPER(p.position) IN ('IF','INF','1B','2B','3B','SS'))"
+            else:
+                query += " AND (p.position = %s OR p.position LIKE %s OR p.position LIKE %s)"
+                params.extend([position, f"{position}/%", f"%/{position}"])
+        if min_ab > 0:
+            query += " AND COALESCE(b.at_bats, 0) >= %s"
+            params.append(min_ab)
+        if min_ip > 0:
+            query += " AND COALESCE(pp.innings_pitched, 0) >= %s"
+            params.append(min_ip)
+        if bats:
+            query += " AND p.bats = %s"
+            params.append(bats)
+        if throws:
+            query += " AND p.throws = %s"
+            params.append(throws)
+
+        # sort_by is whitelisted above; bare alias resolves to the SELECT column.
+        query += f" ORDER BY {sort_by} {direction} NULLS LAST"
+        query += " LIMIT %s"
+        params.append(limit)
+
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
 # NOTE: top-level path (not /players/transfer-portal) to avoid being
 # shadowed by the /players/{player_id} route, which would try to parse
 # "transfer-portal" as an int player id (422).

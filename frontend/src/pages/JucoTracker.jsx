@@ -27,6 +27,12 @@ export default function JucoTracker() {
   const [throws_, setThrows] = usePersistedState('juco_throws', '')
   const [board, setBoard] = usePersistedState('juco_board', 'hitters')
   const [hideCommitted, setHideCommitted] = usePersistedState('juco_hideCommitted', false)
+  // Which conference's players to show. 'NWAC' = the original PNW JUCO data;
+  // any other value is an out-of-region recruit conference (Scenic West, the
+  // California CCCAA leagues) whose data lives in the isolated juco_recruit_*
+  // tables and is served by a separate endpoint.
+  const [conf, setConf] = usePersistedState('juco_conf', 'NWAC')
+  const isNwac = conf === 'NWAC'
 
   // Each board keeps its own sort: hitters default to oWAR, pitchers to pWAR.
   const sortBy = board === 'hitters' ? hitSortBy : pitSortBy
@@ -34,7 +40,13 @@ export default function JucoTracker() {
   const setSortBy = board === 'hitters' ? setHitSortBy : setPitSortBy
   const setSortDir = board === 'hitters' ? setHitSortDir : setPitSortDir
 
-  const { data, loading } = useApi('/players/juco/uncommitted', {
+  // Out-of-region conferences that have data this season (for the dropdown).
+  const { data: extConfs } = useApi('/players/juco/recruit-conferences', { season }, [season])
+
+  // Fetch only the active source: NWAC hits the original endpoint, an
+  // out-of-region conference hits the isolated recruit endpoint. The inactive
+  // hook is passed a null endpoint so it skips its fetch.
+  const nwac = useApi(isNwac ? '/players/juco/uncommitted' : null, {
     season,
     position: position || undefined,
     year_in_school: classYear || undefined,
@@ -45,7 +57,24 @@ export default function JucoTracker() {
     bats: bats || undefined,
     throws: throws_ || undefined,
     limit: 500,
-  }, [season, position, classYear, sortBy, sortDir, minAb, minIp, bats, throws_])
+  }, [isNwac, season, position, classYear, sortBy, sortDir, minAb, minIp, bats, throws_])
+
+  const ext = useApi(!isNwac ? '/players/juco/recruit-ext' : null, {
+    season,
+    conference: conf,
+    position: position || undefined,
+    year_in_school: classYear || undefined,
+    sort_by: sortBy,
+    sort_dir: sortDir,
+    min_ab: minAb || 0,
+    min_ip: minIp || 0,
+    bats: bats || undefined,
+    throws: throws_ || undefined,
+    limit: 500,
+  }, [isNwac, conf, season, position, classYear, sortBy, sortDir, minAb, minIp, bats, throws_])
+
+  const data = isNwac ? nwac.data : ext.data
+  const loading = isNwac ? nwac.loading : ext.loading
 
   const positions = ['C', 'IF', '1B', '2B', '3B', 'SS', 'OF', 'LF', 'CF', 'RF', 'DH', 'P', 'UT']
 
@@ -71,12 +100,31 @@ export default function JucoTracker() {
     <div>
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">JUCO Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        NWAC players available for transfer to 4-year programs. Two-way players appear on both tables.
+        {isNwac
+          ? 'NWAC players available for transfer to 4-year programs. Two-way players appear on both tables.'
+          : `${conf} junior-college players, for recruiting. Stats are season totals (advanced metrics not available for this conference).`}
       </p>
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 mb-4">
         <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col">
+            <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Conference</label>
+            <select value={conf} onChange={(e) => setConf(e.target.value)}
+              className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm">
+              <option value="NWAC">NWAC (PNW)</option>
+              {(extConfs || []).length > 0 && (
+                <optgroup label="Out-of-region (recruiting)">
+                  {(extConfs || []).map(c => (
+                    <option key={c.conference_name} value={c.conference_name}>
+                      {c.conference_name}{c.conference_abbr ? ` (${c.conference_abbr})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
           <div className="flex flex-col">
             <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Season</label>
             <select value={season} onChange={(e) => setSeason(parseInt(e.target.value))}
@@ -178,7 +226,7 @@ export default function JucoTracker() {
           sortBy={sortBy} sortDir={sortDir} onSort={handleSort} infoLabel="Team" committedHeader="Committed" />
       )}
 
-      <StatsLastUpdated levels={['JUCO']} className="mt-3" />
+      {isNwac && <StatsLastUpdated levels={['JUCO']} className="mt-3" />}
     </div>
   )
 }
