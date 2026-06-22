@@ -266,6 +266,8 @@ const EmailComposer = lazyWithRetry(() => import('./pages/portal/EmailComposer')
 import Unsubscribe from './pages/Unsubscribe'
 import Account from './pages/Account'
 import Pricing from './pages/Pricing'
+import Terms from './pages/Terms'
+import Privacy from './pages/Privacy'
 import RequireTier from './components/RequireTier'
 import { useTier } from './hooks/useTier'
 import { isGmFreePlay } from './lib/gmPromo'
@@ -508,6 +510,10 @@ export default function App() {
           {/* Pricing / tier comparison — public so anyone can see what each tier gets */}
           <Route path="/pricing" element={<Pricing />} />
 
+          {/* Legal */}
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+
           {/* MLB Draft Board (auth required). Lives at /draftboard; /draft is the 56-0 game. */}
           <Route path="/draftboard" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
           <Route path="/draftboard/2026" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
@@ -644,8 +650,12 @@ export default function App() {
           </div>
 
           {/* Bottom bar */}
-          <div className="border-t border-white/10 pt-4 text-center text-[10px] text-white/40">
-            &copy; {new Date().getFullYear()} NW Baseball Stats. Not affiliated with the NCAA, NAIA, or NWAC. All stats from public sources.
+          <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] text-white/40">
+            <span>&copy; {new Date().getFullYear()} NW Baseball Stats. Not affiliated with the NCAA, NAIA, or NWAC. All stats from public sources.</span>
+            <span className="flex items-center gap-3">
+              <Link to="/terms" className="hover:text-white/80 transition-colors">Terms</Link>
+              <Link to="/privacy" className="hover:text-white/80 transition-colors">Privacy</Link>
+            </span>
           </div>
         </div>
       </footer>
