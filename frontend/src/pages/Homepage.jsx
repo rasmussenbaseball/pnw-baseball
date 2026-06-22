@@ -103,9 +103,40 @@ function useColumnCount() {
   return n
 }
 
+// Desktop (3-col) gives Latest Articles a 2-column-wide featured slot on top
+// for legibility: a narrow left column, then a 2-wide right region with the
+// wide ArticlesWidget above two sub-columns (which is where "New on the site"
+// /newFeatures now lives — bumped down a row).
+const DESKTOP_LEFT = ['standings', 'draft', 'records', 'gm']
+const DESKTOP_SUB = [
+  ['newFeatures', 'comps', 'games'],
+  ['portal', 'recentMoves', 'grid'],
+]
+
+function Stack({ keys }) {
+  return (
+    <div className="flex-1 min-w-0 flex flex-col gap-4">
+      {keys.map(k => <div key={k}>{WIDGETS[k]}</div>)}
+    </div>
+  )
+}
+
 function WidgetColumns() {
   const n = useColumnCount()
-  const cols = COLUMN_LAYOUTS[n] || COLUMN_LAYOUTS[3]
+  if (n === 3) {
+    return (
+      <div className="flex gap-4 items-start">
+        <Stack keys={DESKTOP_LEFT} />
+        <div className="flex-[2] min-w-0 flex flex-col gap-4">
+          <ArticlesWidget wide />
+          <div className="flex gap-4 items-start">
+            {DESKTOP_SUB.map((keys, i) => <Stack key={i} keys={keys} />)}
+          </div>
+        </div>
+      </div>
+    )
+  }
+  const cols = COLUMN_LAYOUTS[n] || COLUMN_LAYOUTS[2]
   return (
     <div className="flex gap-4 items-start">
       {cols.map((keys, i) => (

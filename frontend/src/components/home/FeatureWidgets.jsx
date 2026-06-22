@@ -155,10 +155,19 @@ export function GridPreviewWidget() {
 
 // ─── 3. Latest Articles ─────────────────────────────────────────
 
-export function ArticlesWidget() {
-  const { data, loading, error } = useApi('/articles', { limit: 4 })
+// `wide` renders a roomier 2-up grid with bigger thumbnails + excerpts, used
+// when the widget spans two columns (homepage desktop). Default is the compact
+// single-column list for narrow placements.
+export function ArticlesWidget({ wide = false }) {
+  const { data, loading, error } = useApi('/articles', { limit: wide ? 6 : 4 })
   const articles = data?.articles || []
   const gated = (t) => ['premium', 'recruiting', 'coach'].includes(t)
+  const PremiumTag = () => (
+    <span className="ml-1.5 inline-block align-middle text-[8px] font-bold uppercase tracking-wider
+                     px-1 py-px rounded bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+      Premium
+    </span>
+  )
 
   return (
     <WidgetCard title="Latest Articles" to="/news" linkLabel="All articles">
@@ -168,6 +177,39 @@ export function ArticlesWidget() {
         <WidgetNote>Couldn't load articles right now.</WidgetNote>
       ) : articles.length === 0 ? (
         <WidgetNote>No articles yet — check back soon.</WidgetNote>
+      ) : wide ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {articles.map(a => (
+            <Link
+              key={a.id || a.slug}
+              to={`/news/${a.slug}`}
+              className="flex gap-3 p-2 -m-0.5 rounded-lg hover:bg-nw-cream dark:hover:bg-gray-700/50 transition-colors"
+            >
+              {a.hero_image_url ? (
+                <img
+                  src={a.hero_image_url} alt="" loading="lazy"
+                  className="w-24 h-20 rounded-md object-cover shrink-0"
+                  onError={(e) => { e.target.style.visibility = 'hidden' }}
+                />
+              ) : (
+                <span className="w-24 h-20 rounded-md bg-gray-100 dark:bg-gray-700 shrink-0" />
+              )}
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-bold text-gray-800 dark:text-gray-100 leading-snug line-clamp-2">
+                  {a.title}{gated(a.requires_tier) && <PremiumTag />}
+                </span>
+                {(a.subtitle || a.excerpt) && (
+                  <span className="block text-xs text-gray-500 dark:text-gray-400 leading-snug mt-1 line-clamp-2">
+                    {a.subtitle || a.excerpt}
+                  </span>
+                )}
+                <span className="block text-[11px] text-gray-400 leading-tight mt-1">
+                  {fmtShortDate(a.published_at)}
+                </span>
+              </span>
+            </Link>
+          ))}
+        </div>
       ) : (
         <div className="space-y-1">
           {articles.map(a => (
@@ -187,14 +229,7 @@ export function ArticlesWidget() {
               )}
               <span className="flex-1 min-w-0">
                 <span className="block text-xs font-semibold text-gray-800 dark:text-gray-100 leading-tight line-clamp-2">
-                  {a.title}
-                  {gated(a.requires_tier) && (
-                    <span className="ml-1.5 inline-block align-middle text-[8px] font-bold uppercase tracking-wider
-                                     px-1 py-px rounded bg-amber-100 text-amber-800
-                                     dark:bg-amber-900/50 dark:text-amber-300">
-                      Premium
-                    </span>
-                  )}
+                  {a.title}{gated(a.requires_tier) && <PremiumTag />}
                 </span>
                 <span className="block text-[10px] text-gray-400 leading-tight mt-0.5">
                   {fmtShortDate(a.published_at)}
