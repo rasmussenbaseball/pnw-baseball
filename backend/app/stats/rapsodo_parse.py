@@ -180,42 +180,75 @@ def infer_handedness(pitches):
     return hand, f"fastball cluster avg raw HB {avg_hb:+.1f} over {len(fb)} pitches"
 
 
-def classify(p, fb_velo, hand):
-    """Re-classify ONE pitch by shape, ignoring Rapsodo's label. arm_hb must
-    already be set (arm-side positive). Returns a label string.
+def _fastball_centroid(ok_pitches):
+    """Centroid (velo, ivb, arm_hb) of the fastest cluster — the presumed
+    fastball — used as the reference every other pitch is classified against."""
+    cand = [p for p in ok_pitches
+            if p["velo"] is not None and p["ivb"] is not None and p["arm_hb"] is not None]
+    if not cand:
+        return None
+    top = max(p["velo"] for p in cand)
+    fb = [p for p in cand if p["velo"] >= top - FB_VELO_BAND] or cand
+    n = len(fb)
+    return {
+        "velo": round(sum(p["velo"] for p in fb) / n, 1),
+        "ivb": round(sum(p["ivb"] for p in fb) / n, 1),
+        "arm_hb": round(sum(p["arm_hb"] for p in fb) / n, 1),
+    }
 
-    v1 heuristic: classifies each pitch in isolation against fixed thresholds.
-    Good enough to correct obvious mislabels; Phase 3 replaces this with real
-    cluster-then-label so fuzzy breakers stop over-splitting."""
-    velo, ivb, ahb, eff, gyro = p["velo"], p["ivb"], p["arm_hb"], p["spin_eff"], p["gyro"]
+
+def classify(p, fb, hand):
+    """Re-classify ONE pitch by shape, ignoring Rapsodo's label. arm_hb must
+    already be set (arm-side positive); `fb` is the fastball centroid from
+    _fastball_centroid (or None). Returns a label string.
+
+    Cluster-relative: each pitch is judged against the pitcher's own fastball,
+    so a sub-max-effort heater that keeps its ride stays a fastball, and a
+    changeup must actually KILL ride vs the FB (not just be slower). Still a
+    heuristic — Phase 3 will add full cluster-then-label for fuzzy breakers."""
+    velo, ivb, ahb, eff = p["velo"], p["ivb"], p["arm_hb"], p["spin_eff"]
     if velo is None or ivb is None or ahb is None:
         return "unclassified"
-    gap = (fb_velo - velo) if fb_velo else 0      # mph slower than the fastball
-    g = abs(gyro) if gyro is not None else None
+    g = abs(p["gyro"]) if p["gyro"] is not None else None
+    fbv = fb["velo"] if fb else velo
+    fbivb = fb["ivb"] if fb else ivb
+    gap = fbv - velo                              # mph slower than the fastball
 
-    # fastball family: hard, high efficiency, arm-side / ride
+    # FASTBALL FAMILY: hard (not much slower than the FB), arm-side, riding.
     if gap <= 6 and (eff is None or eff >= 80) and ivb >= 6 and ahb >= -2:
         if ivb >= RIDE_IVB and ahb < 10:
             return "4-seam (ride)"
         if ivb < SINK_IVB and ahb >= ARM_SIDE_RUN:
             return "sinker / 2-seam"
         return "fastball (mixed)"
-    # changeup: clearly slower, arm-side, less ride than the FB
-    if gap >= 6 and ahb >= 8:
+    # CHANGEUP: slower, arm-side, AND ride killed vs the fastball — so a slow
+    # pitch that keeps full fastball ride is NOT a changeup (that was the v1 bug).
+    if gap >= 6 and ahb >= 8 and ivb <= fbivb - 4:
         return "changeup"
-    # cutter: near FB velo, modest glove-side, partial efficiency, some ride
-    if gap <= 7 and -8 <= ahb <= 2 and (eff is None or 35 <= eff <= 70) and ivb >= 4:
+    # CUTTER: near FB velo, small glove cut, partial efficiency.
+    if gap <= 8 and -8 <= ahb <= 2 and (eff is None or 35 <= eff <= 75) and ivb >= 2:
         return "cutter"
-    # breaking balls: glove side and/or low efficiency / high gyro
+    # BREAKING BALLS: glove side and/or low efficiency / high gyro.
     if ahb < 0 or (eff is not None and eff < 60) or (g is not None and g >= 45):
-        if ivb < -2:
+        if ivb <= -2:
             return "curveball"
-        if g is not None and g >= 60 and abs(ahb) < 6:
+        if g is not None and g >= 60 and abs(ahb) < 8:
             return "gyro slider"
         if ahb <= -8:
             return "sweeper"
         return "slider"
     return "unclassified"
+
+
+def reclassify(pitches, hand=None):
+    """Recompute the `pitch` label for a session's already-normalized pitch
+    dicts (e.g. rows read back from the DB). Returns a list of labels aligned
+    with `pitches`. Lets classifier improvements be applied retroactively
+    without re-uploading the CSV."""
+    ok = [p for p in pitches if p.get("quality") == "ok"]
+    fb = _fastball_centroid(ok)
+    return [classify(p, fb, hand) if p.get("quality") in ("ok", "low_confidence") else None
+            for p in pitches]
 
 
 def _mean(vals):
@@ -274,13 +307,10 @@ def parse_rows(all_rows, source_name):
         p["arm_hb"] = round(p["hb_raw"] * flip, 1) if p["hb_raw"] is not None else None
 
     ok = [p for p in pitches if p["quality"] == "ok"]
-    fb_velo = None
-    if ok:
-        top = max(p["velo"] for p in ok if p["velo"])
-        fbs = [p["velo"] for p in ok if p["velo"] and p["velo"] >= top - FB_VELO_BAND]
-        fb_velo = round(sum(fbs) / len(fbs), 1) if fbs else top
+    fb = _fastball_centroid(ok)
+    fb_velo = fb["velo"] if fb else None
     for p in pitches:
-        p["pitch"] = classify(p, fb_velo, hand) if p["quality"] in ("ok", "low_confidence") else None
+        p["pitch"] = classify(p, fb, hand) if p["quality"] in ("ok", "low_confidence") else None
 
     arsenal = aggregate_arsenal(ok)
 

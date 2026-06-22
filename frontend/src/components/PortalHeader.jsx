@@ -26,6 +26,8 @@ const NAV_SECTIONS = [
         desc: 'Lineups, rotation & bullpen scouting' },
       { to: '/portal/lineup-helper', label: 'Lineup Helper',
         desc: 'Optimal vs RHP / vs LHP batting orders + bench' },
+      { to: '/portal/rapsodo', label: 'Rapsodo Lab',
+        desc: 'Upload bullpen CSVs → cleaned pitch profiles & movement' },
     ],
   },
   {
