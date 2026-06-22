@@ -278,6 +278,7 @@ import ParkFactors from './pages/ParkFactors'
 // Coach & Scouting Portal
 import PortalLayout from './components/PortalLayout'
 const PortalHome = lazyWithRetry(() => import('./pages/PortalHome'))  // recharts, coach portal
+const RapsodoAnalyzer = lazyWithRetry(() => import('./pages/RapsodoAnalyzer'))  // coach Rapsodo lab
 import DraftBoard from './pages/DraftBoard'
 import NationalRankings from './pages/NationalRankings'
 import Scoreboard from './pages/Scoreboard'
@@ -471,6 +472,8 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><HistoricMatchups /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/player-scouting"
                  element={<RequirePortalAccess><PortalLayout><PlayerScouting /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/rapsodo"
+                 element={<RequirePortalAccess><PortalLayout><RapsodoAnalyzer /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/lineup-helper"
                  element={<RequirePortalAccess><PortalLayout><LineupHelper /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/team-scouting"

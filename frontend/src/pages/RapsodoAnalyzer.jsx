@@ -1,0 +1,358 @@
+// RapsodoAnalyzer — Coach/Scout Portal tool for breaking down Rapsodo bullpens.
+//
+// A private, per-coach workspace: upload Rapsodo session CSV(s), and the tool
+// parses, quality-checks, re-classifies (ignoring Rapsodo's unreliable pitch
+// labels), and profiles each player across all their sessions. Players are keyed
+// by Rapsodo's own Player ID, so this works whether or not they exist anywhere
+// else on the site. See RAPSODO_TOOL_DESIGN.md.
+//
+// All data is owner-scoped server-side (WHERE owner_user_id = you), so a coach
+// only ever sees their own uploads.
+
+import { useState } from 'react'
+import { useApi } from '../hooks/useApi'
+import { supabase } from '../lib/supabase'
+
+const PITCH_COLORS = {
+  '4-seam (ride)': '#e11d48',
+  'fastball (mixed)': '#ef4444',
+  'sinker / 2-seam': '#f59e0b',
+  'cutter': '#8b5cf6',
+  'slider': '#3b82f6',
+  'sweeper': '#14b8a6',
+  'gyro slider': '#6366f1',
+  'curveball': '#22c55e',
+  'changeup': '#ec4899',
+  'unclassified': '#9ca3af',
+}
+const colorFor = (p) => PITCH_COLORS[p] || '#9ca3af'
+const fmt = (v, d = 1) => (v === null || v === undefined ? '–' : Number(v).toFixed(d))
+const handLabel = (h) => ({ R: 'RHP', L: 'LHP' }[h] || '—')
+
+export default function RapsodoAnalyzer() {
+  const [selected, setSelected] = useState(null)
+  const { data, loading, refetch } = useApi('/rapsodo/players')
+  const players = data?.players || []
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-6">
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold text-portal-purple dark:text-portal-accent">
+          Rapsodo Lab
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">
+          Upload your bullpen sessions. We clean the data, re-classify every pitch by its
+          actual shape, and build a profile for each of your players.
+        </p>
+      </header>
+
+      <UploadZone onDone={refetch} />
+
+      {selected ? (
+        <PlayerProfile rapsodoId={selected} onBack={() => setSelected(null)} />
+      ) : (
+        <Roster players={players} loading={loading} onPick={setSelected} />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────── Upload ───────────────────────────────
+function UploadZone({ onDone }) {
+  const [files, setFiles] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [report, setReport] = useState(null)
+  const [err, setErr] = useState(null)
+
+  async function submit() {
+    if (!files.length) return
+    setBusy(true)
+    setErr(null)
+    setReport(null)
+    try {
+      const fd = new FormData()
+      files.forEach((f) => fd.append('files', f))
+      const { data } = await supabase.auth.getSession()
+      const token = data?.session?.access_token
+      const res = await fetch('/api/v1/portal/rapsodo/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      })
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`)
+      const json = await res.json()
+      setReport(json)
+      setFiles([])
+      onDone?.()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mb-8 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="cursor-pointer rounded-lg bg-portal-purple px-4 py-2 text-white text-sm font-medium hover:opacity-90">
+          Choose CSV files
+          <input
+            type="file"
+            accept=".csv"
+            multiple
+            className="hidden"
+            onChange={(e) => setFiles(Array.from(e.target.files || []))}
+          />
+        </label>
+        <span className="text-sm text-gray-600 dark:text-gray-400">
+          {files.length ? `${files.length} file${files.length > 1 ? 's' : ''} selected` : 'No files chosen'}
+        </span>
+        <button
+          onClick={submit}
+          disabled={!files.length || busy}
+          className="ml-auto rounded-lg bg-portal-accent px-4 py-2 text-sm font-semibold text-gray-900 disabled:opacity-40"
+        >
+          {busy ? 'Uploading…' : 'Upload & analyze'}
+        </button>
+      </div>
+
+      {err && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{err}</p>}
+
+      {report && (
+        <div className="mt-4 text-sm">
+          <p className="font-medium text-gray-800 dark:text-gray-200">
+            Processed {report.uploaded} session{report.uploaded === 1 ? '' : 's'}:
+          </p>
+          <ul className="mt-1 space-y-1">
+            {report.results.map((r, i) => (
+              <li key={i} className="text-gray-600 dark:text-gray-400">
+                <span className="font-medium text-gray-800 dark:text-gray-200">{r.player_name}</span>{' '}
+                ({handLabel(r.handedness)}) — {r.session_date}, {r.n_pitches} pitches,{' '}
+                {r.qc?.ok || 0} clean / {(r.qc?.low_confidence || 0) + (r.qc?.partial || 0) + (r.qc?.failed || 0)} flagged
+              </li>
+            ))}
+            {report.errors?.map((e, i) => (
+              <li key={`e${i}`} className="text-red-600 dark:text-red-400">
+                {e.file}: {e.error}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────── Roster ───────────────────────────────
+function Roster({ players, loading, onPick }) {
+  if (loading) return <p className="text-gray-500">Loading your players…</p>
+  if (!players.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-500">
+        No players yet. Upload a Rapsodo session CSV above to get started.
+      </div>
+    )
+  }
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 dark:bg-gray-800 text-left text-gray-500 dark:text-gray-400">
+          <tr>
+            <th className="px-4 py-2 font-medium">Player</th>
+            <th className="px-4 py-2 font-medium">Throws</th>
+            <th className="px-4 py-2 font-medium">Sessions</th>
+            <th className="px-4 py-2 font-medium">Last session</th>
+            <th className="px-4 py-2 font-medium">Pitches</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {players.map((p) => (
+            <tr
+              key={p.rapsodo_player_id}
+              onClick={() => onPick(p.rapsodo_player_id)}
+              className="cursor-pointer bg-white dark:bg-gray-900 hover:bg-portal-cream dark:hover:bg-gray-800"
+            >
+              <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{p.player_name}</td>
+              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{handLabel(p.handedness)}</td>
+              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.session_count}</td>
+              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.last_session || '—'}</td>
+              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.total_pitches}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─────────────────────────────── Profile ───────────────────────────────
+function PlayerProfile({ rapsodoId, onBack }) {
+  const { data, loading } = useApi(`/rapsodo/players/${rapsodoId}`)
+
+  if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
+  if (!data) return null
+  const { player, arsenal, plot, sessions, n_sessions } = data
+
+  return (
+    <div className="mt-2">
+      <button onClick={onBack} className="mb-4 text-sm text-portal-purple dark:text-portal-accent hover:underline">
+        ← Back to players
+      </button>
+
+      <div className="flex flex-wrap items-baseline gap-3 mb-5">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{player.player_name}</h2>
+        <span className="rounded-full bg-portal-purple/10 dark:bg-portal-accent/20 px-3 py-1 text-sm font-medium text-portal-purple dark:text-portal-accent">
+          {handLabel(player.handedness)}
+        </span>
+        <span className="text-sm text-gray-500">
+          {n_sessions} session{n_sessions === 1 ? '' : 's'} · {plot.length} reliable pitches
+        </span>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-2">
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Movement profile</h3>
+          <MovementPlot points={plot} arsenal={arsenal} />
+          <p className="mt-2 text-xs text-gray-400">
+            Pitcher's view: arm side →, ride ↑. One dot per pitch; rings = lower-confidence reads.
+          </p>
+        </div>
+
+        <div className="lg:col-span-3">
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Arsenal <span className="font-normal normal-case">(re-classified by shape)</span>
+          </h3>
+          <ArsenalTable arsenal={arsenal} />
+          <h3 className="mt-6 mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Sessions</h3>
+          <SessionList sessions={sessions} />
+        </div>
+      </div>
+
+      <p className="mt-6 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+        Shapes are tendencies, not verdicts. Pitch labels are inferred from velocity, movement,
+        spin efficiency and gyro (v1), so atypical pitches can be mislabeled. Low-confidence and
+        failed reads are excluded from the averages. Rapsodo infers movement from spin, so it can
+        under-read seam-shifted-wake pitches (e.g. heavy sinkers).
+      </p>
+    </div>
+  )
+}
+
+function ArsenalTable({ arsenal }) {
+  if (!arsenal?.length) return <p className="text-sm text-gray-500">No reliable pitches yet.</p>
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 dark:bg-gray-800 text-left text-gray-500 dark:text-gray-400">
+          <tr>
+            <th className="px-3 py-2 font-medium">Pitch</th>
+            <th className="px-3 py-2 font-medium text-right">#</th>
+            <th className="px-3 py-2 font-medium text-right">Velo</th>
+            <th className="px-3 py-2 font-medium text-right">Max</th>
+            <th className="px-3 py-2 font-medium text-right">Spin</th>
+            <th className="px-3 py-2 font-medium text-right">Eff%</th>
+            <th className="px-3 py-2 font-medium text-right">IVB</th>
+            <th className="px-3 py-2 font-medium text-right">Arm HB</th>
+            <th className="px-3 py-2 font-medium">Tilt</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {arsenal.map((a) => (
+            <tr key={a.pitch} className="bg-white dark:bg-gray-900">
+              <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
+                <span className="inline-block w-2.5 h-2.5 rounded-full mr-2 align-middle" style={{ background: colorFor(a.pitch) }} />
+                {a.pitch}
+              </td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.count}</td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.velo)}</td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.velo_max)}</td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.total_spin ?? '–'}</td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.spin_eff, 0)}</td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.ivb)}</td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.arm_hb)}</td>
+              <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{a.tilt || '–'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function SessionList({ sessions }) {
+  if (!sessions?.length) return null
+  return (
+    <ul className="space-y-2">
+      {sessions.map((s) => (
+        <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+          <span className="font-medium text-gray-900 dark:text-gray-100">{s.session_date || 'undated'}</span>
+          <span className="text-gray-500">{s.device_generation}</span>
+          {s.intent_tags && <span className="rounded bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-300">{s.intent_tags}</span>}
+          <span className="text-gray-500">FB ~{fmt(s.fastball_velo)} mph</span>
+          <span className="ml-auto text-xs text-gray-400">
+            {s.qc_ok} clean · {s.qc_low_confidence + s.qc_partial + s.qc_failed} flagged · {s.n_pitches} total
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// ─────────────────────────── Movement plot (SVG) ───────────────────────────
+function MovementPlot({ points, arsenal }) {
+  const W = 380, H = 380, PAD = 30, DOM = 26
+  const sx = (v) => PAD + ((v + DOM) / (2 * DOM)) * (W - 2 * PAD)
+  const sy = (v) => PAD + ((DOM - v) / (2 * DOM)) * (H - 2 * PAD)
+  const ticks = [-20, -10, 0, 10, 20]
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[420px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      {/* gridlines */}
+      {ticks.map((t) => (
+        <g key={t}>
+          <line x1={sx(t)} y1={PAD} x2={sx(t)} y2={H - PAD} className="stroke-gray-100 dark:stroke-gray-800" strokeWidth="1" />
+          <line x1={PAD} y1={sy(t)} x2={W - PAD} y2={sy(t)} className="stroke-gray-100 dark:stroke-gray-800" strokeWidth="1" />
+        </g>
+      ))}
+      {/* axes through zero */}
+      <line x1={sx(0)} y1={PAD} x2={sx(0)} y2={H - PAD} className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="1.5" />
+      <line x1={PAD} y1={sy(0)} x2={W - PAD} y2={sy(0)} className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="1.5" />
+      {ticks.filter((t) => t !== 0).map((t) => (
+        <g key={`l${t}`}>
+          <text x={sx(t)} y={sy(0) + 12} textAnchor="middle" className="fill-gray-400 text-[9px]">{t}</text>
+          <text x={sx(0) - 5} y={sy(t) + 3} textAnchor="end" className="fill-gray-400 text-[9px]">{t}</text>
+        </g>
+      ))}
+      {/* per-pitch dots */}
+      {points.map((p, i) => (
+        <circle
+          key={i}
+          cx={sx(p.arm_hb)}
+          cy={sy(p.ivb)}
+          r={p.quality === 'ok' ? 4 : 3.5}
+          fill={p.quality === 'ok' ? colorFor(p.pitch) : 'none'}
+          stroke={colorFor(p.pitch)}
+          strokeWidth="1.5"
+          fillOpacity="0.75"
+        />
+      ))}
+      {/* centroid labels */}
+      {arsenal?.map((a) => (
+        a.arm_hb === null || a.ivb === null ? null : (
+          <text
+            key={a.pitch}
+            x={sx(a.arm_hb)}
+            y={sy(a.ivb) - 7}
+            textAnchor="middle"
+            className="text-[9px] font-semibold"
+            style={{ fill: colorFor(a.pitch) }}
+          >
+            {a.pitch.replace(' / 2-seam', '').replace('fastball (mixed)', 'FB')}
+          </text>
+        )
+      ))}
+      <text x={W - PAD} y={sy(0) - 5} textAnchor="end" className="fill-gray-400 text-[9px]">arm side →</text>
+      <text x={sx(0) + 4} y={PAD + 8} className="fill-gray-400 text-[9px]">ride ↑</text>
+    </svg>
+  )
+}
