@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from ..models.database import get_connection
 from ..stats import rapsodo_stuff
 from ..stats.rapsodo_arm import arm_profile
+from ..stats.rapsodo_hand import pronation_profile
 from ..stats.rapsodo_parse import parse_text, aggregate_arsenal
 from ..stats.rapsodo_suggest import generate_suggestions
 from .auth import require_tier
@@ -214,6 +215,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
         "plot": plot,
         "locations": locations,
         "arm": arm_profile(ok),
+        "hand_profile": pronation_profile(arsenal, player.get("handedness")),
         "trend": trend,
         "n_sessions": len(sessions),
         "stuff_version": rapsodo_stuff.VERSION,

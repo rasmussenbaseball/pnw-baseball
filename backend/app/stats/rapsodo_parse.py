@@ -230,8 +230,11 @@ def classify(p, fb, hand):
     # pitch that keeps full fastball ride is NOT a changeup (that was the v1 bug).
     if gap >= 6 and ahb >= 8 and ivb <= fbivb - 4:
         return "changeup"
-    # CUTTER: near FB velo, small glove cut, partial efficiency.
-    if gap <= 8 and -8 <= ahb <= 2 and (eff is None or 35 <= eff <= 75) and ivb >= 2:
+    # CUTTER: a few mph off the FB with the ride TAKEN OFF (well below the FB's
+    # ride) and only a small glove-side/neutral break. Cluster-relative, so a
+    # high-efficiency "slutter" still reads as a cutter — efficiency alone is an
+    # unreliable cutter signal (e.g. Oliver Duthie's 89%-eff cutter).
+    if 2 <= gap <= 9 and -8 <= ahb <= 3 and ivb >= 0 and ivb <= fbivb - 3:
         return "cutter"
     # BREAKING BALLS: glove side and/or low efficiency / high gyro.
     if ahb < 0 or (eff is not None and eff < 60) or (g is not None and g >= 45):

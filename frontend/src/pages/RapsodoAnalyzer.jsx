@@ -192,7 +192,7 @@ function PlayerProfile({ rapsodoId, onBack }) {
 
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
-  const { player, arsenal, plot, locations, arm, sessions, n_sessions, suggestions } = data
+  const { player, arsenal, plot, locations, arm, hand_profile, sessions, n_sessions, suggestions } = data
 
   return (
     <div className="mt-2">
@@ -205,6 +205,11 @@ function PlayerProfile({ rapsodoId, onBack }) {
         <span className="rounded-full bg-portal-purple/10 dark:bg-portal-accent/20 px-3 py-1 text-sm font-medium text-portal-purple dark:text-portal-accent">
           {handLabel(player.handedness)}
         </span>
+        {hand_profile && (
+          <span className="rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
+            {hand_profile.lean}
+          </span>
+        )}
         <span className="text-sm text-gray-500">
           {n_sessions} session{n_sessions === 1 ? '' : 's'} · {plot.length} reliable pitches
         </span>
@@ -242,12 +247,50 @@ function PlayerProfile({ rapsodoId, onBack }) {
 
       <ArmSlotPanel arm={arm} />
 
+      <PronationCard profile={hand_profile} />
+
       <p className="mt-6 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
         Shapes are tendencies, not verdicts. Pitch labels are inferred from velocity, movement,
         spin efficiency and gyro (v1), so atypical pitches can be mislabeled. Low-confidence and
         failed reads are excluded from the averages. Rapsodo infers movement from spin, so it can
         under-read seam-shifted-wake pitches (e.g. heavy sinkers).
       </p>
+    </div>
+  )
+}
+
+function PronationCard({ profile }) {
+  if (!profile) return null
+  const dotColor = (d) => (d === 'sup' ? 'bg-blue-500' : 'bg-orange-500')
+  return (
+    <div className="mt-6">
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+        Pronation &amp; supination <span className="font-normal normal-case text-gray-400">(estimate)</span>
+      </h3>
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="text-lg font-semibold capitalize text-gray-900 dark:text-gray-100">{profile.lean}</span>
+          <span className="text-xs text-gray-400">
+            ← pronator · {profile.score > 0 ? '+' : ''}{profile.score} · supinator →
+          </span>
+        </div>
+        {profile.signals?.length ? (
+          <ul className="space-y-1">
+            {profile.signals.map((s, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <span className={`mt-1.5 inline-block w-2 h-2 rounded-full shrink-0 ${dotColor(s.dir)}`} />
+                {s.text}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">Not enough arsenal variety to read a lean yet.</p>
+        )}
+        <p className="mt-2 text-[11px] text-gray-400">
+          Inferred from fastball shape, breaking-ball type, and changeup spin. Supinators pick up
+          sweepers naturally; pronators pick up sinkers and kill-spin changeups.
+        </p>
+      </div>
     </div>
   )
 }
@@ -387,8 +430,8 @@ function MovementPlot({ points, arsenal }) {
           fillOpacity="0.75"
         />
       ))}
-      {/* centroid labels */}
-      {arsenal?.map((a) => (
+      {/* centroid labels — only meaningful clusters, to avoid overlap */}
+      {arsenal?.filter((a) => a.count >= 2 && a.pitch !== 'unclassified').map((a) => (
         a.arm_hb === null || a.ivb === null ? null : (
           <text
             key={a.pitch}
