@@ -5,6 +5,9 @@ uploader: a coach only ever sees rows where owner_user_id = their Supabase UUID.
 Players are keyed by Rapsodo's own Player ID (no roster matching). Parsing logic
 lives in app.stats.rapsodo_parse. See RAPSODO_TOOL_DESIGN.md.
 """
+import statistics
+from collections import defaultdict
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from ..models.database import get_connection
@@ -202,11 +205,36 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
         and r["quality"] in ("ok", "low_confidence") and r["pitch"]
     ]
 
-    trend = [
-        {"session_date": str(s["session_date"]) if s["session_date"] else None,
-         "fastball_velo": _ff(s["fastball_velo"]), "n_pitches": s["n_pitches"]}
-        for s in sorted(sessions, key=lambda s: (s["session_date"] is None, s["session_date"]))
-    ]
+    # development trend: per-session fastball metrics + release consistency
+    by_sess = defaultdict(list)
+    for r in rows:
+        if r["quality"] == "ok":
+            by_sess[r["session_id"]].append(r)
+
+    def _avg(src, key):
+        vals = [float(p[key]) for p in src if p[key] is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    def _sd_inches(src):
+        h = [float(p["rel_height"]) for p in src if p["rel_height"] is not None]
+        s = [float(p["rel_side"]) for p in src if p["rel_side"] is not None]
+        worst = max(statistics.pstdev(h) if len(h) > 1 else 0.0,
+                    statistics.pstdev(s) if len(s) > 1 else 0.0)
+        return round(worst * 12, 1) if (h or s) else None
+
+    trend = []
+    for s in sorted(sessions, key=lambda s: (s["session_date"] is None, s["session_date"])):
+        ps = by_sess.get(s["id"], [])
+        fbps = [p for p in ps if p["pitch"] in ("4-seam (ride)", "fastball (mixed)", "sinker / 2-seam")]
+        trend.append({
+            "session_id": s["id"],
+            "session_date": str(s["session_date"]) if s["session_date"] else None,
+            "fb_velo": _avg(fbps, "velo"),
+            "fb_ivb": _avg(fbps, "ivb"),
+            "fb_spin": _avg(fbps, "total_spin"),
+            "rel_consistency_in": _sd_inches(ps),
+            "n": len(ps),
+        })
 
     return {
         "player": player,

@@ -192,7 +192,7 @@ function PlayerProfile({ rapsodoId, onBack }) {
 
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
-  const { player, arsenal, plot, locations, arm, hand_profile, sessions, n_sessions, suggestions } = data
+  const { player, arsenal, plot, locations, arm, hand_profile, trend, sessions, n_sessions, suggestions } = data
 
   return (
     <div className="mt-2">
@@ -245,6 +245,8 @@ function PlayerProfile({ rapsodoId, onBack }) {
         </div>
       </div>
 
+      <DevelopmentTrends trend={trend} />
+
       <ArmSlotPanel arm={arm} />
 
       <PronationCard profile={hand_profile} />
@@ -255,6 +257,75 @@ function PlayerProfile({ rapsodoId, onBack }) {
         failed reads are excluded from the averages. Rapsodo infers movement from spin, so it can
         under-read seam-shifted-wake pitches (e.g. heavy sinkers).
       </p>
+    </div>
+  )
+}
+
+function TrendChart({ title, unit, points, color = '#378ADD', decimals = 1 }) {
+  const vals = points.map((p) => p.value).filter((v) => v != null)
+  const W = 240, H = 130, PAD = 26
+  const n = points.length
+  if (!vals.length) {
+    return (
+      <div>
+        <div className="text-[11px] text-gray-500 mb-1">{title}</div>
+        <div className="flex h-[110px] items-center justify-center rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-[11px] text-gray-400">no data</div>
+      </div>
+    )
+  }
+  const min = Math.min(...vals), max = Math.max(...vals)
+  const span = (max - min) || 1
+  const sx = (i) => (n <= 1 ? W / 2 : PAD + (i / (n - 1)) * (W - 2 * PAD))
+  const sy = (v) => H - PAD - ((v - min) / span) * (H - 2 * PAD)
+  const coords = points.map((p, i) => (p.value == null ? null : [sx(i), sy(p.value)])).filter(Boolean)
+  const d = coords.map((c, i) => `${i ? 'L' : 'M'}${c[0].toFixed(1)},${c[1].toFixed(1)}`).join(' ')
+  const latest = vals[vals.length - 1]
+  const delta = vals.length > 1 ? latest - vals[0] : null
+  return (
+    <div>
+      <div className="text-[11px] text-gray-500 mb-1">{title}</div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[260px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        {coords.length > 1 && <path d={d} fill="none" stroke={color} strokeWidth="2" />}
+        {points.map((p, i) => (p.value == null ? null : (
+          <circle key={i} cx={sx(i)} cy={sy(p.value)} r="3.5" fill={color} />
+        )))}
+        <text x={4} y={PAD - 8} className="fill-gray-400 text-[9px]">{max.toFixed(decimals)}</text>
+        <text x={4} y={H - PAD + 12} className="fill-gray-400 text-[9px]">{min.toFixed(decimals)}</text>
+      </svg>
+      <div className="mt-1 text-[12px] text-gray-700 dark:text-gray-300">
+        latest <span className="font-medium">{latest.toFixed(decimals)}</span>{unit ? ` ${unit}` : ''}
+        {delta != null && (
+          <span className={`ml-1 ${delta > 0 ? 'text-green-600 dark:text-green-400' : delta < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
+            ({delta > 0 ? '+' : ''}{delta.toFixed(decimals)})
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DevelopmentTrends({ trend }) {
+  if (!trend?.length) return null
+  const series = [
+    { title: 'Fastball velo', unit: 'mph', key: 'fb_velo', color: '#ef4444', decimals: 1 },
+    { title: 'Fastball ride (IVB)', unit: 'in', key: 'fb_ivb', color: '#378ADD', decimals: 1 },
+    { title: 'Fastball spin', unit: 'rpm', key: 'fb_spin', color: '#8b5cf6', decimals: 0 },
+    { title: 'Release spread (lower better)', unit: 'in', key: 'rel_consistency_in', color: '#1D9E75', decimals: 1 },
+  ]
+  return (
+    <div className="mt-6">
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+        Development
+        {trend.length < 2 && (
+          <span className="font-normal normal-case text-gray-400"> — add more sessions to track trends over time</span>
+        )}
+      </h3>
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        {series.map((s) => (
+          <TrendChart key={s.key} title={s.title} unit={s.unit} color={s.color} decimals={s.decimals}
+            points={trend.map((t) => ({ date: t.session_date, value: t[s.key] }))} />
+        ))}
+      </div>
     </div>
   )
 }
