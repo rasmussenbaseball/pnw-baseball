@@ -279,9 +279,11 @@ def _viewer_context(request) -> dict:
         return {"user_id": uid, "tier": comped}
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT tier FROM user_subscriptions WHERE user_id = %s", (uid,))
+        cur.execute("SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s", (uid,))
         row = cur.fetchone()
-    tier = (row or {}).get("tier") or "free"
+    from .auth import comp_aware_tier
+    tier = comp_aware_tier((row or {}).get("tier"), (row or {}).get("provider"),
+                           (row or {}).get("ends_at")) if row else "free"
     return {"user_id": uid, "tier": tier}
 
 

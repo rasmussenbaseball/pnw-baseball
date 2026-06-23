@@ -174,6 +174,26 @@ def require_admin(request: Request) -> str:
 _TIER_RANK = {"free": 1, "premium": 2, "recruiting": 3, "coach": 4, "dev": 99}
 
 
+def comp_aware_tier(tier, provider, ends_at):
+    """Effective tier for a user_subscriptions row.
+
+    Comp grants (provider='comp') auto-expire once ends_at passes — that's how
+    free months self-revoke without a cron job. Real Stripe subscriptions are
+    kept current by webhooks (which update `tier` directly), so they are NOT
+    time-enforced here. Use scripts/grant_comp.py to issue comps.
+    """
+    if not tier:
+        return "free"
+    if provider == "comp" and ends_at is not None:
+        from datetime import datetime, timezone
+        end = ends_at
+        if getattr(end, "tzinfo", None) is None:
+            end = end.replace(tzinfo=timezone.utc)
+        if end < datetime.now(timezone.utc):
+            return "free"
+    return tier
+
+
 def require_tier(min_tier: str):
     """Build a FastAPI dependency that enforces a minimum subscription
     tier. See module docstring for behavior under TIER_GATING_ENABLED."""
@@ -205,11 +225,13 @@ def require_tier(min_tier: str):
             with get_connection() as conn:
                 cur = conn.cursor()
                 cur.execute(
-                    "SELECT tier FROM user_subscriptions WHERE user_id = %s",
+                    "SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s",
                     (user_id,),
                 )
                 row = cur.fetchone()
-            user_tier = (row or {}).get("tier") or "free"
+            user_tier = comp_aware_tier((row or {}).get("tier"),
+                                        (row or {}).get("provider"),
+                                        (row or {}).get("ends_at")) if row else "free"
         if _TIER_RANK.get(user_tier, 0) < _TIER_RANK.get(min_tier, 0):
             raise HTTPException(
                 status_code=402,

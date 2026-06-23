@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..models.database import get_connection
-from .auth import get_current_user, _extract_token, require_tier
+from .auth import get_current_user, _extract_token, require_tier, comp_aware_tier
 from ._tier_allowlist import email_for_token, resolve_comped_tier
 
 router = APIRouter()
@@ -70,7 +70,7 @@ def get_my_subscription(request: Request, user_id: str = Depends(get_current_use
             """
             SELECT tier, started_at, ends_at, external_ref,
                    interval, current_period_end, cancel_at_period_end,
-                   subscription_id, customer_id
+                   subscription_id, customer_id, provider
             FROM user_subscriptions
             WHERE user_id = %s
             """,
@@ -92,13 +92,22 @@ def get_my_subscription(request: Request, user_id: str = Depends(get_current_use
         }
 
     r = dict(row)
+    # A comp grant auto-expires at ends_at; reflect that as the effective tier so
+    # the UI matches what the API gate enforces.
+    is_comp = r.get("provider") == "comp"
+    eff_tier = comp_aware_tier(r.get("tier"), r.get("provider"), r.get("ends_at"))
+    comp_active = is_comp and eff_tier != "free"
+    r["tier"] = eff_tier
     for k in ("started_at", "ends_at", "current_period_end"):
         r[k] = r[k].isoformat() if r.get(k) else None
     r["has_stripe_customer"] = bool(r.get("customer_id"))
-    r["comped"] = False
-    # Don't leak the raw customer_id / subscription_id to the frontend.
+    r["comped"] = comp_active
+    if comp_active:
+        r["comped_label"] = f"Comp · {eff_tier.title()} (through {r['ends_at'][:10]})"
+    # Don't leak the raw customer_id / subscription_id / provider to the frontend.
     r.pop("customer_id", None)
     r.pop("subscription_id", None)
+    r.pop("provider", None)
     return r
 
 
