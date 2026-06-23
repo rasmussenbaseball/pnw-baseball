@@ -358,14 +358,20 @@ function ArsenalTable({ arsenal }) {
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.ivb)}</td>
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.arm_hb)}</td>
               <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{a.tilt || '–'}</td>
-              <td className={`px-3 py-2 text-right font-medium ${a.stuff == null ? 'text-gray-400' : a.stuff >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>{a.stuff ?? '–'}</td>
+              <td
+                title={a.stuff_components ? Object.entries(a.stuff_components).map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`).join('\n') : ''}
+                className={`px-3 py-2 text-right font-medium ${a.stuff == null ? 'text-gray-400' : a.stuff >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                {a.stuff ?? '–'}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       <p className="px-3 py-2 text-[11px] text-gray-400">
-        * Stuff is an experimental v0 shape grade: 100 = MLB average <em>for that pitch type</em>.
-        Not comparable across pitch types, and it ignores command. Pending a trained model.
+        * Stuff (v1): research-grounded shape grade, 100 = average <em>for that pitch type</em>
+        (college-provisional anchors). Built from published Stuff+ effect sizes (velocity,
+        ride, extension, and a secondary's separation off the fastball). Not comparable across
+        pitch types; ignores command. Hover a score for its breakdown. Recalibrates as data grows.
       </p>
     </div>
   )

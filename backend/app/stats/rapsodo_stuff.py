@@ -1,90 +1,113 @@
-"""Stuff+ SCAFFOLD (v0) — an experimental, transparent pitch-quality grade.
+"""Stuff model (v1) — a transparent, research-grounded transfer model.
 
-IMPORTANT: this is NOT a trained Stuff+ model. Real Stuff+ regresses pitch
-shape onto run value / whiff outcomes; bullpen Rapsodo data has no hitters, so we
-can't fit that here. This is a documented heuristic that scores a pitch's SHAPE
-against MLB anchors (100 = MLB-average for that pitch family, ~10 points per
-standard deviation), so we have a working number and the structure to swap in a
-real model later (or recalibrate the anchors to the NWBB population as data
-accumulates). Treat it as directional, college arms will sit below 100, and it
-ignores command entirely. See RAPSODO_TOOL_DESIGN.md.
+Not a trained GBM. Bullpen Rapsodo data has no outcomes, so instead of fitting
+our own model we TRANSFER published effect sizes from the public Stuff+ literature
+(Driveline 2021/2024, FanGraphs PitchingBot, tjStuff+) into a transparent linear
+model centered on per-pitch-type anchors. 100 = average FOR THAT pitch type;
+~10 points ≈ 1 SD; NOT comparable across pitch types (a 110 slider ≠ 110 sinker).
+See RAPSODO_TOOL_DESIGN.md §9.
 
-Pathway to a real model: accumulate enough located pitches + (ideally) outcome
-tags, then fit a gradient-boosted model on run value with these same inputs and
-the velo/movement differential from each pitcher's own fastball.
+Grounded coefficients (provenance in comments):
+  * Velocity ≈ 6 Stuff+ pts / mph, convex above ~96 mph (Driveline 2024).  [firm]
+  * Extension → perceived velo: velo + 1.7*(ext - 6.3 ft) (Statcast).        [firm]
+  * Secondaries graded on velo + movement DIFFERENTIAL from the pitcher's own
+    fastball, weighted >= absolute movement (Driveline/tjStuff+).            [firm principle]
+  * Within-type 100-centered scaling.                                        [firm]
+  * Per-type ANCHORS below are COLLEGE-provisional estimates so college arms
+    center near 100 (MLB means mis-center for college — Baseball America /
+    CornBelters). RECALIBRATE from our own population once enough pitches land. [estimate]
 """
-VERSION = "v0"
+import math
 
-# MLB-ish anchors: (mean, sd). Documented + adjustable; recalibrate later.
-_FASTBALL = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam", "cutter"}
-_SECONDARY = {"slider", "sweeper", "gyro slider", "curveball", "changeup"}
+VERSION = "v1"
 
-_FB_VELO = (93.5, 2.5)
-_FB_IVB = (15.0, 3.5)
-_FB_EXT = (6.3, 0.4)
-_SEC_VELO = (84.0, 3.0)
-_SEC_MOVE = (14.0, 4.0)
+# Per-type anchors: (velo mph, IVB in, arm-side HB in). arm_hb is arm-side-positive.
+# COLLEGE-provisional — flagged for recalibration from real NWBB data.
+_A = {
+    "4-seam (ride)":    (90, 16, 8),
+    "fastball (mixed)": (89, 14, 10),
+    "sinker / 2-seam":  (88, 9, 16),
+    "cutter":           (84, 7, -2),
+    "slider":           (81, 1, -5),
+    "gyro slider":      (82, 1, -2),
+    "sweeper":          (79, 3, -13),
+    "curveball":        (76, -9, -9),
+    "changeup":         (81, 7, 14),
+}
+_FB_TYPES = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam", "cutter"}
+_REF_FB = (90, 16, 8)            # college-avg 4-seam, for centering secondary separations
+_EXT_AVG = 6.3                   # league-avg extension (ft)
 
 
 def _f(v):
     return float(v) if v is not None else None
 
 
-def _z(v, anchor):
-    return (v - anchor[0]) / anchor[1]
+def _perceived_velo(velo, ext):
+    # +1.7 mph of effective velo per foot of extension over league average [firm]
+    return velo + 1.7 * (ext - _EXT_AVG) if ext else velo
+
+
+def _velo_pts(pv, mean, slope=6.0):
+    pts = slope * (pv - mean)
+    if pv > 96:                  # convex: velocity overpowers shape above ~96 [firm direction]
+        pts += 4.0 * (pv - 96)
+    return pts
 
 
 def grade(entry, fb):
-    """Stuff v0 for one arsenal centroid. `fb` = fastball centroid {velo,ivb,arm_hb}.
-    Returns (score:int, components:dict) or (None, None) if ungradeable."""
+    """Stuff v1 for one arsenal centroid. fb = fastball centroid {velo,ivb,arm_hb}.
+    Returns (score:int, components:dict) or (None, None)."""
     pitch = entry.get("pitch")
-    velo = _f(entry.get("velo"))
-    ivb = _f(entry.get("ivb"))
-    hb = _f(entry.get("arm_hb"))
-    if velo is None or pitch not in _FASTBALL | _SECONDARY:
+    a = _A.get(pitch)
+    velo, ivb, hb = _f(entry.get("velo")), _f(entry.get("ivb")), _f(entry.get("arm_hb"))
+    if a is None or velo is None or ivb is None or hb is None:
         return None, None
-
-    score = 100.0
+    pv = _perceived_velo(velo, _f(entry.get("ext")))
     comp = {}
-    if pitch in _FASTBALL:
-        comp["velo"] = round(8 * _z(velo, _FB_VELO), 1)
-        score += comp["velo"]
-        if ivb is not None:
-            comp["ride"] = round(6 * _z(ivb, _FB_IVB), 1)
-            score += comp["ride"]
-        ext = _f(entry.get("ext"))
-        if ext:  # extension often unmeasured (0/None) on some devices
-            comp["extension"] = round(3 * _z(ext, _FB_EXT), 1)
-            score += comp["extension"]
-    else:
-        comp["velo"] = round(8 * _z(velo, _SEC_VELO), 1)
-        score += comp["velo"]
-        if ivb is not None and hb is not None:
-            total_move = abs(ivb) + abs(hb)
-            comp["movement"] = round(4 * _z(total_move, _SEC_MOVE), 1)
-            score += comp["movement"]
-        # reward velocity separation off the fastball (the secondary's job)
-        if fb and fb.get("velo") is not None:
-            sep = fb["velo"] - velo
-            comp["fb_sep"] = round(max(0.0, min(10.0, sep - 8)) * 0.5, 1)
-            score += comp["fb_sep"]
 
-    return max(20, min(180, round(score))), comp
+    if pitch in _FB_TYPES:
+        comp["velo"] = round(_velo_pts(pv, a[0]), 1)
+        if pitch == "sinker / 2-seam":
+            comp["run"] = round(1.2 * (hb - a[2]), 1)        # more arm-side run
+            comp["drop"] = round(1.0 * (a[1] - ivb), 1)      # less ride = more sink
+        elif pitch == "cutter":
+            comp["shape"] = round(0.6 * (a[1] - ivb), 1)     # ride taken off
+        else:  # 4-seam / mixed: reward ride + flat VAA
+            comp["ride"] = round(1.5 * (ivb - a[1]), 1)
+            vaa = _f(entry.get("vaa"))
+            if vaa is not None:                              # flatter than -5 deg = whiffs up [firm rank]
+                comp["vaa"] = round(max(-10, min(10, 6.0 * (vaa + 5))), 1)
+    else:
+        # Secondaries: own velo matters less; the DIFFERENTIAL off the fastball
+        # carries the grade (tunneling-then-divergence).
+        comp["velo"] = round(_velo_pts(pv, a[0], slope=3.0), 1)
+        if fb and fb.get("velo") is not None and fb.get("ivb") is not None and fb.get("arm_hb") is not None:
+            velo_sep = fb["velo"] - velo
+            ref_vsep = _REF_FB[0] - a[0]
+            comp["fb_velo_sep"] = round(1.5 * (velo_sep - ref_vsep), 1)
+            move_diff = math.hypot(ivb - fb["ivb"], hb - fb["arm_hb"])
+            ref_mdiff = math.hypot(a[1] - _REF_FB[1], a[2] - _REF_FB[2])
+            comp["fb_move_sep"] = round(1.0 * (move_diff - ref_mdiff), 1)
+            if pitch == "changeup":                          # kill ride vs FB, target ~8" [firm benchmark]
+                comp["ride_kill"] = round(1.0 * ((fb["ivb"] - ivb) - 8), 1)
+
+    score = 100 + sum(comp.values())
+    return max(20, min(175, round(score))), comp
 
 
 def fb_from_arsenal(arsenal):
-    """Pick the fastball anchor (most-thrown fastball, else hardest pitch) and
-    return its centroid {velo, ivb, arm_hb} for the secondary separation term."""
+    """Fastball anchor (most-thrown fastball, else hardest pitch) {velo,ivb,arm_hb}."""
     if not arsenal:
         return None
-    fbs = [a for a in arsenal if a.get("pitch") in _FASTBALL]
+    fbs = [a for a in arsenal if a.get("pitch") in {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam"}]
     pick = (max(fbs, key=lambda a: a.get("count", 0)) if fbs
             else max(arsenal, key=lambda a: _f(a.get("velo")) or 0))
     return {"velo": _f(pick.get("velo")), "ivb": _f(pick.get("ivb")), "arm_hb": _f(pick.get("arm_hb"))}
 
 
 def annotate(arsenal, fb):
-    """Attach a 'stuff' score + 'stuff_components' to each arsenal entry in place."""
+    """Attach 'stuff' + 'stuff_components' to each arsenal entry in place."""
     for entry in arsenal:
         s, comp = grade(entry, fb)
         entry["stuff"] = s

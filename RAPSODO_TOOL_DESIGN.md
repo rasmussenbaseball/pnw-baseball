@@ -271,3 +271,35 @@ better than Rapsodo's own output.
 - **Scope of v1:** clean read + movement plot + profile first, and add the suggestion engine
   once the data layer is trusted? (Recommended.)
 - **Visibility tier:** `coach` (portal) vs. `dev` while we validate, like TrackMan started.
+
+---
+
+## 9. Stuff+ / Location+ modeling path (limited-data strategy)
+
+We will never have enough bullpen Rapsodo data — and we have **no outcome data**
+(bullpens have no hitters) — to train a real Stuff+ from scratch. So don't. Borrow
+a model that was trained on millions of Statcast pitches with outcomes, and adapt it.
+
+The current `rapsodo_stuff.py` is an explicit **v0 placeholder** (transparent
+MLB-anchored z-score heuristic) so the column and plumbing exist. Replace it via:
+
+- **Option A — coefficient transfer (do this first).** Adopt a published
+  Statcast-based Stuff+ / PitchingBot formulation and apply its function to our
+  pitches. Our inputs already match its features: velo, IVB, HB, spin, release
+  height/side, extension, approach angle, and the velo/movement differential from
+  the pitcher's own fastball. No training, no data needed — just port the model.
+- **Option B — knowledge distillation (when we want our own student model).** Run
+  the teacher model over a large public Statcast set to generate `(features →
+  stuff)` labels, then train a small student model on the **Rapsodo-available
+  feature subset** so it tolerates Rapsodo's quirks (spin-based vs trajectory break,
+  model-derived VAA). This is how you get a model that works on our exact inputs
+  without needing our own outcomes.
+- **Option C — hybrid (the plan).** Ship Option A now; recalibrate the 100-baseline
+  and scale from MLB to the **NWBB/college population** as our pitches accumulate;
+  fine-tune later if we ever capture outcome tags (e.g. from game Trackman/PBP).
+
+Feature-mapping caveats to handle when porting: use `VB/HB (spin)` as IVB/HB;
+gate on spin confidence; Rapsodo VAA/HAA are model-derived (note it); college
+needs its own intercept. **Location+** is the same story but needs a zone-value
+surface (run value by location + count) — build that from our accumulating located
+pitches (now captured: `sz_side`/`sz_height`) or transfer a public RV-by-zone grid.

@@ -323,6 +323,7 @@ def aggregate_arsenal(ok_pitches):
             "ivb": _mean([p["ivb"] for p in ps]),
             "arm_hb": _mean([p["arm_hb"] for p in ps]),
             "gyro": _mean([p["gyro"] for p in ps]),
+            "vaa": _mean([p.get("vaa") for p in ps]),
             "tilt": _common_tilt(ps),
             "rel_height": _mean([p["rel_height"] for p in ps]),
             "rel_side": _mean([p["rel_side"] for p in ps]),
