@@ -399,6 +399,14 @@ export const DRAFT_DATA = {
         "year": "SR",
         "school": "Oregon",
         "playerId": 3504
+      },
+      {
+        "rank": 37,
+        "name": "Joe Thornton",
+        "pos": "RHP",
+        "year": "R-SO",
+        "school": "Gonzaga",
+        "playerId": null
       }
     ]
   },
