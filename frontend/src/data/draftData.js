@@ -412,7 +412,7 @@ export const DRAFT_DATA = {
   },
   "27": {
     "year": 2027,
-    "lastUpdated": "2026-03-15",
+    "lastUpdated": "2026-06-23",
     "prospects": [
       {
         "rank": 1,
@@ -423,93 +423,106 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 2,
-        "name": "Jackson Hotchkiss",
-        "pos": "OF",
-        "school": "Washington",
-        "playerId": 3492
-      },
-      {
-        "rank": 3,
         "name": "Will Sanford",
         "pos": "RHP",
         "school": "Oregon",
         "playerId": 3623
       },
       {
-        "rank": 4,
-        "name": "Rylan Howe",
-        "pos": "RHP",
-        "school": "Union (WA)",
-        "playerId": null
-      },
-      {
-        "rank": 5,
-        "name": "Tanner Bradley",
-        "pos": "RHP",
-        "school": "Oregon",
-        "playerId": 3629
-      },
-      {
-        "rank": 6,
-        "name": "Joe Mendazona Jr.",
-        "pos": "C",
-        "school": "Central (OR)",
-        "playerId": null
-      },
-      {
-        "rank": 7,
-        "name": "Brayden Landry",
-        "pos": "SS",
-        "school": "Puyallup (WA)",
-        "playerId": null
-      },
-      {
-        "rank": 8,
+        "rank": 3,
+        "movement": "up",
         "name": "Karsten Sweum",
         "pos": "LHP",
         "school": "Gonzaga",
         "playerId": 3569
       },
       {
-        "rank": 9,
+        "rank": 4,
+        "name": "Joe Mendazona Jr.",
+        "pos": "C",
+        "school": "Central (OR)",
+        "commit": "TCU",
+        "playerId": null
+      },
+      {
+        "rank": 5,
+        "name": "Rylan Howe",
+        "pos": "RHP",
+        "school": "Union (WA)",
+        "commit": "Oregon",
+        "playerId": null
+      },
+      {
+        "rank": 6,
+        "name": "Tanner Bradley",
+        "pos": "RHP",
+        "school": "Oregon",
+        "playerId": 3629
+      },
+      {
+        "rank": 7,
+        "name": "Brayden Landry",
+        "pos": "SS",
+        "school": "Puyallup (WA)",
+        "commit": "Washington",
+        "playerId": null
+      },
+      {
+        "rank": 8,
         "name": "Wyatt Plyler",
         "pos": "OF",
         "school": "Sumner (WA)",
+        "commit": "Wake Forest",
+        "playerId": null
+      },
+      {
+        "rank": 9,
+        "movement": "up",
+        "name": "Tyler Ransom",
+        "pos": "LHP",
+        "school": "Sugar-Salem (ID)",
+        "commit": "Texas A&M",
         "playerId": null
       },
       {
         "rank": 10,
-        "name": "Luke Overbay",
-        "pos": "OF",
-        "school": "Tumwater (WA)",
+        "movement": "up",
+        "name": "JT Girod",
+        "pos": "SS",
+        "school": "Central (OR)",
+        "commit": "Oregon",
         "playerId": null
       },
       {
         "rank": 11,
-        "name": "Jax Gimenez",
+        "name": "Luke Overbay",
+        "pos": "OF",
+        "school": "Tumwater (WA)",
+        "commit": "Michigan",
+        "playerId": null
+      },
+      {
+        "rank": 12,
+        "movement": "down",
+        "name": "Eli Jones",
+        "pos": "RHP",
+        "school": "Woodinville (WA)",
+        "commit": "Oregon St",
+        "playerId": null
+      },
+      {
+        "rank": 13,
+        "name": "Jax Giminez",
         "pos": "OF",
         "school": "Oregon",
         "playerId": 3503
       },
       {
-        "rank": 12,
+        "rank": 14,
         "name": "Reece Johnson",
         "pos": "OF",
         "school": "King's Way (WA)",
-        "playerId": null
-      },
-      {
-        "rank": 13,
-        "name": "Adam Haight",
-        "pos": "OF",
-        "school": "Oregon St",
-        "playerId": 3518
-      },
-      {
-        "rank": 14,
-        "name": "Tyler Ransom",
-        "pos": "LHP",
-        "school": "Sugar-Salem (ID)",
+        "commit": "Oregon St",
         "playerId": null
       },
       {
@@ -518,6 +531,58 @@ export const DRAFT_DATA = {
         "pos": "SS",
         "school": "Portland",
         "playerId": 3586
+      },
+      {
+        "rank": 16,
+        "movement": "down",
+        "name": "Adam Haight",
+        "pos": "OF",
+        "school": "Oregon St",
+        "playerId": 3518
+      },
+      {
+        "rank": 17,
+        "name": "Mickey McClaskey",
+        "pos": "RHP",
+        "school": "Gonzaga",
+        "playerId": null
+      },
+      {
+        "rank": 18,
+        "name": "Paul Vazquez",
+        "pos": "3B",
+        "school": "Oregon St",
+        "playerId": null
+      },
+      {
+        "rank": 19,
+        "name": "Luke Morgan",
+        "pos": "RHP",
+        "school": "Oregon",
+        "playerId": null
+      },
+      {
+        "rank": 20,
+        "name": "Manny Ehinger",
+        "pos": "SS",
+        "school": "Sherwood (OR)",
+        "commit": "Oregon",
+        "playerId": null
+      },
+      {
+        "rank": 21,
+        "name": "Harrison Buckingham",
+        "pos": "RHP",
+        "school": "South Salem (OR)",
+        "commit": "Oregon St",
+        "playerId": null
+      },
+      {
+        "rank": 22,
+        "name": "Trey Swygart",
+        "pos": "1B/P",
+        "school": "Portland",
+        "playerId": null
       }
     ]
   },
