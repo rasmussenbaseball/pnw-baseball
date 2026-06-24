@@ -274,7 +274,7 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, wcl
   const imgR = Math.min(30, Math.floor(h * 0.40))
   const imgCX = x + 86
   const nameX = imgCX + imgR + 14
-  const nameZoneEnd = x + 232
+  const nameZoneEnd = x + 246
   const nameMaxW = nameZoneEnd - nameX
 
   const gridLeftX = x + 252
@@ -318,9 +318,9 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, wcl
 
   // Team (small logo + short)
   ctx.textBaseline = 'middle'
-  ctx.font = `500 12px ${font}`
+  ctx.font = `500 10px ${font}`
   const tName = player.team_short || ''
-  const miniSz = 14
+  const miniSz = 12
   const gap = 4
   if (logoImg) {
     drawImageContain(ctx, logoImg, nameX, imgCY + 14 - miniSz / 2, miniSz, miniSz)
