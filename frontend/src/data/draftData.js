@@ -53,7 +53,7 @@ export function getSchoolLogo(school) {
 export const DRAFT_DATA = {
   "26": {
     "year": 2026,
-    "lastUpdated": "2026-06-18",
+    "lastUpdated": "2026-06-23",
     "prospects": [
       {
         "rank": 1,
@@ -182,15 +182,14 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 13,
-        "movement": "down",
-        "name": "Noah Kenney",
-        "pos": "RHP",
+        "name": "Miles Gosztola",
+        "pos": "LHP",
         "year": "JR",
-        "school": "Washington",
-        "playerId": 3611,
-        "report": "Noah Kenney joined UW from the juco ranks this fall and has quickly emerged as the Huskies best arm. Kenney was a high performer at Folsom Lake CC, punching out 58 batters in 51 innings with a sub-3 ERA. This year, Kenney has a 3.79 FIP in the Big Ten, while increasing his strikeouts to 28.4%. Kenney employs a good changeup and a tight slider. His fastball plays angles well and consistently works above hitters' barrels. Kenney also works his fastball well at the bottom of the zone as a freeze pitch. There's enough clay with Kenney to warrant him being the next UW arm selected in July, after Max Banks was taken last year on day two.",
-        "reportAuthor": "Nate Rasmussen",
-        "reportDate": "2026-04-13"
+        "school": "Oregon",
+        "playerId": 3637,
+        "report": "Miles Gosztola is a 20-year-old LHP who just finished his junior year with the Oregon Ducks. This was his first year with the Ducks, as he transferred from Gonzaga, where he played the previous two years. He started off the year in the bullpen and worked his way up to becoming a midweek starter, and by the end of the year, he showed out as one of the Ducks' best weekend starters. He throws from a 3/4 slot and lives in the low 90s with a devastating changeup that gets a lot of whiffs due to its sharp fade as well as its velocity difference, which is 10 MPH slower than his fastball. His fastball has a lot of sink and natural run due to his arm slot. He also has a big sweeper, with which he is able to generate a lot of whiffs against LHH. He has a good strikeout rate of 25.5% and average command with a 9.2 BB%. He can command all three of his pitches, but prefers his changeup to RHH. All around, he is a very cerebral pitcher with good command of his mix who has had a lot of success. With his solid frame of 6'3, 200 lbs and his ability to limit hard contact and strike batters out, he definitely has a future at the next level, especially if his velocity ticks up just a bit.",
+        "reportAuthor": "Oliver Duthie",
+        "reportDate": "2026-06-10"
       },
       {
         "rank": 14,
@@ -214,38 +213,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 16,
-        "name": "Zach Edwards",
-        "pos": "RHP",
-        "year": "SO",
-        "school": "Oregon State",
-        "playerId": 3657,
-        "report": "Zach Edwards is one of the best examples of why reliever ERA can be a flawed statistic. At 20 years old, he posted a 5.61 ERA while ranking in the 35th percentile. The stocky right-hander is the definition of a power pitcher, featuring a mid-to-upper-90s four-seam fastball and a hard mid-80s tight slider. His third pitch is a changeup that he mostly attacks hitters with after establishing his electric fastball-slider combination. His biggest strength is his strikeout ability, as he posted a 33% strikeout rate this past season, making him one of Oregon State's best relievers. Similar to many hard-throwing, high-strikeout pitchers, he can struggle with command at times, as evidenced by his near 10% walk rate. Edwards is a strikeout machine with a powerful fastball who does not give up many base hits. Last summer, he pitched for the Hyannis Harbor Hawks in the Cape Cod League and had tremendous success, throwing 16 innings with 16 strikeouts, five walks, and only three earned runs allowed. He quickly became one of the club's most reliable arms out of the bullpen. He projects as a reliever with late-inning upside if he can become more consistent with his command and continue to refine his off-speed offerings.",
-        "reportAuthor": "Oliver Duthie",
-        "reportDate": "2026-06-11"
-      },
-      {
-        "rank": 17,
-        "name": "Miles Gosztola",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "Oregon",
-        "playerId": 3637,
-        "report": "Miles Gosztola is a 20-year-old LHP who just finished his junior year with the Oregon Ducks. This was his first year with the Ducks, as he transferred from Gonzaga, where he played the previous two years. He started off the year in the bullpen and worked his way up to becoming a midweek starter, and by the end of the year, he showed out as one of the Ducks' best weekend starters. He throws from a 3/4 slot and lives in the low 90s with a devastating changeup that gets a lot of whiffs due to its sharp fade as well as its velocity difference, which is 10 MPH slower than his fastball. His fastball has a lot of sink and natural run due to his arm slot. He also has a big sweeper, with which he is able to generate a lot of whiffs against LHH. He has a good strikeout rate of 25.5% and average command with a 9.2 BB%. He can command all three of his pitches, but prefers his changeup to RHH. All around, he is a very cerebral pitcher with good command of his mix who has had a lot of success. With his solid frame of 6'3, 200 lbs and his ability to limit hard contact and strike batters out, he definitely has a future at the next level, especially if his velocity ticks up just a bit.",
-        "reportAuthor": "Oliver Duthie",
-        "reportDate": "2026-06-10"
-      },
-      {
-        "rank": 18,
-        "movement": "up",
-        "name": "Dylan Hicks",
-        "pos": "P",
-        "year": "JC-2",
-        "school": "Everett CC",
-        "commit": "Oregon St",
-        "playerId": 934
-      },
-      {
-        "rank": 19,
         "movement": "up",
         "name": "Toby Twist",
         "pos": "P",
@@ -254,15 +221,33 @@ export const DRAFT_DATA = {
         "playerId": 3635
       },
       {
-        "rank": 20,
-        "name": "Burke-Lee Mabeus",
-        "pos": "C",
-        "year": "SO",
-        "school": "Transfer Portal",
-        "playerId": 3505
+        "rank": 17,
+        "name": "Dylan Hicks",
+        "pos": "P",
+        "year": "JC-2",
+        "school": "Everett CC",
+        "commit": "Oregon St",
+        "playerId": 934
       },
       {
-        "rank": 21,
+        "rank": 18,
+        "name": "Drew Smith",
+        "pos": "3B",
+        "year": "SR",
+        "school": "Oregon",
+        "playerId": 3500
+      },
+      {
+        "rank": 19,
+        "name": "Kealoha Kepo'o-Sabate",
+        "pos": "RHP",
+        "year": "PREP",
+        "school": "Meadowdale (WA)",
+        "commit": "Texas Tech",
+        "playerId": null
+      },
+      {
+        "rank": 20,
         "movement": "up",
         "name": "Nick Lewis",
         "pos": "LHP",
@@ -274,15 +259,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-06-10"
       },
       {
-        "rank": 22,
-        "name": "Drew Smith",
-        "pos": "3B",
-        "year": "SR",
-        "school": "Oregon",
-        "playerId": 3500
-      },
-      {
-        "rank": 23,
+        "rank": 21,
         "movement": "up",
         "name": "Max Hartman",
         "pos": "OF",
@@ -291,7 +268,7 @@ export const DRAFT_DATA = {
         "playerId": 3534
       },
       {
-        "rank": 24,
+        "rank": 22,
         "name": "Colton Bower",
         "pos": "C",
         "year": "R-JR",
@@ -299,8 +276,26 @@ export const DRAFT_DATA = {
         "playerId": 3484
       },
       {
-        "rank": 25,
+        "rank": 23,
         "movement": "up",
+        "name": "Neal Burtis",
+        "pos": "LHP",
+        "year": "PREP",
+        "school": "Tahoma (WA)",
+        "commit": "Oregon St",
+        "playerId": null
+      },
+      {
+        "rank": 24,
+        "name": "Trenton Hertzog",
+        "pos": "UTIL",
+        "year": "PREP",
+        "school": "Tualatin (OR)",
+        "commit": "Oregon",
+        "playerId": null
+      },
+      {
+        "rank": 25,
         "name": "Jace Taylor",
         "pos": "RHP",
         "year": "SR",
@@ -312,40 +307,40 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 26,
-        "name": "Kealoha Kepo'o-Sabate",
-        "pos": "RHP",
-        "year": "PREP",
-        "school": "Meadowdale (WA)",
-        "commit": "Texas Tech",
-        "playerId": null
-      },
-      {
-        "rank": 27,
-        "movement": "up",
-        "name": "Neal Burtis",
-        "pos": "LHP",
-        "year": "PREP",
-        "school": "Tahoma (WA)",
-        "commit": "Oregon St",
-        "playerId": null
-      },
-      {
-        "rank": 28,
-        "name": "Trenton Hertzog",
-        "pos": "UTIL",
-        "year": "PREP",
-        "school": "Tualatin (OR)",
-        "commit": "Oregon",
-        "playerId": null
-      },
-      {
-        "rank": 29,
         "movement": "down",
         "name": "Finbar O'Brien",
         "pos": "RHP",
         "year": "JR",
         "school": "Gonzaga",
         "playerId": 3575
+      },
+      {
+        "rank": 27,
+        "name": "Trey Newmann",
+        "pos": "RHP",
+        "year": "JR",
+        "school": "Portland",
+        "playerId": 3601
+      },
+      {
+        "rank": 28,
+        "name": "Jackson Jaha",
+        "pos": "UTIL",
+        "year": "R-JR",
+        "school": "LC State",
+        "playerId": 2714,
+        "report": "Jackson Jaha was selected in the 15th round of the 2022 draft by the New York Mets, with Jaha electing to head to Oregon instead. After a forgettable freshman year with the Ducks, Jaha reemerged at Linn-Benton CC in 2025. He then transferred to LC State, the most decorated school in the PNW, for his 2026 season. As of right now, Jaha is putting up the best batting season in the last decade of baseball in the region. He's batting .483 with a .448 ISO, while walking and striking out at a 19% rate. Jaha has split time between 3B and DH, with a move to 1B likely at the next level. The story of Jaha is complicated, but there has never been a question about his raw talent, which has been on full display this year. With LC State ranked as the #1 NAIA team in the country, Jaha will have a chance to continue to prove his prowess into the summer.",
+        "reportAuthor": "Nate Rasmussen",
+        "reportDate": "2026-04-13"
+      },
+      {
+        "rank": 29,
+        "name": "August Ware",
+        "pos": "LHP",
+        "year": "PREP",
+        "school": "Glencoe (OR)",
+        "commit": "Oregon St",
+        "playerId": null
       },
       {
         "rank": 30,
@@ -357,26 +352,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 31,
-        "name": "August Ware",
-        "pos": "LHP",
-        "year": "PREP",
-        "school": "Glencoe (OR)",
-        "commit": "Oregon St",
-        "playerId": null
-      },
-      {
-        "rank": 32,
-        "name": "Jackson Jaha",
-        "pos": "UTIL",
-        "year": "R-JR",
-        "school": "LC State",
-        "playerId": 2714,
-        "report": "Jackson Jaha was selected in the 15th round of the 2022 draft by the New York Mets, with Jaha electing to head to Oregon instead. After a forgettable freshman year with the Ducks, Jaha reemerged at Linn-Benton CC in 2025. He then transferred to LC State, the most decorated school in the PNW, for his 2026 season. As of right now, Jaha is putting up the best batting season in the last decade of baseball in the region. He's batting .483 with a .448 ISO, while walking and striking out at a 19% rate. Jaha has split time between 3B and DH, with a move to 1B likely at the next level. The story of Jaha is complicated, but there has never been a question about his raw talent, which has been on full display this year. With LC State ranked as the #1 NAIA team in the country, Jaha will have a chance to continue to prove his prowess into the summer.",
-        "reportAuthor": "Nate Rasmussen",
-        "reportDate": "2026-04-13"
-      },
-      {
-        "rank": 33,
         "name": "Jacob Wrubleski",
         "pos": "C",
         "year": "JR",
@@ -384,16 +359,7 @@ export const DRAFT_DATA = {
         "playerId": 3560
       },
       {
-        "rank": 34,
-        "movement": "down",
-        "name": "Trey Newmann",
-        "pos": "RHP",
-        "year": "JR",
-        "school": "Portland",
-        "playerId": 3601
-      },
-      {
-        "rank": 35,
+        "rank": 32,
         "name": "Easton Talt",
         "pos": "CF",
         "year": "SR",
@@ -401,7 +367,7 @@ export const DRAFT_DATA = {
         "playerId": 3519
       },
       {
-        "rank": 36,
+        "rank": 33,
         "name": "Gavin Roy",
         "pos": "SS-2B",
         "year": "SR",
@@ -409,7 +375,7 @@ export const DRAFT_DATA = {
         "playerId": 3532
       },
       {
-        "rank": 37,
+        "rank": 34,
         "name": "Isaac Yeager",
         "pos": "P",
         "year": "SR",
@@ -417,7 +383,7 @@ export const DRAFT_DATA = {
         "playerId": 3650
       },
       {
-        "rank": 38,
+        "rank": 35,
         "movement": "up",
         "name": "Devin Bell",
         "pos": "RHP",
@@ -426,108 +392,13 @@ export const DRAFT_DATA = {
         "playerId": 3634
       },
       {
-        "rank": 39,
+        "rank": 36,
         "movement": "down",
         "name": "Dominic Hellman",
         "pos": "UTIL",
         "year": "SR",
         "school": "Oregon",
         "playerId": 3504
-      },
-      {
-        "rank": 40,
-        "name": "Austin Wolfe",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "Bushnell",
-        "playerId": 2921,
-        "report": "Austin Wolfe, whom I happen to coach, has a similar career arc to Anderson. Starting as a freshman, Wolfe has eaten innings for Bushnell, but this year, he flipped a switch. After a solid sophomore season, Wolfe spent the summer in the Northwoods, where he was an all-star with a sub-3 ERA. D1's were all over him looking for a lefty transfer, but he chose to remain at Bushnell in 2026. This spring, Wolfe is frequently in the upper 80s while touching low 9's. The emergence of a cutter to pair with a high-spin slider has helped reduce Wolfe's hard-hit rate. His strikeout rate has jumped 6% to 26%, while his walk rate has remained steady below 6%. By FIP, Wolfe is the best starter in the CCC.",
-        "reportAuthor": "Nate Rasmussen",
-        "reportDate": "2026-04-13"
-      },
-      {
-        "rank": 41,
-        "name": "Will Anderson",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "British Columbia",
-        "playerId": 2994,
-        "report": "Will Anderson has been a workhorse since arriving on campus at British Columbia. Often sitting in the upper 80s, Anderson has a strong left-handed four-pitch mix with great command. His best putaway offering is a changeup that he'll throw in any count to any hitter. The lack of present velocity is the one thing holding Anderson back. If he can work further into the 90's this spring, he may be the next UBC arm to make the jump to the pros.",
-        "reportAuthor": "Nate Rasmussen",
-        "reportDate": "2026-04-13"
-      },
-      {
-        "rank": 42,
-        "movement": "down",
-        "name": "Zach Bowman",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "Gonzaga",
-        "playerId": 3570
-      },
-      {
-        "rank": 43,
-        "name": "Evan Canfield",
-        "pos": "RHP",
-        "year": "R-JR",
-        "school": "LC State",
-        "playerId": 2731
-      },
-      {
-        "rank": 44,
-        "name": "Justin Feld",
-        "pos": "RHP",
-        "year": "SR",
-        "school": "Gonzaga",
-        "playerId": 3574
-      },
-      {
-        "rank": 45,
-        "name": "Blake Smith",
-        "pos": "P",
-        "year": "SR",
-        "school": "Seattle U",
-        "playerId": 3690
-      },
-      {
-        "rank": 46,
-        "name": "James Brock",
-        "pos": "RHP",
-        "year": "SR",
-        "school": "UBC",
-        "playerId": 2993
-      },
-      {
-        "rank": 47,
-        "name": "Donny Tober",
-        "pos": "RHP",
-        "year": "R-JR",
-        "school": "Warner Pacific",
-        "playerId": 2950
-      },
-      {
-        "rank": 48,
-        "name": "Graham Learing",
-        "pos": "P",
-        "year": "JC-1",
-        "school": "Lower Columbia",
-        "playerId": 1029
-      },
-      {
-        "rank": 49,
-        "name": "Mason Goodson",
-        "pos": "RHP",
-        "year": "JR",
-        "school": "LC State",
-        "playerId": 2732
-      },
-      {
-        "rank": 50,
-        "name": "Maddox Haley",
-        "pos": "DH-RF",
-        "year": "JR",
-        "school": "Gonzaga",
-        "playerId": 3558
       }
     ]
   },
