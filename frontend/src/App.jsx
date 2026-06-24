@@ -551,6 +551,7 @@ export default function App() {
           <Route path="/conference-standings" element={<RequireAuth><ConferenceStandingsGraphic /></RequireAuth>} />
           <Route path="/all-conference-graphic" element={<RequireAuth><AllConferenceGraphic /></RequireAuth>} />
           <Route path="/top-performers-graphic" element={<RequireAuth><TopPerformersGraphic /></RequireAuth>} />
+          <Route path="/wcl-top-performers-graphic" element={<RequireAuth><TopPerformersGraphic variant="summer" /></RequireAuth>} />
           <Route path="/team-info-graphic" element={<RequireAuth><TeamInfoGraphic /></RequireAuth>} />
           <Route path="/team-season-recap" element={<RequireAuth><TeamSeasonRecapGraphic /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />

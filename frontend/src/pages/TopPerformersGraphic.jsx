@@ -448,52 +448,52 @@ function collectPlayersAndTeams(hitters, pitchers) {
 }
 
 // ─── Main component ───
-export default function TopPerformersGraphic() {
+const _ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+export default function TopPerformersGraphic({ variant = 'spring' } = {}) {
+  const isSummer = variant === 'summer'
   const [season] = useState(CURRENT_SEASON)
-  const [weekStart, setWeekStart] = useState(null)  // YYYY-MM-DD Monday
+  const [weekStart, setWeekStart] = useState(null)  // spring: YYYY-MM-DD Monday
+  // summer: custom date range, defaults to the last 7 days
+  const [startDate, setStartDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 6); return _ymd(d) })
+  const [endDate, setEndDate] = useState(() => _ymd(new Date()))
   const [divFilter, setDivFilter] = useState('ALL')
   const [exporting, setExporting] = useState(false)
   const [images, setImages] = useState(null)
   const canvasRef = useRef(null)
 
-  // 1. Load the list of available weeks
+  // 1. (spring only) list of available weeks for the dropdown
   const { data: weeksData, loading: weeksLoading } = useApi(
-    '/games/top-performer-weeks', { season }, [season]
+    isSummer ? null : '/games/top-performer-weeks', { season }, [season, isSummer]
   )
-
-  // Auto-select the most recent week on first load
   useEffect(() => {
-    if (!weekStart && weeksData?.weeks?.length > 0) {
-      // Default to current week if present, otherwise most recent
+    if (!isSummer && !weekStart && weeksData?.weeks?.length > 0) {
       const current = weeksData.weeks.find(w => w.is_current)
       setWeekStart((current || weeksData.weeks[0]).week_start)
     }
-  }, [weeksData, weekStart])
+  }, [weeksData, weekStart, isSummer])
 
-  // 2. Load performers for the selected week
+  // 2. Load performers — spring by week, summer by custom date range
   const { data: perfData, loading: perfLoading } = useApi(
-    weekStart ? '/games/weekly-top-performers' : null,
-    { week_start: weekStart, season },
-    [weekStart, season]
+    isSummer ? (startDate && endDate ? '/summer/top-performers' : null)
+             : (weekStart ? '/games/weekly-top-performers' : null),
+    isSummer ? { start: startDate, end: endDate, season } : { week_start: weekStart, season },
+    [isSummer, weekStart, startDate, endDate, season]
   )
 
-  // 3. Apply division filter + slice to top 10
+  // 3. Filter (spring: by division) + slice to top 10
   const filtered = perfData ? (() => {
+    const df = isSummer ? 'ALL' : divFilter
     const hitters = (perfData.top_hitters || []).filter(
-      p => divFilter === 'ALL' || (p.division || '').toUpperCase() === divFilter
+      p => df === 'ALL' || (p.division || '').toUpperCase() === df
     ).slice(0, 10)
     const pitchers = (perfData.top_pitchers || []).filter(
-      p => divFilter === 'ALL' || (p.division || '').toUpperCase() === divFilter
+      p => df === 'ALL' || (p.division || '').toUpperCase() === df
     ).slice(0, 10)
-
-    // Pretty week label
-    const weekObj = weeksData?.weeks?.find(w => w.week_start === perfData.week_start)
-    return {
-      ...perfData,
-      top_hitters: hitters,
-      top_pitchers: pitchers,
-      week_label: weekObj?.label || '',
-    }
+    const label = isSummer
+      ? `${perfData.start} – ${perfData.end}`
+      : (weeksData?.weeks?.find(w => w.week_start === perfData.week_start)?.label || '')
+    return { ...perfData, top_hitters: hitters, top_pitchers: pitchers, week_label: label }
   })() : null
 
   // 4. Load images once we have filtered data
@@ -537,12 +537,12 @@ export default function TopPerformersGraphic() {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
     renderGraphic({
-      ctx, W, H, data: filtered, division: divFilter,
+      ctx, W, H, data: filtered, division: isSummer ? 'ALL' : divFilter,
       faviconImg: images.faviconImg,
       headshots: images.headshots,
       teamLogos: images.teamLogos,
     })
-  }, [filtered, images, divFilter])
+  }, [filtered, images, divFilter, isSummer])
 
   // 6. Export handler
   const handleExport = useCallback(async () => {
@@ -557,13 +557,15 @@ export default function TopPerformersGraphic() {
       const ctx = canvas.getContext('2d')
       ctx.scale(dpr, dpr)
       renderGraphic({
-        ctx, W, H, data: filtered, division: divFilter,
+        ctx, W, H, data: filtered, division: isSummer ? 'ALL' : divFilter,
         faviconImg: images.faviconImg,
         headshots: images.headshots,
         teamLogos: images.teamLogos,
       })
       const link = document.createElement('a')
-      link.download = `nwbb-top-performers-${filtered.week_start}-${divFilter}.png`
+      link.download = isSummer
+        ? `wcl-top-performers-${startDate}_to_${endDate}.png`
+        : `nwbb-top-performers-${filtered.week_start}-${divFilter}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
     } catch (err) {
@@ -572,38 +574,64 @@ export default function TopPerformersGraphic() {
     } finally {
       setExporting(false)
     }
-  }, [filtered, images, divFilter])
+  }, [filtered, images, divFilter, isSummer])
 
   const loading = weeksLoading || perfLoading
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Top Performers Graphic</h1>
+      <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">{isSummer ? 'WCL Top Performers Graphic' : 'Top Performers Graphic'}</h1>
       <p className="text-sm text-gray-500 mb-5">
-        Weekly top 10 hitters and top 10 pitchers across PNW baseball. Monday to Sunday.
+        {isSummer
+          ? 'Top 10 West Coast League hitters and pitchers over any date range you choose.'
+          : 'Weekly top 10 hitters and top 10 pitchers across PNW baseball. Monday to Sunday.'}
       </p>
 
       <div className="flex flex-col lg:flex-row gap-6">
         {/* ═══ LEFT: Controls ═══ */}
         <div className="lg:w-72 shrink-0 space-y-4">
-          <div className="bg-white rounded-lg shadow-sm border p-4 space-y-2">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Week
-            </label>
-            <select
-              value={weekStart || ''}
-              onChange={(e) => { setWeekStart(e.target.value); setImages(null) }}
-              disabled={!weeksData?.weeks?.length}
-              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
-            >
-              {(weeksData?.weeks || []).map(w => (
-                <option key={w.week_start} value={w.week_start}>
-                  {w.is_current ? '★ ' : ''}{w.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {isSummer ? (
+            <div className="bg-white rounded-lg shadow-sm border p-4 space-y-2">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Date range
+              </label>
+              <div className="space-y-2">
+                <div>
+                  <span className="block text-[10px] text-gray-400 mb-0.5">From</span>
+                  <input type="date" value={startDate} max={endDate}
+                    onChange={(e) => { setStartDate(e.target.value); setImages(null) }}
+                    className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light" />
+                </div>
+                <div>
+                  <span className="block text-[10px] text-gray-400 mb-0.5">To</span>
+                  <input type="date" value={endDate} min={startDate}
+                    onChange={(e) => { setEndDate(e.target.value); setImages(null) }}
+                    className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light" />
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-400">{filtered?.game_count ?? 0} WCL games in range.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm border p-4 space-y-2">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Week
+              </label>
+              <select
+                value={weekStart || ''}
+                onChange={(e) => { setWeekStart(e.target.value); setImages(null) }}
+                disabled={!weeksData?.weeks?.length}
+                className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
+              >
+                {(weeksData?.weeks || []).map(w => (
+                  <option key={w.week_start} value={w.week_start}>
+                    {w.is_current ? '★ ' : ''}{w.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
+          {!isSummer && (
           <div className="bg-white rounded-lg shadow-sm border p-4 space-y-2">
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Division
@@ -624,6 +652,7 @@ export default function TopPerformersGraphic() {
               ))}
             </div>
           </div>
+          )}
 
           <button
             onClick={handleExport}

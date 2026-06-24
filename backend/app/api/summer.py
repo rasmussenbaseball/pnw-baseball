@@ -3864,3 +3864,138 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
         })
     out.sort(key=lambda x: x["war"], reverse=True)
     return {"players": out[:limit]}
+
+
+# ── WCL Top Performers graphic (custom date range) ──────────────────────
+def _stp_name(r):
+    if r.get("first_name") and r.get("last_name"):
+        return f"{r['first_name']} {r['last_name']}"
+    n = r.get("player_name") or ""
+    if "," in n:
+        a, b = n.split(",", 1)
+        return f"{b.strip()} {a.strip()}"
+    return n
+
+
+def _stp_ip_to_outs(ip):
+    if ip is None:
+        return 0
+    whole = int(float(ip)); frac = round((float(ip) - whole) * 10)
+    if frac not in (0, 1, 2):
+        frac = 0
+    return whole * 3 + frac
+
+
+@router.get("/summer/top-performers")
+@cached_endpoint(ttl_seconds=600)
+def summer_top_performers(
+    start: str = Query(..., description="Start date YYYY-MM-DD (inclusive)"),
+    end: str = Query(..., description="End date YYYY-MM-DD (inclusive)"),
+    season: int = Query(CURRENT_SEASON),
+    league: str = Query("WCL"),
+):
+    """Top WCL hitters + pitchers over an arbitrary date range, for the WCL Top
+    Performers graphic. Same row shape as /games/weekly-top-performers so the
+    graphic renderer is shared. Summer players have no headshots, so headshot_url
+    is null (cards fall back to the team logo / placeholder)."""
+    ds, de = date.fromisoformat(start), date.fromisoformat(end)
+    empty = {"start": start, "end": end, "top_hitters": [], "top_pitchers": [], "game_count": 0}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM summer_leagues WHERE abbreviation = %s", (league,))
+        lr = cur.fetchone()
+        if not lr:
+            return empty
+        cur.execute("""SELECT id FROM summer_games WHERE league_id = %s AND season = %s
+                       AND status = 'final' AND game_date BETWEEN %s AND %s""",
+                    (lr["id"], season, ds, de))
+        gids = [r["id"] for r in cur.fetchall()]
+        if not gids:
+            return empty
+        cur.execute("""
+            SELECT b.game_id, b.team_id, b.player_id, b.player_name,
+                   b.ab, b.r, b.h, b."2b" AS d2, b."3b" AS d3, b.hr, b.rbi,
+                   b.bb, b.so, b.sb, b.hbp, b.sf,
+                   COALESCE(t.short_name, t.name) AS team_short, t.logo_url AS team_logo,
+                   sp.first_name, sp.last_name
+            FROM summer_game_batting b
+            JOIN summer_teams t ON t.id = b.team_id
+            LEFT JOIN summer_players sp ON sp.id = b.player_id
+            WHERE b.game_id = ANY(%s)""", (gids,))
+        brows = [dict(r) for r in cur.fetchall()]
+        cur.execute("""
+            SELECT p.game_id, p.team_id, p.player_id, p.player_name,
+                   p.ip, p.h, p.er, p.bb, p.so, p.hr, p.is_starter, p.decision,
+                   COALESCE(t.short_name, t.name) AS team_short, t.logo_url AS team_logo,
+                   sp.first_name, sp.last_name
+            FROM summer_game_pitching p
+            JOIN summer_teams t ON t.id = p.team_id
+            LEFT JOIN summer_players sp ON sp.id = p.player_id
+            WHERE p.game_id = ANY(%s)""", (gids,))
+        prows = [dict(r) for r in cur.fetchall()]
+
+    # Hitters
+    hag, seen = {}, set()
+    for b in brows:
+        key = b["player_id"] or f"{b.get('player_name')}-{b['team_id']}"
+        rk = (b["game_id"], key)
+        if rk in seen:
+            continue
+        seen.add(rk)
+        a = hag.setdefault(key, {
+            "player_id": b["player_id"], "player_name": b.get("player_name"),
+            "first_name": b.get("first_name"), "last_name": b.get("last_name"),
+            "team_id": b["team_id"], "team_short": b.get("team_short"),
+            "team_logo": b.get("team_logo"), "headshot_url": None, "division": "WCL",
+            "at_bats": 0, "runs": 0, "hits": 0, "doubles": 0, "triples": 0, "home_runs": 0,
+            "rbi": 0, "walks": 0, "strikeouts": 0, "stolen_bases": 0, "hit_by_pitch": 0, "sacrifice_flies": 0})
+        for src, dst in [("ab", "at_bats"), ("r", "runs"), ("h", "hits"), ("d2", "doubles"),
+                         ("d3", "triples"), ("hr", "home_runs"), ("rbi", "rbi"), ("bb", "walks"),
+                         ("so", "strikeouts"), ("sb", "stolen_bases"), ("hbp", "hit_by_pitch"), ("sf", "sacrifice_flies")]:
+            a[dst] += b.get(src) or 0
+    hitters = []
+    for h in hag.values():
+        pa = h["at_bats"] + h["walks"] + h["hit_by_pitch"] + h["sacrifice_flies"]
+        if pa < 4:
+            continue
+        singles = h["hits"] - h["doubles"] - h["triples"] - h["home_runs"]
+        h["pa"] = pa
+        h["perf_score"] = (h["home_runs"] * 6 + h["triples"] * 4 + h["doubles"] * 3 + singles * 1.5
+                           + h["rbi"] * 2 + h["runs"] + h["walks"] * 0.5 + h["stolen_bases"] * 1.5 + h["hit_by_pitch"] * 0.3)
+        h["display_name"] = _stp_name(h)
+        hitters.append(h)
+    top_hitters = sorted(hitters, key=lambda x: x["perf_score"], reverse=True)[:25]
+
+    # Pitchers
+    pag, seen = {}, set()
+    for p in prows:
+        key = p["player_id"] or f"{p.get('player_name')}-{p['team_id']}"
+        rk = (p["game_id"], key)
+        if rk in seen:
+            continue
+        seen.add(rk)
+        a = pag.setdefault(key, {
+            "player_id": p["player_id"], "player_name": p.get("player_name"),
+            "first_name": p.get("first_name"), "last_name": p.get("last_name"),
+            "team_id": p["team_id"], "team_short": p.get("team_short"),
+            "team_logo": p.get("team_logo"), "headshot_url": None, "division": "WCL", "outs": 0,
+            "hits_allowed": 0, "earned_runs": 0, "walks": 0, "strikeouts": 0, "home_runs_allowed": 0})
+        a["outs"] += _stp_ip_to_outs(p.get("ip"))
+        for src, dst in [("h", "hits_allowed"), ("er", "earned_runs"), ("bb", "walks"),
+                         ("so", "strikeouts"), ("hr", "home_runs_allowed")]:
+            a[dst] += p.get(src) or 0
+    pitchers = []
+    for p in pag.values():
+        if p["outs"] < 3:
+            continue
+        ipf = p["outs"] / 3.0
+        p["innings_pitched"] = float(f"{p['outs'] // 3}.{p['outs'] % 3}")
+        p["era"] = round(p["earned_runs"] * 9 / ipf, 2) if ipf else 0.0
+        p["perf_score"] = (p["strikeouts"] * 3.5 + ipf * 3.5 - p["hits_allowed"] * 1.5
+                           - p["earned_runs"] * 6 - p["walks"] * 1.5 - p["home_runs_allowed"] * 2.5)
+        p["display_name"] = _stp_name(p)
+        pitchers.append(p)
+    top_pitchers = sorted(pitchers, key=lambda x: x["perf_score"], reverse=True)[:25]
+
+    return {"start": start, "end": end, "top_hitters": top_hitters,
+            "top_pitchers": top_pitchers, "game_count": len(gids)}
