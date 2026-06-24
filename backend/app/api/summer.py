@@ -4063,17 +4063,22 @@ def summer_top_performers(
     # Portal, and pull the spring headshot where available.
     all_ids = ([h["player_id"] for h in top_hitters if h.get("player_id")]
                + [p["player_id"] for p in top_pitchers if p.get("player_id")])
+    disp = {}
     if all_ids:
         with get_connection() as conn2:
             disp = _resolve_spring_display(conn2.cursor(), all_ids, season)
-        for lst in (top_hitters, top_pitchers):
-            for r in lst:
-                d = disp.get(r.get("player_id")) if r.get("player_id") else None
-                r["team_short"] = d["name"] if d else None
-                r["team_logo"] = d["logo"] if d else None
-                r["team_id"] = d["team_key"] if d else None
-                if d and d.get("headshot"):
-                    r["headshot_url"] = d["headshot"]
+    for lst in (top_hitters, top_pitchers):
+        for r in lst:
+            # Big circle = the WCL team logo (kept separately, namespaced so the
+            # summer team id can't collide with a spring team id in the logo cache).
+            r["wcl_logo"] = r.get("team_logo")
+            r["wcl_team_id"] = f"wcl:{r['team_id']}" if r.get("team_id") is not None else None
+            r["headshot_url"] = None  # never headshots on this graphic
+            # Text + small logo = the spring / committed school (blank if unresolved).
+            d = disp.get(r.get("player_id")) if r.get("player_id") else None
+            r["team_short"] = d["name"] if d else None
+            r["team_logo"] = d["logo"] if d else None
+            r["team_id"] = d["team_key"] if d else None
 
     return {"start": start, "end": end, "top_hitters": top_hitters,
             "top_pitchers": top_pitchers, "game_count": len(gids)}

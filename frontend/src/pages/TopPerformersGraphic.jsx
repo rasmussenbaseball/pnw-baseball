@@ -234,7 +234,7 @@ function drawSectionTitle(ctx, label, x, y, w, accent) {
 }
 
 // ─── Horizontal player card (2x5 grid use) ───
-function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kind, accent }) {
+function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, wclLogoImg, kind, accent }) {
   const font = 'Inter, Helvetica Neue, sans-serif'
 
   // Card background
@@ -294,8 +294,10 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, kin
   ctx.arc(imgCX, imgCY, imgR + 2, 0, Math.PI * 2)
   ctx.fill()
 
-  const useLogo = isNwac(player)
-  if (useLogo) {
+  if (wclLogoImg) {
+    // WCL graphic: the big circle is always the WCL team logo (never a headshot).
+    drawImageContain(ctx, wclLogoImg, imgCX - imgR + 3, imgCY - imgR + 3, imgR * 2 - 6, imgR * 2 - 6)
+  } else if (isNwac(player)) {
     if (logoImg) drawImageContain(ctx, logoImg, imgCX - imgR + 3, imgCY - imgR + 3, imgR * 2 - 6, imgR * 2 - 6)
   } else {
     if (headshotImg) drawImageCover(ctx, headshotImg, imgCX, imgCY, imgR)
@@ -405,6 +407,7 @@ function renderGraphic({ ctx, W, H, data, division, faviconImg, headshots, teamL
       player,
       headshotImg: player ? headshots[player.player_id] : null,
       logoImg: player ? teamLogos[player.team_id] : null,
+      wclLogoImg: player ? teamLogos[player.wcl_team_id] : null,
       kind: 'hitter',
       accent: THEME.hitterAccent,
     })
@@ -427,6 +430,7 @@ function renderGraphic({ ctx, W, H, data, division, faviconImg, headshots, teamL
       player,
       headshotImg: player ? headshots[player.player_id] : null,
       logoImg: player ? teamLogos[player.team_id] : null,
+      wclLogoImg: player ? teamLogos[player.wcl_team_id] : null,
       kind: 'pitcher',
       accent: THEME.pitcherAccent,
     })
@@ -441,6 +445,7 @@ function collectPlayersAndTeams(hitters, pitchers) {
     if (!p) return
     if (p.player_id && p.headshot_url) players.set(p.player_id, p.headshot_url)
     if (p.team_id && p.team_logo) teams.set(p.team_id, p.team_logo)
+    if (p.wcl_team_id && p.wcl_logo) teams.set(p.wcl_team_id, p.wcl_logo)  // WCL logo for the big circle
   }
   hitters.forEach(addRow)
   pitchers.forEach(addRow)
