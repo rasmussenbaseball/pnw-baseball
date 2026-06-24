@@ -348,11 +348,10 @@ def _resolve_colleges(cur, player_ids, season):
     """summer player_id -> the school string to show on the recap graphic.
 
     Priority (highest wins):
-      1. 'Portal'  — the player is in the WCL transfer portal (wcl_portal_members)
-      2. assigned_school — the curated school from the Commitment Editor. This is
-         the source of truth for the current season and, unlike the spring
-         cross-link, also covers NON-PNW schools (e.g. CSU San Bernardino), which
-         have no row in our `teams` table.
+      1. assigned_school — the curated spring school from the Commitment Editor
+         (also covers NON-PNW schools, e.g. CSU San Bernardino). A player who WAS
+         in the portal and has since committed shows their NEW team here.
+      2. 'Portal' — in wcl_portal_members AND not yet committed (no assigned_school).
       3. the auto-linked PNW spring school, emitted ONLY when we can confirm the
          player has stats there in `season` or later (transfers otherwise link to
          a stale old-season row).
@@ -398,7 +397,13 @@ def _resolve_colleges(cur, player_ids, season):
             if sch:
                 out[r["spid"]] = sch
 
-    # 2) Curated assigned_school overrides the linked guess (covers non-PNW schools).
+    # 2) Portal — applied BEFORE assigned_school so a committed ex-portal player
+    #    (assigned_school set below) shows their new team, not 'Portal'.
+    cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE summer_player_id = ANY(%s)", (ids,))
+    for r in cur.fetchall():
+        out[r["summer_player_id"]] = "Portal"
+
+    # 1) Curated assigned_school wins (committed/current spring team; covers non-PNW).
     cur.execute(
         "SELECT id, assigned_school FROM summer_players "
         "WHERE id = ANY(%s) AND assigned_school IS NOT NULL AND btrim(assigned_school) <> ''",
@@ -406,11 +411,6 @@ def _resolve_colleges(cur, player_ids, season):
     )
     for r in cur.fetchall():
         out[r["id"]] = r["assigned_school"].strip()
-
-    # 1) Portal status wins over any school.
-    cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE summer_player_id = ANY(%s)", (ids,))
-    for r in cur.fetchall():
-        out[r["summer_player_id"]] = "Portal"
 
     return out
 
@@ -3886,6 +3886,68 @@ def _stp_ip_to_outs(ip):
     return whole * 3 + frac
 
 
+def _resolve_spring_display(cur, spids, season):
+    """summer player_id -> {name, logo, team_key, headshot} for the graphic.
+
+    Shows the player's SPRING identity instead of their WCL team, by priority:
+      1. assigned_school — their curated/committed spring team. A player who was
+         in the portal and has since committed shows their NEW team here.
+      2. 'Portal' — in wcl_portal_members AND not yet committed (no assigned_school).
+      3. the auto-linked PNW spring team, if confirmed in `season` or later.
+    Logo + team_key come from the PNW team when we have one (non-PNW schools and
+    Portal get no logo); team_key is unique per spring team so the graphic's
+    logo cache (keyed by team_id) won't collide for two WCL teammates. headshot
+    is pulled from the linked spring player (summer rosters have none)."""
+    out = {}
+    if not spids:
+        return out
+    cur.execute("""SELECT sp.id, sp.assigned_school, sp.assigned_school_team_id,
+                          at.logo_url AS at_logo
+                   FROM summer_players sp
+                   LEFT JOIN teams at ON at.id = sp.assigned_school_team_id
+                   WHERE sp.id = ANY(%s)""", (spids,))
+    assigned = {r["id"]: r for r in cur.fetchall()}
+    cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE summer_player_id = ANY(%s)", (spids,))
+    portal = {r["summer_player_id"] for r in cur.fetchall()}
+    cur.execute("""
+        WITH linked AS (
+            SELECT DISTINCT ON (lk.summer_player_id) lk.summer_player_id AS spid,
+                   lower(spr.first_name) fn, lower(spr.last_name) ln
+            FROM summer_player_links lk JOIN players spr ON spr.id = lk.spring_player_id
+            WHERE lk.summer_player_id = ANY(%s)
+            ORDER BY lk.summer_player_id, lk.confidence DESC NULLS LAST
+        ), cand AS (
+            SELECT l.spid, p.id pid, p.team_id, p.headshot_url,
+                   GREATEST(COALESCE((SELECT MAX(season) FROM batting_stats b WHERE b.player_id=p.id),0),
+                            COALESCE((SELECT MAX(season) FROM pitching_stats pt WHERE pt.player_id=p.id),0)) last_season
+            FROM linked l JOIN players p ON lower(p.first_name)=l.fn AND lower(p.last_name)=l.ln
+        )
+        SELECT DISTINCT ON (c.spid) c.spid, c.team_id, c.headshot_url, c.last_season,
+               t.short_name, t.logo_url
+        FROM cand c JOIN teams t ON t.id=c.team_id
+        ORDER BY c.spid, c.last_season DESC, c.pid DESC
+    """, (spids,))
+    linked = {r["spid"]: r for r in cur.fetchall()}
+
+    for spid in spids:
+        a = assigned.get(spid)
+        lk = linked.get(spid)
+        headshot = lk["headshot_url"] if lk else None
+        if a and a.get("assigned_school") and a["assigned_school"].strip():
+            name = a["assigned_school"].strip()
+            if a.get("assigned_school_team_id"):
+                out[spid] = {"name": name, "logo": a["at_logo"], "team_key": a["assigned_school_team_id"], "headshot": headshot}
+            else:
+                out[spid] = {"name": name, "logo": None, "team_key": f"sch:{name}", "headshot": headshot}
+        elif spid in portal:
+            out[spid] = {"name": "Portal", "logo": None, "team_key": "portal", "headshot": headshot}
+        elif lk and (lk["last_season"] or 0) >= season:
+            out[spid] = {"name": lk["short_name"], "logo": lk["logo_url"], "team_key": lk["team_id"], "headshot": headshot}
+        else:
+            out[spid] = {"name": None, "logo": None, "team_key": None, "headshot": headshot}
+    return out
+
+
 @router.get("/summer/top-performers")
 @cached_endpoint(ttl_seconds=600)
 def summer_top_performers(
@@ -3996,6 +4058,22 @@ def summer_top_performers(
         p["display_name"] = _stp_name(p)
         pitchers.append(p)
     top_pitchers = sorted(pitchers, key=lambda x: x["perf_score"], reverse=True)[:25]
+
+    # Replace the WCL team with the player's spring team / committed school /
+    # Portal, and pull the spring headshot where available.
+    all_ids = ([h["player_id"] for h in top_hitters if h.get("player_id")]
+               + [p["player_id"] for p in top_pitchers if p.get("player_id")])
+    if all_ids:
+        with get_connection() as conn2:
+            disp = _resolve_spring_display(conn2.cursor(), all_ids, season)
+        for lst in (top_hitters, top_pitchers):
+            for r in lst:
+                d = disp.get(r.get("player_id")) if r.get("player_id") else None
+                r["team_short"] = d["name"] if d else None
+                r["team_logo"] = d["logo"] if d else None
+                r["team_id"] = d["team_key"] if d else None
+                if d and d.get("headshot"):
+                    r["headshot_url"] = d["headshot"]
 
     return {"start": start, "end": end, "top_hitters": top_hitters,
             "top_pitchers": top_pitchers, "game_count": len(gids)}
