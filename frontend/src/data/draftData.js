@@ -512,7 +512,7 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 13,
-        "name": "Jax Giminez",
+        "name": "Jax Gimenez",
         "pos": "OF",
         "school": "Oregon",
         "playerId": 3503
@@ -527,7 +527,7 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 15,
-        "name": "Cole Katayma-Stall",
+        "name": "Cole Katayama-Stall",
         "pos": "SS",
         "school": "Portland",
         "playerId": 3586
