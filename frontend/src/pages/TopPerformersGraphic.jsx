@@ -76,6 +76,21 @@ function truncText(ctx, text, maxW) {
   return t + '...'
 }
 
+// Fit a full "First Last" name into maxW: use it whole if it fits, otherwise
+// abbreviate the first name to an initial ("James Castellanos" -> "J. Castellanos"),
+// and only ellipsis-truncate as a last resort.
+function fitName(ctx, text, maxW) {
+  const name = (text || '').trim()
+  if (!name || ctx.measureText(name).width <= maxW) return name
+  const sp = name.indexOf(' ')
+  if (sp > 0) {
+    const abbr = `${name[0]}. ${name.slice(sp + 1)}`
+    if (ctx.measureText(abbr).width <= maxW) return abbr
+    return truncText(ctx, abbr, maxW)
+  }
+  return truncText(ctx, name, maxW)
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   if (w < 2 * r) r = w / 2
   if (h < 2 * r) r = h / 2
@@ -314,7 +329,7 @@ function drawPerfCard({ ctx, x, y, w, h, rank, player, headshotImg, logoImg, wcl
   ctx.textBaseline = 'alphabetic'
   ctx.font = `700 15px ${font}`
   ctx.fillStyle = THEME.textPrimary
-  ctx.fillText(truncText(ctx, player.display_name || '', nameMaxW), nameX, imgCY - 4)
+  ctx.fillText(fitName(ctx, player.display_name, nameMaxW), nameX, imgCY - 4)
 
   // Team (small logo + short)
   ctx.textBaseline = 'middle'
