@@ -74,6 +74,10 @@ COMPED_COACH_EMAILS = {
     "taylorp4546@gmail.com",
     # June 20, 2026 (per Nate)
     "ebutcher07.19@gmail.com",
+    # June 23, 2026 (per Nate) — Stealth Batting Gloves
+    "hunter.stealthbattinggloves@gmail.com",
+    "luke.stealthbattinggloves@gmail.com",
+    "ryan.stealthbattinggloves@gmail.com",
 }
 
 
