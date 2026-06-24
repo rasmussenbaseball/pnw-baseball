@@ -357,11 +357,15 @@ def main():
     g99 = gtot[int(0.99 * len(gtot))]
 
     # 56-0 (a sweep) should be a reachable apex for elite drafting, not only the
-    # literal theoretical-best roster. Pegging it to best_total made it virtually
-    # impossible (even 99th-pct engaged play landed ~53). Anchor the sweep halfway
-    # between the 99th-pct engaged draft (g99) and the perfect roster (best_total),
-    # so a great, lucky build can run the table while it stays the rarest result.
-    sweep_total = g99 + 0.2 * (best_total - g99)
+    # literal theoretical-best roster. Pegging it AT or ABOVE g99 made it
+    # effectively impossible: pitching is scarce + top-heavy, and you can't
+    # reliably draft aces under the random-team draws, so the staff was always the
+    # wall on the last win and nobody swept. Anchor the sweep BELOW the 99th-pct
+    # optimal draft (~96th pct of engaged play) so a strong, lucky build — one
+    # that lands real pitching — can run the table, while it stays the rarest
+    # result. Tune the 0.4 down to make sweeps rarer, up to make them easier.
+    g95 = gtot[int(0.95 * len(gtot))]
+    sweep_total = g95 + 0.4 * (g99 - g95)
     # Win curve = linear interpolation through monotonic (total, wins) anchors.
     raw_anchors = [
         (worst_total, 2.0),     # careless / worst-possible bottoms out
@@ -422,6 +426,8 @@ def main():
           f"teams={sum(len(v) for v in teams_by_level.values())}")
     print(f"  teams/level: " + ", ".join(f"{lv}:{len(v)}" for lv, v in sorted(teams_by_level.items())))
     print(f"  win anchors (total->wins): " + ", ".join(f"{t:.0f}->{w:.0f}" for t, w in anchors))
+    print(f"  reachability: g50->{wins(g50)}  g90->{wins(g90)}  g95->{wins(g95)}  "
+          f"g99->{wins(g99)}  best->{wins(best_total)} wins")
     print(f"  win calibration: random mean={wins(mean)}  best={wins(best_total)}  worst={wins(worst_total)}")
     rw = sorted(wins(t) for t in totals)
     print(f"  random win spread: p5={rw[len(rw)//20]}  p50={rw[len(rw)//2]}  p95={rw[19*len(rw)//20]}  "
