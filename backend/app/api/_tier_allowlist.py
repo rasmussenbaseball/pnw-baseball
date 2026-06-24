@@ -38,6 +38,7 @@ DEVELOPER_EMAILS = {
     "jawomack@bushnell.edu",
     "cameronkundig@gmail.com",
     "tommy.richards@wsu.edu",
+    "smith55@uw.edu",   # June 23, 2026 — lifetime dev account for TrackMan access (per Nate)
 }
 
 # Commitment Editor — narrower than the dev tier. Only these accounts may
