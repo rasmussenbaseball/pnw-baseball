@@ -74,10 +74,14 @@ def grade_pitch(model, rap_type, entry, fb):
         "mov_sep": math.hypot(ivb - (fbivb if fbivb is not None else ivb), hb - (fbhb if fbhb is not None else hb)),
     }
     means, stds, coef, mx, my = m["means"], m["stds"], m["coef"], m["mx"], m["my"]
-    z = [(feat[F[i]] - means[i]) / (stds[i] or 1.0) for i in range(len(F))]
+    # Clamp feature z-scores: Rapsodo measures break/extension differently than
+    # the TrackMan training set, so an out-of-distribution input must not be
+    # allowed to extrapolate the linear model off a cliff.
+    z = [max(-2.5, min(2.5, (feat[F[i]] - means[i]) / (stds[i] or 1.0))) for i in range(len(F))]
     pred = sum((z[i] - mx[i]) * coef[i] for i in range(len(F))) + my
-    scale = model["grade_sd"] * m["shrink"] / (m["pred_std"] or 1.0)
-    grade = model["grade_mean"] + scale * (pred - m["pred_mean"])
-    comp = {F[i]: round((z[i] - mx[i]) * coef[i] * scale, 1)
-            for i in range(len(F)) if abs((z[i] - mx[i]) * coef[i] * scale) >= 0.6}
-    return max(20, min(180, round(grade))), comp
+    pz = max(-2.8, min(2.8, (pred - m["pred_mean"]) / (m["pred_std"] or 1.0)))
+    scale = model["grade_sd"] * m["shrink"]
+    grade = model["grade_mean"] + scale * pz
+    comp = {F[i]: round((z[i] - mx[i]) * coef[i] / (m["pred_std"] or 1.0) * scale, 1)
+            for i in range(len(F)) if abs((z[i] - mx[i]) * coef[i]) >= 0.04}
+    return max(20, min(175, round(grade))), comp
