@@ -703,7 +703,8 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand,
         <circle key={b.pitch} cx={b.cxx} cy={b.cyy} r={b.r}
           fill={colorFor(b.pitch)} fillOpacity="0.1" stroke={colorFor(b.pitch)} strokeOpacity="0.35" strokeWidth="1" />
       ))}
-      {/* per-pitch dots — lighter; clickable to reclassify; thick ring = manual override */}
+      {/* per-pitch dots — lighter; clickable to reclassify; thick ring = manual
+          override; removed/misread pitches show faint + dashed grey */}
       {points.map((p, i) => (
         <circle
           key={p.id ?? i}
@@ -711,9 +712,11 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand,
           cy={sy(p.ivb)}
           r={p.id === activeId ? 6 : (p.quality === 'ok' ? 3.5 : 3)}
           fill={p.quality === 'ok' ? colorFor(p.pitch) : 'none'}
-          stroke={p.id === activeId ? '#111827' : colorFor(p.pitch)}
-          strokeWidth={p.manual ? 2.75 : (p.id === activeId ? 2 : 1.25)}
+          stroke={p.id === activeId ? '#111827' : (p.excluded ? '#9ca3af' : colorFor(p.pitch))}
+          strokeWidth={p.manual && !p.excluded ? 2.75 : (p.id === activeId ? 2 : 1.25)}
+          strokeDasharray={p.excluded ? '2 2' : undefined}
           fillOpacity={p.id === activeId ? 0.85 : 0.45}
+          opacity={p.excluded ? 0.5 : 1}
           style={{ cursor: onPitchClick ? 'pointer' : 'default' }}
           onClick={() => onPitchClick && onPitchClick(p)}
         />
@@ -734,6 +737,8 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand,
 }
 
 // On-graph popup: the clicked pitch's metrics + reclassify options.
+const EXCLUDE = '__exclude__'
+
 function PitchPopup({ point, saving, onPick, onClose, pos }) {
   const Stat = ({ label, value }) => (
     <div className="text-center">
@@ -741,13 +746,16 @@ function PitchPopup({ point, saving, onPick, onClose, pos }) {
       <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">{value}</div>
     </div>
   )
+  const excluded = point.excluded
   return (
     <div className="absolute z-10 w-[244px] rounded-xl border border-portal-purple/50 dark:border-portal-accent/50 bg-white dark:bg-gray-900 p-2.5 shadow-lg"
       style={{ left: pos.left, top: pos.top, transform: pos.transform }}>
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">
-          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: colorFor(point.pitch) }} />
-          {point.pitch}{point.manual ? ' · manual' : ''}
+          {excluded
+            ? <span className="text-gray-500">{point.pitch === 'misread' ? 'Flagged misread' : 'Removed'}</span>
+            : <><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: colorFor(point.pitch) }} />
+                {point.pitch}{point.manual ? ' · manual' : ''}</>}
         </div>
         <button type="button" onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
       </div>
@@ -757,6 +765,9 @@ function PitchPopup({ point, saving, onPick, onClose, pos }) {
         <Stat label="HB" value={fmt(point.arm_hb, 1)} />
         <Stat label="Spin" value={point.spin != null ? Math.round(point.spin) : '–'} />
       </div>
+      {excluded && (
+        <div className="mb-1.5 text-[11px] text-gray-400">Excluded from the arsenal &amp; grades. Assign a type to restore it.</div>
+      )}
       <div className="flex flex-wrap gap-1">
         {PITCH_TYPES.map((t) => (
           <button key={t} type="button" disabled={saving} onClick={() => onPick(t)}
@@ -764,12 +775,21 @@ function PitchPopup({ point, saving, onPick, onClose, pos }) {
             <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ background: colorFor(t) }} />{t}
           </button>
         ))}
-        {point.manual && (
+        {point.manual && !excluded && (
           <button type="button" disabled={saving} onClick={() => onPick(null)}
             className="px-1.5 py-0.5 rounded text-[11px] border border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-400 disabled:opacity-50">
             ↺ auto
           </button>
         )}
+        {excluded
+          ? <button type="button" disabled={saving} onClick={() => onPick(null)}
+              className="px-1.5 py-0.5 rounded text-[11px] border border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-400 disabled:opacity-50">
+              ↺ back to auto
+            </button>
+          : <button type="button" disabled={saving} onClick={() => onPick(EXCLUDE)}
+              className="px-1.5 py-0.5 rounded text-[11px] border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:border-red-400 disabled:opacity-50">
+              ✕ remove (misread)
+            </button>}
       </div>
     </div>
   )

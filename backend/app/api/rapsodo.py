@@ -15,7 +15,7 @@ from ..models.database import get_connection
 from ..stats import rapsodo_stuff
 from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_hand import pronation_profile
-from ..stats.rapsodo_parse import derive, parse_text, aggregate_arsenal
+from ..stats.rapsodo_parse import derive, parse_text, aggregate_arsenal, EXCLUDE
 from ..stats.rapsodo_suggest import generate_suggestions
 from .auth import require_tier
 
@@ -183,23 +183,27 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
     arsenal = aggregate_arsenal(ok)
     rapsodo_stuff.annotate(arsenal, rapsodo_stuff.fb_from_arsenal(arsenal))
 
-    # movement-plot points: reliable pitches with a shape (ok + low_confidence).
+    # movement-plot points: reliable pitches with a shape (ok + low_confidence), PLUS
+    # removed/misread pitches shown faintly so a coach can click to restore them.
     # `id` lets the coach click a dot to reclassify it; `manual` flags overrides.
-    plot = [
-        {
+    plot = []
+    for r in rows:
+        if r["arm_hb"] is None or r["ivb"] is None:
+            continue
+        excluded = r["quality"] in ("misread", "excluded")
+        if not ((r["pitch"] and r["quality"] in ("ok", "low_confidence")) or excluded):
+            continue
+        plot.append({
             "id": r["id"],
-            "pitch": r["pitch"],
+            "pitch": r["pitch"] or r["quality"],     # 'misread' / 'excluded' as the label
             "velo": _ff(r["velo"]),
             "ivb": _ff(r["ivb"]),
             "arm_hb": _ff(r["arm_hb"]),
             "spin": _ff(r["total_spin"]),
             "quality": r["quality"],
             "manual": r["manual_pitch"] is not None,
-        }
-        for r in rows
-        if r["pitch"] and r["arm_hb"] is not None and r["ivb"] is not None
-        and r["quality"] in ("ok", "low_confidence")
-    ]
+            "excluded": excluded,
+        })
 
     # location map: plate-crossing point per reliable pitch
     locations = [
@@ -350,7 +354,7 @@ def relabel_pitch(pitch_id: int, body: LabelBody, owner: str = Depends(require_t
     pitch. The override persists forever — the auto classifier never overwrites it.
     Re-derives the player's pitches immediately so the profile reflects the change."""
     new = (body.pitch or "").strip() or None
-    if new is not None and new not in _VALID_LABELS:
+    if new is not None and new != EXCLUDE and new not in _VALID_LABELS:
         raise HTTPException(status_code=400, detail=f"Unknown pitch type: {new}")
     with get_connection() as conn:
         cur = conn.cursor()

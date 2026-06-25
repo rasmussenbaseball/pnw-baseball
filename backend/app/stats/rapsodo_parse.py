@@ -18,6 +18,9 @@ from datetime import datetime
 
 from .rapsodo_location import location_plus
 
+# Sentinel manual_pitch value meaning "the coach removed this pitch as a misread".
+EXCLUDE = "__exclude__"
+
 # ---- tunables (documented in RAPSODO_TOOL_DESIGN.md; conventions, not laws) ----
 LOW_CONFIDENCE = 0.5        # spin_confidence <= this -> exclude from shape centroids
 FB_VELO_BAND = 5.0          # pitches within this many mph of session top velo = "fastball-ish"
@@ -314,13 +317,16 @@ def _auto_classify(p, fb, hand):
     # sub-max fastball from a changeup thrown at the same velocity.
     if gap <= 6 and ahb >= -2 and ivb >= fbivb - 5 and (eff is None or eff >= 55):
         return "fastball"
-    # OFFSPEED (changeup / splitter): slower with the ride KILLED vs the FB, arm-side
-    # to straight. A splitter additionally TUMBLES — low absolute spin AND low
-    # efficiency; changeups keep efficiency and fade.
-    if gap >= 5 and ahb >= -3 and ivb <= fbivb - 5:
+    # OFFSPEED (changeup / splitter): slower with the ride KILLED vs the FB, and the
+    # spin REDUCED — a fastball-level spin (>= 2100) on a slow pitch is a misread or a
+    # mis-grip, not a changeup. A splitter TUMBLES (low absolute spin AND low eff); a
+    # changeup needs arm-side FADE (ahb >= 4) — a slow pitch near/under 0 HB is a
+    # breaking ball, not a changeup.
+    if gap >= 5 and ahb >= -3 and ivb <= fbivb - 5 and (spin is None or spin < 2100):
         if spin is not None and spin < 1450 and (eff is None or eff < 65):
             return "splitter"
-        return "changeup"
+        if ahb >= 4:
+            return "changeup"
     # BREAKING BALLS: glove side and/or low efficiency / high gyro.
     if ahb < 0 or (eff is not None and eff < 60) or (g is not None and g >= 45):
         # A breaking ball with RIDE and no depth (and not running arm-side) is a
@@ -336,6 +342,22 @@ def _auto_classify(p, fb, hand):
             return "sweeper"
         return "slider"
     return "unclassified"
+
+
+def _is_misread(p):
+    """Physically self-contradictory readings = Rapsodo misreads (or a different
+    pitcher slipping into the file). Flagged 'misread' and dropped from the arsenal,
+    plots, and grades — but kept clickable so a coach can restore one.
+      - real DEPTH (topspin) cannot coexist with strong arm-side RUN (backspin), and
+      - a big horizontal break cannot happen with almost no spin (break comes from spin)."""
+    ivb, ahb, spin = p.get("ivb"), p.get("arm_hb"), p.get("total_spin")
+    if ivb is None or ahb is None:
+        return False
+    if ivb <= -6 and ahb >= 8:
+        return True
+    if spin is not None and spin < 1300 and abs(ahb) >= 11:
+        return True
+    return False
 
 
 def _is_warmup(p, fb):
@@ -361,7 +383,9 @@ def classify_session(pitches, hand=None, allowed=None):
     fb = _fastball_centroid(cand)
     for p in pitches:
         q = p.get("quality")
-        if q in ("ok", "warmup"):
+        if q in ("ok", "warmup", "low_confidence") and _is_misread(p):
+            p["quality"], p["pitch"] = "misread", None
+        elif q in ("ok", "warmup"):
             if _is_warmup(p, fb):
                 p["quality"], p["pitch"] = "warmup", None
             else:
@@ -418,10 +442,14 @@ def derive(rows, handedness, allowed=None):
         classify_session(norm, handedness, allowed)
         for p in norm:
             mp = p.get("manual_pitch")
-            if mp:
+            if mp == EXCLUDE:
+                p["quality"], p["pitch"] = "excluded", None   # coach removed a misread
+            elif mp:
                 p["pitch"] = mp
-                if p["quality"] in ("ok", "low_confidence", "warmup"):
-                    p["quality"] = "ok"   # a coach's label means "count this pitch"
+                # a coach's label means "count this pitch" — also restores an
+                # auto-flagged misread the coach disagrees with
+                if p["quality"] in ("ok", "low_confidence", "warmup", "misread"):
+                    p["quality"] = "ok"
         out.extend(norm)
     return out
 

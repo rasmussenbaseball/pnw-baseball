@@ -61,11 +61,13 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0):
     fb_v, fb_ivb, fb_hb = fb["velo"], fb["ivb"], fb["arm_hb"]
     fb_vaa = _num(fb.get("vaa"))            # approach angle (deg, neg = steeper)
     fb_relh = _num(fb.get("rel_height"))
-    # A flat VAA or a low release point lets a fastball play even when its raw
-    # ride/run shape looks like the dead zone — so DON'T flag dead zone in that case.
-    flat_vaa = fb_vaa is not None and fb_vaa >= -4.7
+    # VAA is the real arbiter of whether a fastball plays up: a fastball doesn't
+    # play up unless its approach is "sub-5" (flatter than -5.0). A low slot only
+    # helps if it actually flattens the plane, which the VAA already reflects — so
+    # gate on VAA, and only fall back to slot when VAA is missing.
+    flat_vaa = fb_vaa is not None and fb_vaa >= -5.0
     low_slot = fb_relh is not None and fb_relh <= 5.4
-    plays_up = flat_vaa or low_slot
+    plays_up = flat_vaa or (fb_vaa is None and low_slot)
     dead_shape = (fb_ivb is not None and fb_hb is not None
                   and abs(fb_ivb - fb_hb) <= 4 and 8 <= fb_ivb <= 16 and fb_hb >= 8)
     vaa_txt = f" (VAA {fb_vaa}°)" if fb_vaa is not None else ""
