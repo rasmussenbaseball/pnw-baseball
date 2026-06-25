@@ -1082,7 +1082,9 @@ function Heatmap({ pitch, pts, meta }) {
   const XMIN = -18, XMAX = 18, YMIN = 8, YMAX = 52
   const sx = (v) => PAD + ((v - XMIN) / (XMAX - XMIN)) * (W - 2 * PAD)
   const sy = (v) => PAD + ((YMAX - v) / (YMAX - YMIN)) * (H - 2 * PAD)
-  const NX = 16, NY = 20, bw = 4.2
+  const clamp = (px, lo, hi) => Math.max(lo, Math.min(hi, px))
+  // Tighter kernel so density concentrates instead of washing out on small samples.
+  const NX = 24, NY = 30, bw = 3.2
   const cw = (W - 2 * PAD) / NX, ch = (H - 2 * PAD) / NY
   const cells = []
   let max = 0
@@ -1093,19 +1095,27 @@ function Heatmap({ pitch, pts, meta }) {
     for (const p of pts) { const ax = p.sz_side - cx, ay = p.sz_height - cy; d += Math.exp(-(ax * ax + ay * ay) / (2 * bw * bw)) }
     cells.push([i, j, d]); if (d > max) max = d
   }
+  // Discrete contour bands (topo-map style): a distinct hot core that steps down to
+  // the edges, so the most-used locations read instantly instead of a flat wash.
+  const band = (r) => (r >= 0.82 ? 1 : r >= 0.62 ? 0.74 : r >= 0.42 ? 0.5 : r >= 0.24 ? 0.3 : r >= 0.1 ? 0.15 : 0)
   const col = colorFor(pitch)
   const zx = sx(-8.5), zw = sx(8.5) - sx(-8.5), zy = sy(42), zh = sy(18) - sy(42)
   return (
     <div className="text-center" style={{ flex: '1 1 190px', maxWidth: '340px' }}>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         {cells.map(([i, j, d], k) => {
-          const o = max > 0 ? Math.pow(d / max, 0.7) * 0.92 : 0
-          return o < 0.05 ? null : (
+          const o = max > 0 ? band(d / max) : 0
+          return o === 0 ? null : (
             <rect key={k} x={PAD + i * cw} y={PAD + (NY - 1 - j) * ch} width={cw + 0.6} height={ch + 0.6}
               fill={col} fillOpacity={o} />
           )
         })}
         <rect x={zx} y={zy} width={zw} height={zh} className="fill-none stroke-gray-500 dark:stroke-gray-400" strokeWidth="1.25" />
+        {/* actual pitch locations on top — ground truth for the shading */}
+        {pts.map((p, i) => (
+          <circle key={i} cx={clamp(sx(p.sz_side), 3, W - 3)} cy={clamp(sy(p.sz_height), 3, H - 3)} r="1.8"
+            fill="#fff" fillOpacity="0.95" stroke={col} strokeWidth="0.9" />
+        ))}
       </svg>
       <div className="mt-1 text-[11px] font-medium" style={{ color: col }}>
         {pitch} <span className="text-gray-400 font-normal">({pts.length})</span>
