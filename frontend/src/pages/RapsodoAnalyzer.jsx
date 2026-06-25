@@ -507,6 +507,7 @@ function ArsenalTable({ arsenal }) {
             <th className="px-3 py-2 font-medium text-right">VAA</th>
             <th className="px-3 py-2 font-medium">Tilt</th>
             <th className="px-3 py-2 font-medium text-right">Zone%</th>
+            <th className="px-3 py-2 font-medium text-right">Loc+†</th>
             <th className="px-3 py-2 font-medium text-right">Stuff*</th>
           </tr>
         </thead>
@@ -527,6 +528,9 @@ function ArsenalTable({ arsenal }) {
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.vaa == null ? '–' : `${fmt(a.vaa)}°`}</td>
               <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{a.tilt || '–'}</td>
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.zone_pct == null ? '–' : `${a.zone_pct}%`}</td>
+              <td className={`px-3 py-2 text-right font-medium ${a.loc_plus == null ? 'text-gray-400' : a.loc_plus >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                {a.loc_plus ?? '–'}
+              </td>
               <td
                 title={a.stuff_components ? Object.entries(a.stuff_components).map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`).join('\n') : ''}
                 className={`px-3 py-2 text-right font-medium ${a.stuff == null ? 'text-gray-400' : a.stuff >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
@@ -541,6 +545,12 @@ function ArsenalTable({ arsenal }) {
         competition), with bandages for Rapsodo's measurement differences. 100 = WCL average
         <em>for that pitch type</em>; not comparable across types; ignores command. Hover a score
         for its breakdown. The same model grades TrackMan and Rapsodo across the site.
+      </p>
+      <p className="px-3 pb-2 text-[11px] text-gray-400">
+        † Loc+ (v1): a command score, 100 = provisional average. Rewards hitting each pitch
+        type's height target (fastball up, breaking ball down, etc.) and living on the zone
+        edges; penalizes middle-middle and non-competitive misses. No hitter/count in a bullpen,
+        so horizontal is judged as edge-vs-heart, not in/out. Tunes as data grows.
       </p>
     </div>
   )

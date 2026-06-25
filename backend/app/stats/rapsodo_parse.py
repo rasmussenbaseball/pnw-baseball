@@ -16,6 +16,8 @@ import math
 from collections import defaultdict
 from datetime import datetime
 
+from .rapsodo_location import location_plus
+
 # ---- tunables (documented in RAPSODO_TOOL_DESIGN.md; conventions, not laws) ----
 LOW_CONFIDENCE = 0.5        # spin_confidence <= this -> exclude from shape centroids
 FB_VELO_BAND = 5.0          # pitches within this many mph of session top velo = "fastball-ish"
@@ -478,6 +480,7 @@ def aggregate_arsenal(ok_pitches):
             # and averaging those zeros in wrecks perceived-velo / Stuff.
             "ext": _mean([p["extension"] for p in ps if p["extension"] not in (None, 0)]),
             "zone_pct": zone_pct,
+            "loc_plus": location_plus(label, zps) if zps else None,
         })
     arsenal.sort(key=lambda a: a["count"], reverse=True)
     return arsenal
