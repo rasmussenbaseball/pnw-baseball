@@ -64,16 +64,18 @@ def grade_pitch(model, rap_type, entry, fb):
     slot_eff = sc[0] + sc[1] * rel_h + sc[2] * abs(rel_s or 0.0) - m["slot_ybar"]
     vaa_adj = est_vaa - model.get("slot_alpha", 0.6) * slot_eff
 
-    fbv = _f(fb.get("velo")) if fb else velo
-    fbivb = _f(fb.get("ivb")) if fb else ivb
-    fbhb = _f(fb.get("arm_hb")) if fb else hb
-    feat = {
-        "velo": velo, "vaa_adj": vaa_adj, "hb_abs": abs(hb), "spin": spin,
-        "extension": ext, "rel_side_abs": abs(rel_s or 0.0),
-        "velo_sep": (fbv or velo) - velo, "ivb_sep": (fbivb if fbivb is not None else ivb) - ivb,
-        "mov_sep": math.hypot(ivb - (fbivb if fbivb is not None else ivb), hb - (fbhb if fbhb is not None else hb)),
-    }
     means, stds, coef, mx, my = m["means"], m["stds"], m["coef"], m["mx"], m["my"]
+    # Bandage Rapsodo's measurement gaps vs TrackMan (from the feature-drift
+    # diagnostic): Rapsodo's spin-based break reads ~3" hotter on |HB| and ~130 rpm
+    # lower on spin than TrackMan's trajectory break. The fastball-SEPARATION
+    # features don't transfer (break basis + classification + a TrackMan-side
+    # changeup quirk), so neutralize them to the model mean (z = 0).
+    feat = {
+        "velo": velo, "vaa_adj": vaa_adj, "hb_abs": max(0.0, abs(hb) - 3.2),
+        "spin": spin + 130.0, "extension": ext, "rel_side_abs": abs(rel_s or 0.0),
+        "velo_sep": means[F.index("velo_sep")], "ivb_sep": means[F.index("ivb_sep")],
+        "mov_sep": means[F.index("mov_sep")],
+    }
     # Clamp feature z-scores: Rapsodo measures break/extension differently than
     # the TrackMan training set, so an out-of-distribution input must not be
     # allowed to extrapolate the linear model off a cliff.
