@@ -12,6 +12,7 @@ Rapsodo's unreliable Pitch Type labels).
 """
 import csv
 import io
+import math
 from collections import defaultdict
 from datetime import datetime
 
@@ -49,6 +50,29 @@ def _clock_to_deg(tilt):
         return ((int(hh) % 12) * 30) + (int(mm) * 0.5)
     except (ValueError, IndexError):
         return None
+
+
+def _estimate_vaa(velo, rel_angle, rel_height, sz_height, ext):
+    """Geometric vertical approach angle (deg, negative = downward) at the plate.
+    These devices rarely report measured VAA, so we estimate it from release
+    kinematics: a constant-vertical-acceleration (parabolic) flight from the
+    release point to the plate-crossing height. Inputs: velo (mph), release angle
+    (deg, vertical launch), release height (ft), plate-crossing height (in),
+    extension (ft). ~±0.5 deg vs measured — enough to tell flat from steep, which
+    is what matters for the dead-zone call."""
+    if velo is None or rel_angle is None or rel_height is None or sz_height is None:
+        return None
+    vx = velo * 1.467                                # mph -> ft/s (horizontal approx)
+    if vx <= 0:
+        return None
+    D = 60.5 - (ext if ext else 6.0) - 1.4           # release point -> front of plate (ft)
+    if D < 20:
+        D = 54.0
+    t = D / vx
+    plate_h = sz_height / 12.0                        # plate-crossing height (in -> ft)
+    vy0 = vx * math.tan(math.radians(rel_angle))      # vertical velo at release
+    vyf = 2.0 * (plate_h - rel_height) / t - vy0      # const-accel: disp = (vy0+vyf)/2 * t
+    return round(math.degrees(math.atan2(vyf, vx)), 1)
 
 
 def _parse_dt(s):
@@ -133,6 +157,13 @@ def normalize_pitch(r):
     bauer = round(total_spin / velo, 1) if (total_spin and velo) else None
     dt = _parse_dt(r.get("Date"))
 
+    rel_height = _f(r.get("Release Height"))
+    rel_angle = _f(r.get("Release Angle"))
+    extension = _f(r.get("Release Extension (ft)"))
+    sz_height = _f(r.get("Strike Zone Height"))
+    vaa_device = _f(r.get("Vertical Approach Angle"))
+    vaa = vaa_device if vaa_device is not None else _estimate_vaa(velo, rel_angle, rel_height, sz_height, extension)
+
     return {
         "pitch_no": _int(r.get("No")),
         "thrown_at": dt.isoformat() if dt else None,
@@ -149,15 +180,16 @@ def normalize_pitch(r):
         "movement_basis": basis,
         "tilt": (r.get("Spin Direction") or "").strip().strip('"') or None,
         "tilt_deg": _clock_to_deg(r.get("Spin Direction")),
-        "rel_height": _f(r.get("Release Height")),
+        "rel_height": rel_height,
         "rel_side": _f(r.get("Release Side")),
-        "extension": _f(r.get("Release Extension (ft)")),
-        "rel_angle": _f(r.get("Release Angle")),
+        "extension": extension,
+        "rel_angle": rel_angle,
         "horiz_angle": _f(r.get("Horizontal Angle")),
-        "vaa": _f(r.get("Vertical Approach Angle")),
+        "vaa": vaa,
+        "vaa_estimated": vaa_device is None and vaa is not None,
         "haa": _f(r.get("Horizontal Approach Angle")),
         "sz_side": _f(r.get("Strike Zone Side")),
-        "sz_height": _f(r.get("Strike Zone Height")),
+        "sz_height": sz_height,
         "bauer": bauer,
         "intent": (r.get("Intent Type") or "").strip() or None,
         "is_strike": (r.get("Is Strike") or "").strip() or None,
@@ -212,6 +244,7 @@ def classify(p, fb, hand):
     changeup must actually KILL ride vs the FB (not just be slower). Still a
     heuristic — Phase 3 will add full cluster-then-label for fuzzy breakers."""
     velo, ivb, ahb, eff = p["velo"], p["ivb"], p["arm_hb"], p["spin_eff"]
+    spin = p.get("total_spin")
     if velo is None or ivb is None or ahb is None:
         return "unclassified"
     g = abs(p["gyro"]) if p["gyro"] is not None else None
@@ -229,10 +262,19 @@ def classify(p, fb, hand):
         if ivb < SINK_IVB and ahb >= ARM_SIDE_RUN:
             return "sinker / 2-seam"
         return "fastball (mixed)"
+    # SINKER / 2-SEAM (slightly slower): a heavy arm-side runner a few mph off the
+    # 4-seam still keeping ride. True changeups are either lower-ride or 10+ slower,
+    # so the gap<=10 + ride>=6 + big-run gates exclude them.
+    if 6 < gap <= 10 and ivb >= 6 and ahb >= 11 and (eff is None or eff >= 70):
+        return "sinker / 2-seam"
     # CHANGEUP: slower, arm-side, AND ride killed vs the fastball — so a slow
     # pitch that keeps full fastball ride is NOT a changeup (that was the v1 bug).
     if gap >= 6 and ahb >= 8 and ivb <= fbivb - 4:
         return "changeup"
+    # SPLITTER: killed velo + LOW spin (tumbles), arm-side / straight. Low spin is
+    # the splitter tell (changeups spin higher and fade more).
+    if gap >= 5 and spin is not None and spin < 1600 and ahb >= -3:
+        return "splitter"
     # CUTTER: a few mph off the FB with the ride TAKEN OFF (well below the FB's
     # ride) and only a small glove-side/neutral break. Cluster-relative, so a
     # high-efficiency "slutter" still reads as a cutter — efficiency alone is an

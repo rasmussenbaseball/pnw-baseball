@@ -35,6 +35,9 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0):
             "ivb": _num(a.get("ivb")),
             "arm_hb": _num(a.get("arm_hb")),
             "spin_eff": _num(a.get("spin_eff")),
+            "total_spin": _num(a.get("total_spin")),
+            "vaa": _num(a.get("vaa")),
+            "rel_height": _num(a.get("rel_height")),
         })
 
     # anchor fastball: the fastball-family pitch with the most reps, else the
@@ -56,26 +59,52 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0):
         })
 
     fb_v, fb_ivb, fb_hb = fb["velo"], fb["ivb"], fb["arm_hb"]
+    fb_vaa = _num(fb.get("vaa"))            # approach angle (deg, neg = steeper)
+    fb_relh = _num(fb.get("rel_height"))
+    # A flat VAA or a low release point lets a fastball play even when its raw
+    # ride/run shape looks like the dead zone — so DON'T flag dead zone in that case.
+    flat_vaa = fb_vaa is not None and fb_vaa >= -4.7
+    low_slot = fb_relh is not None and fb_relh <= 5.4
+    plays_up = flat_vaa or low_slot
+    dead_shape = (fb_ivb is not None and fb_hb is not None
+                  and abs(fb_ivb - fb_hb) <= 4 and 8 <= fb_ivb <= 16 and fb_hb >= 8)
+    vaa_txt = f" (VAA {fb_vaa}°)" if fb_vaa is not None else ""
 
-    # ── fastball: dead zone vs plus carry ───────────────────────────────
-    if fb_ivb is not None and fb_hb is not None and abs(fb_ivb - fb_hb) <= 4 and 8 <= fb_ivb <= 16 and fb_hb >= 8:
+    # ── fastball: dead zone vs plus carry (now VAA / slot aware) ─────────
+    if dead_shape and not plays_up:
         out.append({
             "kind": "flag",
             "title": "Fastball is in the dead zone",
             "detail": f"The {fb['pitch']} has roughly equal ride and run "
-                      f"({round(fb_ivb)}\" IVB vs {round(fb_hb)}\" arm-side), so its movement vector "
-                      "points up-and-arm-side right on the barrel's path — hitters see it as flat. "
+                      f"({round(fb_ivb)}\" IVB vs {round(fb_hb)}\" arm-side){vaa_txt}, so its movement "
+                      "vector points up-and-arm-side right on the barrel's path — hitters see it as flat. "
                       "Two escapes: get on top for more carry (axis toward 12:30, raise IVB), or "
                       "lean into a sinker (tilt the axis toward 3:00, trade ride for arm-side run).",
             "caveat": "The dead zone is arm-slot- and velocity-relative; plus velo can still carry it. " + _CAVEAT_DESIGN,
         })
-    elif fb["pitch"] == "4-seam (ride)" or (fb_ivb is not None and fb_ivb >= 17):
+    elif dead_shape and plays_up:
+        why = "a flat approach angle" if flat_vaa else "a low release slot"
+        out.append({
+            "kind": "strength",
+            "title": "Fastball plays up despite its shape",
+            "detail": f"Ride and run are close ({round(fb_ivb)}\" / {round(fb_hb)}\"), which usually reads "
+                      f"dead-zone — but {why}{vaa_txt} flattens its plane, so it gets on hitters more "
+                      "than the raw shape suggests. Live at the top and let the angle do the work.",
+            "caveat": "Command up still matters. " + _CAVEAT_DESIGN,
+        })
+    elif fb["pitch"] == "4-seam (ride)" or (fb_ivb is not None and fb_ivb >= 17) or flat_vaa:
+        bits = []
+        if fb_ivb is not None and fb_ivb >= 15:
+            bits.append(f"{round(fb_ivb)}\" of ride")
+        if flat_vaa:
+            bits.append(f"a flat {fb_vaa}° approach angle")
+        detail = (("Plus " + " and ".join(bits)) if bits else "A flat plane") + \
+            " is a swing-and-miss shape up in the zone. Live at the top and tunnel a downer off it."
         out.append({
             "kind": "strength",
             "title": "Fastball carries",
-            "detail": f"{round(fb_ivb)}\" of induced ride is a swing-and-miss shape up in the zone. "
-                      "Live at the top, especially against uphill swings, and tunnel a downer off it.",
-            "caveat": "Carry plays best with a flat approach angle / lower slot and command up.",
+            "detail": detail,
+            "caveat": "Carry plays best with command up.",
         })
 
     # ── directional coverage (arm slot relative) ────────────────────────

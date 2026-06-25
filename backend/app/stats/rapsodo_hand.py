@@ -1,15 +1,23 @@
 """Pronation vs supination estimate from a pitcher's arsenal shapes.
 
-Supinators get around the ball: riding/cutting fastballs and glove-side sweep
-(sweepers, sweepy sliders) come naturally; changeups are harder. Pronators turn
-the ball over: arm-side run / sinkers and kill-spin fading changeups come
-naturally; true sweepers are harder. We score those tells from Rapsodo shapes
-and SHOW the evidence rather than just a label — it's an estimate, not a verdict.
+Multi-factor and evidence-first: we score several independent tells and SHOW all
+of them, rather than asserting a label from one signal.
 
-All inputs use arm-side-positive movement (already normalized), so the logic is
-handedness-agnostic. See RAPSODO_TOOL_DESIGN.md.
+The tells (supinator = +, pronator = -):
+  * Fastball shape — ride/cut bias (sup) vs arm-side run / sinker bias (pron).
+  * Breaking-ball SPIN RATE — supinators spin the breaker up; a pronator can throw
+    the same big shape but with notably LESS spin (the key discriminator).
+  * Breaking-ball VELOCITY — supinators' breakers are harder; pronated breakers are
+    slower.
+  * A true glove-side SWEEPER — a supination shape.
+  * A low-spin, arm-side fading CHANGEUP — a pronation shape (kill-spin).
+  * A CUTTER — a mild supination tell.
+
+All movement inputs use arm-side-positive HB (already normalized), so the logic is
+handedness-agnostic. It's an estimate, not a verdict. See RAPSODO_TOOL_DESIGN.md.
 """
-_FASTBALL = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam", "cutter"}
+_FB = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam"}
+_BREAKERS = {"slider", "sweeper", "gyro slider", "curveball"}
 
 
 def _f(v):
@@ -21,8 +29,11 @@ def pronation_profile(arsenal, hand=None):
     supinator, < 0 leans pronator."""
     if not arsenal:
         return None
-    fbs = [a for a in arsenal if a.get("pitch") in {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam"}]
-    fb = (max(fbs, key=lambda a: a.get("count", 0)) if fbs else None)
+    fb = max((a for a in arsenal if a.get("pitch") in _FB), key=lambda a: a.get("count", 0), default=None)
+    breakers = [a for a in arsenal if a.get("pitch") in _BREAKERS and a.get("count", 0) >= 2]
+    best_breaker = max(breakers, key=lambda a: a.get("count", 0)) if breakers else None
+    ch = next((a for a in arsenal if a.get("pitch") == "changeup"), None)
+    fb_velo = _f(fb.get("velo")) if fb else None
 
     score = 0.0
     signals = []
@@ -37,24 +48,39 @@ def pronation_profile(arsenal, hand=None):
         ivb, run = _f(fb.get("ivb")), _f(fb.get("arm_hb"))
         if ivb is not None and run is not None:
             if run - ivb >= 4:
-                add(-1, "pron", "Fastball runs more than it rides (arm-side / sinker bias)")
+                add(-1.0, "pron", "Fastball runs more than it rides (arm-side / sinker bias)")
             elif ivb - run >= 6:
-                add(1, "sup", "Fastball rides with little run (cut / backspin bias)")
+                add(1.0, "sup", "Fastball rides / cuts with little run (backspin bias)")
 
-    # 2) A sweeper / big sweepy breaker is a supination pitch
-    sweepy = [a for a in arsenal if _f(a.get("arm_hb")) is not None and _f(a["arm_hb"]) <= -8
-              and a.get("count", 0) >= 2]
-    if sweepy:
-        add(2, "sup", "Throws glove-side sweep (sweeper / sweepy slider) — a supination shape")
+    # 2) Breaking-ball spin rate — the supinator/pronator discriminator
+    if best_breaker:
+        spin = _f(best_breaker.get("total_spin"))
+        bvelo = _f(best_breaker.get("velo"))
+        label = best_breaker["pitch"]
+        if spin is not None:
+            if spin >= 2300:
+                add(1.5, "sup", f"High breaking-ball spin ({round(spin)} rpm on the {label}) — supinators spin it up")
+            elif spin <= 1900:
+                add(-1.0, "pron", f"Lower breaking-ball spin ({round(spin)} rpm on the {label}) — a pronated breaker spins less")
+        # 3) Breaking-ball velocity (relative to the fastball)
+        if bvelo is not None and fb_velo is not None:
+            bgap = fb_velo - bvelo
+            if bgap <= 9:
+                add(0.7, "sup", f"Hard breaking ball ({round(bvelo)} mph, tight off the fastball)")
+            elif bgap >= 15:
+                add(-0.7, "pron", f"Soft, slow breaking ball ({round(bvelo)} mph)")
 
-    # 3) A low-spin, arm-side fading changeup is a pronation pitch
-    ch = next((a for a in arsenal if a.get("pitch") == "changeup"), None)
+    # 4) A true sweeper is a supination shape
+    if any(a.get("pitch") == "sweeper" and a.get("count", 0) >= 2 for a in arsenal):
+        add(1.3, "sup", "Throws a glove-side sweeper — a supination shape")
+
+    # 5) A low-spin, arm-side fading changeup is a pronation shape
     if ch:
         spin, c_run, c_ivb = _f(ch.get("total_spin")), _f(ch.get("arm_hb")), _f(ch.get("ivb"))
         if spin is not None and spin < 1850 and (c_run or 0) >= 12 and (c_ivb if c_ivb is not None else 99) <= 8:
-            add(-2, "pron", "Low-spin, arm-side fading changeup — a pronation shape")
+            add(-1.6, "pron", "Low-spin, arm-side fading changeup — a pronation shape")
 
-    # 4) A cutter leans (mildly) toward supination
+    # 6) A cutter leans (mildly) toward supination
     if any(a.get("pitch") == "cutter" for a in arsenal):
         add(0.5, "sup", "Has a cutter — a mild supination tell")
 

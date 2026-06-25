@@ -23,6 +23,7 @@ const PITCH_COLORS = {
   'gyro slider': '#6366f1',
   'curveball': '#22c55e',
   'changeup': '#ec4899',
+  'splitter': '#0891b2',
   'unclassified': '#9ca3af',
 }
 const colorFor = (p) => PITCH_COLORS[p] || '#9ca3af'
@@ -410,6 +411,7 @@ function ArsenalTable({ arsenal }) {
             <th className="px-3 py-2 font-medium text-right">Eff%</th>
             <th className="px-3 py-2 font-medium text-right">IVB</th>
             <th className="px-3 py-2 font-medium text-right">Arm HB</th>
+            <th className="px-3 py-2 font-medium text-right">VAA</th>
             <th className="px-3 py-2 font-medium">Tilt</th>
             <th className="px-3 py-2 font-medium text-right">Stuff*</th>
           </tr>
@@ -428,6 +430,7 @@ function ArsenalTable({ arsenal }) {
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.spin_eff, 0)}</td>
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.ivb)}</td>
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.arm_hb)}</td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.vaa == null ? '–' : `${fmt(a.vaa)}°`}</td>
               <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{a.tilt || '–'}</td>
               <td
                 title={a.stuff_components ? Object.entries(a.stuff_components).map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`).join('\n') : ''}

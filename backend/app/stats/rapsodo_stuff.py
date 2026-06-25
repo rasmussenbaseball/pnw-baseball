@@ -36,6 +36,7 @@ _A = {
     "sweeper":          (79, 3, -13),
     "curveball":        (76, -9, -9),
     "changeup":         (81, 7, 14),
+    "splitter":         (84, 5, 8),
 }
 _FB_TYPES = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam", "cutter"}
 _REF_FB = (90, 16, 8)            # college-avg 4-seam, for centering secondary separations
