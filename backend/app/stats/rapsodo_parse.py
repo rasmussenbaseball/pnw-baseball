@@ -229,10 +229,12 @@ def _fastball_centroid(ok_pitches):
     top = max(p["velo"] for p in cand)
     fb = [p for p in cand if p["velo"] >= top - FB_VELO_BAND] or cand
     n = len(fb)
+    spins = [p["total_spin"] for p in fb if p.get("total_spin") is not None]
     return {
         "velo": round(sum(p["velo"] for p in fb) / n, 1),
         "ivb": round(sum(p["ivb"] for p in fb) / n, 1),
         "arm_hb": round(sum(p["arm_hb"] for p in fb) / n, 1),
+        "spin": round(sum(spins) / len(spins)) if spins else None,
     }
 
 
@@ -295,42 +297,43 @@ def _auto_classify(p, fb, hand):
     fbv = fb["velo"] if fb else velo
     fbivb = fb["ivb"] if fb else ivb
     fbhb = fb["arm_hb"] if fb else ahb
+    fbspin = fb.get("spin") if fb else None
     gap = fbv - velo                              # mph slower than the fastball
+    # Offspeed (change/split) KILLS spin vs the fastball; a sub-max fastball, sinker,
+    # or cutter keeps its spin. This is the reliable separator when velocity alone is
+    # ambiguous (a firm changeup vs a backed-off heater).
+    spin_killed = spin is not None and fbspin is not None and spin <= fbspin - 250
 
-    # CUTTER (checked BEFORE the fastball family): a few mph off the FB with the
-    # arm-side RUN COLLAPSED vs the fastball — that run-drop (not ride) is the tell.
-    # A real fastball keeps its arm-side run even sub-max, so requiring the run to
-    # fall to near zero AND well below the FB's run (fbhb - 8) separates a genuine
-    # cut fastball from a 4-seam; otherwise the broad fastball gate below swallows it
-    # (Oliver Duthie ran ~18" on the FB, ~3" on the cutter). ivb floor keeps it above
-    # the gyro-slider band; efficiency is an unreliable cutter signal, so no eff gate.
-    if 1.5 <= gap <= 7 and ahb <= 6 and ahb <= fbhb - 8 and ivb >= 3:
+    # CUTTER: a few mph off the FB with the arm-side RUN COLLAPSED (run-drop, not
+    # ride, is the tell — a real fastball keeps its run even sub-max) AND no depth.
+    # Catches both the cut fastball (Duthie: 18" FB run, ~3" cutter) and the
+    # high-ride "slider/gyro" attempts that never get depth (Sugimoto). Checked first
+    # so the broad fastball gate doesn't swallow it.
+    if 1.5 <= gap <= 8 and ahb <= 6 and ahb <= fbhb - 7 and ivb >= 3:
         return "cutter"
-    # FASTBALL FAMILY: hard (not much slower than the FB), arm-side, riding.
-    # eff floor is low (70) on purpose: plenty of good fastballs spin at 70-80%
-    # efficiency, and a lower-eff pitch that's still hard + riding + arm-side is a
-    # fastball, not a breaker (breakers are glove-side or low-ride, excluded below).
-    if gap <= 6 and (eff is None or eff >= 70) and ivb >= 6 and ahb >= -2:
-        # It's a fastball or a sinker — nothing in between. A sinker sits at ~fastball
-        # velocity (NOT slower — a slower arm-side pitch is a sub-max fastball, a
-        # changeup, or a warmup) with the ride taken off and heavy arm-side run;
-        # everything else hard/riding/arm-side is just a fastball.
+    # FASTBALL FAMILY: near FB velo, arm-side, riding, spin NOT killed (else it's a
+    # changeup). A low-eff but hard/riding/arm-side pitch is still a fastball.
+    if gap <= 6 and ivb >= 6 and ahb >= -2 and not spin_killed and (eff is None or eff >= 55):
         if ivb < SINK_IVB and ahb >= ARM_SIDE_RUN:
             return "sinker"
         return "fastball"
-    # CHANGEUP: slower, arm-side, AND ride killed vs the fastball — so a slow
-    # pitch that keeps full fastball ride is NOT a changeup (that was the v1 bug).
-    if gap >= 6 and ahb >= 8 and ivb <= fbivb - 4:
+    # OFFSPEED (changeup / splitter): slower with the spin killed vs the fastball.
+    if gap >= 5 and spin_killed and ahb >= -3:
+        # A splitter TUMBLES: low absolute spin AND low efficiency. Changeups keep
+        # higher efficiency and fade — so efficiency, not just spin, splits the two.
+        if spin is not None and spin < 1450 and (eff is None or eff < 65):
+            return "splitter"
         return "changeup"
-    # SPLITTER: killed velo + LOW spin (tumbles), arm-side / straight. Low spin is
-    # the splitter tell (changeups spin higher and fade more).
-    if gap >= 5 and spin is not None and spin < 1600 and ahb >= -3:
-        return "splitter"
     # BREAKING BALLS: glove side and/or low efficiency / high gyro.
     if ahb < 0 or (eff is not None and eff < 60) or (g is not None and g >= 45):
+        # A breaking ball with RIDE and no depth (and not running arm-side) is a
+        # cutter — coach rule: ~7+ IVB on a breaker is a cutter.
+        if ivb >= 6 and ahb <= 6:
+            return "cutter"
         if ivb <= -2:
             return "curveball"
-        if g is not None and g >= 60 and abs(ahb) < 8:
+        # A true gyro slider sits near (0,0): little ride, little break, bullet spin.
+        if g is not None and g >= 55 and abs(ahb) <= 5 and ivb <= 6:
             return "gyro slider"
         if ahb <= -8:
             return "sweeper"
