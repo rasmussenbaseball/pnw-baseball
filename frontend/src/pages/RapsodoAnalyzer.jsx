@@ -223,21 +223,38 @@ function PlayerProfile({ rapsodoId, onBack }) {
   const { data, loading, refetch } = useApi(`/rapsodo/players/${rapsodoId}`)
   const [relabel, setRelabel] = useState(null)   // the plot point being reclassified
   const [saving, setSaving] = useState(false)
+  const [arsenalOpen, setArsenalOpen] = useState(false)
+  const [savingArsenal, setSavingArsenal] = useState(false)
+
+  async function postJson(url, body) {
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess?.session?.access_token
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    })
+  }
 
   async function applyLabel(id, newPitch) {
     setSaving(true)
     try {
-      const { data: sess } = await supabase.auth.getSession()
-      const token = sess?.session?.access_token
-      await fetch(`/api/v1/rapsodo/pitches/${id}/label`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ pitch: newPitch }),
-      })
+      await postJson(`/api/v1/rapsodo/pitches/${id}/label`, { pitch: newPitch })
       setRelabel(null)
       refetch()
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function applyArsenal(types) {
+    setSavingArsenal(true)
+    try {
+      await postJson(`/api/v1/portal/rapsodo/players/${rapsodoId}/arsenal`, { types })
+      setArsenalOpen(false)
+      refetch()
+    } finally {
+      setSavingArsenal(false)
     }
   }
 
@@ -292,9 +309,21 @@ function PlayerProfile({ rapsodoId, onBack }) {
         </div>
 
         <div className="lg:col-span-3">
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Arsenal <span className="font-normal normal-case">(re-classified by shape)</span>
-          </h3>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+              Arsenal <span className="font-normal normal-case">
+                ({player.arsenal_types ? 'guided' : 're-classified by shape'})
+              </span>
+            </h3>
+            <button onClick={() => setArsenalOpen((v) => !v)}
+              className="text-xs font-medium text-portal-purple dark:text-portal-accent hover:underline">
+              {player.arsenal_types ? 'Edit arsenal' : 'Set arsenal'}
+            </button>
+          </div>
+          {arsenalOpen && (
+            <ArsenalPicker current={player.arsenal_types} saving={savingArsenal}
+              onApply={applyArsenal} onClose={() => setArsenalOpen(false)} />
+          )}
           <ArsenalTable arsenal={arsenal} />
           <h3 className="mt-6 mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Sessions</h3>
           <SessionList sessions={sessions} />
@@ -524,6 +553,49 @@ function SessionList({ sessions }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+// ─────────────────────────── Guided arsenal picker ─────────────────────────
+function ArsenalPicker({ current, saving, onApply, onClose }) {
+  const initial = current ? current.split(',').map((s) => s.trim()).filter(Boolean) : []
+  const [sel, setSel] = useState(new Set(initial))
+  const toggle = (t) => setSel((prev) => {
+    const n = new Set(prev)
+    n.has(t) ? n.delete(t) : n.add(t)
+    return n
+  })
+  return (
+    <div className="mb-3 rounded-xl border border-portal-purple/40 dark:border-portal-accent/40 bg-white dark:bg-gray-900 p-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Which pitches does he throw?</div>
+        <button type="button" onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+      </div>
+      <p className="mb-2 text-xs text-gray-400">
+        Tick every pitch in his arsenal. The model then buckets each pitch into only those types
+        (snapping outliers to the nearest one). Manual per-pitch fixes still win.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {PITCH_TYPES.map((t) => (
+          <button key={t} type="button" disabled={saving} onClick={() => toggle(t)}
+            className={`px-2 py-1 rounded text-xs border ${sel.has(t) ? 'border-portal-purple bg-portal-purple/10 text-gray-900 dark:text-gray-100' : 'border-gray-200 dark:border-gray-700 hover:border-portal-purple text-gray-600 dark:text-gray-400'} disabled:opacity-50`}>
+            <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: colorFor(t) }} />{t}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <button type="button" disabled={saving || sel.size === 0} onClick={() => onApply([...sel])}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-portal-purple text-white hover:bg-portal-purple/90 disabled:opacity-40">
+          {saving ? 'Applying…' : `Apply (${sel.size})`}
+        </button>
+        {current && (
+          <button type="button" disabled={saving} onClick={() => onApply([])}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-400 disabled:opacity-50">
+            ↺ Clear (auto-classify)
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 

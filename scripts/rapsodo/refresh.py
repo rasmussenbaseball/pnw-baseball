@@ -11,6 +11,10 @@ import argparse
 from app.models.database import get_connection
 from app.stats.rapsodo_parse import derive
 
+
+def _arsenal_set(s):
+    return {t.strip() for t in s.split(",") if t.strip()} or None if s else None
+
 _RAW = ("id, session_id, player_db_id, velo, total_spin, spin_eff, spin_confidence, "
         "gyro, ivb, hb_raw, rel_angle, rel_height, sz_height, extension, manual_pitch, "
         "pitch, quality, arm_hb, vaa")
@@ -30,13 +34,13 @@ def main():
     args = ap.parse_args()
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, handedness FROM rapsodo_players")
-        players = [(r["id"], r["handedness"]) for r in cur.fetchall()]
+        cur.execute("SELECT id, handedness, arsenal_types FROM rapsodo_players")
+        players = [(r["id"], r["handedness"], r["arsenal_types"]) for r in cur.fetchall()]
         changed = 0
-        for pid, hand in players:
+        for pid, hand, arsenal in players:
             cur.execute(f"SELECT {_RAW} FROM rapsodo_pitches WHERE player_db_id=%s", (pid,))
             rows = [dict(r) for r in cur.fetchall()]
-            dmap = {d["id"]: d for d in derive(rows, hand)}
+            dmap = {d["id"]: d for d in derive(rows, hand, _arsenal_set(arsenal))}
             for old in rows:
                 new = dmap[old["id"]]
                 if (new["pitch"] != old["pitch"] or new["quality"] != old["quality"]

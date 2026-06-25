@@ -314,6 +314,29 @@ _VALID_LABELS = {
 }
 _DERIVE_FIELDS = ("id, session_id, velo, total_spin, spin_eff, spin_confidence, gyro, "
                   "ivb, hb_raw, rel_angle, rel_height, sz_height, extension, manual_pitch")
+# Types a coach can DECLARE for the guided arsenal (everything real, no catch-all)
+_DECLARABLE = _VALID_LABELS - {"unclassified"}
+
+
+def _arsenal_set(s):
+    """Parse a stored arsenal_types string into a set of allowed types (or None)."""
+    if not s:
+        return None
+    types = {t.strip() for t in s.split(",") if t.strip()}
+    return types or None
+
+
+def _rederive_player(cur, player_db_id, handedness, allowed):
+    """Recompute pitch/quality/arm_hb/vaa for every pitch a player owns, honoring
+    the declared arsenal + manual overrides, and write the results back."""
+    cur.execute(f"SELECT {_DERIVE_FIELDS} FROM rapsodo_pitches WHERE player_db_id=%s",
+                (player_db_id,))
+    raw = [dict(r) for r in cur.fetchall()]
+    dmap = {d["id"]: d for d in derive(raw, handedness, allowed)}
+    for r in raw:
+        d = dmap[r["id"]]
+        cur.execute("UPDATE rapsodo_pitches SET pitch=%s, quality=%s, arm_hb=%s, vaa=%s WHERE id=%s",
+                    (d["pitch"], d["quality"], d["arm_hb"], d["vaa"], r["id"]))
 
 
 class LabelBody(BaseModel):
@@ -331,7 +354,7 @@ def relabel_pitch(pitch_id: int, body: LabelBody, owner: str = Depends(require_t
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            """SELECT p.player_db_id, rp.handedness FROM rapsodo_pitches p
+            """SELECT p.player_db_id, rp.handedness, rp.arsenal_types FROM rapsodo_pitches p
                JOIN rapsodo_players rp ON rp.id = p.player_db_id
                WHERE p.id=%s AND p.owner_user_id=%s""",
             (pitch_id, owner),
@@ -342,16 +365,39 @@ def relabel_pitch(pitch_id: int, body: LabelBody, owner: str = Depends(require_t
         cur.execute("UPDATE rapsodo_pitches SET manual_pitch=%s WHERE id=%s AND owner_user_id=%s",
                     (new, pitch_id, owner))
         # immediate re-derive of this player's pitches so the change shows now
-        cur.execute(f"SELECT {_DERIVE_FIELDS} FROM rapsodo_pitches WHERE player_db_id=%s",
-                    (row["player_db_id"],))
-        raw = [dict(r) for r in cur.fetchall()]
-        dmap = {d["id"]: d for d in derive(raw, row["handedness"])}
-        for r in raw:
-            d = dmap[r["id"]]
-            cur.execute("UPDATE rapsodo_pitches SET pitch=%s, quality=%s, arm_hb=%s, vaa=%s WHERE id=%s",
-                        (d["pitch"], d["quality"], d["arm_hb"], d["vaa"], r["id"]))
+        _rederive_player(cur, row["player_db_id"], row["handedness"],
+                         _arsenal_set(row["arsenal_types"]))
         conn.commit()
     return {"status": "ok", "pitch_id": pitch_id, "pitch": new}
+
+
+class ArsenalBody(BaseModel):
+    types: list[str] = []         # the pitch types this pitcher actually throws
+
+
+@router.post("/portal/rapsodo/players/{rapsodo_player_id}/arsenal")
+def set_arsenal(rapsodo_player_id: str, body: ArsenalBody,
+                owner: str = Depends(require_tier("coach"))):
+    """Guided arsenal: the coach declares which pitch types a pitcher throws, and
+    the classifier buckets every pitch into ONLY those types (snapping outliers to
+    the nearest declared shape). An empty list clears it (back to auto). Re-derives
+    immediately so the profile reflects the constraint. Manual per-pitch overrides
+    still win."""
+    types = [t for t in dict.fromkeys(t.strip() for t in body.types) if t in _DECLARABLE]
+    val = ",".join(types) or None
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, handedness FROM rapsodo_players WHERE owner_user_id=%s AND rapsodo_player_id=%s",
+            (owner, rapsodo_player_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Player not found")
+        cur.execute("UPDATE rapsodo_players SET arsenal_types=%s WHERE id=%s", (val, row["id"]))
+        _rederive_player(cur, row["id"], row["handedness"], _arsenal_set(val))
+        conn.commit()
+    return {"status": "ok", "arsenal_types": types}
 
 
 def _ff(v):

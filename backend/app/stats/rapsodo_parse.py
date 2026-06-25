@@ -234,15 +234,58 @@ def _fastball_centroid(ok_pitches):
     }
 
 
-def classify(p, fb, hand):
-    """Re-classify ONE pitch by shape, ignoring Rapsodo's label. arm_hb must
-    already be set (arm-side positive); `fb` is the fastball centroid from
-    _fastball_centroid (or None). Returns a label string.
+# Prototype shape per pitch type (gap-from-FB mph, IVB, arm-side HB, |gyro|) for
+# the GUIDED arsenal: when a coach declares which pitches a guy throws, any pitch
+# whose auto-label isn't in that set is snapped to the nearest declared type.
+_PROTO = {
+    "4-seam (ride)":    (0, 18, 6, 8),
+    "fastball (mixed)": (0, 13, 12, 10),
+    "sinker / 2-seam":  (1, 8, 16, 12),
+    "cutter":           (5, 8, -2, 35),
+    "slider":           (10, 1, -5, 65),
+    "gyro slider":      (8, 1, -1, 85),
+    "sweeper":          (10, 3, -14, 30),
+    "curveball":        (15, -8, -9, 30),
+    "changeup":         (10, 4, 16, 25),
+    "splitter":         (9, 5, 6, 25),
+}
+
+
+def _nearest_allowed(p, fb, allowed):
+    """Snap a pitch to the closest DECLARED pitch type (guided arsenal)."""
+    velo, ivb, ahb = p.get("velo"), p.get("ivb"), p.get("arm_hb")
+    if velo is None or ivb is None or ahb is None:
+        return next(iter(allowed), "unclassified")
+    gap = (fb["velo"] - velo) if fb else 0
+    g = abs(p["gyro"]) if p.get("gyro") is not None else 30
+    best, bd = None, 1e9
+    for t in allowed:
+        pr = _PROTO.get(t)
+        if not pr:
+            continue
+        d = ((gap - pr[0]) / 4) ** 2 + ((ivb - pr[1]) / 5) ** 2 + ((ahb - pr[2]) / 6) ** 2 + ((g - pr[3]) / 30) ** 2
+        if d < bd:
+            bd, best = d, t
+    return best or next(iter(allowed), "unclassified")
+
+
+def classify(p, fb, hand, allowed=None):
+    """Classify ONE pitch by shape. If `allowed` (the coach's declared arsenal)
+    is given, constrain the result to that set — keep the auto label if it's
+    already in the set, else snap to the nearest declared type."""
+    label = _auto_classify(p, fb, hand)
+    if allowed and label not in allowed:
+        return _nearest_allowed(p, fb, allowed)
+    return label
+
+
+def _auto_classify(p, fb, hand):
+    """Unconstrained rule-based shape classification. arm_hb must already be set
+    (arm-side positive); `fb` is the fastball centroid (or None).
 
     Cluster-relative: each pitch is judged against the pitcher's own fastball,
     so a sub-max-effort heater that keeps its ride stays a fastball, and a
-    changeup must actually KILL ride vs the FB (not just be slower). Still a
-    heuristic — Phase 3 will add full cluster-then-label for fuzzy breakers."""
+    changeup must actually KILL ride vs the FB."""
     velo, ivb, ahb, eff = p["velo"], p["ivb"], p["arm_hb"], p["spin_eff"]
     spin = p.get("total_spin")
     if velo is None or ivb is None or ahb is None:
@@ -305,11 +348,11 @@ def _is_warmup(p, fb):
             and p["arm_hb"] >= -2)                      # ...arm-side / straight, not breaking
 
 
-def classify_session(pitches, hand=None):
+def classify_session(pitches, hand=None, allowed=None):
     """Label every pitch in a session and flip clear warmup lobs to quality
-    'warmup'. Mutates each pitch's `pitch` and `quality`. Returns the fastball
-    centroid. Shared by the CSV parse path and the DB re-classify path so both
-    stay in lockstep."""
+    'warmup'. `allowed` = the coach's declared arsenal (guided classification).
+    Mutates each pitch's `pitch` and `quality`. Returns the fastball centroid.
+    Shared by the CSV parse path and the DB re-classify path."""
     cand = [p for p in pitches if p.get("quality") in ("ok", "warmup")]
     fb = _fastball_centroid(cand)
     for p in pitches:
@@ -318,20 +361,23 @@ def classify_session(pitches, hand=None):
             if _is_warmup(p, fb):
                 p["quality"], p["pitch"] = "warmup", None
             else:
-                p["quality"], p["pitch"] = "ok", classify(p, fb, hand)
+                p["quality"], p["pitch"] = "ok", classify(p, fb, hand, allowed)
         elif q == "low_confidence":
-            p["pitch"] = classify(p, fb, hand)
+            p["pitch"] = classify(p, fb, hand, allowed)
         else:
             p["pitch"] = None
     return fb
 
 
-def derive(rows, handedness):
+def derive(rows, handedness, allowed=None):
     """Re-derive ALL computed fields (quality, arm_hb, vaa, pitch) from the RAW
     stored fields of a player's pitch rows, per session. This is the engine of
     auto-update: raw data is the source of truth, everything else is recomputed,
     so model improvements take effect without re-uploading. A coach's
     `manual_pitch` override always wins and is never recomputed away.
+
+    `allowed`: the coach's declared arsenal (guided classification) — constrains
+    every pitch to that set of types. None = unconstrained auto-classification.
 
     `rows`: list of DB dicts with raw fields + manual_pitch + session_id.
     Returns the same rows (copies) with fresh quality/arm_hb/vaa/pitch."""
@@ -365,7 +411,7 @@ def derive(rows, handedness):
                 "quality": q,
             })
             norm.append(d)
-        classify_session(norm, handedness)
+        classify_session(norm, handedness, allowed)
         for p in norm:
             mp = p.get("manual_pitch")
             if mp:
