@@ -429,6 +429,11 @@ function RoleToggle({ role, setRole }) {
 // ═══════════════════════════════════════════════════════════════
 // MAIN PAGE COMPONENT
 // ═══════════════════════════════════════════════════════════════
+// Cache-bust token: og images are cached hard (the edge sends an immutable
+// long-max-age Cache-Control), so bump this after any template change OR to force
+// stale player renders (e.g. stats merged then corrected) to re-render fresh.
+const GFX_VERSION = '3'
+
 export default function PlayerGraphic() {
   const [playerId, setPlayerId] = useState(() => {
     const params = new URLSearchParams(window.location.search)
@@ -593,7 +598,7 @@ export default function PlayerGraphic() {
       {/* ═══ SUMMER-ONLY PLAYER GRAPHIC ═══ */}
       {summerId && (() => {
         const roleQ = graphicRole ? `&role=${graphicRole}` : ''
-        const imgUrl = `/api/og?t=summerplayer&id=${summerId}&format=portrait${roleQ}`
+        const imgUrl = `/api/og?t=summerplayer&id=${summerId}&format=portrait${roleQ}&gv=${GFX_VERSION}`
         return (
           <div className="flex flex-col items-center gap-3">
             {summerTwoWay && <RoleToggle role={graphicRole} setRole={setGraphicRole} />}
@@ -625,9 +630,6 @@ export default function PlayerGraphic() {
           ? (summerBatting.length > 0 && summerPitching.length > 0)
           : (hasBatting && hasPitching)
         const roleQ = graphicRole ? `&role=${graphicRole}` : ''
-        // Cache-bust token: og images are cached hard (max-age 1yr, immutable),
-        // so bump GFX_VERSION after any template/logo change to force fresh renders.
-        const GFX_VERSION = '2'
         const imgUrl = ((sel && sel.kind === 'summer' && sel.summerPid)
           ? `/api/og?t=summerplayer&id=${sel.summerPid}&format=portrait&season=${sel.season}${roleQ}`
           : `/api/og?t=player&id=${playerId}&format=portrait${sel ? `&season=${sel.season}&kind=${sel.kind}` : ''}${roleQ}`) + `&gv=${GFX_VERSION}`

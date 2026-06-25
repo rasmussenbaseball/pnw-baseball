@@ -147,17 +147,32 @@ def build_player_lookup(cur, team_ids):
         f"WHERE team_id IN ({placeholders})",
         list(team_ids),
     )
+    # Full-name keys are precise; the abbreviated forms ("F. Last", "Last") are
+    # ambiguity-prone. When two players on a team collapse to the SAME abbreviated
+    # key — e.g. brothers Kyson and Kael Barney both → "k barney" / "barney" — that
+    # key must NOT resolve to either of them (it was silently overwriting, merging
+    # their stats onto one id). Track collisions and drop ambiguous abbreviated keys.
     lookup = {}
+    ambiguous = set()
     for row in cur.fetchall():
         first = (row.get("first_name") or "").strip()
         last = (row.get("last_name") or "").strip()
         team_id = row["team_id"]
         pid = row["id"]
+        keys = []
         if first and last:
-            lookup[(team_id, _norm_name(f"{first} {last}"))] = pid
-            lookup[(team_id, _norm_name(f"{first[0]} {last}"))] = pid
+            keys.append((_norm_name(f"{first} {last}"), True))     # precise
+            keys.append((_norm_name(f"{first[0]} {last}"), False))  # ambiguity-prone
         elif last:
-            lookup[(team_id, _norm_name(last))] = pid
+            keys.append((_norm_name(last), False))
+        for name, precise in keys:
+            key = (team_id, name)
+            if key in lookup and lookup[key] != pid and not precise:
+                ambiguous.add(key)
+            elif key not in lookup:
+                lookup[key] = pid
+    for key in ambiguous:
+        lookup.pop(key, None)
     return lookup
 
 

@@ -80,6 +80,20 @@ def build_lookup(cur):
     )
     exact = defaultdict(dict)
     by_last = defaultdict(lambda: defaultdict(set))
+    precise = set()      # (team_id, key) that came from a FULL name — never dropped
+    ambiguous = set()    # abbreviated keys two players collide on (e.g. brothers)
+
+    def add(team_id, key, pid, is_precise):
+        if is_precise:
+            exact[team_id][key] = pid
+            precise.add((team_id, key))
+        elif (team_id, key) in precise:
+            return
+        elif key in exact[team_id] and exact[team_id][key] != pid:
+            ambiguous.add((team_id, key))   # collision -> don't guess (was merging brothers)
+        elif key not in exact[team_id]:
+            exact[team_id][key] = pid
+
     for row in cur.fetchall():
         pid = row["id"]
         team_id = row["team_id"]
@@ -87,13 +101,14 @@ def build_lookup(cur):
         last = (row.get("last_name") or "").strip()
         if not (first or last):
             continue
-        # Multiple keys per player for fuzzy match
         if first and last:
-            exact[team_id][_norm(f"{first} {last}")] = pid
-            exact[team_id][_norm(f"{first[0]} {last}")] = pid  # "F. Last"
+            add(team_id, _norm(f"{first} {last}"), pid, True)
+            add(team_id, _norm(f"{first[0]} {last}"), pid, False)  # "F. Last"
         if last:
-            exact[team_id][_norm(last)] = pid
+            add(team_id, _norm(last), pid, False)
             by_last[team_id][_norm(last)].add(pid)
+    for (team_id, key) in ambiguous:
+        exact[team_id].pop(key, None)
     return exact, by_last
 
 
