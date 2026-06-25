@@ -869,6 +869,73 @@ export function runPostseason(state) {
  *
  * @param {SaveState} state
  */
+/**
+ * Drift the USER program's reputation (programHistory) toward its on-field
+ * results each year. This is the core "build a program" arc: a from-scratch
+ * expansion starts at PH ~16 (recruiting ceiling ~55 — can only land low-50s
+ * players) and climbs over several winning seasons until it can attract real
+ * talent. A powerhouse that collapses slips back the other way.
+ *
+ * PH drives the recruiting tier ceiling (programOvrCeiling in recruits.js),
+ * the recruits' "wants to win" priority, and — for expansion teams — the
+ * national-ranking synthesis, so all of those rise together as the program
+ * earns it.
+ *
+ * Level-anchored: the target tops out at the best ESTABLISHED rival's PH at
+ * the same level, so a dominant NWAC program reaches NWAC-elite reputation,
+ * not D1-blueblood. Only the user's team moves; AI programs stay pinned to
+ * their real-world PEAR/PPI anchor.
+ */
+function updateProgramReputation(state, finishedYear) {
+  const school = state.schools?.[state.userSchoolId]
+  const team = state.teams?.[state.userSchoolId]
+  if (!school || !team) return
+  const w = team._lastSeason?.wins ?? 0
+  const l = team._lastSeason?.losses ?? 0
+  const games = w + l
+  if (games < 8) return                       // too small a sample to move rep
+  const cl = (v) => Math.max(0, Math.min(99, v))
+  const winPct = w / games
+  const level = school.level || 'NAIA'
+
+  // The top of what reputation can reach at THIS level = best established
+  // (non-expansion) rival's PH. Floor at 12 so a perennial loser still has a
+  // place to bottom out.
+  let topRivalPH = 35
+  for (const s of Object.values(state.schools || {})) {
+    if (!s || s.id === school.id) continue
+    if ((s.level || 'NAIA') !== level) continue
+    if (s.isExpansion) continue
+    topRivalPH = Math.max(topRivalPH, cl(s.programHistory ?? 0))
+  }
+  const floorPH = 12
+
+  // Performance score 0..1 — win% is the spine (.300 → 0, .850 → 1), lifted by
+  // a deep postseason run or a title.
+  let perf = Math.max(0, Math.min(1, (winPct - 0.30) / 0.55))
+  const ps = state.postseason
+  if (ps?.userNatChamp) perf = 1                       // national title → top of level
+  else if (ps?.userChamp) perf = Math.max(perf, 0.85)  // conference / level title
+
+  const target = floorPH + perf * (topRivalPH - floorPH)
+  const ph = cl(school.programHistory ?? 18)
+  // Reputation is EARNED: move ~30% of the gap toward the target, capped at
+  // +6 / -3 per year, so it climbs over several seasons and slips slower than
+  // it rises.
+  const move = Math.max(-3, Math.min(6, Math.round((target - ph) * 0.30)))
+  if (move === 0) return
+  const next = cl(ph + move)
+  school.programHistory = next
+  state.newsfeed?.unshift({
+    id: `rep_${finishedYear}_${state.userSchoolId}`,
+    year: state.calendar?.year ?? (finishedYear + 1), week: 1, type: 'AWARD',
+    headline: move > 0
+      ? `${school.name}'s reputation is on the rise — recruits are starting to take notice.`
+      : `${school.name}'s reputation slipped after a down year.`,
+    payload: { from: ph, to: next, target: Math.round(target) },
+  })
+}
+
 export function runEndOfYear(state) {
   // Archive what the deferred events will need
   state._archivedPlayerStats = state.playerStats || {}
@@ -949,6 +1016,16 @@ export function runEndOfYear(state) {
   } catch (err) {
     console.warn('season recap build failed:', err)
     state.lastSeasonRecap = null
+  }
+
+  // Program reputation drifts toward this year's results — AFTER the recap is
+  // built (the recap's "preseason projection" must use the OLD reputation).
+  // This is what lets a from-scratch expansion climb so it can recruit better
+  // players as it wins (per Nate). See updateProgramReputation.
+  try {
+    updateProgramReputation(state, archivedYear)
+  } catch (err) {
+    console.warn('program reputation update failed:', err)
   }
 
   // Carry the FINAL NWBB ratings forward as next year's preseason seed, so the
