@@ -487,6 +487,15 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 47,
+        "name": "Christopher Moore",
+        "pos": "SS",
+        "year": "PREP",
+        "school": "Eastlake (WA)",
+        "commit": "Washington",
+        "playerId": null
+      },
+      {
+        "rank": 48,
         "name": "Gavin Roy",
         "pos": "SS-2B",
         "year": "SR",
@@ -494,7 +503,7 @@ export const DRAFT_DATA = {
         "playerId": 3532
       },
       {
-        "rank": 48,
+        "rank": 49,
         "movement": "down",
         "name": "Justin Feld",
         "pos": "RHP",
@@ -503,7 +512,7 @@ export const DRAFT_DATA = {
         "playerId": 3574
       },
       {
-        "rank": 49,
+        "rank": 50,
         "name": "James Brock",
         "pos": "RHP",
         "year": "SR",
@@ -511,7 +520,7 @@ export const DRAFT_DATA = {
         "playerId": 2993
       },
       {
-        "rank": 50,
+        "rank": 51,
         "movement": "up",
         "name": "Graham Learing",
         "pos": "P",
@@ -521,7 +530,7 @@ export const DRAFT_DATA = {
         "playerId": 1029
       },
       {
-        "rank": 51,
+        "rank": 52,
         "name": "Evan Canfield",
         "pos": "RHP",
         "year": "R-JR",
@@ -529,7 +538,56 @@ export const DRAFT_DATA = {
         "playerId": 2731
       },
       {
-        "rank": 52,
+        "rank": 53,
+        "name": "Jacob Courtney",
+        "pos": "RHP",
+        "year": "SO",
+        "school": "Bushnell",
+        "playerId": 2928
+      },
+      {
+        "rank": 54,
+        "name": "Donny Tober",
+        "pos": "RHP",
+        "year": "R-JR",
+        "school": "Warner Pacific",
+        "playerId": 2950
+      },
+      {
+        "rank": 55,
+        "name": "Luke Meyers",
+        "pos": "RHP",
+        "year": "SR",
+        "school": "Washington St",
+        "playerId": 3767
+      },
+      {
+        "rank": 56,
+        "name": "Jack Brooks",
+        "pos": "CF",
+        "year": "SR",
+        "school": "Oregon",
+        "playerId": 3507
+      },
+      {
+        "rank": 57,
+        "name": "Michael Revell",
+        "pos": "RHP",
+        "year": "PREP",
+        "school": "Richland (WA)",
+        "commit": "GCU",
+        "playerId": null
+      },
+      {
+        "rank": 58,
+        "name": "Blake Smith",
+        "pos": "P",
+        "year": "SR",
+        "school": "SeattleU",
+        "playerId": 3690
+      },
+      {
+        "rank": 59,
         "name": "Will Rohrbacher",
         "pos": "IF",
         "year": "PREP",
@@ -538,28 +596,13 @@ export const DRAFT_DATA = {
         "playerId": null
       },
       {
-        "rank": 53,
-        "name": "Donny Tober",
-        "pos": "RHP",
-        "year": "R-JR",
-        "school": "Warner Pacific",
-        "playerId": 2950
-      },
-      {
-        "rank": 54,
-        "name": "Luke Meyers",
-        "pos": "RHP",
-        "year": "SR",
-        "school": "Washington St",
-        "playerId": 3767
-      },
-      {
-        "rank": 55,
-        "name": "Jack Brooks",
-        "pos": "CF",
-        "year": "SR",
-        "school": "Oregon St",
-        "playerId": 3507
+        "rank": 60,
+        "movement": "down",
+        "name": "Zach Bowman",
+        "pos": "LHP",
+        "year": "JR",
+        "school": "Gonzaga",
+        "playerId": 3570
       }
     ]
   },
