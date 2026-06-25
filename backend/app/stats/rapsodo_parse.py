@@ -296,6 +296,15 @@ def _auto_classify(p, fb, hand):
     fbivb = fb["ivb"] if fb else ivb
     gap = fbv - velo                              # mph slower than the fastball
 
+    # CUTTER (checked BEFORE the fastball family): a few mph off the FB, with the
+    # ride taken OFF vs the FB and little/no arm-side run (small glove or neutral
+    # cut). The arm-side-run ceiling (ahb <= 4) is the separator — real fastballs and
+    # sinkers RUN arm-side, cutters don't — so the broad fastball gate below would
+    # otherwise swallow a cut fastball as a 4-seam (Oliver Duthie's cutters). The ivb
+    # floor keeps it above the gyro-slider band. Efficiency is an unreliable cutter
+    # signal, so we don't gate on it.
+    if 1.5 <= gap <= 7 and -7 <= ahb <= 4 and ivb >= 3 and ivb <= fbivb - 4:
+        return "cutter"
     # FASTBALL FAMILY: hard (not much slower than the FB), arm-side, riding.
     # eff floor is low (70) on purpose: plenty of good fastballs spin at 70-80%
     # efficiency, and a lower-eff pitch that's still hard + riding + arm-side is a
@@ -316,12 +325,6 @@ def _auto_classify(p, fb, hand):
     # the splitter tell (changeups spin higher and fade more).
     if gap >= 5 and spin is not None and spin < 1600 and ahb >= -3:
         return "splitter"
-    # CUTTER: a few mph off the FB with the ride TAKEN OFF (well below the FB's
-    # ride) and only a small glove-side/neutral break. Cluster-relative, so a
-    # high-efficiency "slutter" still reads as a cutter — efficiency alone is an
-    # unreliable cutter signal (e.g. Oliver Duthie's 89%-eff cutter).
-    if 2 <= gap <= 9 and -8 <= ahb <= 3 and ivb >= 0 and ivb <= fbivb - 3:
-        return "cutter"
     # BREAKING BALLS: glove side and/or low efficiency / high gyro.
     if ahb < 0 or (eff is not None and eff < 60) or (g is not None and g >= 45):
         if ivb <= -2:

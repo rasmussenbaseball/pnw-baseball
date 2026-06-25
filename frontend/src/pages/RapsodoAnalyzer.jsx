@@ -292,27 +292,18 @@ function PlayerProfile({ rapsodoId, onBack }) {
       <CoachingNotes suggestions={suggestions} />
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-2 space-y-6">
-          <div>
-            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Movement profile</h3>
-            <MovementPlot points={plot} arsenal={arsenal} onPitchClick={(p) => setRelabel(p)}
-              activeId={relabel?.id} armAngle={arm?.arm_angle} hand={player.handedness}
-              relabel={relabel} saving={saving}
-              onPick={(label) => applyLabel(relabel.id, label)}
-              onCloseRelabel={() => setRelabel(null)} />
-            <p className="mt-2 text-xs text-gray-400">
-              Pitcher's view, ride ↑. Shaded blobs = movement by pitch type, dots = individual pitches.
-              The diagonal is the arm-angle axis — a fastball matching the slot sits along it; pitches
-              off it are deviating. Rings = lower-confidence reads. Click a dot to reclassify it.
-            </p>
-          </div>
-          <div>
-            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Location</h3>
-            <StrikeZonePlot points={locations} />
-            <p className="mt-2 text-xs text-gray-400">
-              Plate-crossing point per pitch (catcher's view). Box = nominal strike zone. Warmups excluded.
-            </p>
-          </div>
+        <div className="lg:col-span-2">
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Movement profile</h3>
+          <MovementPlot points={plot} arsenal={arsenal} onPitchClick={(p) => setRelabel(p)}
+            activeId={relabel?.id} armAngle={arm?.arm_angle} hand={player.handedness}
+            relabel={relabel} saving={saving}
+            onPick={(label) => applyLabel(relabel.id, label)}
+            onCloseRelabel={() => setRelabel(null)} />
+          <p className="mt-2 text-xs text-gray-400">
+            Pitcher's view, ride ↑. Shaded blobs = movement by pitch type, dots = individual pitches.
+            The diagonal is the arm-angle axis — a fastball matching the slot sits along it; pitches
+            off it are deviating. Rings = lower-confidence reads. Click a dot to reclassify it.
+          </p>
         </div>
 
         <div className="lg:col-span-3">
@@ -332,12 +323,26 @@ function PlayerProfile({ rapsodoId, onBack }) {
               onApply={applyArsenal} onClose={() => setArsenalOpen(false)} />
           )}
           <ArsenalTable arsenal={arsenal} />
-          <h3 className="mt-6 mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Sessions</h3>
-          <SessionList sessions={sessions} />
         </div>
       </div>
 
-      <LocationHeatmaps locations={locations} />
+      <div className="mt-6">
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Location</h3>
+        <div className="flex flex-col gap-6 lg:flex-row">
+          <div className="shrink-0">
+            <StrikeZonePlot points={locations} />
+            <p className="mt-2 max-w-[330px] text-xs text-gray-400">
+              All pitches (catcher's view). Box = nominal strike zone. Warmups excluded.
+            </p>
+          </div>
+          <LocationHeatmaps locations={locations} arsenal={arsenal} />
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Sessions</h3>
+        <SessionList sessions={sessions} />
+      </div>
 
       <DevelopmentTrends trend={trend} />
 
@@ -769,7 +774,7 @@ function PitchPopup({ point, saving, onPick, onClose, pos }) {
 }
 
 // Per-pitch-type location heatmaps (catcher's view). KDE density over the plate.
-function LocationHeatmaps({ locations }) {
+function LocationHeatmaps({ locations, arsenal }) {
   const groups = {}
   for (const l of locations || []) {
     if (l.sz_side != null && l.sz_height != null && l.pitch) (groups[l.pitch] ||= []).push(l)
@@ -777,21 +782,22 @@ function LocationHeatmaps({ locations }) {
   const types = Object.entries(groups).filter(([, ls]) => ls.length >= 4)
     .sort((a, b) => b[1].length - a[1].length)
   if (!types.length) return null
+  const meta = {}
+  for (const a of arsenal || []) meta[a.pitch] = { zone: a.zone_pct, loc: a.loc_plus }
   return (
-    <div className="mt-6">
-      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Location by pitch type</h3>
-      <div className="flex flex-wrap gap-4">
-        {types.map(([pitch, ls]) => <Heatmap key={pitch} pitch={pitch} pts={ls} />)}
+    <div className="min-w-0 flex-1">
+      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">By pitch type</div>
+      <div className="flex flex-wrap gap-3">
+        {types.map(([pitch, ls]) => <Heatmap key={pitch} pitch={pitch} pts={ls} meta={meta[pitch]} />)}
       </div>
       <p className="mt-2 text-xs text-gray-400">
-        Plate-location density per pitch type (catcher's view). Box = strike zone. Warmups excluded;
-        needs ≥4 reliable locations to draw.
+        Plate-location density per pitch type. Box = strike zone. Needs ≥4 reliable locations.
       </p>
     </div>
   )
 }
 
-function Heatmap({ pitch, pts }) {
+function Heatmap({ pitch, pts, meta }) {
   const W = 132, H = 164, PAD = 8
   const XMIN = -18, XMAX = 18, YMIN = 8, YMAX = 52
   const sx = (v) => PAD + ((v - XMIN) / (XMAX - XMIN)) * (W - 2 * PAD)
@@ -824,6 +830,13 @@ function Heatmap({ pitch, pts }) {
       <div className="mt-1 text-[11px] font-medium" style={{ color: col }}>
         {pitch} <span className="text-gray-400 font-normal">({pts.length})</span>
       </div>
+      {meta && (meta.zone != null || meta.loc != null) && (
+        <div className="text-[10px] text-gray-500 dark:text-gray-400">
+          {meta.zone != null && `Zone ${meta.zone}%`}
+          {meta.zone != null && meta.loc != null && ' · '}
+          {meta.loc != null && `Loc+ ${meta.loc}`}
+        </div>
+      )}
     </div>
   )
 }
