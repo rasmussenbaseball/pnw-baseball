@@ -199,6 +199,22 @@ def _html_excerpt(body_html: str, max_chars: int = 200) -> str:
     return text
 
 
+# TipTap emits an empty list item (<li><p></p></li>) for every blank line the
+# author leaves between bullets. The editor hides them, but they publish as stray
+# empty bullets — so strip empty list items on save. (Image-only <li> are kept:
+# the pattern only matches whitespace / empty <p> / <br>.)
+_EMPTY_LI_RE = re.compile(
+    r"<li>(?:\s|<p>(?:&nbsp;|\s|<br\s*/?>)*</p>|<br\s*/?>|&nbsp;)*</li>", re.I)
+
+
+def _clean_article_html(html):
+    """Strip empty list items from rich-editor HTML so the published page matches
+    the editor (no stray empty bullets)."""
+    if not html:
+        return html
+    return _EMPTY_LI_RE.sub("", html)
+
+
 def _row_to_full(r: dict) -> dict:
     return {**_row_to_summary(r),
             "body_md": r["body_md"] or "",
@@ -440,7 +456,7 @@ def create_article(body: ArticleCreate, author: dict = Depends(_resolve_author))
                       published_at, created_at, updated_at
             """,
             (slug, body.title.strip(), (body.subtitle or "").strip() or None,
-             body.body_md or "", body.body_html or None, body.hero_image_url,
+             body.body_md or "", _clean_article_html(body.body_html) or None, body.hero_image_url,
              author["user_id"], body.author_name.strip(), body.requires_tier or "free"),
         )
         row = dict(cur.fetchone())
@@ -474,7 +490,7 @@ def update_article(
         if body.body_md is not None:
             sets.append("body_md = %s"); params.append(body.body_md)
         if body.body_html is not None:
-            sets.append("body_html = %s"); params.append(body.body_html or None)
+            sets.append("body_html = %s"); params.append(_clean_article_html(body.body_html) or None)
         if body.hero_image_url is not None:
             sets.append("hero_image_url = %s"); params.append(body.hero_image_url or None)
         if body.author_name is not None:
