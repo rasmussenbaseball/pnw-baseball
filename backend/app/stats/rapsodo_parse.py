@@ -300,7 +300,14 @@ def _auto_classify(p, fb, hand):
     fbv = fb["velo"] if fb else velo
     fbivb = fb["ivb"] if fb else ivb
     fbhb = fb["arm_hb"] if fb else ahb
+    fbspin = fb.get("spin") if fb else None
     gap = fbv - velo                              # mph slower than the fastball
+    # A changeup loses LIFE vs the fastball — it kills the ride, the spin, or both
+    # (different pitchers lose different things; HIGH-SPIN changeups exist, so we do
+    # NOT cap changeup spin). A backed-off fastball keeps both, which is how we tell
+    # them apart even at the same movement profile.
+    ride_killed = ivb <= fbivb - 5
+    spin_killed = spin is not None and fbspin is not None and spin <= fbspin * 0.90
 
     # CUTTER: a few mph off the FB with the arm-side RUN COLLAPSED (run-drop, not
     # ride, is the tell — a real fastball keeps its run even sub-max) AND no depth.
@@ -312,17 +319,15 @@ def _auto_classify(p, fb, hand):
     # SINKER: near FB velo, ride taken off, heavy arm-side RUN (run is the tell).
     if gap <= 4 and ivb < SINK_IVB and ahb >= ARM_SIDE_RUN and (eff is None or eff >= 55):
         return "sinker"
-    # FASTBALL: keeps most of the FB's ride — a backed-off heater still RIDES, while a
-    # changeup kills the ride. The ride-vs-FB test (not absolute IVB) separates a
-    # sub-max fastball from a changeup thrown at the same velocity.
-    if gap <= 6 and ahb >= -2 and ivb >= fbivb - 5 and (eff is None or eff >= 55):
+    # FASTBALL: keeps BOTH ride and spin — a backed-off heater still rides and spins;
+    # a changeup kills one or both (even at the same velo). Velo gap alone doesn't demote it.
+    if gap <= 8 and ahb >= -2 and not ride_killed and not spin_killed and (eff is None or eff >= 55):
         return "fastball"
-    # OFFSPEED (changeup / splitter): slower with the ride KILLED vs the FB, and the
-    # spin REDUCED — a fastball-level spin (>= 2100) on a slow pitch is a misread or a
-    # mis-grip, not a changeup. A splitter TUMBLES (low absolute spin AND low eff); a
+    # OFFSPEED (changeup / splitter): slower with the LIFE killed (ride OR spin),
+    # arm-side to straight. A splitter TUMBLES (low absolute spin AND low eff); a
     # changeup needs arm-side FADE (ahb >= 4) — a slow pitch near/under 0 HB is a
     # breaking ball, not a changeup.
-    if gap >= 5 and ahb >= -3 and ivb <= fbivb - 5 and (spin is None or spin < 2300):
+    if gap >= 5 and ahb >= -3 and (ride_killed or spin_killed):
         if spin is not None and spin < 1450 and (eff is None or eff < 65):
             return "splitter"
         if ahb >= 4:
@@ -333,11 +338,13 @@ def _auto_classify(p, fb, hand):
         # cutter — coach rule: ~7+ IVB on a breaker is a cutter.
         if ivb >= 6 and ahb <= 6:
             return "cutter"
+        # GYRO SLIDER — bullet spin near (0,0). Checked BEFORE curveball so a shallow
+        # bullet-spin breaker with a little depth isn't split off as a curveball
+        # (Mason Chien threw the same gyro slider that straddled the 0-IVB line).
+        if g is not None and g >= 55 and abs(ahb) <= 5 and -6 <= ivb <= 6:
+            return "gyro slider"
         if ivb <= -2:
             return "curveball"
-        # A true gyro slider sits near (0,0): little ride, little break, bullet spin.
-        if g is not None and g >= 55 and abs(ahb) <= 5 and ivb <= 6:
-            return "gyro slider"
         if ahb <= -8:
             return "sweeper"
         return "slider"
