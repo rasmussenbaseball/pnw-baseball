@@ -155,17 +155,23 @@ function drawRow(ctx, x, y, w, p, logoImg) {
   ctx.fillText(truncText(ctx, meta, rightEdge - nameX), nameX, y + 34)
 }
 
-const W = 1240, PAD_X = 40, COL_GAP = 24, TOP_Y = 150
+// Standardized width for every draft board; height scales with the chosen Top N.
+const W = 1080, PAD_X = 40, COL_GAP = 24, TOP_Y = 150
 const COL_W = (W - PAD_X * 2 - COL_GAP) / 2
+const TOP_N_OPTIONS = [10, 20, 30, 40, 50]
 
+// How many prospects actually render for a board at a given Top N.
+function boardCount(year, topN) {
+  return Math.min(topN, (DRAFT_DATA[year]?.prospects || []).length)
+}
 function layoutHeight(n) {
   const perCol = Math.ceil(n / 2)
   return TOP_Y + perCol * (ROW_H + ROW_GAP) + 48
 }
 
-function renderGraphic(ctx, year, images) {
+function renderGraphic(ctx, year, images, topN) {
   const board = DRAFT_DATA[year]
-  const prospects = board?.prospects || []
+  const prospects = (board?.prospects || []).slice(0, topN)
   const H = layoutHeight(prospects.length)
   drawBackground(ctx, W, H)
   drawHeader(ctx, W, PAD_X, `${board.year} MLB DRAFT BOARD`,
@@ -184,6 +190,7 @@ function renderGraphic(ctx, year, images) {
 
 export default function DraftBoardGraphic() {
   const [year, setYear] = useState('26')
+  const [topN, setTopN] = useState(30)
   const [images, setImages] = useState(null)
   const [exporting, setExporting] = useState(false)
   const canvasRef = useRef(null)
@@ -209,7 +216,7 @@ export default function DraftBoardGraphic() {
   useEffect(() => {
     if (!images || !canvasRef.current) return
     const dpr = 2
-    const H = layoutHeight((DRAFT_DATA[year]?.prospects || []).length)
+    const H = layoutHeight(boardCount(year, topN))
     const canvas = canvasRef.current
     canvas.width = W * dpr
     canvas.height = H * dpr
@@ -219,30 +226,30 @@ export default function DraftBoardGraphic() {
     const ctx = canvas.getContext('2d')
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
-    renderGraphic(ctx, year, images)
-  }, [images, year])
+    renderGraphic(ctx, year, images, topN)
+  }, [images, year, topN])
 
   const handleExport = useCallback(() => {
     if (!images) return
     setExporting(true)
     try {
       const dpr = 2
-      const H = layoutHeight((DRAFT_DATA[year]?.prospects || []).length)
+      const H = layoutHeight(boardCount(year, topN))
       const canvas = document.createElement('canvas')
       canvas.width = W * dpr
       canvas.height = H * dpr
       const ctx = canvas.getContext('2d')
       ctx.scale(dpr, dpr)
-      renderGraphic(ctx, year, images)
+      renderGraphic(ctx, year, images, topN)
       const link = document.createElement('a')
-      link.download = `nwbb-${DRAFT_DATA[year].year}-draft-board.png`
+      link.download = `nwbb-${DRAFT_DATA[year].year}-draft-board-top${boardCount(year, topN)}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
     } catch (err) {
       console.error('Export failed:', err)
       alert('Export failed. Check console for details.')
     } finally { setExporting(false) }
-  }, [images, year])
+  }, [images, year, topN])
 
   return (
     <div>
@@ -259,6 +266,15 @@ export default function DraftBoardGraphic() {
         >
           {DRAFT_YEARS.filter((y) => DRAFT_DATA[y]?.prospects?.length).map((y) => (
             <option key={y} value={y}>{DRAFT_DATA[y].year} Draft Board</option>
+          ))}
+        </select>
+        <select
+          value={topN}
+          onChange={(e) => setTopN(Number(e.target.value))}
+          className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal-light"
+        >
+          {TOP_N_OPTIONS.map((n) => (
+            <option key={n} value={n}>Top {n}</option>
           ))}
         </select>
         <button
