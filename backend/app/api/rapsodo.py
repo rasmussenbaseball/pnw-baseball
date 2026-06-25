@@ -250,6 +250,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
             "n": len(ps),
         })
 
+    hand_profile = pronation_profile(arsenal, player.get("handedness"))
     return {
         "player": player,
         "sessions": sessions,
@@ -257,11 +258,12 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
         "plot": plot,
         "locations": locations,
         "arm": arm_profile(ok),
-        "hand_profile": pronation_profile(arsenal, player.get("handedness")),
+        "hand_profile": hand_profile,
         "trend": trend,
         "n_sessions": len(sessions),
         "stuff_version": rapsodo_stuff.VERSION,
-        "suggestions": generate_suggestions(arsenal, player.get("handedness"), len(ok)),
+        "suggestions": generate_suggestions(arsenal, player.get("handedness"), len(ok),
+                                            (hand_profile or {}).get("lean")),
     }
 
 

@@ -15,12 +15,25 @@ FB_LABELS = {"fastball", "sinker"}
 _CAVEAT_SHAPE = "Shape only — confirm it plays with command and that the grip/slot is repeatable."
 _CAVEAT_DESIGN = "A direction to explore with your pitching coach, not a guaranteed gain. Mind arm health."
 
+# ── Research-grounded platoon roles (Statcast-era, ~2017-2025) ──────────────
+# Sources: FanGraphs "The Cutter, a Platoon-Neutral Offering", "Sinkers, Change-ups
+# and Platoon Splits", "The Secret Benefit and Cost of Sweeping Sliders"; Baseball
+# Prospectus "Luis Castillo and the Pronator's Triangle"; FanGraphs / ESPN kick-change
+# breakdowns; MLB.com Statcast miss-distance. Findings: offspeed (CH/SPL) is the
+# opposite-handed weapon (used ~2.6x more vs opposite hand); breaking balls put away
+# same-handed hitters; horizontal pitches (sinker, sweeper) are platoon-VULNERABLE
+# while vertical/gyro pitches (gyro slider, cutter for RHP, changeup) are platoon-STABLE;
+# sweepers miss fewer bats than depth/gyro breakers; supinators suit a kick change or
+# splitter, pronators a hard gyro slider; cutter/gyro-slider can bridge a FB→slow-curve gap.
+_BREAKERS = {"slider", "sweeper", "curveball"}   # same-handed put-away
+_OFFSPEED = {"changeup", "splitter"}             # the opposite-handed weapon
+
 
 def _num(v):
     return float(v) if v is not None else None
 
 
-def generate_suggestions(arsenal, handedness=None, n_reliable=0):
+def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None):
     out = []
     if not arsenal:
         return out
@@ -109,25 +122,85 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0):
             "caveat": "Carry plays best with command up.",
         })
 
-    # ── directional coverage (arm slot relative) ────────────────────────
-    glove = [p for p in secondaries if p["arm_hb"] is not None and p["arm_hb"] <= -3]
-    arm_sec = [p for p in secondaries if p["arm_hb"] is not None and p["arm_hb"] >= 6]
-    if secondaries and not glove:
+    # ── platoon coverage + arsenal development (research-grounded) ───────
+    # Established pitch types (>= 2 reps, so a single misread doesn't trigger a rule).
+    types = {p["pitch"] for p in pitches if (p["count"] or 0) >= 2}
+    breakers = types & _BREAKERS
+    offspeed = types & _OFFSPEED
+    has_cutter = "cutter" in types
+    sup = "supinator" in (lean or "")
+    pron = "pronator" in (lean or "")
+    rhp = handedness == "R"
+
+    # OPPOSITE-handed coverage. Offspeed is THE pitch that resets the platoon; a cutter
+    # is platoon-neutral for RHP (not LHP). With neither, opposite-handed bats sit on it.
+    opp_cover = bool(offspeed) or (has_cutter and rhp)
+    if secondaries and not opp_cover:
+        rec = ("a kick changeup or splitter — as a supinator you'll get depth from those more "
+               "easily than a fading change" if sup
+               else "a changeup or splitter (kill spin for arm-side fade and depth)")
         out.append({
             "kind": "flag",
-            "title": "No glove-side weapon",
-            "detail": "Everything moves arm-side or straight — a hitter can sit on one side of the "
-                      "plate. Add a glove-side breaker (slider or sweeper) to attack the other "
-                      "side and steal called strikes back-door / back-foot.",
-            "caveat": "Supinators pick up sweepers naturally; pronators pick up gyro shapes. " + _CAVEAT_DESIGN,
+            "title": "No weapon for opposite-handed hitters",
+            "detail": "Nothing here resets the platoon. Offspeed (changeup / splitter) is the pitch "
+                      "that neutralizes opposite-handed bats — it's used about 2.6x more often that way "
+                      "for a reason. Add " + rec + ".",
+            "caveat": "Offspeed is the opposite-handed weapon (Statcast platoon-split research). " + _CAVEAT_DESIGN,
         })
-    if secondaries and not arm_sec:
+
+    # SAME-handed put-away. Breaking balls bury same-handed hitters glove-side.
+    if secondaries and not breakers and not has_cutter:
+        rec = ("a hard gyro slider — it tunnels off your arm-side stuff better than a sweeper" if pron
+               else "a sweeper or slider — supinators spin those up naturally" if sup
+               else "a gyro slider or sweeper")
         out.append({
             "kind": "flag",
-            "title": "No arm-side change of pace",
-            "detail": "No clear arm-side offspeed (changeup or sinker). A pitch that runs arm-side and "
-                      "slower gives opposite-handed hitters a different look and a velocity ladder.",
-            "caveat": _CAVEAT_DESIGN,
+            "title": "No same-handed put-away pitch",
+            "detail": "No breaking ball to attack same-handed hitters glove-side or steal back-foot "
+                      "strikes. Add " + rec + ".",
+            "caveat": "Breaking balls carry same-handed; release bias points the shape. " + _CAVEAT_DESIGN,
+        })
+
+    # ONLY a sweeper: platoon-vulnerable + lower whiff than a downer shape.
+    if breakers == {"sweeper"} and not has_cutter:
+        out.append({
+            "kind": "flag",
+            "title": "Sweeper is the only breaking ball",
+            "detail": "A big-horizontal sweeper misses bats vs same-handed hitters, but it flattens out "
+                      "and gets hit by opposite-handed bats, and it whiffs less than a depth shape. Add a "
+                      "vertical-depth slider or curveball (a 'downer') — it covers both sides better and "
+                      "misses more barrels.",
+            "caveat": "Vertical/gyro breakers out-whiff big-sweep shapes (Statcast). " + _CAVEAT_DESIGN,
+        })
+
+    # BRIDGE pitch: a big velocity jump from the fastball to a slow breaking ball with
+    # nothing in between lets hitters time both. A cutter/hard gyro slider ladders it.
+    slow_brk = [p for p in pitches if p["pitch"] in ("curveball", "sweeper")
+                and (p["count"] or 0) >= 2 and p["velo"]]
+    mid_present = has_cutter or "slider" in types
+    if fb_v and slow_brk and not mid_present:
+        slowest = min(slow_brk, key=lambda p: p["velo"])
+        gap = fb_v - slowest["velo"]
+        if gap >= 12:
+            rec = ("a cutter or a hard gyro slider" if sup else "a cutter (it tunnels off the heater "
+                   "and plays to both sides)")
+            out.append({
+                "kind": "flag",
+                "title": "Big gap between the fastball and the breaking ball",
+                "detail": f"About {round(gap)} mph from the fastball down to the {slowest['pitch']} with "
+                          f"nothing between — hitters can time both speeds. Add a bridge pitch in the mid-velocity "
+                          f"band: {rec}, to ladder velocity and tunnel off the fastball.",
+                "caveat": "Bridge/tunneling principle (arsenal-construction research). " + _CAVEAT_DESIGN,
+            })
+
+    # Well-rounded: covers both sides — positive reinforcement.
+    if secondaries and opp_cover and (breakers or has_cutter) and len(types) >= 4:
+        out.append({
+            "kind": "strength",
+            "title": "Arsenal covers both sides",
+            "detail": "You've got an offspeed for opposite-handed bats and a breaker for same-handed bats — "
+                      "the platoon coverage is there. Focus reps on sharpening shapes and command, not adding pitches.",
+            "caveat": "Coverage ≠ command; quality of each shape still decides it.",
         })
 
     # ── changeup separation ─────────────────────────────────────────────
