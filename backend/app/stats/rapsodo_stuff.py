@@ -1,4 +1,4 @@
-"""Stuff model (v1) — a transparent, research-grounded transfer model.
+"""Stuff model (v1.1) — a transparent, research-grounded transfer model.
 
 Not a trained GBM. Bullpen Rapsodo data has no outcomes, so instead of fitting
 our own model we TRANSFER published effect sizes from the public Stuff+ literature
@@ -7,22 +7,25 @@ model centered on per-pitch-type anchors. 100 = average FOR THAT pitch type;
 ~10 points ≈ 1 SD; NOT comparable across pitch types (a 110 slider ≠ 110 sinker).
 See RAPSODO_TOOL_DESIGN.md §9.
 
-Grounded coefficients (provenance in comments):
-  * Velocity ≈ 6 Stuff+ pts / mph, convex above ~96 mph (Driveline 2024).  [firm]
-  * Extension → perceived velo: velo + 1.7*(ext - 6.3 ft) (Statcast).        [firm]
-  * Secondaries graded on velo + movement DIFFERENTIAL from the pitcher's own
-    fastball, weighted >= absolute movement (Driveline/tjStuff+).            [firm principle]
-  * Within-type 100-centered scaling.                                        [firm]
-  * Per-type ANCHORS below are COLLEGE-provisional estimates so college arms
-    center near 100 (MLB means mis-center for college — Baseball America /
-    CornBelters). RECALIBRATE from our own population once enough pitches land. [estimate]
+v1.1 — SELF-CALIBRATION: the velocity anchor (mean + SD) is read from the
+population, via backend/data/rapsodo_anchors.json (scripts/rapsodo/calibrate.py),
+when we have enough samples. The velocity term is SD-scaled (Stuff+'s 100±10/SD
+convention) so a wide college velo spread doesn't blow the scale up. Movement
+anchors stay on college-provisional defaults for now because IVB/HB mix spin- and
+trajectory-basis devices and need basis-aware calibration; movement terms are
+also capped so a trajectory-basis device can't dominate a grade.
+
+Grounded coefficients: velo ~per-SD (Driveline ~6 pts/mph at MLB SD); perceived
+velo = velo + 1.7*(ext-6.3) [Statcast]; secondaries graded on the velo + movement
+DIFFERENTIAL off the pitcher's own fastball [Driveline/tjStuff+].
 """
+import json
 import math
+import os
 
-VERSION = "v1"
+VERSION = "v1.1"
 
-# Per-type anchors: (velo mph, IVB in, arm-side HB in). arm_hb is arm-side-positive.
-# COLLEGE-provisional — flagged for recalibration from real NWBB data.
+# Per-type DEFAULT anchors: (velo mph, IVB in, arm-side HB in). College-provisional.
 _A = {
     "4-seam (ride)":    (90, 16, 8),
     "fastball (mixed)": (89, 14, 10),
@@ -37,6 +40,41 @@ _A = {
 _FB_TYPES = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam", "cutter"}
 _REF_FB = (90, 16, 8)            # college-avg 4-seam, for centering secondary separations
 _EXT_AVG = 6.3                   # league-avg extension (ft)
+_DEFAULT_VELO_SD = 3.5
+_MIN_CALIB_N = 12                # min samples before trusting a calibrated velo anchor
+
+_ANCHORS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "rapsodo_anchors.json")
+_calib = None
+
+
+def _load_calib():
+    global _calib
+    if _calib is None:
+        try:
+            with open(_ANCHORS_PATH) as fh:
+                _calib = json.load(fh)
+        except Exception:  # noqa: BLE001 — missing/bad file → use defaults
+            _calib = {}
+    return _calib
+
+
+def reload_calibration():
+    """Drop the cached anchors so the next grade() re-reads the JSON (call after
+    recomputing it)."""
+    global _calib
+    _calib = None
+
+
+def _velo_anchor(pitch):
+    """(mean velo, velo SD) — calibrated from population data when we have enough
+    samples, else the college-provisional default."""
+    mean, sd = _A[pitch][0], _DEFAULT_VELO_SD
+    c = _load_calib().get(pitch)
+    if c and c.get("n", 0) >= _MIN_CALIB_N and c.get("velo") is not None:
+        mean = c["velo"]
+        if c.get("velo_sd"):
+            sd = min(5.0, max(2.5, c["velo_sd"]))
+    return mean, sd
 
 
 def _f(v):
@@ -48,52 +86,59 @@ def _perceived_velo(velo, ext):
     return velo + 1.7 * (ext - _EXT_AVG) if ext else velo
 
 
-def _velo_pts(pv, mean, slope=6.0):
-    pts = slope * (pv - mean)
-    if pv > 96:                  # convex: velocity overpowers shape above ~96 [firm direction]
-        pts += 4.0 * (pv - 96)
+def _velo_pts(pv, mean, sd, slope=9.0):
+    # SD-scaled (~per Stuff+ 100±10/SD). Mild convex bump for genuine velo outliers.
+    pts = slope * (pv - mean) / sd
+    if pv > 95:
+        pts += 1.5 * (pv - 95)
     return pts
 
 
+def _cap(x, lo=-13.0, hi=13.0):
+    return max(lo, min(hi, x))
+
+
 def grade(entry, fb):
-    """Stuff v1 for one arsenal centroid. fb = fastball centroid {velo,ivb,arm_hb}.
+    """Stuff v1.1 for one arsenal centroid. fb = fastball centroid {velo,ivb,arm_hb}.
     Returns (score:int, components:dict) or (None, None)."""
     pitch = entry.get("pitch")
-    a = _A.get(pitch)
-    velo, ivb, hb = _f(entry.get("velo")), _f(entry.get("ivb")), _f(entry.get("arm_hb"))
-    if a is None or velo is None or ivb is None or hb is None:
+    if pitch not in _A:
         return None, None
+    velo, ivb, hb = _f(entry.get("velo")), _f(entry.get("ivb")), _f(entry.get("arm_hb"))
+    if velo is None or ivb is None or hb is None:
+        return None, None
+    velo_mean, velo_sd = _velo_anchor(pitch)
+    ivb_mean, hb_mean = _A[pitch][1], _A[pitch][2]
     pv = _perceived_velo(velo, _f(entry.get("ext")))
     comp = {}
 
     if pitch in _FB_TYPES:
-        comp["velo"] = round(_velo_pts(pv, a[0]), 1)
+        comp["velo"] = round(_velo_pts(pv, velo_mean, velo_sd), 1)
         if pitch == "sinker / 2-seam":
-            comp["run"] = round(1.2 * (hb - a[2]), 1)        # more arm-side run
-            comp["drop"] = round(1.0 * (a[1] - ivb), 1)      # less ride = more sink
+            comp["run"] = round(_cap(1.2 * (hb - hb_mean)), 1)       # more arm-side run
+            comp["drop"] = round(_cap(1.0 * (ivb_mean - ivb)), 1)    # less ride = more sink
         elif pitch == "cutter":
-            comp["shape"] = round(0.6 * (a[1] - ivb), 1)     # ride taken off
+            comp["shape"] = round(_cap(0.6 * (ivb_mean - ivb)), 1)   # ride taken off
         else:  # 4-seam / mixed: reward ride + flat VAA
-            comp["ride"] = round(1.5 * (ivb - a[1]), 1)
+            comp["ride"] = round(_cap(1.5 * (ivb - ivb_mean)), 1)
             vaa = _f(entry.get("vaa"))
-            if vaa is not None:                              # flatter than -5 deg = whiffs up [firm rank]
-                comp["vaa"] = round(max(-10, min(10, 6.0 * (vaa + 5))), 1)
+            if vaa is not None:                                      # flatter than -5 deg = whiffs up
+                comp["vaa"] = round(_cap(6.0 * (vaa + 5), -10, 10), 1)
     else:
         # Secondaries: own velo matters less; the DIFFERENTIAL off the fastball
         # carries the grade (tunneling-then-divergence).
-        comp["velo"] = round(_velo_pts(pv, a[0], slope=3.0), 1)
-        if fb and fb.get("velo") is not None and fb.get("ivb") is not None and fb.get("arm_hb") is not None:
+        comp["velo"] = round(_velo_pts(pv, velo_mean, velo_sd, slope=5.0), 1)
+        if fb and all(fb.get(k) is not None for k in ("velo", "ivb", "arm_hb")):
             velo_sep = fb["velo"] - velo
-            ref_vsep = _REF_FB[0] - a[0]
-            comp["fb_velo_sep"] = round(1.5 * (velo_sep - ref_vsep), 1)
+            ref_vsep = _REF_FB[0] - velo_mean
+            comp["fb_velo_sep"] = round(_cap(1.5 * (velo_sep - ref_vsep)), 1)
             move_diff = math.hypot(ivb - fb["ivb"], hb - fb["arm_hb"])
-            ref_mdiff = math.hypot(a[1] - _REF_FB[1], a[2] - _REF_FB[2])
-            comp["fb_move_sep"] = round(1.0 * (move_diff - ref_mdiff), 1)
-            if pitch == "changeup":                          # kill ride vs FB, target ~8" [firm benchmark]
-                comp["ride_kill"] = round(1.0 * ((fb["ivb"] - ivb) - 8), 1)
+            ref_mdiff = math.hypot(ivb_mean - _REF_FB[1], hb_mean - _REF_FB[2])
+            comp["fb_move_sep"] = round(_cap(1.0 * (move_diff - ref_mdiff)), 1)
+            if pitch == "changeup":                                 # kill ride vs FB, target ~8"
+                comp["ride_kill"] = round(_cap(1.0 * ((fb["ivb"] - ivb) - 8)), 1)
 
-    score = 100 + sum(comp.values())
-    return max(20, min(175, round(score))), comp
+    return max(20, min(175, round(100 + sum(comp.values())))), comp
 
 
 def fb_from_arsenal(arsenal):

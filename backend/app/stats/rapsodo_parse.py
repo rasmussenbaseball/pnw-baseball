@@ -220,7 +220,10 @@ def classify(p, fb, hand):
     gap = fbv - velo                              # mph slower than the fastball
 
     # FASTBALL FAMILY: hard (not much slower than the FB), arm-side, riding.
-    if gap <= 6 and (eff is None or eff >= 80) and ivb >= 6 and ahb >= -2:
+    # eff floor is low (70) on purpose: plenty of good fastballs spin at 70-80%
+    # efficiency, and a lower-eff pitch that's still hard + riding + arm-side is a
+    # fastball, not a breaker (breakers are glove-side or low-ride, excluded below).
+    if gap <= 6 and (eff is None or eff >= 70) and ivb >= 6 and ahb >= -2:
         if ivb >= RIDE_IVB and ahb < 10:
             return "4-seam (ride)"
         if ivb < SINK_IVB and ahb >= ARM_SIDE_RUN:
@@ -327,7 +330,9 @@ def aggregate_arsenal(ok_pitches):
             "tilt": _common_tilt(ps),
             "rel_height": _mean([p["rel_height"] for p in ps]),
             "rel_side": _mean([p["rel_side"] for p in ps]),
-            "ext": _mean([p["extension"] for p in ps]),
+            # exclude 0 / None: some devices report extension as 0 when unmeasured,
+            # and averaging those zeros in wrecks perceived-velo / Stuff.
+            "ext": _mean([p["extension"] for p in ps if p["extension"] not in (None, 0)]),
         })
     arsenal.sort(key=lambda a: a["count"], reverse=True)
     return arsenal
