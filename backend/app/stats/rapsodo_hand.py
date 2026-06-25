@@ -16,8 +16,53 @@ The tells (supinator = +, pronator = -):
 All movement inputs use arm-side-positive HB (already normalized), so the logic is
 handedness-agnostic. It's an estimate, not a verdict. See RAPSODO_TOOL_DESIGN.md.
 """
+import math
+
 _FB = {"fastball", "sinker"}
 _BREAKERS = {"slider", "sweeper", "curveball"}
+
+# Per-pitch platoon values (vs SAME-handed hitter, vs OPPOSITE-handed hitter), 0-1.
+# Grounded in Statcast-era platoon-split research + coach input: a ride 4-seam is
+# roughly neutral with a slight opposite-hand tilt; a sinker is strongly same-side; a
+# cutter helps the opposite side (RHP-neutral); a gyro slider is same-side-first; a
+# sweeper is strongly same-side and platoon-vulnerable opposite; a curveball is fairly
+# neutral; changeup & splitter are the opposite-handed weapons.
+_PLATOON = {
+    "fastball":  (0.75, 0.95),
+    "sinker":    (1.00, 0.30),
+    "cutter":    (0.70, 0.90),
+    "slider":    (1.00, 0.55),
+    "sweeper":   (1.00, 0.30),
+    "curveball": (0.80, 0.65),
+    "changeup":  (0.40, 1.00),
+    "splitter":  (0.55, 1.00),
+}
+
+
+def platoon_profile(arsenal, hand=None):
+    """Platoon coverage scores (0-100) vs RHH and LHH from the ESTABLISHED arsenal
+    (pitch types with >= 2 reps). Depth is rewarded via a saturating sum, so a 4-5
+    pitch mix that genuinely works against a side scores far higher than one or two
+    offerings. Returns per-pitch vs-RHH/vs-LHH values for the visual, or None."""
+    pitches = [a for a in (arsenal or [])
+               if (a.get("count") or 0) >= 2 and a.get("pitch") in _PLATOON]
+    if not pitches:
+        return None
+    same = sum(_PLATOON[a["pitch"]][0] for a in pitches)
+    opp = sum(_PLATOON[a["pitch"]][1] for a in pitches)
+    score = lambda s: round(100 * (1 - math.exp(-0.5 * s)))   # noqa: E731
+    same_s, opp_s = score(same), score(opp)
+    lhp = hand == "L"
+    per = [{"pitch": a["pitch"],
+            "vs_rhh": round((_PLATOON[a["pitch"]][1] if lhp else _PLATOON[a["pitch"]][0]) * 100),
+            "vs_lhh": round((_PLATOON[a["pitch"]][0] if lhp else _PLATOON[a["pitch"]][1]) * 100)}
+           for a in pitches]
+    return {
+        "vs_rhh": opp_s if lhp else same_s,
+        "vs_lhh": same_s if lhp else opp_s,
+        "n_pitches": len(pitches),
+        "pitches": per,
+    }
 
 
 def _f(v):

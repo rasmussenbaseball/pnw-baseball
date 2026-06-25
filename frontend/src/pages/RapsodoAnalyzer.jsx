@@ -441,7 +441,7 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
 
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
-  const { player, arsenal, plot, locations, arm, hand_profile, trend, sessions, n_sessions, suggestions } = data
+  const { player, arsenal, plot, locations, arm, hand_profile, platoon, trend, sessions, n_sessions, suggestions } = data
 
   return (
     <div className="mt-2">
@@ -481,6 +481,7 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
 
       {tab === 'notes' ? (
         <div className="space-y-6">
+          <PlatoonCard platoon={platoon} />
           <CoachingNotes suggestions={suggestions} />
           <PronationCard profile={hand_profile} />
         </div>
@@ -623,6 +624,48 @@ function DevelopmentTrends({ trend }) {
           <TrendChart key={s.key} title={s.title} unit={s.unit} color={s.color} decimals={s.decimals}
             points={trend.map((t) => ({ date: t.session_date, value: t[s.key] }))} />
         ))}
+      </div>
+    </div>
+  )
+}
+
+function PlatoonCard({ platoon }) {
+  if (!platoon) return null
+  const barColor = (s) => (s >= 75 ? '#16a34a' : s >= 55 ? '#d97706' : '#dc2626')
+  const Bar = ({ label, score }) => (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
+        <span className="text-lg font-bold" style={{ color: barColor(score) }}>{score}</span>
+      </div>
+      <div className="h-2.5 w-full rounded-full bg-gray-100 dark:bg-gray-800">
+        <div className="h-2.5 rounded-full" style={{ width: `${score}%`, background: barColor(score) }} />
+      </div>
+    </div>
+  )
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+      <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">Platoon coverage</h3>
+      <p className="mb-3 text-xs text-gray-400">
+        How well the arsenal plays vs right- and left-handed hitters (0–100). More pitches that
+        work against a side score higher — offspeed (changeup/splitter) carries opposite-handed bats,
+        breaking balls bury same-handed ones, and ride fastballs &amp; cutters cover the opposite side.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Bar label="vs RHH" score={platoon.vs_rhh} />
+        <Bar label="vs LHH" score={platoon.vs_lhh} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {platoon.pitches.map((p) => {
+          const d = p.vs_rhh - p.vs_lhh
+          const tag = Math.abs(d) <= 15 ? 'both sides' : d > 0 ? 'vs RHH' : 'vs LHH'
+          return (
+            <span key={p.pitch} className="rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-[11px] text-gray-700 dark:text-gray-300">
+              <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: colorFor(p.pitch) }} />
+              {p.pitch} <span className="text-gray-400">· {tag}</span>
+            </span>
+          )
+        })}
       </div>
     </div>
   )
