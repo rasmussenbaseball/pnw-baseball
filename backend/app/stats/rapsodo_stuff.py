@@ -23,7 +23,9 @@ import json
 import math
 import os
 
-VERSION = "v1.1"
+from .stuff_model import grade_pitch
+
+VERSION = "v2-college"   # WCL TrackMan whiff/chase model; heuristic fallback below
 
 # Per-type DEFAULT anchors: (velo mph, IVB in, arm-side HB in). College-provisional.
 _A = {
@@ -74,6 +76,28 @@ def reload_calibration():
     _calib = None
 
 
+_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "rapsodo_stuff_model.json")
+_model = None
+_model_mtime = None
+
+
+def _load_model():
+    """Load the exported WCL TrackMan model, hot-reloading when it changes."""
+    global _model, _model_mtime
+    try:
+        m = os.path.getmtime(_MODEL_PATH)
+    except OSError:
+        m = None
+    if _model is None or m != _model_mtime:
+        _model_mtime = m
+        try:
+            with open(_MODEL_PATH) as fh:
+                _model = json.load(fh)
+        except Exception:  # noqa: BLE001 — missing/bad file → heuristic fallback
+            _model = {}
+    return _model
+
+
 def _velo_anchor(pitch):
     """(mean velo, velo SD) — calibrated from population data when we have enough
     samples, else the college-provisional default."""
@@ -108,8 +132,17 @@ def _cap(x, lo=-13.0, hi=13.0):
 
 
 def grade(entry, fb):
-    """Stuff v1.1 for one arsenal centroid. fb = fastball centroid {velo,ivb,arm_hb}.
-    Returns (score:int, components:dict) or (None, None)."""
+    """Stuff for one arsenal centroid. Prefer the trained WCL TrackMan model
+    (whiff/chase); fall back to the transparent heuristic when the model can't
+    score the pitch (no artifact, missing inputs, or a type it doesn't cover)."""
+    g, comp = grade_pitch(_load_model(), entry.get("pitch"), entry, fb)
+    if g is not None:
+        return g, comp
+    return _heuristic_grade(entry, fb)
+
+
+def _heuristic_grade(entry, fb):
+    """Transfer heuristic (v1.1) — see module header. Fallback only."""
     pitch = entry.get("pitch")
     if pitch not in _A:
         return None, None

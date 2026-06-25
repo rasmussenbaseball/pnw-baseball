@@ -27,6 +27,7 @@ Usage:
     PYTHONPATH=backend python3 scripts/trackman/compute_pitch_grades.py            # report only
     PYTHONPATH=backend python3 scripts/trackman/compute_pitch_grades.py --commit   # write pitch_grade + est_vaa
 """
+import json
 import math
 import sys
 from statistics import NormalDist
@@ -36,6 +37,12 @@ import numpy as np
 from app.models.database import get_connection
 
 COMMIT = "--commit" in sys.argv
+# --export <path>: also dump the fitted per-pitch-type parameters as JSON so the
+# Rapsodo Stuff model can apply THIS model (trained on WCL whiff/chase) to its own
+# data. Additive — does not change the TrackMan grading/commit path.
+EXPORT = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--export" and i + 1 < len(sys.argv)), None)
+_SLOT_ALPHA = 0.6
+_EXPORT = {}   # pt -> {slot_coef, slot_ybar, coef, shrink, pred_mean, pred_std, means, stds}
 MIN_PITCHES = 5
 Z_REF_FT = 2.4          # reference plate-crossing height (mid-zone) for VAA
 GRADE_MEAN, GRADE_SD = 100.0, 25.0
@@ -237,10 +244,11 @@ def _run(conn):
         # deviation. ALPHA=1 fully neutralizes slot (over-corrects, costs the
         # real "over-the-top ride -> whiffs" signal); ALPHA=0 ignores slot. ~0.6
         # removes most of the submarine penalty while keeping absolute ride.
-        ALPHA = 0.6
+        ALPHA = _SLOT_ALPHA
         for raw, adj in (("est_vaa", "vaa_adj"),):
             y = np.array([float(r[raw]) for r in sub])
             ybar = wmean(y, w)
+            coef = np.array([ybar, 0.0, 0.0])
             try:
                 coef = np.linalg.solve(Xs.T @ W @ Xs + 1e-6 * np.eye(3), Xs.T @ W @ y)
                 slot_effect = Xs @ coef - ybar
@@ -248,6 +256,8 @@ def _run(conn):
                 slot_effect = np.zeros(len(sub))
             for r, yi, se in zip(sub, y, slot_effect):
                 r[adj] = float(yi - ALPHA * se)
+            _EXPORT.setdefault(pt, {}).update(
+                {"slot_coef": [float(c) for c in coef], "slot_ybar": float(ybar)})
 
     # Standardize each feature WITHIN pitch type.
     norm = {}  # (ptype, feat) -> (mean, std) count-weighted
@@ -320,6 +330,13 @@ def _run(conn):
         # type (e.g. 21 splitters) can't earn full grade spread off a lucky CV.
         reliability = min(1.0, ntr / 60.0)
         shrink[pt] = max(0.0, min(1.0, cv_r / SHRINK_TARGET)) * reliability
+        _pw = np.array([r["pitch_count"] for r in members], float)
+        _pp = np.array([r["_pred"] for r in members], float)
+        _EXPORT.setdefault(pt, {}).update({
+            "coef": [float(c) for c in coef], "mx": [float(x) for x in mx], "my": float(my),
+            "shrink": float(shrink[pt]), "pred_mean": wmean(_pp, _pw), "pred_std": wstd(_pp, _pw),
+            "means": [norm[(pt, f)][0] for f in FEATURES], "stds": [norm[(pt, f)][1] for f in FEATURES],
+        })
         short = {"hb_abs": "|hb|", "extension": "ext", "ivb_adj": "ivb", "vaa_adj": "vaa",
                  "rel_side_abs": "|rs|", "velo_sep": "vsep", "ivb_sep": "isep", "mov_sep": "msep"}
         top = sorted(zip(FEATURES, coef), key=lambda kv: -abs(kv[1]))
@@ -360,6 +377,16 @@ def _run(conn):
             print(f"    {pt:<10} r={wcorr(g[ii], wh[ii], w[ii]):+.3f}  n={len(idx)}  "
                   f"grade {min(r['pitch_grade'] for r in allr if r['pitch_type']==pt):.0f}-"
                   f"{max(r['pitch_grade'] for r in allr if r['pitch_type']==pt):.0f}")
+
+    if EXPORT:
+        model = {
+            "features": FEATURES, "slot_alpha": _SLOT_ALPHA,
+            "grade_mean": GRADE_MEAN, "grade_sd": GRADE_SD, "z_ref": Z_REF_FT,
+            "types": {pt: d for pt, d in _EXPORT.items() if "coef" in d},
+        }
+        with open(EXPORT, "w") as fh:
+            json.dump(model, fh, indent=2)
+        print(f"\nEXPORTED model ({len(model['types'])} pitch types) -> {EXPORT}")
 
     if COMMIT:
         cur.execute("ALTER TABLE trackman_pitches ADD COLUMN IF NOT EXISTS pitch_grade numeric")
