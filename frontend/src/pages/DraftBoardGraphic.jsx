@@ -93,11 +93,6 @@ function drawHeader(ctx, W, padX, title, subtitle, faviconImg) {
   ctx.font = `700 17px ${F}`
   ctx.fillStyle = THEME.accent
   ctx.fillText(subtitle, padX, curY)
-  // trend legend (right side of header)
-  ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-  ctx.font = `700 13px ${F}`
-  ctx.fillStyle = THEME.up; ctx.fillText('▲ Rising', W - padX, 40)
-  ctx.fillStyle = THEME.down; ctx.fillText('▼ Falling', W - padX, 60)
   const headerH = 132
   ctx.strokeStyle = THEME.border; ctx.lineWidth = 2
   ctx.beginPath(); ctx.moveTo(0, headerH); ctx.lineTo(W, headerH); ctx.stroke()
@@ -129,20 +124,15 @@ function drawRow(ctx, x, y, w, p, logoImg) {
   ctx.font = `900 19px ${F}`
   ctx.fillStyle = p.rank <= 10 ? THEME.gold : THEME.accent
   ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-  ctx.fillText(String(p.rank), x + 38, midY)
-
-  // Trend arrow
-  ctx.textAlign = 'center'
-  if (p.movement === 'up') { ctx.fillStyle = THEME.up; ctx.font = `900 11px ${F}`; ctx.fillText('▲', x + 54, midY) }
-  else if (p.movement === 'down') { ctx.fillStyle = THEME.down; ctx.font = `900 11px ${F}`; ctx.fillText('▼', x + 54, midY) }
+  ctx.fillText(String(p.rank), x + 44, midY)
 
   // School logo
-  const lcx = x + 82, lr = 15
+  const lcx = x + 68, lr = 15
   ctx.fillStyle = THEME.circleBg
   ctx.beginPath(); ctx.arc(lcx, midY, lr + 2, 0, Math.PI * 2); ctx.fill()
   if (logoImg) drawImageContain(ctx, logoImg, lcx - lr + 2, midY - lr + 2, lr * 2 - 4, lr * 2 - 4)
 
-  const nameX = x + 104
+  const nameX = x + 90
   let rightEdge = x + w - 12
 
   // Commitment (right-aligned, only HS/JC)
