@@ -297,12 +297,7 @@ def _auto_classify(p, fb, hand):
     fbv = fb["velo"] if fb else velo
     fbivb = fb["ivb"] if fb else ivb
     fbhb = fb["arm_hb"] if fb else ahb
-    fbspin = fb.get("spin") if fb else None
     gap = fbv - velo                              # mph slower than the fastball
-    # Offspeed (change/split) KILLS spin vs the fastball; a sub-max fastball, sinker,
-    # or cutter keeps its spin. This is the reliable separator when velocity alone is
-    # ambiguous (a firm changeup vs a backed-off heater).
-    spin_killed = spin is not None and fbspin is not None and spin <= fbspin - 250
 
     # CUTTER: a few mph off the FB with the arm-side RUN COLLAPSED (run-drop, not
     # ride, is the tell — a real fastball keeps its run even sub-max) AND no depth.
@@ -311,16 +306,18 @@ def _auto_classify(p, fb, hand):
     # so the broad fastball gate doesn't swallow it.
     if 1.5 <= gap <= 8 and ahb <= 6 and ahb <= fbhb - 7 and ivb >= 3:
         return "cutter"
-    # FASTBALL FAMILY: near FB velo, arm-side, riding, spin NOT killed (else it's a
-    # changeup). A low-eff but hard/riding/arm-side pitch is still a fastball.
-    if gap <= 6 and ivb >= 6 and ahb >= -2 and not spin_killed and (eff is None or eff >= 55):
-        if ivb < SINK_IVB and ahb >= ARM_SIDE_RUN:
-            return "sinker"
+    # SINKER: near FB velo, ride taken off, heavy arm-side RUN (run is the tell).
+    if gap <= 4 and ivb < SINK_IVB and ahb >= ARM_SIDE_RUN and (eff is None or eff >= 55):
+        return "sinker"
+    # FASTBALL: keeps most of the FB's ride — a backed-off heater still RIDES, while a
+    # changeup kills the ride. The ride-vs-FB test (not absolute IVB) separates a
+    # sub-max fastball from a changeup thrown at the same velocity.
+    if gap <= 6 and ahb >= -2 and ivb >= fbivb - 5 and (eff is None or eff >= 55):
         return "fastball"
-    # OFFSPEED (changeup / splitter): slower with the spin killed vs the fastball.
-    if gap >= 5 and spin_killed and ahb >= -3:
-        # A splitter TUMBLES: low absolute spin AND low efficiency. Changeups keep
-        # higher efficiency and fade — so efficiency, not just spin, splits the two.
+    # OFFSPEED (changeup / splitter): slower with the ride KILLED vs the FB, arm-side
+    # to straight. A splitter additionally TUMBLES — low absolute spin AND low
+    # efficiency; changeups keep efficiency and fade.
+    if gap >= 5 and ahb >= -3 and ivb <= fbivb - 5:
         if spin is not None and spin < 1450 and (eff is None or eff < 65):
             return "splitter"
         return "changeup"
