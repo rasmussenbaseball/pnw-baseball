@@ -29,6 +29,13 @@ const PITCH_COLORS = {
 const colorFor = (p) => PITCH_COLORS[p] || '#9ca3af'
 const fmt = (v, d = 1) => (v === null || v === undefined ? '–' : Number(v).toFixed(d))
 const handLabel = (h) => ({ R: 'RHP', L: 'LHP' }[h] || '—')
+// Arm angle is a rough estimate (no shoulder pose; rubber position shifts release
+// data), so we present it as a ~10° band rather than a false-precision number.
+const angleBand = (a) => {
+  if (a == null) return null
+  const c = Math.round(a / 5) * 5
+  return { lo: c - 5, hi: c + 5, label: `${c - 5}–${c + 5}°` }
+}
 
 export default function RapsodoAnalyzer() {
   const [selected, setSelected] = useState(null)
@@ -289,9 +296,12 @@ function PlayerProfile({ rapsodoId, onBack }) {
         <div className="lg:col-span-2 space-y-6">
           <div>
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Movement profile</h3>
-            <MovementPlot points={plot} arsenal={arsenal} onPitchClick={(p) => setRelabel(p)} activeId={relabel?.id} />
+            <MovementPlot points={plot} arsenal={arsenal} onPitchClick={(p) => setRelabel(p)}
+              activeId={relabel?.id} armAngle={arm?.arm_angle} hand={player.handedness} />
             <p className="mt-2 text-xs text-gray-400">
-              Pitcher's view: arm side →, ride ↑. Rings = lower-confidence reads. Click a dot to reclassify it.
+              Pitcher's view, ride ↑. Shaded blobs = movement by pitch type, dots = individual pitches.
+              The diagonal is the arm-angle axis — a fastball matching the slot sits along it; pitches
+              off it are deviating. Rings = lower-confidence reads. Click a dot to reclassify it.
             </p>
             {relabel && (
               <ReclassifyMenu point={relabel} saving={saving}
@@ -627,11 +637,40 @@ function ReclassifyMenu({ point, saving, onPick, onClose }) {
   )
 }
 
-function MovementPlot({ points, arsenal, onPitchClick, activeId }) {
+function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand }) {
   const W = 380, H = 380, PAD = 30, DOM = 26
   const sx = (v) => PAD + ((v + DOM) / (2 * DOM)) * (W - 2 * PAD)
   const sy = (v) => PAD + ((DOM - v) / (2 * DOM)) * (H - 2 * PAD)
   const ticks = [-20, -10, 0, 10, 20]
+  // Real horizontal break: RHP arm side to the right, LHP arm side to the left.
+  // (`arm_hb` is arm-normalized, so flip lefties back to true orientation.)
+  const hbSign = hand === 'L' ? -1 : 1
+  const dx = (armhb) => sx(armhb * hbSign)
+
+  // Movement blobs: one large, lightly shaded circle per pitch type, sized to the
+  // cluster's spread, so the eye reads pitch-type movement separately from the dots.
+  const groups = {}
+  for (const p of points) {
+    if (p.quality === 'ok' && p.pitch && p.pitch !== 'unclassified' && p.arm_hb != null && p.ivb != null) {
+      (groups[p.pitch] ||= []).push(p)
+    }
+  }
+  const blobs = Object.entries(groups).filter(([, ps]) => ps.length >= 2).map(([pitch, ps]) => {
+    const cxx = ps.reduce((s, p) => s + dx(p.arm_hb), 0) / ps.length
+    const cyy = ps.reduce((s, p) => s + sy(p.ivb), 0) / ps.length
+    const rms = Math.sqrt(ps.reduce((s, p) => s + (dx(p.arm_hb) - cxx) ** 2 + (sy(p.ivb) - cyy) ** 2, 0) / ps.length)
+    return { pitch, cxx, cyy, r: Math.max(15, Math.min(72, rms * 1.5)) }
+  })
+
+  // Arm-angle axis: line through the origin at the arm angle, into the arm-side/ride
+  // quadrant. A spin-efficient fastball for this slot lands along it.
+  let axis = null
+  if (armAngle != null) {
+    const th = (armAngle * Math.PI) / 180
+    const ax = hbSign * DOM * Math.cos(th), ay = DOM * Math.sin(th)
+    const band = angleBand(armAngle)
+    axis = { x1: sx(-ax), y1: sy(-ay), x2: sx(ax), y2: sy(ay), lx: sx(ax * 0.82), ly: sy(ay * 0.82), label: band.label }
+  }
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[420px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -651,17 +690,30 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId }) {
           <text x={sx(0) - 5} y={sy(t) + 3} textAnchor="end" className="fill-gray-400 text-[9px]">{t}</text>
         </g>
       ))}
-      {/* per-pitch dots — clickable to reclassify; thick ring = manual override */}
+      {/* arm-angle axis (drawn under the data) */}
+      {axis && (
+        <g>
+          <line x1={axis.x1} y1={axis.y1} x2={axis.x2} y2={axis.y2}
+            className="stroke-gray-400 dark:stroke-gray-500" strokeWidth="1.5" strokeDasharray="5 4" opacity="0.7" />
+          <text x={axis.lx} y={axis.ly} textAnchor="middle" className="fill-gray-400 text-[9px] font-medium">arm slot {axis.label}</text>
+        </g>
+      )}
+      {/* movement blobs per pitch type */}
+      {blobs.map((b) => (
+        <circle key={b.pitch} cx={b.cxx} cy={b.cyy} r={b.r}
+          fill={colorFor(b.pitch)} fillOpacity="0.1" stroke={colorFor(b.pitch)} strokeOpacity="0.35" strokeWidth="1" />
+      ))}
+      {/* per-pitch dots — lighter; clickable to reclassify; thick ring = manual override */}
       {points.map((p, i) => (
         <circle
           key={p.id ?? i}
-          cx={sx(p.arm_hb)}
+          cx={dx(p.arm_hb)}
           cy={sy(p.ivb)}
-          r={p.id === activeId ? 6 : (p.quality === 'ok' ? 4 : 3.5)}
+          r={p.id === activeId ? 6 : (p.quality === 'ok' ? 3.5 : 3)}
           fill={p.quality === 'ok' ? colorFor(p.pitch) : 'none'}
           stroke={p.id === activeId ? '#111827' : colorFor(p.pitch)}
-          strokeWidth={p.manual ? 2.75 : (p.id === activeId ? 2 : 1.5)}
-          fillOpacity="0.78"
+          strokeWidth={p.manual ? 2.75 : (p.id === activeId ? 2 : 1.25)}
+          fillOpacity={p.id === activeId ? 0.85 : 0.45}
           style={{ cursor: onPitchClick ? 'pointer' : 'default' }}
           onClick={() => onPitchClick && onPitchClick(p)}
         />
@@ -671,7 +723,7 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId }) {
         a.arm_hb === null || a.ivb === null ? null : (
           <text
             key={a.pitch}
-            x={sx(a.arm_hb)}
+            x={dx(a.arm_hb)}
             y={sy(a.ivb) - 7}
             textAnchor="middle"
             className="text-[9px] font-semibold"
@@ -681,7 +733,8 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId }) {
           </text>
         )
       ))}
-      <text x={W - PAD} y={sy(0) - 5} textAnchor="end" className="fill-gray-400 text-[9px]">arm side →</text>
+      <text x={hbSign === 1 ? W - PAD : PAD} y={sy(0) - 5} textAnchor={hbSign === 1 ? 'end' : 'start'}
+        className="fill-gray-400 text-[9px]">{hbSign === 1 ? 'arm side →' : '← arm side'}</text>
       <text x={sx(0) + 4} y={PAD + 8} className="fill-gray-400 text-[9px]">ride ↑</text>
     </svg>
   )
@@ -752,11 +805,16 @@ function ReleasePlot({ points }) {
 // viewer's left. Illustrative — the angle is a geometric estimate (see backend).
 function ArmFigure({ angle, hand }) {
   if (angle == null) return null
+  const band = angleBand(angle)
   const armDir = hand === 'L' ? 1 : -1      // RHP arm to viewer-left, LHP to right
   const CX = 90, shY = 100, shX = CX + armDir * 12, L = 60
-  const a = (angle * Math.PI) / 180
-  const hx = shX + armDir * L * Math.cos(a)
-  const hy = shY - L * Math.sin(a)
+  const hand_at = (deg) => {
+    const a = (deg * Math.PI) / 180
+    return [shX + armDir * L * Math.cos(a), shY - L * Math.sin(a)]
+  }
+  const [hx, hy] = hand_at(angle)
+  const [lx, ly] = hand_at(band.lo)
+  const [ux, uy] = hand_at(band.hi)
   return (
     <svg viewBox="0 0 180 212" className="w-full max-w-[200px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
       <line x1="18" y1="197" x2="162" y2="197" className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="2" />
@@ -765,12 +823,13 @@ function ArmFigure({ angle, hand }) {
       <circle cx={CX} cy="76" r="13" className="fill-gray-300 dark:fill-gray-600" />
       {/* glove (non-throwing) arm hanging */}
       <path d={`M${CX - armDir * 12} 102 q ${-armDir * 13} 17 ${-armDir * 5} 35`} className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="8" strokeLinecap="round" fill="none" />
-      {/* horizontal reference */}
-      <line x1={shX} y1={shY} x2={shX + armDir * 54} y2={shY} className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="1" strokeDasharray="3 3" />
-      {/* throwing arm + ball */}
+      {/* uncertainty wedge (±5°) */}
+      <path d={`M${shX} ${shY} L${lx} ${ly} A${L} ${L} 0 0 ${armDir === 1 ? 1 : 0} ${ux} ${uy} Z`}
+        className="fill-portal-purple/15 dark:fill-portal-accent/20" />
+      {/* throwing arm + ball at the midpoint of the band */}
       <line x1={shX} y1={shY} x2={hx} y2={hy} className="stroke-portal-purple dark:stroke-portal-accent" strokeWidth="9" strokeLinecap="round" />
       <circle cx={hx} cy={hy} r="6" className="fill-white dark:fill-gray-900 stroke-portal-purple dark:stroke-portal-accent" strokeWidth="2" />
-      <text x={shX + armDir * 30} y={shY - 12} textAnchor="middle" className="fill-gray-600 dark:fill-gray-300 text-[12px] font-semibold">≈{angle}°</text>
+      <text x={shX + armDir * 30} y={shY - 14} textAnchor="middle" className="fill-gray-600 dark:fill-gray-300 text-[11px] font-semibold">≈{band.label}</text>
     </svg>
   )
 }
@@ -790,14 +849,17 @@ function ArmSlotPanel({ arm, hand }) {
       <div className="grid gap-4 lg:grid-cols-4">
         <div>
           <ArmFigure angle={arm.arm_angle} hand={hand} />
-          <p className="mt-1 text-xs text-gray-400">Estimated arm angle ({arm.slot}). Front view, throwing arm raised.</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Estimated arm angle ({arm.slot}). A rough ±5° band — rubber position and release
+            data shift it, so read it as a range, not an exact number.
+          </p>
         </div>
         <div>
           <ReleasePlot points={arm.points} />
           <p className="mt-1 text-xs text-gray-400">Release point per pitch (catcher's view). Tight clusters tunnel better.</p>
         </div>
         <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-2 content-start">
-          <Metric label="Arm angle (approx)" value={arm.arm_angle != null ? `${arm.arm_angle}°` : '–'} />
+          <Metric label="Arm angle (approx)" value={arm.arm_angle != null ? angleBand(arm.arm_angle).label : '–'} />
           <Metric label="Slot (approx)" value={arm.slot || '–'} />
           <Metric label="Release height" value={arm.rel_height != null ? `${fmt(arm.rel_height, 2)} ft` : '–'} />
           <Metric label="Release side" value={arm.rel_side != null ? `${fmt(arm.rel_side, 2)} ft` : '–'} />
