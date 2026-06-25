@@ -28,7 +28,7 @@ import { phaseForWeek } from './gameYear'
 import { makeRng } from './rng'
 import { requiredActionForWeek } from './gameYear'
 import { cutPlayer, ensureCutsState } from './cuts'
-import { playerOverall } from './playerRating'
+import { playerOverall, teamOverall } from './playerRating'
 import { generateCoach } from './coaches'
 import { autoUpgradeCoach } from './coachProgression'
 import { rosterCapForLevel } from './levelHelpers'
@@ -59,6 +59,18 @@ export function runAutoActions(save) {
   const summary = { actionsTaken: [] }
   if (!isAutoMode(save)) return summary
   const week = save.calendar?.weekOfYear ?? 1
+
+  // Keep the user program's cached Team OVR fresh BEFORE any recruiting runs,
+  // so the recruiting ceiling (programOvrCeiling) reflects live roster strength
+  // — a 70-OVR team can recruit 70-OVR players regardless of history.
+  try {
+    const usch = save.schools?.[save.userSchoolId]
+    const uteam = save.teams?.[save.userSchoolId]
+    if (usch && uteam && save.players) {
+      const ovr = teamOverall(uteam, save.players)?.overall
+      if (typeof ovr === 'number' && !Number.isNaN(ovr)) usch.teamOvr = ovr
+    }
+  } catch (e) { /* keep prior cached value */ }
 
   // 1. Mandatory cuts ALWAYS take precedence (cap overage gates everything)
   if (save.mandatoryCuts?.needed > 0 && save.mandatoryCuts.year === save.calendar?.year) {

@@ -42,14 +42,24 @@ function estimateRecruitTrueOverall(recruit) {
 // every level.
 
 /**
- * The highest recruit OVR a program can ROUTINELY land. A program with
- * programHistory ~16 (a from-scratch startup, low-50s Team OVR) tops out
- * around 55; mid-pack (PH 50) lands up to ~70; a blueblood (PH 90) up to ~88.
- * Recruits above this need an exceptional personal fit to even consider you.
+ * The highest recruit OVR a program can ROUTINELY land. It's the BETTER of two
+ * paths (per Nate, June 2026 — "it should be a mix"):
+ *   - REPUTATION: programHistory-derived. PH16 startup → ~55, PH50 mid-pack →
+ *     ~70, PH90 blueblood → ~88. This is what a thin-roster team earns purely
+ *     on its name + track record.
+ *   - CURRENT STRENGTH: the team's live Team OVR (cached as school.teamOvr).
+ *     "If you're a 70 OVR NWAC team, you should have access to 70 OVR players
+ *     regardless of your history."
+ * Taking the max means a strong roster grants access NOW (you don't have to
+ * wait years for reputation to catch up), while a blueblood rebuilding through
+ * a down year still recruits well on reputation. A weak team gets neither lever
+ * so it still can't reach up.
  */
 export function programOvrCeiling(school) {
   const ph = clamp(school?.programHistory ?? 50, 0, 99)
-  return 48 + ph * 0.45
+  const repCeiling = 48 + ph * 0.45
+  const currentOvr = clamp(school?.teamOvr ?? 0, 0, 99)
+  return Math.max(repCeiling, currentOvr)
 }
 
 /**

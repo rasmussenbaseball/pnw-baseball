@@ -16,7 +16,7 @@ import { setupInteractivePostseasonNAIA, advanceInteractivePostseasonNAIA, tickI
 import { awardForGameResult } from './coachProgression'
 import { simAllConferenceTournaments } from './tournament'
 import { runNationalTournament } from './nationalTournament'
-import { playerOverall } from './playerRating'
+import { playerOverall, teamOverall } from './playerRating'
 import { tickHappiness } from './happiness'
 import { tickTeamGPAWeekly } from './academics'
 import { runEventsForWeek, advanceClassYearsAndExits } from './events'
@@ -1591,8 +1591,30 @@ function refreshWeeklyAP(state) {
  *
  * @param {SaveState} state
  */
+/**
+ * Cache the user program's CURRENT Team OVR (the same number the Dashboard
+ * shows) onto its school object as `school.teamOvr`. The recruiting ceiling
+ * (programOvrCeiling in recruits.js) reads it so a strong roster grants
+ * recruiting access immediately, independent of accumulated reputation. Cheap:
+ * one team's roster. Silently leaves the previous value if anything's missing.
+ */
+function refreshUserTeamOvr(state) {
+  try {
+    const school = state.schools?.[state.userSchoolId]
+    const team = state.teams?.[state.userSchoolId]
+    if (!school || !team || !state.players) return
+    const ovr = teamOverall(team, state.players)?.overall
+    if (typeof ovr === 'number' && !Number.isNaN(ovr)) school.teamOvr = ovr
+  } catch (e) { /* keep the prior cached value */ }
+}
+
 export function advanceOneWeek(state) {
   ensureUnifiedCalendar(state)
+  // Keep the user program's cached current Team OVR fresh so the recruiting
+  // ceiling (programOvrCeiling) reflects how good the roster is RIGHT NOW, not
+  // just accumulated reputation. A 70-OVR team should recruit 70-OVR players
+  // even with thin history (per Nate). Cheap — one team's roster per week.
+  refreshUserTeamOvr(state)
   const prevWeek = state.calendar.weekOfYear ?? 1
   const prevPhaseKey = phaseForWeek(prevWeek)?.key
 

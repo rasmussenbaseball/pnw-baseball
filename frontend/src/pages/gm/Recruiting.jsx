@@ -16,6 +16,7 @@ import { makeRng } from '../../gm/engine/rng'
 import { scholarshipSnapshot } from '../../gm/engine/scholarshipAccounting'
 import { REGIONS, REGION_LABELS, STATE_TO_REGION } from '../../gm/engine/regions'
 import { prettyLabel } from '../../gm/engine/format'
+import { teamOverall } from '../../gm/engine/playerRating'
 import TeamLogo from '../../gm/components/TeamLogo'
 import { getArchetype, getQuirk, formatHeight } from '../../gm/engine/playerArchetypes'
 import GMShell, { ContextBox, ModalCloseButton, useModalDismiss, gmToast } from '../../gm/components/GMShell'
@@ -72,6 +73,17 @@ export default function Recruiting() {
 
   const [save, setSave] = useState(() => {
     const s = loadDynasty(userId, slot)
+    // Refresh the cached current Team OVR so recruit interest ceilings + commit
+    // feedback shown on this page reflect the roster's live strength (a strong
+    // roster grants access to better recruits regardless of program history).
+    try {
+      const sch = s?.schools?.[s.userSchoolId]
+      const team = s?.teams?.[s.userSchoolId]
+      if (sch && team && s.players) {
+        const ovr = teamOverall(team, s.players)?.overall
+        if (typeof ovr === 'number' && !Number.isNaN(ovr)) sch.teamOvr = ovr
+      }
+    } catch (e) { /* keep prior cached value */ }
     return s
   })
   // Wk 4 tutorial flag — the scouting opens this week and the user must
