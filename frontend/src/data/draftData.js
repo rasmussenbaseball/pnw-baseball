@@ -53,7 +53,7 @@ export function getSchoolLogo(school) {
 export const DRAFT_DATA = {
   "26": {
     "year": 2026,
-    "lastUpdated": "2026-06-23",
+    "lastUpdated": "2026-06-25",
     "prospects": [
       {
         "rank": 1,
@@ -222,20 +222,20 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 17,
+        "name": "Drew Smith",
+        "pos": "3B",
+        "year": "SR",
+        "school": "Oregon",
+        "playerId": 3500
+      },
+      {
+        "rank": 18,
         "name": "Dylan Hicks",
         "pos": "P",
         "year": "JC-2",
         "school": "Everett CC",
         "commit": "Oregon St",
         "playerId": 934
-      },
-      {
-        "rank": 18,
-        "name": "Drew Smith",
-        "pos": "3B",
-        "year": "SR",
-        "school": "Oregon",
-        "playerId": 3500
       },
       {
         "rank": 19,
@@ -287,15 +287,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 24,
-        "name": "Trenton Hertzog",
-        "pos": "UTIL",
-        "year": "PREP",
-        "school": "Tualatin (OR)",
-        "commit": "Oregon",
-        "playerId": null
-      },
-      {
-        "rank": 25,
         "name": "Jace Taylor",
         "pos": "RHP",
         "year": "SR",
@@ -304,6 +295,15 @@ export const DRAFT_DATA = {
         "report": "Jace Taylor is a big 6-foot-5 RHP from LC State who relies heavily on his high ride fastball coming from an over-the-top slot. He does not get much extension down the mound, but has strong vertical movement on the heater, and lives up in the zone with it, normally in the low 90s, touching the mid 90s. He has a four-pitch mix, with a curveball, slider, and changeup, with his best off-speed being his depthy curveball. The pitch garners swing and miss and plays well off of his top-shelf heater. He had a lot of success this past year, playing for nationally ranked LCSC, which has had plenty of draft picks throughout its history. He has always had the strikeout ability, as he has been in the 98th K percentile the past three years at LC State as well as for the Wenatchee Applesox in the WCL. He threw to a 0.86 ERA with 45 Ks to 13 BBs, showing average command with his control still burgeoning. He is a big body with a lot of confidence in his strikeout ability; however, he has not thrown many innings in the past three years (51.1 at LC State with 31.1 coming this past year). He does not have great feel for his off-speed, which causes him to throw it mostly when he is ahead in the count. His present velocity and frame are pro-ready, with questions coming from the other parts of the operation. There is plenty of clay for a professional organization to mold into a strong reliever.",
         "reportAuthor": "Oliver Duthie",
         "reportDate": "2026-06-09"
+      },
+      {
+        "rank": 25,
+        "name": "Trenton Hertzog",
+        "pos": "UTIL",
+        "year": "PREP",
+        "school": "Tualatin (OR)",
+        "commit": "Oregon",
+        "playerId": null
       },
       {
         "rank": 26,
@@ -344,11 +344,11 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 30,
-        "name": "Erik Hoffberg",
-        "pos": "LHP",
+        "name": "Ryan Featherston",
+        "pos": "P",
         "year": "JR",
-        "school": "Gonzaga",
-        "playerId": 3568
+        "school": "Oregon",
+        "playerId": 3631
       },
       {
         "rank": 31,
@@ -360,22 +360,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 32,
-        "name": "Easton Talt",
-        "pos": "CF",
-        "year": "SR",
-        "school": "Oregon State",
-        "playerId": 3519
-      },
-      {
-        "rank": 33,
-        "name": "Gavin Roy",
-        "pos": "SS-2B",
-        "year": "SR",
-        "school": "Washington St",
-        "playerId": 3532
-      },
-      {
-        "rank": 34,
         "name": "Isaac Yeager",
         "pos": "P",
         "year": "SR",
@@ -383,7 +367,16 @@ export const DRAFT_DATA = {
         "playerId": 3650
       },
       {
-        "rank": 35,
+        "rank": 33,
+        "name": "Zack Hankins",
+        "pos": "LHP",
+        "year": "PREP",
+        "school": "Taft (OR)",
+        "commit": "Oregon",
+        "playerId": null
+      },
+      {
+        "rank": 34,
         "movement": "up",
         "name": "Devin Bell",
         "pos": "RHP",
@@ -392,7 +385,65 @@ export const DRAFT_DATA = {
         "playerId": 3634
       },
       {
+        "rank": 35,
+        "name": "AJ Singer",
+        "pos": "INF",
+        "year": "SR",
+        "school": "Oregon St",
+        "playerId": 3523
+      },
+      {
         "rank": 36,
+        "name": "Sam DeCarlo",
+        "pos": "INF",
+        "year": "SR",
+        "school": "Washington",
+        "playerId": 3486
+      },
+      {
+        "rank": 37,
+        "movement": "up",
+        "name": "Joe Thornton",
+        "pos": "RHP",
+        "year": "R-SO",
+        "school": "Gonzaga",
+        "playerId": 3571
+      },
+      {
+        "rank": 38,
+        "name": "Austin Wolfe",
+        "pos": "LHP",
+        "year": "JR",
+        "school": "Bushnell",
+        "playerId": 2921
+      },
+      {
+        "rank": 39,
+        "name": "Maddox Haley",
+        "pos": "DH-RF",
+        "year": "JR",
+        "school": "Gonzaga",
+        "playerId": 3558
+      },
+      {
+        "rank": 40,
+        "name": "Dawsyn Anderson",
+        "pos": "RHP",
+        "year": "PREP",
+        "school": "North Kitsap (WA)",
+        "commit": "Oregon",
+        "playerId": null
+      },
+      {
+        "rank": 41,
+        "name": "Jacob Galloway",
+        "pos": "C",
+        "year": "SR",
+        "school": "Oregon St",
+        "playerId": 3517
+      },
+      {
+        "rank": 42,
         "movement": "down",
         "name": "Dominic Hellman",
         "pos": "UTIL",
@@ -401,12 +452,114 @@ export const DRAFT_DATA = {
         "playerId": 3504
       },
       {
-        "rank": 37,
-        "name": "Joe Thornton",
+        "rank": 43,
+        "movement": "up",
+        "name": "Mason Goodson",
         "pos": "RHP",
-        "year": "R-SO",
+        "year": "JR",
+        "school": "LC State",
+        "playerId": 2732
+      },
+      {
+        "rank": 44,
+        "name": "Easton Talt",
+        "pos": "CF",
+        "year": "SR",
+        "school": "Oregon State",
+        "playerId": 3519
+      },
+      {
+        "rank": 45,
+        "movement": "down",
+        "name": "Erik Hoffberg",
+        "pos": "LHP",
+        "year": "JR",
         "school": "Gonzaga",
+        "playerId": 3568
+      },
+      {
+        "rank": 46,
+        "name": "Will Anderson",
+        "pos": "LHP",
+        "year": "JR",
+        "school": "British Columbia",
+        "playerId": 2994
+      },
+      {
+        "rank": 47,
+        "name": "Gavin Roy",
+        "pos": "SS-2B",
+        "year": "SR",
+        "school": "Washington St",
+        "playerId": 3532
+      },
+      {
+        "rank": 48,
+        "movement": "down",
+        "name": "Justin Feld",
+        "pos": "RHP",
+        "year": "SR",
+        "school": "Gonzaga",
+        "playerId": 3574
+      },
+      {
+        "rank": 49,
+        "name": "James Brock",
+        "pos": "RHP",
+        "year": "SR",
+        "school": "UBC",
+        "playerId": 2993
+      },
+      {
+        "rank": 50,
+        "movement": "up",
+        "name": "Graham Learing",
+        "pos": "P",
+        "year": "JC-1",
+        "school": "Lower Columbia",
+        "commit": "Washington",
+        "playerId": 1029
+      },
+      {
+        "rank": 51,
+        "name": "Evan Canfield",
+        "pos": "RHP",
+        "year": "R-JR",
+        "school": "LC State",
+        "playerId": 2731
+      },
+      {
+        "rank": 52,
+        "name": "Will Rohrbacher",
+        "pos": "IF",
+        "year": "PREP",
+        "school": "Bainbridge (WA)",
+        "commit": "Utah Valley",
         "playerId": null
+      },
+      {
+        "rank": 53,
+        "name": "Donny Tober",
+        "pos": "RHP",
+        "year": "R-JR",
+        "school": "Warner Pacific",
+        "playerId": 2950
+      },
+      {
+        "rank": 54,
+        "name": "Luke Meyers",
+        "pos": "RHP",
+        "year": "SR",
+        "school": "Washington St",
+        "playerId": 3767
+      },
+      {
+        "rank": 55,
+        "name": "Jack Brooks",
+        "pos": "CF",
+        "year": "SR",
+        "school": "Oregon St",
+        "playerId": 3507
       }
     ]
   },
