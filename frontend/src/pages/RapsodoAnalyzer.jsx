@@ -337,6 +337,8 @@ function PlayerProfile({ rapsodoId, onBack }) {
         </div>
       </div>
 
+      <LocationHeatmaps locations={locations} />
+
       <DevelopmentTrends trend={trend} />
 
       <ArmSlotPanel arm={arm} hand={player.handedness} />
@@ -504,6 +506,7 @@ function ArsenalTable({ arsenal }) {
             <th className="px-3 py-2 font-medium text-right">Arm HB</th>
             <th className="px-3 py-2 font-medium text-right">VAA</th>
             <th className="px-3 py-2 font-medium">Tilt</th>
+            <th className="px-3 py-2 font-medium text-right">Zone%</th>
             <th className="px-3 py-2 font-medium text-right">Stuff*</th>
           </tr>
         </thead>
@@ -523,6 +526,7 @@ function ArsenalTable({ arsenal }) {
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.arm_hb)}</td>
               <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.vaa == null ? '–' : `${fmt(a.vaa)}°`}</td>
               <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{a.tilt || '–'}</td>
+              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.zone_pct == null ? '–' : `${a.zone_pct}%`}</td>
               <td
                 title={a.stuff_components ? Object.entries(a.stuff_components).map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`).join('\n') : ''}
                 className={`px-3 py-2 text-right font-medium ${a.stuff == null ? 'text-gray-400' : a.stuff >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
@@ -749,6 +753,66 @@ function PitchPopup({ point, saving, onPick, onClose, pos }) {
             ↺ auto
           </button>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Per-pitch-type location heatmaps (catcher's view). KDE density over the plate.
+function LocationHeatmaps({ locations }) {
+  const groups = {}
+  for (const l of locations || []) {
+    if (l.sz_side != null && l.sz_height != null && l.pitch) (groups[l.pitch] ||= []).push(l)
+  }
+  const types = Object.entries(groups).filter(([, ls]) => ls.length >= 4)
+    .sort((a, b) => b[1].length - a[1].length)
+  if (!types.length) return null
+  return (
+    <div className="mt-6">
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Location by pitch type</h3>
+      <div className="flex flex-wrap gap-4">
+        {types.map(([pitch, ls]) => <Heatmap key={pitch} pitch={pitch} pts={ls} />)}
+      </div>
+      <p className="mt-2 text-xs text-gray-400">
+        Plate-location density per pitch type (catcher's view). Box = strike zone. Warmups excluded;
+        needs ≥4 reliable locations to draw.
+      </p>
+    </div>
+  )
+}
+
+function Heatmap({ pitch, pts }) {
+  const W = 132, H = 164, PAD = 8
+  const XMIN = -18, XMAX = 18, YMIN = 8, YMAX = 52
+  const sx = (v) => PAD + ((v - XMIN) / (XMAX - XMIN)) * (W - 2 * PAD)
+  const sy = (v) => PAD + ((YMAX - v) / (YMAX - YMIN)) * (H - 2 * PAD)
+  const NX = 16, NY = 20, bw = 4.2
+  const cw = (W - 2 * PAD) / NX, ch = (H - 2 * PAD) / NY
+  const cells = []
+  let max = 0
+  for (let i = 0; i < NX; i++) for (let j = 0; j < NY; j++) {
+    const cx = XMIN + ((i + 0.5) / NX) * (XMAX - XMIN)
+    const cy = YMIN + ((j + 0.5) / NY) * (YMAX - YMIN)
+    let d = 0
+    for (const p of pts) { const ax = p.sz_side - cx, ay = p.sz_height - cy; d += Math.exp(-(ax * ax + ay * ay) / (2 * bw * bw)) }
+    cells.push([i, j, d]); if (d > max) max = d
+  }
+  const col = colorFor(pitch)
+  const zx = sx(-8.5), zw = sx(8.5) - sx(-8.5), zy = sy(42), zh = sy(18) - sy(42)
+  return (
+    <div className="text-center">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-[132px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        {cells.map(([i, j, d], k) => {
+          const o = max > 0 ? Math.pow(d / max, 0.7) * 0.92 : 0
+          return o < 0.05 ? null : (
+            <rect key={k} x={PAD + i * cw} y={PAD + (NY - 1 - j) * ch} width={cw + 0.6} height={ch + 0.6}
+              fill={col} fillOpacity={o} />
+          )
+        })}
+        <rect x={zx} y={zy} width={zw} height={zh} className="fill-none stroke-gray-500 dark:stroke-gray-400" strokeWidth="1.25" />
+      </svg>
+      <div className="mt-1 text-[11px] font-medium" style={{ color: col }}>
+        {pitch} <span className="text-gray-400 font-normal">({pts.length})</span>
       </div>
     </div>
   )

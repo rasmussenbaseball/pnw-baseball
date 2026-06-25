@@ -450,6 +450,16 @@ def aggregate_arsenal(ok_pitches):
     arsenal = []
     for label, ps in groups.items():
         velos = [p["velo"] for p in ps if p["velo"] is not None]
+        # Zone%: share of pitches whose plate-crossing point TOUCHES the strike zone
+        # (±8.5" wide, 18"-42" tall) — i.e. the ball (r≈1.45") overlaps the box, so a
+        # location on the black still counts.
+        zps = [(p.get("sz_side"), p.get("sz_height")) for p in ps
+               if p.get("sz_side") is not None and p.get("sz_height") is not None]
+        zone_pct = None
+        if zps:
+            inz = sum(1 for x, y in zps
+                      if abs(float(x)) <= 9.95 and 16.55 <= float(y) <= 43.45)
+            zone_pct = round(100 * inz / len(zps))
         arsenal.append({
             "pitch": label,
             "count": len(ps),
@@ -467,6 +477,7 @@ def aggregate_arsenal(ok_pitches):
             # exclude 0 / None: some devices report extension as 0 when unmeasured,
             # and averaging those zeros in wrecks perceived-velo / Stuff.
             "ext": _mean([p["extension"] for p in ps if p["extension"] not in (None, 0)]),
+            "zone_pct": zone_pct,
         })
     arsenal.sort(key=lambda a: a["count"], reverse=True)
     return arsenal
