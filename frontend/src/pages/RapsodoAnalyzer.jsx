@@ -9,7 +9,7 @@
 // All data is owner-scoped server-side (WHERE owner_user_id = you), so a coach
 // only ever sees their own uploads.
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useApi } from '../hooks/useApi'
 import { supabase } from '../lib/supabase'
 
@@ -38,15 +38,17 @@ const angleBand = (a) => {
 export default function RapsodoAnalyzer() {
   const [selected, setSelected] = useState(null)
   const [mode, setMode] = useState(() => localStorage.getItem('rapsodoMode') || 'pnw')
+  const [school, setSchool] = useState(() => localStorage.getItem('rapsodoSchool') || '')
   const { data, loading, refetch } = useApi('/rapsodo/players')
   const players = data?.players || []
   const setModePersist = (m) => { setMode(m); localStorage.setItem('rapsodoMode', m) }
+  const setSchoolPersist = (s) => { setSchool(s); s ? localStorage.setItem('rapsodoSchool', s) : localStorage.removeItem('rapsodoSchool') }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       {selected ? (
         // Player data page: just the profile (it has its own "← Back to players").
-        <PlayerProfile rapsodoId={selected} onBack={() => setSelected(null)} />
+        <PlayerProfile rapsodoId={selected} school={mode === 'pnw' ? school : ''} onBack={() => setSelected(null)} />
       ) : (
         // Landing page: upload CSVs, pick a mode, choose a player.
         <>
@@ -61,7 +63,10 @@ export default function RapsodoAnalyzer() {
                   actual shape, and build a profile for each of your players.
                 </p>
               </div>
-              <ModeToggle mode={mode} onChange={setModePersist} />
+              <div className="flex flex-col items-end gap-2">
+                <ModeToggle mode={mode} onChange={setModePersist} />
+                {mode === 'pnw' && <SchoolSelector value={school} onChange={setSchoolPersist} />}
+              </div>
             </div>
           </header>
 
@@ -93,6 +98,154 @@ function ModeToggle({ mode, onChange }) {
     <div className="flex gap-2 shrink-0">
       {opt('pnw', 'PNW college', 'Our rosters & benchmarks')}
       {opt('facility', 'Facility / personal', 'Standalone workspace')}
+    </div>
+  )
+}
+
+// Your-school picker (PNW mode). Scopes the player→site-profile link search to your
+// roster so you can pull each pitcher's spring + summer stats onto their Rapsodo page.
+function SchoolSelector({ value, onChange }) {
+  const { data } = useApi('/rapsodo/pnw-teams')
+  const teams = data?.teams || []
+  return (
+    <select value={value || ''} onChange={(e) => onChange(e.target.value)}
+      className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 max-w-[220px]">
+      <option value="">Your school (optional)…</option>
+      {teams.map((t) => <option key={t.id} value={t.id}>{t.short_name} ({t.level})</option>)}
+    </select>
+  )
+}
+
+// ───────────── Linked spring/summer profile (PNW college mode) ─────────────
+function latestRow(rows) {
+  if (!rows || !rows.length) return null
+  return [...rows].sort((a, b) => Number(b.season || 0) - Number(a.season || 0))[0]
+}
+
+function StatStrip({ label, pit, bat }) {
+  const row = pit || bat
+  if (!row) return null
+  const chips = pit
+    ? [['ERA', fmt(row.era, 2)], ['IP', fmt(row.innings_pitched, 1)], ['K/9', fmt(row.k_per_9, 1)],
+       ['BB/9', fmt(row.bb_per_9, 1)], ['FIP', fmt(row.fip, 2)], ['WHIP', fmt(row.whip, 2)]]
+    : [['AVG', fmt(row.batting_avg, 3)], ['OBP', fmt(row.on_base_pct, 3)], ['OPS', fmt(row.ops, 3)],
+       ['wOBA', fmt(row.woba, 3)], ['wRC+', fmt(row.wrc_plus, 0)], ['ISO', fmt(row.iso, 3)]]
+  return (
+    <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 px-3 py-2">
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+        {label} · {row.season} {pit ? 'pitching' : 'hitting'}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {chips.map(([k, v]) => (
+          <span key={k} className="text-xs"><span className="text-gray-400">{k}</span>{' '}
+            <span className="font-semibold text-gray-800 dark:text-gray-200">{v}</span></span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PlayerLinkSearch({ defaultQuery, teamId, saving, onPick }) {
+  const [q, setQ] = useState(defaultQuery || '')
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+  const debRef = useRef(null)
+  useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return }
+    clearTimeout(debRef.current)
+    debRef.current = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const teamQ = teamId ? `&team_id=${teamId}` : ''
+        const r = await fetch(`/api/v1/players/search?q=${encodeURIComponent(q.trim())}${teamQ}&limit=10`)
+          .then((r) => r.json()).catch(() => [])
+        setResults(Array.isArray(r) ? r : (r.players || []))
+      } finally { setLoading(false) }
+    }, 300)
+    return () => clearTimeout(debRef.current)
+  }, [q, teamId])
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search NWBB players…"
+          className="w-full max-w-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm" />
+        {loading && <span className="text-xs text-gray-400">…</span>}
+      </div>
+      {results.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {results.map((p) => (
+            <button key={p.id} type="button" disabled={saving} onClick={() => onPick(p)}
+              className="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs text-gray-700 dark:text-gray-300 hover:border-portal-purple disabled:opacity-50">
+              {p.first_name} {p.last_name}{' '}
+              <span className="text-gray-400">{p.team_short}{p.division_level ? ` · ${p.division_level}` : ''}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SpringSummerCard({ rapsodoId, player, school, onChange }) {
+  const playersId = player.players_id
+  const { data } = useApi(playersId ? `/players/${playersId}` : null, {}, [playersId])
+  const [saving, setSaving] = useState(false)
+
+  async function setLink(pid) {
+    setSaving(true)
+    try {
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      await fetch(`/api/v1/portal/rapsodo/players/${rapsodoId}/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ players_id: pid }),
+      })
+      onChange()
+    } finally { setSaving(false) }
+  }
+
+  if (!playersId) {
+    return (
+      <div className="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+        <div className="mb-1 text-sm font-semibold text-gray-700 dark:text-gray-300">Spring &amp; summer stats</div>
+        <p className="mb-2 text-xs text-gray-400">
+          Link this pitcher to their NWBB profile to pull their spring + summer (WCL) stats in here.
+          Incoming freshmen or redshirts may not have a profile yet — that's fine, just leave it unlinked.
+        </p>
+        <PlayerLinkSearch defaultQuery={player.player_name} teamId={school} saving={saving} onPick={(p) => setLink(p.id)} />
+      </div>
+    )
+  }
+
+  const sp = data?.player
+  const name = sp ? `${sp.first_name || ''} ${sp.last_name || ''}`.trim() : `Player #${playersId}`
+  const springP = latestRow(data?.pitching_stats)
+  const springB = latestRow(data?.batting_stats)
+  const summerP = latestRow(data?.summer_pitching)
+  const summerB = latestRow(data?.summer_batting)
+  const hasSpring = springP || springB
+  const hasSummer = summerP || summerB
+  return (
+    <div className="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm">
+          <span className="text-gray-400">Linked profile: </span>
+          <a href={`/player/${playersId}`} target="_blank" rel="noreferrer"
+            className="font-semibold text-portal-purple dark:text-portal-accent hover:underline">{name}</a>
+          {sp?.team_short && <span className="text-gray-400"> · {sp.team_short}</span>}
+        </div>
+        <button onClick={() => setLink(null)} disabled={saving}
+          className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50">unlink</button>
+      </div>
+      {hasSpring || hasSummer ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {hasSpring && <StatStrip label="Spring" pit={springP} bat={springB} />}
+          {hasSummer && <StatStrip label="Summer (WCL)" pit={summerP} bat={summerB} />}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400">Linked, but no spring or summer stats on file yet.</p>
+      )}
     </div>
   )
 }
@@ -228,7 +381,7 @@ function Roster({ players, loading, onPick }) {
 }
 
 // ─────────────────────────────── Profile ───────────────────────────────
-function PlayerProfile({ rapsodoId, onBack }) {
+function PlayerProfile({ rapsodoId, school, onBack }) {
   const { data, loading, refetch } = useApi(`/rapsodo/players/${rapsodoId}`)
   const [relabel, setRelabel] = useState(null)   // the plot point being reclassified
   const [saving, setSaving] = useState(false)
@@ -313,6 +466,10 @@ function PlayerProfile({ rapsodoId, onBack }) {
           Delete player
         </button>
       </div>
+
+      {player.mode !== 'facility' && (
+        <SpringSummerCard rapsodoId={rapsodoId} player={player} school={school} onChange={refetch} />
+      )}
 
       <CoachingNotes suggestions={suggestions} />
 

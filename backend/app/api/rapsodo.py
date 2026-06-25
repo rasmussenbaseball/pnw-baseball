@@ -11,6 +11,7 @@ from collections import defaultdict
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ..stats import rapsodo_stuff
 from ..stats.rapsodo_arm import arm_profile
@@ -330,6 +331,57 @@ def delete_rapsodo_player(rapsodo_player_id: str, owner: str = Depends(require_t
         cur.execute("DELETE FROM rapsodo_players WHERE id=%s AND owner_user_id=%s", (pid, owner))
         conn.commit()
     return {"status": "ok", "deleted_player": rapsodo_player_id}
+
+
+@router.get("/rapsodo/pnw-teams")
+def rapsodo_pnw_teams(owner: str = Depends(require_tier("coach"))):
+    """PNW colleges a coach can pick as 'their school' — the teams we actually track
+    rosters/stats for (excludes out-of-conference opponents)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT t.id, t.short_name, d.level
+               FROM teams t
+               JOIN conferences cf ON cf.id = t.conference_id
+               JOIN divisions d ON d.id = cf.division_id
+               WHERE EXISTS (SELECT 1 FROM batting_stats bs  WHERE bs.team_id=t.id AND bs.season >= %s)
+                  OR EXISTS (SELECT 1 FROM pitching_stats ps WHERE ps.team_id=t.id AND ps.season >= %s)
+               ORDER BY t.short_name""",
+            (CURRENT_SEASON - 1, CURRENT_SEASON - 1),
+        )
+        return {"teams": [dict(r) for r in cur.fetchall()]}
+
+
+class LinkBody(BaseModel):
+    players_id: int | None = None      # None clears the link
+
+
+@router.post("/portal/rapsodo/players/{rapsodo_player_id}/link")
+def link_rapsodo_player(rapsodo_player_id: str, body: LinkBody,
+                        owner: str = Depends(require_tier("coach"))):
+    """Link a Rapsodo player to a site player profile so their spring + summer stats
+    show on the Rapsodo page. `players_id: null` unlinks (e.g. an incoming freshman or
+    redshirt who has no profile yet). Stamps the linked player's team_id too."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM rapsodo_players WHERE owner_user_id=%s AND rapsodo_player_id=%s",
+                    (owner, rapsodo_player_id))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Player not found")
+        team_id = None
+        if body.players_id:
+            cur.execute("SELECT team_id FROM players WHERE id=%s", (body.players_id,))
+            pr = cur.fetchone()
+            if not pr:
+                raise HTTPException(status_code=400, detail="Unknown player")
+            team_id = pr["team_id"]
+        cur.execute(
+            "UPDATE rapsodo_players SET players_id=%s, team_id=COALESCE(%s, team_id) WHERE id=%s",
+            (body.players_id, team_id, row["id"]),
+        )
+        conn.commit()
+    return {"status": "ok", "players_id": body.players_id}
 
 
 _VALID_LABELS = {
