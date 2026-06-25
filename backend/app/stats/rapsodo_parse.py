@@ -277,9 +277,15 @@ def _nearest_allowed(p, fb, allowed):
 def classify(p, fb, hand, allowed=None):
     """Classify ONE pitch by shape. If `allowed` (the coach's declared arsenal)
     is given, constrain the result to that set — keep the auto label if it's
-    already in the set, else snap to the nearest declared type."""
+    already in the set, else snap to the nearest declared type.
+
+    Exception: a pitch the auto classifier itself couldn't identify
+    ('unclassified' — a contradictory read or a shape that matches no pitch, i.e.
+    a warmup lob / off-pitcher row) stays unclassified even in guided mode. We
+    don't force a genuine outlier into a declared bucket just because the coach
+    set an arsenal; they can still click-to-reclassify it by hand if they want."""
     label = _auto_classify(p, fb, hand)
-    if allowed and label not in allowed:
+    if allowed and label != "unclassified" and label not in allowed:
         return _nearest_allowed(p, fb, allowed)
     return label
 
