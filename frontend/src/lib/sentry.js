@@ -79,6 +79,15 @@ export function initSentry() {
       'window.webkit.messageHandlers',
       'sendDataToNative',
       'sendPageHideMessage',
+
+      // Instagram's ANDROID in-app browser injects iabjs://...android scripts
+      // (navigation_performance_logger_android) that call into a native Java
+      // bridge. When the WebView tears that bridge down on page unload, the
+      // injected sendBeforeUnloadMessage throws "Java object is gone". Not our
+      // code, fires on unload, unfixable from our side. (The denyUrls /iabjs:/
+      // below is the primary filter; these back it up.)
+      'Java object is gone',
+      'enableDidUserTypeOnKeyboardLogging',
     ],
     // Drop errors whose stack originates in third-party injected scripts (browser
     // extensions, in-app browsers, translation proxies) rather than our bundle.
@@ -86,6 +95,10 @@ export function initSentry() {
     // surfaces as a bogus "Unexpected token '<'" SyntaxError on our pages.
     denyUrls: [
       /jsQuilting/,
+      // Instagram's Android in-app browser injects scripts under the iabjs://
+      // scheme (e.g. iabjs://navigation_performance_logger_android). Drop any
+      // error whose stack originates there.
+      /iabjs:/,
     ],
   })
 
