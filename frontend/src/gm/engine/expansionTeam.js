@@ -215,6 +215,9 @@ export function buildExpansionSchool(input) {
     // Display flags.
     isExpansion: true,
     isStartupProgram: !!input.storyMode || tier === 'STARTUP',
+    // Optional explicit logo abbreviation (pre-built presets pass e.g. 'BSU',
+    // 'WWU'). TeamLogo falls back to deriving one from the name when absent.
+    abbr: (input.abbr || '').trim().toUpperCase().slice(0, 4) || undefined,
     colors,
     // Recruiting region — engine codes ('NW', 'SW', ...) from regions.js.
     // Expansion teams are PNW-locked so this is always 'NW' today.
@@ -327,6 +330,40 @@ export function validateExpansionInput(input) {
   }
   return null
 }
+
+/**
+ * Pre-built expansion programs (per Nate, June 2026). Real PNW schools that
+ * don't currently field a baseball team — pick one as a quick-start expansion
+ * and the form fills with its level, conference/region, identity, colors, and
+ * funding. Everything stays editable after.
+ *
+ * Funding: almost all LOW (GRASSROOTS) — a real campus adding a program on a
+ * modest budget. Western Washington, Boise State, and Southern Oregon launch
+ * AVERAGE (MID) per Nate. Colors + mascots verified against each school's
+ * athletics brand. Conferences map to the level's in-game PNW options:
+ *   D1 → WAC · D2 → GNAC · NAIA → CCC · NWAC → North/South region.
+ *
+ * fundingTier values are real keys in FUNDING_BY_LEVEL[level].
+ */
+export const EXPANSION_PRESETS = [
+  // ── D1 (Western Athletic Conference) ──────────────────────────────────────
+  { id: 'boise-state',   name: 'Boise State',        nickname: 'Broncos',  abbr: 'BSU', city: 'Boise',       state: 'ID', level: 'D1',   conferenceId: 'WAC',        fundingTier: 'MID',        primaryColor: '#0033A0', secondaryColor: '#D64309' },
+  { id: 'idaho',         name: 'Idaho',              nickname: 'Vandals',  abbr: 'IDA', city: 'Moscow',      state: 'ID', level: 'D1',   conferenceId: 'WAC',        fundingTier: 'GRASSROOTS', primaryColor: '#F1B82D', secondaryColor: '#000000' },
+  { id: 'eastern-wash',  name: 'Eastern Washington', nickname: 'Eagles',   abbr: 'EWU', city: 'Cheney',      state: 'WA', level: 'D1',   conferenceId: 'WAC',        fundingTier: 'GRASSROOTS', primaryColor: '#A10022', secondaryColor: '#000000' },
+  { id: 'portland-state',name: 'Portland State',     nickname: 'Vikings',  abbr: 'PSU', city: 'Portland',    state: 'OR', level: 'D1',   conferenceId: 'WAC',        fundingTier: 'GRASSROOTS', primaryColor: '#154734', secondaryColor: '#FFFFFF' },
+  // ── D2 (Great Northwest Athletic Conference) ──────────────────────────────
+  { id: 'western-wash',  name: 'Western Washington', nickname: 'Vikings',  abbr: 'WWU', city: 'Bellingham',  state: 'WA', level: 'D2',   conferenceId: 'GNAC',       fundingTier: 'MID',        primaryColor: '#003F87', secondaryColor: '#FFFFFF' },
+  { id: 'seattle-pac',   name: 'Seattle Pacific',    nickname: 'Falcons',  abbr: 'SPU', city: 'Seattle',     state: 'WA', level: 'D2',   conferenceId: 'GNAC',       fundingTier: 'GRASSROOTS', primaryColor: '#6F263D', secondaryColor: '#D9C89E' },
+  // ── NAIA (Cascade Collegiate Conference) ──────────────────────────────────
+  { id: 'southern-ore',  name: 'Southern Oregon',    nickname: 'Raiders',  abbr: 'SOU', city: 'Ashland',     state: 'OR', level: 'NAIA', conferenceId: 'CCC',        fundingTier: 'MID',        primaryColor: '#C8102E', secondaryColor: '#000000' },
+  { id: 'evergreen',     name: 'Evergreen',          nickname: 'Geoducks', abbr: 'EVG', city: 'Olympia',     state: 'WA', level: 'NAIA', conferenceId: 'CCC',        fundingTier: 'GRASSROOTS', primaryColor: '#00563F', secondaryColor: '#FFFFFF' },
+  { id: 'northwest-u',   name: 'Northwest',          nickname: 'Eagles',   abbr: 'NU',  city: 'Kirkland',    state: 'WA', level: 'NAIA', conferenceId: 'CCC',        fundingTier: 'GRASSROOTS', primaryColor: '#001F4E', secondaryColor: '#C5A100' },
+  // ── NWAC (junior college, by region) ──────────────────────────────────────
+  { id: 'whatcom',       name: 'Whatcom',            nickname: 'Orcas',    abbr: 'WC',  city: 'Bellingham',  state: 'WA', level: 'NWAC', conferenceId: 'NWAC_NORTH', fundingTier: 'GRASSROOTS', primaryColor: '#003B5C', secondaryColor: '#FFFFFF' },
+  { id: 'peninsula',     name: 'Peninsula',          nickname: 'Pirates',  abbr: 'PEN', city: 'Port Angeles',state: 'WA', level: 'NWAC', conferenceId: 'NWAC_NORTH', fundingTier: 'GRASSROOTS', primaryColor: '#00573F', secondaryColor: '#F2C75C' },
+  { id: 'rogue',         name: 'Rogue',              nickname: 'Ospreys',  abbr: 'ROG', city: 'Grants Pass', state: 'OR', level: 'NWAC', conferenceId: 'NWAC_SOUTH', fundingTier: 'GRASSROOTS', primaryColor: '#1D4F91', secondaryColor: '#4CA64C' },
+  { id: 'portland-cc',   name: 'Portland CC',        nickname: 'Panthers', abbr: 'PCC', city: 'Portland',    state: 'OR', level: 'NWAC', conferenceId: 'NWAC_SOUTH', fundingTier: 'GRASSROOTS', primaryColor: '#003B71', secondaryColor: '#F2B500' },
+]
 
 /** Labels for the PNW state dropdown. */
 export const PNW_STATE_OPTIONS = [

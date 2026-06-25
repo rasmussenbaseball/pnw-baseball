@@ -36,7 +36,7 @@ export default function TeamLogo({ school, size = 32, className = '' }) {
   // runtime that includes a colors block.
   const userColors = school.colors
   const hasCustomColors = !!(userColors && (userColors.primary || userColors.secondary))
-  const abbr = isPnw ? brand.abbr : brandAbbr(school.id, school.name || school.nickname)
+  const abbr = isPnw ? brand.abbr : (school.abbr || brandAbbr(school.id, school.name || school.nickname))
   const fill = isPnw
     ? brand.primary
     : (hasCustomColors ? (userColors.primary || NON_PNW_FILL) : NON_PNW_FILL)

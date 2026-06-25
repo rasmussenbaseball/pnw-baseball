@@ -15,7 +15,7 @@ import { useAuth } from '../../context/AuthContext'
 import { loadSchools } from '../../gm/engine/loadSchools'
 import { newDynasty } from '../../gm/engine/newDynasty'
 import { newDynastyMultiLevel } from '../../gm/engine/newDynastyMultiLevel'
-import { buildExpansionSchool, validateExpansionInput, FUNDING_BY_LEVEL, PNW_STATE_OPTIONS } from '../../gm/engine/expansionTeam'
+import { buildExpansionSchool, validateExpansionInput, FUNDING_BY_LEVEL, PNW_STATE_OPTIONS, EXPANSION_PRESETS } from '../../gm/engine/expansionTeam'
 import { getLevelForSchool, isPreviewLevel } from '../../gm/engine/levelHelpers'
 import { saveDynasty, listDynasties } from '../../gm/engine/save'
 import { buildProgramRatings, starsToBar, expectedTeamOvr, teamOvrToStars } from '../../gm/engine/programRating'
@@ -407,6 +407,7 @@ export default function NewDynasty() {
               id: 'expansion_preview',
               name: expansionInput.name || '(unnamed expansion)',
               nickname: expansionInput.nickname || 'Expansion',
+              abbr: expansionInput.abbr,
               city: expansionInput.city,
               state: expansionInput.state,
               colors: { primary: expansionInput.primaryColor, secondary: expansionInput.secondaryColor },
@@ -709,7 +710,9 @@ function SetupStep({ storyMode, setStoryMode, difficulty, setDifficulty, storySt
 // captures team identity + level + conference + funding. Story mode locks
 // the level/funding fields. Regular mode unlocks them all.
 function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
-  const set = (k, v) => setInput({ ...input, [k]: v })
+  // Manual edits clear the "applied preset" highlight so it doesn't look like
+  // a preset is still active after the user diverges from it.
+  const set = (k, v) => setInput({ ...input, [k]: v, ...(k !== 'presetId' ? { presetId: null } : {}) })
   const LEVEL_OPTS = [
     { key: 'NWAC', label: 'NWAC (JUCO)' },
     { key: 'NAIA', label: 'NAIA' },
@@ -761,6 +764,30 @@ function ExpansionTeamStep({ input, setInput, isStory, onBack, onNext }) {
           ? 'Story mode: NWAC junior college, no scholarship money, no history. Pick your name + colors and grind from the bottom.'
           : 'Regular mode: pick everything. Level, conference, funding tier, identity.'}
       </p>
+
+      {/* QUICK START — real PNW schools that don't field baseball. Picking one
+          fills the whole form (level, conference, identity, colors, funding);
+          everything stays editable below. In story mode only the NWAC ones
+          show, since story is locked to NWAC. */}
+      <PresetPicker
+        isStory={isStory}
+        selectedId={input.presetId}
+        onPick={(p) => {
+          if (!p) { set('presetId', null); return }
+          setInput({
+            ...input,
+            presetId: p.id,
+            name: p.name, nickname: p.nickname, abbr: p.abbr,
+            city: p.city, state: p.state,
+            level: isStory ? 'NWAC' : p.level,
+            // Story only surfaces NWAC presets, so p.conferenceId is always a
+            // valid NWAC region here — keep the program's real region.
+            conferenceId: p.conferenceId,
+            fundingTier: isStory ? 'STARTUP' : p.fundingTier,
+            primaryColor: p.primaryColor, secondaryColor: p.secondaryColor,
+          })
+        }}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <Field label="Team Name *">
@@ -930,6 +957,77 @@ function Field({ label, children }) {
     <div>
       <div className="text-[11px] uppercase tracking-widest text-[#a8a8c8] mb-1 font-pixel">{label}</div>
       {children}
+    </div>
+  )
+}
+
+// Quick-start picker for the pre-built expansion programs. Picking one fills
+// the form; "Custom" clears the selection so the user builds from scratch.
+const _PRESET_LEVEL_ORDER = ['D1', 'D2', 'NAIA', 'NWAC']
+const _PRESET_LEVEL_LABEL = { D1: 'D1', D2: 'D2', NAIA: 'NAIA', NWAC: 'NWAC' }
+const _PRESET_FUNDING_LABEL = { STARTUP: 'Low', GRASSROOTS: 'Low', MID: 'Average', WELL_FUNDED: 'High', ELITE: 'Elite' }
+
+function PresetPicker({ isStory, selectedId, onPick }) {
+  const presets = EXPANSION_PRESETS.filter(p => !isStory || p.level === 'NWAC')
+  const byLevel = _PRESET_LEVEL_ORDER
+    .map(lvl => ({ lvl, items: presets.filter(p => p.level === lvl) }))
+    .filter(g => g.items.length > 0)
+
+  return (
+    <div className="mb-5 bg-[#0f0f1e] border-2 border-[#3a3a5e] rounded-lg p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-white font-pixel uppercase tracking-widest text-xs">
+          Quick start — real PNW programs
+        </div>
+        <button
+          onClick={() => onPick(null)}
+          className={
+            'text-[10px] font-pixel uppercase tracking-widest px-2 py-1 rounded border-2 transition ' +
+            (!selectedId ? 'border-amber-300 text-amber-200 bg-[#3a3a5e]'
+              : 'border-[#3a3a5e] text-[#a8a8c8] hover:border-[#5a5a8e]')
+          }
+        >
+          Custom
+        </button>
+      </div>
+      <p className="text-[10px] text-[#8a8aa8] mb-3 leading-snug">
+        Real schools that don't field a baseball team — start one. Picking a program fills everything below; tweak it however you like.
+      </p>
+      {byLevel.map(({ lvl, items }) => (
+        <div key={lvl} className="mb-2 last:mb-0">
+          <div className="text-[9px] font-pixel uppercase tracking-widest text-[#6a6a8a] mb-1">{_PRESET_LEVEL_LABEL[lvl]}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {items.map(p => {
+              const active = selectedId === p.id
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => onPick(p)}
+                  title={`${p.name} ${p.nickname} · ${p.city}, ${p.state} · ${_PRESET_FUNDING_LABEL[p.fundingTier]} funding`}
+                  className={
+                    'flex items-center gap-2 p-2 rounded border-2 text-left transition ' +
+                    (active ? 'border-amber-300 bg-[#3a3a5e]'
+                      : 'border-[#3a3a5e] hover:border-[#5a5a8e] bg-[#23233d]')
+                  }
+                >
+                  <span
+                    className="shrink-0 w-7 h-7 rounded flex items-center justify-center font-pixel-display text-[9px] leading-none border-2"
+                    style={{ backgroundColor: p.primaryColor, borderColor: p.secondaryColor, color: p.secondaryColor }}
+                  >
+                    {p.abbr}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-white text-xs font-bold truncate">{p.name}</span>
+                    <span className="block text-[9px] text-[#a8a8c8] truncate">
+                      {p.nickname} · {_PRESET_FUNDING_LABEL[p.fundingTier]}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
