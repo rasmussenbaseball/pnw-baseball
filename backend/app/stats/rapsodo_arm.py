@@ -6,11 +6,28 @@ We deliberately do NOT claim Statcast's pose-based "arm angle" (that needs shoul
 position we don't have); the slot label is a coarse estimate from release height.
 See RAPSODO_TOOL_DESIGN.md.
 """
+import math
 from statistics import mean, pstdev
 
 
 def _f(v):
     return float(v) if v is not None else None
+
+
+# Estimated shoulder pivot (ft) for a geometric arm-angle approximation. Rapsodo
+# gives the release point but not the shoulder (Statcast uses pose), so we anchor
+# the pivot and measure the release point off it. Illustrative, not Statcast-exact.
+_SHOULDER_H, _SHOULDER_X = 4.6, 0.4
+
+
+def _arm_angle(rel_height, rel_side):
+    """Approximate arm angle (deg from horizontal): ~vertical = over-the-top,
+    ~0 = sidearm, negative = submarine. Geometric estimate off an anchored shoulder."""
+    if rel_height is None or rel_side is None:
+        return None
+    dy = rel_height - _SHOULDER_H
+    dx = max(0.05, abs(rel_side) - _SHOULDER_X)
+    return round(max(-30.0, min(90.0, math.degrees(math.atan2(dy, dx)))))
 
 
 def _slot_label(rel_height):
@@ -63,6 +80,7 @@ def arm_profile(pitches):
         "extension": round(mean(exts), 2) if exts else None,
         "vaa": round(mean(vaas), 2) if vaas else None,
         "slot": _slot_label(rh),
+        "arm_angle": _arm_angle(rh, rs),
         "consistency": _consistency_label(h_sd, s_sd),
         "n": len(pts),
         "points": [

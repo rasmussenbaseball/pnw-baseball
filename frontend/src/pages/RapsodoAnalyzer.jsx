@@ -332,7 +332,7 @@ function PlayerProfile({ rapsodoId, onBack }) {
 
       <DevelopmentTrends trend={trend} />
 
-      <ArmSlotPanel arm={arm} />
+      <ArmSlotPanel arm={arm} hand={player.handedness} />
 
       <PronationCard profile={hand_profile} />
 
@@ -747,7 +747,35 @@ function ReleasePlot({ points }) {
   )
 }
 
-function ArmSlotPanel({ arm }) {
+// Savant-style arm-slot figure: a stylized pitcher with the throwing arm raised
+// to the estimated arm angle. Front (home-plate) view, so a RHP's arm is on the
+// viewer's left. Illustrative — the angle is a geometric estimate (see backend).
+function ArmFigure({ angle, hand }) {
+  if (angle == null) return null
+  const armDir = hand === 'L' ? 1 : -1      // RHP arm to viewer-left, LHP to right
+  const CX = 90, shY = 100, shX = CX + armDir * 12, L = 60
+  const a = (angle * Math.PI) / 180
+  const hx = shX + armDir * L * Math.cos(a)
+  const hy = shY - L * Math.sin(a)
+  return (
+    <svg viewBox="0 0 180 212" className="w-full max-w-[200px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <line x1="18" y1="197" x2="162" y2="197" className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="2" />
+      <path d="M82 150 L74 196 M98 150 L106 196" className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="9" strokeLinecap="round" fill="none" />
+      <path d="M76 98 Q90 90 104 98 L100 150 Q90 157 80 150 Z" className="fill-gray-300 dark:fill-gray-600" />
+      <circle cx={CX} cy="76" r="13" className="fill-gray-300 dark:fill-gray-600" />
+      {/* glove (non-throwing) arm hanging */}
+      <path d={`M${CX - armDir * 12} 102 q ${-armDir * 13} 17 ${-armDir * 5} 35`} className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="8" strokeLinecap="round" fill="none" />
+      {/* horizontal reference */}
+      <line x1={shX} y1={shY} x2={shX + armDir * 54} y2={shY} className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="1" strokeDasharray="3 3" />
+      {/* throwing arm + ball */}
+      <line x1={shX} y1={shY} x2={hx} y2={hy} className="stroke-portal-purple dark:stroke-portal-accent" strokeWidth="9" strokeLinecap="round" />
+      <circle cx={hx} cy={hy} r="6" className="fill-white dark:fill-gray-900 stroke-portal-purple dark:stroke-portal-accent" strokeWidth="2" />
+      <text x={shX + armDir * 30} y={shY - 12} textAnchor="middle" className="fill-gray-600 dark:fill-gray-300 text-[12px] font-semibold">≈{angle}°</text>
+    </svg>
+  )
+}
+
+function ArmSlotPanel({ arm, hand }) {
   if (!arm) return null
   const Metric = ({ label, value }) => (
     <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 px-3 py-2">
@@ -759,12 +787,17 @@ function ArmSlotPanel({ arm }) {
   return (
     <div className="mt-6">
       <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Arm slot &amp; release</h3>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-4">
+        <div>
+          <ArmFigure angle={arm.arm_angle} hand={hand} />
+          <p className="mt-1 text-xs text-gray-400">Estimated arm angle ({arm.slot}). Front view, throwing arm raised.</p>
+        </div>
         <div>
           <ReleasePlot points={arm.points} />
           <p className="mt-1 text-xs text-gray-400">Release point per pitch (catcher's view). Tight clusters tunnel better.</p>
         </div>
         <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-2 content-start">
+          <Metric label="Arm angle (approx)" value={arm.arm_angle != null ? `${arm.arm_angle}°` : '–'} />
           <Metric label="Slot (approx)" value={arm.slot || '–'} />
           <Metric label="Release height" value={arm.rel_height != null ? `${fmt(arm.rel_height, 2)} ft` : '–'} />
           <Metric label="Release side" value={arm.rel_side != null ? `${fmt(arm.rel_side, 2)} ft` : '–'} />
