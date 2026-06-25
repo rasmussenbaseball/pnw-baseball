@@ -257,16 +257,14 @@ def classify(p, fb, hand):
     # efficiency, and a lower-eff pitch that's still hard + riding + arm-side is a
     # fastball, not a breaker (breakers are glove-side or low-ride, excluded below).
     if gap <= 6 and (eff is None or eff >= 70) and ivb >= 6 and ahb >= -2:
-        if ivb >= RIDE_IVB and ahb < 10:
-            return "4-seam (ride)"
+        # A sinker/2-seam sits at ~fastball velocity (NOT slower — a slower
+        # arm-side pitch is a sub-max fastball, a changeup, or a warmup, never a
+        # sinker) with the ride taken off and heavy arm-side run.
         if ivb < SINK_IVB and ahb >= ARM_SIDE_RUN:
             return "sinker / 2-seam"
+        if ivb >= RIDE_IVB and ahb < 10:
+            return "4-seam (ride)"
         return "fastball (mixed)"
-    # SINKER / 2-SEAM (slightly slower): a heavy arm-side runner a few mph off the
-    # 4-seam still keeping ride. True changeups are either lower-ride or 10+ slower,
-    # so the gap<=10 + ride>=6 + big-run gates exclude them.
-    if 6 < gap <= 10 and ivb >= 6 and ahb >= 11 and (eff is None or eff >= 70):
-        return "sinker / 2-seam"
     # CHANGEUP: slower, arm-side, AND ride killed vs the fastball — so a slow
     # pitch that keeps full fastball ride is NOT a changeup (that was the v1 bug).
     if gap >= 6 and ahb >= 8 and ivb <= fbivb - 4:
