@@ -33,6 +33,48 @@ def _num(v):
     return float(v) if v is not None else None
 
 
+def _pitch_target(pitch, fb):
+    """Research-informed TARGET shape for a recommended pitch, personalized off the
+    pitcher's fastball (velo, IVB, arm-side HB). Velos ladder down from the heater;
+    breakers get glove-side / depth, offspeed kills ride for fade or drop. Returns
+    {pitch, velo, ivb, hb} or None."""
+    v = (fb.get("velo") if fb else None) or 88.0
+    iv = (fb.get("ivb") if fb else None) or 15.0
+    h = (fb.get("arm_hb") if fb else None) or 12.0
+    spec = {
+        "cutter":      (v - 6,  max(4.0, iv - 8), -2.0),   # bridge: tunnels off FB, ride off, slight cut
+        "gyro slider": (v - 9,  2.0, -2.0),                # near (0,0), bullet spin
+        "slider":      (v - 11, 0.0, -7.0),                # gyro/depth slider, glove-side
+        "sweeper":     (v - 12, 3.0, -15.0),               # big sweep (same-side)
+        "curveball":   (v - 16, -8.0, -6.0),               # depth downer for whiff
+        "changeup":    (v - 9,  max(3.0, iv - 9), h + 2),  # kill ride, more arm-side fade
+        "splitter":    (v - 9,  3.0, max(0.0, h - 5)),     # low spin, vertical drop
+    }.get(pitch)
+    if not spec:
+        return None
+    return {"pitch": pitch, "velo": round(spec[0]), "ivb": round(spec[1]), "hb": round(spec[2])}
+
+
+# Stuff-model feature -> (why it's hurting, the lever to fix it). Keys match the
+# component keys emitted by stuff_model.grade_pitch.
+_STUFF_LEVER = {
+    "velo":         ("below-average velocity", "add velocity"),
+    "spin":         ("low spin", "spin it up — grip and finger pressure"),
+    "hb_abs":       ("not enough horizontal break", "sharpen the side-to-side movement"),
+    "extension":    ("short extension", "get further out front down the mound"),
+    "vaa_adj":      ("an approach angle that doesn't fit the shape", "tighten the plane (slot / ride)"),
+    "rel_side_abs": ("a narrow release point", "widen or lower the release a touch"),
+    "fb_velo_sep":  ("too little velocity gap off the fastball", "take more velo off it"),
+    "fb_move_sep":  ("too little movement separation from the fastball", "separate its shape further from the heater"),
+    "run":          ("not enough arm-side run", "get more arm-side run on it"),
+    "drop":         ("not enough sink", "kill ride to add sink"),
+    "shape":        ("not enough cut — ride still on it", "take more ride off for true cut"),
+    "ride":         ("not enough ride / carry", "get more ride up in the zone"),
+    "vaa":          ("a steep fastball plane", "flatten the approach angle — raise the slot or add ride"),
+    "ride_kill":    ("not enough ride killed off the fastball", "kill ~8\" more ride than the heater"),
+}
+
+
 def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None):
     out = []
     if not arsenal:
@@ -51,6 +93,8 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None):
             "total_spin": _num(a.get("total_spin")),
             "vaa": _num(a.get("vaa")),
             "rel_height": _num(a.get("rel_height")),
+            "stuff": a.get("stuff"),
+            "stuff_components": a.get("stuff_components"),
         })
 
     # anchor fastball: the fastball-family pitch with the most reps, else the
@@ -146,6 +190,7 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None):
                       "that neutralizes opposite-handed bats — it's used about 2.6x more often that way "
                       "for a reason. Add " + rec + ".",
             "caveat": "Offspeed is the opposite-handed weapon (Statcast platoon-split research). " + _CAVEAT_DESIGN,
+            "target": _pitch_target("splitter" if sup else "changeup", fb),
         })
 
     # SAME-handed put-away. Breaking balls bury same-handed hitters glove-side.
@@ -159,6 +204,7 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None):
             "detail": "No breaking ball to attack same-handed hitters glove-side or steal back-foot "
                       "strikes. Add " + rec + ".",
             "caveat": "Breaking balls carry same-handed; release bias points the shape. " + _CAVEAT_DESIGN,
+            "target": _pitch_target("gyro slider" if pron else "sweeper" if sup else "slider", fb),
         })
 
     # ONLY a sweeper: platoon-vulnerable + lower whiff than a downer shape.
@@ -171,6 +217,7 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None):
                       "vertical-depth slider or curveball (a 'downer') — it covers both sides better and "
                       "misses more barrels.",
             "caveat": "Vertical/gyro breakers out-whiff big-sweep shapes (Statcast). " + _CAVEAT_DESIGN,
+            "target": _pitch_target("slider", fb),
         })
 
     # BRIDGE pitch: a big velocity jump from the fastball to a slow breaking ball with
@@ -191,6 +238,7 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None):
                           f"nothing between — hitters can time both speeds. Add a bridge pitch in the mid-velocity "
                           f"band: {rec}, to ladder velocity and tunnel off the fastball.",
                 "caveat": "Bridge/tunneling principle (arsenal-construction research). " + _CAVEAT_DESIGN,
+                "target": _pitch_target("cutter", fb),
             })
 
     # Well-rounded: covers both sides — positive reinforcement.
@@ -232,5 +280,25 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None):
                           "arm-side line — it mirrors the heater out of the hand then dives. Keep leaning on it.",
                 "caveat": "Bank on it most against opposite-handed hitters.",
             })
+
+    # ── why a pitch grades low on Stuff (read the model's own components) ──
+    graded = [p for p in pitches if (p["count"] or 0) >= 2 and p.get("stuff") is not None]
+    low = sorted([p for p in graded if p["stuff"] < 88], key=lambda p: p["stuff"])[:2]
+    for p in low:
+        comps = p.get("stuff_components") or {}
+        negs = sorted([(k, v) for k, v in comps.items()
+                       if v <= -2.0 and k in _STUFF_LEVER], key=lambda kv: kv[1])[:2]
+        if not negs:
+            continue
+        whys = " and ".join(_STUFF_LEVER[k][0] for k, _ in negs)
+        fixes = "; ".join(_STUFF_LEVER[k][1] for k, _ in negs)
+        out.append({
+            "kind": "flag",
+            "title": f"{p['pitch'].capitalize()} stuff grades low ({p['stuff']})",
+            "detail": f"On our college whiff/chase model it's held back by {whys}. "
+                      f"Biggest levers to raise the grade: {fixes}.",
+            "caveat": "Stuff is shape-only and model-relative (100 = WCL average for that pitch type); "
+                      "command and sequencing still decide outcomes.",
+        })
 
     return out

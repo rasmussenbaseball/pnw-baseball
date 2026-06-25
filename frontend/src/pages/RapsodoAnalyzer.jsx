@@ -729,6 +729,17 @@ function CoachingNotes({ suggestions }) {
               <span className="font-semibold text-gray-900 dark:text-gray-100">{s.title}</span>
             </div>
             <p className="text-sm text-gray-700 dark:text-gray-300 leading-snug">{s.detail}</p>
+            {s.target && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white/60 dark:bg-gray-900/40 px-2.5 py-1.5 text-xs">
+                <span className="font-medium text-gray-600 dark:text-gray-300">
+                  <span className="mr-1 inline-block h-2 w-2 rounded-full align-middle" style={{ background: colorFor(s.target.pitch) }} />
+                  Target {s.target.pitch}
+                </span>
+                <span className="text-gray-400">~{s.target.velo} mph</span>
+                <span className="text-gray-400">{s.target.ivb >= 0 ? '+' : ''}{s.target.ivb}″ IVB</span>
+                <span className="text-gray-400">{s.target.hb >= 0 ? '+' : ''}{s.target.hb}″ HB</span>
+              </div>
+            )}
             {s.caveat && <p className="mt-1.5 text-xs italic text-gray-500 dark:text-gray-400">{s.caveat}</p>}
           </div>
         ))}
