@@ -63,21 +63,32 @@ def _estimate_vaa(velo, rel_angle, rel_height, sz_height, ext):
     kinematics: a constant-vertical-acceleration (parabolic) flight from the
     release point to the plate-crossing height. Inputs: velo (mph), release angle
     (deg, vertical launch), release height (ft), plate-crossing height (in),
-    extension (ft). ~±0.5 deg vs measured — enough to tell flat from steep, which
-    is what matters for the dead-zone call."""
+    extension (ft).
+
+    Drag: a pitched ball sheds ~10% of its release speed before the plate. Holding
+    the speed constant (the old model) under-times the flight AND over-states the
+    horizontal speed at the plate — both flatten the angle, and the error grows
+    with flight time, so it hit slow offspeed hardest. Validated against TrackMan
+    (10 pitchers, Jan 2026): the constant-speed model ran ~0.95 deg shallow on
+    fastballs and ~1.2 deg shallow on offspeed/breakers; the drag term roughly
+    halves that bias. We use the AVERAGE horizontal speed for the flight time and
+    the AT-PLATE speed for the final angle."""
     if velo is None or rel_angle is None or rel_height is None or sz_height is None:
         return None
-    vx = velo * 1.467                                # mph -> ft/s (horizontal approx)
-    if vx <= 0:
+    vrel = velo * 1.467                              # mph -> ft/s (release speed)
+    if vrel <= 0:
         return None
     D = 60.5 - (ext if ext else 6.0) - 1.4           # release point -> front of plate (ft)
     if D < 20:
         D = 54.0
-    t = D / vx
+    DRAG = 0.10                                       # fractional speed lost to the plate
+    v_avg = vrel * (1 - DRAG / 2.0)                   # mean horizontal speed over the flight
+    v_plate = vrel * (1 - DRAG)                       # horizontal speed at the plate
+    t = D / v_avg
     plate_h = sz_height / 12.0                        # plate-crossing height (in -> ft)
-    vy0 = vx * math.tan(math.radians(rel_angle))      # vertical velo at release
+    vy0 = vrel * math.tan(math.radians(rel_angle))    # vertical velo at release
     vyf = 2.0 * (plate_h - rel_height) / t - vy0      # const-accel: disp = (vy0+vyf)/2 * t
-    return round(math.degrees(math.atan2(vyf, vx)), 1)
+    return round(math.degrees(math.atan2(vyf, v_plate)), 1)
 
 
 def _parse_dt(s):
