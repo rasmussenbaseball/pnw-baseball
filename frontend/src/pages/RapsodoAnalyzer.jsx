@@ -44,27 +44,31 @@ export default function RapsodoAnalyzer() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
-      <header className="mb-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold text-portal-purple dark:text-portal-accent">
-              Rapsodo Lab
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Upload your bullpen sessions. We clean the data, re-classify every pitch by its
-              actual shape, and build a profile for each of your players.
-            </p>
-          </div>
-          <ModeToggle mode={mode} onChange={setModePersist} />
-        </div>
-      </header>
-
-      <UploadZone mode={mode} onDone={refetch} />
-
       {selected ? (
+        // Player data page: just the profile (it has its own "← Back to players").
         <PlayerProfile rapsodoId={selected} onBack={() => setSelected(null)} />
       ) : (
-        <Roster players={players} loading={loading} onPick={setSelected} />
+        // Landing page: upload CSVs, pick a mode, choose a player.
+        <>
+          <header className="mb-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h1 className="text-3xl font-bold text-portal-purple dark:text-portal-accent">
+                  Rapsodo Lab
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400 mt-1">
+                  Upload your bullpen sessions. We clean the data, re-classify every pitch by its
+                  actual shape, and build a profile for each of your players.
+                </p>
+              </div>
+              <ModeToggle mode={mode} onChange={setModePersist} />
+            </div>
+          </header>
+
+          <UploadZone mode={mode} onDone={refetch} />
+
+          <Roster players={players} loading={loading} onPick={setSelected} />
+        </>
       )}
     </div>
   )
