@@ -11,7 +11,7 @@ generate_suggestions(arsenal, handedness, n_reliable) -> list of:
   { "kind": "flag" | "strength" | "note", "title": str, "detail": str, "caveat": str }
 """
 
-FB_LABELS = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam"}
+FB_LABELS = {"fastball", "sinker"}
 _CAVEAT_SHAPE = "Shape only — confirm it plays with command and that the grip/slot is repeatable."
 _CAVEAT_DESIGN = "A direction to explore with your pitching coach, not a guaranteed gain. Mind arm health."
 
@@ -92,7 +92,7 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0):
                       "than the raw shape suggests. Live at the top and let the angle do the work.",
             "caveat": "Command up still matters. " + _CAVEAT_DESIGN,
         })
-    elif fb["pitch"] == "4-seam (ride)" or (fb_ivb is not None and fb_ivb >= 17) or flat_vaa:
+    elif (fb["pitch"] == "fastball" and fb_ivb is not None and fb_ivb >= 15) or (fb_ivb is not None and fb_ivb >= 17) or flat_vaa:
         bits = []
         if fb_ivb is not None and fb_ivb >= 15:
             bits.append(f"{round(fb_ivb)}\" of ride")

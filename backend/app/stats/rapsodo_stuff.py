@@ -29,9 +29,8 @@ VERSION = "v2-college"   # WCL TrackMan whiff/chase model; heuristic fallback be
 
 # Per-type DEFAULT anchors: (velo mph, IVB in, arm-side HB in). College-provisional.
 _A = {
-    "4-seam (ride)":    (90, 16, 8),
-    "fastball (mixed)": (89, 14, 10),
-    "sinker / 2-seam":  (88, 9, 16),
+    "fastball":         (90, 15, 9),
+    "sinker":           (88, 9, 16),
     "cutter":           (84, 7, -2),
     "slider":           (81, 1, -5),
     "gyro slider":      (82, 1, -2),
@@ -40,7 +39,7 @@ _A = {
     "changeup":         (81, 7, 14),
     "splitter":         (84, 5, 8),
 }
-_FB_TYPES = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam", "cutter"}
+_FB_TYPES = {"fastball", "sinker", "cutter"}
 _REF_FB = (90, 16, 8)            # college-avg 4-seam, for centering secondary separations
 _EXT_AVG = 6.3                   # league-avg extension (ft)
 _DEFAULT_VELO_SD = 3.5
@@ -156,7 +155,7 @@ def _heuristic_grade(entry, fb):
 
     if pitch in _FB_TYPES:
         comp["velo"] = round(_velo_pts(pv, velo_mean, velo_sd), 1)
-        if pitch == "sinker / 2-seam":
+        if pitch == "sinker":
             comp["run"] = round(_cap(1.2 * (hb - hb_mean)), 1)       # more arm-side run
             comp["drop"] = round(_cap(1.0 * (ivb_mean - ivb)), 1)    # less ride = more sink
         elif pitch == "cutter":
@@ -187,7 +186,7 @@ def fb_from_arsenal(arsenal):
     """Fastball anchor (most-thrown fastball, else hardest pitch) {velo,ivb,arm_hb}."""
     if not arsenal:
         return None
-    fbs = [a for a in arsenal if a.get("pitch") in {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam"}]
+    fbs = [a for a in arsenal if a.get("pitch") in {"fastball", "sinker"}]
     pick = (max(fbs, key=lambda a: a.get("count", 0)) if fbs
             else max(arsenal, key=lambda a: _f(a.get("velo")) or 0))
     return {"velo": _f(pick.get("velo")), "ivb": _f(pick.get("ivb")), "arm_hb": _f(pick.get("arm_hb"))}

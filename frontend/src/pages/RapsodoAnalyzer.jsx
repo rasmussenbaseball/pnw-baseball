@@ -14,9 +14,8 @@ import { useApi } from '../hooks/useApi'
 import { supabase } from '../lib/supabase'
 
 const PITCH_COLORS = {
-  '4-seam (ride)': '#e11d48',
-  'fastball (mixed)': '#ef4444',
-  'sinker / 2-seam': '#f59e0b',
+  'fastball': '#ef4444',
+  'sinker': '#f59e0b',
   'cutter': '#8b5cf6',
   'slider': '#3b82f6',
   'sweeper': '#14b8a6',
@@ -72,7 +71,7 @@ export default function RapsodoAnalyzer() {
   )
 }
 
-const PITCH_TYPES = ['4-seam (ride)', 'fastball (mixed)', 'sinker / 2-seam', 'cutter', 'slider', 'gyro slider', 'sweeper', 'curveball', 'changeup', 'splitter']
+const PITCH_TYPES = ['fastball', 'sinker', 'cutter', 'slider', 'gyro slider', 'sweeper', 'curveball', 'changeup', 'splitter']
 
 function ModeToggle({ mode, onChange }) {
   const opt = (val, label, sub) => (
@@ -246,7 +245,7 @@ function PlayerProfile({ rapsodoId, onBack }) {
   async function applyLabel(id, newPitch) {
     setSaving(true)
     try {
-      await postJson(`/api/v1/rapsodo/pitches/${id}/label`, { pitch: newPitch })
+      await postJson(`/api/v1/portal/rapsodo/pitches/${id}/label`, { pitch: newPitch })
       setRelabel(null)
       refetch()
     } finally {
@@ -844,7 +843,9 @@ function ArmFigure({ angle, hand }) {
       {/* throwing arm + ball at the midpoint of the band */}
       <line x1={shX} y1={shY} x2={hx} y2={hy} className="stroke-portal-purple dark:stroke-portal-accent" strokeWidth="9" strokeLinecap="round" />
       <circle cx={hx} cy={hy} r="6" className="fill-white dark:fill-gray-900 stroke-portal-purple dark:stroke-portal-accent" strokeWidth="2" />
-      <text x={shX + armDir * 30} y={shY - 14} textAnchor="middle" className="fill-gray-600 dark:fill-gray-300 text-[11px] font-semibold">≈{band.label}</text>
+      {/* angle label in the top corner OPPOSITE the throwing arm, clear of the figure */}
+      <text x={armDir === -1 ? 170 : 10} y={28} textAnchor={armDir === -1 ? 'end' : 'start'}
+        className="fill-gray-600 dark:fill-gray-300 text-[12px] font-semibold">≈{band.label}</text>
     </svg>
   )
 }

@@ -14,8 +14,8 @@ _Z_REF = 2.4   # reference plate-crossing height (must match compute_pitch_grade
 
 # Rapsodo re-classified labels -> the model's TrackMan pitch types.
 RAPSODO_TO_MODEL = {
-    "4-seam (ride)": "Four Seam", "fastball (mixed)": "Four Seam",
-    "sinker / 2-seam": "Sinker", "cutter": "Cutter",
+    "fastball": "Four Seam",
+    "sinker": "Sinker", "cutter": "Cutter",
     "slider": "Slider", "gyro slider": "Slider", "sweeper": "Slider",
     "curveball": "Curveball", "changeup": "Changeup", "splitter": "Splitter",
 }

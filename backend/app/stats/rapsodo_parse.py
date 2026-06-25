@@ -238,9 +238,8 @@ def _fastball_centroid(ok_pitches):
 # the GUIDED arsenal: when a coach declares which pitches a guy throws, any pitch
 # whose auto-label isn't in that set is snapped to the nearest declared type.
 _PROTO = {
-    "4-seam (ride)":    (0, 18, 6, 8),
-    "fastball (mixed)": (0, 13, 12, 10),
-    "sinker / 2-seam":  (1, 8, 16, 12),
+    "fastball":         (0, 16, 9, 9),
+    "sinker":           (1, 8, 16, 12),
     "cutter":           (5, 8, -2, 35),
     "slider":           (10, 1, -5, 65),
     "gyro slider":      (8, 1, -1, 85),
@@ -300,14 +299,13 @@ def _auto_classify(p, fb, hand):
     # efficiency, and a lower-eff pitch that's still hard + riding + arm-side is a
     # fastball, not a breaker (breakers are glove-side or low-ride, excluded below).
     if gap <= 6 and (eff is None or eff >= 70) and ivb >= 6 and ahb >= -2:
-        # A sinker/2-seam sits at ~fastball velocity (NOT slower — a slower
-        # arm-side pitch is a sub-max fastball, a changeup, or a warmup, never a
-        # sinker) with the ride taken off and heavy arm-side run.
+        # It's a fastball or a sinker — nothing in between. A sinker sits at ~fastball
+        # velocity (NOT slower — a slower arm-side pitch is a sub-max fastball, a
+        # changeup, or a warmup) with the ride taken off and heavy arm-side run;
+        # everything else hard/riding/arm-side is just a fastball.
         if ivb < SINK_IVB and ahb >= ARM_SIDE_RUN:
-            return "sinker / 2-seam"
-        if ivb >= RIDE_IVB and ahb < 10:
-            return "4-seam (ride)"
-        return "fastball (mixed)"
+            return "sinker"
+        return "fastball"
     # CHANGEUP: slower, arm-side, AND ride killed vs the fastball — so a slow
     # pitch that keeps full fastball ride is NOT a changeup (that was the v1 bug).
     if gap >= 6 and ahb >= 8 and ivb <= fbivb - 4:

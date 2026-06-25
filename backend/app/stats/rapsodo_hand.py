@@ -16,7 +16,7 @@ The tells (supinator = +, pronator = -):
 All movement inputs use arm-side-positive HB (already normalized), so the logic is
 handedness-agnostic. It's an estimate, not a verdict. See RAPSODO_TOOL_DESIGN.md.
 """
-_FB = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam"}
+_FB = {"fastball", "sinker"}
 _BREAKERS = {"slider", "sweeper", "gyro slider", "curveball"}
 
 

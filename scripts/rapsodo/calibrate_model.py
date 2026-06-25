@@ -23,7 +23,7 @@ from app.stats.rapsodo_parse import _fastball_centroid, derive
 from app.stats.stuff_model import RAPSODO_TO_MODEL, estimate_vaa
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "backend", "data", "rapsodo_stuff_model.json")
-_FB = {"4-seam (ride)", "fastball (mixed)", "sinker / 2-seam"}
+_FB = {"fastball", "sinker"}
 _RAW = ("id, session_id, player_db_id, velo, total_spin, spin_eff, spin_confidence, gyro, "
         "ivb, hb_raw, rel_angle, rel_height, sz_height, extension, manual_pitch, pitch, quality, arm_hb, vaa")
 _MIN_N = 20

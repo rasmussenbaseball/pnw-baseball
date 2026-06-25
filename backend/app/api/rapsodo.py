@@ -234,7 +234,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
     trend = []
     for s in sorted(sessions, key=lambda s: (s["session_date"] is None, s["session_date"])):
         ps = by_sess.get(s["id"], [])
-        fbps = [p for p in ps if p["pitch"] in ("4-seam (ride)", "fastball (mixed)", "sinker / 2-seam")]
+        fbps = [p for p in ps if p["pitch"] in ("fastball", "sinker")]
         trend.append({
             "session_id": s["id"],
             "session_date": str(s["session_date"]) if s["session_date"] else None,
@@ -310,7 +310,7 @@ def delete_rapsodo_session(session_id: int, owner: str = Depends(require_tier("c
 
 
 _VALID_LABELS = {
-    "4-seam (ride)", "fastball (mixed)", "sinker / 2-seam", "cutter", "slider",
+    "fastball", "sinker", "cutter", "slider",
     "gyro slider", "sweeper", "curveball", "changeup", "splitter", "unclassified",
 }
 _DERIVE_FIELDS = ("id, session_id, velo, total_spin, spin_eff, spin_confidence, gyro, "
