@@ -869,7 +869,7 @@ function spendRecruiting(save, apBudget) {
   // buffer drops to 0 and the auto fills every open spot. Per Nate: "if we need
   // 13 players, make damn sure auto mode signs enough."
   const _cap = rosterCapForLevel(save.level || 'NAIA')
-  const _rosterSize = (team.rosterPlayerIds || []).length
+  const _rosterSize = (save.teams?.[userSchoolId]?.rosterPlayerIds || []).length
   const thinRoster = _rosterSize < _cap - 6
   const PORTAL_BUFFER = thinRoster ? 0 : 3
   const spotsOpen = recruitingSpotsAvailable(save)
