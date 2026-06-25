@@ -34,7 +34,8 @@ def _num(v):
 
 
 def main():
-    model = json.load(open(MODEL_PATH))
+    path = MODEL_PATH if os.path.exists(MODEL_PATH) else MODEL_PATH + ".disabled"
+    model = json.load(open(path))
     F = model["features"]
     ext_idx = F.index("extension")
 
