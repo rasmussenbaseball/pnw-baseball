@@ -330,7 +330,9 @@ def _auto_classify(p, fb, hand):
     # a changeup kills one or both. NO eff floor: a near-FB-velo, arm-side, RIDING
     # pitch is a fastball even with a junk efficiency/gyro read (the velo + movement
     # win) — that's how a misread-spin heater avoids being dumped into the breakers.
-    if gap <= 8 and ahb >= -2 and not ride_killed and not spin_killed:
+    # At ~FB velocity the spin_killed guard is dropped too: a full-velo pitch that
+    # still RIDES is a fastball with a bad spin read, not a changeup (those are slower).
+    if gap <= 8 and ahb >= -2 and not ride_killed and (not spin_killed or gap <= 2):
         return "fastball"
     # OFFSPEED (changeup / splitter): slower with the LIFE killed (ride OR spin),
     # arm-side to straight. Caught at a SMALL velo gap too — a firm changeup that's
