@@ -647,9 +647,10 @@ function PlatoonCard({ platoon }) {
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
       <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">Platoon coverage</h3>
       <p className="mb-3 text-xs text-gray-400">
-        How well the arsenal plays vs right- and left-handed hitters (0–100). More pitches that
-        work against a side score higher — offspeed (changeup/splitter) carries opposite-handed bats,
-        breaking balls bury same-handed ones, and ride fastballs &amp; cutters cover the opposite side.
+        How well the arsenal plays vs right- and left-handed hitters (0–100), graded from each pitch's
+        actual movement. Horizontal break creates a platoon split (sweeper, sinker, fading changeup);
+        vertical / gyro shapes play both ways (gyro slider, splitter, ride fastball, 12-6 curve). More
+        pitches that cover a side score higher.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <Bar label="vs RHH" score={platoon.vs_rhh} />

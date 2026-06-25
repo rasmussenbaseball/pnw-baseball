@@ -21,46 +21,80 @@ import math
 _FB = {"fastball", "sinker"}
 _BREAKERS = {"slider", "sweeper", "curveball"}
 
-# Per-pitch platoon values (vs SAME-handed hitter, vs OPPOSITE-handed hitter), 0-1.
-# Grounded in Statcast-era platoon-split research + coach input: a ride 4-seam is
-# roughly neutral with a slight opposite-hand tilt; a sinker is strongly same-side; a
-# cutter helps the opposite side (RHP-neutral); a gyro slider is same-side-first; a
-# sweeper is strongly same-side and platoon-vulnerable opposite; a curveball is fairly
-# neutral; changeup & splitter are the opposite-handed weapons.
-_PLATOON = {
-    "fastball":  (0.75, 0.95),
-    "sinker":    (1.00, 0.30),
-    "cutter":    (0.70, 0.90),
-    "slider":    (1.00, 0.55),
-    "sweeper":   (1.00, 0.30),
-    "curveball": (0.80, 0.65),
-    "changeup":  (0.40, 1.00),
-    "splitter":  (0.55, 1.00),
-}
+_PLATOON_TYPES = {"fastball", "sinker", "cutter", "slider", "sweeper",
+                  "curveball", "changeup", "splitter"}
+
+
+def _clamp(v, lo, hi):
+    return max(lo, min(hi, v))
+
+
+def _platoon_bias(pitch, ivb, hb, fbivb):
+    """Platoon bias from the pitch's actual MOVEMENT, in [-1, +1]: +1 = strongly
+    same-handed, -1 = strongly opposite-handed, 0 = platoon-neutral.
+
+    Grounded in Statcast-era research (verified finding: HORIZONTAL pitches — sinker,
+    sweeper — are platoon-VULNERABLE, while VERTICAL/gyro pitches — gyro slider, cutter,
+    vertical changeup — are platoon-STABLE). So horizontal break drives the split and
+    vertical break neutralizes it; the pitch FAMILY only sets which way the split points.
+    Two sliders of different shapes therefore grade differently, by design."""
+    ivb = ivb if ivb is not None else 0.0
+    hb = hb if hb is not None else 0.0
+    if pitch in ("fastball", "sinker"):
+        run, ride = max(0.0, hb), max(0.0, ivb)
+        # arm-side RUN -> same-handed (a sinker); RIDE -> neutral / slight-opposite (a 4-seam)
+        return _clamp((run - ride) / 14.0, -0.2, 0.75)
+    if pitch in ("changeup", "splitter"):
+        fade, drop = max(0.0, hb), max(0.0, 12.0 - ivb)
+        # arm-side FADE -> opposite-handed weapon; vertical DROP -> neutral (works both ways).
+        # A two-plane fading change splits hard; a vertical splitter/kick-change is neutral.
+        return -fade / (fade + 1.4 * drop + 6.0)
+    if pitch == "cutter":
+        return -0.15   # small glove cut + ride: platoon-neutral, slight opposite lean
+    # breaking balls (slider / sweeper / curveball): glove SWEEP -> same-handed; DEPTH -> neutral
+    glove, depth = max(0.0, -hb), max(0.0, -ivb)
+    return glove / (glove + 1.6 * depth + 5.0)
+
+
+def _platoon_values(b):
+    """Bias -> (value vs same-handed, value vs opposite-handed), each ~0.25-1.0. A
+    neutral pitch (b~0) is solid BOTH ways (~0.85); an extreme pitch is great one way,
+    poor the other."""
+    mag = abs(b)
+    fav, unf = 0.85 + 0.15 * mag, 0.85 - 0.6 * mag
+    return (fav, unf) if b >= 0 else (unf, fav)
 
 
 def platoon_profile(arsenal, hand=None):
     """Platoon coverage scores (0-100) vs RHH and LHH from the ESTABLISHED arsenal
-    (pitch types with >= 2 reps). Depth is rewarded via a saturating sum, so a 4-5
-    pitch mix that genuinely works against a side scores far higher than one or two
-    offerings. Returns per-pitch vs-RHH/vs-LHH values for the visual, or None."""
+    (pitch types with >= 2 reps), graded from each pitch's MOVEMENT not just its label.
+    Depth is rewarded via a saturating sum, so a 4-5 pitch mix that genuinely works
+    against a side scores far higher than one or two offerings. Returns per-pitch
+    vs-RHH/vs-LHH values for the visual, or None."""
     pitches = [a for a in (arsenal or [])
-               if (a.get("count") or 0) >= 2 and a.get("pitch") in _PLATOON]
+               if (a.get("count") or 0) >= 2 and a.get("pitch") in _PLATOON_TYPES]
     if not pitches:
         return None
-    same = sum(_PLATOON[a["pitch"]][0] for a in pitches)
-    opp = sum(_PLATOON[a["pitch"]][1] for a in pitches)
-    score = lambda s: round(100 * (1 - math.exp(-0.5 * s)))   # noqa: E731
+    fb = next((a for a in pitches if a["pitch"] in ("fastball", "sinker")), None)
+    fbivb = _f(fb.get("ivb")) if fb else 12.0
+    rows = []
+    for a in pitches:
+        b = _platoon_bias(a["pitch"], _f(a.get("ivb")), _f(a.get("arm_hb")), fbivb)
+        s, o = _platoon_values(b)
+        rows.append((a["pitch"], s, o))
+    same = sum(r[1] for r in rows)
+    opp = sum(r[2] for r in rows)
+    score = lambda x: round(100 * (1 - math.exp(-0.5 * x)))   # noqa: E731
     same_s, opp_s = score(same), score(opp)
     lhp = hand == "L"
-    per = [{"pitch": a["pitch"],
-            "vs_rhh": round((_PLATOON[a["pitch"]][1] if lhp else _PLATOON[a["pitch"]][0]) * 100),
-            "vs_lhh": round((_PLATOON[a["pitch"]][0] if lhp else _PLATOON[a["pitch"]][1]) * 100)}
-           for a in pitches]
+    per = [{"pitch": p,
+            "vs_rhh": round((o if lhp else s) * 100),
+            "vs_lhh": round((s if lhp else o) * 100)}
+           for (p, s, o) in rows]
     return {
         "vs_rhh": opp_s if lhp else same_s,
         "vs_lhh": same_s if lhp else opp_s,
-        "n_pitches": len(pitches),
+        "n_pitches": len(rows),
         "pitches": per,
     }
 
