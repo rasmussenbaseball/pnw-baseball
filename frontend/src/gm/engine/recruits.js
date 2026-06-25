@@ -33,6 +33,48 @@ function estimateRecruitTrueOverall(recruit) {
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
 }
 
+// ─── Program tier gate ───────────────────────────────────────────────────────
+//
+// "Bad teams get worse recruits" — a low-rated program simply can't attract
+// players who are clearly better than its level (per Nate, June 2026). The
+// gate is universal across D1/D2/D3/NAIA/NWAC because it keys off the
+// program's reputation (programHistory), which drives expected Team OVR at
+// every level.
+
+/**
+ * The highest recruit OVR a program can ROUTINELY land. A program with
+ * programHistory ~16 (a from-scratch startup, low-50s Team OVR) tops out
+ * around 55; mid-pack (PH 50) lands up to ~70; a blueblood (PH 90) up to ~88.
+ * Recruits above this need an exceptional personal fit to even consider you.
+ */
+export function programOvrCeiling(school) {
+  const ph = clamp(school?.programHistory ?? 50, 0, 99)
+  return 48 + ph * 0.45
+}
+
+/**
+ * The maximum INTEREST (0-100) a recruit will ever hold for this program,
+ * given how far the recruit's true OVR sits above the program's ceiling.
+ * This is a HARD wall: interest physically cannot climb past it no matter
+ * how much you court, so an out-of-tier recruit never reaches the sign gate
+ * (interest >= 32). The user sees the interest bar plateau low — a clear
+ * "this kid is out of our league" signal.
+ *
+ *   gap <= 3   → 100  (at/near your level — no cap)
+ *   gap 4-9    → 91 down to ~46  (a reach; signable with heavy courting)
+ *   gap ~10    → ~37  (right at the edge of the sign gate)
+ *   gap >= 11  → below 32  (effectively cannot sign)
+ *   gap >= 18  → 12   (no chance)
+ */
+export function interestCeilingForProgram(recruit, school) {
+  if (!school) return 100
+  const trueOvr = estimateRecruitTrueOverall(recruit)
+  if (trueOvr == null) return 100
+  const gap = trueOvr - programOvrCeiling(school)
+  if (gap <= 3) return 100
+  return clamp(Math.round(100 - (gap - 3) * 9), 12, 100)
+}
+
 /**
  * Score for the "Wants to win" priority. Blends the school's static
  * programHistory rep (40%) with the LIVE national ranking (60%) so a
@@ -887,7 +929,7 @@ export const ACTION_TYPES = {
  * @param {ReturnType<import('./rng.js').makeRng>} rng
  * @returns {{ recruit: any, interestGain: number, revealed?: string }}
  */
-export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
+export function applyRecruitingAction(recruit, userSchoolId, action, rng, school = null) {
   if (!recruit.scoutGrades[userSchoolId]) {
     recruit.scoutGrades[userSchoolId] = {
       interest: 0,
@@ -919,7 +961,13 @@ export function applyRecruitingAction(recruit, userSchoolId, action, rng) {
     const priorTouches = grade.actionsApplied.filter(k => k === action.key).length
     if (priorTouches >= 2) interestGain = Math.max(1, Math.round(action.interestGain / 2))
   }
-  grade.interest = Math.min(100, grade.interest + interestGain)
+  // PROGRAM-TIER CEILING (per Nate, June 2026): a recruit clearly better than
+  // the program's level won't build real interest no matter how hard you
+  // court — interest plateaus below the sign gate. This is what makes "bad
+  // teams get worse recruits" a hard rule across every level. When the recruit
+  // is at/below the program's tier the ceiling is 100 (no effect).
+  const ceiling = interestCeilingForProgram(recruit, school)
+  grade.interest = Math.min(ceiling, grade.interest + interestGain)
   grade.noise = Math.max(2, grade.noise - action.fogReduction)
   grade.actionsApplied.push(action.key)
   grade.apSpent = (grade.apSpent || 0) + (action.apCost || 0)
@@ -1252,7 +1300,16 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
   // SUMMER (opts.gateOverride): the portal window after week 43 is short
   // (~9 turns) and players must decide fast, so the gate drops.
   const interestGate = opts.gateOverride ?? 32
-  if (grade.interest < interestGate) return null
+  // HARD PROGRAM-TIER WALL (per Nate, June 2026): clamp the EFFECTIVE interest
+  // to the program ceiling before the gate. A scholarship offer (+18) or a
+  // full-scout (+15) can bump raw interest above the courting ceiling, but an
+  // out-of-tier recruit (e.g. a 70-OVR kid weighing a low-50s NWAC startup)
+  // must still never reach the sign line. If the ceiling sits below the gate,
+  // they simply cannot commit here no matter what — "bad teams get worse
+  // recruits," across every level.
+  const tierCeiling = interestCeilingForProgram(recruit, school)
+  const effectiveInterest = Math.min(grade.interest, tierCeiling)
+  if (effectiveInterest < interestGate) return null
   if (!recruit.liveOffer || recruit.liveOffer.schoolId !== userSchoolId) return null
 
   const suitorCount = totalSuitors(recruit)
@@ -1344,24 +1401,15 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
   // when the recruit is much better than what the school's resume
   // suggests, sign odds drop sharply.
   {
+    // Backstop to the interest ceiling (applyRecruitingAction): an out-of-tier
+    // recruit usually can't even build enough interest to reach this point, but
+    // if they did (seeded interest, summer portal path), damp the commit odds
+    // so a low-rated program still rarely lands a clearly-better player.
     const recruitTrue = estimateRecruitTrueOverall(recruit) ?? 55
-    const ph = school?.programHistory ?? 50
-    // PH→implied OVR ceiling the program can naturally land:
-    //   PH=16 → ~55 OVR (NWAC startup)
-    //   PH=30 → ~62
-    //   PH=50 → ~70
-    //   PH=75 → ~80
-    //   PH=99 → ~90
-    const programCeiling = 45 + ph * 0.45
-    const gap = recruitTrue - programCeiling
-    // gap ≤ 0 → recruit is at-or-below the program's level. No penalty.
-    // gap > 0 → recruit is better than the program. Penalty ramps fast
-    // so a 70-OVR recruit needs ~PH 55+ to be a normal target, and an
-    // 85-OVR recruit needs ~PH 85+ (top of level) to be in play.
+    const gap = recruitTrue - programOvrCeiling(school)
     if (gap > 0) {
-      // Multiplier: gap 5 → 0.65×, gap 10 → 0.40×, gap 15 → 0.22×, gap 20+ → 0.10×
-      const penalty = Math.max(0.10, Math.exp(-gap * 0.092))
-      baseProb *= penalty
+      // gap 5 → 0.65×, gap 10 → 0.40×, gap 15 → 0.22×, gap 20+ → 0.10×
+      baseProb *= Math.max(0.10, Math.exp(-gap * 0.092))
     }
   }
 
@@ -1714,9 +1762,12 @@ export function buildRecruitFeedback(recruit, userSchoolId, state) {
   }
 
   // Commit proximity — uses fit on top 3 + interest + offer + suitor count.
-  // Mirrors tryAdvanceRecruit but as a discrete bucket.
+  // Mirrors tryAdvanceRecruit but as a discrete bucket. Interest is clamped to
+  // the program-tier ceiling so an out-of-tier recruit honestly reads COLD in
+  // the UI instead of teasing a commit that can never happen.
   // signProb math (approximation): baseProb / (1 + suitors*0.7)
-  const baseProb = (fit3 / 200) + (grade.interest / 400) + (offerAdvantage * 0.15)
+  const effInterest = Math.min(grade.interest, interestCeilingForProgram(recruit, school))
+  const baseProb = (fit3 / 200) + (effInterest / 400) + (offerAdvantage * 0.15)
   const proximityProb = clamp(baseProb / (1 + suitorCount * 0.7), 0, 0.95)
   let commitProximity = 'COLD'
   let commitLine = '"Just hearing you out for now."'

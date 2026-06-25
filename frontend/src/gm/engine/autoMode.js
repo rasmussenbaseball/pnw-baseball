@@ -22,7 +22,7 @@
 
 import { autoCreateSchedule } from './schedule'
 import { applyBudgetPreset, lockBudgetForYear, BUDGET_PRESETS } from './budget'
-import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, withdrawOffer, fundraise, generateRecruitPool } from './recruits'
+import { applyRecruitingAction, ACTION_TYPES, setLiveOffer, withdrawOffer, fundraise, generateRecruitPool, interestCeilingForProgram } from './recruits'
 import { WEEKLY_ACTIONS, applyWeeklyAction, isActionAvailable, isActionUsedThisWeek, markActionUsedThisWeek, PERM_AP, TEMP_AP } from './weeklyActions'
 import { phaseForWeek } from './gameYear'
 import { makeRng } from './rng'
@@ -419,7 +419,16 @@ function recruitingSpotsAvailable(save) {
   const team = save.teams?.[save.userSchoolId]
   if (!team) return 0
   const players = (team.rosterPlayerIds || []).map(id => save.players[id]).filter(Boolean)
-  const isGrad = (p) => p.classYear === 'SR' && !(p.redshirtUsed === true && (p.seasonsUsed ?? 0) < 4)
+  // Who LEAVES at the upcoming rollover — must be level-aware. NWAC is JUCO:
+  // sophomores transfer/graduate out every year (advanceClassYearsAndExits
+  // maps SO → GRAD), so they are NOT returning. The old SR-only check counted
+  // every NWAC sophomore as returning, which collapsed spotsOpen to ~0 by
+  // year 2 and made auto mode stop offering entirely (it thought the roster
+  // was full when it was about to lose half of it). Reported by Nate.
+  const isNwac = save.level === 'NWAC'
+  const isGrad = (p) => isNwac
+    ? p.classYear === 'SO'                                       // JUCO: sophomores leave
+    : p.classYear === 'SR' && !(p.redshirtUsed === true && (p.seasonsUsed ?? 0) < 4)
   const returning = players.filter(p => !isGrad(p)).length
   const committed = Object.values(save.recruits || {}).filter(
     r => r.signedTo === save.userSchoolId && r.status === 'signed',
@@ -561,7 +570,7 @@ function spendRemainingOnScouting(save, apBudget) {
           // One-shot actions (SCOUT_TRIP) return { alreadyApplied:true } when
           // already used — that's a no-op, so don't charge AP; fall through to
           // a repeatable action (CALL/TEXT) instead.
-          const res = applyRecruitingAction(r, userSchoolId, action, rng)
+          const res = applyRecruitingAction(r, userSchoolId, action, rng, save.schools?.[userSchoolId])
           if (res && res.alreadyApplied) continue
           save.ap.currentWeek -= action.apCost
           save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + action.apCost
@@ -844,7 +853,7 @@ function spendRecruiting(save, apBudget) {
   const apply = (r, action) => {
     if (apLeft() < action.apCost) return false
     try {
-      applyRecruitingAction(r, userSchoolId, action, rng)
+      applyRecruitingAction(r, userSchoolId, action, rng, save.schools?.[userSchoolId])
       save.ap.currentWeek -= action.apCost
       save.ap.spentThisWeek = (save.ap.spentThisWeek || 0) + action.apCost
       spent += action.apCost
@@ -852,12 +861,17 @@ function spendRecruiting(save, apBudget) {
     } catch (err) { return false }
   }
 
-  // How many MORE recruits we want to sign this cycle. We deliberately leave a
+  // How many MORE recruits we want to sign this cycle. We normally leave a
   // PORTAL_BUFFER of spots open so the user isn't maxed out before the summer
-  // transfer portal — the old logic offered until the roster was full. Once
-  // the class is (nearly) full this drops to 0 and the auto stops extending
-  // new offers (it still nudges existing ones toward a decision).
-  const PORTAL_BUFFER = 3
+  // transfer portal. BUT a thin / rebuilding roster (a startup that just lost
+  // half its class) needs bodies NOW — leaving spots open there just guarantees
+  // an under-strength team. So when the roster is well below its cap, the
+  // buffer drops to 0 and the auto fills every open spot. Per Nate: "if we need
+  // 13 players, make damn sure auto mode signs enough."
+  const _cap = rosterCapForLevel(save.level || 'NAIA')
+  const _rosterSize = (team.rosterPlayerIds || []).length
+  const thinRoster = _rosterSize < _cap - 6
+  const PORTAL_BUFFER = thinRoster ? 0 : 3
   const spotsOpen = recruitingSpotsAvailable(save)
   const maxActiveOffers = Math.max(0, spotsOpen - PORTAL_BUFFER)
 
@@ -895,7 +909,16 @@ function spendRecruiting(save, apBudget) {
   // list. So "we have ZERO pitchers and an extreme need" actually steers auto
   // mode at pitchers (per Nate).
   const needBonus = positionalNeedBonusFn(save)
+  // ATTAINABILITY: skip recruits this program can't realistically land. The
+  // program-tier interest ceiling (recruits.js) caps how high a recruit's
+  // interest can climb for a low-rated school — so a startup chasing a 70-OVR
+  // kid would burn every AP and never get them over the sign line, leaving the
+  // 50-55 OVR guys it COULD sign un-recruited. Require a ceiling comfortably
+  // above the sign gate (32) so the auto only works prospects it can finish.
+  const mySchool = save.schools?.[userSchoolId]
+  const attainable = (r) => interestCeilingForProgram(r, mySchool) >= 45
   const targets = openList()
+    .filter(attainable)
     .map(r => ({ r, perceived: recruitEffValue(save, r, /* perceived */ true) + needBonus(r) }))
     .filter(t => t.perceived >= courtFloor)
     .sort((a, b) => b.perceived - a.perceived)

@@ -226,7 +226,7 @@ export default function Recruiting() {
       return
     }
     const rng = makeRng('action', recruit.id, save.userSchoolId, Date.now())
-    const result = applyRecruitingAction(recruit, save.userSchoolId, action, rng)
+    const result = applyRecruitingAction(recruit, save.userSchoolId, action, rng, save.schools?.[save.userSchoolId])
     // Track per-recruit per-week AP — reset if tag from a previous week,
     // then accumulate.
     const grade = result.recruit.scoutGrades[save.userSchoolId]
