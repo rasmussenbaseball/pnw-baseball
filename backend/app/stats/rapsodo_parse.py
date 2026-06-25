@@ -22,7 +22,7 @@ from .rapsodo_location import location_plus
 EXCLUDE = "__exclude__"
 
 # ---- tunables (documented in RAPSODO_TOOL_DESIGN.md; conventions, not laws) ----
-LOW_CONFIDENCE = 0.5        # spin_confidence <= this -> exclude from shape centroids
+LOW_CONFIDENCE = 0.5        # spin_confidence BELOW this -> low-conf (0.5 is MTD's normal value, counts)
 FB_VELO_BAND = 5.0          # pitches within this many mph of session top velo = "fastball-ish"
 RIDE_IVB = 17.0             # 4-seam "carries" at/above this induced vertical break
 SINK_IVB = 10.0             # sinker territory below this IVB with strong arm-side run
@@ -153,7 +153,7 @@ def normalize_pitch(r):
         quality = "failed"            # dead row, no usable data
     elif ivb is None or eff is None:
         quality = "partial"           # has velo but no shape
-    elif conf is not None and conf <= LOW_CONFIDENCE:
+    elif conf is not None and conf < LOW_CONFIDENCE:
         quality = "low_confidence"
     else:
         quality = "ok"
@@ -311,6 +311,7 @@ def _auto_classify(p, fb, hand):
     # them apart even at the same movement profile.
     ride_killed = ivb <= fbivb - 5
     spin_killed = spin is not None and fbspin is not None and spin <= fbspin * 0.90
+    big_spin_kill = spin is not None and fbspin is not None and spin <= fbspin * 0.80
 
     # CUTTER: a few mph off the FB with the arm-side RUN COLLAPSED (run-drop, not
     # ride, is the tell — a real fastball keeps its run even sub-max) AND no depth.
@@ -319,18 +320,24 @@ def _auto_classify(p, fb, hand):
     # so the broad fastball gate doesn't swallow it.
     if 1.5 <= gap <= 8 and -7 <= ahb <= 6 and ahb <= fbhb - 7 and ivb >= 3:
         return "cutter"
-    # SINKER: near FB velo, ride taken off, heavy arm-side RUN (run is the tell).
-    if gap <= 4 and ivb < SINK_IVB and ahb >= ARM_SIDE_RUN and (eff is None or eff >= 55):
+    # SINKER: near FB velo, ride taken off, heavy arm-side run — AND it keeps its
+    # spin. A sinker is a fastball variant; if the spin is killed it's a changeup,
+    # not a sinker (a sinker thrown ~FB velo wouldn't drop 20-30% of its spin).
+    # No eff floor: a bad spin-efficiency read shouldn't demote a sinker by velo+shape.
+    if gap <= 4 and ivb < SINK_IVB and ahb >= ARM_SIDE_RUN and not spin_killed:
         return "sinker"
     # FASTBALL: keeps BOTH ride and spin — a backed-off heater still rides and spins;
-    # a changeup kills one or both (even at the same velo). Velo gap alone doesn't demote it.
-    if gap <= 8 and ahb >= -2 and not ride_killed and not spin_killed and (eff is None or eff >= 55):
+    # a changeup kills one or both. NO eff floor: a near-FB-velo, arm-side, RIDING
+    # pitch is a fastball even with a junk efficiency/gyro read (the velo + movement
+    # win) — that's how a misread-spin heater avoids being dumped into the breakers.
+    if gap <= 8 and ahb >= -2 and not ride_killed and not spin_killed:
         return "fastball"
     # OFFSPEED (changeup / splitter): slower with the LIFE killed (ride OR spin),
-    # arm-side to straight. A splitter TUMBLES (low absolute spin AND low eff); a
-    # changeup needs arm-side FADE (ahb >= 4) — a slow pitch near/under 0 HB is a
-    # breaking ball, not a changeup.
-    if gap >= 5 and ahb >= -3 and (ride_killed or spin_killed):
+    # arm-side to straight. Caught at a SMALL velo gap too — a firm changeup that's
+    # only a couple mph off but bleeds 20%+ of its spin is still a changeup, not a
+    # sinker/fastball. A splitter TUMBLES (low absolute spin AND low eff); a changeup
+    # needs arm-side FADE (ahb >= 4).
+    if ahb >= -3 and ((gap >= 3 and (ride_killed or spin_killed)) or (gap >= 1.5 and big_spin_kill)):
         if spin is not None and spin < 1450 and (eff is None or eff < 65):
             return "splitter"
         if ahb >= 4:
@@ -439,7 +446,7 @@ def derive(rows, handedness, allowed=None):
                 q = "failed"
             elif ivb is None or eff is None:
                 q = "partial"
-            elif conf is not None and conf <= LOW_CONFIDENCE:
+            elif conf is not None and conf < LOW_CONFIDENCE:
                 q = "low_confidence"
             else:
                 q = "ok"
