@@ -294,6 +294,7 @@ const PlayerGraphic = lazyWithRetry(() => import('./pages/PlayerGraphic'))
 const ConferenceStandingsGraphic = lazyWithRetry(() => import('./pages/ConferenceStandingsGraphic'))
 const AllConferenceGraphic = lazyWithRetry(() => import('./pages/AllConferenceGraphic'))
 const TopPerformersGraphic = lazyWithRetry(() => import('./pages/TopPerformersGraphic'))
+const DraftBoardGraphic = lazyWithRetry(() => import('./pages/DraftBoardGraphic'))
 const TeamInfoGraphic = lazyWithRetry(() => import('./pages/TeamInfoGraphic'))
 const TeamSeasonRecapGraphic = lazyWithRetry(() => import('./pages/TeamSeasonRecapGraphic'))
 import HometownSearch from './pages/HometownSearch'
@@ -552,6 +553,7 @@ export default function App() {
           <Route path="/all-conference-graphic" element={<RequireAuth><AllConferenceGraphic /></RequireAuth>} />
           <Route path="/top-performers-graphic" element={<RequireAuth><TopPerformersGraphic /></RequireAuth>} />
           <Route path="/wcl-top-performers-graphic" element={<RequireAuth><TopPerformersGraphic variant="summer" /></RequireAuth>} />
+          <Route path="/draft-board-graphic" element={<RequireAuth><DraftBoardGraphic /></RequireAuth>} />
           <Route path="/team-info-graphic" element={<RequireAuth><TeamInfoGraphic /></RequireAuth>} />
           <Route path="/team-season-recap" element={<RequireAuth><TeamSeasonRecapGraphic /></RequireAuth>} />
           <Route path="/players" element={<PlayerSearch />} />

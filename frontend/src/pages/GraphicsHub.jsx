@@ -17,6 +17,7 @@ const GRAPHICS = [
   { to: '/all-conference-graphic',  label: 'All-Conference Teams',  desc: 'Render the All-Conference 1st / 2nd / HM teams.' },
   { to: '/top-performers-graphic',  label: 'Top Performers',        desc: 'Weekly top 10 hitters and pitchers.' },
   { to: '/wcl-top-performers-graphic', label: 'WCL Top Performers', desc: 'Top 10 WCL hitters and pitchers over any date range.' },
+  { to: '/draft-board-graphic', label: 'Draft Board', desc: 'Ranked PNW MLB Draft Board with trends and commits.' },
   { to: '/team-info-graphic',       label: 'Team Info',             desc: 'Full team overview graphic.' },
   { to: '/team-season-recap',       label: 'Team Season Recap',     desc: 'End-of-year highlights: record, WAR leaders, clutch moment.' },
   { to: '/graphics/portal-tracker', label: 'Portal / JUCO Trackers', desc: 'Top 10/20/50 transfer-portal & NWAC JUCO players, green PNWCBR co-brand.' },
