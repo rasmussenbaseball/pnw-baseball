@@ -583,7 +583,7 @@ export const DRAFT_DATA = {
         "name": "Blake Smith",
         "pos": "P",
         "year": "SR",
-        "school": "SeattleU",
+        "school": "Seattle U",
         "playerId": 3690
       },
       {
