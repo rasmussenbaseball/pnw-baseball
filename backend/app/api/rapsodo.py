@@ -192,6 +192,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
             "velo": _ff(r["velo"]),
             "ivb": _ff(r["ivb"]),
             "arm_hb": _ff(r["arm_hb"]),
+            "spin": _ff(r["total_spin"]),
             "quality": r["quality"],
             "manual": r["manual_pitch"] is not None,
         }

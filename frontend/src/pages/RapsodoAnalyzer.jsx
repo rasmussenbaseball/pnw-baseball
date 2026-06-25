@@ -297,17 +297,15 @@ function PlayerProfile({ rapsodoId, onBack }) {
           <div>
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Movement profile</h3>
             <MovementPlot points={plot} arsenal={arsenal} onPitchClick={(p) => setRelabel(p)}
-              activeId={relabel?.id} armAngle={arm?.arm_angle} hand={player.handedness} />
+              activeId={relabel?.id} armAngle={arm?.arm_angle} hand={player.handedness}
+              relabel={relabel} saving={saving}
+              onPick={(label) => applyLabel(relabel.id, label)}
+              onCloseRelabel={() => setRelabel(null)} />
             <p className="mt-2 text-xs text-gray-400">
               Pitcher's view, ride ↑. Shaded blobs = movement by pitch type, dots = individual pitches.
               The diagonal is the arm-angle axis — a fastball matching the slot sits along it; pitches
               off it are deviating. Rings = lower-confidence reads. Click a dot to reclassify it.
             </p>
-            {relabel && (
-              <ReclassifyMenu point={relabel} saving={saving}
-                onPick={(label) => applyLabel(relabel.id, label)}
-                onClose={() => setRelabel(null)} />
-            )}
           </div>
           <div>
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Location</h3>
@@ -610,34 +608,7 @@ function ArsenalPicker({ current, saving, onApply, onClose }) {
 }
 
 // ─────────────────────────── Movement plot (SVG) ───────────────────────────
-function ReclassifyMenu({ point, saving, onPick, onClose }) {
-  return (
-    <div className="mt-3 rounded-xl border border-portal-purple/40 dark:border-portal-accent/40 bg-white dark:bg-gray-900 p-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-gray-700 dark:text-gray-300">
-          Reclassify this pitch <span className="text-gray-400">(now: {point.pitch}{point.manual ? ', manual' : ''})</span>
-        </div>
-        <button type="button" onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {PITCH_TYPES.map((t) => (
-          <button key={t} type="button" disabled={saving} onClick={() => onPick(t)}
-            className={`px-2 py-1 rounded text-xs border ${t === point.pitch ? 'border-portal-purple bg-portal-purple/10' : 'border-gray-200 dark:border-gray-700 hover:border-portal-purple'} text-gray-700 dark:text-gray-300 disabled:opacity-50`}>
-            <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: colorFor(t) }} />{t}
-          </button>
-        ))}
-        {point.manual && (
-          <button type="button" disabled={saving} onClick={() => onPick(null)}
-            className="px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-400 disabled:opacity-50">
-            ↺ revert to auto
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand }) {
+function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand, relabel, saving, onPick, onCloseRelabel }) {
   const W = 380, H = 380, PAD = 30, DOM = 26
   const sx = (v) => PAD + ((v + DOM) / (2 * DOM)) * (W - 2 * PAD)
   const sy = (v) => PAD + ((DOM - v) / (2 * DOM)) * (H - 2 * PAD)
@@ -668,12 +639,24 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand 
   if (armAngle != null) {
     const th = (armAngle * Math.PI) / 180
     const ax = hbSign * DOM * Math.cos(th), ay = DOM * Math.sin(th)
-    const band = angleBand(armAngle)
-    axis = { x1: sx(-ax), y1: sy(-ay), x2: sx(ax), y2: sy(ay), lx: sx(ax * 0.82), ly: sy(ay * 0.82), label: band.label }
+    axis = { x1: sx(-ax), y1: sy(-ay), x2: sx(ax), y2: sy(ay), label: `arm slot ${angleBand(armAngle).label}` }
+  }
+
+  // On-graph reclassify popup: anchored at the clicked dot, growing toward the
+  // plot center so it stays in bounds.
+  let pop = null
+  if (relabel && relabel.arm_hb != null && relabel.ivb != null) {
+    const lp = (sx(relabel.arm_hb * hbSign) / W) * 100
+    const tp = (sy(relabel.ivb) / H) * 100
+    pop = {
+      left: `${lp}%`, top: `${tp}%`,
+      transform: `translate(${lp > 50 ? 'calc(-100% - 7px)' : '7px'}, ${tp > 55 ? 'calc(-100% - 7px)' : '7px'})`,
+    }
   }
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[420px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+   <div className="relative w-full max-w-[420px]">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
       {/* gridlines */}
       {ticks.map((t) => (
         <g key={t}>
@@ -690,13 +673,10 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand 
           <text x={sx(0) - 5} y={sy(t) + 3} textAnchor="end" className="fill-gray-400 text-[9px]">{t}</text>
         </g>
       ))}
-      {/* arm-angle axis (drawn under the data) */}
+      {/* arm-angle axis (drawn under the data); label sits at the bottom, clear of data */}
       {axis && (
-        <g>
-          <line x1={axis.x1} y1={axis.y1} x2={axis.x2} y2={axis.y2}
-            className="stroke-gray-400 dark:stroke-gray-500" strokeWidth="1.5" strokeDasharray="5 4" opacity="0.7" />
-          <text x={axis.lx} y={axis.ly} textAnchor="middle" className="fill-gray-400 text-[9px] font-medium">arm slot {axis.label}</text>
-        </g>
+        <line x1={axis.x1} y1={axis.y1} x2={axis.x2} y2={axis.y2}
+          className="stroke-gray-400 dark:stroke-gray-500" strokeWidth="1.5" strokeDasharray="5 4" opacity="0.7" />
       )}
       {/* movement blobs per pitch type */}
       {blobs.map((b) => (
@@ -718,25 +698,60 @@ function MovementPlot({ points, arsenal, onPitchClick, activeId, armAngle, hand 
           onClick={() => onPitchClick && onPitchClick(p)}
         />
       ))}
-      {/* centroid labels — only meaningful clusters, to avoid overlap */}
-      {arsenal?.filter((a) => a.count >= 2 && a.pitch !== 'unclassified').map((a) => (
-        a.arm_hb === null || a.ivb === null ? null : (
-          <text
-            key={a.pitch}
-            x={dx(a.arm_hb)}
-            y={sy(a.ivb) - 7}
-            textAnchor="middle"
-            className="text-[9px] font-semibold"
-            style={{ fill: colorFor(a.pitch) }}
-          >
-            {a.pitch.replace(' / 2-seam', '').replace('fastball (mixed)', 'FB')}
-          </text>
-        )
-      ))}
       <text x={hbSign === 1 ? W - PAD : PAD} y={sy(0) - 5} textAnchor={hbSign === 1 ? 'end' : 'start'}
         className="fill-gray-400 text-[9px]">{hbSign === 1 ? 'arm side →' : '← arm side'}</text>
       <text x={sx(0) + 4} y={PAD + 8} className="fill-gray-400 text-[9px]">ride ↑</text>
+      {axis && (
+        <text x={W / 2} y={H - 9} textAnchor="middle" className="fill-gray-400 text-[10px] font-medium">{axis.label}</text>
+      )}
     </svg>
+
+    {relabel && pop && (
+      <PitchPopup point={relabel} saving={saving} onPick={onPick} onClose={onCloseRelabel} pos={pop} />
+    )}
+   </div>
+  )
+}
+
+// On-graph popup: the clicked pitch's metrics + reclassify options.
+function PitchPopup({ point, saving, onPick, onClose, pos }) {
+  const Stat = ({ label, value }) => (
+    <div className="text-center">
+      <div className="text-[9px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">{value}</div>
+    </div>
+  )
+  return (
+    <div className="absolute z-10 w-[244px] rounded-xl border border-portal-purple/50 dark:border-portal-accent/50 bg-white dark:bg-gray-900 p-2.5 shadow-lg"
+      style={{ left: pos.left, top: pos.top, transform: pos.transform }}>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">
+          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: colorFor(point.pitch) }} />
+          {point.pitch}{point.manual ? ' · manual' : ''}
+        </div>
+        <button type="button" onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+      </div>
+      <div className="mb-2 grid grid-cols-4 gap-1 rounded-lg bg-gray-50 dark:bg-gray-800/60 py-1.5">
+        <Stat label="Velo" value={fmt(point.velo, 1)} />
+        <Stat label="IVB" value={fmt(point.ivb, 1)} />
+        <Stat label="HB" value={fmt(point.arm_hb, 1)} />
+        <Stat label="Spin" value={point.spin != null ? Math.round(point.spin) : '–'} />
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {PITCH_TYPES.map((t) => (
+          <button key={t} type="button" disabled={saving} onClick={() => onPick(t)}
+            className={`px-1.5 py-0.5 rounded text-[11px] border ${t === point.pitch ? 'border-portal-purple bg-portal-purple/10' : 'border-gray-200 dark:border-gray-700 hover:border-portal-purple'} text-gray-700 dark:text-gray-300 disabled:opacity-50`}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ background: colorFor(t) }} />{t}
+          </button>
+        ))}
+        {point.manual && (
+          <button type="button" disabled={saving} onClick={() => onPick(null)}
+            className="px-1.5 py-0.5 rounded text-[11px] border border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-400 disabled:opacity-50">
+            ↺ auto
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
