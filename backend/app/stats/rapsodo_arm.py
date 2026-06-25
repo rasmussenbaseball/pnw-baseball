@@ -14,10 +14,13 @@ def _f(v):
     return float(v) if v is not None else None
 
 
-# Estimated shoulder pivot (ft) for a geometric arm-angle approximation. Rapsodo
-# gives the release point but not the shoulder (Statcast uses pose), so we anchor
-# the pivot and measure the release point off it. Illustrative, not Statcast-exact.
-_SHOULDER_H, _SHOULDER_X = 4.6, 0.4
+# Estimated shoulder-pivot HEIGHT (ft) for a geometric arm-angle approximation.
+# Rapsodo gives the release point but not the shoulder (Statcast uses pose), so we
+# anchor the pivot at the body midline (horizontal) and this height (vertical) and
+# measure the release point off it. Illustrative, not Statcast-exact. Anchoring at
+# the midline (no horizontal offset) keeps the angle stable for pitchers who
+# release near the centerline (a side offset there collapses dx → a false ~90°).
+_SHOULDER_H = 4.6
 
 
 def _arm_angle(rel_height, rel_side):
@@ -26,7 +29,7 @@ def _arm_angle(rel_height, rel_side):
     if rel_height is None or rel_side is None:
         return None
     dy = rel_height - _SHOULDER_H
-    dx = max(0.05, abs(rel_side) - _SHOULDER_X)
+    dx = max(0.05, abs(rel_side))
     return round(max(-30.0, min(90.0, math.degrees(math.atan2(dy, dx)))))
 
 
