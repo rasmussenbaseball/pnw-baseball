@@ -5,7 +5,7 @@
 // Google Docs, since TipTap parses pasted HTML), a bubble menu on text
 // selection, and a "+" block menu on empty lines for inserting blocks — plus a
 // "Free preview ends here" paywall break. Emits HTML via onChange.
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Node } from '@tiptap/core'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus'
@@ -40,6 +40,10 @@ export default function RichEditor({ value = '', onChange, uploadImage }) {
   const fileRef = useRef(null)
   const [plusOpen, setPlusOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
+  // Tracks the HTML we last emitted/synced so external `value` changes (e.g. an
+  // article body that loads AFTER mount) get pushed into the editor, while our
+  // own onUpdate echoes are ignored (no clobbering in-progress typing).
+  const lastHtml = useRef(value)
 
   const editor = useEditor({
     extensions: [
@@ -54,11 +58,32 @@ export default function RichEditor({ value = '', onChange, uploadImage }) {
     content: value || '',
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose-base max-w-none focus:outline-none min-h-[420px] px-1 py-2',
+        // `markdown` is the SAME wrapper class the published article + preview
+        // pane use (index.css `.markdown …` rules), so what you type renders
+        // identically here and on the live site. The `prose` classes are kept
+        // for parity with those wrappers but are inert (no typography plugin).
+        class: 'markdown prose prose-sm sm:prose-base max-w-none focus:outline-none min-h-[420px] px-1 py-2',
       },
     },
-    onUpdate: ({ editor }) => onChange?.(editor.getHTML()),
+    onUpdate: ({ editor }) => {
+      const html = editor.getHTML()
+      lastHtml.current = html
+      onChange?.(html)
+    },
   })
+
+  // TipTap only applies `content` at mount. When editing an existing article
+  // the body loads asynchronously AFTER the editor mounts, so without this the
+  // editor stays empty — and a subsequent save would overwrite the stored body
+  // with that empty content (the data-loss bug). Sync external value changes in,
+  // guarded by lastHtml so we never reset the doc mid-typing.
+  useEffect(() => {
+    if (!editor) return
+    if (value !== lastHtml.current && value !== editor.getHTML()) {
+      lastHtml.current = value
+      editor.commands.setContent(value || '', { emitUpdate: false })
+    }
+  }, [value, editor])
 
   if (!editor) return null
 

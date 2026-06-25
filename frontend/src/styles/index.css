@@ -903,3 +903,12 @@ html.dark .markdown pre {
   margin: 1.6em 0;
 }
 html.dark .markdown hr { border-top-color: #374151; }
+
+/* Tables — same look in the RichEditor and on the published page so what you
+   build in the editor is what readers see. Mirrors the `.rich-editor table`
+   rules. */
+.markdown table { border-collapse: collapse; width: 100%; margin: 1.1em 0; font-size: 0.95em; }
+.markdown td, .markdown th { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }
+.markdown th { background: #f3f4f6; font-weight: 700; }
+html.dark .markdown td, html.dark .markdown th { border-color: #4b5563; }
+html.dark .markdown th { background: #374151; }
