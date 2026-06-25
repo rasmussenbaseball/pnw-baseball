@@ -496,49 +496,51 @@ function CoachingNotes({ suggestions }) {
 
 function ArsenalTable({ arsenal }) {
   if (!arsenal?.length) return <p className="text-sm text-gray-500">No reliable pitches yet.</p>
+  const H = 'px-2 py-1.5 font-medium'
+  const C = 'px-2 py-1.5 text-right text-gray-600 dark:text-gray-400'
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-      <table className="w-full text-sm">
+      <table className="w-full text-xs">
         <thead className="bg-gray-50 dark:bg-gray-800 text-left text-gray-500 dark:text-gray-400">
           <tr>
-            <th className="px-3 py-2 font-medium">Pitch</th>
-            <th className="px-3 py-2 font-medium text-right">#</th>
-            <th className="px-3 py-2 font-medium text-right">Velo</th>
-            <th className="px-3 py-2 font-medium text-right">Max</th>
-            <th className="px-3 py-2 font-medium text-right">Spin</th>
-            <th className="px-3 py-2 font-medium text-right">Eff%</th>
-            <th className="px-3 py-2 font-medium text-right">IVB</th>
-            <th className="px-3 py-2 font-medium text-right">Arm HB</th>
-            <th className="px-3 py-2 font-medium text-right">VAA</th>
-            <th className="px-3 py-2 font-medium">Tilt</th>
-            <th className="px-3 py-2 font-medium text-right">Zone%</th>
-            <th className="px-3 py-2 font-medium text-right">Loc+†</th>
-            <th className="px-3 py-2 font-medium text-right">Stuff*</th>
+            <th className={H}>Pitch</th>
+            <th className={`${H} text-right`}>#</th>
+            <th className={`${H} text-right`}>Velo</th>
+            <th className={`${H} text-right`}>Max</th>
+            <th className={`${H} text-right`}>Spin</th>
+            <th className={`${H} text-right`}>Eff</th>
+            <th className={`${H} text-right`}>IVB</th>
+            <th className={`${H} text-right`}>HB</th>
+            <th className={`${H} text-right`}>VAA</th>
+            <th className={H}>Tilt</th>
+            <th className={`${H} text-right`}>Zone</th>
+            <th className={`${H} text-right`}>Loc+†</th>
+            <th className={`${H} text-right`}>Stuff*</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {arsenal.map((a) => (
             <tr key={a.pitch} className="bg-white dark:bg-gray-900">
-              <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
-                <span className="inline-block w-2.5 h-2.5 rounded-full mr-2 align-middle" style={{ background: colorFor(a.pitch) }} />
+              <td className="px-2 py-1.5 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ background: colorFor(a.pitch) }} />
                 {a.pitch}
               </td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.count}</td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.velo)}</td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.velo_max)}</td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.total_spin ?? '–'}</td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.spin_eff, 0)}</td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.ivb)}</td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{fmt(a.arm_hb)}</td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.vaa == null ? '–' : `${fmt(a.vaa)}°`}</td>
-              <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{a.tilt || '–'}</td>
-              <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{a.zone_pct == null ? '–' : `${a.zone_pct}%`}</td>
-              <td className={`px-3 py-2 text-right font-medium ${a.loc_plus == null ? 'text-gray-400' : a.loc_plus >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
+              <td className={C}>{a.count}</td>
+              <td className={C}>{fmt(a.velo)}</td>
+              <td className={C}>{fmt(a.velo_max)}</td>
+              <td className={C}>{a.total_spin ?? '–'}</td>
+              <td className={C}>{fmt(a.spin_eff, 0)}</td>
+              <td className={C}>{fmt(a.ivb)}</td>
+              <td className={C}>{fmt(a.arm_hb)}</td>
+              <td className={C}>{a.vaa == null ? '–' : `${fmt(a.vaa)}°`}</td>
+              <td className="px-2 py-1.5 text-gray-600 dark:text-gray-400 whitespace-nowrap">{a.tilt || '–'}</td>
+              <td className={C}>{a.zone_pct == null ? '–' : `${a.zone_pct}%`}</td>
+              <td className={`px-2 py-1.5 text-right font-medium ${a.loc_plus == null ? 'text-gray-400' : a.loc_plus >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
                 {a.loc_plus ?? '–'}
               </td>
               <td
                 title={a.stuff_components ? Object.entries(a.stuff_components).map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`).join('\n') : ''}
-                className={`px-3 py-2 text-right font-medium ${a.stuff == null ? 'text-gray-400' : a.stuff >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                className={`px-2 py-1.5 text-right font-medium ${a.stuff == null ? 'text-gray-400' : a.stuff >= 100 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
                 {a.stuff ?? '–'}
               </td>
             </tr>
@@ -816,8 +818,8 @@ function Heatmap({ pitch, pts, meta }) {
   const col = colorFor(pitch)
   const zx = sx(-8.5), zw = sx(8.5) - sx(-8.5), zy = sy(42), zh = sy(18) - sy(42)
   return (
-    <div className="text-center">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-[132px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <div className="text-center" style={{ flex: '1 1 190px', maxWidth: '340px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         {cells.map(([i, j, d], k) => {
           const o = max > 0 ? Math.pow(d / max, 0.7) * 0.92 : 0
           return o < 0.05 ? null : (
