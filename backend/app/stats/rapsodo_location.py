@@ -18,7 +18,10 @@ TARGET_Y = {
 }
 _HEIGHT_SD = 7.0      # how forgiving the height target is (in)
 _EDGE_SD = 3.5        # width of the good "shadow" band straddling the zone border (in)
-_REF, _K = 0.45, 90   # provisional avg location value -> 100, and the grade spread
+# _REF centers the score: it's the mean per-pitch location value over the current
+# population (~0.21), so an average-located arsenal lands at 100. Provisional —
+# recompute as the population grows. _K sets the spread.
+_REF, _K = 0.21, 180
 _MIN_N = 3
 
 
