@@ -263,6 +263,24 @@ function PlayerProfile({ rapsodoId, onBack }) {
     }
   }
 
+  async function delJson(url) {
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess?.session?.access_token
+    return fetch(url, { method: 'DELETE', headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  }
+
+  async function deletePlayer() {
+    if (!window.confirm('Delete this player and all of their sessions? This cannot be undone.')) return
+    await delJson(`/api/v1/portal/rapsodo/players/${rapsodoId}`)
+    onBack()
+  }
+
+  async function deleteSession(id) {
+    if (!window.confirm('Delete this session and its pitches?')) return
+    await delJson(`/api/v1/rapsodo/sessions/${id}`)
+    refetch()
+  }
+
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
   const { player, arsenal, plot, locations, arm, hand_profile, trend, sessions, n_sessions, suggestions } = data
@@ -286,6 +304,10 @@ function PlayerProfile({ rapsodoId, onBack }) {
         <span className="text-sm text-gray-500">
           {n_sessions} session{n_sessions === 1 ? '' : 's'} · {plot.length} reliable pitches
         </span>
+        <button onClick={deletePlayer}
+          className="ml-auto text-xs font-medium text-red-600 dark:text-red-400 hover:underline">
+          Delete player
+        </button>
       </div>
 
       <CoachingNotes suggestions={suggestions} />
@@ -340,7 +362,7 @@ function PlayerProfile({ rapsodoId, onBack }) {
 
       <div className="mt-6">
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Sessions</h3>
-        <SessionList sessions={sessions} />
+        <SessionList sessions={sessions} onDelete={deleteSession} />
       </div>
 
       <DevelopmentTrends trend={trend} />
@@ -562,7 +584,7 @@ function ArsenalTable({ arsenal }) {
   )
 }
 
-function SessionList({ sessions }) {
+function SessionList({ sessions, onDelete }) {
   if (!sessions?.length) return null
   return (
     <ul className="space-y-2">
@@ -577,6 +599,10 @@ function SessionList({ sessions }) {
             {s.qc_warmup ? ` · ${s.qc_warmup} warmup` : ''}
             {' · '}{s.qc_low_confidence + s.qc_partial + s.qc_failed} flagged · {s.n_pitches} total
           </span>
+          {onDelete && (
+            <button onClick={() => onDelete(s.id)} title="Delete session"
+              className="text-xs text-gray-400 hover:text-red-600 dark:hover:text-red-400">✕</button>
+          )}
         </li>
       ))}
     </ul>

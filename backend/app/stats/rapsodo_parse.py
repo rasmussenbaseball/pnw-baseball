@@ -295,6 +295,10 @@ def _auto_classify(p, fb, hand):
     spin = p.get("total_spin")
     if velo is None or ivb is None or ahb is None:
         return "unclassified"
+    # Ride without backspin is self-contradictory (real ride needs a high spin
+    # efficiency) — an unreliable read, so don't force it into a bucket.
+    if eff is not None and eff < 35 and ivb >= 10:
+        return "unclassified"
     g = abs(p["gyro"]) if p["gyro"] is not None else None
     fbv = fb["velo"] if fb else velo
     fbivb = fb["ivb"] if fb else ivb
@@ -313,7 +317,7 @@ def _auto_classify(p, fb, hand):
     # Catches both the cut fastball (Duthie: 18" FB run, ~3" cutter) and the
     # high-ride "slider/gyro" attempts that never get depth (Sugimoto). Checked first
     # so the broad fastball gate doesn't swallow it.
-    if 1.5 <= gap <= 8 and ahb <= 6 and ahb <= fbhb - 7 and ivb >= 3:
+    if 1.5 <= gap <= 8 and -7 <= ahb <= 6 and ahb <= fbhb - 7 and ivb >= 3:
         return "cutter"
     # SINKER: near FB velo, ride taken off, heavy arm-side RUN (run is the tell).
     if gap <= 4 and ivb < SINK_IVB and ahb >= ARM_SIDE_RUN and (eff is None or eff >= 55):
@@ -333,9 +337,10 @@ def _auto_classify(p, fb, hand):
             return "changeup"
     # BREAKING BALLS: glove side and/or low efficiency / high gyro.
     if ahb < 0 or (eff is not None and eff < 60) or (g is not None and g >= 45):
-        # A breaking ball with RIDE and no depth (and not running arm-side) is a
-        # cutter — coach rule: ~7+ IVB on a breaker is a cutter.
-        if ivb >= 6 and ahb <= 6:
+        # A breaking ball with RIDE and no depth that sits NEAR 0 HB is a cutter
+        # (~7+ IVB on a breaker). Big glove-side break with ride is a SWEEPER, not a
+        # cutter, so a cutter must be near the 0-HB line (not far glove-side).
+        if ivb >= 6 and -7 <= ahb <= 6:
             return "cutter"
         # SLIDER (gyro/bullet-spin) — near (0,0). Checked BEFORE curveball so a shallow
         # bullet-spin breaker with a little depth isn't split off as a curveball
@@ -354,12 +359,16 @@ def _is_misread(p):
     """Physically self-contradictory readings = Rapsodo misreads (or a different
     pitcher slipping into the file). Flagged 'misread' and dropped from the arsenal,
     plots, and grades — but kept clickable so a coach can restore one.
-      - real DEPTH (topspin) cannot coexist with strong arm-side RUN (backspin), and
+      - real DEPTH (topspin) cannot coexist with strong arm-side RUN (backspin),
+      - big GLOVE-side break cannot coexist with big RIDE (a glove-side high-ride
+        read is usually an opposite-handed fastball from another session creeping in), and
       - a big horizontal break cannot happen with almost no spin (break comes from spin)."""
     ivb, ahb, spin = p.get("ivb"), p.get("arm_hb"), p.get("total_spin")
     if ivb is None or ahb is None:
         return False
     if ivb <= -6 and ahb >= 8:
+        return True
+    if ivb >= 15 and ahb <= -8:
         return True
     if spin is not None and spin < 1300 and abs(ahb) >= 11:
         return True

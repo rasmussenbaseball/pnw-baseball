@@ -313,6 +313,25 @@ def delete_rapsodo_session(session_id: int, owner: str = Depends(require_tier("c
     return {"status": "ok", "deleted_session": session_id}
 
 
+@router.delete("/portal/rapsodo/players/{rapsodo_player_id}")
+def delete_rapsodo_player(rapsodo_player_id: str, owner: str = Depends(require_tier("coach"))):
+    """Delete a player and ALL their sessions + pitches (e.g. a bugged upload, or a
+    file that turned out to be a different pitcher). Owner-scoped."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM rapsodo_players WHERE owner_user_id=%s AND rapsodo_player_id=%s",
+                    (owner, rapsodo_player_id))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Player not found")
+        pid = row["id"]
+        cur.execute("DELETE FROM rapsodo_pitches WHERE player_db_id=%s AND owner_user_id=%s", (pid, owner))
+        cur.execute("DELETE FROM rapsodo_sessions WHERE player_db_id=%s AND owner_user_id=%s", (pid, owner))
+        cur.execute("DELETE FROM rapsodo_players WHERE id=%s AND owner_user_id=%s", (pid, owner))
+        conn.commit()
+    return {"status": "ok", "deleted_player": rapsodo_player_id}
+
+
 _VALID_LABELS = {
     "fastball", "sinker", "cutter", "slider",
     "sweeper", "curveball", "changeup", "splitter", "unclassified",
