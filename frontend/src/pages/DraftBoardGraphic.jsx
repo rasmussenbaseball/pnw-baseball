@@ -110,79 +110,80 @@ function drawFooter(ctx, W, H) {
   ctx.fillText(`Updated ${today}`, W - 40, footerY + footerH / 2)
 }
 
-// ─── One ranked row ───
-const ROW_H = 44, ROW_GAP = 5
+// ─── One ranked row (card height = cardH, content scales by s) ───
 function isPrepOrJC(p) { return p.year === 'PREP' || /^JC/.test(p.year || '') }
 
-function drawRow(ctx, x, y, w, p, logoImg) {
+function drawRow(ctx, x, y, w, cardH, s, p, logoImg) {
+  // Horizontal positions scale more gently than fonts so text keeps its room.
+  const sp = Math.min(s, 1.3)
   ctx.fillStyle = THEME.cardBg
-  roundRect(ctx, x, y, w, ROW_H, 8); ctx.fill()
+  roundRect(ctx, x, y, w, cardH, 8); ctx.fill()
   ctx.strokeStyle = THEME.cardBorder; ctx.lineWidth = 1; ctx.stroke()
-  const midY = y + ROW_H / 2
+  const midY = y + cardH / 2
 
   // Rank (top 10 gold)
-  ctx.font = `900 19px ${F}`
+  ctx.font = `900 ${19 * s}px ${F}`
   ctx.fillStyle = p.rank <= 10 ? THEME.gold : THEME.accent
   ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-  ctx.fillText(String(p.rank), x + 44, midY)
+  ctx.fillText(String(p.rank), x + 42 * sp, midY)
 
   // School logo
-  const lcx = x + 68, lr = 15
+  const lcx = x + 70 * sp, lr = 15 * sp
   ctx.fillStyle = THEME.circleBg
   ctx.beginPath(); ctx.arc(lcx, midY, lr + 2, 0, Math.PI * 2); ctx.fill()
   if (logoImg) drawImageContain(ctx, logoImg, lcx - lr + 2, midY - lr + 2, lr * 2 - 4, lr * 2 - 4)
 
-  const nameX = x + 90
+  const nameX = x + 92 * sp
   let rightEdge = x + w - 12
 
   // Commitment (right-aligned, only HS/JC)
   if (isPrepOrJC(p) && p.commit) {
-    ctx.font = `italic 600 12px ${F}`
+    ctx.font = `italic 600 ${12 * s}px ${F}`
     ctx.fillStyle = THEME.accent
-    ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'
-    ctx.fillText(p.commit, x + w - 12, y + 33)
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
+    ctx.fillText(p.commit, x + w - 12, midY + 9 * s)
     rightEdge = x + w - 12 - ctx.measureText(p.commit).width - 12
   }
 
   // Name
-  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
-  ctx.font = `700 15px ${F}`; ctx.fillStyle = THEME.textPrimary
-  ctx.fillText(truncText(ctx, p.name, (x + w - 12) - nameX), nameX, y + 19)
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+  ctx.font = `700 ${15 * s}px ${F}`; ctx.fillStyle = THEME.textPrimary
+  ctx.fillText(truncText(ctx, p.name, (x + w - 12) - nameX), nameX, midY - 8 * s)
 
   // Meta: POS • YEAR • School
-  ctx.font = `500 11px ${F}`; ctx.fillStyle = THEME.textSecondary
+  ctx.font = `500 ${11 * s}px ${F}`; ctx.fillStyle = THEME.textSecondary
   const meta = [p.pos, p.year, p.school].filter(Boolean).join('   •   ')
-  ctx.fillText(truncText(ctx, meta, rightEdge - nameX), nameX, y + 34)
+  ctx.fillText(truncText(ctx, meta, rightEdge - nameX), nameX, midY + 9 * s)
 }
 
-// Standardized width for every draft board; height scales with the chosen Top N.
-const W = 1080, PAD_X = 40, COL_GAP = 24, TOP_Y = 150
+// ─── Fixed canvas: SAME dimensions for every board; content scales to fit ───
+const W = 1080, H = 1080, PAD_X = 40, COL_GAP = 24
+const BODY_TOP = 150, FOOTER_H = 48, ROW_GAP = 6, BASE_ROW = 52
+const BODY_H = H - BODY_TOP - FOOTER_H
 const COL_W = (W - PAD_X * 2 - COL_GAP) / 2
 const TOP_N_OPTIONS = [10, 20, 30, 40, 50]
 
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 // How many prospects actually render for a board at a given Top N.
 function boardCount(year, topN) {
   return Math.min(topN, (DRAFT_DATA[year]?.prospects || []).length)
-}
-function layoutHeight(n) {
-  const perCol = Math.ceil(n / 2)
-  return TOP_Y + perCol * (ROW_H + ROW_GAP) + 48
 }
 
 function renderGraphic(ctx, year, images, topN) {
   const board = DRAFT_DATA[year]
   const prospects = (board?.prospects || []).slice(0, topN)
-  const H = layoutHeight(prospects.length)
   drawBackground(ctx, W, H)
   drawHeader(ctx, W, PAD_X, `${board.year} MLB DRAFT BOARD`,
     `Pacific Northwest Top ${prospects.length} Prospects`, images['/favicon.png'])
-  const perCol = Math.ceil(prospects.length / 2)
+  const perCol = Math.max(1, Math.ceil(prospects.length / 2))
+  const rowH = BODY_H / perCol
+  const s = clamp(rowH / BASE_ROW, 0.66, 1.7)
   prospects.forEach((p, i) => {
     const col = i < perCol ? 0 : 1
     const rowInCol = col === 0 ? i : i - perCol
     const x = PAD_X + col * (COL_W + COL_GAP)
-    const y = TOP_Y + rowInCol * (ROW_H + ROW_GAP)
-    drawRow(ctx, x, y, COL_W, p, images[getSchoolLogo(p.school)])
+    const y = BODY_TOP + rowInCol * rowH
+    drawRow(ctx, x, y, COL_W, rowH - ROW_GAP, s, p, images[getSchoolLogo(p.school)])
   })
   drawFooter(ctx, W, H)
   return H
@@ -216,7 +217,6 @@ export default function DraftBoardGraphic() {
   useEffect(() => {
     if (!images || !canvasRef.current) return
     const dpr = 2
-    const H = layoutHeight(boardCount(year, topN))
     const canvas = canvasRef.current
     canvas.width = W * dpr
     canvas.height = H * dpr
@@ -234,7 +234,6 @@ export default function DraftBoardGraphic() {
     setExporting(true)
     try {
       const dpr = 2
-      const H = layoutHeight(boardCount(year, topN))
       const canvas = document.createElement('canvas')
       canvas.width = W * dpr
       canvas.height = H * dpr
