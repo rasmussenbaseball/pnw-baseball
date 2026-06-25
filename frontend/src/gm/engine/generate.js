@@ -432,17 +432,18 @@ function makeRosterPositionList(rng, targetSize) {
  * SPs) lived past the 25-slot cutoff.
  *
  * Allocation (per realistic college staff):
- *   - 9 starting hitters (1 per defensive position, no DH)
+ *   - 8 starting hitters (1 per defensive position, no DH — coach picks the
+ *     DH at lineup time, matching the rest of the engine)
  *   - 5 SPs (weekend rotation + midweek swing)
  *   - Remaining slots split ~55/45 RP/bench-hitter
  */
+const SLIM_BASE = 13   // 8 defensive starters + 5 SP
 function makeSlimPositionList(targetSize, rng) {
-  const size = Math.max(14, targetSize)   // need at least 9H + 5P to field a team
+  const size = Math.max(SLIM_BASE, targetSize)   // need at least 8H + 5P to field a team
   const list = []
-  // Starting 9 hitters — one per defensive position
+  // Starting 8 hitters — one per defensive position (no DH)
   const STARTERS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF']
-  list.push({ position: 'C', isPitcher: false })
-  for (const pos of STARTERS.slice(1)) {
+  for (const pos of STARTERS) {
     list.push({ position: pos, isPitcher: false })
   }
   // 5 SPs (real weekend rotation + midweek)
@@ -451,7 +452,7 @@ function makeSlimPositionList(targetSize, rng) {
   }
   // Remaining slots: 55% RP, 45% bench hitter so a slim roster still has
   // a real bullpen. Bench hitters skew toward backup-C + middle-IF + OF.
-  const remaining = size - 14   // 14 = 9 starters + 5 SP
+  const remaining = size - SLIM_BASE
   const rpCount = Math.max(0, Math.round(remaining * 0.55))
   const benchCount = Math.max(0, remaining - rpCount)
   for (let i = 0; i < rpCount; i++) {
@@ -697,7 +698,12 @@ export function generateRoster(school, seed, currentYear = 2026, opts = {}) {
   const roster = []
   for (let i = 0; i < rosterSize; i++) {
     const slotTier = i < 14 ? 'starter' : i < 29 ? 'bench' : 'depth'
-    const slot = { ...positions[i], classYear: classYears[i], slotTier }
+    // Guard: positions[] should always be >= rosterSize, but if a future
+    // allocator ever returns a short list, fall back to a bench position
+    // player rather than handing generatePlayer a slot with no position
+    // (that threw "slot must be {position, isPitcher, classYear}").
+    const posSlot = positions[i] || { position: rng.pick(['1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF']), isPitcher: false }
+    const slot = { ...posSlot, classYear: classYears[i], slotTier }
     roster.push(generatePlayer(school, slot, rng, currentYear, i))
   }
   // Anchor the roster's natural Team OVR to the program's expected OVR so the
