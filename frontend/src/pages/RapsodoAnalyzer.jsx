@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApi } from '../hooks/useApi'
 import { supabase } from '../lib/supabase'
+import { downloadReportPDF, downloadReportPNG } from './rapsodoReport'
 
 const PITCH_COLORS = {
   'fastball': '#ef4444',
@@ -388,6 +389,8 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
   const [arsenalOpen, setArsenalOpen] = useState(false)
   const [savingArsenal, setSavingArsenal] = useState(false)
   const [tab, setTab] = useState('data')   // 'data' | 'notes'
+  const [dlScope, setDlScope] = useState('')   // '' = combined, else session id
+  const [dlBusy, setDlBusy] = useState('')     // '' | 'pdf' | 'png'
 
   async function postJson(url, body) {
     const { data: sess } = await supabase.auth.getSession()
@@ -425,6 +428,39 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
     const { data: sess } = await supabase.auth.getSession()
     const token = sess?.session?.access_token
     return fetch(url, { method: 'DELETE', headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  }
+
+  async function getJson(url) {
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess?.session?.access_token
+    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    if (!res.ok) throw new Error(`fetch failed (${res.status})`)
+    return res.json()
+  }
+
+  // Build + download the report sheet for the chosen scope (combined or one session).
+  async function downloadReport(format) {
+    setDlBusy(format)
+    try {
+      let profile = data
+      let scopeLabel = 'All sessions (combined)'
+      let scopeShort = 'combined'
+      if (dlScope) {
+        profile = await getJson(`/api/v1/rapsodo/players/${rapsodoId}?session_id=${dlScope}`)
+        const s = sessions.find((x) => String(x.id) === String(dlScope))
+        const d = s?.session_date || 'session'
+        scopeLabel = `Session · ${d}`
+        scopeShort = d
+      }
+      const generatedOn = new Date().toISOString().slice(0, 10)
+      const opts = { scopeLabel, scopeShort, generatedOn }
+      if (format === 'pdf') await downloadReportPDF(profile, opts)
+      else await downloadReportPNG(profile, opts)
+    } catch (e) {
+      alert(`Could not build the report: ${e.message}`)
+    } finally {
+      setDlBusy('')
+    }
   }
 
   async function deletePlayer() {
@@ -487,6 +523,28 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
         </div>
       ) : (
       <>
+      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2.5">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Download report</span>
+        <select value={dlScope} onChange={(e) => setDlScope(e.target.value)}
+          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200">
+          <option value="">All sessions (combined)</option>
+          {sessions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.session_date || 'undated'} · FB ~{fmt(s.fastball_velo)} · {s.qc_ok} pitches
+            </option>
+          ))}
+        </select>
+        <button onClick={() => downloadReport('pdf')} disabled={!!dlBusy}
+          className="rounded-lg bg-portal-purple px-3 py-1.5 text-sm font-medium text-white hover:bg-portal-purple/90 disabled:opacity-50">
+          {dlBusy === 'pdf' ? 'Building…' : 'PDF'}
+        </button>
+        <button onClick={() => downloadReport('png')} disabled={!!dlBusy}
+          className="rounded-lg border border-portal-purple px-3 py-1.5 text-sm font-medium text-portal-purple dark:text-portal-accent dark:border-portal-accent hover:bg-portal-purple/10 disabled:opacity-50">
+          {dlBusy === 'png' ? 'Building…' : 'Image'}
+        </button>
+        <span className="text-xs text-gray-400">All data, no coaching notes.</span>
+      </div>
+
       {player.mode !== 'facility' && (
         <SpringSummerCard rapsodoId={rapsodoId} player={player} school={school} onChange={refetch} />
       )}

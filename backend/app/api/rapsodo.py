@@ -143,10 +143,15 @@ def list_rapsodo_players(owner: str = Depends(require_tier("coach"))):
 
 
 @router.get("/rapsodo/players/{rapsodo_player_id}")
-def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_tier("coach"))):
+def rapsodo_player_profile(rapsodo_player_id: str, session_id: int | None = None,
+                           owner: str = Depends(require_tier("coach"))):
     """Full cross-session profile for one player: the aggregated arsenal (centroids
     over all reliable pitches), the movement-plot points, the session list, and a
-    simple per-session velocity trend."""
+    simple per-session velocity trend.
+
+    `session_id` (optional) scopes everything — arsenal, plots, locations, trend — to
+    a single bullpen, so the downloadable report can show one session OR the combined
+    profile. The session list is also narrowed to that session when scoped."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -179,6 +184,11 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
             (owner, player["id"]),
         )
         rows = [dict(r) for r in cur.fetchall()]
+
+    # Scope to one bullpen for the per-session download (the live page never sets it).
+    if session_id is not None:
+        rows = [r for r in rows if r["session_id"] == session_id]
+        sessions = [s for s in sessions if s["id"] == session_id]
 
     ok = [r for r in rows if r["quality"] == "ok" and r["pitch"]]
     arsenal = aggregate_arsenal(ok)
