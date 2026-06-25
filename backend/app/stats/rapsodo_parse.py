@@ -294,16 +294,17 @@ def _auto_classify(p, fb, hand):
     g = abs(p["gyro"]) if p["gyro"] is not None else None
     fbv = fb["velo"] if fb else velo
     fbivb = fb["ivb"] if fb else ivb
+    fbhb = fb["arm_hb"] if fb else ahb
     gap = fbv - velo                              # mph slower than the fastball
 
-    # CUTTER (checked BEFORE the fastball family): a few mph off the FB, with the
-    # ride taken OFF vs the FB and little/no arm-side run (small glove or neutral
-    # cut). The arm-side-run ceiling (ahb <= 4) is the separator — real fastballs and
-    # sinkers RUN arm-side, cutters don't — so the broad fastball gate below would
-    # otherwise swallow a cut fastball as a 4-seam (Oliver Duthie's cutters). The ivb
-    # floor keeps it above the gyro-slider band. Efficiency is an unreliable cutter
-    # signal, so we don't gate on it.
-    if 1.5 <= gap <= 7 and -7 <= ahb <= 4 and ivb >= 3 and ivb <= fbivb - 4:
+    # CUTTER (checked BEFORE the fastball family): a few mph off the FB with the
+    # arm-side RUN COLLAPSED vs the fastball — that run-drop (not ride) is the tell.
+    # A real fastball keeps its arm-side run even sub-max, so requiring the run to
+    # fall to near zero AND well below the FB's run (fbhb - 8) separates a genuine
+    # cut fastball from a 4-seam; otherwise the broad fastball gate below swallows it
+    # (Oliver Duthie ran ~18" on the FB, ~3" on the cutter). ivb floor keeps it above
+    # the gyro-slider band; efficiency is an unreliable cutter signal, so no eff gate.
+    if 1.5 <= gap <= 7 and ahb <= 6 and ahb <= fbhb - 8 and ivb >= 3:
         return "cutter"
     # FASTBALL FAMILY: hard (not much slower than the FB), arm-side, riding.
     # eff floor is low (70) on purpose: plenty of good fastballs spin at 70-80%
