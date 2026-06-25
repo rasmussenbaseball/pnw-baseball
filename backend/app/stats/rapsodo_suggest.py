@@ -117,7 +117,7 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0):
             "kind": "flag",
             "title": "No glove-side weapon",
             "detail": "Everything moves arm-side or straight — a hitter can sit on one side of the "
-                      "plate. Add a glove-side breaker (gyro slider or sweeper) to attack the other "
+                      "plate. Add a glove-side breaker (slider or sweeper) to attack the other "
                       "side and steal called strikes back-door / back-foot.",
             "caveat": "Supinators pick up sweepers naturally; pronators pick up gyro shapes. " + _CAVEAT_DESIGN,
         })

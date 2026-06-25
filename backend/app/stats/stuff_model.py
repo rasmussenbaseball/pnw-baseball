@@ -16,7 +16,7 @@ _Z_REF = 2.4   # reference plate-crossing height (must match compute_pitch_grade
 RAPSODO_TO_MODEL = {
     "fastball": "Four Seam",
     "sinker": "Sinker", "cutter": "Cutter",
-    "slider": "Slider", "gyro slider": "Slider", "sweeper": "Slider",
+    "slider": "Slider", "sweeper": "Slider",
     "curveball": "Curveball", "changeup": "Changeup", "splitter": "Splitter",
 }
 

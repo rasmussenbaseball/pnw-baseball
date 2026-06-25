@@ -17,7 +17,7 @@ All movement inputs use arm-side-positive HB (already normalized), so the logic 
 handedness-agnostic. It's an estimate, not a verdict. See RAPSODO_TOOL_DESIGN.md.
 """
 _FB = {"fastball", "sinker"}
-_BREAKERS = {"slider", "sweeper", "gyro slider", "curveball"}
+_BREAKERS = {"slider", "sweeper", "curveball"}
 
 
 def _f(v):

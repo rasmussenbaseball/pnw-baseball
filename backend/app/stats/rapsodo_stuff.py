@@ -33,7 +33,6 @@ _A = {
     "sinker":           (88, 9, 16),
     "cutter":           (84, 7, -2),
     "slider":           (81, 1, -5),
-    "gyro slider":      (82, 1, -2),
     "sweeper":          (79, 3, -13),
     "curveball":        (76, -9, -9),
     "changeup":         (81, 7, 14),

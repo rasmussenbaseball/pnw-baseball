@@ -248,8 +248,7 @@ _PROTO = {
     "fastball":         (0, 16, 9, 9),
     "sinker":           (1, 8, 16, 12),
     "cutter":           (5, 8, -2, 35),
-    "slider":           (10, 1, -5, 65),
-    "gyro slider":      (8, 1, -1, 85),
+    "slider":           (9, 1, -3, 75),
     "sweeper":          (10, 3, -14, 30),
     "curveball":        (15, -8, -9, 30),
     "changeup":         (10, 4, 16, 25),
@@ -338,11 +337,11 @@ def _auto_classify(p, fb, hand):
         # cutter — coach rule: ~7+ IVB on a breaker is a cutter.
         if ivb >= 6 and ahb <= 6:
             return "cutter"
-        # GYRO SLIDER — bullet spin near (0,0). Checked BEFORE curveball so a shallow
+        # SLIDER (gyro/bullet-spin) — near (0,0). Checked BEFORE curveball so a shallow
         # bullet-spin breaker with a little depth isn't split off as a curveball
-        # (Mason Chien threw the same gyro slider that straddled the 0-IVB line).
+        # (Mason Chien threw the same slider that straddled the 0-IVB line).
         if g is not None and g >= 55 and abs(ahb) <= 5 and -6 <= ivb <= 6:
-            return "gyro slider"
+            return "slider"
         if ivb <= -2:
             return "curveball"
         if ahb <= -8:

@@ -19,7 +19,6 @@ const PITCH_COLORS = {
   'cutter': '#8b5cf6',
   'slider': '#3b82f6',
   'sweeper': '#14b8a6',
-  'gyro slider': '#6366f1',
   'curveball': '#22c55e',
   'changeup': '#ec4899',
   'splitter': '#0891b2',
@@ -71,7 +70,7 @@ export default function RapsodoAnalyzer() {
   )
 }
 
-const PITCH_TYPES = ['fastball', 'sinker', 'cutter', 'slider', 'gyro slider', 'sweeper', 'curveball', 'changeup', 'splitter']
+const PITCH_TYPES = ['fastball', 'sinker', 'cutter', 'slider', 'sweeper', 'curveball', 'changeup', 'splitter']
 
 function ModeToggle({ mode, onChange }) {
   const opt = (val, label, sub) => (

@@ -315,7 +315,7 @@ def delete_rapsodo_session(session_id: int, owner: str = Depends(require_tier("c
 
 _VALID_LABELS = {
     "fastball", "sinker", "cutter", "slider",
-    "gyro slider", "sweeper", "curveball", "changeup", "splitter", "unclassified",
+    "sweeper", "curveball", "changeup", "splitter", "unclassified",
 }
 _DERIVE_FIELDS = ("id, session_id, velo, total_spin, spin_eff, spin_confidence, gyro, "
                   "ivb, hb_raw, rel_angle, rel_height, sz_height, extension, manual_pitch")

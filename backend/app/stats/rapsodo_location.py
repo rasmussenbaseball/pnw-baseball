@@ -13,7 +13,7 @@ from statistics import mean
 # Ideal plate HEIGHT (inches off the ground) per pitch type. Zone is ~18"-42".
 TARGET_Y = {
     "fastball": 40, "sinker": 23, "cutter": 31,
-    "slider": 23, "sweeper": 24, "gyro slider": 24,
+    "slider": 23, "sweeper": 24,
     "curveball": 21, "changeup": 22, "splitter": 18,
 }
 _HEIGHT_SD = 7.0      # how forgiving the height target is (in)
