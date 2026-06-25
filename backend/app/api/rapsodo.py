@@ -8,13 +8,14 @@ lives in app.stats.rapsodo_parse. See RAPSODO_TOOL_DESIGN.md.
 import statistics
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from ..models.database import get_connection
 from ..stats import rapsodo_stuff
 from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_hand import pronation_profile
-from ..stats.rapsodo_parse import parse_text, aggregate_arsenal
+from ..stats.rapsodo_parse import derive, parse_text, aggregate_arsenal
 from ..stats.rapsodo_suggest import generate_suggestions
 from .auth import require_tier
 
@@ -30,20 +31,21 @@ _PITCH_FIELDS = [
 ]
 
 
-def _ingest(cur, owner, parsed):
+def _ingest(cur, owner, parsed, mode="pnw"):
     """Write one parsed session under `owner`. Idempotent: re-uploading the same
     filename for the same player replaces the prior session. Returns a summary."""
     rapsodo_pid = parsed.get("rapsodo_player_id") or f"name:{parsed.get('player_name') or 'unknown'}"
 
     cur.execute(
-        """INSERT INTO rapsodo_players (owner_user_id, rapsodo_player_id, player_name, handedness)
-           VALUES (%s, %s, %s, %s)
+        """INSERT INTO rapsodo_players (owner_user_id, rapsodo_player_id, player_name, handedness, mode)
+           VALUES (%s, %s, %s, %s, %s)
            ON CONFLICT (owner_user_id, rapsodo_player_id) DO UPDATE
              SET player_name = EXCLUDED.player_name,
                  handedness = COALESCE(EXCLUDED.handedness, rapsodo_players.handedness),
+                 mode = EXCLUDED.mode,
                  updated_at = now()
            RETURNING id""",
-        (owner, rapsodo_pid, parsed.get("player_name"), parsed.get("handedness")),
+        (owner, rapsodo_pid, parsed.get("player_name"), parsed.get("handedness"), mode),
     )
     player_db_id = cur.fetchone()["id"]
 
@@ -58,15 +60,15 @@ def _ingest(cur, owner, parsed):
         """INSERT INTO rapsodo_sessions
              (owner_user_id, player_db_id, rapsodo_player_id, session_date, device_serial,
               device_generation, intent_tags, fastball_velo, n_pitches,
-              qc_ok, qc_low_confidence, qc_partial, qc_failed, qc_warmup, source_file)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+              qc_ok, qc_low_confidence, qc_partial, qc_failed, qc_warmup, source_file, mode)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
            RETURNING id""",
         (owner, player_db_id, rapsodo_pid, parsed.get("session_date"),
          parsed.get("device_serial"), parsed.get("device_generation"),
          ", ".join(parsed.get("intent_tags") or []) or None, parsed.get("fastball_velo"),
          parsed.get("n_pitches"), qc.get("ok", 0), qc.get("low_confidence", 0),
          qc.get("partial", 0), qc.get("failed", 0), qc.get("warmup", 0),
-         parsed.get("source_file")),
+         parsed.get("source_file"), mode),
     )
     session_id = cur.fetchone()["id"]
 
@@ -94,11 +96,14 @@ def _ingest(cur, owner, parsed):
 @router.post("/portal/rapsodo/upload")
 async def upload_rapsodo(
     files: list[UploadFile] = File(...),
+    mode: str = Form("pnw"),
     owner: str = Depends(require_tier("coach")),
 ):
     """Upload one or many Rapsodo session CSVs. Each file is parsed, quality-
-    checked, re-classified, and stored under the uploading coach. Returns a
-    per-file report (and per-file errors for anything unparseable)."""
+    checked, re-classified, and stored under the uploading coach. `mode` tags the
+    use case ('pnw' college vs 'facility'). Returns a per-file report (and
+    per-file errors for anything unparseable)."""
+    mode = mode if mode in ("pnw", "facility") else "pnw"
     results, errors = [], []
     with get_connection() as conn:
         cur = conn.cursor()
@@ -107,7 +112,7 @@ async def upload_rapsodo(
                 raw = await f.read()
                 text = raw.decode("utf-8-sig", errors="replace")
                 parsed = parse_text(text, f.filename or "upload.csv")
-                results.append(_ingest(cur, owner, parsed))
+                results.append(_ingest(cur, owner, parsed, mode))
             except Exception as e:  # noqa: BLE001 — surface per-file, don't abort the batch
                 errors.append({"file": f.filename, "error": str(e)})
         conn.commit()
@@ -164,7 +169,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
         sessions = [dict(r) for r in cur.fetchall()]
 
         cur.execute(
-            """SELECT pitch, quality, velo, total_spin, spin_eff, ivb, hb_raw, arm_hb,
+            """SELECT id, pitch, manual_pitch, quality, velo, total_spin, spin_eff, ivb, hb_raw, arm_hb,
                       gyro, tilt, rel_height, rel_side, extension, rel_angle, horiz_angle,
                       vaa, sz_side, sz_height, is_strike, thrown_at, session_id
                FROM rapsodo_pitches
@@ -178,14 +183,17 @@ def rapsodo_player_profile(rapsodo_player_id: str, owner: str = Depends(require_
     arsenal = aggregate_arsenal(ok)
     rapsodo_stuff.annotate(arsenal, rapsodo_stuff.fb_from_arsenal(arsenal))
 
-    # movement-plot points: reliable pitches with a shape (ok + low_confidence)
+    # movement-plot points: reliable pitches with a shape (ok + low_confidence).
+    # `id` lets the coach click a dot to reclassify it; `manual` flags overrides.
     plot = [
         {
+            "id": r["id"],
             "pitch": r["pitch"],
             "velo": _ff(r["velo"]),
             "ivb": _ff(r["ivb"]),
             "arm_hb": _ff(r["arm_hb"]),
             "quality": r["quality"],
+            "manual": r["manual_pitch"] is not None,
         }
         for r in rows
         if r["pitch"] and r["arm_hb"] is not None and r["ivb"] is not None
@@ -298,6 +306,52 @@ def delete_rapsodo_session(session_id: int, owner: str = Depends(require_tier("c
         )
         conn.commit()
     return {"status": "ok", "deleted_session": session_id}
+
+
+_VALID_LABELS = {
+    "4-seam (ride)", "fastball (mixed)", "sinker / 2-seam", "cutter", "slider",
+    "gyro slider", "sweeper", "curveball", "changeup", "splitter", "unclassified",
+}
+_DERIVE_FIELDS = ("id, session_id, velo, total_spin, spin_eff, spin_confidence, gyro, "
+                  "ivb, hb_raw, rel_angle, rel_height, sz_height, extension, manual_pitch")
+
+
+class LabelBody(BaseModel):
+    pitch: str | None = None      # None / "" clears the override (revert to auto)
+
+
+@router.post("/portal/rapsodo/pitches/{pitch_id}/label")
+def relabel_pitch(pitch_id: int, body: LabelBody, owner: str = Depends(require_tier("coach"))):
+    """Click-to-reclassify: set (or clear) a coach's manual pitch label on one
+    pitch. The override persists forever — the auto classifier never overwrites it.
+    Re-derives the player's pitches immediately so the profile reflects the change."""
+    new = (body.pitch or "").strip() or None
+    if new is not None and new not in _VALID_LABELS:
+        raise HTTPException(status_code=400, detail=f"Unknown pitch type: {new}")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT p.player_db_id, rp.handedness FROM rapsodo_pitches p
+               JOIN rapsodo_players rp ON rp.id = p.player_db_id
+               WHERE p.id=%s AND p.owner_user_id=%s""",
+            (pitch_id, owner),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Pitch not found")
+        cur.execute("UPDATE rapsodo_pitches SET manual_pitch=%s WHERE id=%s AND owner_user_id=%s",
+                    (new, pitch_id, owner))
+        # immediate re-derive of this player's pitches so the change shows now
+        cur.execute(f"SELECT {_DERIVE_FIELDS} FROM rapsodo_pitches WHERE player_db_id=%s",
+                    (row["player_db_id"],))
+        raw = [dict(r) for r in cur.fetchall()]
+        dmap = {d["id"]: d for d in derive(raw, row["handedness"])}
+        for r in raw:
+            d = dmap[r["id"]]
+            cur.execute("UPDATE rapsodo_pitches SET pitch=%s, quality=%s, arm_hb=%s, vaa=%s WHERE id=%s",
+                        (d["pitch"], d["quality"], d["arm_hb"], d["vaa"], r["id"]))
+        conn.commit()
+    return {"status": "ok", "pitch_id": pitch_id, "pitch": new}
 
 
 def _ff(v):

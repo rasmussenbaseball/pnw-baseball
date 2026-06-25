@@ -46,11 +46,19 @@ _MIN_CALIB_N = 12                # min samples before trusting a calibrated velo
 
 _ANCHORS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "rapsodo_anchors.json")
 _calib = None
+_calib_mtime = None
 
 
 def _load_calib():
-    global _calib
-    if _calib is None:
+    """Load population anchors, hot-reloading when the file changes (so the
+    nightly recalibration takes effect without restarting the API)."""
+    global _calib, _calib_mtime
+    try:
+        m = os.path.getmtime(_ANCHORS_PATH)
+    except OSError:
+        m = None
+    if _calib is None or m != _calib_mtime:
+        _calib_mtime = m
         try:
             with open(_ANCHORS_PATH) as fh:
                 _calib = json.load(fh)

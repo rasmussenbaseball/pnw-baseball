@@ -32,22 +32,29 @@ const handLabel = (h) => ({ R: 'RHP', L: 'LHP' }[h] || '—')
 
 export default function RapsodoAnalyzer() {
   const [selected, setSelected] = useState(null)
+  const [mode, setMode] = useState(() => localStorage.getItem('rapsodoMode') || 'pnw')
   const { data, loading, refetch } = useApi('/rapsodo/players')
   const players = data?.players || []
+  const setModePersist = (m) => { setMode(m); localStorage.setItem('rapsodoMode', m) }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       <header className="mb-6">
-        <h1 className="text-3xl font-bold text-portal-purple dark:text-portal-accent">
-          Rapsodo Lab
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">
-          Upload your bullpen sessions. We clean the data, re-classify every pitch by its
-          actual shape, and build a profile for each of your players.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold text-portal-purple dark:text-portal-accent">
+              Rapsodo Lab
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
+              Upload your bullpen sessions. We clean the data, re-classify every pitch by its
+              actual shape, and build a profile for each of your players.
+            </p>
+          </div>
+          <ModeToggle mode={mode} onChange={setModePersist} />
+        </div>
       </header>
 
-      <UploadZone onDone={refetch} />
+      <UploadZone mode={mode} onDone={refetch} />
 
       {selected ? (
         <PlayerProfile rapsodoId={selected} onBack={() => setSelected(null)} />
@@ -58,8 +65,31 @@ export default function RapsodoAnalyzer() {
   )
 }
 
+const PITCH_TYPES = ['4-seam (ride)', 'fastball (mixed)', 'sinker / 2-seam', 'cutter', 'slider', 'gyro slider', 'sweeper', 'curveball', 'changeup', 'splitter']
+
+function ModeToggle({ mode, onChange }) {
+  const opt = (val, label, sub) => (
+    <button
+      type="button"
+      onClick={() => onChange(val)}
+      className={`px-3 py-1.5 rounded-lg text-left transition-colors ${mode === val
+        ? 'bg-portal-purple text-white'
+        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-portal-purple'}`}
+    >
+      <div className="text-sm font-medium">{label}</div>
+      <div className={`text-[11px] ${mode === val ? 'text-white/80' : 'text-gray-400'}`}>{sub}</div>
+    </button>
+  )
+  return (
+    <div className="flex gap-2 shrink-0">
+      {opt('pnw', 'PNW college', 'Our rosters & benchmarks')}
+      {opt('facility', 'Facility / personal', 'Standalone workspace')}
+    </div>
+  )
+}
+
 // ─────────────────────────────── Upload ───────────────────────────────
-function UploadZone({ onDone }) {
+function UploadZone({ mode, onDone }) {
   const [files, setFiles] = useState([])
   const [busy, setBusy] = useState(false)
   const [report, setReport] = useState(null)
@@ -73,6 +103,7 @@ function UploadZone({ onDone }) {
     try {
       const fd = new FormData()
       files.forEach((f) => fd.append('files', f))
+      fd.append('mode', mode || 'pnw')
       const { data } = await supabase.auth.getSession()
       const token = data?.session?.access_token
       const res = await fetch('/api/v1/portal/rapsodo/upload', {
@@ -189,7 +220,26 @@ function Roster({ players, loading, onPick }) {
 
 // ─────────────────────────────── Profile ───────────────────────────────
 function PlayerProfile({ rapsodoId, onBack }) {
-  const { data, loading } = useApi(`/rapsodo/players/${rapsodoId}`)
+  const { data, loading, refetch } = useApi(`/rapsodo/players/${rapsodoId}`)
+  const [relabel, setRelabel] = useState(null)   // the plot point being reclassified
+  const [saving, setSaving] = useState(false)
+
+  async function applyLabel(id, newPitch) {
+    setSaving(true)
+    try {
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      await fetch(`/api/v1/rapsodo/pitches/${id}/label`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ pitch: newPitch }),
+      })
+      setRelabel(null)
+      refetch()
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
@@ -222,10 +272,15 @@ function PlayerProfile({ rapsodoId, onBack }) {
         <div className="lg:col-span-2 space-y-6">
           <div>
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Movement profile</h3>
-            <MovementPlot points={plot} arsenal={arsenal} />
+            <MovementPlot points={plot} arsenal={arsenal} onPitchClick={(p) => setRelabel(p)} activeId={relabel?.id} />
             <p className="mt-2 text-xs text-gray-400">
-              Pitcher's view: arm side →, ride ↑. One dot per pitch; rings = lower-confidence reads.
+              Pitcher's view: arm side →, ride ↑. Rings = lower-confidence reads. Click a dot to reclassify it.
             </p>
+            {relabel && (
+              <ReclassifyMenu point={relabel} saving={saving}
+                onPick={(label) => applyLabel(relabel.id, label)}
+                onClose={() => setRelabel(null)} />
+            )}
           </div>
           <div>
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Location</h3>
@@ -473,7 +528,34 @@ function SessionList({ sessions }) {
 }
 
 // ─────────────────────────── Movement plot (SVG) ───────────────────────────
-function MovementPlot({ points, arsenal }) {
+function ReclassifyMenu({ point, saving, onPick, onClose }) {
+  return (
+    <div className="mt-3 rounded-xl border border-portal-purple/40 dark:border-portal-accent/40 bg-white dark:bg-gray-900 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm text-gray-700 dark:text-gray-300">
+          Reclassify this pitch <span className="text-gray-400">(now: {point.pitch}{point.manual ? ', manual' : ''})</span>
+        </div>
+        <button type="button" onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {PITCH_TYPES.map((t) => (
+          <button key={t} type="button" disabled={saving} onClick={() => onPick(t)}
+            className={`px-2 py-1 rounded text-xs border ${t === point.pitch ? 'border-portal-purple bg-portal-purple/10' : 'border-gray-200 dark:border-gray-700 hover:border-portal-purple'} text-gray-700 dark:text-gray-300 disabled:opacity-50`}>
+            <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: colorFor(t) }} />{t}
+          </button>
+        ))}
+        {point.manual && (
+          <button type="button" disabled={saving} onClick={() => onPick(null)}
+            className="px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-400 disabled:opacity-50">
+            ↺ revert to auto
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MovementPlot({ points, arsenal, onPitchClick, activeId }) {
   const W = 380, H = 380, PAD = 30, DOM = 26
   const sx = (v) => PAD + ((v + DOM) / (2 * DOM)) * (W - 2 * PAD)
   const sy = (v) => PAD + ((DOM - v) / (2 * DOM)) * (H - 2 * PAD)
@@ -497,17 +579,19 @@ function MovementPlot({ points, arsenal }) {
           <text x={sx(0) - 5} y={sy(t) + 3} textAnchor="end" className="fill-gray-400 text-[9px]">{t}</text>
         </g>
       ))}
-      {/* per-pitch dots */}
+      {/* per-pitch dots — clickable to reclassify; thick ring = manual override */}
       {points.map((p, i) => (
         <circle
-          key={i}
+          key={p.id ?? i}
           cx={sx(p.arm_hb)}
           cy={sy(p.ivb)}
-          r={p.quality === 'ok' ? 4 : 3.5}
+          r={p.id === activeId ? 6 : (p.quality === 'ok' ? 4 : 3.5)}
           fill={p.quality === 'ok' ? colorFor(p.pitch) : 'none'}
-          stroke={colorFor(p.pitch)}
-          strokeWidth="1.5"
-          fillOpacity="0.75"
+          stroke={p.id === activeId ? '#111827' : colorFor(p.pitch)}
+          strokeWidth={p.manual ? 2.75 : (p.id === activeId ? 2 : 1.5)}
+          fillOpacity="0.78"
+          style={{ cursor: onPitchClick ? 'pointer' : 'default' }}
+          onClick={() => onPitchClick && onPitchClick(p)}
         />
       ))}
       {/* centroid labels — only meaningful clusters, to avoid overlap */}

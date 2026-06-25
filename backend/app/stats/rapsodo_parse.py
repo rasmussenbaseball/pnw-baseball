@@ -328,6 +328,56 @@ def classify_session(pitches, hand=None):
     return fb
 
 
+def derive(rows, handedness):
+    """Re-derive ALL computed fields (quality, arm_hb, vaa, pitch) from the RAW
+    stored fields of a player's pitch rows, per session. This is the engine of
+    auto-update: raw data is the source of truth, everything else is recomputed,
+    so model improvements take effect without re-uploading. A coach's
+    `manual_pitch` override always wins and is never recomputed away.
+
+    `rows`: list of DB dicts with raw fields + manual_pitch + session_id.
+    Returns the same rows (copies) with fresh quality/arm_hb/vaa/pitch."""
+    flip = -1 if handedness == "L" else 1
+    by_sess = defaultdict(list)
+    for r in rows:
+        by_sess[r.get("session_id")].append(r)
+    out = []
+    for _, srows in by_sess.items():
+        norm = []
+        for r in srows:
+            velo, ivb = _f(r.get("velo")), _f(r.get("ivb"))
+            eff, conf = _f(r.get("spin_eff")), _f(r.get("spin_confidence"))
+            hb_raw = _f(r.get("hb_raw"))
+            if velo is None and ivb is None:
+                q = "failed"
+            elif ivb is None or eff is None:
+                q = "partial"
+            elif conf is not None and conf <= LOW_CONFIDENCE:
+                q = "low_confidence"
+            else:
+                q = "ok"
+            est = _estimate_vaa(velo, _f(r.get("rel_angle")), _f(r.get("rel_height")),
+                                _f(r.get("sz_height")), _f(r.get("extension")))
+            d = dict(r)
+            d.update({
+                "velo": velo, "ivb": ivb, "spin_eff": eff, "gyro": _f(r.get("gyro")),
+                "total_spin": _f(r.get("total_spin")),
+                "arm_hb": round(hb_raw * flip, 1) if hb_raw is not None else None,
+                "vaa": est if est is not None else _f(r.get("vaa")),
+                "quality": q,
+            })
+            norm.append(d)
+        classify_session(norm, handedness)
+        for p in norm:
+            mp = p.get("manual_pitch")
+            if mp:
+                p["pitch"] = mp
+                if p["quality"] in ("ok", "low_confidence", "warmup"):
+                    p["quality"] = "ok"   # a coach's label means "count this pitch"
+        out.extend(norm)
+    return out
+
+
 def reclassify(pitches, hand=None):
     """Re-run classification + lob-filtering on already-normalized pitch dicts
     (e.g. rows read back from the DB), so classifier improvements apply
