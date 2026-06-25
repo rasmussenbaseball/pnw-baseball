@@ -497,10 +497,10 @@ function ArsenalTable({ arsenal }) {
         </tbody>
       </table>
       <p className="px-3 py-2 text-[11px] text-gray-400">
-        * Stuff (v1): research-grounded shape grade, 100 = average <em>for that pitch type</em>
-        (college-provisional anchors). Built from published Stuff+ effect sizes (velocity,
-        ride, extension, and a secondary's separation off the fastball). Not comparable across
-        pitch types; ignores command. Hover a score for its breakdown. Recalibrates as data grows.
+        * Stuff: graded by our WCL TrackMan model (trained on whiff + chase vs good college
+        competition), with bandages for Rapsodo's measurement differences. 100 = WCL average
+        <em>for that pitch type</em>; not comparable across types; ignores command. Hover a score
+        for its breakdown. The same model grades TrackMan and Rapsodo across the site.
       </p>
     </div>
   )
