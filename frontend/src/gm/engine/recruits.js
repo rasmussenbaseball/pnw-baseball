@@ -16,6 +16,7 @@ import { stateWeightsForRegions, STATE_TO_REGION } from './regions'
 import { composePlayerProfile, enforceArchetypeFloors } from './playerArchetypes'
 import { nilAdvantage } from './nil'
 import { playerOverall } from './playerRating'
+import { LEVEL_OVR_WINDOW } from './programRating'
 import jucoTeamsRaw from '../data/juco_teams.json'
 
 /**
@@ -45,8 +46,22 @@ function programHistoryScore(school, ctx = {}) {
   const baseRep = clamp(school?.programHistory ?? 50, 0, 100)
   const rank = ctx.nationalRank
   if (typeof rank !== 'number' || rank <= 0) return baseRep
-  const rankScore = clamp(100 - (rank - 1) * 0.4, 10, 100)
-  return Math.round(baseRep * 0.4 + rankScore * 0.6)
+  // PERCENTILE-BASED rank score (per Nate, June 2026). Old curve hard-coded
+  // a 1-team-per-0.4 slope which assumed ~250 teams per level. For NWAC
+  // (~28 teams), rank 25 came out at score 90 — making a last-place NWAC
+  // team read as "near-elite" to a recruit. Now we use the level's actual
+  // total-team count so rank=last → score ~0 and rank=1 → score 100.
+  const total = LEVEL_OVR_WINDOW[school?.level || 'NAIA']?.totalTeams || 200
+  const percentile = clamp(1 - (rank - 1) / Math.max(1, total), 0, 1)
+  const rankScore = Math.round(percentile * 100)
+  // Blend 50/50 — both intrinsic rep (programHistory) and current form
+  // (nationalRank) matter. Floor for startup programs: if your paper resume
+  // is in the bottom 25, your score gets capped near your PH so a temporary
+  // hot streak can't make recruits think you're a top-25 program. "It takes
+  // time to build up from nothing" per Nate.
+  let score = Math.round(baseRep * 0.5 + rankScore * 0.5)
+  if (baseRep < 25) score = Math.min(score, baseRep + 8)
+  return score
 }
 
 /**
@@ -1319,6 +1334,36 @@ export function tryAdvanceRecruit(recruit, userSchoolId, school, rng, state = nu
 
   // Base sign probability scales with fit + offer; suitor count divides it
   let baseProb = (fitScore / 200 + grade.interest / 400 + offerAdvantage * 0.15)
+
+  // PROGRAM-vs-RECRUIT TIER GATE (per Nate, June 2026): a low-OVR program
+  // can't easily attract high-OVR recruits. Without this, a startup NWAC
+  // team with PH=16 was landing 70+ OVR HS recruits as long as offer +
+  // interest cleared the threshold. Real recruiting works the other way:
+  // a top recruit looks at a bottom-tier program and walks. Compute the
+  // gap between recruit's true OVR and school's program-history tier;
+  // when the recruit is much better than what the school's resume
+  // suggests, sign odds drop sharply.
+  {
+    const recruitTrue = estimateRecruitTrueOverall(recruit) ?? 55
+    const ph = school?.programHistory ?? 50
+    // PH→implied OVR ceiling the program can naturally land:
+    //   PH=16 → ~55 OVR (NWAC startup)
+    //   PH=30 → ~62
+    //   PH=50 → ~70
+    //   PH=75 → ~80
+    //   PH=99 → ~90
+    const programCeiling = 45 + ph * 0.45
+    const gap = recruitTrue - programCeiling
+    // gap ≤ 0 → recruit is at-or-below the program's level. No penalty.
+    // gap > 0 → recruit is better than the program. Penalty ramps fast
+    // so a 70-OVR recruit needs ~PH 55+ to be a normal target, and an
+    // 85-OVR recruit needs ~PH 85+ (top of level) to be in play.
+    if (gap > 0) {
+      // Multiplier: gap 5 → 0.65×, gap 10 → 0.40×, gap 15 → 0.22×, gap 20+ → 0.10×
+      const penalty = Math.max(0.10, Math.exp(-gap * 0.092))
+      baseProb *= penalty
+    }
+  }
 
   // TOP-3 PRIORITIES BOOST — when your school nails the recruit's three
   // main priorities, they decide faster. Real-world parallel: a kid who

@@ -371,7 +371,16 @@ function makeClassYearList() {
 /**
  * Build a list of 35 (position, isPitcher) tuples for the roster.
  */
-function makeRosterPositionList(rng) {
+function makeRosterPositionList(rng, targetSize) {
+  // SLIM PATH — when the caller pins targetSize (expansion teams per Nate,
+  // June 2026), the default 50-slot allocation buries pitchers at the back
+  // of the list. A 25-player slim roster would only pick up the 5 SPs + 1
+  // RP = 6 pitchers ("only had 6 pitchers on my year 1 roster"). Build
+  // a properly-balanced list directly for the requested size so every
+  // expansion team gets a real college pitching staff.
+  if (typeof targetSize === 'number' && targetSize > 0) {
+    return makeSlimPositionList(targetSize, rng)
+  }
   const list = []
   for (const [pos, count] of Object.entries(POSITION_TARGETS)) {
     for (let i = 0; i < count; i++) {
@@ -411,6 +420,52 @@ function makeRosterPositionList(rng) {
     }
   }
   return [...startingHitters, ...startingPitchers, ...rest]
+}
+
+/**
+ * Build a balanced roster-slot list for a SPECIFIC target size. Used by
+ * expansion teams that start with the bare minimum.
+ *
+ * Real college pitching staffs run ~40-45% of the roster — for a 25-player
+ * NWAC slim roster that's 10-11 arms (5 SP + 5-6 RP). The previous default
+ * 50-slot path produced only 6 pitchers because the rest (12 RPs + extra
+ * SPs) lived past the 25-slot cutoff.
+ *
+ * Allocation (per realistic college staff):
+ *   - 9 starting hitters (1 per defensive position, no DH)
+ *   - 5 SPs (weekend rotation + midweek swing)
+ *   - Remaining slots split ~55/45 RP/bench-hitter
+ */
+function makeSlimPositionList(targetSize, rng) {
+  const size = Math.max(14, targetSize)   // need at least 9H + 5P to field a team
+  const list = []
+  // Starting 9 hitters — one per defensive position
+  const STARTERS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF']
+  list.push({ position: 'C', isPitcher: false })
+  for (const pos of STARTERS.slice(1)) {
+    list.push({ position: pos, isPitcher: false })
+  }
+  // 5 SPs (real weekend rotation + midweek)
+  for (let i = 0; i < 5; i++) {
+    list.push({ position: 'SP', isPitcher: true })
+  }
+  // Remaining slots: 55% RP, 45% bench hitter so a slim roster still has
+  // a real bullpen. Bench hitters skew toward backup-C + middle-IF + OF.
+  const remaining = size - 14   // 14 = 9 starters + 5 SP
+  const rpCount = Math.max(0, Math.round(remaining * 0.55))
+  const benchCount = Math.max(0, remaining - rpCount)
+  for (let i = 0; i < rpCount; i++) {
+    list.push({ position: 'RP', isPitcher: true })
+  }
+  // Bench hitter mix — 1st is a backup C, then weighted toward IF/OF.
+  const benchPool = ['C', 'SS', '2B', '3B', '1B', 'CF', 'LF', 'RF']
+  for (let i = 0; i < benchCount; i++) {
+    list.push({
+      position: i === 0 ? 'C' : rng.pick(benchPool),
+      isPitcher: false,
+    })
+  }
+  return list
 }
 
 /**
@@ -612,7 +667,10 @@ export function generateRoster(school, seed, currentYear = 2026, opts = {}) {
   const rosterSize = opts.targetSize
     ? Math.max(isJuco ? 25 : 28, Math.min(opts.targetSize, isJuco ? 38 : 50))
     : (isJuco ? rng.int(28, 38) : rng.int(40, 50))
-  const positions = makeRosterPositionList(rng)
+  // Pass the size hint when slim — produces a balanced staff for the exact
+  // roster size (default 50-slot path puts pitchers at the back of the list
+  // and slim rosters get cut off mid-bullpen).
+  const positions = makeRosterPositionList(rng, opts.targetSize ? rosterSize : null)
   let classYears
   if (isJuco) {
     // Roughly 50/50 FR/SO
