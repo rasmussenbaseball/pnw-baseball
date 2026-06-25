@@ -387,6 +387,7 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
   const [saving, setSaving] = useState(false)
   const [arsenalOpen, setArsenalOpen] = useState(false)
   const [savingArsenal, setSavingArsenal] = useState(false)
+  const [tab, setTab] = useState('data')   // 'data' | 'notes'
 
   async function postJson(url, body) {
     const { data: sess } = await supabase.auth.getSession()
@@ -467,11 +468,27 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
         </button>
       </div>
 
+      <div className="mb-5 flex gap-1 border-b border-gray-200 dark:border-gray-700">
+        {[['data', 'Data'], ['notes', `Coaching notes${suggestions?.length ? ` (${suggestions.length})` : ''}`]].map(([k, lbl]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === k
+              ? 'border-portal-purple text-portal-purple dark:border-portal-accent dark:text-portal-accent'
+              : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'notes' ? (
+        <div className="space-y-6">
+          <CoachingNotes suggestions={suggestions} />
+          <PronationCard profile={hand_profile} />
+        </div>
+      ) : (
+      <>
       {player.mode !== 'facility' && (
         <SpringSummerCard rapsodoId={rapsodoId} player={player} school={school} onChange={refetch} />
       )}
-
-      <CoachingNotes suggestions={suggestions} />
 
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-2">
@@ -530,14 +547,14 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
 
       <ArmSlotPanel arm={arm} hand={player.handedness} />
 
-      <PronationCard profile={hand_profile} />
-
       <p className="mt-6 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
         Shapes are tendencies, not verdicts. Pitch labels are inferred from velocity, movement,
         spin efficiency and gyro (v1), so atypical pitches can be mislabeled. Low-confidence and
         failed reads are excluded from the averages. Rapsodo infers movement from spin, so it can
         under-read seam-shifted-wake pitches (e.g. heavy sinkers).
       </p>
+      </>
+      )}
     </div>
   )
 }
