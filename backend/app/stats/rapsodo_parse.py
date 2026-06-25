@@ -322,7 +322,7 @@ def _auto_classify(p, fb, hand):
     # mis-grip, not a changeup. A splitter TUMBLES (low absolute spin AND low eff); a
     # changeup needs arm-side FADE (ahb >= 4) — a slow pitch near/under 0 HB is a
     # breaking ball, not a changeup.
-    if gap >= 5 and ahb >= -3 and ivb <= fbivb - 5 and (spin is None or spin < 2100):
+    if gap >= 5 and ahb >= -3 and ivb <= fbivb - 5 and (spin is None or spin < 2300):
         if spin is not None and spin < 1450 and (eff is None or eff < 65):
             return "splitter"
         if ahb >= 4:
