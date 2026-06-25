@@ -31,6 +31,19 @@ export function displayClassYear(player) {
   return (player.redshirtUsed ? 'RS-' : '') + player.classYear
 }
 
+/**
+ * Display a player rating (25-99 scale) as a clean whole number.
+ *
+ * Ratings are stored with 1-decimal precision internally (development.js
+ * applies fractional growth so progression is smooth year to year). Rendering
+ * them raw leaks float artifacts like "83.60000000000001" into the UI. Every
+ * place that shows a rating should pass it through here so the number reads as
+ * a clean integer, consistent with OVR / Stuff / Control elsewhere.
+ */
+export function rating(v) {
+  return (v == null || Number.isNaN(v)) ? '—' : String(Math.round(v))
+}
+
 /** Format dollars with K suffix: 47500 "$47.5K", 1200000 "$1.2M". */
 export function moneyShort(n) {
   if (n == null) return '—'

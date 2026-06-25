@@ -20,7 +20,7 @@ import { createLiveGame } from '../../gm/engine/liveGame'
 import { simWeek, advanceWeek } from '../../gm/engine/season'
 import { tickInteractivePostseason } from '../../gm/engine/postseasonInteractive'
 import { seedFromPear } from '../../gm/engine/rankings'
-import { displayPosition, displayClassYear } from '../../gm/engine/format'
+import { displayPosition, displayClassYear, rating } from '../../gm/engine/format'
 import { positionFit, positionFitRank, positionFitLabel } from '../../gm/engine/positions'
 import {
   ensureEnergyState, getEnergy, applyGameEnergyCosts, maybeResetEnergyForPostseason, tickIntraDayRecovery,
@@ -1040,7 +1040,7 @@ function LineupEditor({ save, game, onSave, onCancel }) {
                 return {
                   value: p.id,
                   label: `${p.firstName} ${p.lastName}`,
-                  sub: `${displayClassYear(p)} · Stuff ${p.pitcher.stuff} · Stam ${p.pitcher.stamina} · Velo ${p.pitcher.velocity_avg ? p.pitcher.velocity_avg.toFixed(0) : '—'} · NRG ${Math.round(e)}`,
+                  sub: `${displayClassYear(p)} · Stuff ${rating(p.pitcher.stuff)} · Stam ${rating(p.pitcher.stamina)} · Velo ${p.pitcher.velocity_avg ? p.pitcher.velocity_avg.toFixed(0) : '—'} · NRG ${Math.round(e)}`,
                 }
               })}
           />
@@ -1056,7 +1056,7 @@ function LineupEditor({ save, game, onSave, onCancel }) {
                 <div key={p.id} className="flex justify-between items-center text-[11px] py-0.5 text-[#e8e8e8]">
                   <span>{p.firstName} {p.lastName}</span>
                   <span className="text-[10px] text-[#a8a8c8] font-mono">
-                    {p.pitcher.stuff}/{p.pitcher.control}/{p.pitcher.stamina} · OVR {playerOverall(p)}
+                    {rating(p.pitcher.stuff)}/{rating(p.pitcher.control)}/{rating(p.pitcher.stamina)} · OVR {playerOverall(p)}
                   </span>
                 </div>
               ))}
@@ -1528,7 +1528,12 @@ function LiveGameView({ save, slot: slotProp, game, onExit }) {
         <h2 className="text-[10px] font-pixel font-bold uppercase tracking-widest text-amber-300 mb-2">Play-by-play</h2>
         <div className="space-y-1">
           {[...s.events].reverse().map((ev, i) => (
-            <EventLine key={s.events.length - 1 - i} ev={ev} />
+            <EventLine
+              key={s.events.length - 1 - i}
+              ev={ev}
+              homeSchool={isHome ? userSchool : oppSchool}
+              awaySchool={isHome ? oppSchool : userSchool}
+            />
           ))}
         </div>
       </div>
@@ -1587,22 +1592,36 @@ function LiveGameView({ save, slot: slotProp, game, onExit }) {
   )
 }
 
-function EventLine({ ev }) {
+function EventLine({ ev, homeSchool, awaySchool }) {
   const tag = ev.top ? `T${ev.inning}` : `B${ev.inning}`
+  // Which team's logo to show, so the user can scan-tell who's doing what:
+  //   PA / SUB        → the BATTING team (top = away bats, bottom = home bats)
+  //   PITCHING_CHANGE → the PITCHING/fielding team (the other side)
+  //   HALF_END / GAME_END → no logo (neutral summary line)
+  const battingSchool = ev.top ? awaySchool : homeSchool
+  const pitchingSchool = ev.top ? homeSchool : awaySchool
+  let logoSchool = null
+  if (ev.kind === 'PITCHING_CHANGE') logoSchool = pitchingSchool
+  else if (ev.kind !== 'GAME_END' && ev.kind !== 'HALF_END') logoSchool = battingSchool
+  const logo = logoSchool
+    ? <TeamLogo school={logoSchool} size={14} className="inline-block shrink-0" />
+    : <span className="inline-block w-[14px] shrink-0" />
   if (ev.kind === 'GAME_END' || ev.kind === 'HALF_END' || ev.kind === 'SUB' || ev.kind === 'PITCHING_CHANGE') {
     return (
-      <div className="text-xs text-amber-200 border-l-2 border-amber-400 pl-2 py-0.5 bg-amber-400/10">
-        <span className="font-mono text-[10px] text-[#a8a8c8] mr-2">{tag}</span>
-        {ev.text}
+      <div className="text-xs text-amber-200 border-l-2 border-amber-400 pl-2 py-0.5 bg-amber-400/10 flex items-center gap-1.5">
+        {logo}
+        <span className="font-mono text-[10px] text-[#a8a8c8]">{tag}</span>
+        <span>{ev.text}</span>
       </div>
     )
   }
   // PA event
   return (
-    <div className="text-sm py-0.5">
-      <span className="font-mono text-[10px] text-[#a8a8c8] mr-2">{tag}</span>
+    <div className="text-sm py-0.5 flex items-center gap-1.5">
+      {logo}
+      <span className="font-mono text-[10px] text-[#a8a8c8]">{tag}</span>
       <span className="text-[#e8e8e8]">{ev.text}</span>
-      <span className="ml-2 text-[10px] text-[#a8a8c8]">({ev.outs} out · {ev.score.away}-{ev.score.home})</span>
+      <span className="text-[10px] text-[#a8a8c8]">({ev.outs} out · {ev.score.away}-{ev.score.home})</span>
     </div>
   )
 }
@@ -1746,10 +1765,10 @@ function BatterCard({ batter, todayLine, onDeck, inTheHole, side, isUser, teamSc
         </div>
       </div>
       <div className="mt-2 grid grid-cols-4 gap-1 text-[10px] text-center">
-        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Con vL</div><div className="font-mono font-semibold text-white">{contactL}</div></div>
-        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Con vR</div><div className="font-mono font-semibold text-white">{contactR}</div></div>
-        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Pow vL</div><div className="font-mono font-semibold text-white">{powerL}</div></div>
-        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Pow vR</div><div className="font-mono font-semibold text-white">{powerR}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Con vL</div><div className="font-mono font-semibold text-white">{rating(contactL)}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Con vR</div><div className="font-mono font-semibold text-white">{rating(contactR)}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Pow vL</div><div className="font-mono font-semibold text-white">{rating(powerL)}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Pow vR</div><div className="font-mono font-semibold text-white">{rating(powerR)}</div></div>
       </div>
       <div className="mt-2 text-[10px] text-[#a8a8c8] border-t border-[#3a3a5e] pt-2 flex gap-3 font-pixel">
         <span><strong className="text-amber-200">On deck:</strong> {nm(onDeck)}</span>
@@ -1815,10 +1834,10 @@ function PitcherCard({ pitcher, line, pitches, fatigue, confidence, bf, isUser, 
         </div>
       </div>
       <div className="mt-2 grid grid-cols-4 gap-1 text-[10px] text-center">
-        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Stuff</div><div className="font-mono font-semibold text-white">{pitcher?.pitcher?.stuff ?? '—'}</div></div>
-        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Ctrl</div><div className="font-mono font-semibold text-white">{pitcher?.pitcher?.control ?? '—'}</div></div>
-        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Cmd</div><div className="font-mono font-semibold text-white">{pitcher?.pitcher?.command ?? '—'}</div></div>
-        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Stam</div><div className="font-mono font-semibold text-white">{pitcher?.pitcher?.stamina ?? '—'}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Stuff</div><div className="font-mono font-semibold text-white">{rating(pitcher?.pitcher?.stuff)}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Ctrl</div><div className="font-mono font-semibold text-white">{rating(pitcher?.pitcher?.control)}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Cmd</div><div className="font-mono font-semibold text-white">{rating(pitcher?.pitcher?.command)}</div></div>
+        <div className="bg-[#0f0f1e] rounded p-1 border border-[#3a3a5e]"><div className="text-[#a8a8c8] font-pixel">Stam</div><div className="font-mono font-semibold text-white">{rating(pitcher?.pitcher?.stamina)}</div></div>
       </div>
     </div>
   )
@@ -1973,7 +1992,7 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
           </span>
           <span className="text-[11px] text-[#a8a8c8] font-mono flex items-center gap-2">
             <span className={energyColorClass(energy)}>NRG {Math.round(energy)}</span>
-            <span>Stuff {p.pitcher?.stuff} · Stam {p.pitcher?.stamina} · Velo {p.pitcher?.velocity_avg?.toFixed(0) || '—'}</span>
+            <span>Stuff {rating(p.pitcher?.stuff)} · Stam {rating(p.pitcher?.stamina)} · Velo {p.pitcher?.velocity_avg?.toFixed(0) || '—'}</span>
           </span>
         </button>
       )
@@ -2067,7 +2086,7 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
                         <span>{p.firstName} {p.lastName}</span>
                         <span className="font-mono flex gap-2">
                           <span className={energyColorClass(energy)}>NRG{Math.round(energy)}</span>
-                          <span className="text-[#a8a8c8]">SPD {p.hitter?.speed ?? '—'}</span>
+                          <span className="text-[#a8a8c8]">SPD {rating(p.hitter?.speed)}</span>
                         </span>
                       </button>
                     )
@@ -2113,7 +2132,7 @@ function SubMenu({ kind, live, save, userSide, onSubmit, onClose }) {
                         </span>
                         <span className="font-mono flex gap-2">
                           <span className={energyColorClass(energy)}>NRG{Math.round(energy)}</span>
-                          <span className="text-[#a8a8c8]">FLD {p.hitter?.fielding ?? '—'}/ARM {p.hitter?.arm ?? '—'}</span>
+                          <span className="text-[#a8a8c8]">FLD {rating(p.hitter?.fielding)}/ARM {rating(p.hitter?.arm)}</span>
                         </span>
                       </button>
                     )
@@ -2181,7 +2200,7 @@ function PickPlayerForSpot({ batters, bench, save, onPick }) {
               </span>
               <span className="font-mono flex gap-2">
                 <span className={energyColorClass(energy)}>NRG{Math.round(energy)}</span>
-                <span className="text-[#a8a8c8]">C {p.hitter?.contact_r ?? '—'}/P {p.hitter?.power_r ?? '—'} · {p.bats}HB</span>
+                <span className="text-[#a8a8c8]">C {rating(p.hitter?.contact_r)}/P {rating(p.hitter?.power_r)} · {p.bats}HB</span>
               </span>
             </button>
           )

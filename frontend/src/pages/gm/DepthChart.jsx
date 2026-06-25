@@ -15,7 +15,7 @@ import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { loadDynasty } from '../../gm/engine/save'
 import { playerOverall } from '../../gm/engine/playerRating'
-import { displayPosition, displayClassYear } from '../../gm/engine/format'
+import { displayPosition, displayClassYear, rating } from '../../gm/engine/format'
 import GMShell from '../../gm/components/GMShell'
 
 const FIELD_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
@@ -214,7 +214,7 @@ function LineupView({ chart, side, slot, allHitters }) {
                   <span className="font-mono w-8 text-amber-300">{pos}</span>
                   <span className="flex-1 truncate text-white">{top.p.firstName} {top.p.lastName}</span>
                   <span className="text-[10px] text-[#a8a8c8] font-mono w-12 text-right">
-                    {c}/{pw}
+                    {rating(c)}/{rating(pw)}
                   </span>
                   <span className={'font-mono font-bold w-8 text-right ' + ovrColor(top.ovr)}>{top.ovr}</span>
                 </Link>
@@ -285,8 +285,8 @@ function DepthSlot({ position, top, left, players, slot, side }) {
           <span className={'text-xs font-mono font-bold ml-2 ' + ovrColor(starter.ovr)}>{starter.ovr}</span>
         </Link>
         <div className="px-2 py-0.5 text-[10px] text-gray-500 bg-gray-50 flex justify-between font-mono">
-          <span>C {c}</span>
-          <span>P {pw}</span>
+          <span>C {rating(c)}</span>
+          <span>P {rating(pw)}</span>
         </div>
       </div>
     </div>
@@ -345,12 +345,12 @@ function PitchingGroup({ title, sub, players, slot, accent }) {
               </td>
               <td className="text-xs text-gray-500 text-center">{entry.p.classYear}</td>
               <td className="text-xs text-gray-500 text-center">{entry.p.throws}</td>
-              <td className="text-xs font-mono text-center">{entry.p.pitcher.stuff}</td>
-              <td className="text-xs font-mono text-center">{entry.p.pitcher.control}</td>
-              <td className="text-xs font-mono text-center">{entry.p.pitcher.command}</td>
-              <td className="text-xs font-mono text-center">{entry.p.pitcher.stamina}</td>
-              <td className="text-xs font-mono text-center">{entry.p.pitcher.vs_l ?? '—'}</td>
-              <td className="text-xs font-mono text-center">{entry.p.pitcher.vs_r ?? '—'}</td>
+              <td className="text-xs font-mono text-center">{rating(entry.p.pitcher.stuff)}</td>
+              <td className="text-xs font-mono text-center">{rating(entry.p.pitcher.control)}</td>
+              <td className="text-xs font-mono text-center">{rating(entry.p.pitcher.command)}</td>
+              <td className="text-xs font-mono text-center">{rating(entry.p.pitcher.stamina)}</td>
+              <td className="text-xs font-mono text-center">{rating(entry.p.pitcher.vs_l)}</td>
+              <td className="text-xs font-mono text-center">{rating(entry.p.pitcher.vs_r)}</td>
               <td className="text-xs font-mono text-gray-700 text-center">
                 {entry.p.pitcher.velocity_avg ? `${entry.p.pitcher.velocity_min}-${entry.p.pitcher.velocity_max}` : '—'}
               </td>
