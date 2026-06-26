@@ -180,8 +180,7 @@ export default function TeamDetail() {
 
           {/* Upcoming Games */}
           {futureData?.games?.length > 0 && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-3 sm:p-5 mb-4 sm:mb-6">
-              <h2 className="text-base sm:text-lg font-bold text-nw-teal dark:text-gray-100 mb-3">Upcoming Games</h2>
+            <SectionCard title="Upcoming Games">
               <div className="space-y-2">
                 {futureData.games.map((g, i) => {
                   const isHome = g.home_team_id === Number(teamId)
@@ -209,7 +208,7 @@ export default function TeamDetail() {
                   )
                 })}
               </div>
-            </div>
+            </SectionCard>
           )}
 
           {/* Batting */}
@@ -423,6 +422,36 @@ function ChampionshipBanner({ teamId }) {
   )
 }
 
+// V2 card chrome: matches the Team Identity / Returning tabs (header bar +
+// uppercase title), used to give the Season + History tabs a consistent look.
+function SectionCard({ title, subtitle, right, children, bodyClass = 'p-4 sm:p-5' }) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 sm:mb-6">
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40">
+        <div className="min-w-0">
+          <div className="text-sm font-bold text-nw-teal dark:text-gray-100 uppercase tracking-wide truncate">{title}</div>
+          {subtitle && <div className="text-[11px] text-gray-400 font-normal normal-case mt-0.5">{subtitle}</div>}
+        </div>
+        {right}
+      </div>
+      <div className={bodyClass}>{children}</div>
+    </div>
+  )
+}
+
+function LeaderToggle({ value, onChange }) {
+  return (
+    <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 shrink-0">
+      {['batting', 'pitching'].map((c) => (
+        <button key={c} onClick={() => onChange(c)}
+          className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors ${
+            value === c ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
+          }`}>{c}</button>
+      ))}
+    </div>
+  )
+}
+
 function TeamHistoryTab({ history, loading, teamId }) {
   const [leaderCategory, setLeaderCategory] = useState('batting')
 
@@ -444,12 +473,8 @@ function TeamHistoryTab({ history, loading, teamId }) {
   return (
     <div>
       {/* All-Time Summary */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
-        <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100 mb-1">Program Overview</h2>
-        <div className="text-xs text-gray-400 mb-4">
-          {numSeasons} season{numSeasons !== 1 ? 's' : ''} tracked
-          {minYear && maxYear ? ` (${minYear}–${maxYear})` : ''}
-        </div>
+      <SectionCard title="Program Overview"
+        subtitle={`${numSeasons} season${numSeasons !== 1 ? 's' : ''} tracked${minYear && maxYear ? ` (${minYear}–${maxYear})` : ''}`}>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
           <SummaryCell
             label="Overall Record"
@@ -478,14 +503,13 @@ function TeamHistoryTab({ history, loading, teamId }) {
             value={(all_time_summary.total_ra || 0).toLocaleString()}
           />
         </div>
-      </div>
+      </SectionCard>
 
       {/* Conference Championships */}
       <ChampionshipBanner teamId={teamId} />
 
       {/* Year-by-Year Records */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
-        <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100 mb-4">Year-by-Year</h2>
+      <SectionCard title="Year-by-Year" bodyClass="p-2 sm:p-3">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -554,11 +578,10 @@ function TeamHistoryTab({ history, loading, teamId }) {
             </tbody>
           </table>
         </div>
-      </div>
+      </SectionCard>
 
       {/* Season Stat Leaders */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
-        <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100 mb-4">Season Award Leaders</h2>
+      <SectionCard title="Season Award Leaders">
         {seasons.map((s) => {
           const leaders = season_leaders[String(s.season)]
           if (!leaders || Object.keys(leaders).length === 0) return null
@@ -630,85 +653,29 @@ function TeamHistoryTab({ history, loading, teamId }) {
             </div>
           )
         })}
-      </div>
+      </SectionCard>
 
       {/* All-Time Career Leaders */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100">All-Time Career Leaders</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Stats tracked since 2022 season</p>
-          </div>
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
-            <button
-              onClick={() => setLeaderCategory('batting')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                leaderCategory === 'batting'
-                  ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Batting
-            </button>
-            <button
-              onClick={() => setLeaderCategory('pitching')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                leaderCategory === 'pitching'
-                  ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Pitching
-            </button>
-          </div>
-        </div>
-
+      <SectionCard title="All-Time Career Leaders" subtitle="Stats tracked since 2022 season"
+        right={<LeaderToggle value={leaderCategory} onChange={setLeaderCategory} />}>
         {leaderCategory === 'batting' && (
           <CareerLeaderboards leaders={career_batting_leaders} type="batting" />
         )}
         {leaderCategory === 'pitching' && (
           <CareerLeaderboards leaders={career_pitching_leaders} type="pitching" />
         )}
-      </div>
+      </SectionCard>
 
       {/* Single-Season Records */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-5 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100">Single-Season Records</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Top 5 single-season performances · min 50 PA / 20 IP</p>
-          </div>
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
-            <button
-              onClick={() => setLeaderCategory('batting')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                leaderCategory === 'batting'
-                  ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Batting
-            </button>
-            <button
-              onClick={() => setLeaderCategory('pitching')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                leaderCategory === 'pitching'
-                  ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Pitching
-            </button>
-          </div>
-        </div>
-
+      <SectionCard title="Single-Season Records" subtitle="Top 5 single-season performances · min 50 PA / 20 IP"
+        right={<LeaderToggle value={leaderCategory} onChange={setLeaderCategory} />}>
         {leaderCategory === 'batting' && (
           <SingleSeasonRecords leaders={single_season_batting_records} type="batting" />
         )}
         {leaderCategory === 'pitching' && (
           <SingleSeasonRecords leaders={single_season_pitching_records} type="pitching" />
         )}
-      </div>
+      </SectionCard>
     </div>
   )
 }
