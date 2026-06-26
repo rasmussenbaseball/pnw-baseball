@@ -591,6 +591,8 @@ router.include_router(pnw_pickle_router)
 
 from .home_leaders import home_leaders_router
 router.include_router(home_leaders_router)
+from .team_profile import team_profile_router
+router.include_router(team_profile_router)
 
 
 # ============================================================
