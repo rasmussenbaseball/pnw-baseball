@@ -966,14 +966,23 @@ def teams_summary(
         owar_map = {r["team_id"]: r["total_owar"] for r in team_war}
         pwar_map = {r["team_id"]: r["total_pwar"] for r in team_pwar}
 
-        # Team W-L records
+        # Team W-L records + run differential
         cur.execute(
-            """SELECT team_id, wins, losses, ties, conference_wins, conference_losses
+            """SELECT team_id, wins, losses, ties, conference_wins, conference_losses,
+                      runs_scored, runs_allowed, run_differential
                FROM team_season_stats WHERE season = %s""",
             (season,),
         )
         team_records = cur.fetchall()
         record_map = {r["team_id"]: dict(r) for r in team_records}
+
+        # National (composite) rank for the at-a-glance ranking chip
+        cur.execute(
+            """SELECT team_id, composite_rank, national_percentile
+               FROM composite_rankings WHERE season = %s""",
+            (season,),
+        )
+        rank_map = {r["team_id"]: dict(r) for r in cur.fetchall()}
 
         result = []
         for t in teams:
@@ -991,6 +1000,13 @@ def teams_summary(
                 team["ties"] = rec["ties"]
                 team["conf_wins"] = rec["conference_wins"]
                 team["conf_losses"] = rec["conference_losses"]
+                team["runs_scored"] = rec["runs_scored"]
+                team["runs_allowed"] = rec["runs_allowed"]
+                team["run_differential"] = rec["run_differential"]
+            rk = rank_map.get(tid)
+            if rk:
+                team["national_rank"] = rk["composite_rank"]
+                team["national_percentile"] = rk["national_percentile"]
             result.append(team)
 
         return result
