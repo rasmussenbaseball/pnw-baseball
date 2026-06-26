@@ -4,6 +4,7 @@ import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useT
 import TeamAdvanced from '../components/TeamAdvanced'
 import TeamIdentity from '../components/TeamIdentity'
 import TeamReturning from '../components/TeamReturning'
+import TeamImpactPerformers from '../components/TeamImpactPerformers'
 import StatsTable from '../components/StatsTable'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
@@ -173,6 +174,9 @@ export default function TeamDetail() {
 
           {/* Advanced, Savant-style team look (percentiles vs division, leaders, clutch) */}
           <TeamAdvanced teamId={teamId} season={season} />
+
+          {/* Impact performers (blended impact score, with returns/departs flag) */}
+          <TeamImpactPerformers teamId={teamId} season={season} />
 
           {/* Upcoming Games */}
           {futureData?.games?.length > 0 && (

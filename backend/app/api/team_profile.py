@@ -417,6 +417,43 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
         }
 
 
+@team_profile_router.get("/{team_id}/impact-performers")
+def team_impact_performers(team_id: int, season: int = Query(CURRENT_SEASON)):
+    """Top hitters + pitchers by blended impact score (all players, current
+    season) for the Season tab. Flags whether each one returns next year."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT d.level FROM teams t JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id WHERE t.id = %s""", (team_id,))
+        tr = cur.fetchone()
+        level = tr["level"] if tr else None
+        cur.execute("SELECT player_id, status FROM player_returning_overrides WHERE season = %s", (season,))
+        ovr = {r["player_id"]: r["status"] for r in cur.fetchall()}
+        cur.execute(
+            """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
+               FROM batting_stats bs JOIN players p ON p.id = bs.player_id
+               WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
+            (team_id, season))
+        bat = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """SELECT ps.*, p.first_name, p.last_name, p.position, p.year_in_school
+               FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
+               WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
+            (team_id, season))
+        pit = [dict(r) for r in cur.fetchall()]
+
+    def ret(r):
+        return _returning(r.get("year_in_school"), level, ovr.get(r["player_id"]))
+    hq = [r for r in bat if (r.get("plate_appearances") or 0) >= 40] or \
+         [r for r in bat if (r.get("plate_appearances") or 0) >= 20] or bat
+    pq = [r for r in pit if _ip_to_outs(r.get("innings_pitched")) >= 30] or \
+         [r for r in pit if _ip_to_outs(r.get("innings_pitched")) >= 15] or pit
+    hitters = sorted((_hit_payload(r, ret(r)) for r in hq), key=lambda x: x["impact"], reverse=True)[:5]
+    pitchers = sorted((_pit_payload(r, ret(r)) for r in pq), key=lambda x: x["impact"], reverse=True)[:5]
+    return {"team_id": team_id, "season": season, "hitters": hitters, "pitchers": pitchers}
+
+
 @team_profile_router.get("/{team_id}/identity")
 def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
     with get_connection() as conn:
