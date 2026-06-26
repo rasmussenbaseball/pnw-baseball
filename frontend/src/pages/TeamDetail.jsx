@@ -3,6 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers, useTeamInfoGraphic, useBattingPbpLeaderboard, usePitchingPbpLeaderboard } from '../hooks/useApi'
 import TeamAdvanced from '../components/TeamAdvanced'
 import TeamIdentity from '../components/TeamIdentity'
+import TeamReturning from '../components/TeamReturning'
 import StatsTable from '../components/StatsTable'
 import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
@@ -124,6 +125,16 @@ export default function TeamDetail() {
           Team Identity
         </button>
         <button
+          onClick={() => setActiveTab('returning')}
+          className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+            activeTab === 'returning'
+              ? 'bg-white dark:bg-gray-800 text-nw-teal shadow-sm'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-300'
+          }`}
+        >
+          Returning
+        </button>
+        <button
           onClick={() => setActiveTab('history')}
           className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
             activeTab === 'history'
@@ -223,6 +234,11 @@ export default function TeamDetail() {
       {/* Team Identity Tab */}
       {activeTab === 'identity' && (
         <TeamIdentity teamId={teamId} season={season} />
+      )}
+
+      {/* Returning Production Tab */}
+      {activeTab === 'returning' && (
+        <TeamReturning teamId={teamId} season={season} />
       )}
 
       {/* History Tab */}

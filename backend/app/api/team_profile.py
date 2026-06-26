@@ -244,6 +244,179 @@ def _outlook(name, ret):
     return "Mixed continuity", f"{name} has a split roster picture, with one side of the game carrying more stability than the other."
 
 
+# ── Blended impact scores (ported from the V2 generator; NOT WAR-only) ──
+def _hitter_impact(r):
+    pa = r.get("plate_appearances") or 0
+    owar = r.get("offensive_war") or 0
+    ops = r.get("ops") or 0
+    wrc = r.get("wrc_plus") or 0
+    obp = r.get("on_base_pct") or 0
+    slg = r.get("slugging_pct") or 0
+    bb = r.get("bb_pct") or 0
+    k = r.get("k_pct") or 0
+    hr = r.get("home_runs") or 0
+    sb = r.get("stolen_bases") or 0
+    sw = min(1, max(0.3, pa / 80))
+    vol = min(1.35, pa / 185)
+    prod = max(0, min(1.45, (wrc - 70) / 85))
+    slash = max(0, min(1.35, (ops - 0.620) / 0.360))
+    onb = max(0, min(1.15, (obp - 0.310) / 0.160))
+    dmg = max(0, min(1.15, (slg - 0.340) / 0.260)) + min(0.35, hr / 20)
+    disc = max(0, min(1.0, ((bb - k) * 100 + 14) / 24))
+    spd = min(0.35, sb / 25)
+    return ((owar * 1.65) + (prod * 1.0) + (slash * 0.85) + (vol * 0.7)
+            + (onb * 0.35) + (dmg * 0.3) + (disc * 0.2) + spd) * sw
+
+
+def _pitcher_impact(r):
+    outs = _ip_to_outs(r.get("innings_pitched"))
+    ip = outs / 3 if outs else 0
+    pwar = r.get("pitching_war") or 0
+    quals = [v for v in (r.get("fip"), r.get("siera"), r.get("era")) if v and v > 0]
+    quality = (sum(max(0, min(1.35, (6.75 - v) / 3.5)) for v in quals) / len(quals)) if quals else 0
+    vol = min(1.4, ip / 45)
+    k = r.get("k_pct") or 0
+    bb = r.get("bb_pct") or 0
+    command = max(0, min(1.25, ((k - bb) * 100 + 6) / 24))
+    sw = min(1, max(0.25, ip / 18))
+    return ((pwar * 1.75) + (quality * 1.25) + (vol * 0.85) + (command * 0.45)) * sw
+
+
+def _depart_status(year_in_school, division_level, override, note):
+    if override == "departing":
+        return note or "Portal / not returning"
+    yr = (year_in_school or "").strip().lower()
+    if yr in {"sr", "senior", "r-sr", "redshirt senior"}:
+        return "Senior departure"
+    if yr in {"5th", "gr", "grad", "graduate"}:
+        return "Eligibility exhausted"
+    if division_level == "JUCO":
+        return "JUCO class departure"
+    return "Departing"
+
+
+def _hit_payload(r, returning):
+    return {
+        "player_id": r["player_id"], "name": f"{r.get('first_name','')} {r.get('last_name','')}".strip(),
+        "yr": r.get("year_in_school") or "-", "pos": r.get("position") or "-",
+        "pa": r.get("plate_appearances") or 0, "avg": r.get("batting_avg") or 0,
+        "obp": r.get("on_base_pct") or 0, "slg": r.get("slugging_pct") or 0,
+        "ops": r.get("ops") or 0, "wrc_plus": r.get("wrc_plus"), "hr": r.get("home_runs") or 0,
+        "rbi": r.get("rbi") or 0, "sb": r.get("stolen_bases") or 0, "owar": r.get("offensive_war") or 0,
+        "impact": round(_hitter_impact(r), 2), "returning": returning,
+    }
+
+
+def _pit_payload(r, returning):
+    return {
+        "player_id": r["player_id"], "name": f"{r.get('first_name','')} {r.get('last_name','')}".strip(),
+        "yr": r.get("year_in_school") or "-", "pos": r.get("position") or "P",
+        "ip": r.get("innings_pitched") or 0, "era": r.get("era"), "fip": r.get("fip"),
+        "k_pct": round((r.get("k_pct") or 0) * 100, 1), "bb_pct": round((r.get("bb_pct") or 0) * 100, 1),
+        "k": r.get("strikeouts") or 0, "pwar": r.get("pitching_war") or 0,
+        "impact": round(_pitcher_impact(r), 2), "returning": returning,
+    }
+
+
+@team_profile_router.get("/{team_id}/returning")
+def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT t.short_name, t.name, d.level division_level
+               FROM teams t JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id WHERE t.id = %s""", (team_id,))
+        team = cur.fetchone()
+        if not team:
+            return {"error": "Team not found"}
+        level = team["division_level"]
+        name = team["short_name"] or team["name"]
+
+        cur.execute("SELECT player_id, status, note FROM player_returning_overrides WHERE season = %s", (season,))
+        ovr = {r["player_id"]: r for r in cur.fetchall()}
+
+        cur.execute(
+            """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
+               FROM batting_stats bs JOIN players p ON p.id = bs.player_id
+               WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
+            (team_id, season))
+        bat = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """SELECT ps.*, p.first_name, p.last_name, p.position, p.year_in_school
+               FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
+               WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
+            (team_id, season))
+        pit = [dict(r) for r in cur.fetchall()]
+
+        def is_ret(r):
+            o = ovr.get(r["player_id"])
+            return _returning(r.get("year_in_school"), level, o["status"] if o else None)
+
+        # Returning impact players (with sample floors + fallbacks)
+        ret_bat = [r for r in bat if is_ret(r)]
+        ret_pit = [r for r in pit if is_ret(r)]
+        hq = [r for r in ret_bat if (r.get("plate_appearances") or 0) >= 40] or \
+             [r for r in ret_bat if (r.get("plate_appearances") or 0) >= 20] or ret_bat
+        pq = [r for r in ret_pit if _ip_to_outs(r.get("innings_pitched")) >= 30] or \
+             [r for r in ret_pit if _ip_to_outs(r.get("innings_pitched")) >= 15] or ret_pit
+        ret_hitters = sorted((_hit_payload(r, True) for r in hq), key=lambda x: x["impact"], reverse=True)[:8]
+        ret_pitchers = sorted((_pit_payload(r, True) for r in pq), key=lambda x: x["impact"], reverse=True)[:8]
+
+        # Departures (production to replace), deduped by player_id
+        dep = {}
+        for r in bat:
+            if is_ret(r):
+                continue
+            o = ovr.get(r["player_id"])
+            dep[r["player_id"]] = {
+                **_hit_payload(r, False),
+                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None),
+                "kind": "bat",
+            }
+        for r in pit:
+            if is_ret(r):
+                continue
+            o = ovr.get(r["player_id"])
+            p = _pit_payload(r, False)
+            ex = dep.get(r["player_id"])
+            if ex and ex["impact"] >= p["impact"]:
+                continue
+            dep[r["player_id"]] = {
+                **p,
+                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None),
+                "kind": "pit",
+            }
+        departures = sorted(dep.values(), key=lambda x: x["impact"], reverse=True)[:10]
+
+        # Returning percentages (mirror identity)
+        g = lambda r, k: r.get(k) or 0
+        tot_pa = sum(g(r, "plate_appearances") for r in bat)
+        ret_pa = sum(g(r, "plate_appearances") for r in bat if is_ret(r))
+        tot_outs = sum(_ip_to_outs(r.get("innings_pitched")) for r in pit)
+        ret_outs = sum(_ip_to_outs(r.get("innings_pitched")) for r in pit if is_ret(r))
+        tot_ow = sum(max(0, g(r, "offensive_war")) for r in bat)
+        ret_ow = sum(max(0, g(r, "offensive_war")) for r in bat if is_ret(r))
+        tot_pw = sum(max(0, g(r, "pitching_war")) for r in pit)
+        ret_pw = sum(max(0, g(r, "pitching_war")) for r in pit if is_ret(r))
+        ret = {
+            "ret_pa_pct": round(_safe_div(ret_pa, tot_pa) * 100, 1),
+            "ret_ip_pct": round(_safe_div(ret_outs, tot_outs) * 100, 1),
+            "ret_owar_pct": round(_safe_div(ret_ow, tot_ow) * 100, 1),
+            "ret_pwar_pct": round(_safe_div(ret_pw, tot_pw) * 100, 1),
+        }
+
+        return {
+            "team_id": team_id, "team": name, "season": season, "division": level,
+            "returning": ret,
+            "best_bat": ret_hitters[0] if ret_hitters else None,
+            "top_arm": ret_pitchers[0] if ret_pitchers else None,
+            "biggest_loss": departures[0] if departures else None,
+            "returning_hitters": ret_hitters,
+            "returning_pitchers": ret_pitchers,
+            "departures": departures,
+        }
+
+
 @team_profile_router.get("/{team_id}/identity")
 def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
     with get_connection() as conn:
