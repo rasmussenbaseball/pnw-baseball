@@ -124,7 +124,29 @@ export default function TeamIdentity({ teamId, season }) {
         </Card>
       </div>
 
-      {/* Returning production */}
+      {/* What worked / focus areas */}
+      {data.narrative && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <Card title="What Worked Last Season">
+            <ul className="space-y-2">
+              {data.narrative.strengths.map((t, i) => (
+                <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <span className="text-emerald-500 font-bold shrink-0">✓</span><span>{t}</span></li>
+              ))}
+            </ul>
+          </Card>
+          <Card title="Focus Areas">
+            <ul className="space-y-2">
+              {data.narrative.improvements.map((t, i) => (
+                <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <span className="text-amber-500 font-bold shrink-0">→</span><span>{t}</span></li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      )}
+
+      {/* Returning production + looking ahead */}
       <Card title="Returning Production">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <RetBar label="Plate Apps" pct={data.returning?.ret_pa_pct} />
@@ -132,7 +154,15 @@ export default function TeamIdentity({ teamId, season }) {
           <RetBar label="oWAR" pct={data.returning?.ret_owar_pct} />
           <RetBar label="pWAR" pct={data.returning?.ret_pwar_pct} />
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">{data.outlook?.text}</p>
+        <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mt-4">{data.narrative?.outlook || data.outlook?.text}</p>
+        {data.narrative?.returners?.length > 0 && (
+          <ul className="mt-2.5 space-y-1.5">
+            {data.narrative.returners.map((t, i) => (
+              <li key={i} className="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span className="text-nw-teal-light shrink-0">•</span><span>{t}</span></li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       {/* Game plan / next step */}

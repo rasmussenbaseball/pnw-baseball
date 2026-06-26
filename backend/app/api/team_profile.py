@@ -17,6 +17,7 @@ from fastapi import APIRouter, Query
 
 from ..config import CURRENT_SEASON
 from ..models.database import get_connection
+from ._team_narrative import team_narrative, hitter_returner_note, pitcher_returner_note
 
 team_profile_router = APIRouter(prefix="/teams")
 
@@ -374,8 +375,14 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
              [r for r in ret_bat if (r.get("plate_appearances") or 0) >= 20] or ret_bat
         pq = [r for r in ret_pit if _ip_to_outs(r.get("innings_pitched")) >= 30] or \
              [r for r in ret_pit if _ip_to_outs(r.get("innings_pitched")) >= 15] or ret_pit
-        ret_hitters = sorted((_hit_payload(r, True) for r in hq), key=lambda x: x["impact"], reverse=True)[:8]
-        ret_pitchers = sorted((_pit_payload(r, True) for r in pq), key=lambda x: x["impact"], reverse=True)[:8]
+        ret_hitters = []
+        for i, r in enumerate(sorted(hq, key=_hitter_impact, reverse=True)[:8]):
+            p = _hit_payload(r, True); p["note"] = hitter_returner_note(r, i)
+            ret_hitters.append(p)
+        ret_pitchers = []
+        for i, r in enumerate(sorted(pq, key=_pitcher_impact, reverse=True)[:8]):
+            p = _pit_payload(r, True); p["note"] = pitcher_returner_note(r, i)
+            ret_pitchers.append(p)
 
         # Departures (production to replace), deduped by player_id
         dep = {}
@@ -509,9 +516,38 @@ def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
         pos_tags, con_tags = _tags(scores, ret_for_logic)
         outlook_label, outlook_text = _outlook(name, ret_for_logic)
 
+        # Fan-facing narrative (what worked, focus, outlook, what returns)
+        cur.execute(
+            """SELECT bs.plate_appearances, bs.on_base_pct, bs.slugging_pct, bs.ops,
+                      bs.wrc_plus, bs.offensive_war, bs.batting_avg, bs.bb_pct, bs.k_pct,
+                      bs.home_runs, bs.rbi, bs.stolen_bases, bs.player_id,
+                      p.first_name, p.last_name, p.position, p.year_in_school
+               FROM batting_stats bs JOIN players p ON p.id = bs.player_id
+               WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
+            (team_id, season))
+        nbat = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """SELECT ps.innings_pitched, ps.era, ps.fip, ps.siera, ps.k_pct, ps.bb_pct,
+                      ps.pitching_war, ps.player_id, p.first_name, p.last_name, p.year_in_school
+               FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
+               WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
+            (team_id, season))
+        npit = [dict(r) for r in cur.fetchall()]
+        def _nret(r):
+            return _returning(r.get("year_in_school"), level, overrides.get(r["player_id"]), r["player_id"] in portal)
+        rb = [r for r in nbat if _nret(r)]
+        rp = [r for r in npit if _nret(r)]
+        _nm = lambda r: f"{r.get('first_name','') or ''} {r.get('last_name','') or ''}".strip()
+        top_h = [_nm(r) for r in sorted(rb, key=_hitter_impact, reverse=True)[:3]]
+        top_p = [_nm(r) for r in sorted(rp, key=_pitcher_impact, reverse=True)[:3]]
+        ret_narr = {"pa_pct": raw["ret_pa_pct"], "ip_pct": raw["ret_ip_pct"],
+                    "owar_pct": raw["ret_owar_pct"], "pwar_pct": raw["ret_pwar_pct"]}
+        narrative = team_narrative(name, scores, ret_narr, rb, rp, top_h, top_p)
+
         return {
             "team_id": team_id,
             "team": name,
+            "narrative": narrative,
             "division": level,
             "conference": team["conference"],
             "season": season,

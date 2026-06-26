@@ -69,12 +69,12 @@ function ImpactBadge({ v }) {
 
 function HitterRow({ p }) {
   return (
-    <div className="flex items-center gap-2 py-2 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+    <div className="flex items-start gap-2 py-2.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
       <div className="min-w-0 flex-1">
-        <PlayerName p={p} />
-        <span className="text-[11px] text-gray-400 ml-1.5">{p.yr} · {p.pos}</span>
+        <div><PlayerName p={p} /><span className="text-[11px] text-gray-400 ml-1.5">{p.yr} · {p.pos}</span></div>
+        {p.note && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{p.note}</div>}
       </div>
-      <div className="hidden sm:flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 tabular-nums">
+      <div className="hidden sm:flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 tabular-nums pt-0.5">
         <span title="OPS" className="w-12 text-right">{r3(p.ops)}</span>
         <span title="wRC+" className="w-9 text-right">{p.wrc_plus != null ? Math.round(p.wrc_plus) : '-'}</span>
         <span title="HR" className="w-7 text-right">{p.hr} HR</span>
@@ -87,12 +87,12 @@ function HitterRow({ p }) {
 
 function PitcherRow({ p }) {
   return (
-    <div className="flex items-center gap-2 py-2 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+    <div className="flex items-start gap-2 py-2.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
       <div className="min-w-0 flex-1">
-        <PlayerName p={p} />
-        <span className="text-[11px] text-gray-400 ml-1.5">{p.yr}</span>
+        <div><PlayerName p={p} /><span className="text-[11px] text-gray-400 ml-1.5">{p.yr}</span></div>
+        {p.note && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{p.note}</div>}
       </div>
-      <div className="hidden sm:flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 tabular-nums">
+      <div className="hidden sm:flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 tabular-nums pt-0.5">
         <span title="IP" className="w-12 text-right">{p.ip} IP</span>
         <span title="ERA" className="w-12 text-right">{r2(p.era)} ERA</span>
         <span title="FIP" className="w-12 text-right">{r2(p.fip)} FIP</span>
