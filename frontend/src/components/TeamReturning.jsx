@@ -81,11 +81,7 @@ function BalanceBar({ label, ret, dep }) {
   )
 }
 
-function ImpactBadge({ v }) {
-  return <span className="text-[11px] font-bold tabular-nums w-11 shrink-0 text-center py-0.5 rounded bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">{Number(v).toFixed(1)}</span>
-}
-
-// Column header that lines up with HitterRow / PitcherRow (incl. the Impact badge).
+// Column header that lines up with HitterRow / PitcherRow.
 function StatHeader({ cols }) {
   return (
     <div className="hidden sm:flex items-center gap-2 pb-1.5 mb-1 border-b border-gray-100 dark:border-gray-700 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
@@ -93,16 +89,7 @@ function StatHeader({ cols }) {
       <div className="flex items-center gap-2.5 shrink-0">
         {cols.map((c) => <span key={c.label} className={`${c.w} text-right`}>{c.label}</span>)}
       </div>
-      <span className="w-11 text-center" title="Blended impact score (playing time + production). Higher = a bigger piece returning.">Impact</span>
     </div>
-  )
-}
-
-function ImpactNote() {
-  return (
-    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-3 leading-snug">
-      <span className="font-semibold">Impact</span> blends playing time and production (oWAR, OPS, wRC+, discipline, speed for bats; IP, pWAR, FIP/SIERA, K-BB for arms). Higher = a bigger piece coming back.
-    </p>
   )
 }
 
@@ -119,7 +106,6 @@ function HitterRow({ p }) {
         <span title="HR" className="w-12 text-right whitespace-nowrap">{p.hr} HR</span>
         <span title="SB" className="w-11 text-right whitespace-nowrap">{p.sb} SB</span>
       </div>
-      <ImpactBadge v={p.impact} />
     </div>
   )
 }
@@ -137,7 +123,6 @@ function PitcherRow({ p }) {
         <span title="FIP" className="w-16 text-right whitespace-nowrap">{r2(p.fip)} FIP</span>
         <span title="K%" className="w-14 text-right whitespace-nowrap">{p.k_pct}% K</span>
       </div>
-      <ImpactBadge v={p.impact} />
     </div>
   )
 }
@@ -205,7 +190,6 @@ export default function TeamReturning({ teamId, season }) {
             <>
               <StatHeader cols={[{ label: 'OPS', w: 'w-11' }, { label: 'wRC+', w: 'w-8' }, { label: 'HR', w: 'w-12' }, { label: 'SB', w: 'w-11' }]} />
               {data.returning_hitters.map((p) => <HitterRow key={p.player_id} p={p} />)}
-              <ImpactNote />
             </>
           ) : <div className="text-sm text-gray-400">No qualifying returning hitters.</div>}
         </Card>
@@ -214,7 +198,6 @@ export default function TeamReturning({ teamId, season }) {
             <>
               <StatHeader cols={[{ label: 'IP', w: 'w-14' }, { label: 'ERA', w: 'w-16' }, { label: 'FIP', w: 'w-16' }, { label: 'K%', w: 'w-14' }]} />
               {data.returning_pitchers.map((p) => <PitcherRow key={p.player_id} p={p} />)}
-              <ImpactNote />
             </>
           ) : <div className="text-sm text-gray-400">No qualifying returning pitchers.</div>}
         </Card>
@@ -234,7 +217,6 @@ export default function TeamReturning({ teamId, season }) {
                 <span className="hidden sm:inline text-[11px] text-gray-500 tabular-nums w-36 text-right whitespace-nowrap shrink-0">
                   {p.kind === 'pit' ? `${p.ip} IP · ${r2(p.era)} ERA` : `${p.pa} PA · ${r3(p.ops)} OPS`}
                 </span>
-                <ImpactBadge v={p.impact} />
               </div>
             ))}
           </div>

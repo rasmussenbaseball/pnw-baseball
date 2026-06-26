@@ -981,8 +981,8 @@ function HeroHeader({ team, ig, grades, retWar }) {
                 hint={rk.conference_total ? `of ${rk.conference_total}` : ''} />
             )}
             {rk.national_rank != null && (
-              <HeroStat label="National" value={`#${rk.national_rank}`}
-                hint={rk.national_percentile != null ? `${Math.round(rk.national_percentile)}th pct` : ''} />
+              <HeroStat label="National" value={`#${Math.ceil(rk.national_rank)}`}
+                hint={rk.national_percentile != null ? `${Math.ceil(rk.national_percentile)}th pct` : ''} />
             )}
             {rk.power_rating != null && (
               <HeroStat label="Power" value={rk.power_rating.toFixed(1)}
@@ -1041,7 +1041,7 @@ function PctBar({ label, pct, color }) {
     <div className="mt-3 text-left">
       <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-1">
         <span>{label}</span>
-        <span className="font-semibold text-gray-700 dark:text-gray-200">{pct.toFixed(1)}%</span>
+        <span className="font-semibold text-gray-700 dark:text-gray-200">{Math.ceil(pct)}%</span>
       </div>
       <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
@@ -1090,10 +1090,10 @@ function RankingsCard({ rankings }) {
           <RankTile
             accent="from-nw-teal to-nw-teal-dark"
             label={`National Rank · ${divLevel}`}
-            rank={comp.composite_rank != null ? `#${Math.round(comp.composite_rank)}` : '-'}
+            rank={comp.composite_rank != null ? `#${Math.ceil(comp.composite_rank)}` : '-'}
             sub={totalTeams ? `of ${totalTeams} teams` : ''}
-            chips={[comp.pear_rank && [`Pear #${comp.pear_rank}`, 'green'],
-                    comp.cbr_rank && [`CBR #${comp.cbr_rank}`, 'purple']]}
+            chips={[comp.pear_rank && [`Pear #${Math.ceil(comp.pear_rank)}`, 'green'],
+                    comp.cbr_rank && [`CBR #${Math.ceil(comp.cbr_rank)}`, 'purple']]}
           >
             {comp.national_percentile != null && (
               <PctBar label="National percentile" pct={comp.national_percentile} color={pctColor(comp.national_percentile)} />
@@ -1110,10 +1110,10 @@ function RankingsCard({ rankings }) {
           <RankTile
             accent="from-amber-400 to-amber-600"
             label="Strength of Schedule"
-            rank={comp.composite_sos_rank ? `#${Math.round(comp.composite_sos_rank)}` : '-'}
+            rank={comp.composite_sos_rank ? `#${Math.ceil(comp.composite_sos_rank)}` : '-'}
             sub={totalTeams && comp.composite_sos_rank ? `of ${totalTeams} teams` : ''}
-            chips={[pear?.sos_rank && [`Pear #${pear.sos_rank}`, 'green'],
-                    cbr?.sos_rank && [`CBR #${cbr.sos_rank}`, 'purple']]}
+            chips={[pear?.sos_rank && [`Pear #${Math.ceil(pear.sos_rank)}`, 'green'],
+                    cbr?.sos_rank && [`CBR #${Math.ceil(cbr.sos_rank)}`, 'purple']]}
           />
         </div>
 

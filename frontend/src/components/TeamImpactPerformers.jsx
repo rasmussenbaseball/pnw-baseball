@@ -28,7 +28,6 @@ function Row({ p, line }) {
         <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums truncate">{line}</div>
       </div>
       <RetFlag returning={p.returning} />
-      <span className="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">{Number(p.impact).toFixed(1)}</span>
     </div>
   )
 }
@@ -57,9 +56,6 @@ export default function TeamImpactPerformers({ teamId, season }) {
             <Row key={p.player_id} p={p} line={`${p.ip} IP · ${r2(p.era)} ERA · ${r2(p.fip)} FIP · ${p.k_pct}% K`} />
           ))}
         </div>
-      </div>
-      <div className="px-4 pb-3 -mt-1 text-[10px] text-gray-400 dark:text-gray-500">
-        Green number = blended <span className="font-semibold">impact score</span> (playing time + production); higher is better.
       </div>
     </div>
   )
