@@ -178,9 +178,39 @@ _DIMS = [
     ("speed", "Speed", "sb", True),
     ("pitching", "Run Prevention", "era", False),
     ("miss_bats", "Miss Bats", "pit_k_pct", True),
-    ("strike_throwing", "Strike Throwing", "pit_bb_pct", False),
+    ("strike_throwing", "Command", "pit_bb_pct", False),
     ("pitching_depth", "Pitching Depth", "depth", True),
 ]
+
+
+def _r3(v):
+    s = f"{v:.3f}"
+    return s[1:] if s.startswith("0") else s
+
+
+def _fmt_metric(key, val):
+    """Human-readable stat behind a grade, so the letter has a visible reason."""
+    if val is None:
+        return None
+    if key == "offense":
+        return f"{_r3(val)} OPS"
+    if key == "power":
+        return f"{_r3(val)} ISO"
+    if key == "contact":
+        return f"{val * 100:.1f}% K"
+    if key == "discipline":
+        return f"{val * 100:.1f}% BB"
+    if key == "speed":
+        return f"{int(round(val))} SB"
+    if key == "pitching":
+        return f"{val:.2f} ERA"
+    if key == "miss_bats":
+        return f"{val * 100:.1f}% K"
+    if key == "strike_throwing":
+        return f"{val * 100:.1f}% BB"
+    if key == "pitching_depth":
+        return f"{int(round(val))} arms 20+ IP"
+    return str(val)
 
 
 def _identity_label(s):
@@ -218,7 +248,7 @@ def _tags(s, ret):
     if s["pitching"] < 45:
         con.append("Run Prevention Must Climb")
     if s["strike_throwing"] < 40:
-        con.append("Strike One Needed")
+        con.append("Walks Must Come Down")
     if s["pitching_depth"] < 40:
         con.append("Weekend Innings Open")
     if ret["ret_pa_pct"] < 50:
@@ -558,7 +588,12 @@ def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
             val = raw.get(metric)
             score = _pct_rank(peer_vals, val, high) if val is not None else 50.0
             scores[key] = score
-            grades[key] = {"grade": grade_from_score(score), "score": round(score, 1)}
+            rank = None
+            if val is not None and peer_vals:
+                rank = sum(1 for v in peer_vals if (v > val if high else v < val)) + 1
+            grades[key] = {"grade": grade_from_score(score), "score": round(score, 1),
+                           "label": label, "value": _fmt_metric(key, val),
+                           "rank": rank, "peers": len(peer_vals)}
             radar.append({"dim": key, "label": label, "score": round(score, 1)})
         overall = (scores["offense"] + scores["pitching"]) / 2
         grades["overall"] = {"grade": grade_from_score(overall), "score": round(overall, 1)}

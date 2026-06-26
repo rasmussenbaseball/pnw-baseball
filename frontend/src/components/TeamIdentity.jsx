@@ -22,7 +22,7 @@ function gradeClasses(grade) {
 const REPORT_ORDER = [
   ['offense', 'Offense'], ['power', 'Power'], ['contact', 'Contact'],
   ['discipline', 'Discipline'], ['speed', 'Speed'], ['pitching', 'Run Prevention'],
-  ['miss_bats', 'Miss Bats'], ['strike_throwing', 'Strike Throwing'], ['pitching_depth', 'Pitching Depth'],
+  ['miss_bats', 'Miss Bats'], ['strike_throwing', 'Command'], ['pitching_depth', 'Pitching Depth'],
 ]
 
 function Card({ title, children, right, accent = 'border-t-nw-teal-light' }) {
@@ -102,9 +102,14 @@ export default function TeamIdentity({ teamId, season }) {
         <Card title="Report Card" accent="border-t-violet-500">
           <div className="grid grid-cols-3 gap-2.5">
             {REPORT_ORDER.map(([key, label]) => (
-              <div key={key} className="flex flex-col items-center gap-1.5 rounded-lg border border-gray-100 dark:border-gray-700 py-2.5">
+              <div key={key} className="flex flex-col items-center gap-1 rounded-lg border border-gray-100 dark:border-gray-700 py-2.5 px-1">
                 <GradePill grade={g[key]?.grade} />
-                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 text-center leading-tight px-1">{label}</span>
+                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 text-center leading-tight">{g[key]?.label || label}</span>
+                {g[key]?.value && (
+                  <span className="text-[9px] text-gray-400 dark:text-gray-500 text-center leading-tight tabular-nums">
+                    {g[key].value}{g[key].rank ? ` · #${g[key].rank}/${g[key].peers}` : ''}
+                  </span>
+                )}
               </div>
             ))}
           </div>
