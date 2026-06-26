@@ -381,12 +381,14 @@ def returning_roster(team_id: int = Query(...), season: int = Query(...),
         portal = _portal_ids(cur)
         cur.execute(
             """SELECT bs.player_id, p.first_name, p.last_name, p.position, p.year_in_school,
+                      p.is_committed, p.committed_to,
                       bs.plate_appearances pa FROM batting_stats bs JOIN players p ON p.id = bs.player_id
                WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
         bat = {r["player_id"]: dict(r) for r in cur.fetchall()}
         cur.execute(
             """SELECT ps.player_id, p.first_name, p.last_name, p.position, p.year_in_school,
+                      p.is_committed, p.committed_to,
                       ps.innings_pitched ip FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
                WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
@@ -399,6 +401,7 @@ def returning_roster(team_id: int = Query(...), season: int = Query(...),
             out[pid] = {
                 "player_id": pid, "name": f"{r['first_name']} {r['last_name']}".strip(),
                 "year_in_school": r.get("year_in_school"), "position": r.get("position"),
+                "committed": bool(r.get("is_committed")), "committed_to": r.get("committed_to"),
                 "pa": 0, "ip": 0,
             }
         for pid, r in bat.items():
@@ -409,7 +412,7 @@ def returning_roster(team_id: int = Query(...), season: int = Query(...),
         for pid, pl in out.items():
             o = ovr.get(pid)
             in_portal = pid in portal
-            default_ret = _returning(pl["year_in_school"], level, None, in_portal)
+            default_ret = _returning(pl["year_in_school"], level, None, in_portal, pl["committed"])
             rows.append({
                 **pl, "default_returning": default_ret, "in_portal": in_portal,
                 "override": o["status"] if o else None, "note": o["note"] if o else None,

@@ -61,11 +61,11 @@ def _pct_rank(values, value, high_good=True):
     return pct if high_good else 100 - pct
 
 
-def _returning(year_in_school, division_level, override, in_portal=False):
+def _returning(year_in_school, division_level, override, in_portal=False, committed=False):
     if override in ("returning", "departing"):
         return override == "returning"  # manual override always wins
-    if in_portal:
-        return False  # in the transfer portal → not on next year's roster
+    if in_portal or committed:
+        return False  # in the portal or committed elsewhere → not back next year
     yr = (year_in_school or "").strip().lower()
     gone = {"sr", "senior", "r-sr", "redshirt senior", "5th", "gr", "grad", "graduate"}
     if yr in gone:
@@ -81,14 +81,14 @@ def _team_raw(cur, team_id, season, division_level, overrides, portal):
         """SELECT bs.plate_appearances pa, bs.at_bats ab, bs.hits h, bs.doubles d2,
                   bs.triples d3, bs.home_runs hr, bs.walks bb, bs.hit_by_pitch hbp,
                   bs.sacrifice_flies sf, bs.strikeouts so, bs.stolen_bases sb,
-                  bs.offensive_war owar, bs.player_id, p.year_in_school
+                  bs.offensive_war owar, bs.player_id, p.year_in_school, p.is_committed
            FROM batting_stats bs JOIN players p ON p.id = bs.player_id
            WHERE bs.team_id = %s AND bs.season = %s""", (team_id, season))
     bat = cur.fetchall()
     cur.execute(
         """SELECT ps.innings_pitched ip, ps.batters_faced bf, ps.earned_runs er,
                   ps.walks bb, ps.strikeouts k, ps.pitching_war pwar,
-                  ps.player_id, p.year_in_school
+                  ps.player_id, p.year_in_school, p.is_committed
            FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
            WHERE ps.team_id = %s AND ps.season = %s""", (team_id, season))
     pit = cur.fetchall()
@@ -117,7 +117,8 @@ def _team_raw(cur, team_id, season, division_level, overrides, portal):
     # Returning aggregates
     def ret_row(r):
         return _returning(r.get("year_in_school"), division_level,
-                          overrides.get(r["player_id"]), r["player_id"] in portal)
+                          overrides.get(r["player_id"]), r["player_id"] in portal,
+                          bool(r.get("is_committed")))
     ret_pa = sum(g(r, "pa") for r in bat if ret_row(r))
     ret_outs = sum(_ip_to_outs(r.get("ip")) for r in pit if ret_row(r))
     pos_owar = sum(max(0, g(r, "owar")) for r in bat)
@@ -415,9 +416,11 @@ def _pos_group(pos):
     return None  # pitcher or unknown
 
 
-def _depart_status(year_in_school, division_level, override, note, in_portal=False):
+def _depart_status(year_in_school, division_level, override, note, in_portal=False, committed_to=None):
     if override == "departing":
         return note or "Portal / not returning"
+    if committed_to:
+        return f"Committed: {committed_to}"
     if in_portal:
         return "Transfer portal"
     yr = (year_in_school or "").strip().lower()
@@ -472,13 +475,15 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
         portal = _portal_ids(cur)
 
         cur.execute(
-            """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
+            """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school,
+                      p.is_committed, p.committed_to
                FROM batting_stats bs JOIN players p ON p.id = bs.player_id
                WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
         bat = [dict(r) for r in cur.fetchall()]
         cur.execute(
-            """SELECT ps.*, p.first_name, p.last_name, p.position, p.year_in_school
+            """SELECT ps.*, p.first_name, p.last_name, p.position, p.year_in_school,
+                      p.is_committed, p.committed_to
                FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
                WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
@@ -486,7 +491,8 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
 
         def is_ret(r):
             o = ovr.get(r["player_id"])
-            return _returning(r.get("year_in_school"), level, o["status"] if o else None, r["player_id"] in portal)
+            return _returning(r.get("year_in_school"), level, o["status"] if o else None,
+                              r["player_id"] in portal, bool(r.get("is_committed")))
 
         # Returning impact players (with sample floors + fallbacks)
         ret_bat = [r for r in bat if is_ret(r)]
@@ -512,7 +518,7 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
             o = ovr.get(r["player_id"])
             dep[r["player_id"]] = {
                 **_hit_payload(r, False),
-                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None, r["player_id"] in portal),
+                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None, r["player_id"] in portal, r.get("committed_to")),
                 "kind": "bat",
             }
         for r in pit:
@@ -525,7 +531,7 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
                 continue
             dep[r["player_id"]] = {
                 **p,
-                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None, r["player_id"] in portal),
+                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None, r["player_id"] in portal, r.get("committed_to")),
                 "kind": "pit",
             }
         departures = sorted(dep.values(), key=lambda x: x["impact"], reverse=True)[:10]
@@ -608,20 +614,21 @@ def team_impact_performers(team_id: int, season: int = Query(CURRENT_SEASON)):
         ovr = {r["player_id"]: r["status"] for r in cur.fetchall()}
         portal = _portal_ids(cur)
         cur.execute(
-            """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
+            """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school, p.is_committed
                FROM batting_stats bs JOIN players p ON p.id = bs.player_id
                WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
         bat = [dict(r) for r in cur.fetchall()]
         cur.execute(
-            """SELECT ps.*, p.first_name, p.last_name, p.position, p.year_in_school
+            """SELECT ps.*, p.first_name, p.last_name, p.position, p.year_in_school, p.is_committed
                FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
                WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
         pit = [dict(r) for r in cur.fetchall()]
 
     def ret(r):
-        return _returning(r.get("year_in_school"), level, ovr.get(r["player_id"]), r["player_id"] in portal)
+        return _returning(r.get("year_in_school"), level, ovr.get(r["player_id"]),
+                          r["player_id"] in portal, bool(r.get("is_committed")))
     hq = [r for r in bat if (r.get("plate_appearances") or 0) >= 40] or \
          [r for r in bat if (r.get("plate_appearances") or 0) >= 20] or bat
     pq = [r for r in pit if _ip_to_outs(r.get("innings_pitched")) >= 30] or \
@@ -686,20 +693,21 @@ def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
             """SELECT bs.plate_appearances, bs.on_base_pct, bs.slugging_pct, bs.ops,
                       bs.wrc_plus, bs.offensive_war, bs.batting_avg, bs.bb_pct, bs.k_pct,
                       bs.home_runs, bs.rbi, bs.stolen_bases, bs.player_id,
-                      p.first_name, p.last_name, p.position, p.year_in_school
+                      p.first_name, p.last_name, p.position, p.year_in_school, p.is_committed
                FROM batting_stats bs JOIN players p ON p.id = bs.player_id
                WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
         nbat = [dict(r) for r in cur.fetchall()]
         cur.execute(
             """SELECT ps.innings_pitched, ps.era, ps.fip, ps.siera, ps.k_pct, ps.bb_pct,
-                      ps.pitching_war, ps.player_id, p.first_name, p.last_name, p.year_in_school
+                      ps.pitching_war, ps.player_id, p.first_name, p.last_name, p.year_in_school, p.is_committed
                FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
                WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
         npit = [dict(r) for r in cur.fetchall()]
         def _nret(r):
-            return _returning(r.get("year_in_school"), level, overrides.get(r["player_id"]), r["player_id"] in portal)
+            return _returning(r.get("year_in_school"), level, overrides.get(r["player_id"]),
+                              r["player_id"] in portal, bool(r.get("is_committed")))
         rb = [r for r in nbat if _nret(r)]
         rp = [r for r in npit if _nret(r)]
         _nm = lambda r: f"{r.get('first_name','') or ''} {r.get('last_name','') or ''}".strip()
