@@ -92,11 +92,11 @@ function HitterRow({ p }) {
         <div><PlayerName p={p} /><span className="text-[11px] text-gray-400 ml-1.5">{p.yr} · {p.pos}</span><DraftRiskChip playerId={p.player_id} className="ml-1.5" /></div>
         {p.note && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{p.note}</div>}
       </div>
-      <div className="hidden sm:flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 tabular-nums pt-0.5">
-        <span title="OPS" className="w-12 text-right">{r3(p.ops)}</span>
-        <span title="wRC+" className="w-9 text-right">{p.wrc_plus != null ? Math.round(p.wrc_plus) : '-'}</span>
-        <span title="HR" className="w-7 text-right">{p.hr} HR</span>
-        <span title="SB" className="w-9 text-right">{p.sb} SB</span>
+      <div className="hidden sm:flex items-center gap-2.5 text-[11px] text-gray-600 dark:text-gray-300 tabular-nums pt-0.5 shrink-0">
+        <span title="OPS" className="w-11 text-right whitespace-nowrap">{r3(p.ops)}</span>
+        <span title="wRC+" className="w-8 text-right whitespace-nowrap">{p.wrc_plus != null ? Math.round(p.wrc_plus) : '-'}</span>
+        <span title="HR" className="w-12 text-right whitespace-nowrap">{p.hr} HR</span>
+        <span title="SB" className="w-11 text-right whitespace-nowrap">{p.sb} SB</span>
       </div>
       <ImpactBadge v={p.impact} />
     </div>
@@ -110,11 +110,11 @@ function PitcherRow({ p }) {
         <div><PlayerName p={p} /><span className="text-[11px] text-gray-400 ml-1.5">{p.yr}</span><DraftRiskChip playerId={p.player_id} className="ml-1.5" /></div>
         {p.note && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{p.note}</div>}
       </div>
-      <div className="hidden sm:flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 tabular-nums pt-0.5">
-        <span title="IP" className="w-12 text-right">{p.ip} IP</span>
-        <span title="ERA" className="w-12 text-right">{r2(p.era)} ERA</span>
-        <span title="FIP" className="w-12 text-right">{r2(p.fip)} FIP</span>
-        <span title="K%" className="w-12 text-right">{p.k_pct}% K</span>
+      <div className="hidden sm:flex items-center gap-2.5 text-[11px] text-gray-600 dark:text-gray-300 tabular-nums pt-0.5 shrink-0">
+        <span title="IP" className="w-14 text-right whitespace-nowrap">{p.ip} IP</span>
+        <span title="ERA" className="w-16 text-right whitespace-nowrap">{r2(p.era)} ERA</span>
+        <span title="FIP" className="w-16 text-right whitespace-nowrap">{r2(p.fip)} FIP</span>
+        <span title="K%" className="w-14 text-right whitespace-nowrap">{p.k_pct}% K</span>
       </div>
       <ImpactBadge v={p.impact} />
     </div>
@@ -202,7 +202,7 @@ export default function TeamReturning({ teamId, season }) {
                   <span className="text-[11px] text-gray-400 ml-1.5">{p.yr} · {p.pos}</span>
                 </div>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">{p.status}</span>
-                <span className="hidden sm:inline text-xs text-gray-500 tabular-nums w-28 text-right">
+                <span className="hidden sm:inline text-[11px] text-gray-500 tabular-nums w-36 text-right whitespace-nowrap shrink-0">
                   {p.kind === 'pit' ? `${p.ip} IP · ${r2(p.era)} ERA` : `${p.pa} PA · ${r3(p.ops)} OPS`}
                 </span>
                 <ImpactBadge v={p.impact} />

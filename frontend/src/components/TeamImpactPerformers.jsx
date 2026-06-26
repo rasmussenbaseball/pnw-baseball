@@ -25,7 +25,7 @@ function Row({ p, line }) {
           : <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{p.name}</span>}
         <span className="text-[10px] text-gray-400 ml-1.5">{p.yr} · {p.pos}</span>
         <DraftRiskChip playerId={p.player_id} className="ml-1.5" />
-        <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">{line}</div>
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums truncate">{line}</div>
       </div>
       <RetFlag returning={p.returning} />
       <span className="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">{Number(p.impact).toFixed(1)}</span>
