@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -586,6 +587,73 @@ function WclTab({ pnwTeams, setToast }) {
   )
 }
 
+// ── Returning-status overrides (Team Profile V2) ──
+function ReturningRow({ p, season, setToast, onChanged }) {
+  const [busy, setBusy] = useState(false)
+  const set = async (status) => {
+    setBusy(true)
+    try {
+      await apiPost('/admin/returning/set', { player_id: p.player_id, season, status, note: status === 'departing' ? 'portal/manual' : null })
+      setToast({ type: 'ok', msg: `${p.name} → ${status}` }); onChanged()
+    } catch (e) { setToast({ type: 'err', msg: e.message || 'Failed' }) } finally { setBusy(false) }
+  }
+  const reset = async () => {
+    setBusy(true)
+    try { await apiPost('/admin/returning/clear', { player_id: p.player_id }); setToast({ type: 'ok', msg: `${p.name} reset to default` }); onChanged() }
+    catch (e) { setToast({ type: 'err', msg: e.message || 'Failed' }) } finally { setBusy(false) }
+  }
+  const sample = p.pa ? `${p.pa} PA` : (p.ip ? `${p.ip} IP` : '—')
+  return (
+    <div className="flex items-center gap-2 py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+      <div className="min-w-0 flex-1">
+        <span className="font-semibold text-gray-900 dark:text-gray-100">{p.name}</span>
+        <span className="text-[11px] text-gray-400 ml-1.5">{p.year_in_school || '-'} · {p.position || '-'} · {sample}</span>
+        {p.override && <span className="text-[10px] ml-1.5 text-amber-600">override</span>}
+      </div>
+      <div className="flex items-center gap-1">
+        <button onClick={() => set('returning')} disabled={busy}
+          className={`px-2.5 py-1 rounded text-xs font-semibold border ${p.effective ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-gray-800 text-gray-500 border-gray-300 dark:border-gray-600 hover:border-emerald-500'}`}>Returning</button>
+        <button onClick={() => set('departing')} disabled={busy}
+          className={`px-2.5 py-1 rounded text-xs font-semibold border ${!p.effective ? 'bg-rose-600 text-white border-rose-600' : 'bg-white dark:bg-gray-800 text-gray-500 border-gray-300 dark:border-gray-600 hover:border-rose-500'}`}>Departing</button>
+        {p.override && <button onClick={reset} disabled={busy} title="Reset to class-year default" className="px-2 py-1 text-xs text-gray-400 hover:text-gray-700">↺</button>}
+      </div>
+    </div>
+  )
+}
+
+function ReturningTab({ pnwTeams, setToast }) {
+  const [teamId, setTeamId] = useState('')
+  const [season] = useState(CURRENT_SEASON)
+  const [roster, setRoster] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const load = useCallback(async (tid) => {
+    if (!tid) { setRoster(null); return }
+    setLoading(true)
+    try { setRoster(await apiGet(`/admin/returning/roster?team_id=${tid}&season=${season}`)) }
+    catch { setRoster(null) } finally { setLoading(false) }
+  }, [season])
+  useEffect(() => { load(teamId) }, [teamId, load])
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500 mb-3">Mark who is returning vs departing for the Team Identity / Returning Production tabs. Defaults come from class year; overrides win and go live immediately.</p>
+      <select value={teamId} onChange={(e) => setTeamId(e.target.value)}
+        className="w-full mb-4 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 px-3 py-2 text-sm">
+        <option value="">Select a team…</option>
+        {[...pnwTeams].sort((a, b) => (a.level || '').localeCompare(b.level || '') || (a.short_name || '').localeCompare(b.short_name || ''))
+          .map(t => <option key={t.id} value={t.id}>{t.short_name} ({t.level})</option>)}
+      </select>
+      {loading && <div className="py-6 text-center text-sm text-gray-400 animate-pulse">Loading roster…</div>}
+      {roster?.players?.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+          {roster.players.map(p => <ReturningRow key={p.player_id} p={p} season={season} setToast={setToast} onChanged={() => load(teamId)} />)}
+        </div>
+      )}
+      {roster && !roster.players?.length && <div className="py-6 text-center text-sm text-gray-400">No {season} roster found for this team.</div>}
+    </div>
+  )
+}
+
 export default function CommitmentEditor() {
   const [tab, setTab] = useState('commit')
   const [toast, setToast] = useState(null)
@@ -612,6 +680,7 @@ export default function CommitmentEditor() {
         <TabBtn id="freshmen">Incoming Freshmen</TabBtn>
         <TabBtn id="link">Link Pages</TabBtn>
         <TabBtn id="incoming">Incoming Transfers</TabBtn>
+        <TabBtn id="returning">Returning Status</TabBtn>
       </div>
 
       {toast && (
@@ -625,6 +694,7 @@ export default function CommitmentEditor() {
       {tab === 'freshmen' && <FreshmenTab pnwTeams={pnwTeams} setToast={setToast} />}
       {tab === 'link' && <LinkTab setToast={setToast} />}
       {tab === 'incoming' && <IncomingTab pnwTeams={pnwTeams} setToast={setToast} />}
+      {tab === 'returning' && <ReturningTab pnwTeams={pnwTeams} setToast={setToast} />}
     </div>
   )
 }

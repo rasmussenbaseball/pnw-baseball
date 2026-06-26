@@ -352,6 +352,106 @@ def portal_remove(body: PlayerIdBody, email: str = Depends(require_commitment_ed
 
 
 # ─────────────────────────────────────────────────────────────────
+# Returning-status overrides (Team Profile V2 "Returning Production")
+# Default returning status is class-year-derived; this lets an editor force a
+# player returning/departing (e.g. a portal departure or an extra-year senior).
+# ─────────────────────────────────────────────────────────────────
+class ReturningSet(BaseModel):
+    player_id: int
+    season: int
+    status: str = Field(..., pattern="^(returning|departing)$")
+    note: Optional[str] = Field(None, max_length=200)
+
+
+@router.get("/admin/returning/roster")
+def returning_roster(team_id: int = Query(...), season: int = Query(...),
+                     _email: str = Depends(require_commitment_editor)):
+    """A team's season roster with the default (class-year) returning status and
+    any manual override, so the editor can flip portal departures."""
+    from .team_profile import _returning, _ip_to_outs
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT d.level FROM teams t JOIN conferences c ON t.conference_id = c.id
+               JOIN divisions d ON c.division_id = d.id WHERE t.id = %s""", (team_id,))
+        tr = cur.fetchone()
+        level = tr["level"] if tr else None
+        cur.execute(
+            """SELECT bs.player_id, p.first_name, p.last_name, p.position, p.year_in_school,
+                      bs.plate_appearances pa FROM batting_stats bs JOIN players p ON p.id = bs.player_id
+               WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
+            (team_id, season))
+        bat = {r["player_id"]: dict(r) for r in cur.fetchall()}
+        cur.execute(
+            """SELECT ps.player_id, p.first_name, p.last_name, p.position, p.year_in_school,
+                      ps.innings_pitched ip FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
+               WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
+            (team_id, season))
+        pit = {r["player_id"]: dict(r) for r in cur.fetchall()}
+        cur.execute("SELECT player_id, status, note FROM player_returning_overrides WHERE season = %s", (season,))
+        ovr = {r["player_id"]: r for r in cur.fetchall()}
+
+        out = {}
+        for pid, r in {**pit, **bat}.items():
+            out[pid] = {
+                "player_id": pid, "name": f"{r['first_name']} {r['last_name']}".strip(),
+                "year_in_school": r.get("year_in_school"), "position": r.get("position"),
+                "pa": 0, "ip": 0,
+            }
+        for pid, r in bat.items():
+            out[pid]["pa"] = r.get("pa") or 0
+        for pid, r in pit.items():
+            out[pid]["ip"] = r.get("ip") or 0
+        rows = []
+        for pid, pl in out.items():
+            o = ovr.get(pid)
+            default_ret = _returning(pl["year_in_school"], level, None)
+            rows.append({
+                **pl, "default_returning": default_ret,
+                "override": o["status"] if o else None, "note": o["note"] if o else None,
+                "effective": (o["status"] == "returning") if o else default_ret,
+            })
+        rows.sort(key=lambda x: x["pa"] + _ip_to_outs(x["ip"]) * 1.5, reverse=True)
+    return {"team_id": team_id, "season": season, "division": level, "players": rows}
+
+
+def _bust_profile_cache():
+    try:
+        from .team_profile import _DIV_CACHE
+        _DIV_CACHE.clear()
+    except Exception:
+        pass
+
+
+@router.post("/admin/returning/set")
+def returning_set(body: ReturningSet, email: str = Depends(require_commitment_editor)):
+    """Force a player's returning status for a season."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO player_returning_overrides (player_id, season, status, note, set_by, updated_at)
+               VALUES (%s, %s, %s, %s, %s, now())
+               ON CONFLICT (player_id) DO UPDATE SET
+                 season = EXCLUDED.season, status = EXCLUDED.status,
+                 note = EXCLUDED.note, set_by = EXCLUDED.set_by, updated_at = now()""",
+            (body.player_id, body.season, body.status, body.note, email))
+        conn.commit()
+    _bust_profile_cache()
+    return {"ok": True, "player_id": body.player_id, "status": body.status}
+
+
+@router.post("/admin/returning/clear")
+def returning_clear(body: PlayerIdBody, _email: str = Depends(require_commitment_editor)):
+    """Remove a returning override (revert to the class-year default)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM player_returning_overrides WHERE player_id = %s", (body.player_id,))
+        conn.commit()
+    _bust_profile_cache()
+    return {"ok": True, "player_id": body.player_id}
+
+
+# ─────────────────────────────────────────────────────────────────
 # WCL summer players — school assignment + WCL transfer-portal tracker
 # ─────────────────────────────────────────────────────────────────
 class SummerSchool(BaseModel):
