@@ -465,12 +465,12 @@ function drawPercentiles(ctx, data, y, h) {
   ctx.font = '800 20px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText('DIVISION RANK', pad, y + 22)
+  ctx.fillText('PERCENTILE RANK', pad, y + 22)
 
   ctx.fillStyle = '#64748b'
   ctx.font = '500 13px "Inter", system-ui, sans-serif'
   ctx.textAlign = 'right'
-  ctx.fillText('lower rank = better', SIZE - pad, y + 22)
+  ctx.fillText(data.percentile_baseline?.label ? `vs ${data.percentile_baseline.label}` : 'higher = better', SIZE - pad, y + 22)
 
   // Formatters
   const fmt3   = v => v != null ? v.toFixed(3).replace(/^0/, '') : '-'
@@ -546,10 +546,10 @@ function drawPercentiles(ctx, data, y, h) {
       }
       ctx.fillText(valTxt, cx + cellW / 2, rowY + cellH / 2 + 2)
 
-      // Rank
-      if (rank != null && total != null) {
+      // Percentile (vs multi-year baseline)
+      if (pct != null) {
         ctx.font = '800 12px "Inter", system-ui, sans-serif'
-        ctx.fillText(`${ordinal(rank)} of ${total}`, cx + cellW / 2, rowY + cellH - 22)
+        ctx.fillText(`${ordinal(pct)} percentile`, cx + cellW / 2, rowY + cellH - 22)
       }
 
       // League average — slightly faded

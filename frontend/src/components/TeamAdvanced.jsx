@@ -61,7 +61,7 @@ export default function TeamAdvanced({ teamId, season }) {
     <div className="space-y-4 sm:space-y-6 mb-6 sm:mb-8">
       <div className="flex items-baseline gap-2">
         <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">Advanced Look</h2>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500">percentiles vs division · {season}</span>
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">percentiles vs {ig?.percentile_baseline?.label || `division · ${season}`}</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -107,7 +107,7 @@ function SavantCard({ title, data, layout }) {
   const rows = SAVANT_LABELS[layout]
   if (!data) return <Skeleton label={title} rows={8} />
   return (
-    <Card title={title} subtitle="percentile vs peers">
+    <Card title={title} subtitle="percentile vs multi-year history">
       <div className="space-y-2">
         {rows.map(({ key, label, fmt }) => {
           const block = data[key] || {}
@@ -133,9 +133,11 @@ function PercentileRow({ label, valueText, percentile, rank, total, comparison }
         <div className="absolute inset-y-0 left-1/2 w-px bg-gray-300 dark:bg-gray-600" />
       </div>
       <div className="text-[10px] tabular-nums text-right text-gray-600 dark:text-gray-400 leading-tight">
-        {rank != null && total != null
-          ? <>#{rank}/{total}<span className="text-gray-400 ml-1">{compShort}</span></>
-          : '—'}
+        {comparison === 'history'
+          ? (percentile != null ? <><span className="font-bold text-gray-800 dark:text-gray-200">{percentile}</span><span className="text-gray-400 ml-0.5">pctile</span></> : '—')
+          : (rank != null && total != null
+              ? <>#{rank}/{total}<span className="text-gray-400 ml-1">{compShort}</span></>
+              : '—')}
       </div>
       <div className="text-sm font-bold tabular-nums text-right text-gray-900 dark:text-gray-100">{valueText}</div>
     </div>

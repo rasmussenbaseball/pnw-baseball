@@ -4829,6 +4829,163 @@ def team_season_recap(
     }
 
 
+_SAVANT_BASELINE_CACHE = {}
+_SAVANT_BASELINE_TTL = 21600  # 6h — historical team-season data barely moves
+
+
+def _savant_baseline(conn, division_id):
+    """Multi-year distributions of the Savant-card metrics for a whole division
+    (every qualifying regional team-season, not just this season's peers), so
+    the percentile bars map smoothly instead of ranking among ~7-24 teams.
+
+    Core stats span all seasons with advanced columns (2018+); the six pitch-
+    level metrics only exist where PBP does (2023+). Returns {metric: sorted
+    list} plus meta. Cached — these queries are heavy and the data is static."""
+    import time
+    hit = _SAVANT_BASELINE_CACHE.get(division_id)
+    if hit and (time.time() - hit[0]) < _SAVANT_BASELINE_TTL:
+        return hit[1], hit[2]
+
+    cur = conn.cursor()
+    keys = ("batting_avg", "woba", "hr_per_pa", "owar", "wrc_plus",
+            "era", "siera", "k_pct", "baa", "pwar",
+            "contact_pct", "swing_pct", "air_pull_pct",
+            "strike_pct", "fps_pct", "whiff_pct")
+    dists = {k: [] for k in keys}
+    qual = set()  # (team_id, season) full team-seasons
+
+    # ── Core batting per team-season (mirrors the bat_div query) ──
+    cur.execute("""
+        SELECT bs.team_id, bs.season,
+               SUM(bs.hits)::float / NULLIF(SUM(bs.at_bats), 0) AS batting_avg,
+               (SUM(bs.woba * bs.plate_appearances) FILTER (WHERE bs.woba IS NOT NULL))::float
+                 / NULLIF(SUM(bs.plate_appearances) FILTER (WHERE bs.woba IS NOT NULL), 0) AS woba,
+               SUM(bs.home_runs)::float / NULLIF(SUM(bs.plate_appearances), 0) AS hr_per_pa,
+               SUM(bs.offensive_war)::float AS owar,
+               (SUM(bs.wrc_plus * bs.plate_appearances) FILTER (WHERE bs.wrc_plus IS NOT NULL))::float
+                 / NULLIF(SUM(bs.plate_appearances) FILTER (WHERE bs.wrc_plus IS NOT NULL), 0) AS wrc_plus
+        FROM batting_stats bs JOIN teams t ON t.id = bs.team_id
+        WHERE t.conference_id IN (SELECT id FROM conferences WHERE division_id = %s)
+        GROUP BY bs.team_id, bs.season
+        HAVING SUM(bs.plate_appearances) >= 700
+    """, (division_id,))
+    for r in cur.fetchall():
+        qual.add((r["team_id"], r["season"]))
+        for k in ("batting_avg", "woba", "hr_per_pa", "owar", "wrc_plus"):
+            if r[k] is not None:
+                dists[k].append(float(r[k]))
+
+    # ── Core pitching per team-season (mirrors the pit_div query) ──
+    cur.execute("""
+        SELECT ps.team_id, ps.season,
+               (SUM(ps.earned_runs) * 9.0 / NULLIF(SUM(ip_outs(ps.innings_pitched)) / 3.0, 0))::float AS era,
+               (SUM(ps.siera * ip_outs(ps.innings_pitched)) FILTER (WHERE ps.siera IS NOT NULL))::float
+                 / NULLIF(SUM(ip_outs(ps.innings_pitched)) FILTER (WHERE ps.siera IS NOT NULL), 0) AS siera,
+               (SUM(ps.strikeouts)::float * 100 / NULLIF(SUM(ps.batters_faced), 0))::float AS k_pct,
+               (SUM(ps.hits_allowed)::float / NULLIF(SUM(ps.batters_faced) - SUM(COALESCE(ps.walks,0)) - SUM(COALESCE(ps.hit_batters,0)), 0))::float AS baa,
+               SUM(ps.pitching_war)::float AS pwar
+        FROM pitching_stats ps JOIN teams t ON t.id = ps.team_id
+        WHERE t.conference_id IN (SELECT id FROM conferences WHERE division_id = %s)
+        GROUP BY ps.team_id, ps.season
+    """, (division_id,))
+    for r in cur.fetchall():
+        if (r["team_id"], r["season"]) not in qual:
+            continue
+        for k in ("era", "siera", "k_pct", "baa", "pwar"):
+            if r[k] is not None:
+                dists[k].append(float(r[k]))
+
+    # ── Pitch-level batting metrics per team-season (PBP, 2023+) ──
+    def _bat_rate(r):
+        pitches = int(r.get("pitches") or 0); in_play = int(r.get("in_play") or 0)
+        s = int(r.get("s_count") or 0); f = int(r.get("f_count") or 0)
+        swings = s + f + in_play; contact = f + in_play
+        bb_total = int(r.get("bb_total") or 0); air_pull = int(r.get("air_pull") or 0)
+        return ((contact / swings) if swings else None,
+                (swings / pitches) if pitches else None,
+                (air_pull / bb_total) if bb_total else None)
+
+    cur.execute("""
+        SELECT ge.batting_team_id AS team_id, g.season,
+               SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'S', ''))) AS s_count,
+               SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'F', ''))) AS f_count,
+               SUM(COALESCE(ge.pitches_thrown, 0)) AS pitches,
+               COUNT(*) FILTER (WHERE ge.was_in_play AND ge.pitches_thrown IS NOT NULL) AS in_play,
+               COUNT(*) FILTER (WHERE ge.bb_type IS NOT NULL AND UPPER(p.bats) IN ('L','R')) AS bb_total,
+               COUNT(*) FILTER (WHERE ge.bb_type IN ('LD','FB')
+                   AND ((UPPER(p.bats) = 'R' AND ge.field_zone = 'LEFT')
+                     OR (UPPER(p.bats) = 'L' AND ge.field_zone = 'RIGHT'))) AS air_pull
+        FROM game_events ge JOIN games g ON g.id = ge.game_id
+        JOIN teams t ON t.id = ge.batting_team_id
+        LEFT JOIN players p ON p.id = ge.batter_player_id
+        WHERE g.season >= 2023 AND ge.pitch_sequence IS NOT NULL
+          AND t.conference_id IN (SELECT id FROM conferences WHERE division_id = %s)
+        GROUP BY ge.batting_team_id, g.season
+    """, (division_id,))
+    for r in cur.fetchall():
+        if (r["team_id"], r["season"]) not in qual:
+            continue
+        c, sw, ap = _bat_rate(dict(r))
+        if c is not None: dists["contact_pct"].append(c)
+        if sw is not None: dists["swing_pct"].append(sw)
+        if ap is not None: dists["air_pull_pct"].append(ap)
+
+    # ── Pitch-level pitching metrics per team-season (PBP, 2023+) ──
+    cur.execute("""
+        SELECT pp.team_id AS team_id, g.season,
+               SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'K', ''))) AS k_count,
+               SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'S', ''))) AS s_count,
+               SUM(LENGTH(ge.pitch_sequence) - LENGTH(REPLACE(ge.pitch_sequence, 'F', ''))) AS f_count,
+               SUM(COALESCE(ge.pitches_thrown, 0)) AS pitches,
+               COUNT(*) FILTER (WHERE ge.was_in_play AND ge.pitches_thrown IS NOT NULL) AS in_play,
+               COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1) AS tracked_pa,
+               COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1
+                   AND (LEFT(ge.pitch_sequence, 1) IN ('K','S','F')
+                        OR (ge.pitch_sequence = '' AND ge.was_in_play))) AS f1_strikes
+        FROM game_events ge JOIN games g ON g.id = ge.game_id
+        JOIN players pp ON pp.id = ge.pitcher_player_id
+        WHERE g.season >= 2023 AND ge.pitch_sequence IS NOT NULL
+          AND pp.team_id IN (SELECT id FROM teams WHERE conference_id IN
+                             (SELECT id FROM conferences WHERE division_id = %s))
+        GROUP BY pp.team_id, g.season
+    """, (division_id,))
+    for r in cur.fetchall():
+        if (r["team_id"], r["season"]) not in qual:
+            continue
+        pitches = int(r.get("pitches") or 0); in_play = int(r.get("in_play") or 0)
+        k = int(r.get("k_count") or 0); s = int(r.get("s_count") or 0); f = int(r.get("f_count") or 0)
+        swings = s + f + in_play; strikes = k + s + f + in_play
+        tracked_pa = int(r.get("tracked_pa") or 0); f1 = int(r.get("f1_strikes") or 0)
+        if pitches: dists["strike_pct"].append(strikes / pitches)
+        if tracked_pa: dists["fps_pct"].append(f1 / tracked_pa)
+        if swings: dists["whiff_pct"].append(s / swings)
+
+    for k in dists:
+        dists[k].sort()
+    meta = {"n": len(qual),
+            "min_season": min((s for _, s in qual), default=None),
+            "max_season": max((s for _, s in qual), default=None)}
+    _SAVANT_BASELINE_CACHE[division_id] = (time.time(), dists, meta)
+    return dists, meta
+
+
+def _pct_vs_baseline(dist, val, higher_is_better=True):
+    """Value-based percentile of val within a sorted multi-year distribution."""
+    if val is None or not dist:
+        return {"percentile": None, "rank": None, "total": None}
+    n = len(dist)
+    below = sum(1 for v in dist if v < val)
+    equal = sum(1 for v in dist if v == val)
+    pct = (below + equal / 2.0) / n * 100
+    if not higher_is_better:
+        pct = 100 - pct
+    if higher_is_better:
+        rank = sum(1 for v in dist if v > val) + 1
+    else:
+        rank = sum(1 for v in dist if v < val) + 1
+    return {"percentile": max(1, min(99, round(pct))), "rank": rank, "total": n}
+
+
 @router.get("/teams/{team_id}/info-graphic")
 def team_info_graphic(
     team_id: int,
@@ -5291,19 +5448,33 @@ def team_info_graphic(
                 league_avg=_league_avg(values),
             )
 
+        # Percentiles map against the division's MULTI-YEAR baseline (every
+        # qualifying regional team-season, 2018+ / PBP 2023+) rather than this
+        # season's ~7-24 peers, so the bars are smooth and era-aware. Falls
+        # back to the single-season division group if no baseline exists.
+        sav_dist, sav_meta = _savant_baseline(conn, team["division_id"])
+
+        def _make_stat_bl(key, my_val, higher_is_better=True, fallback=None):
+            dist = sav_dist.get(key, [])
+            if not dist:  # no history for this metric — use this season's peers
+                return _make_stat(my_val, fallback or [], higher_is_better)
+            return _pack(my_val, _pct_vs_baseline(dist, my_val, higher_is_better),
+                         comparison="history",
+                         league_avg=(sum(dist) / len(dist)))
+
         batting_percentiles = {
-            "batting_avg": _make_stat(my_bat.get("batting_avg"), [b.get("batting_avg") for b in bat_div], True),
-            "woba":        _make_stat(my_bat.get("woba"),        [b.get("woba")        for b in bat_div], True),
-            "hr_per_pa":   _make_stat(my_bat.get("hr_per_pa"),   [b.get("hr_per_pa")   for b in bat_div], True),
-            "owar":        _make_stat(my_bat.get("owar"),        [b.get("owar")        for b in bat_div], True),
-            "wrc_plus":    _make_stat(my_bat.get("wrc_plus"),    [b.get("wrc_plus")    for b in bat_div], True),
+            "batting_avg": _make_stat_bl("batting_avg", my_bat.get("batting_avg"), True,  [b.get("batting_avg") for b in bat_div]),
+            "woba":        _make_stat_bl("woba",        my_bat.get("woba"),        True,  [b.get("woba")        for b in bat_div]),
+            "hr_per_pa":   _make_stat_bl("hr_per_pa",   my_bat.get("hr_per_pa"),   True,  [b.get("hr_per_pa")   for b in bat_div]),
+            "owar":        _make_stat_bl("owar",        my_bat.get("owar"),        True,  [b.get("owar")        for b in bat_div]),
+            "wrc_plus":    _make_stat_bl("wrc_plus",    my_bat.get("wrc_plus"),    True,  [b.get("wrc_plus")    for b in bat_div]),
         }
         pitching_percentiles = {
-            "era":   _make_stat(my_pit.get("era"),   [p.get("era")   for p in pit_div], False),
-            "siera": _make_stat(my_pit.get("siera"), [p.get("siera") for p in pit_div], False),
-            "k_pct": _make_stat(my_pit.get("k_pct"), [p.get("k_pct") for p in pit_div], True),
-            "baa":   _make_stat(my_pit.get("baa"),   [p.get("baa")   for p in pit_div], False),
-            "pwar":  _make_stat(my_pit.get("pwar"),  [p.get("pwar")  for p in pit_div], True),
+            "era":   _make_stat_bl("era",   my_pit.get("era"),   False, [p.get("era")   for p in pit_div]),
+            "siera": _make_stat_bl("siera", my_pit.get("siera"), False, [p.get("siera") for p in pit_div]),
+            "k_pct": _make_stat_bl("k_pct", my_pit.get("k_pct"), True,  [p.get("k_pct") for p in pit_div]),
+            "baa":   _make_stat_bl("baa",   my_pit.get("baa"),   False, [p.get("baa")   for p in pit_div]),
+            "pwar":  _make_stat_bl("pwar",  my_pit.get("pwar"),  True,  [p.get("pwar")  for p in pit_div]),
         }
 
         # ── 12b. Conference-relative pitch-level metrics ──
@@ -5444,20 +5615,17 @@ def team_info_graphic(
         #   strike% — staff filling up the zone
         #   FPS% — ahead-in-count rate is one of the strongest pitcher signals
         #   whiff% — bat-missing rate
+        # Pitch-level metrics now map against the same multi-year baseline
+        # (PBP history, 2023+) instead of this season's conference, falling
+        # back to the conference group if the metric has no baseline yet.
         for key in ("contact_pct", "swing_pct", "air_pull_pct"):
-            batting_percentiles[key] = _pack(
-                my_bat_pitch.get(key),
-                _rank_block([b.get(key) for b in bat_conf_rates],
-                            my_bat_pitch.get(key), True),
-                comparison="conference",
-            )
+            batting_percentiles[key] = _make_stat_bl(
+                key, my_bat_pitch.get(key), True,
+                [b.get(key) for b in bat_conf_rates])
         for key in ("strike_pct", "fps_pct", "whiff_pct"):
-            pitching_percentiles[key] = _pack(
-                my_pit_pitch.get(key),
-                _rank_block([p.get(key) for p in pit_conf_rates],
-                            my_pit_pitch.get(key), True),
-                comparison="conference",
-            )
+            pitching_percentiles[key] = _make_stat_bl(
+                key, my_pit_pitch.get(key), True,
+                [p.get(key) for p in pit_conf_rates])
 
         # Inject convenience "name" into top performers
         for h in top_hitters:
@@ -5531,6 +5699,11 @@ def team_info_graphic(
             "top_pitchers": top_pitchers,
             "batting_percentiles": batting_percentiles,
             "pitching_percentiles": pitching_percentiles,
+            "percentile_baseline": {
+                "n": sav_meta["n"], "level": team.get("division_level") or team.get("division"),
+                "label": (f"{sav_meta['n']} {team.get('division_level') or team.get('division') or 'D1'} team-seasons"
+                          + (f" ({sav_meta['min_season']}–{sav_meta['max_season']})" if sav_meta.get("min_season") else "")),
+            },
             "last_5_games": last_5,
         }
 
