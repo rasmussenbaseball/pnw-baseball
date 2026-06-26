@@ -63,6 +63,23 @@ function RetBar({ label, pct }) {
   )
 }
 
+function BalanceBar({ label, ret, dep }) {
+  const tot = (ret || 0) + (dep || 0) || 1
+  const rp = (ret / tot) * 100
+  return (
+    <div>
+      <div className="flex justify-between text-[11px] mb-1">
+        <span className="font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</span>
+        <span className="text-gray-400 tabular-nums">{Math.round(rp)}% back</span>
+      </div>
+      <div className="h-2.5 rounded-full overflow-hidden flex bg-gray-100 dark:bg-gray-700">
+        <div className="h-full bg-nw-teal-light" style={{ width: `${rp}%` }} title={`${Math.round(ret)} returning`} />
+        <div className="h-full bg-rose-300 dark:bg-rose-800/70" style={{ width: `${100 - rp}%` }} title={`${Math.round(dep)} departing`} />
+      </div>
+    </div>
+  )
+}
+
 function ImpactBadge({ v }) {
   return <span className="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">{Number(v).toFixed(1)}</span>
 }
@@ -131,7 +148,34 @@ export default function TeamReturning({ teamId, season }) {
           <RetBar label="oWAR" pct={data.returning?.ret_owar_pct} />
           <RetBar label="pWAR" pct={data.returning?.ret_pwar_pct} />
         </div>
+        {data.roster_read && <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">{data.roster_read}</p>}
       </Card>
+
+      {/* Roster balance chart + priorities */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        {data.balance && (
+          <Card title="Roster Balance">
+            <div className="space-y-3">
+              {data.balance.hitters?.map((b) => <BalanceBar key={b.group} label={b.label} ret={b.ret_pa} dep={b.dep_pa} />)}
+              <BalanceBar label="Pitching (IP)" ret={data.balance.pitching?.ret_ip} dep={data.balance.pitching?.dep_ip} />
+            </div>
+            <div className="flex gap-4 mt-3 text-[10px] text-gray-400">
+              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-nw-teal-light" />Returning</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-rose-300 dark:bg-rose-800/70" />Departing</span>
+            </div>
+          </Card>
+        )}
+        {data.priorities?.length > 0 && (
+          <Card title="Roster Priorities">
+            <ul className="space-y-2">
+              {data.priorities.map((p, i) => (
+                <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <span className="text-rose-500 font-bold shrink-0">!</span><span>{p}</span></li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <Card title="Impact Returning Hitters">

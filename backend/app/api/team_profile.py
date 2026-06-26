@@ -295,6 +295,24 @@ def _pitcher_impact(r):
     return ((pwar * 1.75) + (quality * 1.25) + (vol * 0.85) + (command * 0.45)) * sw
 
 
+_IF_POS = {"1B", "2B", "3B", "SS", "IF", "INF"}
+_OF_POS = {"LF", "CF", "RF", "OF"}
+
+
+def _pos_group(pos):
+    """Hitter position group for the roster-balance chart (pitchers -> None)."""
+    p = (pos or "").upper().split("/")[0].strip()
+    if p == "C":
+        return "C"
+    if p in _IF_POS:
+        return "IF"
+    if p in _OF_POS:
+        return "OF"
+    if p in ("DH", "UT", "UTIL", "2WAY"):
+        return "UT"
+    return None  # pitcher or unknown
+
+
 def _depart_status(year_in_school, division_level, override, note, in_portal=False):
     if override == "departing":
         return note or "Portal / not returning"
@@ -427,6 +445,37 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
             "ret_pwar_pct": round(_safe_div(ret_pw, tot_pw) * 100, 1),
         }
 
+        # Roster balance: returning vs departing PA by position group, + pitching IP
+        groups = {}
+        for r in bat:
+            grp = _pos_group(r.get("position"))
+            if not grp:
+                continue
+            d = groups.setdefault(grp, {"group": grp, "ret_pa": 0, "dep_pa": 0})
+            d["ret_pa" if is_ret(r) else "dep_pa"] += g(r, "plate_appearances")
+        GLABEL = {"C": "Catcher", "IF": "Infield", "OF": "Outfield", "UT": "DH / Util"}
+        balance_hitters = [{**groups[k], "label": GLABEL[k]} for k in ("C", "IF", "OF", "UT") if k in groups]
+        bal = {
+            "hitters": balance_hitters,
+            "pitching": {"ret_ip": round(ret_outs / 3, 1), "dep_ip": round((tot_outs - ret_outs) / 3, 1)},
+        }
+
+        # Roster read + priorities
+        roster_read = (f"{name} returns {ret['ret_pa_pct']:.0f}% of plate appearances and "
+                       f"{ret['ret_ip_pct']:.0f}% of innings, with {len(ret_hitters)} impact bats "
+                       f"and {len(ret_pitchers)} arms back.")
+        priorities = []
+        for d in balance_hitters:
+            tot = d["ret_pa"] + d["dep_pa"]
+            if tot >= 60 and _safe_div(d["ret_pa"], tot) < 0.45:
+                priorities.append(f"{d['label']} is a rebuild spot — only {round(_safe_div(d['ret_pa'], tot) * 100)}% of its plate appearances return.")
+        if ret["ret_ip_pct"] < 50:
+            priorities.append(f"The mound is the clearest reload area, with {ret['ret_ip_pct']:.0f}% of innings back.")
+        if ret["ret_owar_pct"] < 45:
+            priorities.append("Replace lost middle-of-the-order damage, not just at-bats.")
+        if not priorities:
+            priorities.append("No glaring holes — this is a continuity roster looking for targeted upgrades.")
+
         return {
             "team_id": team_id, "team": name, "season": season, "division": level,
             "returning": ret,
@@ -436,6 +485,9 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
             "returning_hitters": ret_hitters,
             "returning_pitchers": ret_pitchers,
             "departures": departures,
+            "balance": bal,
+            "roster_read": roster_read,
+            "priorities": priorities[:4],
         }
 
 
