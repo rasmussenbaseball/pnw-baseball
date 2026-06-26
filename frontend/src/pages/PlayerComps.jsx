@@ -14,9 +14,7 @@ import {
   ProfileShell, SectionCard, RadarChart, PctRow, pctColor,
   divisionBadge, usePlayerProfileTheme,
 } from '../components/playerProfile/shared'
-import { CURRENT_SEASON } from '../lib/seasons'
-
-const SEASON = CURRENT_SEASON
+import { CURRENT_SEASON, SEASONS } from '../lib/seasons'
 
 // Per-metric value formatting (matches the backend's `format` hints).
 function fmtMetric(format, v) {
@@ -231,6 +229,10 @@ export default function PlayerComps() {
   const [direction, setDirection] = useState(sp.get('dir') === 'reverse' ? 'reverse' : 'forward')
   const reverse = direction === 'reverse'
   const [side, setSide] = useState(sp.get('side') === 'pitcher' ? 'pitcher' : 'hitter')
+  const [season, setSeason] = useState(() => {
+    const s = parseInt(sp.get('season'), 10)
+    return SEASONS.includes(s) ? s : CURRENT_SEASON
+  })
   const [pool, setPool] = useState(sp.get('pool') === 'mlb' ? 'mlb' : 'nw')   // forward only
   const [playerId, setPlayerId] = useState(sp.get('player_id') || '')         // forward: NW selected
   const [mlbId, setMlbId] = useState(sp.get('mlb_id') || '')                  // reverse: MLB selected
@@ -246,11 +248,14 @@ export default function PlayerComps() {
   // side-specific, and the two directions use different id spaces).
   const switchSide = (s) => { setSide(s); setPlayerId(''); setMlbId('') }
   const switchDirection = (d) => { setDirection(d); setPlayerId(''); setMlbId('') }
+  // A player may not exist in another season's pool, so clear the NW selection.
+  const switchSeason = (s) => { setSeason(s); setPlayerId('') }
 
   // Keep the URL in sync so comparisons are shareable / deep-linkable.
   useEffect(() => {
     const next = {}
     if (side !== 'hitter') next.side = side
+    if (season !== CURRENT_SEASON) next.season = String(season)
     if (reverse) {
       next.dir = 'reverse'
       if (mlbId) next.mlb_id = mlbId
@@ -259,10 +264,10 @@ export default function PlayerComps() {
       if (playerId) next.player_id = String(playerId)
     }
     setSp(next, { replace: true })
-  }, [side, pool, playerId, direction, mlbId]) // eslint-disable-line
+  }, [side, pool, playerId, direction, mlbId, season]) // eslint-disable-line
 
-  // Forward picker: NW players. Reverse picker: MLB player-seasons.
-  const { data: playersData } = useApi('/comps/players', { side, season: SEASON }, [side])
+  // Forward picker: NW players for the selected season. Reverse picker: MLB.
+  const { data: playersData } = useApi('/comps/players', { side, season }, [side, season])
   const players = playersData?.players || []
   const { data: mlbData } = useApi(reverse ? '/comps/mlb-players' : null, { side }, [side, reverse])
   // Map MLB rows into the PlayerPicker's shape; show the season where it shows level.
@@ -278,19 +283,19 @@ export default function PlayerComps() {
   const endpoint = selectionId ? (reverse ? '/comps/reverse' : '/comps') : null
   const compParams = reverse
     ? {
-        mlb_id: mlbId || '', side, season: SEASON,
+        mlb_id: mlbId || '', side, season,
         position_match: posMatch, match_handedness: matchHand, include_small: includeSmall,
         level, conference, class_year: classYear,
       }
     : {
-        player_id: playerId || '', side, pool, season: SEASON,
+        player_id: playerId || '', side, pool, season,
         position_match: posMatch, match_handedness: matchHand, include_small: includeSmall,
         level: pool === 'nw' ? level : '', conference: pool === 'nw' ? conference : '',
         class_year: pool === 'nw' ? classYear : '',
       }
   const { data, loading } = useApi(
     endpoint, compParams,
-    [reverse, playerId, mlbId, side, pool, posMatch, matchHand, includeSmall, level, conference, classYear],
+    [reverse, playerId, mlbId, side, pool, season, posMatch, matchHand, includeSmall, level, conference, classYear],
   )
 
   // Candidate pool: forward respects the pool toggle; reverse is always NW.
@@ -345,6 +350,8 @@ export default function PlayerComps() {
                 <Pill active={side === 'pitcher'} onClick={() => switchSide('pitcher')}>Pitchers</Pill>
               </div>
             </div>
+            <Select label="Season" value={season} onChange={(v) => switchSeason(Number(v))}
+              options={SEASONS.map(s => ({ value: s, label: String(s) }))} T={T} />
             {!reverse && (
               <div className="flex flex-col gap-1">
                 <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: T.textLight }}>Compare to</span>
