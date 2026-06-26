@@ -69,15 +69,8 @@ export default function TeamAdvanced({ teamId, season }) {
         <SavantCard title="Team Pitching" data={ig?.pitching_percentiles} layout="pitching" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Spotlight ig={ig} side="bat" />
-        <Spotlight ig={ig} side="pit" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <LeadersBoard ig={ig} side="bat" />
-        <LeadersBoard ig={ig} side="pit" />
-      </div>
+      {/* Top Hitter/Pitcher spotlights + WAR leaderboards removed — the
+          "Impact Performers" widget on the Season tab covers team leaders. */}
 
       <ClutchPerformers teamId={teamId} season={season} />
     </div>

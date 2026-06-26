@@ -498,38 +498,41 @@ function TeamHistoryTab({ history, loading, teamId }) {
   const minYear = seasons.length > 0 ? seasons[seasons.length - 1].season : null
   const maxYear = seasons.length > 0 ? seasons[0].season : null
 
+  // Program-history dashboard: best tracked seasons + current direction
+  const gp = (s) => (s.wins || 0) + (s.losses || 0)
+  const bestWin = seasons.reduce((b, s) => { if (gp(s) < 10) return b; const wp = s.wins / gp(s); return (!b || wp > b.wp) ? { s, wp } : b }, null)
+  const bestDiff = seasons.reduce((b, s) => (b == null || (s.run_differential || 0) > (b.run_differential || 0)) ? s : b, null)
+  const topOff = seasons.reduce((b, s) => (b == null || (s.runs_scored || 0) > (b.runs_scored || 0)) ? s : b, null)
+  const bestERA = seasons.filter((s) => s.team_era != null).reduce((b, s) => (b == null || s.team_era < b.team_era) ? s : b, null)
+  const curS = seasons[0], prevS = seasons[1]
+  const diffDelta = (curS && prevS) ? (curS.run_differential || 0) - (prevS.run_differential || 0) : null
+  const trendWord = diffDelta == null ? 'Steady' : diffDelta > 0 ? 'Trending Up' : diffDelta < 0 ? 'Trending Down' : 'Steady'
+  const trendText = (curS && prevS && diffDelta != null)
+    ? `Run differential is ${Math.abs(diffDelta)} ${diffDelta >= 0 ? 'better' : 'worse'} than ${prevS.season}. ${curS.season} is ${curS.wins || 0}-${curS.losses || 0} through ${gp(curS)} games, with run differential ${(curS.run_differential || 0) >= 0 ? '+' : ''}${curS.run_differential || 0}.`
+    : ''
+
   return (
     <div>
       {/* All-Time Summary */}
       <SectionCard title="Program Overview" accent="purple"
         subtitle={`${numSeasons} season${numSeasons !== 1 ? 's' : ''} tracked${minYear && maxYear ? ` (${minYear}–${maxYear})` : ''}`}>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-          <SummaryCell
-            label="Overall Record"
-            value={`${all_time_summary.total_wins || 0}-${all_time_summary.total_losses || 0}${all_time_summary.total_ties ? `-${all_time_summary.total_ties}` : ''}`}
-          />
-          <SummaryCell
-            label="Win %"
-            value={all_time_summary.win_pct != null ? all_time_summary.win_pct.toFixed(3) : '-'}
-            highlight={all_time_summary.win_pct >= 0.600}
-          />
-          <SummaryCell
-            label="Conf Record"
-            value={`${all_time_summary.total_conf_wins || 0}-${all_time_summary.total_conf_losses || 0}`}
-          />
-          <SummaryCell
-            label="Conf Win %"
-            value={all_time_summary.conf_win_pct != null ? all_time_summary.conf_win_pct.toFixed(3) : '-'}
-            highlight={all_time_summary.conf_win_pct >= 0.600}
-          />
-          <SummaryCell
-            label="Runs Scored"
-            value={(all_time_summary.total_rs || 0).toLocaleString()}
-          />
-          <SummaryCell
-            label="Runs Allowed"
-            value={(all_time_summary.total_ra || 0).toLocaleString()}
-          />
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3 mb-2.5 sm:mb-3">
+          <DashCell accent="purple" label="Tracked Record" value={`${all_time_summary.total_wins || 0}-${all_time_summary.total_losses || 0}`} sub={`${numSeasons} season${numSeasons !== 1 ? 's' : ''} tracked`} />
+          <DashCell accent="green" label="Win %" value={all_time_summary.win_pct != null ? all_time_summary.win_pct.toFixed(3) : '-'} sub="all tracked seasons" />
+          <DashCell accent="purple" label="Conference" value={`${all_time_summary.total_conf_wins || 0}-${all_time_summary.total_conf_losses || 0}`} sub={all_time_summary.conf_win_pct != null ? `${all_time_summary.conf_win_pct.toFixed(3)} conf win %` : ''} />
+          <DashCell accent="green" label="Runs Scored" value={(all_time_summary.total_rs || 0).toLocaleString()} sub="program total" />
+          <DashCell accent="aqua" label="Runs Allowed" value={(all_time_summary.total_ra || 0).toLocaleString()} sub="program total" />
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 border-t-[3px] border-t-amber-400 bg-gray-50/50 dark:bg-gray-900/30 p-3 min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Current Direction</div>
+            <div className="text-base font-extrabold text-gray-900 dark:text-gray-100 mt-0.5 leading-tight">{trendWord}</div>
+            {trendText && <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 leading-snug">{trendText}</div>}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+          <DashCell accent="purple" label="Best Win Rate" value={bestWin ? `${bestWin.s.season} · ${(bestWin.wp * 100).toFixed(1)}%` : '-'} sub={bestWin ? `${bestWin.s.wins}-${bestWin.s.losses} record` : ''} />
+          <DashCell accent="amber" label="Best Run Diff" value={bestDiff ? `${bestDiff.season} · ${(bestDiff.run_differential || 0) >= 0 ? '+' : ''}${bestDiff.run_differential || 0}` : '-'} sub={bestDiff ? `${bestDiff.runs_scored || 0} RS / ${bestDiff.runs_allowed || 0} RA` : ''} />
+          <DashCell accent="green" label="Top Offense" value={topOff ? `${topOff.season} · ${topOff.runs_scored || 0} RS` : '-'} sub={topOff ? `${topOff.team_batting_avg != null ? topOff.team_batting_avg.toFixed(3).replace(/^0/, '') : '-'} AVG · ${topOff.team_wrc_plus != null ? topOff.team_wrc_plus.toFixed(0) : '-'} wRC+` : ''} />
+          <DashCell accent="aqua" label="Best Staff ERA" value={bestERA ? `${bestERA.season} · ${bestERA.team_era.toFixed(2)}` : '-'} sub={bestERA && bestERA.team_fip != null ? `${bestERA.team_fip.toFixed(2)} FIP` : ''} />
         </div>
       </SectionCard>
 
@@ -1081,61 +1084,62 @@ function RankingsCard({ rankings }) {
         <div className="text-sm font-bold text-nw-teal dark:text-gray-100 uppercase tracking-wide">Rankings</div>
         <StatsLastUpdated />
       </div>
-      <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* National */}
-        <RankTile
-          accent="from-nw-teal to-nw-teal-dark"
-          label={`National Rank · ${divLevel}`}
-          rank={comp.composite_rank != null ? `#${Math.round(comp.composite_rank)}` : '-'}
-          sub={totalTeams ? `of ${totalTeams} teams` : ''}
-          chips={[comp.pear_rank && [`Pear #${comp.pear_rank}`, 'green'],
-                  comp.cbr_rank && [`CBR #${comp.cbr_rank}`, 'purple']]}
-        >
-          {comp.national_percentile != null && (
-            <PctBar label="National percentile" pct={comp.national_percentile} color={pctColor(comp.national_percentile)} />
-          )}
-        </RankTile>
-
-        {/* Conference + mini standings */}
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50/40 dark:bg-gray-900/30">
-          <div className="h-1 bg-gradient-to-r from-indigo-500 to-indigo-700" />
-          <div className="p-3">
-            <div className="text-center">
-              <div className="text-3xl font-black text-nw-teal dark:text-gray-100 leading-none">
-                {rankings.conference_rank ? `#${rankings.conference_rank}` : '-'}
-              </div>
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
-                Conference Rank{rankings.conference_total ? ` · ${rankings.conference_abbrev || rankings.conference_name}` : ''}
-              </div>
-            </div>
-            {rankings.conference_standings && rankings.conference_standings.length > 0 && (
-              <div className="mt-2.5 space-y-0.5">
-                {rankings.conference_standings.map((t) => (
-                  <div key={t.team_id}
-                    className={`flex items-center justify-between text-[11px] rounded px-1.5 py-0.5 ${
-                      t.team_id === rankings.team_id
-                        ? 'bg-nw-teal/10 text-nw-teal dark:text-nw-teal-light font-semibold border-l-2 border-nw-teal'
-                        : 'text-gray-500 dark:text-gray-400'}`}>
-                    <span className="truncate">{t.rank}. {t.short_name}</span>
-                    <span className="text-gray-400 tabular-nums shrink-0 ml-2">
-                      {t.conf_wins + t.conf_losses > 0 ? `${t.conf_wins}-${t.conf_losses}` : `${t.wins}-${t.losses}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
+      <div className="p-3 sm:p-4">
+        {/* Three compact rank tiles in a row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <RankTile
+            accent="from-nw-teal to-nw-teal-dark"
+            label={`National Rank · ${divLevel}`}
+            rank={comp.composite_rank != null ? `#${Math.round(comp.composite_rank)}` : '-'}
+            sub={totalTeams ? `of ${totalTeams} teams` : ''}
+            chips={[comp.pear_rank && [`Pear #${comp.pear_rank}`, 'green'],
+                    comp.cbr_rank && [`CBR #${comp.cbr_rank}`, 'purple']]}
+          >
+            {comp.national_percentile != null && (
+              <PctBar label="National percentile" pct={comp.national_percentile} color={pctColor(comp.national_percentile)} />
             )}
-          </div>
+          </RankTile>
+
+          <RankTile
+            accent="from-indigo-500 to-indigo-700"
+            label={`Conference Rank${rankings.conference_total ? ` · ${rankings.conference_abbrev || rankings.conference_name}` : ''}`}
+            rank={rankings.conference_rank ? `#${rankings.conference_rank}` : '-'}
+            sub={rankings.conference_total ? `of ${rankings.conference_total} teams` : ''}
+          />
+
+          <RankTile
+            accent="from-amber-400 to-amber-600"
+            label="Strength of Schedule"
+            rank={comp.composite_sos_rank ? `#${Math.round(comp.composite_sos_rank)}` : '-'}
+            sub={totalTeams && comp.composite_sos_rank ? `of ${totalTeams} teams` : ''}
+            chips={[pear?.sos_rank && [`Pear #${pear.sos_rank}`, 'green'],
+                    cbr?.sos_rank && [`CBR #${cbr.sos_rank}`, 'purple']]}
+          />
         </div>
 
-        {/* Strength of schedule */}
-        <RankTile
-          accent="from-amber-400 to-amber-600"
-          label="Strength of Schedule"
-          rank={comp.composite_sos_rank ? `#${Math.round(comp.composite_sos_rank)}` : '-'}
-          sub={totalTeams && comp.composite_sos_rank ? `of ${totalTeams} teams` : ''}
-          chips={[pear?.sos_rank && [`Pear #${pear.sos_rank}`, 'green'],
-                  cbr?.sos_rank && [`CBR #${cbr.sos_rank}`, 'purple']]}
-        />
+        {/* Conference standings — full width, flows into columns so it doesn't
+            tower over the rank tiles */}
+        {rankings.conference_standings?.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">
+              {(rankings.conference_abbrev || rankings.conference_name || 'Conference')} Standings
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-0.5">
+              {rankings.conference_standings.map((t) => (
+                <div key={t.team_id}
+                  className={`flex items-center justify-between text-xs rounded px-1.5 py-1 ${
+                    t.team_id === rankings.team_id
+                      ? 'bg-nw-teal/10 text-nw-teal dark:text-nw-teal-light font-semibold'
+                      : 'text-gray-500 dark:text-gray-400'}`}>
+                  <span className="truncate">{t.rank}. {t.short_name}</span>
+                  <span className="text-gray-400 tabular-nums shrink-0 ml-2">
+                    {t.conf_wins + t.conf_losses > 0 ? `${t.conf_wins}-${t.conf_losses}` : `${t.wins}-${t.losses}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
