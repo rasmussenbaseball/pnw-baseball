@@ -213,6 +213,77 @@ def _fmt_metric(key, val):
     return str(val)
 
 
+# ── Multi-year baseline: percentile grades vs the region's whole D1/D2/... history
+# (every qualifying team-season, not just the ~7 current teams) for smooth grades.
+_BASELINE_CACHE = {}
+_BASELINE_TTL = 21600  # 6h; historical data barely moves
+
+
+def _baseline_distributions(cur, division_level):
+    hit = _BASELINE_CACHE.get(division_level)
+    if hit and (time.time() - hit[0]) < _BASELINE_TTL:
+        return hit[1], hit[2]
+    dists = {k: [] for k in ("ops", "iso", "bat_bb_pct", "bat_k_pct", "sb",
+                             "era", "pit_k_pct", "pit_bb_pct", "depth")}
+    qual = set()
+    cur.execute("""
+        SELECT bs.team_id, bs.season,
+               SUM(bs.plate_appearances) pa, SUM(bs.at_bats) ab, SUM(bs.hits) h,
+               SUM(bs.doubles) d2, SUM(bs.triples) d3, SUM(bs.home_runs) hr,
+               SUM(bs.walks) bb, SUM(bs.hit_by_pitch) hbp, SUM(bs.sacrifice_flies) sf,
+               SUM(bs.strikeouts) so, SUM(bs.stolen_bases) sb
+        FROM batting_stats bs JOIN teams t ON t.id = bs.team_id
+        JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id
+        WHERE d.level = %s
+        GROUP BY bs.team_id, bs.season
+        HAVING SUM(bs.plate_appearances) >= 700
+    """, (division_level,))
+    for r in cur.fetchall():
+        qual.add((r["team_id"], r["season"]))
+        ab, h, bb, hbp, sf, pa = (r["ab"] or 0, r["h"] or 0, r["bb"] or 0, r["hbp"] or 0, r["sf"] or 0, r["pa"] or 0)
+        tb = h + (r["d2"] or 0) + 2 * (r["d3"] or 0) + 3 * (r["hr"] or 0)
+        avg, slg = _safe_div(h, ab), _safe_div(tb, ab)
+        dists["ops"].append(_safe_div(h + bb + hbp, ab + bb + hbp + sf) + slg)
+        dists["iso"].append(slg - avg)
+        dists["bat_bb_pct"].append(_safe_div(bb, pa))
+        dists["bat_k_pct"].append(_safe_div(r["so"] or 0, pa))
+        dists["sb"].append(r["sb"] or 0)
+    cur.execute("""
+        SELECT ps.team_id, ps.season,
+               SUM(FLOOR(ps.innings_pitched) * 3 + ROUND((ps.innings_pitched - FLOOR(ps.innings_pitched)) * 10)) outs,
+               SUM(ps.batters_faced) bf, SUM(ps.earned_runs) er, SUM(ps.walks) bb, SUM(ps.strikeouts) k
+        FROM pitching_stats ps JOIN teams t ON t.id = ps.team_id
+        JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id
+        WHERE d.level = %s
+        GROUP BY ps.team_id, ps.season
+    """, (division_level,))
+    for r in cur.fetchall():
+        if (r["team_id"], r["season"]) not in qual:
+            continue
+        outs, bf = (r["outs"] or 0), (r["bf"] or 0)
+        if outs:
+            dists["era"].append(_safe_div((r["er"] or 0) * 9, outs / 3))
+        dists["pit_k_pct"].append(_safe_div(r["k"] or 0, bf))
+        dists["pit_bb_pct"].append(_safe_div(r["bb"] or 0, bf))
+    cur.execute("""
+        SELECT ps.team_id, ps.season, COUNT(*) depth
+        FROM pitching_stats ps JOIN teams t ON t.id = ps.team_id
+        JOIN conferences c ON t.conference_id = c.id JOIN divisions d ON c.division_id = d.id
+        WHERE d.level = %s AND ps.innings_pitched >= 20
+        GROUP BY ps.team_id, ps.season
+    """, (division_level,))
+    depth_map = {(r["team_id"], r["season"]): r["depth"] for r in cur.fetchall()}
+    for ts in qual:
+        dists["depth"].append(depth_map.get(ts, 0))
+    for k in dists:
+        dists[k].sort()
+    meta = {"n": len(qual),
+            "min_season": min((s for _, s in qual), default=None),
+            "max_season": max((s for _, s in qual), default=None)}
+    _BASELINE_CACHE[division_level] = (time.time(), dists, meta)
+    return dists, meta
+
+
 def _identity_label(s):
     o, p, pw, c, sp = s["offense"], s["pitching"], s["power"], s["contact"], s["speed"]
     if o >= 65 and p < 40:
@@ -578,22 +649,28 @@ def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
         overrides = {r["player_id"]: r["status"] for r in cur.fetchall()}
         portal = _portal_ids(cur)
 
-        div = _division_raw(cur, level, season, overrides, portal)
-        raw = div.get(team_id) or _team_raw(cur, team_id, season, level, overrides, portal)
+        raw = _team_raw(cur, team_id, season, level, overrides, portal)
+        # Grades = percentile vs the region's multi-year distribution for this
+        # division (smooth, not "6th of 7"). Falls back to the current-season
+        # peer group only if there's no historical baseline.
+        dists, bmeta = _baseline_distributions(cur, level)
+        if not dists.get("ops"):
+            div = _division_raw(cur, level, season, overrides, portal)
+            dists = {m: sorted(t[m] for t in div.values() if t.get(m) is not None) for m in
+                     ("ops", "iso", "bat_bb_pct", "bat_k_pct", "sb", "era", "pit_k_pct", "pit_bb_pct", "depth")}
+            bmeta = {"n": len(div), "min_season": season, "max_season": season}
+        baseline_n = bmeta["n"]
 
         grades, scores = {}, {}
         radar = []
         for key, label, metric, high in _DIMS:
-            peer_vals = [m[metric] for m in div.values() if m.get(metric) is not None]
+            vals = dists.get(metric, [])
             val = raw.get(metric)
-            score = _pct_rank(peer_vals, val, high) if val is not None else 50.0
+            score = _pct_rank(vals, val, high) if (val is not None and vals) else 50.0
             scores[key] = score
-            rank = None
-            if val is not None and peer_vals:
-                rank = sum(1 for v in peer_vals if (v > val if high else v < val)) + 1
             grades[key] = {"grade": grade_from_score(score), "score": round(score, 1),
                            "label": label, "value": _fmt_metric(key, val),
-                           "rank": rank, "peers": len(peer_vals)}
+                           "pct": round(score), "peers": baseline_n}
             radar.append({"dim": key, "label": label, "score": round(score, 1)})
         overall = (scores["offense"] + scores["pitching"]) / 2
         grades["overall"] = {"grade": grade_from_score(overall), "score": round(overall, 1)}
@@ -640,7 +717,9 @@ def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
             "conference": team["conference"],
             "season": season,
             "peer_group": level,
-            "peer_count": len(div),
+            "peer_count": baseline_n,
+            "baseline": (f"{baseline_n} {level} team-seasons"
+                         + (f" ({bmeta['min_season']}–{bmeta['max_season']})" if bmeta.get("min_season") else "")),
             "identity_label": _identity_label(scores),
             "grades": grades,
             "radar": radar,

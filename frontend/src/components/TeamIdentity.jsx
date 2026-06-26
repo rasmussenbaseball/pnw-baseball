@@ -81,7 +81,7 @@ export default function TeamIdentity({ teamId, season }) {
             <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{season} Team Identity</div>
             <div className="text-xl sm:text-2xl font-extrabold text-gray-900 dark:text-gray-100 leading-tight">{data.identity_label}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Graded vs {data.peer_count} {data.peer_group} peers · {data.outlook?.label}
+              Percentiles vs {data.baseline || `${data.peer_count} ${data.peer_group} peers`} · {data.outlook?.label}
             </div>
           </div>
         </div>
@@ -107,7 +107,7 @@ export default function TeamIdentity({ teamId, season }) {
                 <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 text-center leading-tight">{g[key]?.label || label}</span>
                 {g[key]?.value && (
                   <span className="text-[9px] text-gray-400 dark:text-gray-500 text-center leading-tight tabular-nums">
-                    {g[key].value}{g[key].rank ? ` · #${g[key].rank}/${g[key].peers}` : ''}
+                    {g[key].value}{g[key].pct != null ? ` · ${g[key].pct}%ile` : ''}
                   </span>
                 )}
               </div>
@@ -125,7 +125,7 @@ export default function TeamIdentity({ teamId, season }) {
               <Radar dataKey="score" stroke="#0e7490" fill="#22d3ee" fillOpacity={0.35} />
             </RadarChart>
           </ResponsiveContainer>
-          <p className="text-[11px] text-gray-400 text-center -mt-2">Percentile vs division peers (outer edge = best in {data.peer_group}).</p>
+          <p className="text-[11px] text-gray-400 text-center -mt-2">Percentile vs {data.peer_group} history, {data.baseline ? data.baseline.split(' (')[1]?.replace(')', '') || 'multi-year' : 'multi-year'} (outer edge = best).</p>
         </Card>
       </div>
 
