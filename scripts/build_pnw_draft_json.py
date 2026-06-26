@@ -63,12 +63,28 @@ LEVEL_STR = {
 
 HPOS = ['C', '1B', '2B', 'SS', '3B', 'RF', 'CF', 'LF', 'DH']
 N_PITCHERS = 5
-# Elite pitching is scarce and top-heavy (a handful of aces on a few teams),
-# while good hitting is deep — so a perfect staff was the real wall on a sweep.
-# Lean the blend a little more toward hitting so a strong-but-not-ace staff
-# still leaves a 56-0 in reach.
-WEIGHT_H = 0.60
-WEIGHT_P = 0.40
+
+# ── Balance knobs (tune these and re-run) ───────────────────────────────────
+# The structural problem: elite hitting is DEEP (110 bats >= 1.4 oWAR) but elite
+# pitching is SCARCE and TOP-HEAVY (only ~12 arms >= 1.4 WAR, and the ace's
+# talent score towers over the field — #1 ~227 vs the #30 arm ~120). So a 95+
+# offense is easy (good bats everywhere) while a strong staff felt impossible
+# without landing all 5 of the scarce aces ("go 5/5 or lose").
+#
+# PIT_SHAPE < 1 compresses the pitching talent's extreme high end toward the
+# pack (concave on the standardized deviation), so the ace premium shrinks and a
+# strong-but-not-ace staff is "enough" — you no longer need to draft all 5 aces.
+PIT_SHAPE = 0.62
+# With the ace wall removed by PIT_SHAPE, pitching can carry real weight again:
+# this makes hitting alone insufficient (hitting "harder") while keeping a top
+# staff attainable (pitching "easier").
+WEIGHT_H = 0.55
+WEIGHT_P = 0.45
+# Rating-bar difficulty skew (DISPLAY ONLY — does not affect wins). The frontend
+# shows display = 100 * (percentile/100) ** gamma. >1 makes a bar read lower
+# (harder to max), <1 makes it read higher (easier to max).
+OFF_GAMMA = 1.25   # offense rating harder to push into the 90s
+PIT_GAMMA = 0.88   # pitching rating easier to push into the 90s
 
 
 def norm_pos(raw):
@@ -249,6 +265,20 @@ def main():
                 'pit': round(pit, 1),
             })
 
+    # ── Compress the pitching talent's top-heavy high end ──
+    # Pull the rare aces toward the pack so a strong-but-not-ace staff is viable
+    # (concave on the standardized deviation: near-average arms barely move, the
+    # extreme aces get reeled in). Only the `pit` talent score is reshaped — the
+    # displayed ERA/FIP/WHIP/K9 stats are untouched.
+    if pitchers and PIT_SHAPE != 1.0:
+        _pv = [p['pit'] for p in pitchers]
+        _pmean = sum(_pv) / len(_pv)
+        _pstd = (sum((v - _pmean) ** 2 for v in _pv) / len(_pv)) ** 0.5 or 1.0
+        for p in pitchers:
+            z = (p['pit'] - _pmean) / _pstd
+            zs = (1 if z >= 0 else -1) * (abs(z) ** PIT_SHAPE)
+            p['pit'] = round(_pmean + zs * _pstd, 1)
+
     # ── Teams structure: per level, the short_names that have any qualifying player ──
     teams_by_level = {}
     have_player = set(h['t'] for h in hitters) | set(p['t'] for p in pitchers)
@@ -410,8 +440,8 @@ def main():
         'weights': {'h': WEIGHT_H, 'p': WEIGHT_P},
         'games': 56,
         'win_map': {'anchors': anchors},
-        'off_bar': {'q': off_q},
-        'pit_bar': {'q': pit_q},
+        'off_bar': {'q': off_q, 'gamma': OFF_GAMMA},
+        'pit_bar': {'q': pit_q, 'gamma': PIT_GAMMA},
         'best_total': round(best_total, 2), 'worst_total': round(worst_total, 2),
     }
 
@@ -429,6 +459,21 @@ def main():
     print(f"  reachability: g50->{wins(g50)}  g90->{wins(g90)}  g95->{wins(g95)}  "
           f"g99->{wins(g99)}  best->{wins(best_total)} wins")
     print(f"  win calibration: random mean={wins(mean)}  best={wins(best_total)}  worst={wins(worst_total)}")
+    # Scenario balance: can a great offense win without elite arms? Does hitting
+    # alone fall short of a sweep? Median = the realistically-draftable middle.
+    def _median_h():
+        out = []
+        for pos in HPOS:
+            pool = sorted(by_pos[pos] or hitters, key=lambda x: -x['off'])
+            out.append(pool[len(pool) // 2])
+        return out
+    med_h, med_p = _median_h(), sorted(pitchers, key=lambda x: -x['pit'])[len(pitchers) // 2: len(pitchers) // 2 + N_PITCHERS]
+    # "good but not ace" staff: arms ranked ~6-10 (the best you get without the aces)
+    good_p = sorted(pitchers, key=lambda x: -x['pit'])[5:5 + N_PITCHERS]
+    print(f"  SCENARIOS: elite-bats+median-arms={wins(total_of(best_h, med_p))}  "
+          f"elite-bats+good(non-ace)-arms={wins(total_of(best_h, good_p))}  "
+          f"median-bats+elite-arms={wins(total_of(med_h, best_p))}  "
+          f"elite+elite={wins(total_of(best_h, best_p))}  median+median={wins(total_of(med_h, med_p))}")
     rw = sorted(wins(t) for t in totals)
     print(f"  random win spread: p5={rw[len(rw)//20]}  p50={rw[len(rw)//2]}  p95={rw[19*len(rw)//20]}  "
           f"min={rw[0]} max={rw[-1]}")

@@ -379,17 +379,24 @@ function computeResult(roster, meta) {
 
   // Bar = percentile of this value among realistic rosters, interpolated over
   // the 21 stored quantile breakpoints (q[0]=p0 ... q[20]=p100).
+  // Raw percentile within the stored quantiles, then an optional difficulty
+  // gamma (b.gamma): display = 100*(pct/100)**gamma. >1 makes a bar harder to
+  // max (offense), <1 makes it easier (pitching).
   const norm = (v, b) => {
     const q = b.q
-    if (v <= q[0]) return 0
-    if (v >= q[q.length - 1]) return 100
-    for (let i = 0; i < q.length - 1; i++) {
-      if (v <= q[i + 1]) {
-        const frac = (v - q[i]) / Math.max(q[i + 1] - q[i], 1e-6)
-        return Math.round(((i + frac) / (q.length - 1)) * 100)
+    let pct = 100
+    if (v <= q[0]) pct = 0
+    else if (v >= q[q.length - 1]) pct = 100
+    else {
+      for (let i = 0; i < q.length - 1; i++) {
+        if (v <= q[i + 1]) {
+          const frac = (v - q[i]) / Math.max(q[i + 1] - q[i], 1e-6)
+          pct = ((i + frac) / (q.length - 1)) * 100
+          break
+        }
       }
     }
-    return 100
+    return Math.round(100 * Math.pow(pct / 100, b.gamma || 1))
   }
   return {
     wins, losses: 56 - wins,
