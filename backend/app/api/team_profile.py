@@ -60,9 +60,11 @@ def _pct_rank(values, value, high_good=True):
     return pct if high_good else 100 - pct
 
 
-def _returning(year_in_school, division_level, override):
+def _returning(year_in_school, division_level, override, in_portal=False):
     if override in ("returning", "departing"):
-        return override == "returning"
+        return override == "returning"  # manual override always wins
+    if in_portal:
+        return False  # in the transfer portal → not on next year's roster
     yr = (year_in_school or "").strip().lower()
     gone = {"sr", "senior", "r-sr", "redshirt senior", "5th", "gr", "grad", "graduate"}
     if yr in gone:
@@ -73,7 +75,7 @@ def _returning(year_in_school, division_level, override):
 
 
 # ── per-team raw metrics (the inputs that get percentile-graded) ──
-def _team_raw(cur, team_id, season, division_level, overrides):
+def _team_raw(cur, team_id, season, division_level, overrides, portal):
     cur.execute(
         """SELECT bs.plate_appearances pa, bs.at_bats ab, bs.hits h, bs.doubles d2,
                   bs.triples d3, bs.home_runs hr, bs.walks bb, bs.hit_by_pitch hbp,
@@ -112,14 +114,15 @@ def _team_raw(cur, team_id, season, division_level, overrides):
     depth = sum(1 for r in pit if _ip_to_outs(r.get("ip")) >= 60)  # arms with 20+ IP
 
     # Returning aggregates
-    def ovr(pid):
-        return overrides.get(pid)
-    ret_pa = sum(g(r, "pa") for r in bat if _returning(r.get("year_in_school"), division_level, ovr(r["player_id"])))
-    ret_outs = sum(_ip_to_outs(r.get("ip")) for r in pit if _returning(r.get("year_in_school"), division_level, ovr(r["player_id"])))
+    def ret_row(r):
+        return _returning(r.get("year_in_school"), division_level,
+                          overrides.get(r["player_id"]), r["player_id"] in portal)
+    ret_pa = sum(g(r, "pa") for r in bat if ret_row(r))
+    ret_outs = sum(_ip_to_outs(r.get("ip")) for r in pit if ret_row(r))
     pos_owar = sum(max(0, g(r, "owar")) for r in bat)
-    ret_pos_owar = sum(max(0, g(r, "owar")) for r in bat if _returning(r.get("year_in_school"), division_level, ovr(r["player_id"])))
+    ret_pos_owar = sum(max(0, g(r, "owar")) for r in bat if ret_row(r))
     pos_pwar = sum(max(0, g(r, "pwar")) for r in pit)
-    ret_pos_pwar = sum(max(0, g(r, "pwar")) for r in pit if _returning(r.get("year_in_school"), division_level, ovr(r["player_id"])))
+    ret_pos_pwar = sum(max(0, g(r, "pwar")) for r in pit if ret_row(r))
 
     return {
         "ops": obp + slg, "iso": slg - avg, "bat_bb_pct": _safe_div(bb, pa),
@@ -135,7 +138,16 @@ def _team_raw(cur, team_id, season, division_level, overrides):
     }
 
 
-def _division_raw(cur, division_level, season, overrides):
+def _portal_ids(cur):
+    """player_ids currently in the transfer portal (auto-departing)."""
+    try:
+        cur.execute("SELECT player_id FROM transfer_portal_members")
+        return {r["player_id"] for r in cur.fetchall()}
+    except Exception:
+        return set()
+
+
+def _division_raw(cur, division_level, season, overrides, portal):
     key = (division_level, season)
     hit = _DIV_CACHE.get(key)
     if hit and (time.time() - hit[0]) < _DIV_TTL:
@@ -150,7 +162,7 @@ def _division_raw(cur, division_level, season, overrides):
              AND EXISTS (SELECT 1 FROM batting_stats bs WHERE bs.team_id = t.id AND bs.season = %s)""",
         (division_level, season))
     ids = [r["id"] for r in cur.fetchall()]
-    out = {tid: _team_raw(cur, tid, season, division_level, overrides) for tid in ids}
+    out = {tid: _team_raw(cur, tid, season, division_level, overrides, portal) for tid in ids}
     _DIV_CACHE[key] = (time.time(), out)
     return out
 
@@ -282,9 +294,11 @@ def _pitcher_impact(r):
     return ((pwar * 1.75) + (quality * 1.25) + (vol * 0.85) + (command * 0.45)) * sw
 
 
-def _depart_status(year_in_school, division_level, override, note):
+def _depart_status(year_in_school, division_level, override, note, in_portal=False):
     if override == "departing":
         return note or "Portal / not returning"
+    if in_portal:
+        return "Transfer portal"
     yr = (year_in_school or "").strip().lower()
     if yr in {"sr", "senior", "r-sr", "redshirt senior"}:
         return "Senior departure"
@@ -334,6 +348,7 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
 
         cur.execute("SELECT player_id, status, note FROM player_returning_overrides WHERE season = %s", (season,))
         ovr = {r["player_id"]: r for r in cur.fetchall()}
+        portal = _portal_ids(cur)
 
         cur.execute(
             """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
@@ -350,7 +365,7 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
 
         def is_ret(r):
             o = ovr.get(r["player_id"])
-            return _returning(r.get("year_in_school"), level, o["status"] if o else None)
+            return _returning(r.get("year_in_school"), level, o["status"] if o else None, r["player_id"] in portal)
 
         # Returning impact players (with sample floors + fallbacks)
         ret_bat = [r for r in bat if is_ret(r)]
@@ -370,7 +385,7 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
             o = ovr.get(r["player_id"])
             dep[r["player_id"]] = {
                 **_hit_payload(r, False),
-                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None),
+                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None, r["player_id"] in portal),
                 "kind": "bat",
             }
         for r in pit:
@@ -383,7 +398,7 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
                 continue
             dep[r["player_id"]] = {
                 **p,
-                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None),
+                "status": _depart_status(r.get("year_in_school"), level, o["status"] if o else None, o["note"] if o else None, r["player_id"] in portal),
                 "kind": "pit",
             }
         departures = sorted(dep.values(), key=lambda x: x["impact"], reverse=True)[:10]
@@ -430,6 +445,7 @@ def team_impact_performers(team_id: int, season: int = Query(CURRENT_SEASON)):
         level = tr["level"] if tr else None
         cur.execute("SELECT player_id, status FROM player_returning_overrides WHERE season = %s", (season,))
         ovr = {r["player_id"]: r["status"] for r in cur.fetchall()}
+        portal = _portal_ids(cur)
         cur.execute(
             """SELECT bs.*, p.first_name, p.last_name, p.position, p.year_in_school
                FROM batting_stats bs JOIN players p ON p.id = bs.player_id
@@ -444,7 +460,7 @@ def team_impact_performers(team_id: int, season: int = Query(CURRENT_SEASON)):
         pit = [dict(r) for r in cur.fetchall()]
 
     def ret(r):
-        return _returning(r.get("year_in_school"), level, ovr.get(r["player_id"]))
+        return _returning(r.get("year_in_school"), level, ovr.get(r["player_id"]), r["player_id"] in portal)
     hq = [r for r in bat if (r.get("plate_appearances") or 0) >= 40] or \
          [r for r in bat if (r.get("plate_appearances") or 0) >= 20] or bat
     pq = [r for r in pit if _ip_to_outs(r.get("innings_pitched")) >= 30] or \
@@ -470,9 +486,10 @@ def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
 
         cur.execute("SELECT player_id, status FROM player_returning_overrides WHERE season = %s", (season,))
         overrides = {r["player_id"]: r["status"] for r in cur.fetchall()}
+        portal = _portal_ids(cur)
 
-        div = _division_raw(cur, level, season, overrides)
-        raw = div.get(team_id) or _team_raw(cur, team_id, season, level, overrides)
+        div = _division_raw(cur, level, season, overrides, portal)
+        raw = div.get(team_id) or _team_raw(cur, team_id, season, level, overrides, portal)
 
         grades, scores = {}, {}
         radar = []

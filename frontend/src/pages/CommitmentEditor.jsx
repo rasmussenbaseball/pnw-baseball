@@ -608,6 +608,7 @@ function ReturningRow({ p, season, setToast, onChanged }) {
       <div className="min-w-0 flex-1">
         <span className="font-semibold text-gray-900 dark:text-gray-100">{p.name}</span>
         <span className="text-[11px] text-gray-400 ml-1.5">{p.year_in_school || '-'} · {p.position || '-'} · {sample}</span>
+        {p.in_portal && <span className="text-[10px] ml-1.5 px-1 rounded bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300">portal</span>}
         {p.override && <span className="text-[10px] ml-1.5 text-amber-600">override</span>}
       </div>
       <div className="flex items-center gap-1">

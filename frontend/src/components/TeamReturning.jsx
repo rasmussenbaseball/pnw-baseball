@@ -165,7 +165,7 @@ export default function TeamReturning({ teamId, season }) {
             ))}
           </div>
         ) : <div className="text-sm text-gray-400">No notable departures detected.</div>}
-        <p className="text-[11px] text-gray-400 mt-3">Returning status is based on class year and manual overrides. Portal departures not yet marked will show as returning until updated.</p>
+        <p className="text-[11px] text-gray-400 mt-3">Returning status is based on class year, transfer-portal membership, and manual overrides.</p>
       </Card>
     </div>
   )

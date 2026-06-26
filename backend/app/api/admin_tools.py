@@ -336,6 +336,7 @@ def portal_add(body: PlayerIdBody, email: str = Depends(require_commitment_edito
         )
         _audit_commit(cur, body.player_id, email, "portal_add", None, from_school)
         conn.commit()
+    _bust_profile_cache()
     return {"ok": True, "player_id": body.player_id, "in_portal": True}
 
 
@@ -348,6 +349,7 @@ def portal_remove(body: PlayerIdBody, email: str = Depends(require_commitment_ed
         cur.execute("DELETE FROM transfer_portal_members WHERE player_id = %s", (body.player_id,))
         _audit_commit(cur, body.player_id, email, "portal_remove", None, None)
         conn.commit()
+    _bust_profile_cache()
     return {"ok": True, "player_id": body.player_id, "in_portal": False}
 
 
@@ -368,7 +370,7 @@ def returning_roster(team_id: int = Query(...), season: int = Query(...),
                      _email: str = Depends(require_commitment_editor)):
     """A team's season roster with the default (class-year) returning status and
     any manual override, so the editor can flip portal departures."""
-    from .team_profile import _returning, _ip_to_outs
+    from .team_profile import _returning, _ip_to_outs, _portal_ids
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -376,6 +378,7 @@ def returning_roster(team_id: int = Query(...), season: int = Query(...),
                JOIN divisions d ON c.division_id = d.id WHERE t.id = %s""", (team_id,))
         tr = cur.fetchone()
         level = tr["level"] if tr else None
+        portal = _portal_ids(cur)
         cur.execute(
             """SELECT bs.player_id, p.first_name, p.last_name, p.position, p.year_in_school,
                       bs.plate_appearances pa FROM batting_stats bs JOIN players p ON p.id = bs.player_id
@@ -405,9 +408,10 @@ def returning_roster(team_id: int = Query(...), season: int = Query(...),
         rows = []
         for pid, pl in out.items():
             o = ovr.get(pid)
-            default_ret = _returning(pl["year_in_school"], level, None)
+            in_portal = pid in portal
+            default_ret = _returning(pl["year_in_school"], level, None, in_portal)
             rows.append({
-                **pl, "default_returning": default_ret,
+                **pl, "default_returning": default_ret, "in_portal": in_portal,
                 "override": o["status"] if o else None, "note": o["note"] if o else None,
                 "effective": (o["status"] == "returning") if o else default_ret,
             })
