@@ -82,7 +82,28 @@ function BalanceBar({ label, ret, dep }) {
 }
 
 function ImpactBadge({ v }) {
-  return <span className="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">{Number(v).toFixed(1)}</span>
+  return <span className="text-[11px] font-bold tabular-nums w-11 shrink-0 text-center py-0.5 rounded bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">{Number(v).toFixed(1)}</span>
+}
+
+// Column header that lines up with HitterRow / PitcherRow (incl. the Impact badge).
+function StatHeader({ cols }) {
+  return (
+    <div className="hidden sm:flex items-center gap-2 pb-1.5 mb-1 border-b border-gray-100 dark:border-gray-700 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+      <span className="flex-1">Player</span>
+      <div className="flex items-center gap-2.5 shrink-0">
+        {cols.map((c) => <span key={c.label} className={`${c.w} text-right`}>{c.label}</span>)}
+      </div>
+      <span className="w-11 text-center" title="Blended impact score (playing time + production). Higher = a bigger piece returning.">Impact</span>
+    </div>
+  )
+}
+
+function ImpactNote() {
+  return (
+    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-3 leading-snug">
+      <span className="font-semibold">Impact</span> blends playing time and production (oWAR, OPS, wRC+, discipline, speed for bats; IP, pWAR, FIP/SIERA, K-BB for arms). Higher = a bigger piece coming back.
+    </p>
+  )
 }
 
 function HitterRow({ p }) {
@@ -180,14 +201,22 @@ export default function TeamReturning({ teamId, season }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <Card title="Impact Returning Hitters">
-          {data.returning_hitters?.length
-            ? data.returning_hitters.map((p) => <HitterRow key={p.player_id} p={p} />)
-            : <div className="text-sm text-gray-400">No qualifying returning hitters.</div>}
+          {data.returning_hitters?.length ? (
+            <>
+              <StatHeader cols={[{ label: 'OPS', w: 'w-11' }, { label: 'wRC+', w: 'w-8' }, { label: 'HR', w: 'w-12' }, { label: 'SB', w: 'w-11' }]} />
+              {data.returning_hitters.map((p) => <HitterRow key={p.player_id} p={p} />)}
+              <ImpactNote />
+            </>
+          ) : <div className="text-sm text-gray-400">No qualifying returning hitters.</div>}
         </Card>
         <Card title="Impact Returning Pitchers">
-          {data.returning_pitchers?.length
-            ? data.returning_pitchers.map((p) => <PitcherRow key={p.player_id} p={p} />)
-            : <div className="text-sm text-gray-400">No qualifying returning pitchers.</div>}
+          {data.returning_pitchers?.length ? (
+            <>
+              <StatHeader cols={[{ label: 'IP', w: 'w-14' }, { label: 'ERA', w: 'w-16' }, { label: 'FIP', w: 'w-16' }, { label: 'K%', w: 'w-14' }]} />
+              {data.returning_pitchers.map((p) => <PitcherRow key={p.player_id} p={p} />)}
+              <ImpactNote />
+            </>
+          ) : <div className="text-sm text-gray-400">No qualifying returning pitchers.</div>}
         </Card>
       </div>
 

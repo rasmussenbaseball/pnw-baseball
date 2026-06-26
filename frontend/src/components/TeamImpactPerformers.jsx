@@ -58,6 +58,9 @@ export default function TeamImpactPerformers({ teamId, season }) {
           ))}
         </div>
       </div>
+      <div className="px-4 pb-3 -mt-1 text-[10px] text-gray-400 dark:text-gray-500">
+        Green number = blended <span className="font-semibold">impact score</span> (playing time + production); higher is better.
+      </div>
     </div>
   )
 }
