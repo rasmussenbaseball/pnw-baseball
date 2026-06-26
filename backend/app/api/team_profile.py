@@ -136,6 +136,7 @@ def _team_raw(cur, team_id, season, division_level, overrides, portal):
         "ret_ip_pct": _safe_div(ret_outs, outs) * 100,
         "ret_owar_pct": _safe_div(ret_pos_owar, pos_owar) * 100,
         "ret_pwar_pct": _safe_div(ret_pos_pwar, pos_pwar) * 100,
+        "ret_war_pct": _safe_div(ret_pos_owar + ret_pos_pwar, pos_owar + pos_pwar) * 100,
     }
 
 
@@ -562,7 +563,7 @@ def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
         overall = (scores["offense"] + scores["pitching"]) / 2
         grades["overall"] = {"grade": grade_from_score(overall), "score": round(overall, 1)}
 
-        ret = {k: round(raw[k], 1) for k in ("ret_pa_pct", "ret_ip_pct", "ret_owar_pct", "ret_pwar_pct")}
+        ret = {k: round(raw[k], 1) for k in ("ret_pa_pct", "ret_ip_pct", "ret_owar_pct", "ret_pwar_pct", "ret_war_pct")}
         ret_for_logic = {"ret_pa_pct": raw["ret_pa_pct"], "ret_ip_pct": raw["ret_ip_pct"]}
         name = team["short_name"] or team["name"]
         pos_tags, con_tags = _tags(scores, ret_for_logic)

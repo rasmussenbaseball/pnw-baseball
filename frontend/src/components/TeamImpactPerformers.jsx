@@ -39,7 +39,7 @@ export default function TeamImpactPerformers({ teamId, season }) {
   if (!data.hitters?.length && !data.pitchers?.length) return null
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 sm:mb-6">
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 border-t-4 border-t-nw-teal-light overflow-hidden mb-4 sm:mb-6">
       <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 flex items-center justify-between">
         <div className="text-sm font-bold text-nw-teal dark:text-gray-100 uppercase tracking-wide">Impact Performers</div>
         <div className="text-[10px] text-gray-400 uppercase tracking-wide">RET = returns · OUT = departing</div>

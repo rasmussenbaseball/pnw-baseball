@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers, useTeamInfoGraphic, useBattingPbpLeaderboard, usePitchingPbpLeaderboard } from '../hooks/useApi'
+import { useApi, useTeamStats, useTeamRankings, useTeamHistory, useTeamFutureGames, useTeamRecruits, useIncomingTransfers, useTeamInfoGraphic, useBattingPbpLeaderboard, usePitchingPbpLeaderboard } from '../hooks/useApi'
 import TeamAdvanced from '../components/TeamAdvanced'
 import TeamIdentity from '../components/TeamIdentity'
 import TeamReturning from '../components/TeamReturning'
@@ -49,6 +49,7 @@ export default function TeamDetail() {
   const { data: history, loading: historyLoading } = useTeamHistory(teamId)
   const { data: futureData } = useTeamFutureGames(teamId, 15)
   const { data: ig } = useTeamInfoGraphic(teamId, season)
+  const { data: identity } = useApi(`/teams/${teamId}/identity`, { season }, [teamId, season])
   // PBP availability is fetched up front so the unified view toggle can disable
   // (cross off) "Play-by-Play" for seasons with no pitch-sequence coverage.
   const pbpParams = { season, team_id: Number(teamId), min_pa: 0, limit: 300, sort_by: 'tracked_pa', sort_dir: 'desc' }
@@ -95,13 +96,30 @@ export default function TeamDetail() {
   const teamOWAR = batting.reduce((s, b) => s + (b.offensive_war || 0), 0)
   const teamPWAR = pitching.reduce((s, p) => s + (p.pitching_war || 0), 0)
 
+  // Dashboard snapshot extras (run env, power/speed, staff quality, grades)
+  const ipToOuts = (ip) => { if (ip == null) return 0; const w = Math.trunc(ip); const f = Math.round((ip - w) * 10); return w * 3 + (f <= 2 ? f : 0) }
+  const teamHR = batting.reduce((s, b) => s + (b.home_runs || 0), 0)
+  const teamSB = batting.reduce((s, b) => s + (b.stolen_bases || 0), 0)
+  const staffK = pitching.reduce((s, p) => s + (p.strikeouts || 0), 0)
+  const ts = result?.team_stats || {}
+  const rec = ig?.record || {}
+  const games = (rec.wins || 0) + (rec.losses || 0) + (rec.ties || 0)
+  const winRate = (rec.wins + rec.losses) > 0 ? rec.wins / (rec.wins + rec.losses) : null
+  const confRate = (rec.conf_wins + rec.conf_losses) > 0 ? rec.conf_wins / (rec.conf_wins + rec.conf_losses) : null
+  const rsg = games ? (rec.runs_for || 0) / games : null
+  const rag = games ? (rec.runs_against || 0) / games : null
+  const teamERA = ts.team_era ?? null
+  const fipDen = pitching.reduce((s, p) => s + (p.fip != null ? ipToOuts(p.innings_pitched) : 0), 0)
+  const teamFIP = fipDen ? pitching.reduce((s, p) => s + (p.fip != null ? p.fip * ipToOuts(p.innings_pitched) : 0), 0) / fipDen : null
+  const grades = identity?.grades
+
   return (
     <div>
       {/* Back link */}
       <Link to="/teams" className="text-sm text-nw-teal-light hover:underline mb-3 inline-block">&larr; All Teams</Link>
 
       {/* Team header */}
-      <HeroHeader team={team} ig={ig} />
+      <HeroHeader team={team} ig={ig} grades={grades} retWar={identity?.returning?.ret_war_pct} />
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-4 sm:mb-6 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
@@ -150,20 +168,30 @@ export default function TeamDetail() {
       {/* Current Season Tab */}
       {activeTab === 'season' && (
         <div>
-          {/* Season snapshot */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 sm:mb-6">
+          {/* Section intro */}
+          <div className="flex items-end justify-between gap-4 mb-3 sm:mb-4">
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 dark:text-gray-100">{season} Season</h2>
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Record, rankings, leaders, and the clearest strengths from the current year.</p>
+            </div>
+            <SeasonSelect value={season} onChange={setSeason} label="Season" id="team-season" />
+          </div>
+
+          {/* Season snapshot dashboard */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 border-t-4 border-t-nw-teal-light overflow-hidden mb-4 sm:mb-6">
             <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40">
               <div className="text-sm font-bold text-nw-teal dark:text-gray-100 uppercase tracking-wide">{season} Snapshot</div>
-              <SeasonSelect value={season} onChange={setSeason} label="Season" id="team-season" />
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Team Totals</span>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 divide-x divide-y sm:divide-y-0 divide-gray-100 dark:divide-gray-700">
-              <SnapCell label="Batters" value={batting.length} />
-              <SnapCell label="Pitchers" value={pitching.length} />
-              <SnapCell label="Team PA" value={teamPA.toLocaleString()} />
-              <SnapCell label="Team IP" value={teamIP.toFixed(1)} />
-              <SnapCell label="oWAR" value={teamOWAR.toFixed(1)} accent />
-              <SnapCell label="pWAR" value={teamPWAR.toFixed(1)} accent />
-              <SnapCell label="Total WAR" value={(teamOWAR + teamPWAR).toFixed(1)} accent strong />
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2.5 sm:gap-3 p-4">
+              <DashCell accent="green" label="Batters" value={batting.length} sub={`${teamPA.toLocaleString()} team PA`} />
+              <DashCell accent="aqua" label="Pitchers" value={pitching.length} sub={`${teamIP.toFixed(1)} team IP`} />
+              <DashCell accent="purple" label="Record" value={ig?.record ? `${ig.record.wins ?? 0}-${ig.record.losses ?? 0}` : '-'} sub={winRate != null ? `${(winRate * 100).toFixed(1)}% win rate` : ''} />
+              <DashCell accent="teal" label="Conference" value={(rec.conf_wins != null || rec.conf_losses != null) ? `${rec.conf_wins ?? 0}-${rec.conf_losses ?? 0}` : '-'} sub={confRate != null ? `${(confRate * 100).toFixed(0)}% conf win rate` : ''} />
+              <DashCell accent={(rec.run_diff ?? 0) >= 0 ? 'green' : 'red'} label="Run Diff" value={rec.run_diff != null ? `${rec.run_diff >= 0 ? '+' : ''}${rec.run_diff}` : '-'} sub={rsg != null ? `${rsg.toFixed(1)} RS/G · ${rag.toFixed(1)} RA/G` : ''} />
+              <DashCell accent="amber" label="Total WAR" value={(teamOWAR + teamPWAR).toFixed(1)} sub={`${teamOWAR.toFixed(1)} oWAR · ${teamPWAR.toFixed(1)} pWAR`} />
+              <DashCell accent="purple" label="HR / SB" value={`${teamHR} / ${teamSB}`} sub="power and run-game pressure" />
+              <DashCell accent="red" label="Staff K" value={staffK} sub={teamERA != null ? `${teamERA.toFixed(2)} ERA${teamFIP != null ? ` · ${teamFIP.toFixed(2)} FIP` : ''}` : ''} />
             </div>
           </div>
 
@@ -424,9 +452,9 @@ function ChampionshipBanner({ teamId }) {
 
 // V2 card chrome: matches the Team Identity / Returning tabs (header bar +
 // uppercase title), used to give the Season + History tabs a consistent look.
-function SectionCard({ title, subtitle, right, children, bodyClass = 'p-4 sm:p-5' }) {
+function SectionCard({ title, subtitle, right, children, bodyClass = 'p-4 sm:p-5', accent = 'teal' }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 sm:mb-6">
+    <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 border-t-4 ${DASH_ACCENT[accent] || DASH_ACCENT.teal} overflow-hidden mb-4 sm:mb-6`}>
       <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40">
         <div className="min-w-0">
           <div className="text-sm font-bold text-nw-teal dark:text-gray-100 uppercase tracking-wide truncate">{title}</div>
@@ -473,7 +501,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
   return (
     <div>
       {/* All-Time Summary */}
-      <SectionCard title="Program Overview"
+      <SectionCard title="Program Overview" accent="purple"
         subtitle={`${numSeasons} season${numSeasons !== 1 ? 's' : ''} tracked${minYear && maxYear ? ` (${minYear}–${maxYear})` : ''}`}>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
           <SummaryCell
@@ -581,7 +609,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
       </SectionCard>
 
       {/* Season Stat Leaders */}
-      <SectionCard title="Season Award Leaders">
+      <SectionCard title="Season Award Leaders" accent="green">
         {seasons.map((s) => {
           const leaders = season_leaders[String(s.season)]
           if (!leaders || Object.keys(leaders).length === 0) return null
@@ -656,7 +684,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
       </SectionCard>
 
       {/* All-Time Career Leaders */}
-      <SectionCard title="All-Time Career Leaders" subtitle="Stats tracked since 2022 season"
+      <SectionCard title="All-Time Career Leaders" accent="amber" subtitle="Stats tracked since 2022 season"
         right={<LeaderToggle value={leaderCategory} onChange={setLeaderCategory} />}>
         {leaderCategory === 'batting' && (
           <CareerLeaderboards leaders={career_batting_leaders} type="batting" />
@@ -667,7 +695,7 @@ function TeamHistoryTab({ history, loading, teamId }) {
       </SectionCard>
 
       {/* Single-Season Records */}
-      <SectionCard title="Single-Season Records" subtitle="Top 5 single-season performances · min 50 PA / 20 IP"
+      <SectionCard title="Single-Season Records" accent="aqua" subtitle="Top 5 single-season performances · min 50 PA / 20 IP"
         right={<LeaderToggle value={leaderCategory} onChange={setLeaderCategory} />}>
         {leaderCategory === 'batting' && (
           <SingleSeasonRecords leaders={single_season_batting_records} type="batting" />
@@ -808,6 +836,21 @@ function SnapCell({ label, value, accent = false, strong = false }) {
   )
 }
 
+// Colored top-accent stat tile for the dashboard snapshot (intern V2 look).
+const DASH_ACCENT = {
+  teal: 'border-t-nw-teal-light', green: 'border-t-emerald-400', aqua: 'border-t-cyan-400',
+  purple: 'border-t-violet-500', amber: 'border-t-amber-400', red: 'border-t-rose-400',
+}
+function DashCell({ label, value, sub, accent = 'teal' }) {
+  return (
+    <div className={`rounded-lg border border-gray-200 dark:border-gray-700 border-t-[3px] ${DASH_ACCENT[accent] || DASH_ACCENT.teal} bg-gray-50/50 dark:bg-gray-900/30 p-3 min-w-0`}>
+      <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 truncate">{label}</div>
+      <div className="text-xl sm:text-2xl font-extrabold text-gray-900 dark:text-gray-100 tabular-nums mt-0.5 leading-tight">{value}</div>
+      {sub && <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 leading-snug">{sub}</div>}
+    </div>
+  )
+}
+
 // Unified view toggle: Standard | Advanced | Play-by-Play, all in one place.
 // Play-by-Play is crossed off + disabled when the season has no PBP coverage.
 function ViewToggle({ view, setView, pbpAvailable, pbpLoading }) {
@@ -893,7 +936,7 @@ function StatSection({ title, rows, boxColumns, presets, pbpColumns, defaultSort
 
 // Modern gradient hero with identity + headline stats pulled from the
 // /teams/{id}/info-graphic payload (record, run diff, pythag, ranks).
-function HeroHeader({ team, ig }) {
+function HeroHeader({ team, ig, grades, retWar }) {
   const r = ig?.record || {}
   const rk = ig?.rankings || {}
   const wins = r.wins ?? 0, losses = r.losses ?? 0, ties = r.ties ?? 0
@@ -941,6 +984,14 @@ function HeroHeader({ team, ig }) {
             {rk.power_rating != null && (
               <HeroStat label="Power" value={rk.power_rating.toFixed(1)}
                 hint={rk.power_rating_div_rank ? `#${rk.power_rating_div_rank} in ${team.division_level}` : ''} />
+            )}
+            {grades?.overall && (
+              <div className="flex items-end gap-x-5 gap-y-2 pl-3 sm:pl-5 ml-1 border-l border-white/20">
+                <HeroStat label="Overall" value={grades.overall.grade} />
+                {grades.offense && <HeroStat label="Offense" value={grades.offense.grade} />}
+                {grades.pitching && <HeroStat label="Pitching" value={grades.pitching.grade} />}
+                {retWar != null && <HeroStat label="Returning WAR" value={`${Math.round(retWar)}%`} />}
+              </div>
             )}
           </div>
         </div>

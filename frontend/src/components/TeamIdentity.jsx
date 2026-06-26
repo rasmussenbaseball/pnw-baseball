@@ -25,9 +25,9 @@ const REPORT_ORDER = [
   ['miss_bats', 'Miss Bats'], ['strike_throwing', 'Strike Throwing'], ['pitching_depth', 'Pitching Depth'],
 ]
 
-function Card({ title, children, right }) {
+function Card({ title, children, right, accent = 'border-t-nw-teal-light' }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 sm:mb-6">
+    <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 border-t-4 ${accent} overflow-hidden mb-4 sm:mb-6`}>
       {title && (
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40">
           <div className="text-sm font-bold text-nw-teal dark:text-gray-100 uppercase tracking-wide">{title}</div>
@@ -74,7 +74,7 @@ export default function TeamIdentity({ teamId, season }) {
   return (
     <div>
       {/* Identity headline + overall grade */}
-      <Card>
+      <Card accent="border-t-violet-500">
         <div className="flex items-center gap-4">
           <GradePill grade={g.overall?.grade} big />
           <div className="min-w-0">
@@ -99,7 +99,7 @@ export default function TeamIdentity({ teamId, season }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Report card */}
-        <Card title="Report Card">
+        <Card title="Report Card" accent="border-t-violet-500">
           <div className="grid grid-cols-3 gap-2.5">
             {REPORT_ORDER.map(([key, label]) => (
               <div key={key} className="flex flex-col items-center gap-1.5 rounded-lg border border-gray-100 dark:border-gray-700 py-2.5">
@@ -127,7 +127,7 @@ export default function TeamIdentity({ teamId, season }) {
       {/* What worked / focus areas */}
       {data.narrative && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          <Card title="What Worked Last Season">
+          <Card title="What Worked Last Season" accent="border-t-emerald-400">
             <ul className="space-y-2">
               {data.narrative.strengths.map((t, i) => (
                 <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -135,7 +135,7 @@ export default function TeamIdentity({ teamId, season }) {
               ))}
             </ul>
           </Card>
-          <Card title="Focus Areas">
+          <Card title="Focus Areas" accent="border-t-rose-400">
             <ul className="space-y-2">
               {data.narrative.improvements.map((t, i) => (
                 <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -147,7 +147,7 @@ export default function TeamIdentity({ teamId, season }) {
       )}
 
       {/* Returning production + looking ahead */}
-      <Card title="Returning Production">
+      <Card title="Returning Production" accent="border-t-amber-400">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <RetBar label="Plate Apps" pct={data.returning?.ret_pa_pct} />
           <RetBar label="Innings" pct={data.returning?.ret_ip_pct} />

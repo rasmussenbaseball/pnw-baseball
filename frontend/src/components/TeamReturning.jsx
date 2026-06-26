@@ -12,9 +12,9 @@ import DraftRiskChip from './DraftRiskChip'
 const r3 = (v) => (v == null ? '-' : Number(v).toFixed(3).replace(/^0/, ''))
 const r2 = (v) => (v == null ? '-' : Number(v).toFixed(2))
 
-function Card({ title, children, accent }) {
+function Card({ title, children, accent, topAccent = 'border-t-nw-teal-light' }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4 sm:mb-6">
+    <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 border-t-4 ${topAccent} overflow-hidden mb-4 sm:mb-6`}>
       {title && (
         <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40">
           <div className={`text-sm font-bold uppercase tracking-wide ${accent || 'text-nw-teal dark:text-gray-100'}`}>{title}</div>
@@ -176,7 +176,7 @@ export default function TeamReturning({ teamId, season }) {
       {/* Roster balance chart + priorities */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {data.balance && (
-          <Card title="Roster Balance">
+          <Card title="Roster Balance" topAccent="border-t-amber-400">
             <div className="space-y-3">
               {data.balance.hitters?.map((b) => <BalanceBar key={b.group} label={b.label} ret={b.ret_pa} dep={b.dep_pa} />)}
               <BalanceBar label="Pitching (IP)" ret={data.balance.pitching?.ret_ip} dep={data.balance.pitching?.dep_ip} />
@@ -200,7 +200,7 @@ export default function TeamReturning({ teamId, season }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        <Card title="Impact Returning Hitters">
+        <Card title="Impact Returning Hitters" topAccent="border-t-emerald-400">
           {data.returning_hitters?.length ? (
             <>
               <StatHeader cols={[{ label: 'OPS', w: 'w-11' }, { label: 'wRC+', w: 'w-8' }, { label: 'HR', w: 'w-12' }, { label: 'SB', w: 'w-11' }]} />
@@ -209,7 +209,7 @@ export default function TeamReturning({ teamId, season }) {
             </>
           ) : <div className="text-sm text-gray-400">No qualifying returning hitters.</div>}
         </Card>
-        <Card title="Impact Returning Pitchers">
+        <Card title="Impact Returning Pitchers" topAccent="border-t-cyan-400">
           {data.returning_pitchers?.length ? (
             <>
               <StatHeader cols={[{ label: 'IP', w: 'w-14' }, { label: 'ERA', w: 'w-16' }, { label: 'FIP', w: 'w-16' }, { label: 'K%', w: 'w-14' }]} />
@@ -221,7 +221,7 @@ export default function TeamReturning({ teamId, season }) {
       </div>
 
       {/* Production to replace */}
-      <Card title="Production to Replace" accent="text-rose-600 dark:text-rose-400">
+      <Card title="Production to Replace" accent="text-rose-600 dark:text-rose-400" topAccent="border-t-rose-400">
         {data.departures?.length ? (
           <div className="divide-y divide-gray-50 dark:divide-gray-700/50">
             {data.departures.map((p) => (
