@@ -5,6 +5,7 @@
  */
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import DraftRiskChip from './DraftRiskChip'
 
 const r3 = (v) => (v == null ? '-' : Number(v).toFixed(3).replace(/^0/, ''))
 const r2 = (v) => (v == null ? '-' : Number(v).toFixed(2))
@@ -23,6 +24,7 @@ function Row({ p, line }) {
           ? <Link to={`/player/${p.player_id}`} className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-nw-teal hover:underline">{p.name}</Link>
           : <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{p.name}</span>}
         <span className="text-[10px] text-gray-400 ml-1.5">{p.yr} · {p.pos}</span>
+        <DraftRiskChip playerId={p.player_id} className="ml-1.5" />
         <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">{line}</div>
       </div>
       <RetFlag returning={p.returning} />

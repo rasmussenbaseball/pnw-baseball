@@ -7,6 +7,7 @@
  */
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import DraftRiskChip from './DraftRiskChip'
 
 const r3 = (v) => (v == null ? '-' : Number(v).toFixed(3).replace(/^0/, ''))
 const r2 = (v) => (v == null ? '-' : Number(v).toFixed(2))
@@ -39,7 +40,7 @@ function HeadlineCard({ label, p, line, tone }) {
       <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</div>
       {p ? (
         <>
-          <div className="mt-1 text-lg leading-tight"><PlayerName p={p} /></div>
+          <div className="mt-1 text-lg leading-tight flex items-center gap-2 flex-wrap"><PlayerName p={p} /><DraftRiskChip playerId={p.player_id} /></div>
           <div className="text-xs text-gray-500 dark:text-gray-400">{p.yr} · {p.pos}{tone === 'loss' && p.status ? ` · ${p.status}` : ''}</div>
           <div className="text-sm text-gray-700 dark:text-gray-300 mt-1.5">{line}</div>
         </>
@@ -88,7 +89,7 @@ function HitterRow({ p }) {
   return (
     <div className="flex items-start gap-2 py-2.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
       <div className="min-w-0 flex-1">
-        <div><PlayerName p={p} /><span className="text-[11px] text-gray-400 ml-1.5">{p.yr} · {p.pos}</span></div>
+        <div><PlayerName p={p} /><span className="text-[11px] text-gray-400 ml-1.5">{p.yr} · {p.pos}</span><DraftRiskChip playerId={p.player_id} className="ml-1.5" /></div>
         {p.note && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{p.note}</div>}
       </div>
       <div className="hidden sm:flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 tabular-nums pt-0.5">
@@ -106,7 +107,7 @@ function PitcherRow({ p }) {
   return (
     <div className="flex items-start gap-2 py-2.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
       <div className="min-w-0 flex-1">
-        <div><PlayerName p={p} /><span className="text-[11px] text-gray-400 ml-1.5">{p.yr}</span></div>
+        <div><PlayerName p={p} /><span className="text-[11px] text-gray-400 ml-1.5">{p.yr}</span><DraftRiskChip playerId={p.player_id} className="ml-1.5" /></div>
         {p.note && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{p.note}</div>}
       </div>
       <div className="hidden sm:flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 tabular-nums pt-0.5">
