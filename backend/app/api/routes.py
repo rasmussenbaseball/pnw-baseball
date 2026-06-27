@@ -11009,6 +11009,24 @@ def player_projection(player_id: int, request: Request,
     return base
 
 
+@router.get("/run-environments")
+@cached_endpoint(ttl_seconds=3600)
+def run_environments():
+    """True national run environments per level (and per conference) scraped from
+    each level's stats site (scripts/scrape_run_environments.py). Powers the About
+    page's level-vs-conference comparison; the 50/50 conf+level blend feeds next
+    season's projections. Returns {season, levels:{LEVEL:{national, conferences}}}."""
+    import json as _json
+    from pathlib import Path as _P
+    p = _P(__file__).parent.parent.parent / "data" / "run_environments.json"
+    if not p.exists():
+        return {"season": None, "levels": {}}
+    try:
+        return _json.loads(p.read_text())
+    except Exception:
+        return {"season": None, "levels": {}}
+
+
 # ============================================================
 # TEAM STATS
 # ============================================================

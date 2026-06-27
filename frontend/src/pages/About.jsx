@@ -707,6 +707,62 @@ function CoverageSection() {
 // ============================================================
 // RUN ENVIRONMENT SECTION
 // ============================================================
+// National level run environment vs the conference our teams actually play in.
+// Scraped from each level's national stats site (runs per team-game); the 50/50
+// conference+level blend feeds next season's projections.
+const RUNENV_LEVEL_ORDER = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
+function NationalVsConferenceCard() {
+  const [data, setData] = useState(null)
+  useEffect(() => {
+    fetch('/api/v1/run-environments').then(r => r.json()).then(setData).catch(() => {})
+  }, [])
+  const levels = data?.levels || {}
+  const rows = RUNENV_LEVEL_ORDER
+    .filter(lv => levels[lv]?.national?.runs_pg != null)
+    .map(lv => {
+      const nat = levels[lv].national.runs_pg
+      const confs = levels[lv].conferences || {}
+      const cname = Object.keys(confs)[0]
+      const conf = cname ? confs[cname].runs_pg : null
+      return { lv, nat, cname, conf, diff: conf != null ? conf - nat : null }
+    })
+  if (!rows.length) return null
+  return (
+    <Card title="National Level vs Our Conference" subtitle="True 2026 run environment (total runs per game) — national level vs the conference our PNW teams play in">
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+              <th className="text-left py-1.5 px-2">Level</th>
+              <th className="text-right py-1.5 px-2">National R/G</th>
+              <th className="text-left py-1.5 px-2">Our conference</th>
+              <th className="text-right py-1.5 px-2">Conf R/G</th>
+              <th className="text-right py-1.5 px-2">Difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.lv} className="border-b border-gray-100 dark:border-gray-800">
+                <td className="py-1.5 px-2 font-bold text-nw-teal dark:text-gray-100">{r.lv}</td>
+                <td className="py-1.5 px-2 text-right tabular-nums">{r.nat?.toFixed(2)}</td>
+                <td className="py-1.5 px-2 text-gray-600 dark:text-gray-400">{r.cname || <span className="text-gray-400 italic">pending</span>}</td>
+                <td className="py-1.5 px-2 text-right tabular-nums">{r.conf != null ? r.conf.toFixed(2) : '—'}</td>
+                <td className={`py-1.5 px-2 text-right tabular-nums font-semibold ${r.diff == null ? 'text-gray-400' : r.diff > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {r.diff == null ? '—' : `${r.diff > 0 ? '+' : ''}${r.diff.toFixed(2)}`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 italic mt-2">
+        A negative difference means our conference scores LESS than the national level (a tougher run environment for hitters). Projections blend 50% conference and 50% full-level run environment for next season. Pulled from each level's national stats site for 2026.
+      </p>
+    </Card>
+  )
+}
+
+
 function EnvironmentSection() {
   const leagues = Object.entries(ENVIRONMENTS).map(([key, e]) => ({ key, ...e }))
   return (
@@ -757,6 +813,8 @@ function EnvironmentSection() {
           NAIA is the highest-scoring environment (highest OPS, highest ERA). NWAC and WCL are wood-bat leagues, which suppress offense substantially while keeping pitching strikeout rates competitive.
         </p>
       </Card>
+
+      <NationalVsConferenceCard />
 
       <EnvironmentCard
         title="NCAA Division I"

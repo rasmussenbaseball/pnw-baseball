@@ -1,0 +1,30 @@
+{
+  "season": 2026,
+  "levels": {
+    "NAIA": {
+      "national": {
+        "rs_pg": 6.988,
+        "ra_pg": 6.76,
+        "runs_pg": 13.749,
+        "teams": 179
+      },
+      "conferences": {
+        "Cascade Collegiate Conference": {
+          "rs_pg": 6.95,
+          "ra_pg": 6.463,
+          "runs_pg": 13.412,
+          "teams": 8
+        }
+      }
+    },
+    "D1": {
+      "national": {
+        "rs_pg": 6.569,
+        "ra_pg": 6.66,
+        "runs_pg": 13.23,
+        "teams": 309
+      },
+      "conferences": {}
+    }
+  }
+}
