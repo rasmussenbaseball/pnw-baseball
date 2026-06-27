@@ -10871,6 +10871,20 @@ def _projection_writeup(proj, side, actual):
         elif gb is not None and gb >= 0.50:
             bits.append("A heavy ground-ball profile keeps the ball in the park.")
 
+    # Home-park environment (woven into the HR / run projection).
+    phm = proj.get("park_hr_mult")
+    prm = proj.get("park_run_mult")
+    if side == "bat" and phm is not None:
+        if phm >= 1.08:
+            bits.append("His home park plays small to his pull side, lifting the home-run projection.")
+        elif phm <= 0.93:
+            bits.append("His home park is tough on his pull power, trimming the home-run projection.")
+    elif side == "pit" and prm is not None:
+        if prm >= 1.07:
+            bits.append("He pitches in a hitter-friendly home park, which nudges his projected run prevention the wrong way.")
+        elif prm <= 0.94:
+            bits.append("A pitcher-friendly home park helps his projected run prevention.")
+
     if proj.get("breakout"):
         bits.append("He is flagged as a breakout candidate" +
                     (" — an unlucky 2026 BABIP points to upside." if side == "bat"
