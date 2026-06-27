@@ -132,7 +132,8 @@ def list_rapsodo_players(owner: str = Depends(require_tier("coach"))):
                       rp.team_id, rp.players_id,
                       COUNT(DISTINCT rs.id)            AS session_count,
                       MAX(rs.session_date)             AS last_session,
-                      COALESCE(SUM(rs.n_pitches), 0)   AS total_pitches
+                      COALESCE(SUM(rs.n_pitches), 0)   AS total_pitches,
+                      MAX(rs.fastball_velo)            AS top_fb_velo
                FROM rapsodo_players rp
                LEFT JOIN rapsodo_sessions rs ON rs.player_db_id = rp.id
                WHERE rp.owner_user_id = %s

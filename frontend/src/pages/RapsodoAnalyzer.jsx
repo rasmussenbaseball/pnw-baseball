@@ -341,6 +341,7 @@ function UploadZone({ mode, onDone }) {
 
 // ─────────────────────────────── Roster ───────────────────────────────
 function Roster({ players, loading, onPick }) {
+  const [sort, setSort] = useState({ key: 'last_session', dir: -1 })
   if (loading) return <p className="text-gray-500">Loading your players…</p>
   if (!players.length) {
     return (
@@ -349,20 +350,38 @@ function Roster({ players, loading, onPick }) {
       </div>
     )
   }
+  const cols = [
+    { key: 'player_name', label: 'Player', align: 'left' },
+    { key: 'handedness', label: 'Throws', align: 'left' },
+    { key: 'top_fb_velo', label: 'Top FB', align: 'right', fmt: (v) => v != null ? `${Number(v).toFixed(1)}` : '—' },
+    { key: 'session_count', label: 'Sessions', align: 'right' },
+    { key: 'last_session', label: 'Last session', align: 'left', fmt: (v) => v || '—' },
+    { key: 'total_pitches', label: 'Pitches', align: 'right' },
+  ]
+  const toggle = (key) => setSort((s) => s.key === key ? { key, dir: -s.dir } : { key, dir: key === 'player_name' ? 1 : -1 })
+  const sorted = [...players].sort((a, b) => {
+    const x = a[sort.key], y = b[sort.key]
+    if (x == null && y == null) return 0
+    if (x == null) return 1
+    if (y == null) return -1
+    if (typeof x === 'number' && typeof y === 'number') return (x - y) * sort.dir
+    return String(x).localeCompare(String(y)) * sort.dir
+  })
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 dark:bg-gray-800 text-left text-gray-500 dark:text-gray-400">
+        <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
           <tr>
-            <th className="px-4 py-2 font-medium">Player</th>
-            <th className="px-4 py-2 font-medium">Throws</th>
-            <th className="px-4 py-2 font-medium">Sessions</th>
-            <th className="px-4 py-2 font-medium">Last session</th>
-            <th className="px-4 py-2 font-medium">Pitches</th>
+            {cols.map((c) => (
+              <th key={c.key} onClick={() => toggle(c.key)}
+                className={`cursor-pointer select-none px-4 py-2 font-medium ${c.align === 'right' ? 'text-right' : 'text-left'} hover:text-gray-700 dark:hover:text-gray-200`}>
+                {c.label}{sort.key === c.key ? (sort.dir < 0 ? ' ▾' : ' ▴') : ''}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-          {players.map((p) => (
+          {sorted.map((p) => (
             <tr
               key={p.rapsodo_player_id}
               onClick={() => onPick(p.rapsodo_player_id)}
@@ -370,9 +389,10 @@ function Roster({ players, loading, onPick }) {
             >
               <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{p.player_name}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{handLabel(p.handedness)}</td>
-              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.session_count}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">{p.top_fb_velo != null ? Number(p.top_fb_velo).toFixed(1) : '—'}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">{p.session_count}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.last_session || '—'}</td>
-              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.total_pitches}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">{p.total_pitches}</td>
             </tr>
           ))}
         </tbody>
@@ -827,7 +847,8 @@ function TrendChart({ title, unit, points, color = '#378ADD', decimals = 1 }) {
   const coords = points.map((p, i) => (p.value == null ? null : [sx(i), sy(p.value)])).filter(Boolean)
   const d = coords.map((c, i) => `${i ? 'L' : 'M'}${c[0].toFixed(1)},${c[1].toFixed(1)}`).join(' ')
   const latest = vals[vals.length - 1]
-  const delta = vals.length > 1 ? latest - vals[0] : null
+  const delta = vals.length > 1 ? latest - vals[vals.length - 2] : null   // vs previous session
+  const deltaTotal = vals.length > 2 ? latest - vals[0] : null            // since first session
   return (
     <div>
       <div className="text-[11px] text-gray-500 mb-1">{title}</div>
@@ -843,8 +864,11 @@ function TrendChart({ title, unit, points, color = '#378ADD', decimals = 1 }) {
         latest <span className="font-medium">{latest.toFixed(decimals)}</span>{unit ? ` ${unit}` : ''}
         {delta != null && (
           <span className={`ml-1 ${delta > 0 ? 'text-green-600 dark:text-green-400' : delta < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
-            ({delta > 0 ? '+' : ''}{delta.toFixed(decimals)})
+            ({delta > 0 ? '+' : ''}{delta.toFixed(decimals)} vs last)
           </span>
+        )}
+        {deltaTotal != null && (
+          <span className="ml-1 text-gray-400">· {deltaTotal > 0 ? '+' : ''}{deltaTotal.toFixed(decimals)} since first</span>
         )}
       </div>
     </div>
