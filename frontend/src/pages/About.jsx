@@ -710,22 +710,36 @@ function CoverageSection() {
 // National level run environment vs the conference our teams actually play in.
 // Scraped from each level's national stats site (runs per team-game); the 50/50
 // conference+level blend feeds next season's projections.
-const RUNENV_LEVEL_ORDER = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
+const RUNENV_LEVEL_ORDER = ['D1', 'D2', 'D3', 'NAIA']
+// The conferences our PNW teams actually play in, keyed by the name each level's
+// stats site uses, so we compare the national level to the leagues we live in.
+const OUR_CONFS = {
+  D1: [['Big Ten', 'Big Ten'], ['West Coast (WCC)', 'WCC'], ['Mountain West', 'Mountain West']],
+  D2: [['Great Northwest (GNAC)', 'Great Northwest']],
+  D3: [['Northwest (NWC)', 'NWC']],
+  NAIA: [['Cascade Collegiate', 'Cascade Collegiate Conference']],
+}
 function NationalVsConferenceCard() {
   const [data, setData] = useState(null)
   useEffect(() => {
     fetch('/api/v1/run-environments').then(r => r.json()).then(setData).catch(() => {})
   }, [])
   const levels = data?.levels || {}
-  const rows = RUNENV_LEVEL_ORDER
-    .filter(lv => levels[lv]?.national?.runs_pg != null)
-    .map(lv => {
-      const nat = levels[lv].national.runs_pg
-      const confs = levels[lv].conferences || {}
-      const cname = Object.keys(confs)[0]
-      const conf = cname ? confs[cname].runs_pg : null
-      return { lv, nat, cname, conf, diff: conf != null ? conf - nat : null }
+  const rows = []
+  RUNENV_LEVEL_ORDER.forEach(lv => {
+    const nat = levels[lv]?.national?.runs_pg
+    if (nat == null) return
+    const confs = levels[lv].conferences || {}
+    const ours = (OUR_CONFS[lv] || []).filter(([, key]) => confs[key]?.runs_pg != null)
+    if (!ours.length) {
+      rows.push({ lv, nat, cname: null, conf: null, diff: null, first: true })
+      return
+    }
+    ours.forEach(([label, key], i) => {
+      const conf = confs[key].runs_pg
+      rows.push({ lv, nat, cname: label, conf, diff: conf - nat, first: i === 0 })
     })
+  })
   if (!rows.length) return null
   return (
     <Card title="National Level vs Our Conference" subtitle="True 2026 run environment (total runs per game) — national level vs the conference our PNW teams play in">
@@ -741,10 +755,10 @@ function NationalVsConferenceCard() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(r => (
-              <tr key={r.lv} className="border-b border-gray-100 dark:border-gray-800">
-                <td className="py-1.5 px-2 font-bold text-nw-teal dark:text-gray-100">{r.lv}</td>
-                <td className="py-1.5 px-2 text-right tabular-nums">{r.nat?.toFixed(2)}</td>
+            {rows.map((r, i) => (
+              <tr key={`${r.lv}-${i}`} className={`${r.first ? 'border-t border-gray-200 dark:border-gray-700' : ''} border-b border-gray-100 dark:border-gray-800`}>
+                <td className="py-1.5 px-2 font-bold text-nw-teal dark:text-gray-100">{r.first ? r.lv : ''}</td>
+                <td className="py-1.5 px-2 text-right tabular-nums">{r.first ? r.nat?.toFixed(2) : ''}</td>
                 <td className="py-1.5 px-2 text-gray-600 dark:text-gray-400">{r.cname || <span className="text-gray-400 italic">pending</span>}</td>
                 <td className="py-1.5 px-2 text-right tabular-nums">{r.conf != null ? r.conf.toFixed(2) : '—'}</td>
                 <td className={`py-1.5 px-2 text-right tabular-nums font-semibold ${r.diff == null ? 'text-gray-400' : r.diff > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>

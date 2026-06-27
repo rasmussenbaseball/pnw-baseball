@@ -19,12 +19,879 @@
     },
     "D1": {
       "national": {
-        "rs_pg": 6.569,
-        "ra_pg": 6.66,
-        "runs_pg": 13.23,
+        "rs_pg": 6.626,
+        "ra_pg": 6.626,
+        "runs_pg": 13.252,
         "teams": 309
       },
-      "conferences": {}
+      "conferences": {
+        "ACC": {
+          "rs_pg": 7.561,
+          "ra_pg": 7.561,
+          "runs_pg": 15.122,
+          "teams": 15
+        },
+        "NEC": {
+          "rs_pg": 7.037,
+          "ra_pg": 7.037,
+          "runs_pg": 14.074,
+          "teams": 12
+        },
+        "OH": {
+          "rs_pg": 9.509,
+          "ra_pg": 9.509,
+          "runs_pg": 19.018,
+          "teams": 1
+        },
+        "SEC": {
+          "rs_pg": 7.354,
+          "ra_pg": 7.354,
+          "runs_pg": 14.708,
+          "teams": 16
+        },
+        "SoCon": {
+          "rs_pg": 7.191,
+          "ra_pg": 7.191,
+          "runs_pg": 14.382,
+          "teams": 8
+        },
+        "American": {
+          "rs_pg": 6.771,
+          "ra_pg": 6.771,
+          "runs_pg": 13.542,
+          "teams": 10
+        },
+        "Mountain West": {
+          "rs_pg": 7.092,
+          "ra_pg": 7.092,
+          "runs_pg": 14.184,
+          "teams": 9
+        },
+        "Big 12": {
+          "rs_pg": 7.23,
+          "ra_pg": 7.23,
+          "runs_pg": 14.46,
+          "teams": 14
+        },
+        "SWAC": {
+          "rs_pg": 6.918,
+          "ra_pg": 6.918,
+          "runs_pg": 13.836,
+          "teams": 12
+        },
+        "FL": {
+          "rs_pg": 8.525,
+          "ra_pg": 8.525,
+          "runs_pg": 17.05,
+          "teams": 1
+        },
+        "Big South": {
+          "rs_pg": 6.597,
+          "ra_pg": 6.597,
+          "runs_pg": 13.194,
+          "teams": 9
+        },
+        "Atlantic 10": {
+          "rs_pg": 6.808,
+          "ra_pg": 6.808,
+          "runs_pg": 13.616,
+          "teams": 12
+        },
+        "Big Ten": {
+          "rs_pg": 6.864,
+          "ra_pg": 6.864,
+          "runs_pg": 13.728,
+          "teams": 17
+        },
+        "CUSA": {
+          "rs_pg": 6.74,
+          "ra_pg": 6.74,
+          "runs_pg": 13.48,
+          "teams": 12
+        },
+        "Sun Belt": {
+          "rs_pg": 6.589,
+          "ra_pg": 6.589,
+          "runs_pg": 13.178,
+          "teams": 14
+        },
+        "CAA": {
+          "rs_pg": 6.445,
+          "ra_pg": 6.445,
+          "runs_pg": 12.89,
+          "teams": 11
+        },
+        "OVC": {
+          "rs_pg": 6.756,
+          "ra_pg": 6.756,
+          "runs_pg": 13.512,
+          "teams": 10
+        },
+        "Horizon": {
+          "rs_pg": 6.29,
+          "ra_pg": 6.29,
+          "runs_pg": 12.58,
+          "teams": 5
+        },
+        "WAC": {
+          "rs_pg": 6.885,
+          "ra_pg": 6.885,
+          "runs_pg": 13.77,
+          "teams": 7
+        },
+        "MAAC": {
+          "rs_pg": 6.211,
+          "ra_pg": 6.211,
+          "runs_pg": 12.422,
+          "teams": 13
+        },
+        "MAC": {
+          "rs_pg": 6.628,
+          "ra_pg": 6.628,
+          "runs_pg": 13.256,
+          "teams": 11
+        },
+        "Ivy League": {
+          "rs_pg": 5.614,
+          "ra_pg": 5.614,
+          "runs_pg": 11.228,
+          "teams": 8
+        },
+        "WCC": {
+          "rs_pg": 5.639,
+          "ra_pg": 5.639,
+          "runs_pg": 11.278,
+          "teams": 8
+        },
+        "America East": {
+          "rs_pg": 6.242,
+          "ra_pg": 6.242,
+          "runs_pg": 12.484,
+          "teams": 7
+        },
+        "Southland": {
+          "rs_pg": 6.206,
+          "ra_pg": 6.206,
+          "runs_pg": 12.412,
+          "teams": 11
+        },
+        "MVC": {
+          "rs_pg": 5.949,
+          "ra_pg": 5.949,
+          "runs_pg": 11.898,
+          "teams": 9
+        },
+        "CA": {
+          "rs_pg": 6.185,
+          "ra_pg": 6.185,
+          "runs_pg": 12.37,
+          "teams": 2
+        },
+        "ASUN": {
+          "rs_pg": 6.17,
+          "ra_pg": 6.17,
+          "runs_pg": 12.34,
+          "teams": 11
+        },
+        "Big East": {
+          "rs_pg": 6.011,
+          "ra_pg": 6.011,
+          "runs_pg": 12.022,
+          "teams": 7
+        },
+        "Summit League": {
+          "rs_pg": 5.951,
+          "ra_pg": 5.951,
+          "runs_pg": 11.902,
+          "teams": 5
+        },
+        "DI Independent": {
+          "rs_pg": 6.627,
+          "ra_pg": 6.627,
+          "runs_pg": 13.254,
+          "teams": 1
+        },
+        "Patriot": {
+          "rs_pg": 5.806,
+          "ra_pg": 5.806,
+          "runs_pg": 11.612,
+          "teams": 6
+        },
+        "Big West": {
+          "rs_pg": 5.517,
+          "ra_pg": 5.517,
+          "runs_pg": 11.034,
+          "teams": 11
+        },
+        "NY": {
+          "rs_pg": 6.226,
+          "ra_pg": 6.226,
+          "runs_pg": 12.452,
+          "teams": 1
+        },
+        "MN": {
+          "rs_pg": 5.54,
+          "ra_pg": 5.54,
+          "runs_pg": 11.08,
+          "teams": 1
+        },
+        "NC": {
+          "rs_pg": 3.907,
+          "ra_pg": 3.907,
+          "runs_pg": 7.814,
+          "teams": 1
+        }
+      }
+    },
+    "D2": {
+      "national": {
+        "rs_pg": 7.082,
+        "ra_pg": 7.082,
+        "runs_pg": 14.164,
+        "teams": 253
+      },
+      "conferences": {
+        "Mid-America Intercollegiate": {
+          "rs_pg": 7.951,
+          "ra_pg": 7.951,
+          "runs_pg": 15.902,
+          "teams": 13
+        },
+        "Conference Carolinas": {
+          "rs_pg": 8.624,
+          "ra_pg": 8.624,
+          "runs_pg": 17.248,
+          "teams": 12
+        },
+        "RMAC": {
+          "rs_pg": 8.854,
+          "ra_pg": 8.854,
+          "runs_pg": 17.708,
+          "teams": 8
+        },
+        "SIAC": {
+          "rs_pg": 7.705,
+          "ra_pg": 7.705,
+          "runs_pg": 15.41,
+          "teams": 11
+        },
+        "NE10": {
+          "rs_pg": 6.93,
+          "ra_pg": 6.93,
+          "runs_pg": 13.86,
+          "teams": 10
+        },
+        "SAC": {
+          "rs_pg": 7.136,
+          "ra_pg": 7.136,
+          "runs_pg": 14.272,
+          "teams": 11
+        },
+        "GLIAC": {
+          "rs_pg": 7.32,
+          "ra_pg": 7.32,
+          "runs_pg": 14.64,
+          "teams": 6
+        },
+        "CO": {
+          "rs_pg": 9.423,
+          "ra_pg": 9.423,
+          "runs_pg": 18.846,
+          "teams": 1
+        },
+        "Peach Belt": {
+          "rs_pg": 7.434,
+          "ra_pg": 7.434,
+          "runs_pg": 14.868,
+          "teams": 10
+        },
+        "GLVC": {
+          "rs_pg": 7.638,
+          "ra_pg": 7.638,
+          "runs_pg": 15.276,
+          "teams": 13
+        },
+        "GA": {
+          "rs_pg": 8.073,
+          "ra_pg": 8.073,
+          "runs_pg": 16.146,
+          "teams": 2
+        },
+        "CCAA": {
+          "rs_pg": 7.126,
+          "ra_pg": 7.126,
+          "runs_pg": 14.252,
+          "teams": 9
+        },
+        "Great Northwest": {
+          "rs_pg": 6.348,
+          "ra_pg": 6.348,
+          "runs_pg": 12.696,
+          "teams": 5
+        },
+        "Sunshine State": {
+          "rs_pg": 7.108,
+          "ra_pg": 7.108,
+          "runs_pg": 14.216,
+          "teams": 10
+        },
+        "Lone Star": {
+          "rs_pg": 7.347,
+          "ra_pg": 7.347,
+          "runs_pg": 14.694,
+          "teams": 13
+        },
+        "PacWest": {
+          "rs_pg": 6.417,
+          "ra_pg": 6.417,
+          "runs_pg": 12.834,
+          "teams": 12
+        },
+        "GAC": {
+          "rs_pg": 7.244,
+          "ra_pg": 7.244,
+          "runs_pg": 14.488,
+          "teams": 12
+        },
+        "SD": {
+          "rs_pg": 8.705,
+          "ra_pg": 8.705,
+          "runs_pg": 17.41,
+          "teams": 1
+        },
+        "PSAC": {
+          "rs_pg": 6.395,
+          "ra_pg": 6.395,
+          "runs_pg": 12.79,
+          "teams": 14
+        },
+        "DE": {
+          "rs_pg": 8.466,
+          "ra_pg": 8.466,
+          "runs_pg": 16.932,
+          "teams": 1
+        },
+        "NSIC": {
+          "rs_pg": 6.42,
+          "ra_pg": 6.42,
+          "runs_pg": 12.84,
+          "teams": 13
+        },
+        "CACC": {
+          "rs_pg": 7.066,
+          "ra_pg": 7.066,
+          "runs_pg": 14.132,
+          "teams": 9
+        },
+        "Gulf South": {
+          "rs_pg": 6.625,
+          "ra_pg": 6.625,
+          "runs_pg": 13.25,
+          "teams": 11
+        },
+        "ECC": {
+          "rs_pg": 6.92,
+          "ra_pg": 6.92,
+          "runs_pg": 13.84,
+          "teams": 5
+        },
+        "DII Independent": {
+          "rs_pg": 6.214,
+          "ra_pg": 6.214,
+          "runs_pg": 12.428,
+          "teams": 2
+        },
+        "TX": {
+          "rs_pg": 7.414,
+          "ra_pg": 7.414,
+          "runs_pg": 14.828,
+          "teams": 1
+        },
+        "MI": {
+          "rs_pg": 7.358,
+          "ra_pg": 7.358,
+          "runs_pg": 14.716,
+          "teams": 1
+        },
+        "NY": {
+          "rs_pg": 6.837,
+          "ra_pg": 6.837,
+          "runs_pg": 13.674,
+          "teams": 2
+        },
+        "SC": {
+          "rs_pg": 7.34,
+          "ra_pg": 7.34,
+          "runs_pg": 14.68,
+          "teams": 1
+        },
+        "G-MAC": {
+          "rs_pg": 6.068,
+          "ra_pg": 6.068,
+          "runs_pg": 12.136,
+          "teams": 12
+        },
+        "NE": {
+          "rs_pg": 7.231,
+          "ra_pg": 7.231,
+          "runs_pg": 14.462,
+          "teams": 1
+        },
+        "TN": {
+          "rs_pg": 6.525,
+          "ra_pg": 6.525,
+          "runs_pg": 13.05,
+          "teams": 2
+        },
+        "MEC": {
+          "rs_pg": 5.341,
+          "ra_pg": 5.341,
+          "runs_pg": 10.682,
+          "teams": 10
+        },
+        "WV": {
+          "rs_pg": 5.745,
+          "ra_pg": 5.745,
+          "runs_pg": 11.49,
+          "teams": 2
+        },
+        "PA": {
+          "rs_pg": 5.483,
+          "ra_pg": 5.483,
+          "runs_pg": 10.966,
+          "teams": 3
+        },
+        "MO": {
+          "rs_pg": 6.313,
+          "ra_pg": 6.313,
+          "runs_pg": 12.626,
+          "teams": 2
+        },
+        "FL": {
+          "rs_pg": 6.08,
+          "ra_pg": 6.08,
+          "runs_pg": 12.16,
+          "teams": 1
+        }
+      }
+    },
+    "D3": {
+      "national": {
+        "rs_pg": 7.178,
+        "ra_pg": 7.178,
+        "runs_pg": 14.356,
+        "teams": 379
+      },
+      "conferences": {
+        "Little East": {
+          "rs_pg": 7.637,
+          "ra_pg": 7.637,
+          "runs_pg": 15.274,
+          "teams": 9
+        },
+        "Centennial": {
+          "rs_pg": 8.975,
+          "ra_pg": 8.975,
+          "runs_pg": 17.95,
+          "teams": 10
+        },
+        "SCIAC": {
+          "rs_pg": 7.879,
+          "ra_pg": 7.879,
+          "runs_pg": 15.758,
+          "teams": 9
+        },
+        "NCAC": {
+          "rs_pg": 7.67,
+          "ra_pg": 7.67,
+          "runs_pg": 15.34,
+          "teams": 9
+        },
+        "ODAC": {
+          "rs_pg": 8.063,
+          "ra_pg": 8.063,
+          "runs_pg": 16.126,
+          "teams": 10
+        },
+        "NJAC": {
+          "rs_pg": 7.744,
+          "ra_pg": 7.744,
+          "runs_pg": 15.488,
+          "teams": 10
+        },
+        "United East": {
+          "rs_pg": 7.352,
+          "ra_pg": 7.352,
+          "runs_pg": 14.704,
+          "teams": 11
+        },
+        "Empire 8": {
+          "rs_pg": 7.744,
+          "ra_pg": 7.744,
+          "runs_pg": 15.488,
+          "teams": 9
+        },
+        "UMAC": {
+          "rs_pg": 7.244,
+          "ra_pg": 7.244,
+          "runs_pg": 14.488,
+          "teams": 5
+        },
+        "NEWMAC": {
+          "rs_pg": 7.212,
+          "ra_pg": 7.212,
+          "runs_pg": 14.424,
+          "teams": 7
+        },
+        "SLIAC": {
+          "rs_pg": 7.6,
+          "ra_pg": 7.6,
+          "runs_pg": 15.2,
+          "teams": 8
+        },
+        "Skyline": {
+          "rs_pg": 7.432,
+          "ra_pg": 7.432,
+          "runs_pg": 14.864,
+          "teams": 8
+        },
+        "NACC": {
+          "rs_pg": 7.314,
+          "ra_pg": 7.314,
+          "runs_pg": 14.628,
+          "teams": 10
+        },
+        "MN": {
+          "rs_pg": 6.704,
+          "ra_pg": 6.704,
+          "runs_pg": 13.408,
+          "teams": 5
+        },
+        "MWC": {
+          "rs_pg": 7.264,
+          "ra_pg": 7.264,
+          "runs_pg": 14.528,
+          "teams": 7
+        },
+        "Michigan Intercol. Ath. Assn.": {
+          "rs_pg": 7.145,
+          "ra_pg": 7.145,
+          "runs_pg": 14.29,
+          "teams": 8
+        },
+        "MAC Freedom": {
+          "rs_pg": 7.888,
+          "ra_pg": 7.888,
+          "runs_pg": 15.776,
+          "teams": 7
+        },
+        "OAC": {
+          "rs_pg": 7.173,
+          "ra_pg": 7.173,
+          "runs_pg": 14.346,
+          "teams": 8
+        },
+        "MA": {
+          "rs_pg": 8.351,
+          "ra_pg": 8.351,
+          "runs_pg": 16.702,
+          "teams": 2
+        },
+        "Great Northeast": {
+          "rs_pg": 6.603,
+          "ra_pg": 6.603,
+          "runs_pg": 13.206,
+          "teams": 9
+        },
+        "AMCC": {
+          "rs_pg": 6.726,
+          "ra_pg": 6.726,
+          "runs_pg": 13.452,
+          "teams": 8
+        },
+        "VA": {
+          "rs_pg": 9.021,
+          "ra_pg": 9.021,
+          "runs_pg": 18.042,
+          "teams": 2
+        },
+        "SUNYAC": {
+          "rs_pg": 6.721,
+          "ra_pg": 6.721,
+          "runs_pg": 13.442,
+          "teams": 7
+        },
+        "ASC": {
+          "rs_pg": 8.27,
+          "ra_pg": 8.27,
+          "runs_pg": 16.54,
+          "teams": 4
+        },
+        "NWC": {
+          "rs_pg": 6.776,
+          "ra_pg": 6.776,
+          "runs_pg": 13.552,
+          "teams": 8
+        },
+        "IL": {
+          "rs_pg": 7.504,
+          "ra_pg": 7.504,
+          "runs_pg": 15.008,
+          "teams": 6
+        },
+        "Liberty League": {
+          "rs_pg": 7.358,
+          "ra_pg": 7.358,
+          "runs_pg": 14.716,
+          "teams": 9
+        },
+        "HCAC": {
+          "rs_pg": 6.724,
+          "ra_pg": 6.724,
+          "runs_pg": 13.448,
+          "teams": 9
+        },
+        "WIAC": {
+          "rs_pg": 7.133,
+          "ra_pg": 7.133,
+          "runs_pg": 14.266,
+          "teams": 8
+        },
+        "USA South": {
+          "rs_pg": 7.348,
+          "ra_pg": 7.348,
+          "runs_pg": 14.696,
+          "teams": 8
+        },
+        "PAC": {
+          "rs_pg": 6.881,
+          "ra_pg": 6.881,
+          "runs_pg": 13.762,
+          "teams": 10
+        },
+        "CCS": {
+          "rs_pg": 7.569,
+          "ra_pg": 7.569,
+          "runs_pg": 15.138,
+          "teams": 6
+        },
+        "C2C": {
+          "rs_pg": 7.878,
+          "ra_pg": 7.878,
+          "runs_pg": 15.756,
+          "teams": 3
+        },
+        "UAA": {
+          "rs_pg": 7.624,
+          "ra_pg": 7.624,
+          "runs_pg": 15.248,
+          "teams": 6
+        },
+        "MAC Commonwealth": {
+          "rs_pg": 6.649,
+          "ra_pg": 6.649,
+          "runs_pg": 13.298,
+          "teams": 7
+        },
+        "CNE": {
+          "rs_pg": 6.93,
+          "ra_pg": 6.93,
+          "runs_pg": 13.86,
+          "teams": 9
+        },
+        "SCAC": {
+          "rs_pg": 6.927,
+          "ra_pg": 6.927,
+          "runs_pg": 13.854,
+          "teams": 7
+        },
+        "NESCAC": {
+          "rs_pg": 7.042,
+          "ra_pg": 7.042,
+          "runs_pg": 14.084,
+          "teams": 8
+        },
+        "MO": {
+          "rs_pg": 8.311,
+          "ra_pg": 8.311,
+          "runs_pg": 16.622,
+          "teams": 1
+        },
+        "SAA": {
+          "rs_pg": 7.514,
+          "ra_pg": 7.514,
+          "runs_pg": 15.028,
+          "teams": 6
+        },
+        "CT": {
+          "rs_pg": 7.183,
+          "ra_pg": 7.183,
+          "runs_pg": 14.366,
+          "teams": 3
+        },
+        "MASCAC": {
+          "rs_pg": 5.944,
+          "ra_pg": 5.944,
+          "runs_pg": 11.888,
+          "teams": 9
+        },
+        "Landmark": {
+          "rs_pg": 7.094,
+          "ra_pg": 7.094,
+          "runs_pg": 14.188,
+          "teams": 9
+        },
+        "CUNYAC": {
+          "rs_pg": 6.073,
+          "ra_pg": 6.073,
+          "runs_pg": 12.146,
+          "teams": 4
+        },
+        "L.I.": {
+          "rs_pg": 7.929,
+          "ra_pg": 7.929,
+          "runs_pg": 15.858,
+          "teams": 1
+        },
+        "American Rivers": {
+          "rs_pg": 6.464,
+          "ra_pg": 6.464,
+          "runs_pg": 12.928,
+          "teams": 8
+        },
+        "TX": {
+          "rs_pg": 6.918,
+          "ra_pg": 6.918,
+          "runs_pg": 13.836,
+          "teams": 4
+        },
+        "NY": {
+          "rs_pg": 6.527,
+          "ra_pg": 6.527,
+          "runs_pg": 13.054,
+          "teams": 3
+        },
+        "CCIW": {
+          "rs_pg": 7.148,
+          "ra_pg": 7.148,
+          "runs_pg": 14.296,
+          "teams": 5
+        },
+        "Atlantic East": {
+          "rs_pg": 6.656,
+          "ra_pg": 6.656,
+          "runs_pg": 13.312,
+          "teams": 5
+        },
+        "TN": {
+          "rs_pg": 7.447,
+          "ra_pg": 7.447,
+          "runs_pg": 14.894,
+          "teams": 1
+        },
+        "NJ": {
+          "rs_pg": 7.432,
+          "ra_pg": 7.432,
+          "runs_pg": 14.864,
+          "teams": 1
+        },
+        "MIAC": {
+          "rs_pg": 6.017,
+          "ra_pg": 6.017,
+          "runs_pg": 12.034,
+          "teams": 8
+        },
+        "WI": {
+          "rs_pg": 6.831,
+          "ra_pg": 6.831,
+          "runs_pg": 13.662,
+          "teams": 2
+        },
+        "WV": {
+          "rs_pg": 7.116,
+          "ra_pg": 7.116,
+          "runs_pg": 14.232,
+          "teams": 1
+        },
+        "ME": {
+          "rs_pg": 6.932,
+          "ra_pg": 6.932,
+          "runs_pg": 13.864,
+          "teams": 2
+        },
+        "Providence": {
+          "rs_pg": 6.769,
+          "ra_pg": 6.769,
+          "runs_pg": 13.538,
+          "teams": 1
+        },
+        "OR": {
+          "rs_pg": 6.75,
+          "ra_pg": 6.75,
+          "runs_pg": 13.5,
+          "teams": 1
+        },
+        "North Atlantic": {
+          "rs_pg": 6.108,
+          "ra_pg": 6.108,
+          "runs_pg": 12.216,
+          "teams": 6
+        },
+        "MD": {
+          "rs_pg": 6.479,
+          "ra_pg": 6.479,
+          "runs_pg": 12.958,
+          "teams": 2
+        },
+        "LA": {
+          "rs_pg": 6.381,
+          "ra_pg": 6.381,
+          "runs_pg": 12.762,
+          "teams": 1
+        },
+        "IN": {
+          "rs_pg": 6.302,
+          "ra_pg": 6.302,
+          "runs_pg": 12.604,
+          "teams": 1
+        },
+        "IA": {
+          "rs_pg": 6.025,
+          "ra_pg": 6.025,
+          "runs_pg": 12.05,
+          "teams": 1
+        },
+        "PA": {
+          "rs_pg": 5.561,
+          "ra_pg": 5.561,
+          "runs_pg": 11.122,
+          "teams": 3
+        },
+        "AR": {
+          "rs_pg": 5.692,
+          "ra_pg": 5.692,
+          "runs_pg": 11.384,
+          "teams": 1
+        },
+        "Brkln": {
+          "rs_pg": 5.125,
+          "ra_pg": 5.125,
+          "runs_pg": 10.25,
+          "teams": 1
+        },
+        "OH": {
+          "rs_pg": 4.132,
+          "ra_pg": 4.132,
+          "runs_pg": 8.264,
+          "teams": 1
+        },
+        "DIII Independent": {
+          "rs_pg": 1.969,
+          "ra_pg": 1.969,
+          "runs_pg": 3.938,
+          "teams": 1
+        }
+      }
     }
   }
 }

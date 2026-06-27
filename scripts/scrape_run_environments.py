@@ -131,22 +131,107 @@ def scrape_d1_warrennolan():
             "conferences": {}}
 
 
-def scrape_ncaa_via_scraperapi(levels=("1", "2", "3")):
-    """D1/D2/D3 level + conference run environments from stats.ncaa.org via
-    ScraperAPI (WAF bypass). Runs on the SERVER / GH Action where SCRAPER_API_KEY
-    exists. Returns {} (and logs) if the key is absent so local runs degrade
-    gracefully. NOTE: stats.ncaa.org ranking-id discovery is finalized on the
-    server where the page is reachable."""
+import re
+
+# stats.ncaa.org TEAM "Scoring" ranking gives every team's G, total R, runs/game,
+# and conference (in parens) in one table — exactly the run environment, with the
+# conference split, in a single pull per division.
+NCAA_SCORING_STAT_SEQ = 213
+NCAA_DIV_LEVEL = {"1": "D1", "2": "D2", "3": "D3"}
+
+
+def _scraperapi(url, key):
+    return requests.get("https://api.scraperapi.com/",
+                        params={"api_key": key, "url": url}, timeout=150).text
+
+
+def _ncaa_final_period(div, key):
+    """The 'Final Statistics' ranking_period id for a division (full-season)."""
+    h = _scraperapi(f"https://stats.ncaa.org/rankings?sport_code=MBA&division={div}", key)
+    soup = BeautifulSoup(h, "html.parser")
+    sel = next((s for s in soup.find_all("select") if (s.get("name") or "") == "rp"), None)
+    if sel:
+        for o in sel.find_all("option"):
+            if "final" in o.get_text(" ", strip=True).lower():
+                return o.get("value", "").replace(".0", "")
+        # fall back to the highest-numbered period (latest)
+        ids = [o.get("value", "").replace(".0", "") for o in sel.find_all("option") if o.get("value")]
+        ids = [i for i in ids if i.isdigit()]
+        if ids:
+            return max(ids, key=int)
+    return None
+
+
+def _ncaa_runenv(div, rp, key):
+    """sum-runs / sum-games for a division's team Scoring ranking → level +
+    per-conference run env (runs per team-game). Conference is in '(...)'."""
+    url = (f"https://stats.ncaa.org/rankings/national_ranking?academic_year=2026.0"
+           f"&division={div}.0&ranking_period={rp}.0&sport_code=MBA&stat_seq={NCAA_SCORING_STAT_SEQ}")
+    soup = BeautifulSoup(_scraperapi(url, key), "html.parser")
+    tbl = soup.find("table")
+    if not tbl:
+        return None
+    heads = [th.get_text(strip=True).lower() for th in tbl.find_all("th")]
+    try:
+        gi, ri = heads.index("g"), heads.index("r")
+    except ValueError:
+        return None
+    by_conf, tg, tr_ = {}, 0.0, 0.0
+    for row in tbl.find_all("tr"):
+        cells = [c.get_text(" ", strip=True) for c in row.find_all(["th", "td"])]
+        if len(cells) <= max(gi, ri):
+            continue
+        m = re.search(r"\(([^)]+)\)", cells[1])
+        try:
+            g = float(cells[gi].replace(",", "")); r = float(cells[ri].replace(",", ""))
+        except ValueError:
+            continue
+        if not g:
+            continue
+        tg += g; tr_ += r
+        if m:
+            c = m.group(1).strip()
+            by_conf.setdefault(c, [0.0, 0.0])
+            by_conf[c][0] += r; by_conf[c][1] += g
+    if not tg:
+        return None
+
+    def env(r, g):  # runs/team-game; runs_pg (both teams) = 2x (league identity)
+        rs = round(r / g, 3)
+        return {"rs_pg": rs, "ra_pg": rs, "runs_pg": round(2 * rs, 3)}
+
+    confs = {c: {**env(r, g), "teams": 0} for c, (r, g) in by_conf.items() if g}
+    # team counts per conference
+    for row in tbl.find_all("tr"):
+        cells = [c.get_text(" ", strip=True) for c in row.find_all(["th", "td"])]
+        if len(cells) > 1:
+            m = re.search(r"\(([^)]+)\)", cells[1])
+            if m and m.group(1).strip() in confs:
+                confs[m.group(1).strip()]["teams"] += 1
+    nat = env(tr_, tg)
+    nat["teams"] = sum(1 for row in tbl.find_all("tr") if row.find_all("td"))
+    return {"national": nat, "conferences": confs}
+
+
+def scrape_ncaa_via_scraperapi(divs=("1", "2", "3")):
+    """D1/D2/D3 level + per-conference run environments from stats.ncaa.org's team
+    Scoring ranking, via ScraperAPI (the site is WAF-blocked). Needs SCRAPER_API_KEY."""
     key = os.getenv("SCRAPER_API_KEY")
     if not key:
-        print("  [ncaa] SCRAPER_API_KEY not set — skipping D1/D2/D3 (run on server).")
+        print("  [ncaa] SCRAPER_API_KEY not set — skipping D1/D2/D3.")
         return {}
-    # Placeholder for the server pass: fetch stats.ncaa.org team 'Scoring' and
-    # 'Scoring Defense' rankings per division (all teams, with conference) and
-    # aggregate to level + per-conference runs/team-game. Implemented/iterated on
-    # the server where stats.ncaa.org is reachable through ScraperAPI.
-    print("  [ncaa] ScraperAPI present — server pass not yet wired; see runbook.")
-    return {}
+    out = {}
+    for div in divs:
+        rp = _ncaa_final_period(div, key)
+        if not rp:
+            print(f"  [ncaa] div {div}: no ranking period found — skipping.")
+            continue
+        res = _ncaa_runenv(div, rp, key)
+        if res:
+            out[NCAA_DIV_LEVEL[div]] = res
+            print(f"  [ncaa] {NCAA_DIV_LEVEL[div]} (rp {rp}): national {res['national']['runs_pg']} "
+                  f"runs/G, {len(res['conferences'])} conferences")
+    return out
 
 
 def main():
