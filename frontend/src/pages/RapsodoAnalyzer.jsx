@@ -368,6 +368,13 @@ function Roster({ players, loading, onPick }) {
     return String(x).localeCompare(String(y)) * sort.dir
   })
   return (
+    <div>
+    <div className="mb-2 flex items-baseline justify-between gap-2">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+        Staff board <span className="font-normal normal-case text-gray-400">· {players.length} pitcher{players.length === 1 ? '' : 's'}</span>
+      </h3>
+      <span className="text-xs text-gray-400">Click any column to rank your staff · click a row to open the profile</span>
+    </div>
     <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
       <table className="w-full text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
@@ -397,6 +404,7 @@ function Roster({ players, loading, onPick }) {
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   )
 }

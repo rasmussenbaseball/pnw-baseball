@@ -303,14 +303,20 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None, tunn
 
     # ── Sequencing off tunneling ──
     bp = (tunnel or {}).get("best_pair")
-    if bp and bp.get("grade", 0) >= 68 and (bp.get("post_break") or 0) >= 6:
+    if bp and (bp.get("post_break") or 0) >= 3:
+        g = bp.get("grade", 0)
+        strong = g >= 48
         out.append({
-            "kind": "strength",
-            "title": f"{bp['a'].capitalize()} ↔ {bp['b']} tunnel tightly",
+            "kind": "strength" if strong else "info",
+            "title": (f"{bp['a'].capitalize()} ↔ {bp['b']} tunnel tightly" if strong
+                      else f"Tightest tunnel: {bp['a']} ↔ {bp['b']}"),
             "detail": (f"These two stay within ~{bp['tunnel_diff']}\" of each other at the hitter's "
                        f"commit point, then separate to ~{bp['plate_diff']}\" by the plate "
-                       f"(~{bp['post_break']}\" of late, post-commit break). Sequence them back-to-back "
-                       "in the same window — same look out of the hand, different finish."),
+                       f"(~{bp['post_break']}\" of late, post-commit break). "
+                       + ("Sequence them back-to-back in the same window — same look out of the hand, "
+                          "different finish." if strong else
+                          "It's your best tunnel pair, though the separation is modest — lean on velo and "
+                          "location to finish hitters off.")),
             "caveat": "Potential tunneling from average shapes (no hitter or sequence in a bullpen); "
                       "pitch-to-pitch release consistency decides how much carries to a game.",
         })

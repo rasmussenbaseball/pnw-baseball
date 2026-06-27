@@ -160,8 +160,9 @@ def ssw_flags(arsenal, hand=None):
         # Use RAW hb (un-normalize lefties) so movement & tilt share one frame.
         move = _movement_dir_deg(ivb, hb * flip)
         dev = abs((move - float(tilt) + 180) % 360 - 180)   # 0..180
-        # decent spin efficiency (not pure gyro) + a real directional gap = candidate
-        if dev >= 35 and (eff is None or float(eff) >= 55) and math.hypot(ivb, hb) >= 6:
+        # decent spin efficiency (not pure gyro) + a real directional gap = candidate.
+        # Most clean pitches sit <10° off-axis; ~25°+ is a genuine SSW outlier.
+        if dev >= 25 and (eff is None or float(eff) >= 55) and math.hypot(ivb, hb) >= 6:
             out[a["pitch"]] = {
                 "deviation_deg": round(dev),
                 "note": (f"Moves ~{round(dev)}° off its spin axis — a seam-shifted-wake "
