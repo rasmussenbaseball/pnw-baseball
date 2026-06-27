@@ -690,11 +690,11 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
 // Catcher's-eye overlay: both pitches share a release + aim, so each sits on its
 // break vector (×fraction² at the commit point, ×1 at the plate). Tight cluster at
 // the commit point + spread at the plate = deceptive.
-function TunnelPlot({ fb, sec, fraction, color }) {
+function TunnelPlot({ fb, anchorLabel, sec, fraction, color }) {
   const W = 240, R = 96, cx = W / 2, cy = W / 2
   const f2 = (fraction ?? 0.55) ** 2
   const pts = [
-    { ...fb, c: '#1f2937', label: 'FB' },
+    { ...fb, c: '#1f2937', label: anchorLabel || 'anchor' },
     { ...sec, c: color, label: sec.pitch },
   ]
   const maxB = Math.max(8, ...pts.map((p) => Math.hypot(p.arm_hb || 0, p.ivb || 0)))
@@ -729,15 +729,18 @@ function TunnelPlot({ fb, sec, fraction, color }) {
 }
 
 function TunnelSection({ tunnel, ssw, arsenal, hand }) {
+  const anchors = tunnel?.anchors || []
+  const byAnchor = tunnel?.by_anchor || {}
+  const [anchor, setAnchor] = useState(null)
   const [sel, setSel] = useState(null)
-  const pairs = tunnel?.pairs || []
-  const fbName = tunnel?.fb
+  const anchorName = (anchor && byAnchor[anchor]) ? anchor : (tunnel?.default_anchor || anchors[0])
+  const pairs = byAnchor[anchorName] || []
   const byName = Object.fromEntries((arsenal || []).map((a) => [a.pitch, a]))
-  const fbC = byName[fbName]
+  const anchorC = byName[anchorName]
   const active = pairs.find((p) => p.pitch === sel) || pairs[0]
   const secC = active && byName[active.pitch]
   const sswEntries = Object.entries(ssw || {})
-  if (!fbName || !pairs.length) return null
+  if (!anchorName || !pairs.length) return null
   const hbSign = hand === 'L' ? -1 : 1
   const sgn = (c) => c && ({ ...c, arm_hb: (c.arm_hb || 0) * hbSign })
   const gradeColor = (g) => g >= 70 ? 'text-emerald-600 dark:text-emerald-400'
@@ -746,15 +749,31 @@ function TunnelSection({ tunnel, ssw, arsenal, hand }) {
     <div className="mt-6">
       <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">Tunneling</h3>
       <p className="mb-3 max-w-3xl text-xs text-gray-400">
-        How each secondary plays off the <span className="font-medium">{fbName}</span>. At the hitter's
-        commit point (~23.8 ft from the plate, ~175 ms before contact) tight pitches still look alike;
-        a small <em>commit gap</em> with a big <em>plate gap</em> means same look, different finish.
-        Potential tunneling from average shapes — no hitter or sequence in a bullpen.
+        How each pitch plays off another. At the hitter's commit point (~23.8 ft from the plate,
+        ~175 ms before contact) tightly-tunneled pitches still look alike; a small <em>commit gap</em>
+        with a big <em>plate gap</em> means same look, different finish. Pick any pitch to tunnel
+        <em> from</em> — pitches tunnel off cutters, sinkers and sliders, not just fastballs.
+        Potential tunneling from average shapes (no hitter or sequence in a bullpen).
       </p>
+      {anchors.length > 2 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-medium text-gray-500">Tunnel from:</span>
+          {anchors.map((a) => (
+            <button key={a} onClick={() => { setAnchor(a); setSel(null) }}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${
+                anchorName === a
+                  ? 'border-transparent text-white'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}
+              style={anchorName === a ? { backgroundColor: colorFor(a) } : undefined}>
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-col gap-5 lg:flex-row">
         <div className="shrink-0">
-          {fbC && secC && (
-            <TunnelPlot fb={sgn(fbC)} sec={sgn(secC)} fraction={active.fraction}
+          {anchorC && secC && (
+            <TunnelPlot fb={sgn(anchorC)} anchorLabel={anchorName} sec={sgn(secC)} fraction={active.fraction}
               color={colorFor(active.pitch)} />
           )}
           <div className="mt-1 flex flex-wrap gap-1">
@@ -783,10 +802,10 @@ function TunnelSection({ tunnel, ssw, arsenal, hand }) {
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500">
                   <th className="py-1.5 pr-2">Pitch</th>
-                  <th className="py-1.5 px-2 text-right" title="Separation from the fastball at the commit point — smaller looks the same longer">Commit gap</th>
+                  <th className="py-1.5 px-2 text-right" title={`Separation from the ${anchorName} at the commit point — smaller looks the same longer`}>Commit gap</th>
                   <th className="py-1.5 px-2 text-right" title="Separation at the plate">Plate gap</th>
                   <th className="py-1.5 px-2 text-right" title="Movement after the commit point — late, unhittable break">Late break</th>
-                  <th className="py-1.5 px-2 text-right" title="Velocity difference off the fastball">Velo Δ</th>
+                  <th className="py-1.5 px-2 text-right" title={`Velocity difference off the ${anchorName}`}>Velo Δ</th>
                   <th className="py-1.5 px-2 text-right" title="Tunnel grade: tight at commit + late separation + velo gap (transparent, shape-only)">Tunnel</th>
                 </tr>
               </thead>

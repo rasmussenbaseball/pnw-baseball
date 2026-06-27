@@ -302,31 +302,33 @@ def generate_suggestions(arsenal, handedness=None, n_reliable=0, lean=None, tunn
         })
 
     # ── Sequencing off tunneling ──
-    fb = (tunnel or {}).get("fb")
-    pairs = (tunnel or {}).get("pairs") or []
-    if fb and pairs:
-        strong = [p for p in pairs if p["grade"] >= 68 and (p.get("post_break") or 0) >= 6]
-        if strong:
-            b = strong[0]
-            out.append({
-                "kind": "strength",
-                "title": f"{b['pitch'].capitalize()} tunnels off the {fb}",
-                "detail": (f"It stays within ~{b['tunnel_diff']}\" of the {fb} at the hitter's commit "
-                           f"point, then separates to ~{b['plate_diff']}\" by the plate "
-                           f"(~{b['post_break']}\" of late, post-commit break). Throw it right behind "
-                           f"the {fb} in the same window — same look, different finish."),
-                "caveat": "Potential tunneling from average shapes (no hitter or sequence in a bullpen); "
-                          "pitch-to-pitch release consistency decides how much carries to a game.",
-            })
-        early = [p for p in pairs if (p.get("tunnel_diff") or 0) >= 9]
-        if early:
-            e = max(early, key=lambda x: x["tunnel_diff"])
-            out.append({
-                "kind": "flag",
-                "title": f"{e['pitch'].capitalize()} shows itself early",
-                "detail": (f"It's already ~{e['tunnel_diff']}\" off the {fb} at the commit point, so a "
-                           f"hitter can read it before deciding. Tighten its early path/slot to the {fb}, "
-                           "or set it up off a different pitch."),
-            })
+    bp = (tunnel or {}).get("best_pair")
+    if bp and bp.get("grade", 0) >= 68 and (bp.get("post_break") or 0) >= 6:
+        out.append({
+            "kind": "strength",
+            "title": f"{bp['a'].capitalize()} ↔ {bp['b']} tunnel tightly",
+            "detail": (f"These two stay within ~{bp['tunnel_diff']}\" of each other at the hitter's "
+                       f"commit point, then separate to ~{bp['plate_diff']}\" by the plate "
+                       f"(~{bp['post_break']}\" of late, post-commit break). Sequence them back-to-back "
+                       "in the same window — same look out of the hand, different finish."),
+            "caveat": "Potential tunneling from average shapes (no hitter or sequence in a bullpen); "
+                      "pitch-to-pitch release consistency decides how much carries to a game.",
+        })
+    # flag a pitch that separates early from EVERY other pitch (tips itself, any setup)
+    by_anchor = (tunnel or {}).get("by_anchor") or {}
+    loners = []
+    for name in (tunnel or {}).get("anchors", []):
+        gaps = [r["tunnel_diff"] for rows in by_anchor.values() for r in rows if r["pitch"] == name]
+        if gaps and min(gaps) >= 9:
+            loners.append((name, min(gaps)))
+    if loners:
+        name, gap = max(loners, key=lambda x: x[1])
+        out.append({
+            "kind": "flag",
+            "title": f"{name.capitalize()} shows itself early",
+            "detail": (f"It's already ~{round(gap)}\" off the nearest other pitch at the commit point, so a "
+                       "hitter can read it before deciding. Tighten its early path/slot, or lean on it as a "
+                       "chase pitch where the early read matters less."),
+        })
 
     return out

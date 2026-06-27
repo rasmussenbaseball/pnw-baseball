@@ -45,54 +45,84 @@ def _release_diff(a, b):
 
 
 def _grade(tunnel_diff, plate_diff, rel_diff, velo_gap):
-    """Transparent 20–99 tunnel grade. Tunneling is about the TIGHT commit-point look,
-    so a small tunnel differential dominates; late post-commit break and a velo gap add
-    deception, a wide release point (easy to read early) docks it. A pitch that already
-    separates at the commit point grades poorly even if it has nasty movement."""
-    post = max(plate_diff - tunnel_diff, 0.0)
-    score = (95 - 6.0 * tunnel_diff + 0.5 * min(post, 18) + 0.8 * velo_gap
-             - 1.5 * max(rel_diff - 2, 0))
-    return int(max(20, min(99, round(score))))
+    """Transparent 10–99 tunnel grade. A good tunnel needs BOTH a tight commit-point
+    look AND a real payoff (the pitches must finish apart, or differ in speed). So the
+    movement term is multiplicative — tightness × separation — and a velo gap adds
+    timing deception on its own. This makes a pitch that separates early grade low
+    (nasty but readable) AND two near-identical pitches grade low (no payoff)."""
+    tight = max(0.0, 1 - tunnel_diff / 12.0)        # 1 at 0", 0 at ≥12" commit gap
+    payoff = min(plate_diff, 16) / 16.0             # real separation by the plate
+    score = (100 * tight * payoff                   # tight look + different finish
+             + 1.0 * min(velo_gap, 12)              # or a speed change (same-shape changeup)
+             - 1.0 * max(rel_diff - 2, 0))          # easy-to-read slot difference docks it
+    return int(max(10, min(99, round(score))))
+
+
+def _pair(anchor, other):
+    """Tunnel metrics of `other` relative to `anchor` (the pitch you throw first)."""
+    plate = _plate_diff(anchor, other)
+    reld = _release_diff(anchor, other)
+    f = _flight_fraction(other.get("ext"))
+    tdiff = reld * (1 - f) + plate * (f ** 2)            # separation at the commit point
+    post = max(plate - tdiff, 0.0)                       # late, post-commit break
+    vgap = abs(_n(anchor.get("velo")) - _n(other.get("velo")))
+    return {
+        "pitch": other["pitch"],
+        "release_diff": round(reld, 1),
+        "tunnel_diff": round(tdiff, 1),
+        "plate_diff": round(plate, 1),
+        "post_break": round(post, 1),
+        "break_tunnel_ratio": round(post / tdiff, 2) if tdiff > 0.5 else None,
+        "velo_gap": round(vgap, 1),
+        "fraction": round(f, 3),
+        "grade": _grade(tdiff, plate, reld, vgap),
+    }
 
 
 def tunnel_pairs(arsenal, hand=None):
-    """Tunneling of each established secondary vs the primary fastball.
-    Returns {fb, fraction, pairs:[{pitch, release_diff, tunnel_diff, plate_diff,
-    post_break, break_tunnel_ratio, velo_gap, grade}], best}."""
+    """Full pairwise tunneling — every established pitch can be the anchor (pitches
+    tunnel off cutters, sinkers, sliders, not just fastballs). Returns
+    {anchors, default_anchor, by_anchor:{anchor:[pairs]}, best_pair, +FB-anchored
+    back-compat fields fb/pairs/fraction/best}."""
     est = [a for a in arsenal if (a.get("count") or 0) >= 2
            and a.get("pitch") not in (None, "unclassified")
            and a.get("ivb") is not None and a.get("arm_hb") is not None
            and a.get("velo") is not None]
     if len(est) < 2:
-        return {"fb": None, "pairs": [], "fraction": None, "best": None}
+        return {"fb": None, "pairs": [], "fraction": None, "best": None,
+                "anchors": [], "default_anchor": None, "by_anchor": {}, "best_pair": None}
     fbs = [a for a in est if a["pitch"] in ("fastball", "sinker")]
     fb = max(fbs, key=lambda a: a["count"]) if fbs else max(est, key=lambda a: a["velo"])
-    pairs = []
+
+    by_anchor = {}
+    for anchor in est:
+        rows = sorted([_pair(anchor, o) for o in est if o is not anchor],
+                      key=lambda p: -p["grade"])
+        by_anchor[anchor["pitch"]] = rows
+
+    # globally best unordered pair (the tightest tunnel in the whole arsenal)
+    best_pair, seen = None, set()
     for a in est:
-        if a is fb:
-            continue
-        plate = _plate_diff(fb, a)
-        reld = _release_diff(fb, a)
-        f = _flight_fraction(a.get("ext"))
-        tdiff = reld * (1 - f) + plate * (f ** 2)        # separation at the commit point
-        post = max(plate - tdiff, 0.0)                   # late, post-commit break
-        vgap = abs(_n(fb.get("velo")) - _n(a.get("velo")))
-        pairs.append({
-            "pitch": a["pitch"],
-            "release_diff": round(reld, 1),
-            "tunnel_diff": round(tdiff, 1),
-            "plate_diff": round(plate, 1),
-            "post_break": round(post, 1),
-            "break_tunnel_ratio": round(post / tdiff, 2) if tdiff > 0.5 else None,
-            "velo_gap": round(vgap, 1),
-            "fraction": round(f, 3),
-            "grade": _grade(tdiff, plate, reld, vgap),
-        })
-    pairs.sort(key=lambda p: -p["grade"])
-    return {"fb": fb["pitch"],
-            "fraction": pairs[0]["fraction"] if pairs else None,
-            "pairs": pairs,
-            "best": pairs[0]["pitch"] if pairs else None}
+        for r in by_anchor[a["pitch"]]:
+            key = tuple(sorted((a["pitch"], r["pitch"])))
+            if key in seen:
+                continue
+            seen.add(key)
+            if best_pair is None or r["grade"] > best_pair["grade"]:
+                best_pair = {"a": a["pitch"], "b": r["pitch"], **r}
+
+    fbpairs = by_anchor[fb["pitch"]]
+    return {
+        "anchors": [a["pitch"] for a in est],
+        "default_anchor": fb["pitch"],
+        "by_anchor": by_anchor,
+        "best_pair": best_pair,
+        # FB-anchored back-compat (kept for older callers / the report)
+        "fb": fb["pitch"],
+        "pairs": fbpairs,
+        "fraction": fbpairs[0]["fraction"] if fbpairs else None,
+        "best": fbpairs[0]["pitch"] if fbpairs else None,
+    }
 
 
 # ── Seam-shifted wake (SSW) candidate flag ────────────────────────────────────
