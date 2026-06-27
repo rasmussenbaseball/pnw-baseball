@@ -224,7 +224,9 @@ def _row_to_full(r: dict) -> dict:
 def _tier_meets(actual: str, required: str) -> bool:
     """Mirror of frontend lib/tiers.js tierMeets — true if `actual` is
     at-or-above `required` on the tier ladder."""
-    rank = {"none": 0, "free": 1, "premium": 2, "coach": 3, "dev": 99}
+    # Ladder: free < premium < recruiting < coach (recruiting was missing here,
+    # which wrongly locked recruiting-tier subscribers out of premium articles).
+    rank = {"none": 0, "free": 1, "premium": 2, "recruiting": 3, "coach": 4, "dev": 99}
     return rank.get(actual, 0) >= rank.get(required, 0)
 
 
