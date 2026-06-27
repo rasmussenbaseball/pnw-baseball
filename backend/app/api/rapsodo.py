@@ -18,6 +18,7 @@ from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_hand import platoon_profile, pronation_profile
 from ..stats.rapsodo_parse import derive, parse_text, aggregate_arsenal, EXCLUDE
 from ..stats.rapsodo_suggest import generate_suggestions
+from ..stats.rapsodo_tunnel import tunnel_pairs, ssw_flags
 from .auth import require_tier
 
 router = APIRouter(tags=["rapsodo"])
@@ -261,6 +262,8 @@ def rapsodo_player_profile(rapsodo_player_id: str, session_id: int | None = None
         })
 
     hand_profile = pronation_profile(arsenal, player.get("handedness"))
+    tunnel = tunnel_pairs(arsenal, player.get("handedness"))
+    ssw = ssw_flags(arsenal, player.get("handedness"))
     return {
         "player": player,
         "sessions": sessions,
@@ -270,11 +273,13 @@ def rapsodo_player_profile(rapsodo_player_id: str, session_id: int | None = None
         "arm": arm_profile(ok),
         "hand_profile": hand_profile,
         "platoon": platoon_profile(arsenal, player.get("handedness")),
+        "tunnel": tunnel,
+        "ssw": ssw,
         "trend": trend,
         "n_sessions": len(sessions),
         "stuff_version": rapsodo_stuff.VERSION,
         "suggestions": generate_suggestions(arsenal, player.get("handedness"), len(ok),
-                                            (hand_profile or {}).get("lean")),
+                                            (hand_profile or {}).get("lean"), tunnel),
     }
 
 

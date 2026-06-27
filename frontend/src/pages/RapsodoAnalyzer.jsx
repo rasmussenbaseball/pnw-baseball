@@ -383,7 +383,10 @@ function Roster({ players, loading, onPick }) {
 
 // ─────────────────────────────── Profile ───────────────────────────────
 function PlayerProfile({ rapsodoId, school, onBack }) {
-  const { data, loading, refetch } = useApi(`/rapsodo/players/${rapsodoId}`)
+  const [sessionFilter, setSessionFilter] = useState('')   // '' = all combined, else session id
+  const { data, loading, refetch } = useApi(`/rapsodo/players/${rapsodoId}`,
+    { session_id: sessionFilter })
+  const [allSessions, setAllSessions] = useState([])       // full list (captured unfiltered)
   const [relabel, setRelabel] = useState(null)   // the plot point being reclassified
   const [saving, setSaving] = useState(false)
   const [arsenalOpen, setArsenalOpen] = useState(false)
@@ -391,6 +394,14 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
   const [tab, setTab] = useState('data')   // 'data' | 'notes'
   const [dlScope, setDlScope] = useState('')   // '' = combined, else session id
   const [dlBusy, setDlBusy] = useState('')     // '' | 'pdf' | 'png'
+
+  // Keep the full session list (the scoped fetch trims `sessions` to the one selected).
+  useEffect(() => {
+    if (!sessionFilter && data?.sessions) {
+      setAllSessions([...data.sessions].sort((a, b) =>
+        String(b.session_date || '').localeCompare(String(a.session_date || ''))))
+    }
+  }, [sessionFilter, data])
 
   async function postJson(url, body) {
     const { data: sess } = await supabase.auth.getSession()
@@ -477,7 +488,11 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
 
   if (loading) return <p className="mt-6 text-gray-500">Loading profile…</p>
   if (!data) return null
-  const { player, arsenal, plot, locations, arm, hand_profile, platoon, trend, sessions, n_sessions, suggestions } = data
+  const { player, arsenal, plot, locations, arm, hand_profile, platoon, trend, sessions, n_sessions, suggestions, tunnel, ssw } = data
+  const sessOptions = allSessions.length ? allSessions : sessions
+  const scopeLabelNow = sessionFilter
+    ? (sessOptions.find((s) => String(s.id) === String(sessionFilter))?.session_date || 'one session')
+    : null
 
   return (
     <div className="mt-2">
@@ -523,6 +538,37 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
         </div>
       ) : (
       <>
+      {sessOptions.length > 1 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Showing</span>
+          <select value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200">
+            <option value="">All sessions (combined)</option>
+            {sessOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.session_date || 'undated'} · FB ~{fmt(s.fastball_velo)} · {s.qc_ok} pitches
+              </option>
+            ))}
+          </select>
+          {sessOptions[0] && (
+            <button onClick={() => setSessionFilter(String(sessOptions[0].id))}
+              disabled={String(sessionFilter) === String(sessOptions[0].id)}
+              className="rounded-lg border border-portal-purple px-2.5 py-1.5 text-xs font-medium text-portal-purple dark:border-portal-accent dark:text-portal-accent hover:bg-portal-purple/10 disabled:opacity-40">
+              Latest only
+            </button>
+          )}
+          {sessionFilter && (
+            <button onClick={() => setSessionFilter('')}
+              className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+              ✕ clear
+            </button>
+          )}
+          <span className="text-xs text-gray-400">
+            {scopeLabelNow ? `Scoped to ${scopeLabelNow} — every panel below reflects just this bullpen.`
+              : 'All bullpens combined. Pick one to see a single session.'}
+          </span>
+        </div>
+      )}
       <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2.5">
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Download report</span>
         <select value={dlScope} onChange={(e) => setDlScope(e.target.value)}
@@ -584,6 +630,8 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
         </div>
       </div>
 
+      <TunnelSection tunnel={tunnel} ssw={ssw} arsenal={arsenal} hand={player.handedness} />
+
       <div className="mt-6">
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Location</h3>
         <div className="flex flex-col gap-6 lg:flex-row">
@@ -614,6 +662,148 @@ function PlayerProfile({ rapsodoId, school, onBack }) {
       </p>
       </>
       )}
+    </div>
+  )
+}
+
+// ── Tunneling ─────────────────────────────────────────────────────────────────
+// Catcher's-eye overlay: both pitches share a release + aim, so each sits on its
+// break vector (×fraction² at the commit point, ×1 at the plate). Tight cluster at
+// the commit point + spread at the plate = deceptive.
+function TunnelPlot({ fb, sec, fraction, color }) {
+  const W = 240, R = 96, cx = W / 2, cy = W / 2
+  const f2 = (fraction ?? 0.55) ** 2
+  const pts = [
+    { ...fb, c: '#1f2937', label: 'FB' },
+    { ...sec, c: color, label: sec.pitch },
+  ]
+  const maxB = Math.max(8, ...pts.map((p) => Math.hypot(p.arm_hb || 0, p.ivb || 0)))
+  const s = R / maxB
+  const xy = (hb, ivb) => [cx + (hb || 0) * s, cy - (ivb || 0) * s]   // arm side →, ride ↑
+  return (
+    <svg viewBox={`0 0 ${W} ${W}`} width={W} height={W} className="shrink-0">
+      <rect x="1" y="1" width={W - 2} height={W - 2} rx="10" fill="none" stroke="#e5e7eb" />
+      <line x1={cx} y1="14" x2={cx} y2={W - 14} stroke="#f3f4f6" />
+      <line x1="14" y1={cy} x2={W - 14} y2={cy} stroke="#f3f4f6" />
+      {/* commit-point cluster ring */}
+      {(() => {
+        const cps = pts.map((p) => xy((p.arm_hb || 0) * f2, (p.ivb || 0) * f2))
+        const mx = (cps[0][0] + cps[1][0]) / 2, my = (cps[0][1] + cps[1][1]) / 2
+        const rr = Math.max(14, Math.hypot(cps[0][0] - cps[1][0], cps[0][1] - cps[1][1]) / 2 + 8)
+        return <circle cx={mx} cy={my} r={rr} fill="none" stroke="#9ca3af" strokeDasharray="3 3" />
+      })()}
+      {pts.map((p, i) => {
+        const [px, py] = xy(p.arm_hb, p.ivb)
+        const [qx, qy] = xy((p.arm_hb || 0) * f2, (p.ivb || 0) * f2)
+        return (
+          <g key={i}>
+            <line x1={qx} y1={qy} x2={px} y2={py} stroke={p.c} strokeWidth="1.5" opacity="0.55" />
+            <circle cx={qx} cy={qy} r="3.5" fill="white" stroke={p.c} strokeWidth="1.5" />
+            <circle cx={px} cy={py} r="5" fill={p.c} />
+          </g>
+        )
+      })}
+      <text x={cx} y={W - 4} textAnchor="middle" className="fill-gray-400" fontSize="8">arm side →   ·   ride ↑</text>
+    </svg>
+  )
+}
+
+function TunnelSection({ tunnel, ssw, arsenal, hand }) {
+  const [sel, setSel] = useState(null)
+  const pairs = tunnel?.pairs || []
+  const fbName = tunnel?.fb
+  const byName = Object.fromEntries((arsenal || []).map((a) => [a.pitch, a]))
+  const fbC = byName[fbName]
+  const active = pairs.find((p) => p.pitch === sel) || pairs[0]
+  const secC = active && byName[active.pitch]
+  const sswEntries = Object.entries(ssw || {})
+  if (!fbName || !pairs.length) return null
+  const hbSign = hand === 'L' ? -1 : 1
+  const sgn = (c) => c && ({ ...c, arm_hb: (c.arm_hb || 0) * hbSign })
+  const gradeColor = (g) => g >= 70 ? 'text-emerald-600 dark:text-emerald-400'
+    : g >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500'
+  return (
+    <div className="mt-6">
+      <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">Tunneling</h3>
+      <p className="mb-3 max-w-3xl text-xs text-gray-400">
+        How each secondary plays off the <span className="font-medium">{fbName}</span>. At the hitter's
+        commit point (~23.8 ft from the plate, ~175 ms before contact) tight pitches still look alike;
+        a small <em>commit gap</em> with a big <em>plate gap</em> means same look, different finish.
+        Potential tunneling from average shapes — no hitter or sequence in a bullpen.
+      </p>
+      <div className="flex flex-col gap-5 lg:flex-row">
+        <div className="shrink-0">
+          {fbC && secC && (
+            <TunnelPlot fb={sgn(fbC)} sec={sgn(secC)} fraction={active.fraction}
+              color={colorFor(active.pitch)} />
+          )}
+          <div className="mt-1 flex flex-wrap gap-1">
+            {pairs.map((p) => (
+              <button key={p.pitch} onClick={() => setSel(p.pitch)}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
+                  (active?.pitch === p.pitch)
+                    ? 'text-white' : 'text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800'}`}
+                style={active?.pitch === p.pitch ? { backgroundColor: colorFor(p.pitch) } : undefined}>
+                {p.pitch}
+              </button>
+            ))}
+          </div>
+          {active && (
+            <p className="mt-2 max-w-[240px] text-xs text-gray-500 dark:text-gray-400">
+              <span className="font-medium capitalize">{active.pitch}</span>: ~{active.tunnel_diff}" apart at
+              the commit point, separating to ~{active.plate_diff}" by the plate
+              ({active.post_break}" of late break).
+            </p>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <th className="py-1.5 pr-2">Pitch</th>
+                  <th className="py-1.5 px-2 text-right" title="Separation from the fastball at the commit point — smaller looks the same longer">Commit gap</th>
+                  <th className="py-1.5 px-2 text-right" title="Separation at the plate">Plate gap</th>
+                  <th className="py-1.5 px-2 text-right" title="Movement after the commit point — late, unhittable break">Late break</th>
+                  <th className="py-1.5 px-2 text-right" title="Velocity difference off the fastball">Velo Δ</th>
+                  <th className="py-1.5 px-2 text-right" title="Tunnel grade: tight at commit + late separation + velo gap (transparent, shape-only)">Tunnel</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pairs.map((p) => (
+                  <tr key={p.pitch}
+                    onClick={() => setSel(p.pitch)}
+                    className={`cursor-pointer border-b border-gray-100 dark:border-gray-800 ${
+                      active?.pitch === p.pitch ? 'bg-portal-purple/5' : ''}`}>
+                    <td className="py-1.5 pr-2 font-medium capitalize" style={{ color: colorFor(p.pitch) }}>{p.pitch}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">{p.tunnel_diff}"</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">{p.plate_diff}"</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">{p.post_break}"</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">{p.velo_gap}</td>
+                    <td className={`py-1.5 px-2 text-right tabular-nums font-semibold ${gradeColor(p.grade)}`}>{p.grade}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {sswEntries.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                Seam-shifted-wake candidates
+              </p>
+              {sswEntries.map(([pitch, s]) => (
+                <p key={pitch} className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                  <span className="font-medium capitalize">{pitch}</span> — {s.note}
+                </p>
+              ))}
+              <p className="mt-1 text-[11px] text-amber-600/80 dark:text-amber-500/70">
+                A flag, not a verdict — Rapsodo infers spin mid-flight, so confirm on video.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

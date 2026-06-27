@@ -547,6 +547,7 @@ def aggregate_arsenal(ok_pitches):
             "gyro": _mean([p["gyro"] for p in ps]),
             "vaa": _mean([p.get("vaa") for p in ps]),
             "tilt": _common_tilt(ps),
+            "tilt_deg": _mean([p.get("tilt_deg") for p in ps]),
             "rel_height": _mean([p["rel_height"] for p in ps]),
             "rel_side": _mean([p["rel_side"] for p in ps]),
             # exclude 0 / None: some devices report extension as 0 when unmeasured,
