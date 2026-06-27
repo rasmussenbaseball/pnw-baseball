@@ -60,6 +60,7 @@ def tunnel_pairs(arsenal, hand=None):
     Returns {fb, fraction, pairs:[{pitch, release_diff, tunnel_diff, plate_diff,
     post_break, break_tunnel_ratio, velo_gap, grade}], best}."""
     est = [a for a in arsenal if (a.get("count") or 0) >= 2
+           and a.get("pitch") not in (None, "unclassified")
            and a.get("ivb") is not None and a.get("arm_hb") is not None
            and a.get("velo") is not None]
     if len(est) < 2:
@@ -116,6 +117,7 @@ def ssw_flags(arsenal, hand=None):
     """Per-eligible-pitch SSW candidate flag. Returns {pitch: {deviation_deg, note}}.
     Compares observed spin tilt (tilt_deg) to the movement-implied direction."""
     out = {}
+    flip = -1 if hand == "L" else 1     # arm_hb is normalized arm-side+; tilt_deg is raw
     for a in arsenal:
         if a["pitch"] not in _SSW_PITCHES or (a.get("count") or 0) < 3:
             continue
@@ -125,7 +127,8 @@ def ssw_flags(arsenal, hand=None):
             continue
         # observed spin pushes the ball OPPOSITE the top of the axis (a 12:00/up axis
         # backspin lifts the ball UP), so the spin-implied movement bearing ≈ tilt.
-        move = _movement_dir_deg(ivb, hb)
+        # Use RAW hb (un-normalize lefties) so movement & tilt share one frame.
+        move = _movement_dir_deg(ivb, hb * flip)
         dev = abs((move - float(tilt) + 180) % 360 - 180)   # 0..180
         # decent spin efficiency (not pure gyro) + a real directional gap = candidate
         if dev >= 35 and (eff is None or float(eff) >= 55) and math.hypot(ivb, hb) >= 6:
