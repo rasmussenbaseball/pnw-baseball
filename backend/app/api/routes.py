@@ -10474,7 +10474,16 @@ def uncommitted_juco_recruit_ext(
         params.append(limit)
 
         cur.execute(query, params)
-        return [dict(r) for r in cur.fetchall()]
+        out = [dict(r) for r in cur.fetchall()]
+        # Tag each committed destination school with its division level.
+        names = [r["committed_to"] for r in out if r.get("committed_to")]
+        if names:
+            from .recruiting import _resolve_committed_levels  # lazy: avoids circular import
+            levels = _resolve_committed_levels(cur, names)
+            for r in out:
+                if r.get("committed_to"):
+                    r["committed_level"] = levels.get(r["committed_to"].strip().lower())
+        return out
 
 
 # NOTE: top-level path (not /players/transfer-portal) to avoid being
@@ -10590,6 +10599,14 @@ def transfer_portal_players(
                 d["position"] = position_map[d["id"]]
             out.append(d)
         _attach_tracker_awards(cur, out, season)
+        # Tag each committed destination school with its division level.
+        names = [r["committed_to"] for r in out if r.get("committed_to")]
+        if names:
+            from .recruiting import _resolve_committed_levels  # lazy: avoids circular import
+            levels = _resolve_committed_levels(cur, names)
+            for r in out:
+                if r.get("committed_to"):
+                    r["committed_level"] = levels.get(r["committed_to"].strip().lower())
         return out
 
 

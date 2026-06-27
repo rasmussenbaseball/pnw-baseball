@@ -16,6 +16,9 @@ const COMMIT_LVL = {
   D2: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   NAIA: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   D3: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
+  JUCO: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  NWAC: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  CAN: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
 }
 
 export const BATTING_COLS = [

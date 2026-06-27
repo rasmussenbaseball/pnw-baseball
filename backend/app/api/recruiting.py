@@ -910,22 +910,84 @@ _ADV_WEIGHT = {"D1": 4, "D2": 3, "NAIA": 2, "D3": 1}
 # variants). Keyed by lowercased committed_to. Add new schools here as commits
 # come in; anything still unresolved shows as a four-year commit without a level.
 _COMMIT_LEVEL_OVERRIDES = {
-    "washington": "D1", "university of pacific": "D1", "bradley": "D1",
-    "east carolina": "D1", "old dominion": "D1", "western kentucky": "D1",
-    "akron": "D1", "saint louis university": "D1", "charleston southern": "D1",
-    "marshall": "D1", "fairleigh dickinson": "D1", "alcorn state": "D1",
-    "wofford": "D1",
-    "montana state billings": "D2", "rogers state": "D2",
-    # Vanguard + Jessup moved from NAIA (GSAC) to D2 (PacWest) — flagged 2026-06-15.
-    "vanguard university": "D2", "jessup university": "D2", "jessup": "D2",
-    "oregon tech": "NAIA", "tabor college": "NAIA",
-    "freed-hardeman": "NAIA", "ottawa": "NAIA", "missouri baptist": "NAIA",
-    "southwestern christian (oklahoma)": "NAIA", "union commonwealth": "NAIA",
-    "friends university": "NAIA", "bellevue university": "NAIA",
-    "ave maria": "NAIA", "arizona christian": "NAIA",
-    # Corrections where our teams table has the destination mis-leveled:
-    "tennessee wesleyan": "NAIA",
-    "bethany lutheran": "D3",
+    # ── D1 ──
+    "washington": "D1", "university of pacific": "D1", "university of the pacific": "D1",
+    "bradley": "D1", "east carolina": "D1", "old dominion": "D1", "western kentucky": "D1",
+    "akron": "D1", "saint louis university": "D1", "charleston southern": "D1", "marshall": "D1",
+    "fairleigh dickinson": "D1", "alcorn state": "D1", "wofford": "D1", "abilene christian": "D1",
+    "alabama state": "D1", "arizona": "D1", "ark.-pine bluff": "D1", "arkansas little rock": "D1",
+    "arkansas state": "D1", "bellarmine": "D1", "bowling green": "D1", "bryant": "D1",
+    "cal baptist": "D1", "cal st. fullerton": "D1", "cal state bakersfield": "D1", "canisius": "D1",
+    "dayton": "D1", "eastern illinois": "D1", "florida": "D1", "florida international": "D1",
+    "fordham": "D1", "fresno state": "D1", "georgia": "D1", "hawaii": "D1", "hofstra": "D1",
+    "houston christian": "D1", "illinois st.": "D1", "incarnate word": "D1", "jackson st": "D1",
+    "jacksonville": "D1", "kansas": "D1", "lsu": "D1", "liberty": "D1", "long beach": "D1",
+    "louisiana monroe": "D1", "louisiana tech": "D1", "miami (fl)": "D1", "mississippi state": "D1",
+    "morehead state": "D1", "njit": "D1", "nm state": "D1", "nicholls state": "D1",
+    "northern kentucky": "D1", "prairie view a&m": "D1", "rice": "D1", "sacramento st.": "D1",
+    "saint mary's (ca)": "D1", "saint mary's": "D1", "saint peter's": "D1", "south alabama": "D1",
+    "st. francis": "D1", "stephen f. austin": "D1", "stetson": "D1", "tamu-cc": "D1",
+    "tennessee tech": "D1", "texas a&m-cc": "D1", "troy": "D1", "umbc": "D1", "usc upstate": "D1",
+    "ut arlington": "D1", "ut san antonio": "D1", "vcu": "D1", "william & mary": "D1",
+    "wright state": "D1", "uc santa barbera": "D1", "cal state northridge": "D1", "grand canyon": "D1",
+    # ── D2 ──
+    "montana state billings": "D2", "rogers state": "D2", "vanguard university": "D2",
+    "jessup university": "D2", "jessup": "D2", "vanguard": "D2", "arkansas - monticello": "D2",
+    "arkansas tech": "D2", "csu monterey bay": "D2", "cal state monterey bay": "D2", "csu pueblo": "D2",
+    "csu san bernardino": "D2", "csusb": "D2", "cal state san bernardino": "D2", "cal st. san marcos": "D2",
+    "cal state la": "D2", "central missouri": "D2", "fort hays state": "D2", "francis marion": "D2",
+    "hawaii hilo": "D2", "hawaii pacific": "D2", "msu denver": "D2", "northwestern okla.": "D2",
+    "northwestern oklahoma state": "D2", "oklahoma christian": "D2", "rollins": "D2",
+    "se oklahoma state": "D2", "southwestern oklahoma state": "D2", "trevecca nazarene": "D2",
+    "u mary": "D2", "u tampa": "D2", "uccs": "D2", "ut tyler": "D2", "william jewell": "D2",
+    "azusa pacific": "D2", "biola": "D2", "chaminade": "D2", "chico state": "D2",
+    "colorado christian": "D2", "colorado mesa": "D2", "fresno pacific": "D2", "menlo": "D2",
+    "menlo college": "D2", "point loma": "D2", "regis": "D2", "regis university": "D2",
+    "westmont": "D2", "westmont college": "D2", "west texas a&m": "D2",
+    # ── D3 ──
+    "bethany lutheran": "D3", "belhaven university": "D3", "maryville college": "D3",
+    "cal lutheran": "D3", "east texas baptist": "D3",
+    # ── NAIA ──
+    "oregon tech": "NAIA", "tabor college": "NAIA", "freed-hardeman": "NAIA", "ottawa": "NAIA",
+    "missouri baptist": "NAIA", "southwestern christian (oklahoma)": "NAIA", "union commonwealth": "NAIA",
+    "friends university": "NAIA", "bellevue university": "NAIA", "ave maria": "NAIA",
+    "arizona christian": "NAIA", "tennessee wesleyan": "NAIA", "bellevue (neb.)": "NAIA",
+    "benedictine (az)": "NAIA", "benedictine (ks)": "NAIA", "benedictine mesa": "NAIA",
+    "campbellsville": "NAIA", "concordia (ne)": "NAIA", "cumberland (tn)": "NAIA", "doane": "NAIA",
+    "faulkner": "NAIA", "hope university": "NAIA", "hope international": "NAIA",
+    "justice university": "NAIA", "mid american christian": "NAIA", "mid-america": "NAIA",
+    "montreat": "NAIA", "mount marty": "NAIA", "mount mercy": "NAIA",
+    "oklahoma science and arts": "NAIA", "ottawa (az)": "NAIA", "ottawa (ks)": "NAIA",
+    "ottawa university": "NAIA", "park university (az)": "NAIA", "reinhardt": "NAIA",
+    "simpson": "NAIA", "southeastern (fl)": "NAIA", "sterling college": "NAIA",
+    "sterling college (ks)": "NAIA", "texas a&m texarkana": "NAIA", "upike": "NAIA",
+    "georgia gwinnett": "NAIA", "la sierra": "NAIA", "westcliff": "NAIA", "antelope valley": "NAIA",
+    # ── JUCO (two-year / NJCAA / CCCAA / NWAC) ──
+    "asu mid-south": "JUCO", "allan hancock college": "JUCO", "allen cc": "JUCO",
+    "arizona western": "JUCO", "blue mountain": "JUCO", "butler cc": "JUCO", "cañada college": "JUCO",
+    "central alabama cc": "JUCO", "cerro coso jc": "JUCO", "chabot college": "JUCO",
+    "chandler-gilbert cc": "JUCO", "citrus college": "JUCO", "cloud county cc": "JUCO",
+    "cochise": "JUCO", "coffeyville cc": "JUCO", "college of the canyons": "JUCO",
+    "cypress college": "JUCO", "desert cc": "JUCO", "dodge city cc": "JUCO", "east arizona": "JUCO",
+    "eastern arizona": "JUCO", "edmonds": "JUCO", "feather river": "JUCO",
+    "florida southwestern college": "JUCO", "fresno city": "JUCO", "fresno city college": "JUCO",
+    "glendale cc": "JUCO", "grossmont": "JUCO", "grossmont college": "JUCO", "hill college": "JUCO",
+    "howard college": "JUCO", "iowa western": "JUCO", "johnson county cc": "JUCO",
+    "laney college": "JUCO", "lassen college": "JUCO", "long beach cc": "JUCO",
+    "monterey peninsula": "JUCO", "monterey peninsula college": "JUCO", "mt san antonio": "JUCO",
+    "new mexico jc": "JUCO", "north central texas college": "JUCO", "northern oklahoma college": "JUCO",
+    "olympic": "JUCO", "palomar college": "JUCO", "panola": "JUCO", "paradise valley": "JUCO",
+    "paradise valley cc": "JUCO", "phoenix college": "JUCO", "pima cc": "JUCO", "pratt cc": "JUCO",
+    "riverside city": "JUCO", "saddleback college": "JUCO", "san diego mesa college": "JUCO",
+    "san joaquin delta": "JUCO", "santa ana": "JUCO", "santa ana college": "JUCO",
+    "scottsdale cc": "JUCO", "south arkansas cc": "JUCO", "southern idaho": "JUCO",
+    "southwestern cc": "JUCO", "sw oregon": "JUCO", "trinidad state college": "JUCO",
+    "ventura college": "JUCO", "vernon college": "JUCO", "weatherford college": "JUCO",
+    "western oklahoma state": "JUCO", "yakima valley": "JUCO", "yavapai": "JUCO",
+    # ── Canadian (CCAA / U Sports / CCBC) — no NCAA division ──
+    "camosun college": "CAN", "edmonton collegiate": "CAN", "fraser valley": "CAN",
+    "thompson rivers": "CAN", "university of calgary": "CAN", "vancouver island university": "CAN",
+    "victoria collegiate": "CAN", "victoria university": "CAN",
 }
 
 
@@ -941,7 +1003,8 @@ def _resolve_committed_levels(cur, names):
         key = n.strip().lower()
         if key in out:
             continue
-        ov = _COMMIT_LEVEL_OVERRIDES.get(key)
+        # Normalize curly apostrophes (Saint Mary's) so override keys match.
+        ov = _COMMIT_LEVEL_OVERRIDES.get(key.replace("’", "'"))
         if ov:
             out[key] = ov
         else:
