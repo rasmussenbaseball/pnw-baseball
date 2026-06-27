@@ -10748,6 +10748,14 @@ def team_projections(team_id: int, season: int = Query(2027),
             "SELECT player_id FROM player_returning_overrides WHERE season = %s AND status = 'departing'",
             (season - 1,))
         departing = {r["player_id"] for r in cur.fetchall()}
+        # Players currently in the transfer portal have left this team — drop their
+        # old-team (non-incoming) projection. A committed transfer keeps the
+        # is_incoming row on their NEW team.
+        try:
+            cur.execute("SELECT player_id FROM transfer_portal_members")
+            portal = {r["player_id"] for r in cur.fetchall()}
+        except Exception:
+            portal = set()
         cur.execute("""
             SELECT pp.player_id, pp.canonical_id, pp.side, pp.name, pp.pos,
                    pp.class_last, pp.is_incoming, pp.from_team_id, pp.proj,
@@ -10758,7 +10766,9 @@ def team_projections(team_id: int, season: int = Query(2027),
             ORDER BY pp.sort_val DESC
         """, (season, team_id))
         rows = [dict(r) for r in cur.fetchall()
-                if r["player_id"] not in departing and r["canonical_id"] not in departing]
+                if r["player_id"] not in departing and r["canonical_id"] not in departing
+                and (r["is_incoming"] or (r["player_id"] not in portal
+                                          and r["canonical_id"] not in portal))]
         # attach each player's 2026 actuals (by canonical id, summed across teams)
         # so the detail view can show 2026 -> 2027 (projected) and the change.
         cids = [r["canonical_id"] for r in rows] or [0]
@@ -10970,11 +10980,18 @@ def player_projection(player_id: int, request: Request,
         if cur.fetchone():
             return {"available": False, "season": season, "side": side}
         cur.execute("""
-            SELECT proj FROM player_projections
+            SELECT proj, is_incoming FROM player_projections
             WHERE season = %s AND side = %s AND (player_id = %s OR canonical_id = %s)
             LIMIT 1
         """, (season, side, cid, cid))
         row = cur.fetchone()
+        # In the portal + not a committed incoming → they've left their old team,
+        # so the stale old-team projection shouldn't show.
+        if row and not row.get("is_incoming"):
+            cur.execute("SELECT 1 FROM transfer_portal_members WHERE player_id IN (%s, %s) LIMIT 1",
+                        (cid, player_id))
+            if cur.fetchone():
+                return {"available": False, "season": season, "side": side}
         proj = (row or {}).get("proj") or None
         # No row, or the model couldn't project them (too few stats) → no projection.
         if not proj or proj.get("no_data") or proj.get("is_pool") or proj.get("insufficient"):

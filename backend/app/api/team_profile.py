@@ -470,6 +470,7 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
         "SELECT player_id FROM player_returning_overrides WHERE season = %s AND status = 'departing'",
         (proj_season - 1,))
     departing = {r["player_id"] for r in cur.fetchall()}
+    portal = _portal_ids(cur)   # currently in the transfer portal = gone from this team
     cur.execute(
         """SELECT pp.player_id, pp.canonical_id, pp.side, pp.name, pp.pos, pp.class_last,
                   pp.is_incoming, pp.proj, ft.short_name AS from_team
@@ -483,6 +484,10 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
         if proj.get("is_pool"):
             continue
         if r["player_id"] in departing or r["canonical_id"] in departing:
+            continue
+        # In the portal AND not an incoming commit → left this (old) team. (A
+        # committed transfer keeps their is_incoming row on the NEW team.)
+        if not r["is_incoming"] and (r["player_id"] in portal or r["canonical_id"] in portal):
             continue
         side = r["side"]
         incoming = bool(r["is_incoming"])

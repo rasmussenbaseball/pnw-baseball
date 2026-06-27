@@ -964,6 +964,15 @@ def main():
                 dest = resolve_commit(e.get("committed_to"), tname_map)
                 if dest:
                     commits[int(pid)] = dest
+        # Live transfer-portal membership now lives in the DB table (the Commitment
+        # Editor writes here, not the legacy JSON) — anyone in it has left their
+        # old team. Committed ones still reappear on the new team via `commits`.
+        try:
+            cur.execute("SELECT player_id FROM transfer_portal_members")
+            for r in cur.fetchall():
+                left.add(int(r["player_id"]))
+        except Exception:
+            pass
         # Returning-status tool: players manually marked 'departing' for the season
         # just played (transfer/quit/cut, often no known destination) — drop them
         # from the old roster like portal leavers.
