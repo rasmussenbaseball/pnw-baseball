@@ -123,8 +123,9 @@ async def upload_rapsodo(
 
 @router.get("/rapsodo/players")
 def list_rapsodo_players(owner: str = Depends(require_tier("coach"))):
-    """The coach's private roster: every Rapsodo player they've uploaded, with
-    session count, latest session date, and total pitches."""
+    """The coach's private roster / staff leaderboard: every Rapsodo player they've
+    uploaded, with session count, latest session, total pitches, peak FB velo, and
+    arsenal-derived comparison metrics (arsenal depth, best Stuff grade, best tunnel)."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -141,7 +142,36 @@ def list_rapsodo_players(owner: str = Depends(require_tier("coach"))):
                ORDER BY MAX(rs.session_date) DESC NULLS LAST, rp.player_name""",
             (owner,),
         )
-        return {"players": [dict(r) for r in cur.fetchall()]}
+        players = [dict(r) for r in cur.fetchall()]
+        if not players:
+            return {"players": []}
+
+        # arsenal-derived comparison metrics: pull every reliable pitch once, group by
+        # player, and compute arsenal depth + best Stuff + best tunnel per pitcher.
+        ids = [p["id"] for p in players]
+        cur.execute(
+            "SELECT pi.* FROM rapsodo_pitches pi "
+            "WHERE pi.player_db_id = ANY(%s) AND pi.quality = 'ok'",
+            (ids,),
+        )
+        by_player = defaultdict(list)
+        for r in cur.fetchall():
+            by_player[r["player_db_id"]].append(dict(r))
+
+        for p in players:
+            arsenal = aggregate_arsenal(by_player.get(p["id"], []))
+            rapsodo_stuff.annotate(arsenal, rapsodo_stuff.fb_from_arsenal(arsenal))
+            est = [a for a in arsenal if (a.get("count") or 0) >= 2
+                   and a["pitch"] != "unclassified"]
+            p["arsenal_n"] = len(est)
+            graded = [a for a in est if a.get("stuff") is not None]
+            top = max(graded, key=lambda a: a["stuff"]) if graded else None
+            p["top_stuff"] = top["stuff"] if top else None
+            p["top_stuff_pitch"] = top["pitch"] if top else None
+            bp = (tunnel_pairs(arsenal, p.get("handedness")) or {}).get("best_pair")
+            p["best_tunnel"] = bp["grade"] if bp else None
+            p["best_tunnel_pair"] = f"{bp['a']}/{bp['b']}" if bp else None
+        return {"players": players}
 
 
 @router.get("/rapsodo/players/{rapsodo_player_id}")

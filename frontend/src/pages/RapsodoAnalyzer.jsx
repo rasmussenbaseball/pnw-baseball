@@ -353,11 +353,18 @@ function Roster({ players, loading, onPick }) {
   const cols = [
     { key: 'player_name', label: 'Player', align: 'left' },
     { key: 'handedness', label: 'Throws', align: 'left' },
-    { key: 'top_fb_velo', label: 'Top FB', align: 'right', fmt: (v) => v != null ? `${Number(v).toFixed(1)}` : '—' },
+    { key: 'top_fb_velo', label: 'Top FB', align: 'right', title: 'Peak fastball velocity' },
+    { key: 'arsenal_n', label: 'Arsenal', align: 'right', title: 'Number of established pitch types' },
+    { key: 'top_stuff', label: 'Top Stuff', align: 'right', title: 'Best pitch on the Stuff model (100 = WCL avg for that type)' },
+    { key: 'best_tunnel', label: 'Best tunnel', align: 'right', title: 'Tightest tunnel pair in the arsenal' },
     { key: 'session_count', label: 'Sessions', align: 'right' },
-    { key: 'last_session', label: 'Last session', align: 'left', fmt: (v) => v || '—' },
+    { key: 'last_session', label: 'Last', align: 'left' },
     { key: 'total_pitches', label: 'Pitches', align: 'right' },
   ]
+  const stuffColor = (v) => v == null ? 'text-gray-400'
+    : v >= 110 ? 'text-emerald-600 dark:text-emerald-400' : v <= 90 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-700 dark:text-gray-300'
+  const tunColor = (v) => v == null ? 'text-gray-400'
+    : v >= 50 ? 'text-emerald-600 dark:text-emerald-400' : v >= 35 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500'
   const toggle = (key) => setSort((s) => s.key === key ? { key, dir: -s.dir } : { key, dir: key === 'player_name' ? 1 : -1 })
   const sorted = [...players].sort((a, b) => {
     const x = a[sort.key], y = b[sort.key]
@@ -375,13 +382,13 @@ function Roster({ players, loading, onPick }) {
       </h3>
       <span className="text-xs text-gray-400">Click any column to rank your staff · click a row to open the profile</span>
     </div>
-    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
       <table className="w-full text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
           <tr>
             {cols.map((c) => (
-              <th key={c.key} onClick={() => toggle(c.key)}
-                className={`cursor-pointer select-none px-4 py-2 font-medium ${c.align === 'right' ? 'text-right' : 'text-left'} hover:text-gray-700 dark:hover:text-gray-200`}>
+              <th key={c.key} onClick={() => toggle(c.key)} title={c.title}
+                className={`cursor-pointer select-none whitespace-nowrap px-4 py-2 font-medium ${c.align === 'right' ? 'text-right' : 'text-left'} hover:text-gray-700 dark:hover:text-gray-200`}>
                 {c.label}{sort.key === c.key ? (sort.dir < 0 ? ' ▾' : ' ▴') : ''}
               </th>
             ))}
@@ -394,11 +401,17 @@ function Roster({ players, loading, onPick }) {
               onClick={() => onPick(p.rapsodo_player_id)}
               className="cursor-pointer bg-white dark:bg-gray-900 hover:bg-portal-cream dark:hover:bg-gray-800"
             >
-              <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{p.player_name}</td>
+              <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{p.player_name}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{handLabel(p.handedness)}</td>
               <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">{p.top_fb_velo != null ? Number(p.top_fb_velo).toFixed(1) : '—'}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">{p.arsenal_n ?? '—'}</td>
+              <td className="px-4 py-3 text-right tabular-nums">
+                <span className={`font-semibold ${stuffColor(p.top_stuff)}`}>{p.top_stuff ?? '—'}</span>
+                {p.top_stuff_pitch && <span className="ml-1 text-xs capitalize text-gray-400">{p.top_stuff_pitch}</span>}
+              </td>
+              <td className={`px-4 py-3 text-right tabular-nums font-semibold ${tunColor(p.best_tunnel)}`}>{p.best_tunnel ?? '—'}</td>
               <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">{p.session_count}</td>
-              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.last_session || '—'}</td>
+              <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">{p.last_session || '—'}</td>
               <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">{p.total_pitches}</td>
             </tr>
           ))}
