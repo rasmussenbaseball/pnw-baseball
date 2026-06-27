@@ -478,7 +478,7 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
            LEFT JOIN teams ft ON ft.id = pp.from_team_id
            WHERE pp.season = %s AND pp.team_id = %s ORDER BY pp.sort_val DESC""",
         (proj_season, team_id))
-    hitters, pitchers, posgrp = [], [], {}
+    hitters, pitchers, posgrp, seen_names = [], [], {}, set()
     for r in cur.fetchall():
         proj = r["proj"] or {}
         if proj.get("is_pool"):
@@ -489,6 +489,12 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
         # committed transfer keeps their is_incoming row on the NEW team.)
         if not r["is_incoming"] and (r["player_id"] in portal or r["canonical_id"] in portal):
             continue
+        # A roster lists each player once. Rows come sorted by sort_val DESC, so a
+        # two-way player keeps their dominant side (first seen) and isn't listed twice.
+        nm_key = (r["name"] or "").strip().lower()
+        if nm_key in seen_names:
+            continue
+        seen_names.add(nm_key)
         side = r["side"]
         incoming = bool(r["is_incoming"])
         no_data = bool(proj.get("no_data"))
@@ -528,6 +534,38 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
             grp = _pos_group(r["pos"]) or "UT"
             posgrp[grp] = posgrp.get(grp, 0) + 1
             hitters.append(e)
+
+    # Live incoming class straight from the source tables (recruits + incoming_
+    # transfers), so players just added in the Commitment Editor show up BEFORE the
+    # projection generator next runs. Deduped by name against what's already listed;
+    # always 'no_data' (no college history to project yet).
+    def _add_incoming(name, pos, kind, from_school):
+        nm = (name or "").strip()
+        if not nm or nm.lower() in seen_names:
+            return
+        seen_names.add(nm.lower())
+        is_pit = (pos or "").strip().upper() in ("RHP", "LHP", "P", "SP", "RP")
+        e = {"name": nm, "pos": pos or ("P" if is_pit else "-"),
+             "class": "Fr" if kind == "Freshman" else "-", "incoming": True,
+             "kind": kind, "from_school": from_school, "no_data": True, "stats": None}
+        if is_pit:
+            posgrp["P"] = posgrp.get("P", 0) + 1
+            pitchers.append(e)
+        else:
+            grp = _pos_group(pos) or "UT"
+            posgrp[grp] = posgrp.get(grp, 0) + 1
+            hitters.append(e)
+
+    cur.execute("""SELECT first_name, last_name, position FROM recruits
+                   WHERE committed_team_id = %s AND grad_year = %s""", (team_id, proj_season - 1))
+    for r in cur.fetchall():
+        _add_incoming(f"{r['first_name'] or ''} {r['last_name'] or ''}".strip(),
+                      r["position"], "Freshman", None)
+    cur.execute("SELECT name, from_school, position FROM incoming_transfers WHERE to_team_id = %s",
+                (team_id,))
+    for r in cur.fetchall():
+        _add_incoming(r["name"], r["position"], "Transfer", r["from_school"])
+
     by_position = [{"group": k, "label": _ROSTER_POS_LABEL[k], "count": posgrp[k]}
                    for k in _ROSTER_POS_ORDER if k in posgrp]
     return {
