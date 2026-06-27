@@ -41,6 +41,7 @@ from team_projection import (  # noqa: E402
     PA_A, PA_B, PA_C, BF_A, BF_B, BF_C, FIP_BLEND, HIT_PBP, PIT_PBP, YOUTH_NUDGE,
     WHIFF_FROM_K, fit_run_estimator, pbp_projection, career_xbh_mix, load_fip_luck,
 )
+import park  # noqa: E402  — home-park HR / run factors (de-park inputs, re-park outputs)
 
 FOURYR = {"D1", "D2", "D3", "NAIA"}
 
@@ -776,6 +777,11 @@ def expand_to_achievable(rows, workload):
         cur = conn.cursor()
         tgt = _achievable_targets(cur)
         ptd = _pt_distributions(cur)
+        # batting hand, for the handedness-directional park HR factor (LH pulls to
+        # RF, RH to LF). Synthetic incoming ids (>=90M) simply won't match → None.
+        cur.execute("SELECT id, bats FROM players WHERE id = ANY(%s)",
+                    ([r["player_id"] for r in rows] or [0],))
+        bats_by_pid = {r["id"]: r["bats"] for r in cur.fetchall()}
         # per-level HBP / SF / SH rates (per PA) — needed to DERIVE OBP and wOBA
         # consistently. College HBP is ~3% of PA (not the ~1% guessed before),
         # which is why reconstructed OBP/wOBA were ~20 pts low.
@@ -809,7 +815,37 @@ def expand_to_achievable(rows, workload):
                         if r["proj"].get(key) is not None and (r["proj"].get("PT") or 0) >= reg_pt]
                 if len(idxs) < 5:
                     continue
-                mapped = _quantile_map([grp[i]["proj"][key] for i in idxs], arr)
+                proj_vals = [grp[i]["proj"][key] for i in idxs]
+                # Park-sensitive skills (HR/ISO for hitters; HR-allowed/FIP for
+                # pitchers) are DE-PARKED before ranking (so the rank reflects true
+                # talent, not the home park) and RE-PARKED after the level map (so
+                # the projection reflects the park he'll play in). De-park uses the
+                # PRIOR park (a transfer's old yard), re-park the 2027 destination.
+                def _park_factors(i):
+                    r = grp[i]
+                    pid, tid = r["player_id"], r["team_id"]
+                    prior_tid = r.get("from_team_id") if r.get("is_incoming") else tid
+                    if side == "bat":
+                        bats = bats_by_pid.get(pid)
+                        ap = r["proj"].get("p_airpull")
+                        return (park.hr_mult(prior_tid or tid, bats, ap),
+                                park.hr_mult(tid, bats, ap))
+                    mf = park.pit_hr_mult if key == "HR_bf" else park.pit_fip_mult
+                    return (mf(prior_tid or tid), mf(tid))
+
+                park_key = (side == "bat" and key in ("iso", "hr_pa")) or \
+                           (side == "pit" and key in ("HR_bf", "FIP"))
+                if park_key:
+                    facs = [_park_factors(i) for i in idxs]
+                    deparked = [v / f[0] for v, f in zip(proj_vals, facs)]
+                    mapped = _quantile_map(deparked, arr)
+                    mapped = [m * f[1] for m, f in zip(mapped, facs)]
+                    if key in ("iso", "HR_bf"):   # stamp the park factor once, for transparency
+                        tag = "park_hr_mult" if side == "bat" else "park_run_mult"
+                        for j, i in enumerate(idxs):
+                            grp[i]["proj"][tag] = round(facs[j][1], 3)
+                else:
+                    mapped = _quantile_map(proj_vals, arr)
                 for j, i in enumerate(idxs):
                     grp[i]["proj"][key] = round(mapped[j], 4)
     # achievable caps (99th pctile) for the reconstructed combo stats, per level
