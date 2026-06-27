@@ -285,6 +285,7 @@ def commitment_set(body: SetCommitment, email: str = Depends(require_commitment_
         )
         _audit_commit(cur, body.player_id, email, "set", old, school)
         conn.commit()
+    _bust_profile_cache()
     return {"ok": True, "player_id": body.player_id, "committed_to": school,
             "is_committed": True, "matched_pnw": bool(matched),
             "matched_team": (matched or {}).get("short_name")}
@@ -307,6 +308,7 @@ def commitment_clear(body: PlayerIdBody, email: str = Depends(require_commitment
         )
         _audit_commit(cur, body.player_id, email, "clear", old, None)
         conn.commit()
+    _bust_profile_cache()
     return {"ok": True, "player_id": body.player_id, "committed_to": None, "is_committed": False}
 
 
@@ -426,6 +428,14 @@ def _bust_profile_cache():
     try:
         from .team_profile import _DIV_CACHE
         _DIV_CACHE.clear()
+    except Exception:
+        pass
+    # Commitments drive the recruiting graphics (classes, news, breakdowns,
+    # advancement), which are cached for an hour — bust them too so an edit shows
+    # up right away instead of waiting out the TTL.
+    try:
+        from .recruiting import bust_recruiting_caches
+        bust_recruiting_caches()
     except Exception:
         pass
 

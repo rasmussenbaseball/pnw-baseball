@@ -30,6 +30,22 @@ from .lineup_helper import (
 )
 from .team_scouting import compute_team_scouting
 
+
+def bust_recruiting_caches():
+    """Clear every cached endpoint in this module. Call after a commitment or
+    transfer-portal edit so the recruiting graphics/trackers (classes, news,
+    breakdowns, advancement) reflect the change immediately instead of waiting
+    out the 1-hour TTL — that lag was the 'graphics took a while to update' bug."""
+    import sys as _s
+    mod = _s.modules[__name__]
+    for _name in dir(mod):
+        clear = getattr(getattr(mod, _name, None), "_cache_clear", None)
+        if callable(clear):
+            try:
+                clear()
+            except Exception:
+                pass
+
 # Phase E: batted-ball + spray classifier (lives in scripts/ but is
 # pure Python — import via path manipulation so the API can use it.)
 import sys as _sys

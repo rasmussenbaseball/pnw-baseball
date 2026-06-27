@@ -164,6 +164,13 @@ def main():
             print(f"\nNot found ({len(not_found)}):")
             for nf in not_found:
                 print(nf)
+        if updated or cleared:
+            # The running API caches the recruiting graphics for an hour and this
+            # script writes the DB directly (separate process), so it can't bust
+            # that cache. Restart so the graphics/trackers reflect these edits now.
+            print("\n⚠  Restart the API to refresh the recruiting graphics immediately:")
+            print("    sudo systemctl restart nwbb")
+
 
 if __name__ == "__main__":
     main()
