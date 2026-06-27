@@ -13,11 +13,12 @@ Source generator: ~/Downloads/team-profile-v2-handoff/generate_team_profile_tabs
 """
 import time
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ._team_narrative import team_narrative, hitter_returner_note, pitcher_returner_note
+from .articles import _viewer_tier, _tier_meets
 
 team_profile_router = APIRouter(prefix="/teams")
 
@@ -456,8 +457,85 @@ def _pit_payload(r, returning):
     }
 
 
+_ROSTER_POS_ORDER = ["C", "IF", "OF", "UT", "P"]
+_ROSTER_POS_LABEL = {"C": "Catcher", "IF": "Infield", "OF": "Outfield", "UT": "DH / Util", "P": "Pitcher"}
+
+
+def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
+    """The full assumed roster for the upcoming season, from player_projections:
+    returners + incoming transfers + incoming freshmen, combined. Excludes the
+    workload-pool aggregate row and anyone marked 'departing' by the returning tool.
+    Projected stats are gated to premium+ (omitted server-side for everyone else)."""
+    cur.execute(
+        "SELECT player_id FROM player_returning_overrides WHERE season = %s AND status = 'departing'",
+        (proj_season - 1,))
+    departing = {r["player_id"] for r in cur.fetchall()}
+    cur.execute(
+        """SELECT pp.player_id, pp.canonical_id, pp.side, pp.name, pp.pos, pp.class_last,
+                  pp.is_incoming, pp.proj, ft.short_name AS from_team
+           FROM player_projections pp
+           LEFT JOIN teams ft ON ft.id = pp.from_team_id
+           WHERE pp.season = %s AND pp.team_id = %s ORDER BY pp.sort_val DESC""",
+        (proj_season, team_id))
+    hitters, pitchers, posgrp = [], [], {}
+    for r in cur.fetchall():
+        proj = r["proj"] or {}
+        if proj.get("is_pool"):
+            continue
+        if r["player_id"] in departing or r["canonical_id"] in departing:
+            continue
+        side = r["side"]
+        incoming = bool(r["is_incoming"])
+        no_data = bool(proj.get("no_data"))
+        kind = None
+        if incoming:
+            if proj.get("is_freshman"):
+                kind = "Freshman"
+            elif proj.get("is_transfer") or not no_data:
+                # a projected incoming player has prior college stats → a transfer
+                # (freshmen have none, so they come through as no_data)
+                kind = "Transfer"
+            else:
+                kind = "Incoming"
+        e = {
+            "name": r["name"],
+            "pos": r["pos"] or ("P" if side == "pit" else "-"),
+            "class": proj.get("class_2027") or r["class_last"] or "-",
+            "incoming": incoming, "kind": kind,
+            "from_school": proj.get("from_school") or r.get("from_team"),
+            "no_data": no_data,
+        }
+        if unlocked and not proj.get("no_data"):
+            if side == "bat":
+                obp, slg = proj.get("OBP"), proj.get("SLG")
+                e["stats"] = {"AVG": proj.get("AVG"),
+                              "OPS": round(obp + slg, 3) if obp is not None and slg is not None else None,
+                              "HR": proj.get("HR"), "WAR": proj.get("WAR")}
+            else:
+                e["stats"] = {"ERA": proj.get("ERA"), "K_pct": proj.get("K_pct"),
+                              "IP": proj.get("IP"), "WAR": proj.get("WAR")}
+        else:
+            e["stats"] = None
+        if side == "pit":
+            posgrp["P"] = posgrp.get("P", 0) + 1
+            pitchers.append(e)
+        else:
+            grp = _pos_group(r["pos"]) or "UT"
+            posgrp[grp] = posgrp.get(grp, 0) + 1
+            hitters.append(e)
+    by_position = [{"group": k, "label": _ROSTER_POS_LABEL[k], "count": posgrp[k]}
+                   for k in _ROSTER_POS_ORDER if k in posgrp]
+    return {
+        "locked": not unlocked, "season": proj_season,
+        "counts": {"hitters": len(hitters), "pitchers": len(pitchers),
+                   "total": len(hitters) + len(pitchers)},
+        "by_position": by_position, "hitters": hitters, "pitchers": pitchers,
+    }
+
+
 @team_profile_router.get("/{team_id}/returning")
-def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
+def team_returning(team_id: int, request: Request, season: int = Query(CURRENT_SEASON)):
+    unlocked = _tier_meets(_viewer_tier(request), "premium")
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -596,6 +674,7 @@ def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
             "balance": bal,
             "roster_read": roster_read,
             "priorities": priorities[:4],
+            "roster_2027": _assumed_roster_2027(cur, team_id, season + 1, unlocked),
         }
 
 

@@ -127,6 +127,41 @@ function PitcherRow({ p }) {
   )
 }
 
+const pct1 = (v) => (v == null ? '-' : `${Math.round(Number(v) * 100)}%`)
+const hr1 = (v) => (v == null ? '-' : Math.round(Number(v)))
+
+function IncomingBadge({ p }) {
+  if (!p.incoming) return null
+  if (p.kind === 'Freshman') {
+    return <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 whitespace-nowrap">🎓 Fr</span>
+  }
+  return <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 whitespace-nowrap">↙ {p.kind || 'Transfer'}{p.from_school ? ` · ${p.from_school}` : ''}</span>
+}
+
+function Roster2027Row({ p, side, locked }) {
+  const real = side === 'bat'
+    ? `${r3(p.stats?.AVG)} · ${r3(p.stats?.OPS)} OPS · ${hr1(p.stats?.HR)} HR`
+    : `${r2(p.stats?.ERA)} ERA · ${pct1(p.stats?.K_pct)} K · ${p.stats?.IP ?? '-'} IP`
+  const fake = side === 'bat' ? '.300 · .812 OPS · 6 HR' : '3.74 ERA · 24% K · 48 IP'
+  return (
+    <div className="flex items-center gap-2 py-1.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+      <div className="min-w-0 flex-1 text-sm leading-tight">
+        <span className="font-medium text-gray-800 dark:text-gray-100">{p.name}</span>
+        <span className="text-[11px] text-gray-400 ml-1.5 whitespace-nowrap">{p.class} · {p.pos}</span>
+        <IncomingBadge p={p} />
+      </div>
+      {p.no_data ? (
+        <span className="text-[11px] text-gray-400 italic shrink-0">incoming</span>
+      ) : (
+        <span className="text-[11px] tabular-nums text-gray-600 dark:text-gray-300 shrink-0 whitespace-nowrap"
+          style={locked ? { filter: 'blur(5px)', userSelect: 'none' } : undefined} aria-hidden={locked || undefined}>
+          {locked ? fake : real}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export default function TeamReturning({ teamId, season }) {
   const { data, loading, error } = useApi(`/teams/${teamId}/returning`, { season }, [teamId, season])
 
@@ -223,6 +258,53 @@ export default function TeamReturning({ teamId, season }) {
         ) : <div className="text-sm text-gray-400">No notable departures detected.</div>}
         <p className="text-[11px] text-gray-400 mt-3">Returning status is based on class year, transfer-portal membership, and manual overrides.</p>
       </Card>
+
+      {/* Full assumed roster for next season */}
+      {data.roster_2027 && data.roster_2027.counts?.total > 0 && (() => {
+        const rr = data.roster_2027
+        return (
+          <Card title={`${rr.season} Projected Roster`} topAccent="border-t-indigo-400">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-3">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                {rr.counts.hitters} hitters · {rr.counts.pitchers} pitchers
+                <span className="text-gray-400 font-normal"> · {rr.counts.total} total</span>
+              </span>
+              <span className="hidden sm:inline text-gray-300 dark:text-gray-600">|</span>
+              <div className="flex flex-wrap gap-1.5">
+                {rr.by_position.map((g) => (
+                  <span key={g.group} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                    {g.label} <span className="font-semibold">{g.count}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {rr.locked && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-950/30 px-3 py-2">
+                <span className="text-xs text-indigo-800 dark:text-indigo-300">🔒 Projected stats are a premium feature.</span>
+                <Link to="/pricing" className="text-xs font-bold px-2.5 py-1 rounded-md text-white bg-nw-teal hover:bg-nw-teal/90">Subscribe to unlock</Link>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <div>
+                <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">Hitters ({rr.counts.hitters})</h4>
+                {rr.hitters.length ? rr.hitters.map((p, i) => <Roster2027Row key={`h${i}`} p={p} side="bat" locked={rr.locked} />)
+                  : <div className="text-sm text-gray-400">None projected.</div>}
+              </div>
+              <div>
+                <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">Pitchers ({rr.counts.pitchers})</h4>
+                {rr.pitchers.length ? rr.pitchers.map((p, i) => <Roster2027Row key={`p${i}`} p={p} side="pit" locked={rr.locked} />)
+                  : <div className="text-sm text-gray-400">None projected.</div>}
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3">
+              Assumed roster combines returning players, committed transfers, and incoming freshmen.
+              Stats are 2027 projections (estimates); incoming freshmen have no projection yet.
+            </p>
+          </Card>
+        )
+      })()}
     </div>
   )
 }
