@@ -151,7 +151,7 @@ function Roster2027Row({ p, side, locked }) {
         <IncomingBadge p={p} />
       </div>
       {p.no_data ? (
-        <span className="text-[11px] text-gray-400 italic shrink-0">incoming</span>
+        <span className="text-[11px] text-gray-400 italic shrink-0">no stats</span>
       ) : (
         <span className="text-[11px] tabular-nums text-gray-600 dark:text-gray-300 shrink-0 whitespace-nowrap"
           style={locked ? { filter: 'blur(5px)', userSelect: 'none' } : undefined} aria-hidden={locked || undefined}>

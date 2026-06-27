@@ -459,6 +459,16 @@ def _pit_payload(r, returning):
 
 _ROSTER_POS_ORDER = ["C", "IF", "OF", "UT", "P"]
 _ROSTER_POS_LABEL = {"C": "Catcher", "IF": "Infield", "OF": "Outfield", "UT": "DH / Util", "P": "Pitcher"}
+_ROSTER_CLASSES = ["Fr", "So", "Jr", "Sr", "Sr+"]
+
+
+def _class_from_grad(grad_year, proj_season):
+    """Approx class for a committed recruit who enrolled but may never have played:
+    a HS grad of year Y is a Fr in season Y+1. '-' if unknown."""
+    if not grad_year:
+        return "-"
+    idx = int(proj_season) - int(grad_year) - 1
+    return _ROSTER_CLASSES[min(max(idx, 0), 4)]
 
 
 def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
@@ -539,15 +549,15 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
     # transfers), so players just added in the Commitment Editor show up BEFORE the
     # projection generator next runs. Deduped by name against what's already listed;
     # always 'no_data' (no college history to project yet).
-    def _add_incoming(name, pos, kind, from_school):
+    def _add_incoming(name, pos, kind, from_school, cls="-", incoming=True):
         nm = (name or "").strip()
         if not nm or nm.lower() in seen_names:
             return
         seen_names.add(nm.lower())
         is_pit = (pos or "").strip().upper() in ("RHP", "LHP", "P", "SP", "RP")
-        e = {"name": nm, "pos": pos or ("P" if is_pit else "-"),
-             "class": "Fr" if kind == "Freshman" else "-", "incoming": True,
-             "kind": kind, "from_school": from_school, "no_data": True, "stats": None}
+        e = {"name": nm, "pos": pos or ("P" if is_pit else "-"), "class": cls,
+             "incoming": incoming, "kind": kind, "from_school": from_school,
+             "no_data": True, "stats": None}
         if is_pit:
             posgrp["P"] = posgrp.get("P", 0) + 1
             pitchers.append(e)
@@ -556,15 +566,37 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
             posgrp[grp] = posgrp.get(grp, 0) + 1
             hitters.append(e)
 
-    cur.execute("""SELECT first_name, last_name, position FROM recruits
-                   WHERE committed_team_id = %s AND grad_year = %s""", (team_id, proj_season - 1))
+    # 1) committed recruits. grad_year == proj_season-1 = true incoming freshman;
+    #    earlier classes = on-roster recruits who may never have played (show them too).
+    cur.execute("""SELECT first_name, last_name, position, grad_year FROM recruits
+                   WHERE committed_team_id = %s AND grad_year IS NOT NULL AND grad_year <= %s""",
+                (team_id, proj_season - 1))
     for r in cur.fetchall():
-        _add_incoming(f"{r['first_name'] or ''} {r['last_name'] or ''}".strip(),
-                      r["position"], "Freshman", None)
+        nm = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+        if r["grad_year"] == proj_season - 1:
+            _add_incoming(nm, r["position"], "Freshman", None, cls="Fr", incoming=True)
+        else:
+            _add_incoming(nm, r["position"], None, None,
+                          cls=_class_from_grad(r["grad_year"], proj_season), incoming=False)
+    # 2) curated incoming transfers
     cur.execute("SELECT name, from_school, position FROM incoming_transfers WHERE to_team_id = %s",
                 (team_id,))
     for r in cur.fetchall():
-        _add_incoming(r["name"], r["position"], "Transfer", r["from_school"])
+        _add_incoming(r["name"], r["position"], "Transfer", r["from_school"], incoming=True)
+    # 3) players who committed to this team via the players table (is_committed +
+    #    committed_to), e.g. transfers without box-score history yet.
+    cur.execute("SELECT short_name, name FROM teams WHERE id = %s", (team_id,))
+    tn = cur.fetchone() or {}
+    name_keys = [x for x in [(tn.get("short_name") or "").strip().lower(),
+                             (tn.get("name") or "").strip().lower()] if x]
+    if name_keys:
+        cur.execute("""SELECT first_name, last_name, position FROM players
+                       WHERE is_committed = 1 AND committed_to IS NOT NULL
+                         AND lower(trim(committed_to)) = ANY(%s)
+                         AND COALESCE(is_phantom, false) = false""", (name_keys,))
+        for r in cur.fetchall():
+            _add_incoming(f"{r['first_name'] or ''} {r['last_name'] or ''}".strip(),
+                          r["position"], "Transfer", None, incoming=True)
 
     by_position = [{"group": k, "label": _ROSTER_POS_LABEL[k], "count": posgrp[k]}
                    for k in _ROSTER_POS_ORDER if k in posgrp]

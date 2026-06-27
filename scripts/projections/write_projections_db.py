@@ -296,12 +296,15 @@ def add_incoming_no_data(rows, target):
                        JOIN divisions d ON d.id=c.division_id""")
         lvl = {r["id"]: r["level"] for r in cur.fetchall()}
 
-        # Freshmen: committed recruits entering college for `target` (they grad
-        # high school in target-1).
+        # Committed recruits. grad_year == target-1 are true incoming freshmen;
+        # earlier classes are on-roster recruits who may never have played but are
+        # still on the team (show them too, with their approximate class).
+        _CLASSES = ["Fr", "So", "Jr", "Sr", "Sr+"]
         cur.execute("""SELECT id, first_name, last_name, position, committed_team_id,
-                              bbnw_state_rank, pbr_state_rank, state
+                              bbnw_state_rank, pbr_state_rank, state, grad_year
                        FROM recruits
-                       WHERE committed_team_id IS NOT NULL AND grad_year = %s""",
+                       WHERE committed_team_id IS NOT NULL AND grad_year IS NOT NULL
+                         AND grad_year <= %s""",
                     (target - 1,))
         for r in cur.fetchall():
             tid = r["committed_team_id"]
@@ -311,8 +314,10 @@ def add_incoming_no_data(rows, target):
             if (tid, pid, side) in seen_ids or (tid, name.lower()) in seen_names:
                 continue
             rank = r["bbnw_state_rank"] or r["pbr_state_rank"]
-            proj = {"no_data": True, "insufficient": True, "is_freshman": True,
-                    "class_2027": "Fr", "level": lvl.get(tid),
+            is_fresh = r["grad_year"] == target - 1
+            cls = "Fr" if is_fresh else _CLASSES[min(max(target - int(r["grad_year"]) - 1, 0), 4)]
+            proj = {"no_data": True, "insufficient": True, "is_freshman": is_fresh,
+                    "class_2027": cls, "level": lvl.get(tid),
                     "state_rank": rank, "recruit_state": r["state"],
                     ("PT" if side == "bat" else "BF"): 0}
             rows.append({"season": target, "team_id": tid, "player_id": pid,
