@@ -438,6 +438,13 @@ def _bust_profile_cache():
         bust_recruiting_caches()
     except Exception:
         pass
+    # The team-projections endpoint is cached; a returning-status edit (departing/
+    # returning) changes who's projected, so bust it too.
+    try:
+        from .routes import team_projections
+        team_projections._cache_clear()
+    except Exception:
+        pass
 
 
 @router.post("/admin/returning/set")

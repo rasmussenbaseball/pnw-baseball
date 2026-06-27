@@ -10741,6 +10741,13 @@ def team_projections(team_id: int, season: int = Query(2027),
         team = cur.fetchone()
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
+        # Drop players the returning-status tool marked 'departing' (transfer/quit/
+        # cut) for the season just played (season-1) — the projection table is
+        # class-based and doesn't know about manual departures.
+        cur.execute(
+            "SELECT player_id FROM player_returning_overrides WHERE season = %s AND status = 'departing'",
+            (season - 1,))
+        departing = {r["player_id"] for r in cur.fetchall()}
         cur.execute("""
             SELECT pp.player_id, pp.canonical_id, pp.side, pp.name, pp.pos,
                    pp.class_last, pp.is_incoming, pp.from_team_id, pp.proj,
@@ -10750,7 +10757,8 @@ def team_projections(team_id: int, season: int = Query(2027),
             WHERE pp.season = %s AND pp.team_id = %s
             ORDER BY pp.sort_val DESC
         """, (season, team_id))
-        rows = [dict(r) for r in cur.fetchall()]
+        rows = [dict(r) for r in cur.fetchall()
+                if r["player_id"] not in departing and r["canonical_id"] not in departing]
         # attach each player's 2026 actuals (by canonical id, summed across teams)
         # so the detail view can show 2026 -> 2027 (projected) and the change.
         cids = [r["canonical_id"] for r in rows] or [0]
@@ -10954,6 +10962,13 @@ def player_projection(player_id: int, request: Request,
         cur.execute("SELECT canonical_id FROM player_links WHERE linked_id = %s LIMIT 1", (player_id,))
         link = cur.fetchone()
         cid = link["canonical_id"] if link else player_id
+        # If the returning-status tool marked them departing (transfer/quit/cut)
+        # after the season just played, they have no next-season projection.
+        cur.execute(
+            "SELECT 1 FROM player_returning_overrides WHERE season = %s AND status = 'departing' "
+            "AND player_id IN (%s, %s) LIMIT 1", (season - 1, cid, player_id))
+        if cur.fetchone():
+            return {"available": False, "season": season, "side": side}
         cur.execute("""
             SELECT proj FROM player_projections
             WHERE season = %s AND side = %s AND (player_id = %s OR canonical_id = %s)

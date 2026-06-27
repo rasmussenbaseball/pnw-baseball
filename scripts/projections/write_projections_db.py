@@ -964,6 +964,14 @@ def main():
                 dest = resolve_commit(e.get("committed_to"), tname_map)
                 if dest:
                     commits[int(pid)] = dest
+        # Returning-status tool: players manually marked 'departing' for the season
+        # just played (transfer/quit/cut, often no known destination) — drop them
+        # from the old roster like portal leavers.
+        cur.execute(
+            "SELECT player_id FROM player_returning_overrides WHERE season = %s AND status = 'departing'",
+            (TARGET - 1,))
+        for r in cur.fetchall():
+            left.add(int(r["player_id"]))
         # canonical-id remap (history is keyed on canonical id)
         cur.execute("SELECT linked_id, canonical_id FROM player_links")
         cmap = {r["linked_id"]: r["canonical_id"] for r in cur.fetchall()}
