@@ -18,7 +18,7 @@ from bisect import bisect_left, bisect_right
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from fastapi.responses import JSONResponse, FileResponse
 from psycopg2.extras import Json
 from typing import Optional
@@ -10785,6 +10785,197 @@ def team_projections(team_id: int, season: int = Query(2027),
         pitchers = _ordered(pitchers, "IP")
         return {"team": dict(team), "season": season,
                 "hitters": hitters, "pitchers": pitchers}
+
+
+# ── Per-player projection card (paywalled preview on player pages) ──────────
+# Tier >= premium sees the full projected line + range of outcomes + writeup;
+# everyone else gets a teaser (one headline stat) + locked=true. Gating is
+# server-side (the full numbers never reach a sub-premium client), mirroring the
+# article paywall. NOT @cached_endpoint — the payload varies by viewer tier.
+_PROJ_TIER_RANK = {"none": 0, "free": 1, "premium": 2, "recruiting": 3, "coach": 4, "dev": 99}
+_PROJ_UNLOCK = "premium"
+_YOUNG_CLASSES = {"Fr", "R-Fr", "So", "R-So", "Freshman", "Sophomore"}
+
+
+def _proj_confidence(rel):
+    try:
+        rel = float(rel)
+    except (TypeError, ValueError):
+        return "Low"
+    return "High" if rel >= 0.6 else "Med" if rel >= 0.4 else "Low"
+
+
+def _projection_writeup(proj, side, actual):
+    """A few plain-language sentences on WHY the model lands where it does —
+    development/age, regression vs the player's 2026 line, the standout skill,
+    and any breakout/translation/confidence flag. Audience: players & coaches."""
+    cls = (proj.get("class_2027") or "").strip()
+    young = cls in _YOUNG_CLASSES
+    level = proj.get("level") or ""
+    bits = []
+
+    if side == "bat":
+        proj_woba = proj.get("wOBA")
+        act_woba = (actual or {}).get("woba")
+        # 1) age / development framing
+        if young:
+            bits.append(f"As a {cls or 'young'} bat, the model expects continued development, "
+                        "nudging his rate stats upward toward his next-class peers.")
+        else:
+            bits.append(f"As an upperclassman ({cls or 'Jr/Sr'}), he projects close to his "
+                        "established level with normal year-to-year regression.")
+        # 2) direction vs 2026
+        if proj_woba is not None and act_woba:
+            d = proj_woba - float(act_woba)
+            if d <= -0.020:
+                bits.append("His strong 2026 line regresses toward the mean — single-season "
+                            "average and BABIP are largely luck-driven and rarely repeat in full.")
+            elif d >= 0.015:
+                bits.append("His underlying contact and power suggest his 2026 output is "
+                            "repeatable, with room to climb.")
+            else:
+                bits.append("His 2026 production looks largely repeatable.")
+        # 3) standout skill
+        k = proj.get("k_pct"); bb = proj.get("bb_pct"); iso = proj.get("iso")
+        ap = proj.get("p_airpull")
+        if iso is not None and iso >= 0.20:
+            bits.append("Power is the carrying tool" + (" — strong pull-side air contact drives the home-run projection." if (ap or 0) >= 0.22 else "."))
+        elif k is not None and k <= 0.13:
+            bits.append("Elite bat-to-ball skills (low strikeout rate) anchor the projection.")
+        elif bb is not None and bb >= 0.13:
+            bits.append("Plate discipline (high walk rate) props up the on-base projection.")
+    else:  # pitcher
+        proj_era = proj.get("ERA"); proj_fip = proj.get("FIP")
+        act_era = (actual or {}).get("era"); act_fip = (actual or {}).get("fip")
+        if young:
+            bits.append(f"As a {cls or 'young'} arm, the model leaves room to grow but leans "
+                        "on his demonstrated skills.")
+        else:
+            bits.append(f"As an upperclassman ({cls or 'Jr/Sr'}), he projects near his "
+                        "established level with normal regression.")
+        # FIP vs ERA luck story
+        if act_era is not None and act_fip is not None:
+            gap = float(act_era) - float(act_fip)
+            if gap >= 0.50:
+                bits.append("His 2026 ERA ran above his FIP (bad luck), so the model projects "
+                            "his run prevention to rebound toward his peripherals.")
+            elif gap <= -0.50:
+                bits.append("His 2026 ERA beat his FIP; the model credits only a fraction of "
+                            "that as repeatable, nudging his ERA up toward his FIP.")
+        # standout skill
+        kp = proj.get("K_pct"); bbp = proj.get("BB_pct"); wh = proj.get("p_whiff"); gb = proj.get("p_gb")
+        if kp is not None and kp >= 0.28:
+            bits.append("Swing-and-miss is the carrying tool (high strikeout rate).")
+        elif bbp is not None and bbp <= 0.07:
+            bits.append("Plus control (low walk rate) is the foundation of the projection.")
+        elif gb is not None and gb >= 0.50:
+            bits.append("A heavy ground-ball profile keeps the ball in the park.")
+
+    if proj.get("breakout"):
+        bits.append("He is flagged as a breakout candidate" +
+                    (" — an unlucky 2026 BABIP points to upside." if side == "bat"
+                     else " — his peripherals were better than his ERA showed."))
+    if proj.get("incoming") and proj.get("from_level") and proj.get("from_level") != level:
+        bits.append(f"His numbers are translated from {proj['from_level']} to {level}.")
+    conf = _proj_confidence(proj.get("reliability"))
+    if conf == "Low":
+        bits.append("Confidence is lower here given a limited track record, so weigh the range of outcomes heavily.")
+
+    return " ".join(bits)
+
+
+def _projection_payload(proj, side):
+    """Curated full projected line for the unlocked card."""
+    g = proj.get
+    common = {
+        "class": g("class_2027"), "level": g("level"),
+        "war": g("WAR"), "confidence": _proj_confidence(g("reliability")),
+        "breakout": bool(g("breakout")),
+        "incoming": bool(g("incoming")), "from_level": g("from_level"),
+    }
+    if side == "bat":
+        return {**common, "pa": g("PT"),
+                "headline": {"key": "wOBA", "value": g("wOBA"), "lo": g("wOBA_lo"), "hi": g("wOBA_hi")},
+                "rates": {"AVG": g("AVG"), "OBP": g("OBP"), "SLG": g("SLG"), "ISO": g("iso"),
+                          "K%": g("k_pct"), "BB%": g("bb_pct")},
+                "counting": {"HR": g("HR"), "RBI": g("RBI"), "R": g("R"), "H": g("H"),
+                             "BB": g("BB"), "SO": g("SO")}}
+    return {**common, "ip": g("IP"),
+            "headline": {"key": "ERA", "value": g("ERA"), "lo": g("ERA_lo"), "hi": g("ERA_hi")},
+            "rates": {"FIP": g("FIP"), "WHIP": g("WHIP"), "K%": g("K_pct"), "BB%": g("BB_pct"),
+                      "HR/9": g("HR9"), "Opp AVG": g("opp_avg")},
+            "counting": {"IP": g("IP"), "HR": g("HR_allowed")}}
+
+
+@router.get("/players/{player_id}/projection")
+def player_projection(player_id: int, request: Request,
+                      side: str = Query(..., pattern="^(bat|pit|hitter|pitcher)$"),
+                      season: Optional[int] = None):
+    """Next-season projection for one player, gated: premium+ gets the full
+    line + range + writeup; lower tiers get a one-stat teaser + locked=true."""
+    side = "bat" if side in ("bat", "hitter") else "pit"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if season is None:
+            cur.execute("SELECT MAX(season) AS s FROM player_projections")
+            season = (cur.fetchone() or {}).get("s") or 2027
+        # Resolve to the canonical id the projections are keyed on (transfers).
+        cur.execute("SELECT canonical_id FROM player_links WHERE linked_id = %s LIMIT 1", (player_id,))
+        link = cur.fetchone()
+        cid = link["canonical_id"] if link else player_id
+        cur.execute("""
+            SELECT proj FROM player_projections
+            WHERE season = %s AND side = %s AND (player_id = %s OR canonical_id = %s)
+            LIMIT 1
+        """, (season, side, cid, cid))
+        row = cur.fetchone()
+        proj = (row or {}).get("proj") or None
+        # No row, or the model couldn't project them (too few stats) → no projection.
+        if not proj or proj.get("no_data") or proj.get("is_pool") or proj.get("insufficient"):
+            return {"available": False, "season": season, "side": side}
+
+        # 2026 actuals (canon-aware) for the writeup's direction/luck framing.
+        actual = None
+        if side == "bat":
+            cur.execute("""
+                WITH canon AS (SELECT linked_id pid, canonical_id cid FROM player_links)
+                SELECT ROUND(AVG(b.woba)::numeric,3) woba, ROUND(AVG(b.batting_avg)::numeric,3) avg
+                FROM batting_stats b LEFT JOIN canon c ON c.pid = b.player_id
+                WHERE b.season = 2026 AND COALESCE(c.cid, b.player_id) = %s
+            """, (cid,))
+        else:
+            cur.execute("""
+                WITH canon AS (SELECT linked_id pid, canonical_id cid FROM player_links)
+                SELECT ROUND(AVG(p.era)::numeric,2) era, ROUND(AVG(p.fip)::numeric,2) fip
+                FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
+                WHERE p.season = 2026 AND COALESCE(c.cid, p.player_id) = %s
+            """, (cid,))
+        a = cur.fetchone()
+        if a and any(v is not None for v in a.values()):
+            actual = {k: (float(v) if v is not None else None) for k, v in a.items()}
+
+    # Headline teaser (always visible): one stat that sells the rest.
+    if side == "bat":
+        preview = {"key": "AVG", "value": proj.get("AVG")}
+    else:
+        preview = {"key": "ERA", "value": proj.get("ERA")}
+    base = {"available": True, "season": season, "side": side,
+            "class": proj.get("class_2027"), "level": proj.get("level"),
+            "preview": preview, "required_tier": _PROJ_UNLOCK}
+
+    # Tier gate (server-side, mirrors the article paywall).
+    try:
+        from .articles import _viewer_context
+        tier = (_viewer_context(request) or {}).get("tier", "none")
+    except Exception:
+        tier = "none"
+    if _PROJ_TIER_RANK.get(tier, 0) >= _PROJ_TIER_RANK[_PROJ_UNLOCK]:
+        base["locked"] = False
+        base["projection"] = _projection_payload(proj, side)
+        base["writeup"] = _projection_writeup(proj, side, actual)
+    else:
+        base["locked"] = True
+    return base
 
 
 # ============================================================

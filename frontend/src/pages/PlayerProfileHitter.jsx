@@ -11,6 +11,7 @@ import { usePlayerGameLogs } from '../hooks/useApi'
 import PitchLevelStatsCard from '../components/PitchLevelStatsCard'
 import WpaByGameChart from '../components/LazyWpaByGameChart'  // defers recharts off the player page
 import PlayerCompsCard from '../components/PlayerCompsCard'
+import PlayerProjectionCard from '../components/PlayerProjectionCard'
 import {
   usePlayerProfileTheme, formatPct, fmtCell,
   RadarChart, PercentilePanel, RollingLineChart, PerGameBarChart,
@@ -456,6 +457,8 @@ export default function PlayerProfileHitter({ playerId, data, season = CURRENT_S
       <SectionCard title="Pitch Level Stats" right={String(SEASON)}>
         <div className="-mx-2"><PitchLevelStatsCard playerId={playerId} season={SEASON} /></div>
       </SectionCard>
+
+      <PlayerProjectionCard playerId={playerId} side="hitter" />
 
       <SectionCard title="WPA at the Plate" right={String(SEASON)}>
         <WpaByGameChart playerId={playerId} position="batter" />
