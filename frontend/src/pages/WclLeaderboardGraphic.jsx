@@ -510,17 +510,20 @@ async function drawSponsorFooter(ctx, w, fy, fh, theme, footerNote) {
   ctx.fillRect(0, fy, w, 2)
 
   // ── LEFT: NWBB mark + site link + social + qualified note ──
+  // Text sized to match the right side (19px) so the footer reads evenly.
   const fav = await loadLogoCached('/favicon.png')
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
-  if (fav) drawImageContain(ctx, fav, padX, fy + 40, 22, 22)
+  if (fav) drawImageContain(ctx, fav, padX, fy + 34, 26, 26)
   ctx.fillStyle = theme.footerText
-  ctx.font = `800 15px ${FONT}`
-  ctx.fillText('NWBB STATS', padX + 28, fy + 57)
+  ctx.font = `800 19px ${FONT}`
+  ctx.fillText('NWBB STATS', padX + 34, fy + 54)
+  ctx.fillStyle = theme.sponsorAccent
+  ctx.font = `700 19px ${FONT}`
+  ctx.fillText('nwbaseballstats.com/summer', padX, fy + 83)
   ctx.fillStyle = theme.footerMuted
-  ctx.font = `600 12px ${FONT}`
-  ctx.fillText('nwbaseballstats.com/summer', padX, fy + 82)
-  ctx.fillText('@nwbbstats' + (footerNote ? '   ·   ' + footerNote : ''), padX, fy + 102)
+  ctx.font = `700 19px ${FONT}`
+  ctx.fillText('@nwbbstats' + (footerNote ? '  ·  ' + footerNote : ''), padX, fy + 112)
 
   // ── CENTER: big Stealth wordmark, centered horizontally + vertically ──
   const mark = await loadLogoCached('/stealth/wordmark.png')
