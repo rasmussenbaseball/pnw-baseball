@@ -35,12 +35,48 @@ const THEMES = [
   { id: 'graphite', label: 'Graphite', stops: ['#0b0e14', '#1a1f2b', '#36404f'],
     accent: '#cbd5e1', accentRGB: '203,213,225', highlightRGB: '90,104,128',
     orb1RGB: '54,64,79', orb2RGB: '90,104,128', mainStat: '#e2e8f0' },
+
+  // ─── Stealth-branded colorways ───
+  // New color schemes carrying the full Stealth co-brand (S-icon header +
+  // sponsor footer band), mirroring the WCL leaderboard graphics. Each adds
+  // the sponsor fields the band consumes (chrome/silver accents on a dark band).
+  { id: 'chrome-stealth', label: 'Chrome · Stealth', sponsor: true,
+    stops: ['#0d0e11', '#191b20', '#3a3d44'],
+    accent: '#e2e6ea', accentRGB: '226,230,234', highlightRGB: '120,128,140',
+    orb1RGB: '70,78,90', orb2RGB: '120,128,140', mainStat: '#f1f3f5',
+    footerBg: '#0a0a0d', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.5)',
+    sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114' },
+  { id: 'ice-stealth', label: 'Ice · Stealth', sponsor: true,
+    stops: ['#08131f', '#0e2740', '#2d6f96'],
+    accent: '#bfe6f0', accentRGB: '191,230,240', highlightRGB: '45,111,150',
+    orb1RGB: '25,80,115', orb2RGB: '45,111,150', mainStat: '#e2f4fa',
+    footerBg: '#060f17', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.5)',
+    sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114' },
+  { id: 'gold-stealth', label: 'Gold · Stealth', sponsor: true,
+    stops: ['#14110a', '#241d0e', '#6f561f'],
+    accent: '#f3d894', accentRGB: '243,216,148', highlightRGB: '140,108,40',
+    orb1RGB: '100,78,28', orb2RGB: '140,108,40', mainStat: '#fbf0d2',
+    footerBg: '#0e0b06', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.5)',
+    sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114' },
+  { id: 'ember-stealth', label: 'Ember · Stealth', sponsor: true,
+    stops: ['#160d09', '#2a140d', '#80371c'],
+    accent: '#fbbf91', accentRGB: '251,191,145', highlightRGB: '150,70,35',
+    orb1RGB: '110,55,28', orb2RGB: '150,70,35', mainStat: '#ffe6d2',
+    footerBg: '#0f0805', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.5)',
+    sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114' },
+  { id: 'orchid-stealth', label: 'Orchid · Stealth', sponsor: true,
+    stops: ['#140a18', '#280f2e', '#6e2a7a'],
+    accent: '#f0a8e6', accentRGB: '240,168,230', highlightRGB: '130,55,140',
+    orb1RGB: '95,40,105', orb2RGB: '130,55,140', mainStat: '#fbe0f6',
+    footerBg: '#0c0610', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.5)',
+    sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114' },
 ]
 
 function buildTheme(palette) {
   const [c0, c1, c2] = palette.stops
   return {
     ...SHARED_TEXT,
+    ...palette,   // carries sponsor / footerBg / sponsorAccent etc. for branded themes
     id: palette.id,
     label: palette.label,
     stops: palette.stops,            // raw, for canvas gradient
@@ -800,6 +836,63 @@ function drawImageContain(ctx, img, x, y, boxW, boxH) {
   ctx.drawImage(img, x + (boxW - dw) / 2, y + (boxH - dh) / 2, dw, dh)
 }
 
+// Stealth Batting Gloves co-brand footer band (mirrors the WCL leaderboard
+// graphic): NWBB mark + site + qualified note on the left, the big silver
+// Stealth wordmark centered, and the 'NWBB' promo pill + partner URL on the right.
+async function drawSponsorFooter(ctx, w, fy, fh, theme, footerNote, font) {
+  const padX = 48
+  // chrome divider at the top of the band
+  ctx.fillStyle = theme.sponsorAccent
+  ctx.fillRect(0, fy, w, 2)
+
+  // LEFT: NWBB mark + site link + social + qualified note
+  const fav = await loadExportImage('/favicon.png')
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+  if (fav) drawImageContain(ctx, fav, padX, fy + 34, 26, 26)
+  ctx.fillStyle = theme.footerText
+  ctx.font = `800 19px ${font}`
+  ctx.fillText('NWBB STATS', padX + 34, fy + 54)
+  ctx.fillStyle = theme.sponsorAccent
+  ctx.font = `700 19px ${font}`
+  ctx.fillText('nwbaseballstats.com', padX, fy + 83)
+  ctx.fillStyle = theme.footerMuted
+  ctx.font = `700 19px ${font}`
+  ctx.fillText('@nwbbstats' + (footerNote ? '  ·  ' + footerNote : ''), padX, fy + 112)
+
+  // CENTER: big Stealth wordmark, centered
+  const mark = await loadExportImage('/stealth/wordmark.png')
+  const markH = 92, markW = markH * (1571 / 456)
+  if (mark) {
+    drawImageContain(ctx, mark, w / 2 - markW / 2, fy + (fh - markH) / 2 + 1, markW, markH)
+  } else {
+    ctx.fillStyle = theme.footerText
+    ctx.font = `900 52px ${font}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('STEALTH', w / 2, fy + fh / 2)
+  }
+
+  // RIGHT: promo pill ('NWBB' code) + partner URL
+  const promo = "USE CODE 'NWBB' · 10% OFF"
+  ctx.font = `800 19px ${font}`
+  ctx.textBaseline = 'middle'
+  const pw = ctx.measureText(promo).width + 32
+  const ph = 38, px = w - padX - pw, py = fy + fh / 2 - ph - 3
+  ctx.fillStyle = theme.sponsorPill
+  canvasRoundRect(ctx, px, py, pw, ph, 8)
+  ctx.fill()
+  ctx.fillStyle = theme.sponsorPillText
+  ctx.textAlign = 'center'
+  ctx.fillText(promo, px + pw / 2, py + ph / 2 + 1)
+
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = theme.sponsorAccent
+  ctx.font = `800 19px ${font}`
+  ctx.textAlign = 'right'
+  ctx.fillText('stealthbattinggloves.com', w - padX, fy + fh / 2 + 30)
+}
+
 function canvasRoundRect(ctx, x, y, w, h, r) {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
@@ -1021,7 +1114,7 @@ export default function SocialGraphics() {
       const twoCol = isTwoCol
 
       const headerH = h * 0.13
-      const footerH = 36
+      const footerH = theme.sponsor ? 150 : 36
       const bodyPadY = Math.floor(w * 0.012)
       const bodyH = h - headerH - footerH - bodyPadY * 2
       const colHeaderH = 20
@@ -1054,6 +1147,7 @@ export default function SocialGraphics() {
         loadExportImage('/favicon.png'),
         ...items.slice(0, renderCount).map(p => loadExportImage(p.logo_url))
       ])
+      const sIconImg = theme.sponsor ? await loadExportImage('/stealth/icon.png') : null
 
       // Create canvas
       const canvas = document.createElement('canvas')
@@ -1133,6 +1227,12 @@ export default function SocialGraphics() {
       ctx.fillStyle = theme.textSecondary
       ctx.textBaseline = 'top'
       ctx.fillText(subtitle, headerPadX, curY)
+
+      // Co-brand: big Stealth "S" filling the header height, top-right
+      if (theme.sponsor && sIconImg) {
+        const sz = Math.floor(headerH - 28)
+        drawImageContain(ctx, sIconImg, w - headerPadX - sz, (headerH - sz) / 2, sz, sz)
+      }
 
       // Header bottom border
       ctx.strokeStyle = theme.border
@@ -1305,22 +1405,28 @@ export default function SocialGraphics() {
 
       // ─── Footer ───
       const footerY = h - footerH
-      ctx.strokeStyle = theme.border
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(0, footerY)
-      ctx.lineTo(w, footerY)
-      ctx.stroke()
+      if (theme.sponsor) {
+        ctx.fillStyle = theme.footerBg
+        ctx.fillRect(0, footerY, w, footerH)
+        await drawSponsorFooter(ctx, w, footerY, footerH, theme, footerNote, font)
+      } else {
+        ctx.strokeStyle = theme.border
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(0, footerY)
+        ctx.lineTo(w, footerY)
+        ctx.stroke()
 
-      ctx.font = `500 ${Math.floor(fontSize * 0.58)}px ${font}`
-      ctx.fillStyle = theme.textMuted
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('nwbaseballstats.com', headerPadX, footerY + footerH / 2)
+        ctx.font = `500 ${Math.floor(fontSize * 0.58)}px ${font}`
+        ctx.fillStyle = theme.textMuted
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'middle'
+        ctx.fillText('nwbaseballstats.com', headerPadX, footerY + footerH / 2)
 
-      ctx.textAlign = 'right'
-      ctx.font = `400 ${Math.floor(fontSize * 0.52)}px ${font}`
-      ctx.fillText(footerNote, w - headerPadX, footerY + footerH / 2)
+        ctx.textAlign = 'right'
+        ctx.font = `400 ${Math.floor(fontSize * 0.52)}px ${font}`
+        ctx.fillText(footerNote, w - headerPadX, footerY + footerH / 2)
+      }
 
       // ─── Download ───
       const link = document.createElement('a')
@@ -1447,14 +1553,37 @@ export default function SocialGraphics() {
                 const [a, b, c] = t.stops
                 return (
                   <button key={t.id} onClick={() => setThemeId(t.id)} title={t.label}
-                    className={`h-9 rounded-md border-2 transition-all ${themeId === t.id ? 'border-nw-teal ring-2 ring-nw-teal/30 scale-105' : 'border-gray-200 hover:border-gray-300'}`}
+                    className={`relative overflow-hidden h-9 rounded-md border-2 transition-all ${themeId === t.id ? 'border-nw-teal ring-2 ring-nw-teal/30 scale-105' : 'border-gray-200 hover:border-gray-300'}`}
                     style={{ background: `linear-gradient(135deg, ${a} 0%, ${b} 45%, ${c} 100%)` }}
-                  />
+                  >
+                    {t.sponsor && (
+                      <span className="absolute bottom-0 right-0.5 text-[9px] font-black leading-none text-white"
+                        style={{ textShadow: '0 1px 2px rgba(0,0,0,0.75)' }}>S</span>
+                    )}
+                  </button>
                 )
               })}
             </div>
             <div className="text-[11px] text-gray-400 mt-1.5">{(THEMES.find(t => t.id === themeId) || THEMES[0]).label}</div>
           </div>
+
+          {/* Stealth Batting Gloves co-brand promo (shown with any Stealth-branded theme) */}
+          {theme.sponsor && (
+            <div className="rounded-lg border border-gray-700 bg-gradient-to-b from-[#17181c] to-[#0b0b0e] p-4 text-center shadow-sm">
+              <img src="/stealth/wordmark.png" alt="Stealth Batting Gloves — Dominate in Silence"
+                className="mx-auto h-14 w-auto object-contain" />
+              <a href="https://stealthbattinggloves.com" target="_blank" rel="noopener noreferrer"
+                className="mt-2 inline-block text-sm font-semibold text-gray-200 underline decoration-gray-500 underline-offset-2 hover:text-white">
+                stealthbattinggloves.com
+              </a>
+              <div className="mt-3 rounded-md bg-gradient-to-r from-[#d7dbe0] to-[#aab0b8] px-3 py-2">
+                <span className="text-sm font-extrabold tracking-wide text-[#101114]">USE CODE 'NWBB' FOR 10% OFF</span>
+              </div>
+              <p className="mt-2 text-[10px] uppercase tracking-[0.15em] text-gray-500">
+                NW Baseball Stats × Stealth Batting Gloves
+              </p>
+            </div>
+          )}
 
           {/* Filters */}
           <div className="bg-white rounded-lg shadow-sm border p-4 space-y-3">
@@ -1686,7 +1815,7 @@ const LeaderCard = forwardRef(function LeaderCard(
 
   // ─── Dynamic sizing ───
   const headerH = h * 0.13
-  const footerH = 36
+  const footerH = theme.sponsor ? 150 : 36
   const bodyPadY = Math.floor(w * 0.012)
   const bodyH = h - headerH - footerH - bodyPadY * 2
   const colHeaderH = 20
@@ -1788,6 +1917,22 @@ const LeaderCard = forwardRef(function LeaderCard(
         }}>
           {subtitle}
         </div>
+        {theme.sponsor && (
+          <img
+            src="/stealth/icon.png"
+            alt="Stealth"
+            crossOrigin="anonymous"
+            style={{
+              position: 'absolute',
+              top: '50%',
+              right: Math.floor(w * 0.04),
+              transform: 'translateY(-50%)',
+              height: headerH - 28,
+              width: 'auto',
+              objectFit: 'contain',
+            }}
+          />
+        )}
       </div>
 
       {/* ─── Body / Rows ─── */}
@@ -2006,31 +2151,70 @@ const LeaderCard = forwardRef(function LeaderCard(
       </div>
 
       {/* ─── Footer ─── */}
-      <div style={{
-        height: footerH,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: `0 ${Math.floor(w * 0.04)}px`,
-        borderTop: `1px solid ${theme.border}`,
-        position: 'relative',
-        zIndex: 1,
-      }}>
-        <span style={{
-          fontSize: Math.floor(fontSize * 0.58),
-          color: theme.textMuted,
-          fontWeight: 500,
+      {theme.sponsor ? (
+        <div style={{
+          height: footerH,
+          background: theme.footerBg,
+          borderTop: `2px solid ${theme.sponsorAccent}`,
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 48px',
+          position: 'relative',
+          zIndex: 1,
         }}>
-          nwbaseballstats.com
-        </span>
-        <span style={{
-          fontSize: Math.floor(fontSize * 0.52),
-          color: theme.textMuted,
-          fontWeight: 400,
+          {/* LEFT: NWBB mark + links */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <img src="/favicon.png" alt="" crossOrigin="anonymous" style={{ width: 26, height: 26, borderRadius: 3 }} />
+              <span style={{ fontSize: 19, fontWeight: 800, color: theme.footerText }}>NWBB STATS</span>
+            </div>
+            <span style={{ fontSize: 19, fontWeight: 700, color: theme.sponsorAccent }}>nwbaseballstats.com</span>
+            <span style={{ fontSize: 19, fontWeight: 700, color: theme.footerMuted }}>
+              {'@nwbbstats' + (footerNote ? '  ·  ' + footerNote : '')}
+            </span>
+          </div>
+          {/* CENTER: big Stealth wordmark */}
+          <img
+            src="/stealth/wordmark.png"
+            alt="Stealth Batting Gloves"
+            crossOrigin="anonymous"
+            style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', height: 92, width: 'auto', objectFit: 'contain' }}
+          />
+          {/* RIGHT: promo pill + partner URL */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flex: 1, minWidth: 0 }}>
+            <div style={{ background: theme.sponsorPill, color: theme.sponsorPillText, fontSize: 19, fontWeight: 800, padding: '8px 16px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+              USE CODE 'NWBB' · 10% OFF
+            </div>
+            <span style={{ fontSize: 19, fontWeight: 800, color: theme.sponsorAccent }}>stealthbattinggloves.com</span>
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          height: footerH,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: `0 ${Math.floor(w * 0.04)}px`,
+          borderTop: `1px solid ${theme.border}`,
+          position: 'relative',
+          zIndex: 1,
         }}>
-          {footerNote}
-        </span>
-      </div>
+          <span style={{
+            fontSize: Math.floor(fontSize * 0.58),
+            color: theme.textMuted,
+            fontWeight: 500,
+          }}>
+            nwbaseballstats.com
+          </span>
+          <span style={{
+            fontSize: Math.floor(fontSize * 0.52),
+            color: theme.textMuted,
+            fontWeight: 400,
+          }}>
+            {footerNote}
+          </span>
+        </div>
+      )}
     </div>
   )
 })
