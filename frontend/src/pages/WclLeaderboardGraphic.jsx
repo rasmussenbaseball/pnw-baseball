@@ -105,6 +105,48 @@ const THEMES = [
     footerBg: '#0a0a0d', footerText: '#e9ebee', footerMuted: 'rgba(233,235,238,0.55)',
     sponsor: true, sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114',
   },
+  // Stealth-branded variants of the three regular colorways — same board look,
+  // plus the Stealth sponsor band + S-icon header (all dark footers, so the
+  // chrome/silver sponsor band reads cleanly on each).
+  {
+    id: 'classic-stealth', label: 'Classic · Stealth',
+    bgStops: [WCL.cream, WCL.cream], grain: true, grainDark: 'rgba(20,54,92,0.05)', grainLight: 'rgba(255,255,255,0.6)',
+    headerStops: [WCL.navy, WCL.blue], headerRule: WCL.gold,
+    kicker: WCL.goldLight, headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: '#ffffff', cardBorder: 'rgba(20,54,92,0.16)', cardAccent: WCL.navy,
+    text: '#1a1a1a', name: WCL.navy, secondary: '#5a5a5a', muted: '#8a8a8a',
+    colHeader: WCL.goldDeep, mainStat: WCL.navy, mainStatTop3: WCL.goldDeep,
+    medals: [WCL.gold, WCL.goldLight, WCL.goldDeep], medalText: WCL.navyDark, medalRing: WCL.navyDark,
+    rank: '#9a9483', logoFallback: '#e8e4d6',
+    footerBg: WCL.navyDark, footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+    sponsor: true, sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114',
+  },
+  {
+    id: 'navy-stealth', label: 'Navy · Stealth',
+    bgStops: [WCL.navyDark, WCL.navy, WCL.blue], grain: false,
+    headerStops: [WCL.navyDark, WCL.navyDark], headerRule: WCL.gold,
+    kicker: WCL.goldLight, headerText: '#ffffff', headerSub: 'rgba(246,241,227,0.75)',
+    card: 'rgba(246,241,227,0.07)', cardBorder: 'rgba(226,197,119,0.28)', cardAccent: WCL.gold,
+    text: WCL.cream, name: WCL.cream, secondary: 'rgba(246,241,227,0.6)', muted: 'rgba(246,241,227,0.4)',
+    colHeader: WCL.goldLight, mainStat: WCL.goldLight, mainStatTop3: WCL.goldLight,
+    medals: [WCL.gold, WCL.goldLight, WCL.goldDeep], medalText: WCL.navyDark, medalRing: WCL.goldLight,
+    rank: 'rgba(246,241,227,0.45)', logoFallback: 'rgba(246,241,227,0.12)',
+    footerBg: 'rgba(0,0,0,0.45)', footerText: WCL.cream, footerMuted: 'rgba(246,241,227,0.6)',
+    sponsor: true, sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114',
+  },
+  {
+    id: 'sunset-stealth', label: 'Golden · Stealth',
+    bgStops: [WCL.cream, '#f0e3c2', WCL.goldLight], grain: true, grainDark: 'rgba(169,132,47,0.07)', grainLight: 'rgba(255,255,255,0.55)',
+    headerStops: [WCL.navy, WCL.navyDark], headerRule: WCL.goldDeep,
+    kicker: WCL.goldLight, headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: 'rgba(255,255,255,0.92)', cardBorder: 'rgba(169,132,47,0.35)', cardAccent: WCL.goldDeep,
+    text: '#1a1a1a', name: WCL.navy, secondary: '#6a6048', muted: '#94855e',
+    colHeader: WCL.navy, mainStat: WCL.navy, mainStatTop3: WCL.navy,
+    medals: [WCL.navy, WCL.blue, WCL.navyDark], medalText: WCL.goldLight, medalRing: WCL.goldDeep,
+    rank: '#94855e', logoFallback: '#efe7cf',
+    footerBg: WCL.navy, footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+    sponsor: true, sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114',
+  },
 ]
 
 function buildTheme(palette) {
@@ -1111,14 +1153,18 @@ export default function WclLeaderboardGraphic() {
                 >
                   <span className="absolute inset-x-0 top-0 h-2" style={{ background: t.headerStops[0] }} />
                   <span className="absolute inset-x-0 top-2 h-0.5" style={{ background: t.headerRule }} />
+                  {t.sponsor && (
+                    <span className="absolute bottom-0 right-0.5 text-[9px] font-black leading-none text-white"
+                      style={{ textShadow: '0 1px 2px rgba(0,0,0,0.75)' }}>S</span>
+                  )}
                 </button>
               ))}
             </div>
             <div className="text-[11px] text-gray-400 mt-1.5">{(THEMES.find(t => t.id === themeId) || THEMES[0]).label}</div>
           </div>
 
-          {/* Stealth Batting Gloves co-brand promo (shown with the Stealth theme) */}
-          {themeId === 'stealth' && (
+          {/* Stealth Batting Gloves co-brand promo (shown with any Stealth-branded theme) */}
+          {theme.sponsor && (
             <div className="rounded-lg border border-gray-700 bg-gradient-to-b from-[#17181c] to-[#0b0b0e] p-4 text-center shadow-sm">
               <img src="/stealth/wordmark.png" alt="Stealth Batting Gloves — Dominate in Silence"
                 className="mx-auto h-14 w-auto object-contain" />
