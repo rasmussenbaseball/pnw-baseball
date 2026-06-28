@@ -581,7 +581,7 @@ async function drawSponsorFooter(ctx, w, fy, fh, theme, footerNote) {
   }
 
   // ── RIGHT: promo pill ('NWBB' code) + partner URL ──
-  const promo = "USE CODE 'NWBB' · 15% OFF"
+  const promo = "USE CODE 'NWBB' · 10% OFF"
   ctx.font = `800 19px ${FONT}`
   ctx.textBaseline = 'middle'
   const pw = ctx.measureText(promo).width + 32
@@ -1173,7 +1173,7 @@ export default function WclLeaderboardGraphic() {
                 stealthbattinggloves.com
               </a>
               <div className="mt-3 rounded-md bg-gradient-to-r from-[#d7dbe0] to-[#aab0b8] px-3 py-2">
-                <span className="text-sm font-extrabold tracking-wide text-[#101114]">USE CODE 'NWBB' FOR 15% OFF</span>
+                <span className="text-sm font-extrabold tracking-wide text-[#101114]">USE CODE 'NWBB' FOR 10% OFF</span>
               </div>
               <p className="mt-2 text-[10px] uppercase tracking-[0.15em] text-gray-500">
                 NW Baseball Stats × Stealth Batting Gloves
