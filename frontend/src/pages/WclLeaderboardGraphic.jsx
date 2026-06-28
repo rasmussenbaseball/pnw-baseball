@@ -88,6 +88,23 @@ const THEMES = [
     rank: '#94855e', logoFallback: '#efe7cf',
     footerBg: WCL.navy, footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
   },
+  {
+    id: 'stealth', label: 'Stealth × NWBB',
+    // Co-branded with Stealth Batting Gloves ("Dominate in Silence"): dark
+    // charcoal field, chrome/silver accents, silver medallions. The footer
+    // becomes a sponsor band (logo + URL + promo). NWBB branding stays in the
+    // header + footer bottom line.
+    bgStops: ['#17181c', '#0b0b0e'], grain: false,
+    headerStops: ['#26282e', '#121319'], headerRule: '#c2c6cc',
+    kicker: '#b9bdc4', headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.72)',
+    card: 'rgba(255,255,255,0.05)', cardBorder: 'rgba(196,200,206,0.22)', cardAccent: '#c2c6cc',
+    text: '#eef0f2', name: '#ffffff', secondary: 'rgba(238,240,242,0.62)', muted: 'rgba(238,240,242,0.4)',
+    colHeader: '#aab0b8', mainStat: '#eef0f2', mainStatTop3: '#ffffff',
+    medals: ['#e9ebee', '#c2c6cc', '#8d9298'], medalText: '#15161a', medalRing: '#e9ebee',
+    rank: 'rgba(238,240,242,0.4)', logoFallback: 'rgba(255,255,255,0.1)',
+    footerBg: '#0a0a0d', footerText: '#e9ebee', footerMuted: 'rgba(233,235,238,0.55)',
+    sponsor: true, sponsorAccent: '#c8ccd2', sponsorPill: '#d7dbe0', sponsorPillText: '#101114',
+  },
 ]
 
 function buildTheme(palette) {
@@ -483,6 +500,59 @@ const FONT = "-apple-system, 'Inter', 'Helvetica Neue', sans-serif"
 // Layout math (columns, row heights, font scaling) mirrors the spring
 // exporter in SocialGraphics.jsx; the visual treatment is WCL.
 // ════════════════════════════════════════════════════════════════
+// Stealth Batting Gloves co-brand footer band: the transparent silver wordmark
+// (with its "Dominate in Silence" tagline), the partner URL, and the promo code —
+// while keeping NWBB's own URL on the bottom line so both brands are present.
+async function drawSponsorFooter(ctx, w, fy, fh, theme, footerNote) {
+  const padX = 44
+  // chrome divider at the top of the band
+  ctx.fillStyle = theme.sponsorAccent
+  ctx.fillRect(0, fy, w, 2)
+
+  // Stealth wordmark (transparent PNG, silver) — prominent, left
+  const mark = await loadLogoCached('/stealth/wordmark.png')
+  const markH = 50, markW = markH * (1571 / 456)
+  if (mark) {
+    drawImageContain(ctx, mark, padX, fy + 18, markW, markH)
+  } else {
+    ctx.fillStyle = theme.footerText
+    ctx.font = `900 32px ${FONT}`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillText('STEALTH', padX, fy + 52)
+  }
+
+  // Promo pill (right): USE CODE NWBB · 15% OFF
+  const promo = 'USE CODE NWBB · 15% OFF'
+  ctx.font = `800 17px ${FONT}`
+  ctx.textBaseline = 'middle'
+  const pw = ctx.measureText(promo).width + 30
+  const ph = 32, px = w - padX - pw, py = fy + 22
+  ctx.fillStyle = theme.sponsorPill
+  if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 7); ctx.fill() }
+  else { ctx.fillRect(px, py, pw, ph) }
+  ctx.fillStyle = theme.sponsorPillText
+  ctx.textAlign = 'center'
+  ctx.fillText(promo, px + pw / 2, py + ph / 2 + 1)
+
+  // Partner URL under the pill (right)
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = theme.sponsorAccent
+  ctx.font = `700 16px ${FONT}`
+  ctx.textAlign = 'right'
+  ctx.fillText('stealthbattinggloves.com', w - padX, fy + 86)
+
+  // NWBB stays present on the bottom line
+  ctx.fillStyle = theme.footerMuted
+  ctx.font = `600 13px ${FONT}`
+  ctx.textAlign = 'left'
+  ctx.fillText('nwbaseballstats.com/summer  ·  @nwbbstats', padX, fy + fh - 16)
+  if (footerNote) {
+    ctx.textAlign = 'right'
+    ctx.fillText(footerNote, w - padX, fy + fh - 16)
+  }
+}
+
 async function renderBoard(canvas, opts) {
   const { items, config, title, subtitle, footerNote, theme, isTeamMode,
           count, twoCol, showRecord, loading } = opts
@@ -556,22 +626,26 @@ async function renderBoard(canvas, opts) {
     drawImageContain(ctx, favicon, w - padX - bw - 30, 36, 22, 22)
   }
 
-  // ── Footer strip (matches the other WCL graphics' footer) ──
-  const footerH = 56
+  // ── Footer strip. The sponsor themes (Stealth) get a taller co-brand band. ──
+  const footerH = theme.sponsor ? 132 : 56
   const footerY = h - footerH
   ctx.fillStyle = theme.footerBg
   ctx.fillRect(0, footerY, w, footerH)
-  ctx.fillStyle = theme.footerText
-  ctx.font = `700 15px ${FONT}`
-  ctx.textAlign = 'left'
-  ctx.fillText('nwbaseballstats.com/summer', 40, footerY + 35)
-  ctx.font = `500 13px ${FONT}`
-  ctx.fillStyle = theme.footerMuted
-  ctx.textAlign = 'right'
-  ctx.fillText('@nwbbstats', w - 40, footerY + 35)
-  if (footerNote) {
-    ctx.textAlign = 'center'
-    ctx.fillText(footerNote, w / 2, footerY + 35)
+  if (theme.sponsor) {
+    await drawSponsorFooter(ctx, w, footerY, footerH, theme, footerNote)
+  } else {
+    ctx.fillStyle = theme.footerText
+    ctx.font = `700 15px ${FONT}`
+    ctx.textAlign = 'left'
+    ctx.fillText('nwbaseballstats.com/summer', 40, footerY + 35)
+    ctx.font = `500 13px ${FONT}`
+    ctx.fillStyle = theme.footerMuted
+    ctx.textAlign = 'right'
+    ctx.fillText('@nwbbstats', w - 40, footerY + 35)
+    if (footerNote) {
+      ctx.textAlign = 'center'
+      ctx.fillText(footerNote, w / 2, footerY + 35)
+    }
   }
 
   // ── Body geometry (same math shape as the spring exporter) ──
@@ -1015,7 +1089,7 @@ export default function WclLeaderboardGraphic() {
           {/* Theme */}
           <div className="bg-white rounded-lg shadow-sm border p-4">
             <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Theme</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {THEMES.map(t => (
                 <button key={t.id} onClick={() => setThemeId(t.id)} title={t.label}
                   className={`h-9 rounded-md border-2 transition-all relative overflow-hidden
@@ -1029,6 +1103,24 @@ export default function WclLeaderboardGraphic() {
             </div>
             <div className="text-[11px] text-gray-400 mt-1.5">{(THEMES.find(t => t.id === themeId) || THEMES[0]).label}</div>
           </div>
+
+          {/* Stealth Batting Gloves co-brand promo (shown with the Stealth theme) */}
+          {themeId === 'stealth' && (
+            <div className="rounded-lg border border-gray-700 bg-gradient-to-b from-[#17181c] to-[#0b0b0e] p-4 text-center shadow-sm">
+              <img src="/stealth/wordmark.png" alt="Stealth Batting Gloves — Dominate in Silence"
+                className="mx-auto h-14 w-auto object-contain" />
+              <a href="https://stealthbattinggloves.com" target="_blank" rel="noopener noreferrer"
+                className="mt-2 inline-block text-sm font-semibold text-gray-200 underline decoration-gray-500 underline-offset-2 hover:text-white">
+                stealthbattinggloves.com
+              </a>
+              <div className="mt-3 rounded-md bg-gradient-to-r from-[#d7dbe0] to-[#aab0b8] px-3 py-2">
+                <span className="text-sm font-extrabold tracking-wide text-[#101114]">USE CODE NWBB FOR 15% OFF</span>
+              </div>
+              <p className="mt-2 text-[10px] uppercase tracking-[0.15em] text-gray-500">
+                NW Baseball Stats × Stealth Batting Gloves
+              </p>
+            </div>
+          )}
 
           {/* Filters */}
           <div className="bg-white rounded-lg shadow-sm border p-4 space-y-3">
