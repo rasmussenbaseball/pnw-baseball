@@ -504,32 +504,32 @@ const FONT = "-apple-system, 'Inter', 'Helvetica Neue', sans-serif"
 // (with its "Dominate in Silence" tagline), the partner URL, and the promo code —
 // while keeping NWBB's own URL on the bottom line so both brands are present.
 async function drawSponsorFooter(ctx, w, fy, fh, theme, footerNote) {
-  const padX = 44
+  const padX = 48
   // chrome divider at the top of the band
   ctx.fillStyle = theme.sponsorAccent
   ctx.fillRect(0, fy, w, 2)
 
-  // Stealth wordmark (transparent PNG, silver) — prominent, left
+  // Stealth wordmark (transparent PNG, silver) — large, dominating the band, left
   const mark = await loadLogoCached('/stealth/wordmark.png')
-  const markH = 50, markW = markH * (1571 / 456)
+  const markH = 96, markW = markH * (1571 / 456)
   if (mark) {
-    drawImageContain(ctx, mark, padX, fy + 18, markW, markH)
+    drawImageContain(ctx, mark, padX, fy + (fh - markH) / 2 + 2, markW, markH)
   } else {
     ctx.fillStyle = theme.footerText
-    ctx.font = `900 32px ${FONT}`
+    ctx.font = `900 56px ${FONT}`
     ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-    ctx.fillText('STEALTH', padX, fy + 52)
+    ctx.textBaseline = 'middle'
+    ctx.fillText('STEALTH', padX, fy + fh / 2)
   }
 
   // Promo pill (right): USE CODE NWBB · 15% OFF
   const promo = 'USE CODE NWBB · 15% OFF'
-  ctx.font = `800 17px ${FONT}`
+  ctx.font = `800 20px ${FONT}`
   ctx.textBaseline = 'middle'
-  const pw = ctx.measureText(promo).width + 30
-  const ph = 32, px = w - padX - pw, py = fy + 22
+  const pw = ctx.measureText(promo).width + 34
+  const ph = 38, px = w - padX - pw, py = fy + fh / 2 - ph - 4
   ctx.fillStyle = theme.sponsorPill
-  if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 7); ctx.fill() }
+  if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill() }
   else { ctx.fillRect(px, py, pw, ph) }
   ctx.fillStyle = theme.sponsorPillText
   ctx.textAlign = 'center'
@@ -538,18 +538,15 @@ async function drawSponsorFooter(ctx, w, fy, fh, theme, footerNote) {
   // Partner URL under the pill (right)
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = theme.sponsorAccent
-  ctx.font = `700 16px ${FONT}`
+  ctx.font = `800 20px ${FONT}`
   ctx.textAlign = 'right'
-  ctx.fillText('stealthbattinggloves.com', w - padX, fy + 86)
+  ctx.fillText('stealthbattinggloves.com', w - padX, fy + fh / 2 + 30)
 
-  // NWBB stays present on the bottom line
-  ctx.fillStyle = theme.footerMuted
-  ctx.font = `600 13px ${FONT}`
-  ctx.textAlign = 'left'
-  ctx.fillText('nwbaseballstats.com/summer  ·  @nwbbstats', padX, fy + fh - 16)
   if (footerNote) {
-    ctx.textAlign = 'right'
-    ctx.fillText(footerNote, w - padX, fy + fh - 16)
+    ctx.fillStyle = theme.footerMuted
+    ctx.font = `600 13px ${FONT}`
+    ctx.textAlign = 'center'
+    ctx.fillText(footerNote, w / 2, fy + fh - 12)
   }
 }
 
@@ -614,20 +611,35 @@ async function renderBoard(canvas, opts) {
   ctx.font = `600 17px ${FONT}`
   ctx.fillText(subtitle, padX, 130)
 
-  // Brand mark top-right (favicon + NWBB STATS), like the spring header
   const favicon = await loadLogoCached('/favicon.png')
-  ctx.textAlign = 'right'
-  ctx.font = `800 14px ${FONT}`
-  ctx.fillStyle = 'rgba(255,255,255,0.75)'
-  const brand = 'NWBB STATS'
-  ctx.fillText(brand, w - padX, 50)
-  if (favicon) {
-    const bw = ctx.measureText(brand).width
-    drawImageContain(ctx, favicon, w - padX - bw - 30, 36, 22, 22)
+  if (theme.sponsor) {
+    // Co-brand header: NWBB mark + link clustered center-top, Stealth "S" top-right.
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
+    if (favicon) drawImageContain(ctx, favicon, w / 2 - 10, 12, 20, 20)
+    ctx.fillStyle = 'rgba(255,255,255,0.82)'
+    ctx.font = `800 12px ${FONT}`
+    ctx.fillText('NWBB STATS', w / 2, 46)
+    ctx.fillStyle = theme.headerSub
+    ctx.font = `600 10px ${FONT}`
+    ctx.fillText('nwbaseballstats.com/summer  ·  @nwbbstats', w / 2, 60)
+    const sIcon = await loadLogoCached('/stealth/icon.png')
+    if (sIcon) drawImageContain(ctx, sIcon, w - padX - 52, 18, 52, 52)
+  } else {
+    // Brand mark top-right (favicon + NWBB STATS), like the spring header
+    ctx.textAlign = 'right'
+    ctx.font = `800 14px ${FONT}`
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'
+    const brand = 'NWBB STATS'
+    ctx.fillText(brand, w - padX, 50)
+    if (favicon) {
+      const bw = ctx.measureText(brand).width
+      drawImageContain(ctx, favicon, w - padX - bw - 30, 36, 22, 22)
+    }
   }
 
   // ── Footer strip. The sponsor themes (Stealth) get a taller co-brand band. ──
-  const footerH = theme.sponsor ? 132 : 56
+  const footerH = theme.sponsor ? 150 : 56
   const footerY = h - footerH
   ctx.fillStyle = theme.footerBg
   ctx.fillRect(0, footerY, w, footerH)
