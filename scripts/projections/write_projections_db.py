@@ -439,13 +439,18 @@ def _achievable_targets(cur):
 
 
 def _quantile_map(proj_vals, target_arr):
-    """Map each projected value to the actual distribution at its rank-percentile
-    (smooth, no clamp-piling). Percentiles are compressed to [0.03, 0.97] so the
-    extremes land on achievable values, not tiny-sample freaks (a 47.00 ERA or a
-    .250 ERA at the literal min/max)."""
+    """Map each projected value to the actual distribution at its rank-percentile.
+    Freak protection is on the TARGET (winsorize the actual distribution to its
+    [2,98] band so a 60-BF fluke at the literal max can't be a mapping target),
+    NOT on the rank — the old version squeezed ranks into [0.03,0.97], which
+    clipped a legitimately #2-ranked, well-sampled returner down to the 96th-pctile
+    value (an NWAC ace's elite K% pulled toward the middle). Now a true elite rank
+    reaches a real elite (but de-freaked) value."""
     n = len(proj_vals)
     order = np.argsort(np.argsort(proj_vals))
-    return [float(np.quantile(target_arr, 0.03 + 0.94 * ((order[i] + 0.5) / n))) for i in range(n)]
+    lo, hi = np.quantile(target_arr, 0.02), np.quantile(target_arr, 0.98)
+    clean = np.clip(target_arr, lo, hi)
+    return [float(np.quantile(clean, (order[i] + 0.5) / n)) for i in range(n)]
 
 
 def _zscores(vals):
@@ -851,8 +856,18 @@ def expand_to_achievable(rows, workload):
                             grp[i]["proj"][tag] = round(facs[j][1], 3)
                 else:
                     mapped = _quantile_map(proj_vals, arr)
+                # The achievable map exists to DE-COMPRESS (restore the spread that
+                # regression removed) — push above-average guys up toward the real
+                # high end, below-average guys down. It must NEVER pull a player back
+                # TOWARD the mean past their own regressed projection. The [3,97]
+                # freak-cap was doing exactly that to legit returners (an NWAC ace's
+                # ~34% K% clipped to ~30%). Clamp so the map only moves a value away
+                # from the level mean. A small-sample freak is unaffected: regression
+                # already pulled his regressed value inward, so the cap still binds.
+                mu = float(np.mean(arr))
                 for j, i in enumerate(idxs):
-                    grp[i]["proj"][key] = round(mapped[j], 4)
+                    v, m = proj_vals[j], mapped[j]
+                    grp[i]["proj"][key] = round(max(v, m) if v >= mu else min(v, m), 4)
     # achievable caps (99th pctile) for the reconstructed combo stats, per level
     # p90 caps: a double-max contact+power profile (.400 AVG AND elite ISO) is an
     # impossible combo, so cap the reconstructed SLG/wOBA at a great-but-real level.
@@ -1281,6 +1296,15 @@ def main():
                         ks = apply_refine(skill["k_pct"], proj, pbp_for)
                         if ks is not None:
                             k = max(0.05, min(0.45, 0.5 * k + 0.5 * ks))
+                    # Trust the DEMONSTRATED rate more the more data backs it. The
+                    # refine + whiff/strike skill anchor each mean-revert hard, and
+                    # stacked they over-regress well-sampled elite arms (Marsalis: a
+                    # 37% K% over 89 IP got dragged to 24% before the achievable map).
+                    # Pull back toward the track-record (ballast-regressed) rate in
+                    # proportion to reliability, so a big reliable sample keeps its
+                    # demonstrated K%; a thin sample still leans on the skill anchor.
+                    base_k = proj.get("k_pct", (k,))[0]
+                    k = max(0.05, min(0.45, (1 - rel) * k + rel * base_k))
                     # xFIP-style HR rate: projected FB% (a stable skill) x the
                     # level's HR-per-fly-ball, blended over the pitcher's own noisy
                     # HR rate. Far more predictive, and it carries the level's power
