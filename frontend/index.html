@@ -18,6 +18,15 @@
     <meta property="og:description" content="Northwest Baseball Statistics - wOBA, wRC+, FIP, xFIP, SIERA, and custom college WAR." />
     <meta property="og:image" content="/images/banner-logo.png" />
     <meta name="theme-color" content="#00687a" />
+    <link rel="canonical" href="https://nwbaseballstats.com/" />
+    <!-- Site-level structured data (every page; the edge middleware adds
+         per-player / per-team schema.org JSON-LD on top for those routes). -->
+    <script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"WebSite","name":"NW Baseball Stats","alternateName":"NWBB Stats","url":"https://nwbaseballstats.com","description":"Advanced statistics and analytics for Pacific Northwest college baseball — NCAA D1, D2, D3, NAIA and NWAC programs in WA, OR, ID, MT and BC.","potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://nwbaseballstats.com/players?q={search_term_string}"},"query-input":"required name=search_term_string"}}
+    </script>
+    <script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"Organization","name":"NW Baseball Stats","url":"https://nwbaseballstats.com","logo":"https://nwbaseballstats.com/images/banner-logo.png"}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Inter only: it's the site-wide font. Niche fonts load from their

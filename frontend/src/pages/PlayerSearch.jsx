@@ -1,11 +1,14 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 
 export default function PlayerSearch() {
-  const [query, setQuery] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
+  // Deep-linkable search (?q=) so the sitelinks search box + shared links work.
+  const [searchParams] = useSearchParams()
+  const initialQ = searchParams.get('q') || ''
+  const [query, setQuery] = useState(initialQ)
+  const [searchTerm, setSearchTerm] = useState(initialQ.length >= 2 ? initialQ : '')
   const [jucoOnly, setJucoOnly] = useState(false)
   const [uncommittedOnly, setUncommittedOnly] = useState(false)
 

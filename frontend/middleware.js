@@ -32,6 +32,7 @@ export const config = {
 };
 
 const SITE = 'https://nwbaseballstats.com';
+const API = 'https://api.nwbaseballstats.com/api/v1';
 
 // ────────────────────────────────────────────────────────────────
 // Route → OG params resolver
@@ -51,6 +52,7 @@ function resolveRoute(pathname) {
       title: 'Player Profile · NW Baseball Stats',
       description:
         'Full stats, splits, percentiles, spray chart, and play-by-play breakdowns for this Northwest college baseball player.',
+      seo: { type: 'player', id: playerMatch[1] },
     };
   }
 
@@ -94,6 +96,7 @@ function resolveRoute(pathname) {
       title: 'Team Profile · NW Baseball Stats',
       description:
         'Roster, season stats, schedule, and advanced ratings for this Northwest college baseball program.',
+      seo: { type: 'team', id: teamMatch[1] },
     };
   }
 
@@ -638,26 +641,52 @@ export default async function middleware(request) {
   }
 
   // Compute new OG image URL + title + description
-  const { ogParams, title, description } = resolveRoute(url.pathname);
+  const route = resolveRoute(url.pathname);
+  let { title, description } = route;
+  const { ogParams, seo } = route;
   const ogImage = `${SITE}/api/og?${ogParams}`;
   const pageUrl = `${SITE}${url.pathname}`;
 
-  // Fetch the static SPA shell. Use the index.html path directly so
-  // we don't recurse through the SPA fallback rewrite.
-  let shellResp;
+  // Fetch the SPA shell AND (for player/team pages) the real per-entity SEO
+  // metadata in parallel, so crawlers + AI answer engines get an entity-specific
+  // <title>, description and schema.org JSON-LD without running our JS.
+  let shellResp, seoData = null;
   try {
-    shellResp = await fetch(`${SITE}/index.html`, {
-      cf: { cacheTtl: 60 },
-    });
+    const shellP = fetch(`${SITE}/index.html`, { cf: { cacheTtl: 60 } });
+    const seoP = seo
+      ? fetch(`${API}/seo/meta?type=${seo.type}&id=${seo.id}`, { cf: { cacheTtl: 21600 } })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
+      : Promise.resolve(null);
+    [shellResp, seoData] = await Promise.all([shellP, seoP]);
   } catch (_) {
     return; // bail to default Vercel routing
   }
 
-  if (!shellResp.ok) {
+  if (!shellResp || !shellResp.ok) {
     return;
   }
 
   let html = await shellResp.text();
+
+  // Real entity metadata wins over the generic per-route-type defaults.
+  let canonical = pageUrl;
+  let jsonld = null;
+  if (seoData && seoData.ok) {
+    if (seoData.title) title = seoData.title;
+    if (seoData.description) description = seoData.description;
+    if (seoData.canonical) canonical = seoData.canonical;
+    jsonld = seoData.jsonld || null;
+  }
+
+  // <title> is the strongest on-page SEO signal — set it (not just og:title).
+  html = setTitle(html, title);
+  // Canonical URL (dedupes querystring/variant URLs for crawlers).
+  html = upsertLink(html, 'canonical', canonical);
+  // schema.org structured data so search + AI engines resolve the entity.
+  if (jsonld) {
+    html = injectJsonLd(html, jsonld);
+  }
 
   // Rewrite or insert og:image
   html = upsertMeta(html, {
@@ -674,8 +703,8 @@ export default async function middleware(request) {
     property: 'og:description',
     content: description,
   });
-  html = upsertMeta(html, { property: 'og:type', content: 'website' });
-  html = upsertMeta(html, { property: 'og:url', content: pageUrl });
+  html = upsertMeta(html, { property: 'og:type', content: seo ? 'profile' : 'website' });
+  html = upsertMeta(html, { property: 'og:url', content: canonical });
 
   // Twitter card tags
   html = upsertMeta(html, {
@@ -739,4 +768,37 @@ function upsertMeta(html, { property, name, content }) {
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Replace the document <title>.
+function setTitle(html, title) {
+  const safe = escapeAttr(title);
+  if (/<title>[\s\S]*?<\/title>/i.test(html)) {
+    return html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${safe}</title>`);
+  }
+  return html.replace(/<\/head>/i, `  <title>${safe}</title>\n  </head>`);
+}
+
+// Upsert a <link rel="..."> (e.g. canonical).
+function upsertLink(html, rel, href) {
+  const newTag = `<link rel="${rel}" href="${escapeAttr(href)}" />`;
+  const re = new RegExp(`<link\\s+(?:[^>]*\\s)?rel=["']${escapeRegex(rel)}["'][^>]*>`, 'i');
+  if (re.test(html)) {
+    return html.replace(re, newTag);
+  }
+  return html.replace(/<\/head>/i, `  ${newTag}\n  </head>`);
+}
+
+// Inject a schema.org JSON-LD <script> before </head>. The JSON is escaped so a
+// stray "</script>" in a value can't break out of the tag.
+function injectJsonLd(html, obj) {
+  let json;
+  try {
+    json = JSON.stringify(obj);
+  } catch (_) {
+    return html;
+  }
+  const safe = json.replace(/</g, '\\u003c');
+  const tag = `<script type="application/ld+json">${safe}</script>`;
+  return html.replace(/<\/head>/i, `  ${tag}\n  </head>`);
 }
