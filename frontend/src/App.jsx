@@ -204,7 +204,6 @@ import TeamStatsPage from './pages/TeamStatsPage'
 import TeamsPage from './pages/TeamsPage'
 import ProTracker from './pages/ProTracker'
 import PnwDraft from './pages/PnwDraft'
-const WclPickem = lazyWithRetry(() => import('./pages/WclPickem'))
 import TeamDetail from './pages/TeamDetail'
 import TeamProjections from './pages/TeamProjections'
 import TrackManData from './pages/TrackManData'
@@ -407,7 +406,6 @@ export default function App() {
           <Route path="/commitment-editor" element={<RequireDev emails={COMMITMENT_EDITOR_EMAILS}><CommitmentEditor /></RequireDev>} />
           <Route path="/pro-tracker" element={<ProTracker />} />
           <Route path="/draft" element={<PnwDraft />} />
-          <Route path="/wcl-pickem" element={<WclPickem />} />
           <Route path="/standings" element={<StandingsPage />} />
           <Route path="/conference/:slug" element={<ConferencePage />} />
           <Route path="/results" element={<Navigate to="/scoreboard" replace />} />
