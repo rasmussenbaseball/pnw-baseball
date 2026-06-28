@@ -509,25 +509,38 @@ async function drawSponsorFooter(ctx, w, fy, fh, theme, footerNote) {
   ctx.fillStyle = theme.sponsorAccent
   ctx.fillRect(0, fy, w, 2)
 
-  // Stealth wordmark (transparent PNG, silver) — large, dominating the band, left
+  // ── LEFT: NWBB mark + site link + social + qualified note ──
+  const fav = await loadLogoCached('/favicon.png')
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+  if (fav) drawImageContain(ctx, fav, padX, fy + 40, 22, 22)
+  ctx.fillStyle = theme.footerText
+  ctx.font = `800 15px ${FONT}`
+  ctx.fillText('NWBB STATS', padX + 28, fy + 57)
+  ctx.fillStyle = theme.footerMuted
+  ctx.font = `600 12px ${FONT}`
+  ctx.fillText('nwbaseballstats.com/summer', padX, fy + 82)
+  ctx.fillText('@nwbbstats' + (footerNote ? '   ·   ' + footerNote : ''), padX, fy + 102)
+
+  // ── CENTER: big Stealth wordmark, centered horizontally + vertically ──
   const mark = await loadLogoCached('/stealth/wordmark.png')
-  const markH = 96, markW = markH * (1571 / 456)
+  const markH = 92, markW = markH * (1571 / 456)
   if (mark) {
-    drawImageContain(ctx, mark, padX, fy + (fh - markH) / 2 + 2, markW, markH)
+    drawImageContain(ctx, mark, w / 2 - markW / 2, fy + (fh - markH) / 2 + 1, markW, markH)
   } else {
     ctx.fillStyle = theme.footerText
-    ctx.font = `900 56px ${FONT}`
-    ctx.textAlign = 'left'
+    ctx.font = `900 52px ${FONT}`
+    ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText('STEALTH', padX, fy + fh / 2)
+    ctx.fillText('STEALTH', w / 2, fy + fh / 2)
   }
 
-  // Promo pill (right): USE CODE NWBB · 15% OFF
-  const promo = 'USE CODE NWBB · 15% OFF'
-  ctx.font = `800 20px ${FONT}`
+  // ── RIGHT: promo pill ('NWBB' code) + partner URL ──
+  const promo = "USE CODE 'NWBB' · 15% OFF"
+  ctx.font = `800 19px ${FONT}`
   ctx.textBaseline = 'middle'
-  const pw = ctx.measureText(promo).width + 34
-  const ph = 38, px = w - padX - pw, py = fy + fh / 2 - ph - 4
+  const pw = ctx.measureText(promo).width + 32
+  const ph = 38, px = w - padX - pw, py = fy + fh / 2 - ph - 3
   ctx.fillStyle = theme.sponsorPill
   if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill() }
   else { ctx.fillRect(px, py, pw, ph) }
@@ -535,19 +548,11 @@ async function drawSponsorFooter(ctx, w, fy, fh, theme, footerNote) {
   ctx.textAlign = 'center'
   ctx.fillText(promo, px + pw / 2, py + ph / 2 + 1)
 
-  // Partner URL under the pill (right)
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = theme.sponsorAccent
-  ctx.font = `800 20px ${FONT}`
+  ctx.font = `800 19px ${FONT}`
   ctx.textAlign = 'right'
   ctx.fillText('stealthbattinggloves.com', w - padX, fy + fh / 2 + 30)
-
-  if (footerNote) {
-    ctx.fillStyle = theme.footerMuted
-    ctx.font = `600 13px ${FONT}`
-    ctx.textAlign = 'center'
-    ctx.fillText(footerNote, w / 2, fy + fh - 12)
-  }
 }
 
 async function renderBoard(canvas, opts) {
@@ -613,18 +618,11 @@ async function renderBoard(canvas, opts) {
 
   const favicon = await loadLogoCached('/favicon.png')
   if (theme.sponsor) {
-    // Co-brand header: NWBB mark + link clustered center-top, Stealth "S" top-right.
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'alphabetic'
-    if (favicon) drawImageContain(ctx, favicon, w / 2 - 10, 12, 20, 20)
-    ctx.fillStyle = 'rgba(255,255,255,0.82)'
-    ctx.font = `800 12px ${FONT}`
-    ctx.fillText('NWBB STATS', w / 2, 46)
-    ctx.fillStyle = theme.headerSub
-    ctx.font = `600 10px ${FONT}`
-    ctx.fillText('nwbaseballstats.com/summer  ·  @nwbbstats', w / 2, 60)
+    // Co-brand header: big Stealth "S" filling the header height, top-right.
+    // (NWBB branding lives in the footer-left cluster for this theme.)
     const sIcon = await loadLogoCached('/stealth/icon.png')
-    if (sIcon) drawImageContain(ctx, sIcon, w - padX - 52, 18, 52, 52)
+    const sz = headerH - 18
+    if (sIcon) drawImageContain(ctx, sIcon, w - padX - sz, (headerH - 6 - sz) / 2, sz, sz)
   } else {
     // Brand mark top-right (favicon + NWBB STATS), like the spring header
     ctx.textAlign = 'right'
@@ -1126,7 +1124,7 @@ export default function WclLeaderboardGraphic() {
                 stealthbattinggloves.com
               </a>
               <div className="mt-3 rounded-md bg-gradient-to-r from-[#d7dbe0] to-[#aab0b8] px-3 py-2">
-                <span className="text-sm font-extrabold tracking-wide text-[#101114]">USE CODE NWBB FOR 15% OFF</span>
+                <span className="text-sm font-extrabold tracking-wide text-[#101114]">USE CODE 'NWBB' FOR 15% OFF</span>
               </div>
               <p className="mt-2 text-[10px] uppercase tracking-[0.15em] text-gray-500">
                 NW Baseball Stats × Stealth Batting Gloves
