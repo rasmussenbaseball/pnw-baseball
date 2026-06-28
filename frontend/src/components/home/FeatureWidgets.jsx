@@ -440,6 +440,68 @@ export function NewFeaturesWidget() {
   )
 }
 
+// ─── Stealth Batting Gloves (official partner) ──────────────────────
+// Dark-teal co-brand card: their baby-blue B2 Bomber gloves + silver/blue
+// wordmark, a 10%-off 'NWBB' code (teams + players), linking to their store.
+export function StealthPartnerWidget() {
+  return (
+    <a
+      href="https://stealthbattinggloves.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block rounded-xl overflow-hidden border border-nw-teal-light/30 shadow-sm
+                 bg-gradient-to-br from-[#005d6e] via-nw-teal-dark to-[#00262e]"
+    >
+      {/* header */}
+      <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-white/80 leading-tight">
+          Official Batting Gloves of NWBB Stats
+        </span>
+        <span className="ml-auto shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-white/15 text-white">
+          Partner
+        </span>
+      </div>
+
+      <div className="p-3 flex flex-col items-center text-center">
+        {/* Stealth wordmark — baby-blue glow pops on the teal */}
+        <img
+          src="/stealth/wordmark-glow.png"
+          alt="Stealth Batting Gloves — Dominate in Silence"
+          className="h-9 w-auto object-contain drop-shadow-[0_2px_12px_rgba(150,210,235,0.4)]"
+        />
+
+        {/* B2 Bomber gloves, Baby Blue */}
+        <div className="mt-3 rounded-lg overflow-hidden ring-1 ring-white/15 shadow-lg">
+          <img
+            src="/stealth/gloves-blue.png"
+            alt="Stealth B2 Bomber Series batting gloves, Baby Blue colorway"
+            className="w-full max-w-[230px] object-contain"
+          />
+        </div>
+        <div className="mt-2 text-[11px] font-semibold text-[#bfe6f0]">
+          B2 Bomber Series · Baby Blue
+        </div>
+
+        {/* promo code */}
+        <div className="mt-3 w-full rounded-lg bg-gradient-to-r from-[#cfeaf3] to-[#92cadd] px-3 py-2 shadow">
+          <div className="text-sm font-extrabold tracking-wide text-[#003640]">
+            USE CODE 'NWBB' · 10% OFF
+          </div>
+          <div className="text-[10px] font-bold text-[#0a4350]">
+            on every team &amp; player order
+          </div>
+        </div>
+
+        {/* store link */}
+        <div className="mt-2.5 inline-flex items-center gap-1 text-xs font-bold text-[#bfe6f0] group-hover:text-white">
+          stealthbattinggloves.com
+          <span className="transition-transform group-hover:translate-x-0.5">→</span>
+        </div>
+      </div>
+    </a>
+  )
+}
+
 // ─── 5. PNW Coach Sim (GM game) ─────────────────────────────────
 
 // Example pixel-art player portraits straight from the sim (PixelHeadshot is the
