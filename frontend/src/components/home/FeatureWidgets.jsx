@@ -462,28 +462,27 @@ export function StealthPartnerWidget() {
         </span>
       </div>
 
-      <div className="p-3 flex flex-col items-center text-center">
-        {/* Stealth wordmark — baby-blue glow pops on the teal */}
-        <img
-          src="/stealth/wordmark-glow.png"
-          alt="Stealth Batting Gloves — Dominate in Silence"
-          className="h-9 w-auto object-contain drop-shadow-[0_2px_12px_rgba(150,210,235,0.4)]"
-        />
-
-        {/* B2 Bomber gloves, Baby Blue */}
-        <div className="mt-3 rounded-lg overflow-hidden ring-1 ring-white/15 shadow-lg">
+      <div className="p-3">
+        {/* gloves (floating, left) + big Stealth logo (right) */}
+        <div className="grid grid-cols-2 gap-2 items-center">
           <img
-            src="/stealth/gloves-blue.png"
+            src="/stealth/gloves-cutout.png"
             alt="Stealth B2 Bomber Series batting gloves, Baby Blue colorway"
-            className="w-full max-w-[230px] object-contain"
+            className="w-full object-contain drop-shadow-[0_6px_14px_rgba(0,0,0,0.55)]"
+          />
+          <img
+            src="/stealth/wordmark-glow.png"
+            alt="Stealth Batting Gloves — Dominate in Silence"
+            className="w-full object-contain drop-shadow-[0_2px_14px_rgba(150,210,235,0.45)]"
           />
         </div>
-        <div className="mt-2 text-[11px] font-semibold text-[#bfe6f0]">
+
+        <div className="mt-1 text-center text-[11px] font-semibold text-[#bfe6f0]">
           B2 Bomber Series · Baby Blue
         </div>
 
         {/* promo code */}
-        <div className="mt-3 w-full rounded-lg bg-gradient-to-r from-[#cfeaf3] to-[#92cadd] px-3 py-2 shadow">
+        <div className="mt-2.5 rounded-lg bg-gradient-to-r from-[#cfeaf3] to-[#92cadd] px-3 py-2 text-center shadow">
           <div className="text-sm font-extrabold tracking-wide text-[#003640]">
             USE CODE 'NWBB' · 10% OFF
           </div>
@@ -493,7 +492,7 @@ export function StealthPartnerWidget() {
         </div>
 
         {/* store link */}
-        <div className="mt-2.5 inline-flex items-center gap-1 text-xs font-bold text-[#bfe6f0] group-hover:text-white">
+        <div className="mt-2.5 flex items-center justify-center gap-1 text-xs font-bold text-[#bfe6f0] group-hover:text-white">
           stealthbattinggloves.com
           <span className="transition-transform group-hover:translate-x-0.5">→</span>
         </div>
