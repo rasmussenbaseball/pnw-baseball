@@ -230,6 +230,7 @@ const DailyRecapGraphic = lazyWithRetry(() => import('./pages/DailyRecapGraphic'
 import Homepage from './pages/Homepage'
 import StatLeaders from './pages/StatLeaders'
 import StandingsPage from './pages/StandingsPage'
+import ConferencePage from './pages/ConferencePage'
 // ResultsPage removed - consolidated into Scoreboard with date picker
 import GameDetail from './pages/GameDetail'
 import TeamRatings from './pages/TeamRatings'
@@ -408,6 +409,7 @@ export default function App() {
           <Route path="/draft" element={<PnwDraft />} />
           <Route path="/wcl-pickem" element={<WclPickem />} />
           <Route path="/standings" element={<StandingsPage />} />
+          <Route path="/conference/:slug" element={<ConferencePage />} />
           <Route path="/results" element={<Navigate to="/scoreboard" replace />} />
           <Route path="/scoreboard" element={<Scoreboard />} />
           <Route path="/game/:gameId" element={<GameDetail />} />

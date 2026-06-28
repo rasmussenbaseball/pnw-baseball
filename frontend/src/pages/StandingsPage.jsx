@@ -60,7 +60,10 @@ function ConferenceTable({ conference, clinchedTeams, frozenInfo }) {
           {conference.division_level}
         </span>
         <h3 className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">
-          {conference.conference_name}
+          {conference.conference_abbrev
+            ? <Link to={`/conference/${(conference.conference_abbrev || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`}
+                className="hover:text-nw-teal hover:underline">{conference.conference_name}</Link>
+            : conference.conference_name}
         </h3>
         {frozenInfo && (
           <span

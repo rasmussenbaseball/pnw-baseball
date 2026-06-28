@@ -100,6 +100,18 @@ function resolveRoute(pathname) {
     };
   }
 
+  // Conference page → /conference/:slug (slug = lowercased abbreviation)
+  const confMatch = pathname.match(/^\/conference\/([a-z0-9-]+)\/?$/i);
+  if (confMatch) {
+    return {
+      ogParams: 't=default',
+      title: 'Conference Baseball — Standings & Stats · NW Baseball Stats',
+      description:
+        'Standings, team and player stats, and schedule for this Northwest college baseball conference.',
+      seo: { type: 'conference', id: confMatch[1].toLowerCase() },
+    };
+  }
+
   // Game / boxscore → /game/:gameId
   const gameMatch = pathname.match(/^\/game\/(\d+)\/?$/);
   if (gameMatch) {

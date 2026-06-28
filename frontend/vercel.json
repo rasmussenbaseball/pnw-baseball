@@ -3,6 +3,7 @@
     { "source": "/api/v1/:path*", "destination": "https://api.nwbaseballstats.com/api/v1/:path*" },
     { "source": "/sitemap.xml", "destination": "https://api.nwbaseballstats.com/api/v1/seo/sitemap.xml" },
     { "source": "/sitemap-pages.xml", "destination": "https://api.nwbaseballstats.com/api/v1/seo/sitemap-pages.xml" },
+    { "source": "/sitemap-conferences.xml", "destination": "https://api.nwbaseballstats.com/api/v1/seo/sitemap-conferences.xml" },
     { "source": "/sitemap-teams.xml", "destination": "https://api.nwbaseballstats.com/api/v1/seo/sitemap-teams.xml" },
     { "source": "/sitemap-players.xml", "destination": "https://api.nwbaseballstats.com/api/v1/seo/sitemap-players.xml" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }

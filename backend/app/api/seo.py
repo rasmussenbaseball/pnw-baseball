@@ -26,6 +26,11 @@ _LEVEL_LABEL = {"D1": "NCAA Division I", "D2": "NCAA Division II", "D3": "NCAA D
                 "NAIA": "NAIA", "JUCO": "NWAC / JUCO"}
 
 
+def _slug(s):
+    import re
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", (s or "").lower())).strip("-")
+
+
 def _xml(s):
     s = "" if s is None else str(s)
     return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -52,7 +57,7 @@ def _urlset(urls):
 @seo_router.get("/seo/sitemap.xml")
 @cached_endpoint(ttl_seconds=86400)
 def sitemap_index():
-    maps = ["sitemap-pages.xml", "sitemap-teams.xml", "sitemap-players.xml"]
+    maps = ["sitemap-pages.xml", "sitemap-conferences.xml", "sitemap-teams.xml", "sitemap-players.xml"]
     body = ['<?xml version="1.0" encoding="UTF-8"?>',
             '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     for m in maps:
@@ -64,11 +69,33 @@ def sitemap_index():
 @seo_router.get("/seo/sitemap-pages.xml")
 @cached_endpoint(ttl_seconds=86400)
 def sitemap_pages():
-    pages = [("", "daily", "1.0"), ("teams", "weekly", "0.8"),
-             ("leaderboards", "daily", "0.8"), ("recruiting", "weekly", "0.7"),
-             ("articles", "daily", "0.7"), ("draft-board", "weekly", "0.6"),
-             ("percentiles", "weekly", "0.6"), ("about", "monthly", "0.4")]
+    pages = [("", "daily", "1.0"), ("standings", "daily", "0.9"), ("teams", "weekly", "0.8"),
+             ("leaderboards", "daily", "0.8"), ("players", "weekly", "0.6"),
+             ("recruiting", "weekly", "0.7"), ("articles", "daily", "0.7"),
+             ("draft-board", "weekly", "0.6"), ("percentiles", "weekly", "0.6"),
+             ("about", "monthly", "0.4")]
     return _xml_response(_urlset([(f"{SITE}/{p}".rstrip("/"), f, pr) for p, f, pr in pages]))
+
+
+def _conferences_with_teams(cur):
+    cur.execute("""
+        SELECT c.id, c.name, c.abbreviation, d.level, COUNT(t.id) AS n
+        FROM conferences c JOIN divisions d ON c.division_id = d.id
+        LEFT JOIN teams t ON t.conference_id = c.id AND t.is_active = 1
+        WHERE c.abbreviation IS NOT NULL AND c.abbreviation <> ''
+        GROUP BY c.id, c.name, c.abbreviation, d.level
+        HAVING COUNT(t.id) > 0
+    """)
+    return cur.fetchall()
+
+
+@seo_router.get("/seo/sitemap-conferences.xml")
+@cached_endpoint(ttl_seconds=86400)
+def sitemap_conferences():
+    with get_connection() as conn:
+        cur = conn.cursor()
+        slugs = sorted({_slug(r["abbreviation"]) for r in _conferences_with_teams(cur)})
+    return _xml_response(_urlset([(f"{SITE}/conference/{s}", "daily", "0.7") for s in slugs if s]))
 
 
 @seo_router.get("/seo/sitemap-teams.xml")
@@ -195,13 +222,45 @@ def _team_meta(cur, tid):
             "jsonld": jsonld, "ok": True}
 
 
+def _conference_meta(cur, slug):
+    for r in _conferences_with_teams(cur):
+        if _slug(r["abbreviation"]) == slug:
+            conf = r
+            break
+    else:
+        return None
+    name = conf["name"]
+    abbr = conf["abbreviation"]
+    level = _LEVEL_LABEL.get(conf["level"], conf["level"] or "college")
+    short = abbr if abbr.lower() != name.lower() else name
+    title = f"{abbr} Baseball — Standings, Stats, Teams & Schedule | NW Baseball Stats"
+    desc = (f"{name} ({abbr}) {level} college baseball: live standings, team and player stats, "
+            f"advanced metrics, schedule and scores for all {conf['n']} {abbr} programs on "
+            "NW Baseball Stats.")
+    jsonld = {
+        "@context": "https://schema.org", "@type": "SportsOrganization",
+        "name": name, "alternateName": abbr, "sport": "Baseball",
+        "url": f"{SITE}/conference/{slug}", "description": desc,
+    }
+    return {"title": title, "description": desc[:300],
+            "canonical": f"{SITE}/conference/{slug}", "jsonld": jsonld, "ok": True}
+
+
 @seo_router.get("/seo/meta")
 @cached_endpoint(ttl_seconds=21600)
-def seo_meta(type: str = Query(...), id: int = Query(...)):
-    """Per-entity SEO metadata for the edge middleware. Cached 6h."""
+def seo_meta(type: str = Query(...), id: str = Query(...)):
+    """Per-entity SEO metadata for the edge middleware. Cached 6h.
+    `id` is a numeric id for player/team and a slug for conference."""
     with get_connection() as conn:
         cur = conn.cursor()
-        meta = _player_meta(cur, id) if type == "player" else _team_meta(cur, id) if type == "team" else None
+        if type == "player" and id.isdigit():
+            meta = _player_meta(cur, int(id))
+        elif type == "team" and id.isdigit():
+            meta = _team_meta(cur, int(id))
+        elif type == "conference":
+            meta = _conference_meta(cur, _slug(id))
+        else:
+            meta = None
     if not meta:
         return {"ok": False}
     return meta
