@@ -10729,6 +10729,166 @@ def projections_teams(season: int = Query(2027),
         return [dict(r) for r in cur.fetchall()]
 
 
+# ── Team projected totals ──────────────────────────────────────────────────
+# Aggregate the projected stat lines into a team line. The "incoming freshmen &
+# transfers" pool (unaccounted PA/IP) is filled with slightly-below-average
+# production so a thin roster's totals still represent a full season: pool
+# hitters produce 90% of a league-average bat, pool arms allow ~10% more.
+_PROJ_BASELINE_CACHE = {}
+POOL_HIT_FACTOR = 0.90   # incoming pool hits/walks at 90% of a league-average bat
+POOL_PIT_FACTOR = 1.10   # ... and allows ~10% more runs/baserunners than average
+
+
+def _proj_league_baselines(cur, season):
+    """Per-level, PA-/IP-weighted average projected rate lines used to fill a
+    team's unaccounted PA/IP with replacement-ish production. Cached per season."""
+    if season in _PROJ_BASELINE_CACHE:
+        return _PROJ_BASELINE_CACHE[season]
+    cur.execute("SELECT side, proj FROM player_projections WHERE season = %s", (season,))
+    agg = {}
+    for r in cur.fetchall():
+        pr = r["proj"]
+        if isinstance(pr, str):
+            pr = json.loads(pr)
+        if not pr or pr.get("no_data") or pr.get("is_pool"):
+            continue
+        lvl, side = pr.get("level") or "D1", r["side"]
+        d = agg.setdefault((lvl, side), {})
+
+        def add(k, v):
+            d[k] = d.get(k, 0.0) + (v or 0)
+
+        if side == "bat":
+            pa = pr.get("PT") or 0
+            if pa <= 0:
+                continue
+            add("pa", pa); add("ab", pr.get("AB")); add("h", pr.get("H"))
+            add("2b", pr.get("2B")); add("3b", pr.get("3B")); add("hr", pr.get("HR"))
+            add("bb", pr.get("BB")); add("woba_pa", (pr.get("wOBA") or 0) * pa)
+        else:
+            outs = ip_to_outs(pr.get("IP"))
+            if outs <= 0:
+                continue
+            ipd, bf = outs / 3.0, pr.get("BF") or 0
+            bb = (pr.get("BB_pct") or 0) * bf
+            add("outs", outs); add("bf", bf)
+            add("er", (pr.get("ERA") or 0) * ipd / 9.0)
+            add("k", (pr.get("K_pct") or 0) * bf); add("bb", bb)
+            add("hr", pr.get("HR_allowed"))
+            add("h", max(0.0, (pr.get("WHIP") or 0) * ipd - bb))
+            add("fip_out", (pr.get("FIP") or 0) * outs)
+    out = {}
+    for (lvl, side), d in agg.items():
+        lo = out.setdefault(lvl, {})
+        if side == "bat" and d.get("pa"):
+            pa = d["pa"]
+            lo["bat"] = {k: d.get(k, 0) / pa for k in ("ab", "h", "2b", "3b", "hr", "bb")}
+            lo["bat"]["woba"] = d.get("woba_pa", 0) / pa
+        elif side == "pit" and d.get("outs"):
+            outs = d["outs"]
+            lo["pit"] = {f"{k}_po": d.get(k, 0) / outs
+                         for k in ("er", "h", "bb", "k", "hr", "bf")}
+            lo["pit"]["fip"] = d.get("fip_out", 0) / outs
+    _PROJ_BASELINE_CACHE[season] = out
+    return out
+
+
+def _team_projection_totals(hitters, pitchers, level, baselines):
+    """Build the team hitting + pitching line from the player rows, blending the
+    incoming pool in as slightly-below-average production."""
+    base = baselines.get(level, {})
+    n = lambda v: float(v or 0)
+
+    # ---- hitting ----
+    bt = {k: 0.0 for k in ("pa", "ab", "h", "2b", "3b", "hr", "bb", "r", "rbi", "war", "woba_pa")}
+    pool_pa = 0.0
+    nb = 0
+    for row in hitters:
+        pr = row.get("proj") or {}
+        if pr.get("is_pool"):
+            pool_pa += n(pr.get("PT")); continue
+        if pr.get("no_data"):
+            continue
+        pa = n(pr.get("PT")); nb += 1
+        bt["pa"] += pa; bt["ab"] += n(pr.get("AB")); bt["h"] += n(pr.get("H"))
+        bt["2b"] += n(pr.get("2B")); bt["3b"] += n(pr.get("3B")); bt["hr"] += n(pr.get("HR"))
+        bt["bb"] += n(pr.get("BB")); bt["r"] += n(pr.get("R")); bt["rbi"] += n(pr.get("RBI"))
+        bt["war"] += n(pr.get("WAR")); bt["woba_pa"] += n(pr.get("wOBA")) * pa
+    bb_rates = base.get("bat")
+    if pool_pa > 0 and bb_rates:
+        f = POOL_HIT_FACTOR
+        bt["ab"] += pool_pa * bb_rates["ab"]
+        bt["h"] += pool_pa * bb_rates["h"] * f
+        bt["2b"] += pool_pa * bb_rates["2b"] * f
+        bt["3b"] += pool_pa * bb_rates["3b"] * f
+        bt["hr"] += pool_pa * bb_rates["hr"] * f
+        bt["bb"] += pool_pa * bb_rates["bb"] * f
+        bt["pa"] += pool_pa
+        bt["woba_pa"] += pool_pa * bb_rates["woba"] * f
+    ab, pa = bt["ab"], bt["pa"]
+    tb = bt["h"] + bt["2b"] + 2 * bt["3b"] + 3 * bt["hr"]
+    hitting = None
+    if ab > 0:
+        avg = bt["h"] / ab
+        obp = (bt["h"] + bt["bb"]) / (ab + bt["bb"]) if (ab + bt["bb"]) else 0
+        slg = tb / ab
+        hitting = {
+            "AVG": round(avg, 3), "OBP": round(obp, 3), "SLG": round(slg, 3),
+            "OPS": round(obp + slg, 3),
+            "wOBA": round(bt["woba_pa"] / pa, 3) if pa else None,
+            "HR": round(bt["hr"]), "BB": round(bt["bb"]), "R": round(bt["r"]),
+            "RBI": round(bt["rbi"]), "PA": round(pa), "WAR": round(bt["war"], 1),
+            "n_players": nb, "pool_pa": round(pool_pa),
+        }
+
+    # ---- pitching ----
+    pt = {k: 0.0 for k in ("outs", "bf", "er", "k", "bb", "h", "hr", "war", "fip_out")}
+    pool_ip = 0.0
+    npc = 0
+    for row in pitchers:
+        pr = row.get("proj") or {}
+        if pr.get("is_pool"):
+            pool_ip += n(pr.get("IP")); continue
+        if pr.get("no_data"):
+            continue
+        outs = ip_to_outs(pr.get("IP"))
+        if outs <= 0:
+            continue
+        ipd, bf = outs / 3.0, n(pr.get("BF")); npc += 1
+        bbp = n(pr.get("BB_pct")) * bf
+        pt["outs"] += outs; pt["bf"] += bf
+        pt["er"] += n(pr.get("ERA")) * ipd / 9.0
+        pt["k"] += n(pr.get("K_pct")) * bf; pt["bb"] += bbp
+        pt["h"] += max(0.0, n(pr.get("WHIP")) * ipd - bbp)
+        pt["hr"] += n(pr.get("HR_allowed")); pt["war"] += n(pr.get("WAR"))
+        pt["fip_out"] += n(pr.get("FIP")) * outs
+    pr_rates = base.get("pit")
+    pool_outs = ip_to_outs(pool_ip) if pool_ip else 0
+    if pool_outs > 0 and pr_rates:
+        f = POOL_PIT_FACTOR
+        pt["outs"] += pool_outs; pt["bf"] += pool_outs * pr_rates["bf_po"]
+        pt["er"] += pool_outs * pr_rates["er_po"] * f
+        pt["h"] += pool_outs * pr_rates["h_po"] * f
+        pt["bb"] += pool_outs * pr_rates["bb_po"] * f
+        pt["hr"] += pool_outs * pr_rates["hr_po"] * f
+        pt["k"] += pool_outs * pr_rates["k_po"] / f
+        pt["fip_out"] += pool_outs * pr_rates["fip"] * f
+    ipd_t, bf_t = pt["outs"] / 3.0, pt["bf"]
+    pitching = None
+    if ipd_t > 0:
+        pitching = {
+            "ERA": round(pt["er"] * 9.0 / ipd_t, 2),
+            "WHIP": round((pt["h"] + pt["bb"]) / ipd_t, 2),
+            "FIP": round(pt["fip_out"] / pt["outs"], 2),
+            "K_pct": round(pt["k"] / bf_t, 3) if bf_t else None,
+            "BB_pct": round(pt["bb"] / bf_t, 3) if bf_t else None,
+            "HR9": round(pt["hr"] * 9.0 / ipd_t, 2),
+            "IP": outs_to_ip(int(round(pt["outs"]))), "WAR": round(pt["war"], 1),
+            "n_players": npc, "pool_ip": outs_to_ip(int(round(pool_outs))),
+        }
+    return {"hitting": hitting, "pitching": pitching, "level": level}
+
+
 @router.get("/teams/{team_id}/projections")
 @cached_endpoint(ttl_seconds=1800)
 def team_projections(team_id: int, season: int = Query(2027),
@@ -10818,8 +10978,13 @@ def team_projections(team_id: int, season: int = Query(2027),
             return proj + pool + nod
         hitters = _ordered(hitters, "PT")
         pitchers = _ordered(pitchers, "IP")
+        # team line: the level is the same across the roster's projected rows
+        level = next((((r["proj"] or {}).get("level")) for r in hitters + pitchers
+                      if (r["proj"] or {}).get("level")), "D1")
+        totals = _team_projection_totals(hitters, pitchers, level,
+                                         _proj_league_baselines(cur, season))
         return {"team": dict(team), "season": season,
-                "hitters": hitters, "pitchers": pitchers}
+                "hitters": hitters, "pitchers": pitchers, "totals": totals}
 
 
 # ── Per-player projection card (paywalled preview on player pages) ──────────

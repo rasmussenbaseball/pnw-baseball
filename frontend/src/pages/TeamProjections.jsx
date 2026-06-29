@@ -281,6 +281,67 @@ function Table({ rows, side, expanded, toggle, norm }) {
   )
 }
 
+function TotalTile({ label, value, strong }) {
+  return (
+    <div className="flex flex-col items-center px-3 py-1.5 rounded-md bg-white dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700/60 min-w-[58px]">
+      <span className="text-[10px] uppercase tracking-wide text-gray-400">{label}</span>
+      <span className={`tabular-nums text-gray-900 dark:text-gray-100 ${strong ? 'text-lg font-extrabold' : 'text-base font-bold'}`}>{value}</span>
+    </div>
+  )
+}
+
+// Team projected line: aggregate of the projected roster with the unaccounted
+// PA/IP (incoming pool) blended in as slightly-below-average production, so a
+// thin roster still reads as a full season.
+function TeamTotals({ totals }) {
+  if (!totals || (!totals.hitting && !totals.pitching)) return null
+  const h = totals.hitting, p = totals.pitching
+  const poolNote = (h?.pool_pa || p?.pool_ip)
+    ? `Unaccounted playing time (${[h?.pool_pa ? `${h.pool_pa} PA` : null, p?.pool_ip ? `${p.pool_ip} IP` : null].filter(Boolean).join(' / ')}) is filled with incoming freshmen & transfers at ~90% of a league-average player, so the line reflects a full season.`
+    : 'Full projected roster accounts for the whole season — no playing time filled in.'
+  return (
+    <div className="rounded-lg border border-nw-teal/30 bg-nw-teal/[0.04] dark:bg-nw-teal/[0.07] p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+        {h && (
+          <div>
+            <div className="flex items-baseline justify-between mb-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-nw-teal">Team Hitting</h4>
+              <span className="text-[10px] text-gray-400">{h.n_players} projected · {h.PA} PA</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <TotalTile label="AVG" value={slash(h.AVG)} />
+              <TotalTile label="OBP" value={slash(h.OBP)} />
+              <TotalTile label="SLG" value={slash(h.SLG)} />
+              <TotalTile label="OPS" value={slash(h.OPS)} strong />
+              <TotalTile label="wOBA" value={slash(h.wOBA)} />
+              <TotalTile label="HR" value={h.HR} />
+              <TotalTile label="WAR" value={f1(h.WAR)} />
+            </div>
+          </div>
+        )}
+        {p && (
+          <div>
+            <div className="flex items-baseline justify-between mb-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-nw-teal">Team Pitching</h4>
+              <span className="text-[10px] text-gray-400">{p.n_players} projected · {f1(p.IP)} IP</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <TotalTile label="ERA" value={f2(p.ERA)} strong />
+              <TotalTile label="WHIP" value={f2(p.WHIP)} />
+              <TotalTile label="FIP" value={f2(p.FIP)} />
+              <TotalTile label="K%" value={pctInt(p.K_pct)} />
+              <TotalTile label="BB%" value={pctInt(p.BB_pct)} />
+              <TotalTile label="HR/9" value={f2(p.HR9)} />
+              <TotalTile label="WAR" value={f1(p.WAR)} />
+            </div>
+          </div>
+        )}
+      </div>
+      <p className="text-[10px] text-gray-400 mt-3">{poolNote}</p>
+    </div>
+  )
+}
+
 export default function TeamProjections() {
   const { data: teams } = useProjectionTeams(SEASON)
   const [picked, setPicked] = useState(null)
@@ -348,6 +409,7 @@ export default function TeamProjections() {
               <p className="text-xs text-gray-500">{nTotal} projected players{nIncoming ? ` · ${nIncoming} incoming` : ''}</p>
             </div>
           </div>
+          <TeamTotals totals={payload.totals} />
           <section>
             <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">Hitters</h3>
             <Table rows={payload.hitters} side="bat" expanded={expanded} toggle={toggle} norm={norm} />
