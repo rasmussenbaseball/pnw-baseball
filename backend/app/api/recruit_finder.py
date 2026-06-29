@@ -94,6 +94,8 @@ class Filter(BaseModel):
 class FinderQuery(BaseModel):
     position: str = "any"
     bats: str = "any"        # 'L' | 'R' | 'S' | 'any'
+    source: str = "any"      # 'any' | 'nwac' | 'portal' | 'wcl'
+    year: str = "any"        # 'any' | 'Fr' | 'So' | 'Jr' | 'Sr' | 'Gr' (matches R- variants)
     archetype: Optional[str] = None
     filters: List[Filter] = []
     sort: Optional[str] = None   # stat key to prioritize; default archetype/wRC+
@@ -119,7 +121,10 @@ def search(body: FinderQuery, _uid: str = Depends(_gate)):
         cur.execute("""
             SELECT p.id, p.first_name, p.last_name, p.position, p.bats, p.year_in_school,
                    t.short_name AS team, d.level,
-                   CASE WHEN d.level = 'JUCO' THEN 'NWAC' ELSE 'Portal' END AS src
+                   (d.level = 'JUCO') AS is_nwac,
+                   (p.id IN (SELECT player_id FROM transfer_portal_members)) AS is_portal,
+                   (p.id IN (SELECT spl.spring_player_id FROM wcl_portal_members w
+                             JOIN summer_player_links spl ON spl.summer_player_id = w.summer_player_id)) AS is_wcl
             FROM players p
             JOIN teams t ON t.id = p.team_id
             JOIN conferences c ON c.id = t.conference_id
@@ -235,6 +240,18 @@ def search(body: FinderQuery, _uid: str = Depends(_gate)):
             continue
         if pos_pat and not pos_pat.search(info.get("position") or ""):
             continue
+        # source filter (a player can belong to more than one group)
+        if body.source == "nwac" and not info.get("is_nwac"):
+            continue
+        if body.source == "portal" and not info.get("is_portal"):
+            continue
+        if body.source == "wcl" and not info.get("is_wcl"):
+            continue
+        # class / year filter (matches 'So' against 'So' and 'R-So')
+        if body.year != "any" and body.year.lower() not in (info.get("year_in_school") or "").lower():
+            continue
+        # primary display label (NWAC league identity first, then portal, then WCL)
+        src = "NWAC" if info.get("is_nwac") else ("Portal" if info.get("is_portal") else "WCL")
         stats, pcts = {}, {}
         for key in HITTER_STATS:
             v = stat_value(pid, key)
@@ -243,7 +260,7 @@ def search(body: FinderQuery, _uid: str = Depends(_gate)):
         rows.append({
             "player_id": pid, "name": f"{info['first_name']} {info['last_name']}",
             "position": info["position"], "bats": info["bats"], "team": info["team"],
-            "level": info["level"], "source": info["src"], "year": info["year_in_school"],
+            "level": info["level"], "source": src, "year": info["year_in_school"],
             "pa": box[pid]["plate_appearances"], "season": box[pid]["season"],
             "stats": stats, "pcts": pcts,
         })

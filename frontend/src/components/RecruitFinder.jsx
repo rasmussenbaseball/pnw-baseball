@@ -38,6 +38,8 @@ export default function RecruitFinder() {
   const [meta, setMeta] = useState(null)
   const [position, setPosition] = useState('any')
   const [bats, setBats] = useState('any')
+  const [source, setSource] = useState('any')
+  const [year, setYear] = useState('any')
   const [archetype, setArchetype] = useState('')
   const [filters, setFilters] = useState([])
   const [results, setResults] = useState(null)
@@ -57,7 +59,7 @@ export default function RecruitFinder() {
     setLoading(true); setError(''); setResults(null)
     try {
       const body = {
-        position, bats,
+        position, bats, source, year,
         archetype: archetype || null,
         filters: filters.filter(f => f.value !== '' && f.value != null)
           .map(f => ({ ...f, value: parseFloat(f.value) })),
@@ -87,6 +89,24 @@ export default function RecruitFinder() {
             <select value={bats} onChange={e => setBats(e.target.value)} className={SEL}>
               <option value="any">Any</option><option value="L">Left</option>
               <option value="R">Right</option><option value="S">Switch</option>
+            </select>
+          </Labeled>
+          <Labeled label="Source">
+            <select value={source} onChange={e => setSource(e.target.value)} className={SEL}>
+              <option value="any">All sources</option>
+              <option value="nwac">NWAC</option>
+              <option value="portal">Transfer Portal</option>
+              <option value="wcl">WCL Portal</option>
+            </select>
+          </Labeled>
+          <Labeled label="Class">
+            <select value={year} onChange={e => setYear(e.target.value)} className={SEL}>
+              <option value="any">Any class</option>
+              <option value="Fr">Freshman</option>
+              <option value="So">Sophomore</option>
+              <option value="Jr">Junior</option>
+              <option value="Sr">Senior</option>
+              <option value="Gr">Grad</option>
             </select>
           </Labeled>
           <Labeled label="Archetype">
@@ -163,6 +183,7 @@ export default function RecruitFinder() {
                     <th className="text-left font-semibold px-3 py-2">Player</th>
                     <th className="text-left font-semibold px-2 py-2">Pos</th>
                     <th className="text-left font-semibold px-2 py-2">B</th>
+                    <th className="text-left font-semibold px-2 py-2">Yr</th>
                     <th className="text-left font-semibold px-2 py-2">Source</th>
                     {info.archetype && <th className="text-right font-semibold px-2 py-2">Fit</th>}
                     {SHOWN.map(s => <th key={s} className="text-right font-semibold px-2 py-2">{meta?.stats.find(m => m.key === s)?.label || s}</th>)}
@@ -178,8 +199,9 @@ export default function RecruitFinder() {
                       </td>
                       <td className="px-2 py-2 text-gray-600 dark:text-gray-300">{r.position}</td>
                       <td className="px-2 py-2 text-gray-500">{r.bats}</td>
+                      <td className="px-2 py-2 text-gray-500 whitespace-nowrap">{r.year || '–'}</td>
                       <td className="px-2 py-2">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${r.source === 'NWAC' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'}`}>{r.source}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${r.source === 'NWAC' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300' : r.source === 'WCL' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'}`}>{r.source}</span>
                       </td>
                       {info.archetype && (
                         <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: pctColor(r.score) }}>{r.score ?? '–'}</td>
