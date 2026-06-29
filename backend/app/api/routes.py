@@ -10889,6 +10889,71 @@ def _team_projection_totals(hitters, pitchers, level, baselines):
     return {"hitting": hitting, "pitching": pitching, "level": level}
 
 
+# Stats to rank within each level, and whether higher is better.
+_HIT_RANK_STATS = [("AVG", True), ("OBP", True), ("SLG", True), ("OPS", True),
+                   ("wOBA", True), ("HR", True), ("WAR", True)]
+_PIT_RANK_STATS = [("ERA", False), ("WHIP", False), ("FIP", False), ("K_pct", True),
+                   ("BB_pct", False), ("HR9", False), ("WAR", True)]
+_PROJ_RANKS_CACHE = {}
+
+
+def _all_team_projection_totals(cur, season):
+    """Every PNW team's projected totals, ranked within its level for each stat.
+    Returns {team_id: {"hitting": {stat: {rank, of}}, "pitching": {...}, "level"}}.
+    Cached per season (cleared on process restart, i.e. after a regen+restart)."""
+    if season in _PROJ_RANKS_CACHE:
+        return _PROJ_RANKS_CACHE[season]
+    baselines = _proj_league_baselines(cur, season)
+    cur.execute("SELECT player_id FROM player_returning_overrides "
+                "WHERE season = %s AND status = 'departing'", (season - 1,))
+    departing = {r["player_id"] for r in cur.fetchall()}
+    try:
+        cur.execute("SELECT player_id FROM transfer_portal_members")
+        portal = {r["player_id"] for r in cur.fetchall()}
+    except Exception:
+        portal = set()
+    cur.execute("""SELECT t.id, d.level FROM teams t
+                   JOIN conferences c ON c.id = t.conference_id
+                   JOIN divisions d ON d.id = c.division_id
+                   WHERE t.state IN ('WA','OR','ID','MT','BC')""")
+    team_level = {r["id"]: r["level"] for r in cur.fetchall()}
+    cur.execute("""SELECT team_id, side, player_id, canonical_id, is_incoming, proj
+                   FROM player_projections WHERE season = %s""", (season,))
+    by_team = {}
+    for r in cur.fetchall():
+        tid = r["team_id"]
+        if tid not in team_level:
+            continue
+        # same departing/portal drops as the per-team endpoint, so the ranked
+        # totals match what each team's page shows.
+        if r["player_id"] in departing or r["canonical_id"] in departing:
+            continue
+        if not r["is_incoming"] and (r["player_id"] in portal or r["canonical_id"] in portal):
+            continue
+        pr = r["proj"]
+        if isinstance(pr, str):
+            pr = json.loads(pr)
+        d = by_team.setdefault(tid, {"bat": [], "pit": []})
+        d["bat" if r["side"] == "bat" else "pit"].append({"proj": pr})
+    team_totals = {tid: _team_projection_totals(d["bat"], d["pit"], team_level[tid], baselines)
+                   for tid, d in by_team.items()}
+    out = {tid: {"hitting": {}, "pitching": {}, "level": t["level"]}
+           for tid, t in team_totals.items()}
+    levels = {}
+    for tid, t in team_totals.items():
+        levels.setdefault(t["level"], []).append(tid)
+    for lvl, tids in levels.items():
+        for grp, stats in (("hitting", _HIT_RANK_STATS), ("pitching", _PIT_RANK_STATS)):
+            for stat, higher in stats:
+                vals = [(tid, team_totals[tid][grp][stat]) for tid in tids
+                        if team_totals[tid].get(grp) and team_totals[tid][grp].get(stat) is not None]
+                vals.sort(key=lambda x: x[1], reverse=higher)
+                for i, (tid, _) in enumerate(vals):
+                    out[tid][grp][stat] = {"rank": i + 1, "of": len(vals)}
+    _PROJ_RANKS_CACHE[season] = out
+    return out
+
+
 @router.get("/teams/{team_id}/projections")
 @cached_endpoint(ttl_seconds=1800)
 def team_projections(team_id: int, season: int = Query(2027),
@@ -10983,6 +11048,7 @@ def team_projections(team_id: int, season: int = Query(2027),
                       if (r["proj"] or {}).get("level")), "D1")
         totals = _team_projection_totals(hitters, pitchers, level,
                                          _proj_league_baselines(cur, season))
+        totals["ranks"] = _all_team_projection_totals(cur, season).get(team_id)
         return {"team": dict(team), "season": season,
                 "hitters": hitters, "pitchers": pitchers, "totals": totals}
 

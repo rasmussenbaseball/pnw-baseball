@@ -281,11 +281,29 @@ function Table({ rows, side, expanded, toggle, norm }) {
   )
 }
 
-function TotalTile({ label, value, strong }) {
+const ordinal = (n) => {
+  const s = ['th', 'st', 'nd', 'rd'], v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+function rankCls(rank, of) {
+  const t = of > 1 ? (rank - 1) / (of - 1) : 0   // 0 = best in level
+  if (rank === 1) return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+  if (t <= 0.34) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+  if (t >= 0.67) return 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300'
+  return 'bg-gray-100 text-gray-500 dark:bg-gray-700/50 dark:text-gray-400'
+}
+
+function TotalTile({ label, value, strong, rank, level }) {
   return (
     <div className="flex flex-col items-center px-3 py-1.5 rounded-md bg-white dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700/60 min-w-[58px]">
       <span className="text-[10px] uppercase tracking-wide text-gray-400">{label}</span>
       <span className={`tabular-nums text-gray-900 dark:text-gray-100 ${strong ? 'text-lg font-extrabold' : 'text-base font-bold'}`}>{value}</span>
+      {rank?.rank ? (
+        <span className={`mt-0.5 rounded px-1 text-[9px] font-bold leading-tight ${rankCls(rank.rank, rank.of)}`}
+          title={`${ordinal(rank.rank)} of ${rank.of} in ${level || ''}`.trim()}>
+          {ordinal(rank.rank)}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -296,6 +314,8 @@ function TotalTile({ label, value, strong }) {
 function TeamTotals({ totals }) {
   if (!totals || (!totals.hitting && !totals.pitching)) return null
   const h = totals.hitting, p = totals.pitching
+  const rk = totals.ranks || {}, lvl = totals.level
+  const hr = rk.hitting || {}, pr = rk.pitching || {}
   const poolNote = (h?.pool_pa || p?.pool_ip)
     ? `Unaccounted playing time (${[h?.pool_pa ? `${h.pool_pa} PA` : null, p?.pool_ip ? `${p.pool_ip} IP` : null].filter(Boolean).join(' / ')}) is filled with incoming freshmen & transfers at ~90% of a league-average player, so the line reflects a full season.`
     : 'Full projected roster accounts for the whole season — no playing time filled in.'
@@ -309,13 +329,13 @@ function TeamTotals({ totals }) {
               <span className="text-[10px] text-gray-400">{h.n_players} projected · {h.PA} PA</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              <TotalTile label="AVG" value={slash(h.AVG)} />
-              <TotalTile label="OBP" value={slash(h.OBP)} />
-              <TotalTile label="SLG" value={slash(h.SLG)} />
-              <TotalTile label="OPS" value={slash(h.OPS)} strong />
-              <TotalTile label="wOBA" value={slash(h.wOBA)} />
-              <TotalTile label="HR" value={h.HR} />
-              <TotalTile label="WAR" value={f1(h.WAR)} />
+              <TotalTile label="AVG" value={slash(h.AVG)} rank={hr.AVG} level={lvl} />
+              <TotalTile label="OBP" value={slash(h.OBP)} rank={hr.OBP} level={lvl} />
+              <TotalTile label="SLG" value={slash(h.SLG)} rank={hr.SLG} level={lvl} />
+              <TotalTile label="OPS" value={slash(h.OPS)} strong rank={hr.OPS} level={lvl} />
+              <TotalTile label="wOBA" value={slash(h.wOBA)} rank={hr.wOBA} level={lvl} />
+              <TotalTile label="HR" value={h.HR} rank={hr.HR} level={lvl} />
+              <TotalTile label="WAR" value={f1(h.WAR)} rank={hr.WAR} level={lvl} />
             </div>
           </div>
         )}
@@ -326,18 +346,20 @@ function TeamTotals({ totals }) {
               <span className="text-[10px] text-gray-400">{p.n_players} projected · {f1(p.IP)} IP</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              <TotalTile label="ERA" value={f2(p.ERA)} strong />
-              <TotalTile label="WHIP" value={f2(p.WHIP)} />
-              <TotalTile label="FIP" value={f2(p.FIP)} />
-              <TotalTile label="K%" value={pctInt(p.K_pct)} />
-              <TotalTile label="BB%" value={pctInt(p.BB_pct)} />
-              <TotalTile label="HR/9" value={f2(p.HR9)} />
-              <TotalTile label="WAR" value={f1(p.WAR)} />
+              <TotalTile label="ERA" value={f2(p.ERA)} strong rank={pr.ERA} level={lvl} />
+              <TotalTile label="WHIP" value={f2(p.WHIP)} rank={pr.WHIP} level={lvl} />
+              <TotalTile label="FIP" value={f2(p.FIP)} rank={pr.FIP} level={lvl} />
+              <TotalTile label="K%" value={pctInt(p.K_pct)} rank={pr.K_pct} level={lvl} />
+              <TotalTile label="BB%" value={pctInt(p.BB_pct)} rank={pr.BB_pct} level={lvl} />
+              <TotalTile label="HR/9" value={f2(p.HR9)} rank={pr.HR9} level={lvl} />
+              <TotalTile label="WAR" value={f1(p.WAR)} rank={pr.WAR} level={lvl} />
             </div>
           </div>
         )}
       </div>
-      <p className="text-[10px] text-gray-400 mt-3">{poolNote}</p>
+      <p className="text-[10px] text-gray-400 mt-3">
+        <span className="font-semibold text-gray-500 dark:text-gray-400">Badges</span> rank this team within {lvl} for each stat (gold = best in level). {poolNote}
+      </p>
     </div>
   )
 }
