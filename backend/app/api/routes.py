@@ -12187,6 +12187,9 @@ def derive_positions(
 _PARK_FACTORS_PATH = os.path.join(
     os.path.dirname(__file__), "..", "..", "..", "data", "park_factors.json"
 )
+_PARK_FACTORS_WCL_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "data", "park_factors_wcl.json"
+)
 
 
 @router.get("/park-factors")
@@ -12195,13 +12198,33 @@ def get_park_factors(
     state: Optional[str] = Query(None),
     division_id: Optional[int] = Query(None),
     conference_id: Optional[int] = Query(None),
+    league: str = Query("spring"),
     _user: str = Depends(require_tier("free")),
 ):
     """
-    Return park factor data for all PNW teams.
-    Optionally filter by state, division, or conference.
-    Enriches each entry with division/conference info from the DB.
+    Return park factor data. league=spring (default) -> PNW college parks (enriched
+    from the DB); league=summer -> WCL summer-ball parks (pre-enriched in the file).
+    Optionally filter by state, division, or conference (spring only).
     """
+    # ── Summer (WCL): the file is already in the spring shape and pre-enriched with
+    # team_id / short_name / division / logo_url, so just serve it. ──
+    if league == "summer":
+        try:
+            with open(os.path.normpath(_PARK_FACTORS_WCL_PATH), "r") as f:
+                wcl = json.load(f)
+        except FileNotFoundError:
+            raise HTTPException(status_code=500, detail="WCL park factors data file not found")
+        teams = sorted(wcl.get("teams", []), key=lambda x: x.get("park_factor_pct", 0), reverse=True)
+        return {
+            "teams": teams,
+            "methodology": wcl.get("methodology", ""),
+            "baseline_dimensions": wcl.get("baseline_dimensions", ""),
+            "baseline_temperature_f": wcl.get("baseline_temperature_f", 62),
+            "last_updated": wcl.get("last_updated", ""),
+            "league": "summer",
+            "total": len(teams),
+        }
+
     # Load the JSON data
     try:
         with open(os.path.normpath(_PARK_FACTORS_PATH), "r") as f:

@@ -396,27 +396,47 @@ function FilterPill({ active, onClick, children }) {
 }
 
 export default function ParkFactors() {
-  const { data, loading, error } = useParkFactors()
+  const [league, setLeague] = useState('spring')   // 'spring' (PNW college) | 'summer' (WCL)
+  const { data, loading, error } = useParkFactors({ league })
   const [section, setSection] = useState('leaderboard') // 'leaderboard' | 'tools'
   const [view, setView] = useState('cards')
   const [div, setDiv] = useState('all')
+  const isSummer = league === 'summer'
+
+  const switchLeague = (lg) => {
+    setLeague(lg); setDiv('all')
+    if (lg === 'summer' && section === 'map') setSection('leaderboard')   // map is PNW-geo only
+  }
 
   const teams = data?.teams || []
-  const divisions = useMemo(() => DIV_ORDER.filter((d) => teams.some((t) => t.division === d)), [teams])
+  const divisions = useMemo(() => ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'NWAC', 'North', 'South']
+    .filter((d) => teams.some((t) => t.division === d)), [teams])
   const filtered = useMemo(() => (div === 'all' ? teams : teams.filter((t) => t.division === div)), [teams, div])
 
   return (
     <div className="max-w-6xl mx-auto px-3 py-4">
       <h1 className="text-2xl sm:text-3xl font-bold text-pnw-slate dark:text-gray-100 mb-1">Park Factors</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-3xl">
-        How much each PNW park inflates or suppresses run scoring. <strong>Park Index 100 = the average
-        PNW park</strong>; above 100 favors hitters, below favors pitchers. Each park blends its measured
-        conditions (elevation, outfield depth, temperature) with six seasons of home/road run data,
-        weighted by sample size.
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 max-w-3xl">
+        How much each {isSummer ? 'West Coast League' : 'PNW'} park inflates or suppresses run scoring.{' '}
+        <strong>Park Index 100 = the average {isSummer ? 'WCL' : 'PNW'} park</strong>; above 100 favors
+        hitters, below favors pitchers. Each park blends its measured conditions (elevation, outfield depth,
+        temperature) with {isSummer ? 'five' : 'six'} seasons of home/road run data, weighted by sample size.
       </p>
 
+      {/* Spring (PNW college) vs Summer (WCL) toggle */}
+      <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden mb-4">
+        {[['spring', 'Spring · College'], ['summer', 'Summer · WCL']].map(([lg, label]) => (
+          <button key={lg} type="button" onClick={() => switchLeague(lg)}
+            className={`px-4 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors ${lg === 'summer' ? 'border-l border-gray-300 dark:border-gray-600' : ''} ${
+              league === lg ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-        {[['leaderboard', 'Leaderboard'], ['builder', 'Builder & Labs'], ['map', 'Map'], ['travel', 'Travel Scout']].map(([k, label]) => (
+        {[['leaderboard', 'Leaderboard'], ['builder', 'Builder & Labs'], ['map', 'Map'], ['travel', 'Travel Scout']]
+          .filter(([k]) => !isSummer || k !== 'map').map(([k, label]) => (
           <button
             key={k}
             type="button"
@@ -474,13 +494,16 @@ export default function ParkFactors() {
           <div className="mt-6 text-xs text-gray-500 dark:text-gray-400 max-w-3xl leading-relaxed">
             <h2 className="text-sm font-bold text-pnw-slate dark:text-gray-200 mb-1">How it works</h2>
             <p>{data?.methodology}</p>
-            <p className="mt-2">
-              <span className="font-bold text-amber-600 dark:text-amber-400">⚡ Magnus zone</span> — parks at
-              2,500+ ft elevation (4 of them, all inland/altitude sites). The thinner air does two things: fly
-              balls carry noticeably farther, and pitches break less, because the Magnus effect that bends a
-              spinning ball weakens as air density drops. Both tilt these parks toward hitters, which is why
-              they carry a ⚡ badge and show up amber in the labs.
-            </p>
+            {teams.some((t) => (t.elevation_ft || 0) >= 2500) && (
+              <p className="mt-2">
+                <span className="font-bold text-amber-600 dark:text-amber-400">⚡ Magnus zone</span> — parks at
+                2,500+ ft elevation ({teams.filter((t) => (t.elevation_ft || 0) >= 2500).length} of them, all
+                inland/altitude sites). The thinner air does two things: fly balls carry noticeably farther, and
+                pitches break less, because the Magnus effect that bends a spinning ball weakens as air density
+                drops. Both tilt these parks toward hitters, which is why they carry a ⚡ badge and show up amber
+                in the labs.
+              </p>
+            )}
             <p className="mt-2 text-gray-400 dark:text-gray-500">
               Updated {data?.last_updated}. Park Factors model built by Kai Malloch (intern).
             </p>
