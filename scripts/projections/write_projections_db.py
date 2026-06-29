@@ -381,9 +381,10 @@ BAT_ACHIEVE = {"AVG": "batting_avg", "iso": "iso",
                # left out of the map, so its spread got squeezed to ~63% of real.
                # Map it like the other contact/power skills to keep its full spread.
                "wobacon": "wobacon"}
-# ERA is derived from FIP. FIP, K%, BB%, and HR-per-BF are the independent skills
-# mapped per level; WHIP and Opp AVG are derived from K%/BB%/HR + regressed BABIP.
-PIT_ACHIEVE = {"FIP": "fip", "K_pct": "k_pct", "BB_pct": "bb_pct",
+# K%, BB%, and HR-per-BF are the independent skills mapped per level. FIP is NOT
+# mapped independently — it's RECONSTRUCTED from the mapped K%/BB%/HR (so it always
+# matches the displayed components); WHIP and Opp AVG are derived the same way.
+PIT_ACHIEVE = {"K_pct": "k_pct", "BB_pct": "bb_pct",
                "HR_bf": "home_runs_allowed::float / NULLIF(batters_faced,0)"}
 
 # wOBA-ish linear weights for reconstructing wOBA from the slash components.
@@ -851,7 +852,7 @@ def add_pool_rows(rows, pools_pa, pools_ip):
     print(f"  + {n} incoming-pool workload rows")
 
 
-def expand_to_achievable(rows, workload):
+def expand_to_achievable(rows, workload, run_coef):
     """Map each driver rate to its level's actual distribution (de-compress +
     calibrate per run environment), then reconstruct the slash/counts. Playing
     time (PA/IP) is already set by allocate_hitter_pa / allocate_pitcher_ip."""
@@ -941,12 +942,15 @@ def expand_to_achievable(rows, workload):
                 for j, i in enumerate(idxs):
                     v, m = proj_vals[j], mapped[j]
                     val = max(v, m) if v >= mu else min(v, m)
-                    if key == "AVG":
-                        # Batting average is mostly luck year-to-year (YoY r ~.41), so
-                        # stretching it to the full achievable spread produced whole
-                        # teams of .350+ hitters. Blend the de-compressed value halfway
-                        # back toward the regressed one — keeps real separation at the
-                        # top without 6 guys on a team hitting .360.
+                    # Pull the de-compressed value halfway back toward the regressed one
+                    # where the map over-stretches. AVG: SYMMETRIC — it's mostly luck and
+                    # whole teams were projecting .350+. Pitcher peripherals (K%/BB%/HR):
+                    # only on the BAD side (below-mean K%, above-mean BB%/HR), so a
+                    # below-average arm isn't pushed to the league bottom and compounded
+                    # into an absurd FIP (Hagler: real 6 FIP -> 9+), while ELITE arms keep
+                    # their de-compressed edge (Marsalis stays ~35% K%).
+                    bad_side = (key == "K_pct" and v < mu) or (key in ("BB_pct", "HR_bf") and v > mu)
+                    if key == "AVG" or bad_side:
                         val = 0.5 * v + 0.5 * val
                     grp[i]["proj"][key] = round(val, 4)
     # achievable caps (99th pctile) for the reconstructed combo stats, per level
@@ -1011,6 +1015,11 @@ def expand_to_achievable(rows, workload):
             # component value; it survives the map.
             hrb = max(p.get("HR_bf", 0) or 0, 0.5 * (p.get("hr_bf") or 0))
             p["HR_bf"] = round(hrb, 4)
+            # FIP RECONSTRUCTED from the final (mapped) K%/BB%/HR via the run model, so
+            # it always matches the displayed components instead of being mapped
+            # independently to a bad extreme (Hagler: a real 6 FIP -> a mapped 9.3).
+            fip_rate = run_coef[0] * k + run_coef[1] * bb + run_coef[2] * hrb + run_coef[3]
+            p["FIP"] = round(min(9.5, max(1.5, fip_rate * 39.6)), 2)
             p["BF"] = round(pt)
             p["IP"] = to_ip_notation(pt * ipbf)           # baseball notation (.1=1/3)
             p["HR_allowed"] = round(hrb * pt, 1)
@@ -1534,7 +1543,7 @@ def main():
     qlev = _level_quality(rows)                   # per-level quality baselines (gate poor returners)
     pools_pa = allocate_hitter_pa(rows, workload, qlev)
     pools_ip = allocate_pitcher_ip(rows, workload, prior_ip, prior_starts, qlev)
-    expand_to_achievable(rows, workload)
+    expand_to_achievable(rows, workload, run_coef)
     add_breakout(rows)
     add_war(rows, pos_fracs)
     # Roster-only incoming freshmen + stat-less transfers (no projection). Added
