@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlayerGameLogs, usePlayerGooseEggs } from '../hooks/useApi'
 import PitcherPitchLevelStatsCard from '../components/PitcherPitchLevelStatsCard'
+import AddToBoardButton from '../components/AddToBoardButton'
 import WpaByGameChart from '../components/LazyWpaByGameChart'  // defers recharts off the player page
 import PlayerCompsCard from '../components/PlayerCompsCard'
 import PlayerProjectionCard from '../components/PlayerProjectionCard'
@@ -285,6 +286,8 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
                 <span className="text-[10px] opacity-70">· {current_summer_assignment.league_abbrev}</span>
               </Link>
             )}
+
+            <div className="mt-3"><AddToBoardButton player={player} /></div>
 
             {/* Radar + rolling ERA */}
             <div className="grid grid-cols-1 sm:grid-cols-[0.95fr_1.05fr] gap-3.5 items-stretch my-3 py-2 border-y" style={{ borderColor: T.border }}>

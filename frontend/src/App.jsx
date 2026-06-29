@@ -303,6 +303,7 @@ const PlayoffProjections = lazyWithRetry(() => import('./pages/PlayoffProjection
 import Percentiles from './pages/Percentiles'
 import PlayerComps from './pages/PlayerComps'
 import PlayerComparison from './pages/PlayerComparison'
+const RecruitingBoard = lazyWithRetry(() => import('./pages/RecruitingBoard'))
 import TeamQuiz from './pages/TeamQuiz'
 const FieldGuessr = lazyWithRetry(() => import('./pages/FieldGuessr'))  // image-based ballpark guessing game
 const PnwPickle = lazyWithRetry(() => import('./pages/PnwPickle'))  // guess-the-player game
@@ -444,6 +445,7 @@ export default function App() {
           <Route path="/coaching/transfer-portal" element={<RequireTier minTier="recruiting"><TransferPortalTracker /></RequireTier>} />
           <Route path="/coaching/wcl-portal" element={<RequireTier minTier="recruiting"><WclTransferTracker /></RequireTier>} />
           <Route path="/coaching/player-comparison" element={<RequireTier minTier="premium"><PlayerComparison /></RequireTier>} />
+          <Route path="/coaching/recruiting-board" element={<RequireTier minTier="recruiting"><RecruitingBoard /></RequireTier>} />
           <Route path="/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/portal/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
