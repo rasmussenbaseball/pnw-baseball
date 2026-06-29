@@ -587,6 +587,40 @@ def add_war(rows, pos_fracs):
         p["WAR"] = round(war.total_war, 1)
 
 
+def calibrate_pitcher_war(rows):
+    """The projected-WAR formula pairs an elite projected FIP with a heavy projected
+    workload — a combo that barely co-occurs in reality (2026's best 80-IP arm had a
+    3.26 FIP), so projected pitcher WAR runs hot (max 3.6 / 13 arms >2.0 vs the actual
+    2026 max of 2.01 with ONE arm >2). Rank-map projected pitcher WAR onto the actual
+    2026 PNW pitcher-WAR distribution (meaningful innings, IP>=30) so the projected
+    spread matches reality. WAR is already level-adjusted, so one cross-level map is
+    correct. (Same philosophy as the per-level ERA calibration.)"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""SELECT ps.pitching_war w, ps.innings_pitched ip
+            FROM pitching_stats ps JOIN teams t ON t.id = ps.team_id
+            JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
+            WHERE ps.season = %s AND t.state IN ('WA','OR','ID','MT','BC')
+              AND ps.pitching_war IS NOT NULL""", (TARGET - 1,))
+        ref = []
+        for r in cur.fetchall():
+            ip = float(r["ip"] or 0); ipd = int(ip) + (ip - int(ip)) * 10 / 3.0
+            if ipd >= 30 and r["w"] is not None:
+                ref.append(float(r["w"]))
+    if len(ref) < 30:
+        return
+    ref = np.array(sorted(ref))
+    pit = [r for r in rows if r["side"] == "pit" and not r["proj"].get("no_data")
+           and not r["proj"].get("is_pool") and r["proj"].get("WAR") is not None]
+    if len(pit) < 5:
+        return
+    vals = [r["proj"]["WAR"] for r in pit]
+    order = np.argsort(np.argsort(vals))          # rank of each projected arm
+    n = len(vals)
+    for i, r in enumerate(pit):
+        r["proj"]["WAR"] = round(float(np.quantile(ref, (order[i] + 0.5) / n)), 1)
+
+
 _FIELD_SLOTS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"]
 _SLOT_SRC = {"C": ["C"], "1B": ["1B", "3B"], "2B": ["2B", "SS", "3B"],
              "3B": ["3B", "1B", "2B", "SS"], "SS": ["SS", "2B", "3B"],
@@ -1631,6 +1665,7 @@ def main():
     expand_to_achievable(rows, workload, run_coef)
     add_breakout(rows)
     add_war(rows, pos_fracs)
+    calibrate_pitcher_war(rows)   # match the realistic 2026 pitcher-WAR spread (max ~2.0)
     # Roster-only incoming freshmen + stat-less transfers (no projection). Added
     # last so they never affect PT/IP allocation, WAR, or breakout above.
     add_incoming_no_data(rows, TARGET)
