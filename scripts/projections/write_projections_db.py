@@ -577,6 +577,16 @@ _SLOT_SRC = {"C": ["C"], "1B": ["1B", "3B"], "2B": ["2B", "SS", "3B"],
              "RF": ["LF", "CF", "RF", "OF"]}
 _DC = dict(CAP=0.90, PRIMARY=0.80, BACKUP_MAX=0.34, DH_MAX=0.60, FLOOR=0.05)
 
+# Skill-ranked playing-time trickle. The best regular plays ~95% of games, then a
+# slow trickle down the lineup; bench plays much less. (Nate's spec.)
+HIT_TRICKLE = [0.95, 0.92, 0.87, 0.83, 0.79, 0.74, 0.69, 0.63, 0.57]
+# Pitchers: a level's weekend rotation size, then everyone else is a reliever.
+SP_COUNT = {"D1": 4, "D2": 4, "NAIA": 4, "D3": 3, "JUCO": 4}
+# Starter IP trickle (× the level's top-starter IP): ace -> #4. Reliever trickle
+# is a separate, smaller curve led by the workhorse/closer.
+SP_TRICKLE = [1.00, 0.90, 0.80, 0.70, 0.55]
+RP_TRICKLE = [0.45, 0.38, 0.32, 0.27, 0.22, 0.18, 0.15, 0.12, 0.09, 0.07, 0.05]
+
 
 def load_prior_workload(cur, season):
     """canonical_id -> player's actual IP in `season` (notation-corrected, so
@@ -591,6 +601,22 @@ def load_prior_workload(cur, season):
         WHERE p.season = %s GROUP BY 1
     """, (season,))
     return {r["cid"]: float(r["ip"] or 0) for r in cur.fetchall()}
+
+
+def load_prior_starts(cur, season):
+    """canonical_id -> (games_started, BF-weighted ERA) in `season`. Used to keep a
+    proven returning starter in the rotation: a guy who started and pitched well
+    last year is a strong candidate to start again."""
+    cur.execute("""
+        WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
+        SELECT COALESCE(c.cid, p.player_id) AS cid,
+               SUM(COALESCE(p.games_started, 0)) AS gs,
+               SUM(p.era * p.batters_faced) / NULLIF(SUM(p.batters_faced), 0) AS era
+        FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
+        WHERE p.season = %s GROUP BY 1
+    """, (season,))
+    return {r["cid"]: (int(r["gs"] or 0), float(r["era"]) if r["era"] is not None else None)
+            for r in cur.fetchall()}
 
 
 def _level_quality(rows):
@@ -681,13 +707,20 @@ def allocate_hitter_pa(rows, workload, qlev):
         lvl = players[0]["r"]["proj"]["level"]
         wl = workload.get(lvl) or {"pa": 1900, "pa_cap": 240}
         total = wl["pa"]; pcap = wl["pa_cap"]
-        per_slot = total / 9.0               # PA of one full-time lineup spot
-        qm, qs = qlev.get(("bat", lvl), (0.0, 1e-9))
+        full_pa = pcap / HIT_TRICKLE[0]      # PA for a 100%-games player (rank 0 ~= pcap)
+        # SKILL-RANKED TRICKLE: the depth chart decides who starts (positions), then
+        # the lineup's PA trickles down by projected quality — best regular ~95% of
+        # games, next 92%, 87%, ... bench gets a small share. Catchers capped lower.
+        regulars = sorted((k for k in range(len(players)) if alloc[k] >= 0.5),
+                          key=lambda k: players[k]["woba"] * players[k]["wmult"], reverse=True)
+        bench = [k for k in range(len(players)) if alloc[k] < 0.5]
+        poscap = lambda k: 0.72 if primary.get(k) == "C" else 1.0
         merit = [0.0] * len(players)
-        for k, p in enumerate(players):
-            z = (p["woba"] - qm) / qs
-            gate = 1.0 if z >= 0 else max(0.30, 1.0 + 0.45 * z)   # poor hitters shed PA
-            merit[k] = min(pcap, alloc[k] * per_slot * gate)
+        for rank, k in enumerate(regulars):
+            gf = HIT_TRICKLE[rank] if rank < len(HIT_TRICKLE) else max(0.45 - 0.04 * (rank - len(HIT_TRICKLE) + 1), 0.28)
+            merit[k] = min(poscap(k), gf) * full_pa
+        for k in bench:
+            merit[k] = min(poscap(k), 0.40 * alloc[k] + 0.05) * full_pa
         sm = sum(merit)
         pool = 0.0
         if sm > total:                       # deep returning roster -> scale to fit
@@ -705,14 +738,14 @@ def allocate_hitter_pa(rows, workload, qlev):
     return pools
 
 
-def allocate_pitcher_ip(rows, workload, prior_ip, qlev):
-    """Distribute each team's innings. Returners are ANCHORED to the role they
-    actually held in 2026 (a returning ace keeps ~his innings; a good returner
-    never below last year) and a POOR projected returner is docked instead of
-    being handed 40+ innings he isn't good enough for. Incoming transfers are
-    talent-ranked but DISCOUNTED. The innings the returning staff doesn't merit
-    become an 'incoming freshmen & transfers' pool (returned per team) rather than
-    being force-fed to a thin returning staff. Returns {team_id: pool_ip}."""
+def allocate_pitcher_ip(rows, workload, prior_ip, prior_starts, qlev):
+    """Distribute each team's innings as a STARTING ROTATION + a BULLPEN. The top
+    SP_COUNT[level] arms by starter-score (level-relative quality + a bonus for a
+    proven prior starter) form the rotation: the ace gets ~the level's top-starter
+    IP, trickling down by skill. Everyone else is a reliever on a separate, smaller
+    trickle led by the workhorse/closer. Returning starters/relievers are anchored
+    so a proven arm isn't cut below his role; transfers are talent-ranked but
+    discounted. Leftover innings become an incoming pool. Returns {team_id: pool}."""
     pools = {}
     by_team = {}
     for r in rows:
@@ -723,27 +756,41 @@ def allocate_pitcher_ip(rows, workload, prior_ip, qlev):
         wl = workload.get(lvl)
         if not wl:
             continue
-        ipbf = wl["ip_per_bf"]; shape = wl["ip_shape"]; cap = wl["ip_cap"]; total = wl["ip"]
+        ipbf = wl["ip_per_bf"]; cap = wl["ip_cap"]; total = wl["ip"]
         qm, qs = qlev.get(("pit", lvl), (0.0, 1e-9))
-        sz = _zscores([(r["proj"].get("p_strike") or 0.62) for r in team_rows])
-        merit = [0.0] * len(team_rows)
+        n_sp = SP_COUNT.get(lvl, 4)
+        scored = []
         for i, r in enumerate(team_rows):
             era = r["proj"].get("ERA")
             q = -float(era) if era is not None else -float(r.get("sort_val") or 0)
             z = (q - qm) / qs                      # level-relative quality (higher=better)
-            pct = float(min(0.97, max(0.03, 0.5 + 0.5 * np.tanh(0.9 * z + 0.2 * sz[i]))))
-            shape_ip = float(np.quantile(shape, pct))
-            gate = 1.0 if z >= 0 else max(0.30, 1.0 + 0.45 * z)   # poor arms shed innings
+            gs, _ = prior_starts.get(r["canonical_id"], (0, None))
+            # a proven returning starter gets pushed into the rotation (more if good)
+            sp_bonus = (0.6 + (0.4 if z >= 0 else 0.0)) if (not r.get("is_incoming") and gs >= 5) else 0.0
+            scored.append({"i": i, "r": r, "z": z, "gs": gs, "sp": z + sp_bonus})
+        scored.sort(key=lambda d: d["sp"], reverse=True)
+        starters, relievers = scored[:n_sp], scored[n_sp:]
+        merit = [0.0] * len(team_rows)
+        starters.sort(key=lambda d: d["z"], reverse=True)       # ace first
+        for rank, d in enumerate(starters):
+            base = (SP_TRICKLE[rank] if rank < len(SP_TRICKLE) else 0.45) * cap
+            r = d["r"]
             if r.get("is_incoming"):
-                # transfer: talent-ranked but discounted -> fills team need.
-                merit[i] = min(cap, TRANS_IP_DISCOUNT * shape_ip)
+                base *= TRANS_IP_DISCOUNT
             else:
                 pi = prior_ip.get(r["canonical_id"], 0.0)
-                if pi >= 15:                       # real role in 2026 -> anchor to it
-                    w = pi * (1.0 + 0.12 * np.tanh(z)) if z > 0 else pi * gate
-                    merit[i] = min(cap, w)
-                else:                               # limited/no prior role: talent-based
-                    merit[i] = min(cap, 0.6 * shape_ip * gate)
+                if d["gs"] >= 5 and pi > base:     # proven starter: don't cut his innings
+                    base = min(cap, pi)
+            merit[d["i"]] = min(cap, base)
+        relievers.sort(key=lambda d: d["z"], reverse=True)      # best bullpen arm first
+        for rank, d in enumerate(relievers):
+            base = (RP_TRICKLE[rank] if rank < len(RP_TRICKLE) else 0.04) * cap
+            r = d["r"]
+            if r.get("is_incoming"):
+                base *= TRANS_IP_DISCOUNT
+            elif prior_ip.get(r["canonical_id"], 0.0) >= 15:    # established role -> anchor up
+                base = max(base, min(cap, prior_ip[r["canonical_id"]]))
+            merit[d["i"]] = base
         sm = sum(merit)
         pool = 0.0
         if sm > total:                             # deep returning staff -> scale to fit
@@ -880,7 +927,15 @@ def expand_to_achievable(rows, workload):
                 mu = float(np.mean(arr))
                 for j, i in enumerate(idxs):
                     v, m = proj_vals[j], mapped[j]
-                    grp[i]["proj"][key] = round(max(v, m) if v >= mu else min(v, m), 4)
+                    val = max(v, m) if v >= mu else min(v, m)
+                    if key == "AVG":
+                        # Batting average is mostly luck year-to-year (YoY r ~.41), so
+                        # stretching it to the full achievable spread produced whole
+                        # teams of .350+ hitters. Blend the de-compressed value halfway
+                        # back toward the regressed one — keeps real separation at the
+                        # top without 6 guys on a team hitting .360.
+                        val = 0.5 * v + 0.5 * val
+                    grp[i]["proj"][key] = round(val, 4)
     # achievable caps (99th pctile) for the reconstructed combo stats, per level
     # p90 caps: a double-max contact+power profile (.400 AVG AND elite ISO) is an
     # impossible combo, so cap the reconstructed SLG/wOBA at a great-but-real level.
@@ -923,10 +978,13 @@ def expand_to_achievable(rows, workload):
             wcap = woba_cap.get(p.get("level"))
             if wcap is not None:
                 woba = min(woba, wcap)
+            # ISO is DERIVED from the final slash (SLG - AVG) so the three always add
+            # up — and so the capped/HR-reconstructed power is reflected in ISO too.
             p.update({"AB": round(ab), "H": round(h), "HR": round(hr, 1),
                       "2B": round(d2, 1), "3B": round(d3, 1), "BB": round(bb), "SO": round(k_pct * pt),
                       "R": round(pt * 0.16 * (obp / 0.360)), "RBI": round(pt * 0.15 * (slg / 0.420)),
-                      "OBP": round(obp, 3), "SLG": round(slg, 3), "wOBA": round(woba, 3)})
+                      "AVG": round(avg, 3), "OBP": round(obp, 3), "SLG": round(slg, 3),
+                      "iso": round(max(0.0, slg - avg), 3), "wOBA": round(woba, 3)})
         else:
             ipbf = ip_per_bf.get(p.get("level"), IP_PER_BF)
             k = p.get("K_pct", 0) or 0; bb = p.get("BB_pct", 0) or 0
@@ -959,11 +1017,12 @@ def expand_to_achievable(rows, workload):
                 hw = band_half(p.get("reliability", 0.3), "pit")
                 p["ERA_lo"] = round(era - hw, 2); p["ERA_hi"] = round(era + hw, 2)
 
-    # --- pass 3: map the DERIVED outcome stats (ERA, WHIP) to each level's actual
-    # distribution, WORKLOAD-AWARE. Both are built from FIP / K% / BB% / regressed-
-    # BABIP above (so they rank arms by skill), but in low-run / wood-bat environments
-    # (NWAC most of all) arms beat those component estimates, so the achievable floor
-    # sits below what FIP-anchoring produces. The catch: the lowest ERAs/WHIPs in any
+    # --- pass 3: map the DERIVED ERA to each level's actual distribution,
+    # WORKLOAD-AWARE. (WHIP is intentionally NOT mapped here — it stays derived from
+    # K%/BB%/HR/BABIP above so BB% and WHIP always move together, per Nate.)
+    # ERA is built from FIP (so it ranks arms by skill), but in low-run / wood-bat
+    # environments (NWAC most of all) arms beat that estimate, so the achievable floor
+    # sits below what FIP-anchoring produces. The catch: the lowest ERAs in any
     # league come from SMALL-SAMPLE RELIEVERS — a workhorse starter throws enough
     # innings that his ERA regresses most of the way back to his FIP (2026: |ERA-FIP|
     # shrinks 2.1 -> 0.9 from short relievers to 320+ BF starters, and the 320+ group
@@ -975,7 +1034,7 @@ def expand_to_achievable(rows, workload):
     RP_BF, SP_BF, MAX_SHRINK = 100, 350, 0.58   # realize: 1.0 at <=100 BF -> 0.42 at >=350
     for level in {r["proj"]["level"] for r in rows if r["side"] == "pit"}:
         grp = [r for r in rows if r["side"] == "pit" and r["proj"]["level"] == level]
-        for stat in ("ERA", "WHIP"):
+        for stat in ("ERA",):
             arr = tgt.get(("pit", level, stat))
             if arr is None:
                 continue
@@ -1449,9 +1508,10 @@ def main():
         cur = conn.cursor()
         workload = team_workload(cur)             # per-level team PA/IP + caps
         prior_ip = load_prior_workload(cur, TARGET - 1)   # returner 2026 innings
+        prior_starts = load_prior_starts(cur, TARGET - 1) # returner 2026 GS + ERA
     qlev = _level_quality(rows)                   # per-level quality baselines (gate poor returners)
     pools_pa = allocate_hitter_pa(rows, workload, qlev)
-    pools_ip = allocate_pitcher_ip(rows, workload, prior_ip, qlev)
+    pools_ip = allocate_pitcher_ip(rows, workload, prior_ip, prior_starts, qlev)
     expand_to_achievable(rows, workload)
     add_breakout(rows)
     add_war(rows, pos_fracs)

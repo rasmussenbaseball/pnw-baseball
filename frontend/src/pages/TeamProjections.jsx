@@ -170,7 +170,7 @@ function normLine(p, isBat) {
 function Table({ rows, side, expanded, toggle, norm }) {
   if (!rows?.length) return <p className="text-sm text-gray-500 py-4">No projected {side === 'bat' ? 'hitters' : 'pitchers'}.</p>
   const isBat = side === 'bat'
-  const span = isBat ? 20 : 17
+  const span = isBat ? 20 : 16
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
       <table className="min-w-full text-xs">
@@ -196,7 +196,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
               <th className={TH + BL}>AVG</th><th className={TH}>OBP</th><th className={TH}>SLG</th><th className={TH}>wOBA</th><th className={TH}>BB%</th><th className={TH}>K%</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Pull-air</th>
             </> : <>
-              <th className={TH}>BF</th><th className={TH}>IP</th><th className={TH}>ERA</th><th className={TH}>FIP</th><th className={TH}>WHIP</th><th className={TH}>Opp AVG</th><th className={TH}>HR/9</th>
+              <th className={TH}>IP</th><th className={TH}>ERA</th><th className={TH}>FIP</th><th className={TH}>WHIP</th><th className={TH}>Opp AVG</th><th className={TH}>HR/9</th>
               <th className={TH + BL}>K%</th><th className={TH}>BB%</th>
               <th className={TH + BL}>Whiff</th><th className={TH}>GB</th><th className={TH}>Strike</th>
             </>}
@@ -235,7 +235,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
                   <td className={TD}>{p.class_2027 || '–'}</td>
                   <td className={TD}>{r.pos || '–'}</td>
                   {p.no_data ? <>
-                    <td className={TD}>{(isBat ? p.PT : p.BF) ?? '–'}</td>
+                    <td className={TD}>{(isBat ? p.PT : p.IP) ?? '–'}</td>
                     <td colSpan={span - 4} className="px-2.5 py-2 text-left text-[11px] italic text-gray-400">
                       {p.is_freshman ? 'incoming freshman — no projection yet'
                         : p.is_transfer ? 'incoming transfer — no projection yet'
@@ -256,7 +256,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
                     <td className={TD + BL}>{pctDelta(p, 'p_whiff', 'p_whiff_prev', false)}</td>
                     <td className={TD}>{pctDelta(p, 'p_gb', 'p_gb_prev', false)}</td><td className={TD}>{pctDelta(p, 'p_airpull', 'p_airpull_prev', true)}</td>
                   </> : <>
-                    <td className={TD}>{p.BF ?? '–'}</td><td className={TD}>{f1(p.IP)}</td>
+                    <td className={TD}>{f1(p.IP)}</td>
                     <td className={`${TD} ${valueColor(p.ERA, 3.5, 7.0, true)}`}>{f2(p.ERA)}{deltaArrow(p.ERA, a.era, false)}</td>
                     <td className={TD}>{f2(p.FIP)}{deltaArrow(p.FIP, a.fip, false)}</td>
                     <td className={TD}>{f2(p.WHIP)}{deltaArrow(p.WHIP, a.whip, false)}</td>
