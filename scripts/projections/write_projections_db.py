@@ -935,7 +935,11 @@ def expand_to_achievable(rows, workload):
             # no one systematically "beats their FIP".
             fip = p.get("FIP")
             if fip is not None:
-                gap = p.get("fip_luck") or 0.0          # career ERA - FIP
+                # career ERA - FIP, CLAMPED: a tiny-sample blow-up outing can poison
+                # the career ERA-FIP average (Diego Gutierrez's was +178, projecting a
+                # 33 ERA off a 5.04 FIP). The repeatable part of beating/trailing FIP is
+                # small, so bound the gap to a sane ±3 runs before taking 16% of it.
+                gap = max(-3.0, min(3.0, p.get("fip_luck") or 0.0))
                 era = fip + 0.16 * gap
                 p["ERA"] = round(era, 2)
                 hw = band_half(p.get("reliability", 0.3), "pit")
@@ -1227,15 +1231,22 @@ def main():
                         br = apply_refine(refine["babip"], proj, pbp_for)
                         if br is not None:
                             proj["babip"] = (max(0.20, min(0.45, br)), proj["babip"][1])
-                    # K% from whiff/swing, BB% from swing/whiff (when PBP available)
+                    # K% from whiff/swing, BB% from swing/whiff (when PBP available).
+                    # Both refines mean-revert, so (as on the pitcher side) pull the
+                    # refined rate back toward the demonstrated/ballast base in
+                    # proportion to reliability — a well-sampled elite-eye hitter
+                    # (Katayama-Stall 17% BB% over 218 PA, rel .68) keeps his skill;
+                    # a thin sample still leans on the refine.
                     if "k_pct" in refine:
                         kr = apply_refine(refine["k_pct"], proj, pbp_for)
                         if kr is not None:
+                            kr = (1 - rel) * kr + rel * proj["k_pct"][0]
                             proj["k_pct"] = (max(0.03, min(0.45, kr)), proj["k_pct"][1])
                             line["k_pct"] = round(proj["k_pct"][0], 4)
                     if "bb_pct" in refine:
                         bbr = apply_refine(refine["bb_pct"], proj, pbp_for)
                         if bbr is not None:
+                            bbr = (1 - rel) * bbr + rel * proj["bb_pct"][0]
                             proj["bb_pct"] = (max(0.01, min(0.25, bbr)), proj["bb_pct"][1])
                             line["bb_pct"] = round(proj["bb_pct"][0], 4)
                     bb, k, hr_pa, avg, iso = (proj.get(s, (0, 0))[0] for s in ["bb_pct", "k_pct", "hr_pa", "avg", "iso"])
@@ -1302,9 +1313,14 @@ def main():
                     # 37% K% over 89 IP got dragged to 24% before the achievable map).
                     # Pull back toward the track-record (ballast-regressed) rate in
                     # proportion to reliability, so a big reliable sample keeps its
-                    # demonstrated K%; a thin sample still leans on the skill anchor.
+                    # demonstrated rate; a thin sample still leans on the skill anchor.
+                    # Applied to BOTH K% and BB% — elite control artists (Gutierrez,
+                    # 0.6% BB% over 359 BF) were getting their walk rate inflated by
+                    # the strike% anchor the same way K% was.
                     base_k = proj.get("k_pct", (k,))[0]
                     k = max(0.05, min(0.45, (1 - rel) * k + rel * base_k))
+                    base_bb = proj.get("bb_pct", (bb,))[0]
+                    bb = max(0.02, min(0.25, (1 - rel) * bb + rel * base_bb))
                     # xFIP-style HR rate: projected FB% (a stable skill) x the
                     # level's HR-per-fly-ball, blended over the pitcher's own noisy
                     # HR rate. Far more predictive, and it carries the level's power
