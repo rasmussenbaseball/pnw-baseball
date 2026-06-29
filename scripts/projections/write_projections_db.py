@@ -449,6 +449,22 @@ def _achievable_targets(cur):
                     vals = [v for v in vals if 0 < v <= cap]
                 if len(vals) >= 8:
                     out[(side, lvl, key)] = np.array(sorted(vals))
+    # Per-level ELITE-STARTER ERA floor: the 5th-pctile ERA among actual BF>=200
+    # arms (real starters/long men, not small-sample relievers). The lowest ERAs in
+    # any league belong to short relievers; a workhorse starter's realistic best is
+    # far higher (2026 NAIA: only ONE BF>=200 arm was sub-2, p5 = 2.87; JUCO wood-bat
+    # p5 = 1.87, genuinely sub-2). Pass 3 floors projected starters here so no team
+    # projects a sub-2 starter in a league whose starters never throw one.
+    cur.execute("""SELECT d.level lvl, ps.era::float e FROM pitching_stats ps
+        JOIN teams t ON t.id=ps.team_id JOIN conferences c ON c.id=t.conference_id
+        JOIN divisions d ON d.id=c.division_id
+        WHERE ps.season=2026 AND ps.batters_faced>=200 AND ps.era IS NOT NULL AND ps.era>0""")
+    sp = {}
+    for r in cur.fetchall():
+        sp.setdefault(r["lvl"], []).append(r["e"])
+    for lvl, vals in sp.items():
+        if len(vals) >= 8:
+            out[("pit", lvl, "ERA_SP_FLOOR")] = float(np.quantile(vals, 0.05))
     return out
 
 
@@ -1075,10 +1091,18 @@ def expand_to_achievable(rows, workload, run_coef):
                 continue
             seeds = [grp[i]["proj"][stat] for i in idxs]
             mapped = _quantile_map(seeds, arr)
+            sp_floor = tgt.get(("pit", level, "ERA_SP_FLOOR"))
             for j, i in enumerate(idxs):
                 bf = grp[i]["proj"].get("BF") or 0
-                realize = 1.0 - MAX_SHRINK * min(1.0, max(0.0, (bf - RP_BF) / (SP_BF - RP_BF)))
+                sp_w = min(1.0, max(0.0, (bf - RP_BF) / (SP_BF - RP_BF)))
+                realize = 1.0 - MAX_SHRINK * sp_w
                 val = round(seeds[j] + realize * (mapped[j] - seeds[j]), 2)
+                # A workhorse STARTER can't beat the level's elite-starter ERA floor —
+                # the reliever-driven map floor isn't reachable over a full starter's
+                # innings. Floor by workload: full starter gets the whole floor, a
+                # reliever none, so wood-bat JUCO arms (sub-2 floor) stay free to dip.
+                if sp_floor is not None and sp_w > 0 and val < sp_floor:
+                    val = round(val + sp_w * (sp_floor - val), 2)
                 grp[i]["proj"][stat] = val
                 if stat == "ERA":
                     hw = band_half(grp[i]["proj"].get("reliability", 0.3), "pit")
