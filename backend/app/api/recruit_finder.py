@@ -28,6 +28,7 @@ _gate = require_tier("recruiting")
 
 # stat key -> (source column | 'pbp' | '__kbb', label, higher_is_better)
 HITTER_STATS = {
+    "war":          ("offensive_war", "WAR", True),
     "wrc_plus":     ("wrc_plus", "wRC+", True),
     "woba":         ("woba", "wOBA", True),
     "obp":          ("on_base_pct", "OBP", True),
@@ -49,6 +50,7 @@ HITTER_STATS = {
     "gb_pct":       ("pbp", "GB%", False),
 }
 PITCHER_STATS = {
+    "war":        ("pitching_war", "WAR", True),
     "k_pct":      ("k_pct", "K%", True),
     "bb_pct":     ("bb_pct", "BB%", False),
     "k_bb":       ("__kbb", "K-BB%", True),
@@ -100,8 +102,9 @@ MIN_BBT = 20          # qualified batted-ball sample for the percentile referenc
 CAND_MIN_BBT = 12     # a candidate needs this many batted balls for their OWN rate stats
 
 HIT_COLS = ("batting_avg, on_base_pct, slugging_pct, ops, woba, wrc_plus, iso, wobacon, "
-            "babip, k_pct, bb_pct, home_runs, stolen_bases, doubles, triples")
-PIT_COLS = ("era, fip, xfip, siera, whip, k_pct, bb_pct, hr_per_9, k_per_9, bb_per_9, babip_against")
+            "babip, k_pct, bb_pct, home_runs, stolen_bases, doubles, triples, offensive_war")
+PIT_COLS = ("era, fip, xfip, siera, whip, k_pct, bb_pct, hr_per_9, k_per_9, bb_per_9, "
+            "babip_against, pitching_war")
 
 
 class Filter(BaseModel):
@@ -166,7 +169,8 @@ def search(body: FinderQuery, _uid: str = Depends(_gate)):
 
         # ── box / advanced stats ──
         if side == "pit":
-            cur.execute(f"""SELECT DISTINCT ON (player_id) player_id, season, batters_faced sample, {PIT_COLS}
+            cur.execute(f"""SELECT DISTINCT ON (player_id) player_id, season, batters_faced sample,
+                                   innings_pitched ip, {PIT_COLS}
                             FROM pitching_stats WHERE player_id = ANY(%s) AND season=%s AND batters_faced >= %s
                             ORDER BY player_id, season DESC""", (pids, season, MIN_BF))
         else:
@@ -316,7 +320,8 @@ def search(body: FinderQuery, _uid: str = Depends(_gate)):
             "player_id": pid, "name": f"{info['first_name']} {info['last_name']}",
             "position": info["position"], "bats": info["bats"], "throws": info["throws"],
             "team": info["team"], "level": info["level"], "source": src, "year": info["year_in_school"],
-            "sample": box[pid]["sample"], "season": box[pid]["season"], "stats": stats, "pcts": pcts,
+            "sample": box[pid]["sample"], "ip": box[pid].get("ip"), "season": box[pid]["season"],
+            "stats": stats, "pcts": pcts,
         })
 
     # ── filters ──

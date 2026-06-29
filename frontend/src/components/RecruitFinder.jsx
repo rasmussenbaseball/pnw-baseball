@@ -26,6 +26,7 @@ function fmtStat(key, v) {
   if (PCT.has(key)) return (v * 100).toFixed(1) + '%'
   if (R3.has(key)) return v.toFixed(3).replace(/^0/, '')
   if (R2.has(key)) return v.toFixed(2)
+  if (key === 'war') return v.toFixed(1)
   if (key === 'wrc_plus') return Math.round(v)
   return v
 }
@@ -203,6 +204,8 @@ export default function RecruitFinder() {
                     <th className="text-left font-semibold px-2 py-2">{side === 'pit' ? 'T' : 'B'}</th>
                     <th className="text-left font-semibold px-2 py-2">Yr</th>
                     <th className="text-left font-semibold px-2 py-2">Source</th>
+                    <th className="text-right font-semibold px-2 py-2">{side === 'pit' ? 'IP' : 'PA'}</th>
+                    <th className="text-right font-semibold px-2 py-2">WAR</th>
                     {info.archetype && <th className="text-right font-semibold px-2 py-2">Fit</th>}
                     {shown.map(s => <th key={s} className="text-right font-semibold px-2 py-2">{label(s)}</th>)}
                     <th className="px-2 py-2"></th>
@@ -221,6 +224,8 @@ export default function RecruitFinder() {
                       <td className="px-2 py-2">
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${r.source === 'NWAC' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300' : r.source === 'WCL' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'}`}>{r.source}</span>
                       </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-gray-500">{(side === 'pit' ? r.ip : r.sample) ?? '–'}</td>
+                      <td className="px-2 py-2 text-right tabular-nums font-semibold" style={{ color: pctColor(r.pcts?.war) }}>{fmtStat('war', r.stats?.war)}</td>
                       {info.archetype && <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: pctColor(r.score) }}>{r.score ?? '–'}</td>}
                       {shown.map(s => (
                         <td key={s} className="px-2 py-2 text-right tabular-nums" style={{ color: pctColor(r.pcts?.[s]) }}>
