@@ -620,6 +620,19 @@ def load_prior_workload(cur, season):
     return {r["cid"]: float(r["ip"] or 0) for r in cur.fetchall()}
 
 
+def load_prior_pa(cur, season):
+    """canonical_id -> player's actual PA in `season`. Anchors a returning hitter's
+    projected playing time to the role he already held, so a returning everyday bat
+    and a part-timer don't both snap to the same league cap."""
+    cur.execute("""
+        WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
+        SELECT COALESCE(c.cid, b.player_id) AS cid, SUM(b.plate_appearances) AS pa
+        FROM batting_stats b LEFT JOIN canon c ON c.pid = b.player_id
+        WHERE b.season = %s GROUP BY 1
+    """, (season,))
+    return {r["cid"]: float(r["pa"] or 0) for r in cur.fetchall()}
+
+
 def load_prior_starts(cur, season):
     """canonical_id -> (games_started, appearances) in `season`. Used to read a
     pitcher's ROLE: prior GS (did he start?) plus IP/G (does he go multiple innings,
@@ -655,7 +668,7 @@ def _level_quality(rows):
     return out
 
 
-def allocate_hitter_pa(rows, workload, qlev):
+def allocate_hitter_pa(rows, workload, qlev, prior_pa):
     """Distribute each team's PA. Each returner gets the REALISTIC at-bats his
     depth-chart role + projected quality earn (a poor projected hitter is docked,
     not handed 150+ PA just to fill a thin lineup); incoming transfers are
@@ -731,10 +744,27 @@ def allocate_hitter_pa(rows, workload, qlev):
                           key=lambda k: players[k]["woba"] * players[k]["wmult"], reverse=True)
         bench = [k for k in range(len(players)) if alloc[k] < 0.5]
         poscap = lambda k: 0.72 if primary.get(k) == "C" else 1.0
+        qm, qs = qlev.get(("bat", lvl), (0.0, 1e-9))
         merit = [0.0] * len(players)
         for rank, k in enumerate(regulars):
             gf = HIT_TRICKLE[rank] if rank < len(HIT_TRICKLE) else max(0.45 - 0.04 * (rank - len(HIT_TRICKLE) + 1), 0.28)
-            merit[k] = min(poscap(k), gf) * full_pa
+            # SOFT cap: scale the games fraction DOWN by level-relative quality (capped
+            # at 1.0 so only a truly elite bat reaches the ceiling) so PA spreads instead
+            # of every team's leadoff man landing on the exact same max — an average
+            # regular plays a bit fewer games, a weak one fewer still.
+            wob = players[k]["r"]["proj"].get("wOBA")
+            z = ((wob - qm) / qs) if wob is not None else 0.0
+            qmult = min(1.0, max(0.80, 0.95 + 0.06 * z))
+            base = min(poscap(k), gf * qmult) * full_pa
+            # anchor a RETURNING regular to his real prior PA (both directions, slight
+            # role growth) so an established everyday bat and a part-timer don't both
+            # snap to the league cap. Incoming bats have no prior PA here -> base only.
+            cid = players[k]["r"]["canonical_id"]
+            ppa = prior_pa.get(cid, 0.0)
+            if ppa > 0 and not players[k]["r"].get("is_incoming"):
+                merit[k] = 0.5 * base + 0.5 * min(poscap(k) * full_pa, ppa * 1.08)
+            else:
+                merit[k] = base
         for k in bench:
             merit[k] = min(poscap(k), 0.40 * alloc[k] + 0.05) * full_pa
         sm = sum(merit)
@@ -803,21 +833,29 @@ def allocate_pitcher_ip(rows, workload, prior_ip, prior_starts, qlev):
         merit = [0.0] * len(team_rows)
         starters.sort(key=lambda d: d["z"], reverse=True)       # ace first
         for rank, d in enumerate(starters):
-            base = (SP_TRICKLE[rank] if rank < len(SP_TRICKLE) else 0.45) * cap
+            # SOFT cap: scale the rotation IP by the arm's LEVEL-relative quality so
+            # aces spread by skill instead of every one snapping to the p97 ceiling —
+            # a strong staff's ace nears the cap, an average team's ace sits below it,
+            # a weak arm sheds IP toward the incoming pool.
+            qmult = min(1.0, max(0.40, 0.88 + 0.15 * d["z"]))
+            base = (SP_TRICKLE[rank] if rank < len(SP_TRICKLE) else 0.45) * cap * qmult
             if d["inc"]:
                 base *= TRANS_IP_DISCOUNT
-            elif d["proven_sp"] and d["pi"] > base:   # anchor a proven starter (lightly gated)
-                base = min(cap, max(0.65 * d["pi"], d["pi"] * gate(d["z"])))
-            else:
-                base *= gate(d["z"])                  # weak/unproven arm sheds IP -> pool
-            merit[d["i"]] = min(cap, base)
+            elif d["pi"] > 0:                          # returning arm: pull toward his
+                # REAL prior workload (both directions, nudged for a returning starter
+                # role) so history drives the IP and a proven workhorse can top the p97.
+                anchor = min(cap * 1.12, d["pi"] * 1.08)
+                wt = 0.55 if d["proven_sp"] else 0.30
+                base = (1 - wt) * base + wt * anchor
+            merit[d["i"]] = min(cap * 1.12, max(0.0, base))
         relievers.sort(key=lambda d: d["z"], reverse=True)      # best bullpen arm first
         for rank, d in enumerate(relievers):
-            base = (RP_TRICKLE[rank] if rank < len(RP_TRICKLE) else 0.04) * cap
+            qmult = min(1.0, max(0.50, 0.92 + 0.12 * d["z"]))   # spread bullpen IP by quality
+            base = (RP_TRICKLE[rank] if rank < len(RP_TRICKLE) else 0.04) * cap * qmult
             if d["inc"]:
                 base *= TRANS_IP_DISCOUNT
             elif d["pi"] >= 15:                       # established role -> anchor (gated)
-                base = max(base * gate(d["z"]), min(cap, d["pi"] * gate(d["z"])))
+                base = max(base, min(cap, d["pi"] * gate(d["z"])))
             else:
                 base *= gate(d["z"])
             merit[d["i"]] = base
@@ -1564,8 +1602,9 @@ def main():
         workload = team_workload(cur)             # per-level team PA/IP + caps
         prior_ip = load_prior_workload(cur, TARGET - 1)   # returner 2026 innings
         prior_starts = load_prior_starts(cur, TARGET - 1) # returner 2026 GS + ERA
+        prior_pa = load_prior_pa(cur, TARGET - 1)         # returner 2026 plate appearances
     qlev = _level_quality(rows)                   # per-level quality baselines (gate poor returners)
-    pools_pa = allocate_hitter_pa(rows, workload, qlev)
+    pools_pa = allocate_hitter_pa(rows, workload, qlev, prior_pa)
     pools_ip = allocate_pitcher_ip(rows, workload, prior_ip, prior_starts, qlev)
     expand_to_achievable(rows, workload, run_coef)
     add_breakout(rows)
