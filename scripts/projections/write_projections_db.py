@@ -423,7 +423,7 @@ def _achievable_targets(cur):
     for side, tbl, idc, mn, specs in [
             ("bat", "batting_stats", "plate_appearances", 100,
              {**BAT_ACHIEVE, "SLG": "slugging_pct", "wOBA": "woba"}),
-            ("pit", "pitching_stats", "batters_faced", 60, PIT_ACHIEVE)]:
+            ("pit", "pitching_stats", "batters_faced", 60, {**PIT_ACHIEVE, "ERA": "era"})]:
         for key, expr in specs.items():
             cur.execute(f"""SELECT d.level lvl, ({expr})::float x
                 FROM {tbl} b JOIN teams t ON t.id=b.team_id
@@ -930,9 +930,10 @@ def expand_to_achievable(rows, workload):
             h_frac = hrb + babip * bip_frac               # hits per BF
             p["opp_avg"] = round(min(0.40, max(0.15, h_frac / ab_frac)), 3)
             p["WHIP"] = round((h_frac + bb) / ipbf, 2)    # (H+BB) per IP
-            # ERA derived from FIP (skill) + only the repeatable ~16% of a
-            # pitcher's career ERA-FIP gap, so ERA and FIP stay consistent and
-            # no one systematically "beats their FIP".
+            # ERA SEED from FIP (skill) + the repeatable ~16% of a pitcher's career
+            # ERA-FIP gap. This only ranks the pitcher; pass 3 below maps it to the
+            # level's ACTUAL ERA distribution (so low-run/wood-bat environments where
+            # arms systematically beat FIP get their real, lower ERAs).
             fip = p.get("FIP")
             if fip is not None:
                 # career ERA - FIP, CLAMPED: a tiny-sample blow-up outing can poison
@@ -944,6 +945,37 @@ def expand_to_achievable(rows, workload):
                 p["ERA"] = round(era, 2)
                 hw = band_half(p.get("reliability", 0.3), "pit")
                 p["ERA_lo"] = round(era - hw, 2); p["ERA_hi"] = round(era + hw, 2)
+
+    # --- pass 3: map ERA to each level's ACTUAL ERA distribution ---
+    # ERA is seeded from FIP above, but in low-run / wood-bat environments (NWAC
+    # most of all) pitchers SYSTEMATICALLY beat FIP, so the real ERA floor sits well
+    # below the FIP floor (2026 NWAC: 10 qualified arms under 2.00 ERA, beating FIP
+    # by ~0.4 on average; FIP-anchoring floored our projection near 2.7). Rank by the
+    # FIP-derived ERA (skill — NOT demonstrated ERA, so this never credits an
+    # individual's lucky season) and map to what arms at that level ACTUALLY post.
+    # That bakes in the repeatable environment effect and lets elite arms reach the
+    # sub-2 ERAs the league really produces. Regulars only (BF>=60), like pass 1; the
+    # only-widen clamp means the map can only push a pitcher further from the level
+    # mean (an ace toward the floor, a scuffler up), never back toward average.
+    for level in {r["proj"]["level"] for r in rows if r["side"] == "pit"}:
+        arr = tgt.get(("pit", level, "ERA"))
+        if arr is None:
+            continue
+        grp = [r for r in rows if r["side"] == "pit" and r["proj"]["level"] == level]
+        idxs = [i for i, r in enumerate(grp)
+                if r["proj"].get("ERA") is not None and (r["proj"].get("BF") or 0) >= 60]
+        if len(idxs) < 5:
+            continue
+        proj_vals = [grp[i]["proj"]["ERA"] for i in idxs]
+        mapped = _quantile_map(proj_vals, arr)
+        mu = float(np.mean(arr))
+        for j, i in enumerate(idxs):
+            v, m = proj_vals[j], mapped[j]
+            era = round(max(v, m) if v >= mu else min(v, m), 2)
+            grp[i]["proj"]["ERA"] = era
+            hw = band_half(grp[i]["proj"].get("reliability", 0.3), "pit")
+            grp[i]["proj"]["ERA_lo"] = round(max(0.0, era - hw), 2)
+            grp[i]["proj"]["ERA_hi"] = round(era + hw, 2)
 
 
 def main():
