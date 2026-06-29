@@ -744,36 +744,48 @@ def allocate_hitter_pa(rows, workload, qlev, prior_pa):
                           key=lambda k: players[k]["woba"] * players[k]["wmult"], reverse=True)
         bench = [k for k in range(len(players)) if alloc[k] < 0.5]
         poscap = lambda k: 0.72 if primary.get(k) == "C" else 1.0
-        qm, qs = qlev.get(("bat", lvl), (0.0, 1e-9))
         merit = [0.0] * len(players)
         for rank, k in enumerate(regulars):
             gf = HIT_TRICKLE[rank] if rank < len(HIT_TRICKLE) else max(0.45 - 0.04 * (rank - len(HIT_TRICKLE) + 1), 0.28)
-            # SOFT cap: scale the games fraction DOWN by level-relative quality (capped
-            # at 1.0 so only a truly elite bat reaches the ceiling) so PA spreads instead
-            # of every team's leadoff man landing on the exact same max — an average
-            # regular plays a bit fewer games, a weak one fewer still.
-            wob = players[k]["r"]["proj"].get("wOBA")
-            z = ((wob - qm) / qs) if wob is not None else 0.0
-            qmult = min(1.0, max(0.80, 0.95 + 0.06 * z))
-            base = min(poscap(k), gf * qmult) * full_pa
-            # anchor a RETURNING regular to his real prior PA (both directions, slight
-            # role growth) so an established everyday bat and a part-timer don't both
-            # snap to the league cap. Incoming bats have no prior PA here -> base only.
-            cid = players[k]["r"]["canonical_id"]
-            ppa = prior_pa.get(cid, 0.0)
-            if ppa > 0 and not players[k]["r"].get("is_incoming"):
-                merit[k] = 0.5 * base + 0.5 * min(poscap(k) * full_pa, ppa * 1.08)
-            else:
-                merit[k] = base
+            merit[k] = min(poscap(k), gf) * full_pa
         for k in bench:
             merit[k] = min(poscap(k), 0.40 * alloc[k] + 0.05) * full_pa
+        # Normalize to the team total FIRST (deep roster scales to fit; thin roster
+        # leaves the remainder as the incoming pool), THEN tie-break. Spreading before
+        # normalization let scale-to-fit wash it out — every deep team's leadoff bat
+        # collapsed back to the same per-trickle share (the JUCO 234-cluster).
         sm = sum(merit)
         pool = 0.0
         if sm > total:                       # deep returning roster -> scale to fit
-            sc = total / sm
-            merit = [m * sc for m in merit]
+            merit = [m * (total / sm) for m in merit]
         else:                                # thin roster -> remainder to incoming pool
             pool = total - sm
+        # Quality tie-break for ALL regulars (LEVEL-relative, centered on the typical
+        # starter so it's ~mean-zero and doesn't inflate the team total / pool): a
+        # clearly elite leadoff bat earns a few more PA than a league-average one, so
+        # different teams' #1s don't share an identical number — this works even when a
+        # team returns just one regular (the prior-PA refine below needs >=2).
+        # DOWNWARD-DOMINANT quality spread: a level-average regular stays at his cap-ish
+        # base, weaker teams' regulars trickle BELOW it, and only a true stud edges a
+        # hair above — so different teams' #1s differ without everyone piling on the
+        # hard games ceiling (the JUCO cluster). Centered at z=1.0 (a solid regular).
+        qm, qs = qlev.get(("bat", lvl), (0.0, 1e-9))
+        for k in regulars:
+            w = players[k]["r"]["proj"].get("wOBA")
+            if w is not None:
+                merit[k] *= 1.0 + 0.09 * max(-1.2, min(0.15, (w - qm) / qs - 1.0))
+        # refine returning regulars (>=2) by how much they actually played vs team-mates
+        cidpa = lambda k: prior_pa.get(players[k]["r"]["canonical_id"], 0.0)
+        reg_ret = [k for k in regulars
+                   if not players[k]["r"].get("is_incoming") and cidpa(k) > 0]
+        if len(reg_ret) >= 2:
+            avg_pp = sum(cidpa(k) for k in reg_ret) / len(reg_ret)
+            for k in reg_ret:
+                dev = (cidpa(k) / avg_pp - 1.0) if avg_pp > 0 else 0.0
+                merit[k] *= 1.0 + 0.06 * max(-0.6, min(0.6, dev))
+        # cap at the ~100%-games ceiling (no one exceeds a full season of PA)
+        for k in regulars:
+            merit[k] = min(merit[k], poscap(k) * full_pa)
         for k, p in enumerate(players):
             r = p["r"]
             pa = round(merit[k])
@@ -833,39 +845,49 @@ def allocate_pitcher_ip(rows, workload, prior_ip, prior_starts, qlev):
         merit = [0.0] * len(team_rows)
         starters.sort(key=lambda d: d["z"], reverse=True)       # ace first
         for rank, d in enumerate(starters):
-            # SOFT cap: scale the rotation IP by the arm's LEVEL-relative quality so
-            # aces spread by skill instead of every one snapping to the p97 ceiling —
-            # a strong staff's ace nears the cap, an average team's ace sits below it,
-            # a weak arm sheds IP toward the incoming pool.
-            qmult = min(1.0, max(0.40, 0.88 + 0.15 * d["z"]))
-            base = (SP_TRICKLE[rank] if rank < len(SP_TRICKLE) else 0.45) * cap * qmult
+            base = (SP_TRICKLE[rank] if rank < len(SP_TRICKLE) else 0.45) * cap
             if d["inc"]:
                 base *= TRANS_IP_DISCOUNT
-            elif d["pi"] > 0:                          # returning arm: pull toward his
-                # REAL prior workload (both directions, nudged for a returning starter
-                # role) so history drives the IP and a proven workhorse can top the p97.
-                anchor = min(cap * 1.12, d["pi"] * 1.08)
-                wt = 0.55 if d["proven_sp"] else 0.30
-                base = (1 - wt) * base + wt * anchor
-            merit[d["i"]] = min(cap * 1.12, max(0.0, base))
+            elif d["proven_sp"] and d["pi"] > base:   # proven workhorse -> anchor to his
+                base = min(cap * 1.12, max(0.65 * d["pi"], d["pi"] * gate(d["z"])))  # real IP (can top p97)
+            else:
+                base *= gate(d["z"])                  # weak/unproven arm sheds IP -> pool
+            merit[d["i"]] = min(cap * 1.12, base)
         relievers.sort(key=lambda d: d["z"], reverse=True)      # best bullpen arm first
         for rank, d in enumerate(relievers):
-            qmult = min(1.0, max(0.50, 0.92 + 0.12 * d["z"]))   # spread bullpen IP by quality
-            base = (RP_TRICKLE[rank] if rank < len(RP_TRICKLE) else 0.04) * cap * qmult
+            base = (RP_TRICKLE[rank] if rank < len(RP_TRICKLE) else 0.04) * cap
             if d["inc"]:
                 base *= TRANS_IP_DISCOUNT
             elif d["pi"] >= 15:                       # established role -> anchor (gated)
-                base = max(base, min(cap, d["pi"] * gate(d["z"])))
+                base = max(base * gate(d["z"]), min(cap, d["pi"] * gate(d["z"])))
             else:
                 base *= gate(d["z"])
             merit[d["i"]] = base
+        # Normalize to the staff total FIRST (deep staff scales to fit; thin staff
+        # leaves the remainder as the incoming pool), THEN tie-break — pre-normalization
+        # spread got washed out by scale-to-fit for deep staffs (the JUCO IP cluster).
         sm = sum(merit)
         pool = 0.0
         if sm > total:                             # deep, quality staff -> scale to fit
-            sc = total / sm
-            merit = [m * sc for m in merit]
+            merit = [m * (total / sm) for m in merit]
         else:                                      # not enough quality -> rest to incoming pool
             pool = total - sm
+        # Quality tie-break for ALL starters (level-relative z, centered on the typical
+        # starter so it's ~mean-zero): a clearly-elite ace earns a few more innings than
+        # an average one, so different staffs' aces don't share an identical cap — works
+        # even when a staff returns a single starter (the prior-IP refine needs >=2).
+        for d in starters:
+            merit[d["i"]] *= 1.0 + 0.08 * max(-1.2, min(0.3, d["z"] - 1.0))
+        # refine returning starters (>=2) by prior-IP deviation vs rotation-mates
+        ret_s = [d for d in starters if d["pi"] > 0 and not d["inc"]]
+        if len(ret_s) >= 2:
+            avg_pi = sum(d["pi"] for d in ret_s) / len(ret_s)
+            for d in ret_s:
+                dev = (d["pi"] / avg_pi - 1.0) if avg_pi > 0 else 0.0
+                merit[d["i"]] *= 1.0 + 0.09 * max(-0.6, min(0.6, dev))
+        # cap so a workhorse can top the p97 but not run past a believable max
+        for d in starters:
+            merit[d["i"]] = min(cap * 1.15, merit[d["i"]])
         for k, r in enumerate(team_rows):
             ip = merit[k]
             if r["proj"].get("insufficient"):
