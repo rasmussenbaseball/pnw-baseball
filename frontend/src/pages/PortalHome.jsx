@@ -297,6 +297,61 @@ function ToolCard({ to, label, desc, Preview }) {
 }
 
 
+// ── Stealth Batting Gloves partnership banner ──
+function StealthPortalBanner() {
+  return (
+    <a
+      href="https://stealthbattinggloves.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group mt-10 block rounded-2xl overflow-hidden shadow-md transition-colors
+                 bg-gradient-to-br from-portal-purple via-portal-purple-dark to-portal-dark
+                 border border-portal-accent/40 hover:border-portal-accent"
+    >
+      <div className="px-5 sm:px-8 py-5 flex flex-col sm:flex-row items-center gap-5 sm:gap-7">
+        {/* gloves (floating) */}
+        <img
+          src="/stealth/gloves-cutout.png"
+          alt="Stealth B2 Bomber Series batting gloves, Baby Blue colorway"
+          className="w-28 sm:w-36 shrink-0 object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,0.55)]"
+        />
+        {/* wordmark + partnership copy */}
+        <div className="flex-1 text-center sm:text-left">
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-portal-accent-light">
+            Official Batting Gloves of NWBB Stats · Partner
+          </div>
+          <img
+            src="/stealth/wordmark-glow.png"
+            alt="Stealth Batting Gloves — Dominate in Silence"
+            className="h-11 sm:h-14 w-auto mx-auto sm:mx-0 mt-1.5 object-contain
+                       drop-shadow-[0_2px_16px_rgba(150,210,235,0.45)]"
+          />
+          <div className="mt-1.5 text-[13px] text-portal-cream/70">
+            Custom batting gloves &amp; performance apparel
+          </div>
+        </div>
+        {/* promo code + store link */}
+        <div className="shrink-0 text-center">
+          <div className="rounded-lg bg-gradient-to-r from-[#cfeaf3] to-[#92cadd] px-4 py-2.5 shadow">
+            <div className="text-base font-extrabold tracking-wide text-[#102a4d]">
+              USE CODE 'NWBB' · 10% OFF
+            </div>
+            <div className="text-[10px] font-bold text-[#163a6b]">
+              custom gloves &amp; apparel
+            </div>
+          </div>
+          <div className="mt-2.5 flex items-center justify-center gap-1 text-sm font-bold
+                          text-portal-accent-light group-hover:text-portal-cream transition-colors">
+            stealthbattinggloves.com
+            <span className="transition-transform group-hover:translate-x-0.5">→</span>
+          </div>
+        </div>
+      </div>
+    </a>
+  )
+}
+
+
 export default function PortalHome() {
   const { team } = usePortalTeam()
 
@@ -348,6 +403,8 @@ export default function PortalHome() {
           </div>
         </section>
       ))}
+
+      <StealthPortalBanner />
     </div>
   )
 }
