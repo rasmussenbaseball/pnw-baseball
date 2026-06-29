@@ -149,29 +149,29 @@ const THEMES = [
   },
   {
     id: 'chaptrains-dark', label: 'ChapTrains · Night',
-    bgStops: ['#0a0e12', '#111922'], grain: false,
-    headerStops: ['#10171f', '#0a0e12'], headerRule: '#9ef01a',
-    kicker: '#c9f58a', headerText: '#ffffff', headerSub: 'rgba(233,240,242,0.72)',
-    card: 'rgba(255,255,255,0.05)', cardBorder: 'rgba(158,240,26,0.24)', cardAccent: '#9ef01a',
-    text: '#eef2f4', name: '#ffffff', secondary: 'rgba(233,240,242,0.62)', muted: 'rgba(233,240,242,0.4)',
-    colHeader: '#b6e85f', mainStat: '#c7f56f', mainStatTop3: '#9ef01a',
-    medals: ['#9ef01a', '#c7f56f', '#6fb80f'], medalText: '#0a0e12', medalRing: '#9ef01a',
-    rank: 'rgba(233,240,242,0.4)', logoFallback: 'rgba(255,255,255,0.1)',
-    footerBg: '#070a0d', footerText: '#eef2f4', footerMuted: 'rgba(233,240,242,0.55)',
-    sponsor: 'chaptrains', sponsorAccent: '#9ef01a', sponsorPill: '#9ef01a', sponsorPillText: '#0a0e12',
+    bgStops: ['#0a0f16', '#111d2b'], grain: false,
+    headerStops: ['#0f1c2c', '#0a0f16'], headerRule: '#8fd0f2',
+    kicker: '#bfe4fa', headerText: '#ffffff', headerSub: 'rgba(231,240,247,0.72)',
+    card: 'rgba(255,255,255,0.05)', cardBorder: 'rgba(143,208,242,0.26)', cardAccent: '#8fd0f2',
+    text: '#eef4f9', name: '#ffffff', secondary: 'rgba(231,240,247,0.62)', muted: 'rgba(231,240,247,0.4)',
+    colHeader: '#a9dcf7', mainStat: '#bfe6fa', mainStatTop3: '#8fd0f2',
+    medals: ['#8fd0f2', '#bfe6fa', '#5a9fd0'], medalText: '#08121c', medalRing: '#8fd0f2',
+    rank: 'rgba(231,240,247,0.4)', logoFallback: 'rgba(255,255,255,0.1)',
+    footerBg: '#070b11', footerText: '#eef4f9', footerMuted: 'rgba(231,240,247,0.55)',
+    sponsor: 'chaptrains', sponsorAccent: '#8fd0f2', sponsorPill: '#8fd0f2', sponsorPillText: '#08121c',
   },
   {
     id: 'chaptrains-light', label: 'ChapTrains · Day',
-    bgStops: ['#f7f9f4', '#eaf1e0'], grain: true, grainDark: 'rgba(60,90,20,0.06)', grainLight: 'rgba(255,255,255,0.6)',
-    headerStops: ['#1c2a16', '#101a0c'], headerRule: '#9ef01a',
-    kicker: '#cdeb9a', headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
-    card: '#ffffff', cardBorder: 'rgba(60,90,20,0.18)', cardAccent: '#5a8c1a',
-    text: '#1c2410', name: '#3f6112', secondary: '#5a6448', muted: '#8a937a',
-    colHeader: '#4a7314', mainStat: '#4a7314', mainStatTop3: '#3f6112',
-    medals: [C.gold, C.goldLight, C.goldDeep], medalText: '#1c2410', medalRing: '#5a8c1a',
-    rank: '#9aa389', logoFallback: '#e6ecdb',
-    footerBg: '#141d0c', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
-    sponsor: 'chaptrains', sponsorAccent: '#9ef01a', sponsorPill: '#9ef01a', sponsorPillText: '#141d0c',
+    bgStops: ['#f4f9fd', '#e3eef7'], grain: true, grainDark: 'rgba(20,50,90,0.06)', grainLight: 'rgba(255,255,255,0.6)',
+    headerStops: ['#14253b', '#0e1b2c'], headerRule: '#8fd0f2',
+    kicker: '#bfe4fa', headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: '#ffffff', cardBorder: 'rgba(20,50,90,0.16)', cardAccent: '#2a6ea3',
+    text: '#13202e', name: '#1f5680', secondary: '#4a5a6a', muted: '#85929e',
+    colHeader: '#1f5680', mainStat: '#1f5680', mainStatTop3: '#2a6ea3',
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: '#13202e', medalRing: '#2a6ea3',
+    rank: '#9aa6b2', logoFallback: '#e3ebf3',
+    footerBg: '#0e1b2c', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+    sponsor: 'chaptrains', sponsorAccent: '#8fd0f2', sponsorPill: '#8fd0f2', sponsorPillText: '#0e1b2c',
   },
 ]
 function buildTheme(p) {
@@ -361,31 +361,31 @@ function drawChapTrainsFooter(ctx, w, fy, fh, theme, footerNote) {
 
   // LEFT: NWBB mark + qualifier note
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
-  ctx.fillStyle = theme.footerText; ctx.font = `800 18px ${FONT}`
-  ctx.fillText('NWBB STATS', padX, fy + 54)
-  ctx.fillStyle = theme.footerMuted; ctx.font = `700 14px ${FONT}`
-  ctx.fillText('nwbaseballstats.com' + (footerNote ? '  ·  ' + footerNote : ''), padX, fy + 80)
+  ctx.fillStyle = theme.footerText; ctx.font = `800 17px ${FONT}`
+  ctx.fillText('NWBB STATS', padX, fy + 47)
+  ctx.fillStyle = theme.footerMuted; ctx.font = `700 13px ${FONT}`
+  ctx.fillText('nwbaseballstats.com' + (footerNote ? '  ·  ' + footerNote : ''), padX, fy + 71)
 
   // CENTER (focal): the @handle, big, with kicker above + tagline below
   ctx.textAlign = 'center'
-  ctx.fillStyle = theme.footerMuted; ctx.font = `800 15px ${FONT}`
-  ctx.fillText('TRAINING PARTNER', cx, fy + 33)
-  ctx.fillStyle = theme.sponsorAccent; ctx.font = `900 54px ${FONT}`
-  ctx.fillText('@chaptrains', cx, fy + 87)
-  ctx.fillStyle = theme.footerText; ctx.font = `600 17px ${FONT}`
-  ctx.fillText('Personal training · trusted by dozens of PNW ballplayers', cx, fy + 117)
+  ctx.fillStyle = theme.footerMuted; ctx.font = `800 14px ${FONT}`
+  ctx.fillText('TRAINING PARTNER', cx, fy + 27)
+  ctx.fillStyle = theme.sponsorAccent; ctx.font = `900 46px ${FONT}`
+  ctx.fillText('@chaptrains', cx, fy + 73)
+  ctx.fillStyle = theme.footerText; ctx.font = `600 15px ${FONT}`
+  ctx.fillText('Personal training · trusted by dozens of PNW ballplayers', cx, fy + 99)
 
   // RIGHT: promo pill + line
-  ctx.textBaseline = 'middle'; ctx.font = `800 16px ${FONT}`
+  ctx.textBaseline = 'middle'; ctx.font = `800 15px ${FONT}`
   const promo = "DM 'NWBB' · 50% OFF"
-  const pw = ctx.measureText(promo).width + 30, ph = 40
-  const px = w - padX - pw, py = fy + 38
-  ctx.fillStyle = theme.sponsorPill; canvasRoundRect(ctx, px, py, pw, ph, 9); ctx.fill()
+  const pw = ctx.measureText(promo).width + 28, ph = 36
+  const px = w - padX - pw, py = fy + 30
+  ctx.fillStyle = theme.sponsorPill; canvasRoundRect(ctx, px, py, pw, ph, 8); ctx.fill()
   ctx.fillStyle = theme.sponsorPillText; ctx.textAlign = 'center'
   ctx.fillText(promo, px + pw / 2, py + ph / 2 + 1)
   ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right'
-  ctx.fillStyle = theme.footerMuted; ctx.font = `700 14px ${FONT}`
-  ctx.fillText('your first month of training', w - padX, py + ph + 24)
+  ctx.fillStyle = theme.footerMuted; ctx.font = `700 13px ${FONT}`
+  ctx.fillText('your first month of training', w - padX, py + ph + 20)
 }
 
 async function renderBoard(canvas, opts) {
@@ -442,7 +442,7 @@ async function renderBoard(canvas, opts) {
   if (favicon) drawImageContain(ctx, favicon, w - padX - ctx.measureText(brand).width - 30, 36, 22, 22)
 
   // footer strip — a taller co-brand band for sponsor themes
-  const footerH = theme.sponsor ? 150 : 56, footerY = h - footerH
+  const footerH = theme.sponsor ? 122 : 56, footerY = h - footerH
   ctx.fillStyle = theme.footerBg; ctx.fillRect(0, footerY, w, footerH)
   if (theme.sponsor === 'chaptrains') {
     drawChapTrainsFooter(ctx, w, footerY, footerH, theme, footerNote)
