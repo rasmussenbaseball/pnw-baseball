@@ -99,7 +99,7 @@ export default function RecruitingBoard() {
                 className="mt-2 w-full rounded-lg bg-nw-teal text-white text-sm font-semibold py-1.5
                            hover:bg-nw-teal-dark disabled:opacity-50"
               >
-                ＋ New board
+                New board
               </button>
             </div>
           </div>
@@ -166,8 +166,8 @@ function BoardPanel({ boardId, onChanged, onDeleted }) {
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
               {board.title}
               {isOwner && (
-                <button onClick={() => setEditingTitle(true)} title="Rename"
-                        className="ml-2 text-gray-400 hover:text-nw-teal text-sm align-middle">✎</button>
+                <button onClick={() => setEditingTitle(true)}
+                        className="ml-2 text-[12px] font-semibold text-gray-400 hover:text-nw-teal align-middle">Rename</button>
               )}
             </h2>
           )}
@@ -341,7 +341,7 @@ function PlayerSearchAdd({ boardId, onAdded }) {
                 </div>
               </div>
               {addedIds[p.id]
-                ? <span className="text-[13px] font-semibold text-green-600 shrink-0">Added ✓</span>
+                ? <span className="text-[13px] font-semibold text-green-600 shrink-0">Added</span>
                 : <button onClick={() => add(p)} disabled={busyId === p.id}
                           className="shrink-0 rounded-md bg-nw-teal text-white text-[13px] font-semibold px-3 py-1 hover:bg-nw-teal-dark disabled:opacity-50">
                     {busyId === p.id ? '…' : 'Add'}
@@ -426,7 +426,7 @@ function PlayerRow({ boardId, player, viewerEmail, onChanged }) {
     try {
       await patch({
         position: d.position || '', class_year: d.class_year || '', school: d.school || '',
-        height: d.height || '', weight: d.weight || '', stats: d.stats || '', notes: d.notes || '',
+        height: d.height || '', weight: d.weight || '', notes: d.notes || '',
         offer_amount: d.offer_amount || '', last_contacted: d.last_contacted || '',
       })
       setExpanded(false)
@@ -454,15 +454,22 @@ function PlayerRow({ boardId, player, viewerEmail, onChanged }) {
           {/* status chips */}
           <div className="flex items-center gap-1.5 flex-wrap mt-1">
             {player.committed && (
-              <span className="text-[11px] font-bold text-green-700 bg-green-100 dark:bg-green-900/40 dark:text-green-300 rounded-full px-2 py-0.5">✓ Committed</span>
+              <span className="text-[11px] font-bold text-green-700 bg-green-100 dark:bg-green-900/40 dark:text-green-300 rounded-full px-2 py-0.5">Committed</span>
             )}
             {player.offer_amount && (
-              <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200 rounded-full px-2 py-0.5">💰 {player.offer_amount}</span>
+              <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200 rounded-full px-2 py-0.5">Offer: {player.offer_amount}</span>
             )}
             {player.last_contacted && (
-              <span className="text-[11px] text-gray-500 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-0.5">📅 Last contact {fmtDate(player.last_contacted)}</span>
+              <span className="text-[11px] text-gray-500 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-0.5">Last contact {fmtDate(player.last_contacted)}</span>
             )}
           </div>
+          {/* actual stats — only for players in our database */}
+          {player.stat_line && (
+            <div className="text-[12px] mt-1 tabular-nums">
+              <span className="font-semibold text-gray-700 dark:text-gray-200">{player.stat_line}</span>
+              {player.stat_season && <span className="text-gray-400"> · {player.stat_season}</span>}
+            </div>
+          )}
           {(player.notes || player.height || player.weight) && !expanded && (
             <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-1 truncate">
               {[player.height, player.weight && `${player.weight} lbs`, player.notes].filter(Boolean).join(' · ')}
@@ -483,13 +490,13 @@ function PlayerRow({ boardId, player, viewerEmail, onChanged }) {
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
               <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-lg bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 py-1 text-sm">
                 <MenuItem onClick={() => { setMenuOpen(false); patch({ committed: !player.committed }) }}>
-                  {player.committed ? 'Unmark committed' : '✓ Mark as committed'}
+                  {player.committed ? 'Unmark committed' : 'Mark as committed'}
                 </MenuItem>
                 <MenuItem onClick={() => { setMenuOpen(false); patch({ last_contacted: today }) }}>
-                  📅 Mark contacted today
+                  Mark contacted today
                 </MenuItem>
                 <MenuItem onClick={() => { setMenuOpen(false); setExpanded(true) }}>
-                  ✎ Edit details &amp; offer
+                  Edit details &amp; offer
                 </MenuItem>
                 <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
                 <MenuItem danger onClick={() => { setMenuOpen(false); remove() }}>
@@ -513,10 +520,9 @@ function PlayerRow({ boardId, player, viewerEmail, onChanged }) {
           <Field label="Committed">
             <button type="button" onClick={() => setD(s => ({ ...s, committed: !s.committed }))}
               className={`w-full rounded-lg px-3 py-1.5 text-sm font-semibold border ${d.committed ? 'bg-green-600 text-white border-green-600' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>
-              {d.committed ? '✓ Committed' : 'Not committed'}
+              {d.committed ? 'Committed' : 'Not committed'}
             </button>
           </Field>
-          <Field label="Stats" full><textarea value={d.stats || ''} onChange={set('stats')} rows={2} placeholder="Velo, exit velo, key numbers…" className={INP + ' resize-y'} /></Field>
           <Field label="Notes" full><textarea value={d.notes || ''} onChange={set('notes')} rows={3} placeholder="Scouting notes…" className={INP + ' resize-y'} /></Field>
           <div className="col-span-2 sm:col-span-4 flex justify-end gap-2">
             <button onClick={() => { setD(player); setExpanded(false) }} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-500 hover:text-gray-700">Cancel</button>

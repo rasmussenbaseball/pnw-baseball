@@ -123,6 +123,65 @@ def _require_board(cur, board_id: int, email: str, *, owner_only: bool = False):
     return board, is_owner
 
 
+def _f3(x):
+    try: return f"{float(x):.3f}".lstrip("0") or ".000"
+    except (TypeError, ValueError): return None
+
+
+def _f2(x):
+    try: return f"{float(x):.2f}"
+    except (TypeError, ValueError): return None
+
+
+def _attach_stat_lines(cur, players):
+    """For players that are in OUR database (player_id set), attach a compact
+    `stat_line` of their actual most-recent-season stats. Manually-entered
+    (non-PNW) players get nothing here."""
+    pids = [p["player_id"] for p in players if p.get("player_id")]
+    if not pids:
+        return
+    cur.execute("""SELECT DISTINCT ON (player_id) player_id, season, batting_avg, on_base_pct,
+                          slugging_pct, home_runs, stolen_bases, wrc_plus, plate_appearances
+                   FROM batting_stats WHERE player_id = ANY(%s) AND plate_appearances >= 10
+                   ORDER BY player_id, season DESC""", (pids,))
+    bat = {r["player_id"]: r for r in cur.fetchall()}
+    cur.execute("""SELECT DISTINCT ON (player_id) player_id, season, era, strikeouts,
+                          innings_pitched, whip, batters_faced
+                   FROM pitching_stats WHERE player_id = ANY(%s) AND batters_faced >= 10
+                   ORDER BY player_id, season DESC""", (pids,))
+    pit = {r["player_id"]: r for r in cur.fetchall()}
+    for p in players:
+        pid = p.get("player_id")
+        if not pid:
+            continue
+        segs, season = [], None
+        b = bat.get(pid)
+        if b:
+            season = b["season"]
+            bits = [f"{_f3(b['batting_avg'])}/{_f3(b['on_base_pct'])}/{_f3(b['slugging_pct'])}"]
+            if b["home_runs"]:
+                bits.append(f"{b['home_runs']} HR")
+            if b["stolen_bases"]:
+                bits.append(f"{b['stolen_bases']} SB")
+            if b["wrc_plus"] is not None:
+                bits.append(f"{int(b['wrc_plus'])} wRC+")
+            segs.append(", ".join(bits))
+        pp = pit.get(pid)
+        if pp:
+            season = max(season or pp["season"], pp["season"])
+            bits = [f"{_f2(pp['era'])} ERA"]
+            if pp["innings_pitched"] is not None:
+                bits.append(f"{pp['innings_pitched']} IP")
+            if pp["strikeouts"]:
+                bits.append(f"{pp['strikeouts']} K")
+            if pp["whip"] is not None:
+                bits.append(f"{_f2(pp['whip'])} WHIP")
+            segs.append(", ".join(bits))
+        if segs:
+            p["stat_line"] = "  ·  ".join(segs)
+            p["stat_season"] = season
+
+
 # ── Pydantic bodies ──────────────────────────────────────────
 class BoardCreate(BaseModel):
     title: str
@@ -221,6 +280,7 @@ def get_board(board_id: int, member: dict = Depends(current_member)):
                        FROM recruiting_board_players WHERE board_id = %s
                        ORDER BY committed DESC, created_at DESC, id DESC""", (board_id,))
         players = [dict(r) for r in cur.fetchall()]
+        _attach_stat_lines(cur, players)
         cur.execute("SELECT id, email, added_by, created_at FROM recruiting_board_members "
                     "WHERE board_id = %s ORDER BY created_at", (board_id,))
         members = [dict(r) for r in cur.fetchall()]
