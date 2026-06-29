@@ -26,23 +26,18 @@ import {
 //  without a separate API call. Update when it drifts meaningfully.
 // ───────────────────────────────────────────────────────────────────
 const LOC = {
-  frontend: 96_202,   // src/*.jsx + js + css
-  backend:  34_077,   // backend/app/**.py (excludes .venv)
-  scripts:  47_532,   // scrapers, migrations, jobs
+  frontend: 134_021,  // src/*.jsx + js + css
+  backend:  51_890,   // backend/app/**.py (excludes .venv)
+  scripts:  56_045,   // scrapers, migrations, jobs (excludes scripts/archive)
 }
 LOC.total = LOC.frontend + LOC.backend + LOC.scripts
 
 
 // ───────────────────────────────────────────────────────────────────
-//  Hours spent pair-coding with Claude on this project.
-//  Source: parse ~/.claude/projects/**/*.jsonl session logs and group
-//  consecutive message timestamps into "active sessions" (gap >10min
-//  closes a session). Local logs retain ~14 days of sessions; the
-//  full project has 53 active commit-days at a measured 3.8h/active-day
-//  rate, so 200+ is a conservative lower bound.
-//  Update by re-running the audit script periodically.
+//  The day NWBB Stats was first committed (and the site went live).
+//  Source: the repo's initial commit, March 26, 2026.
 // ───────────────────────────────────────────────────────────────────
-const CLAUDE_HOURS = 200
+const SITE_LAUNCHED = 'Mar 26, 2026'
 
 
 // ─── Interns. Each entry: name, role, headshot (path or null), blurb.
@@ -247,9 +242,9 @@ function HeroStats({ siteStats }) {
           color="nw-teal"
         />
         <StatChip
-          label="Hours with Claude"
-          value={`${CLAUDE_HOURS}+`}
-          sub="AI pair-coding sessions"
+          label="Site Launched"
+          value={SITE_LAUNCHED}
+          sub="Built with Claude Code"
           color="nw-teal"
         />
         <StatChip
