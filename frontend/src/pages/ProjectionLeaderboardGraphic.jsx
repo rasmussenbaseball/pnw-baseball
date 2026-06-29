@@ -75,6 +75,104 @@ const THEMES = [
     rank: 'rgba(253,242,245,0.45)', logoFallback: 'rgba(253,242,245,0.12)',
     footerBg: 'rgba(0,0,0,0.32)', footerText: '#fdf2f5', footerMuted: 'rgba(253,242,245,0.6)',
   },
+  {
+    id: 'forest', label: 'Evergreen',
+    bgStops: ['#0a2218', '#123d2b'], grain: false,
+    headerStops: ['#0f4630', '#0b2f20'], headerRule: C.goldLight,
+    kicker: '#bff0d6', headerText: '#ffffff', headerSub: 'rgba(232,245,238,0.78)',
+    card: 'rgba(232,245,238,0.07)', cardBorder: 'rgba(110,224,170,0.26)', cardAccent: '#6ee0aa',
+    text: '#eafaf1', name: '#eafaf1', secondary: 'rgba(232,245,238,0.6)', muted: 'rgba(232,245,238,0.4)',
+    colHeader: '#9ff0c8', mainStat: '#9ff0c8', mainStatTop3: C.goldLight,
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: '#0a2218', medalRing: '#6ee0aa',
+    rank: 'rgba(232,245,238,0.45)', logoFallback: 'rgba(232,245,238,0.12)',
+    footerBg: 'rgba(0,0,0,0.35)', footerText: '#eafaf1', footerMuted: 'rgba(232,245,238,0.6)',
+  },
+  {
+    id: 'crimson', label: 'Crimson',
+    bgStops: ['#fbf4f2', '#f4e4e0'], grain: true, grainDark: 'rgba(123,19,32,0.06)', grainLight: 'rgba(255,255,255,0.6)',
+    headerStops: ['#9b1c2e', '#7a1322'], headerRule: C.goldLight,
+    kicker: '#f4cdbf', headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: '#ffffff', cardBorder: 'rgba(123,19,32,0.18)', cardAccent: '#9b1c2e',
+    text: '#2a1316', name: '#8a1626', secondary: '#6a4a4a', muted: '#9a7a7a',
+    colHeader: '#8a1626', mainStat: '#8a1626', mainStatTop3: C.goldDeep,
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: '#2a1316', medalRing: '#8a1626',
+    rank: '#b09a9a', logoFallback: '#efe2df',
+    footerBg: '#5e0f1b', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+  },
+  {
+    id: 'slate', label: 'Steel',
+    bgStops: ['#0f1722', '#1c2a3a'], grain: false,
+    headerStops: ['#1c2a3a', '#243447'], headerRule: '#7dd3fc',
+    kicker: '#bfe6fb', headerText: '#ffffff', headerSub: 'rgba(226,236,245,0.78)',
+    card: 'rgba(226,236,245,0.06)', cardBorder: 'rgba(125,211,252,0.24)', cardAccent: '#7dd3fc',
+    text: '#eef4fa', name: '#eef4fa', secondary: 'rgba(226,236,245,0.6)', muted: 'rgba(226,236,245,0.4)',
+    colHeader: '#a9dcf7', mainStat: '#a9dcf7', mainStatTop3: '#7dd3fc',
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: '#0f1722', medalRing: '#7dd3fc',
+    rank: 'rgba(226,236,245,0.45)', logoFallback: 'rgba(226,236,245,0.1)',
+    footerBg: 'rgba(0,0,0,0.4)', footerText: '#eef4fa', footerMuted: 'rgba(226,236,245,0.6)',
+  },
+  {
+    id: 'royal', label: 'Royal Blue',
+    bgStops: ['#f3f6fc', '#e4ebf7'], grain: true, grainDark: 'rgba(30,58,138,0.06)', grainLight: 'rgba(255,255,255,0.6)',
+    headerStops: ['#1e3a8a', '#172f70'], headerRule: C.goldLight,
+    kicker: '#c7d6f5', headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: '#ffffff', cardBorder: 'rgba(30,58,138,0.18)', cardAccent: '#1e3a8a',
+    text: '#131c33', name: '#1e3a8a', secondary: '#4a5570', muted: '#8590aa',
+    colHeader: '#1e3a8a', mainStat: '#1e3a8a', mainStatTop3: C.goldDeep,
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: '#131c33', medalRing: '#1e3a8a',
+    rank: '#9aa3bd', logoFallback: '#e3e9f4',
+    footerBg: '#14245c', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+  },
+  {
+    id: 'sunset', label: 'Sunset',
+    bgStops: ['#fdf6ee', '#fbe8d4'], grain: true, grainDark: 'rgba(194,82,14,0.06)', grainLight: 'rgba(255,255,255,0.55)',
+    headerStops: ['#c2520e', '#9c3f08'], headerRule: '#ffd9a0',
+    kicker: '#ffe0bf', headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: '#ffffff', cardBorder: 'rgba(194,82,14,0.2)', cardAccent: '#c2520e',
+    text: '#2e1a0e', name: '#a8470c', secondary: '#6a513c', muted: '#9a8067',
+    colHeader: '#a8470c', mainStat: '#a8470c', mainStatTop3: '#9c3f08',
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: '#2e1a0e', medalRing: '#c2520e',
+    rank: '#b59c84', logoFallback: '#f0e3d2',
+    footerBg: '#7a3206', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+  },
+  {
+    id: 'mono', label: 'Mono',
+    bgStops: ['#161618', '#242427'], grain: false,
+    headerStops: ['#242427', '#0e0e10'], headerRule: '#d6d8dc',
+    kicker: '#b8babf', headerText: '#ffffff', headerSub: 'rgba(238,239,241,0.72)',
+    card: 'rgba(255,255,255,0.05)', cardBorder: 'rgba(214,216,220,0.22)', cardAccent: '#d6d8dc',
+    text: '#eef0f2', name: '#ffffff', secondary: 'rgba(238,239,241,0.62)', muted: 'rgba(238,239,241,0.4)',
+    colHeader: '#aeb1b7', mainStat: '#eef0f2', mainStatTop3: '#ffffff',
+    medals: ['#e9ebee', '#c2c6cc', '#8d9298'], medalText: '#161618', medalRing: '#e9ebee',
+    rank: 'rgba(238,239,241,0.4)', logoFallback: 'rgba(255,255,255,0.1)',
+    footerBg: '#0c0c0e', footerText: '#eef0f2', footerMuted: 'rgba(238,239,241,0.55)',
+  },
+  {
+    id: 'chaptrains-dark', label: 'ChapTrains · Night',
+    bgStops: ['#0a0e12', '#111922'], grain: false,
+    headerStops: ['#10171f', '#0a0e12'], headerRule: '#9ef01a',
+    kicker: '#c9f58a', headerText: '#ffffff', headerSub: 'rgba(233,240,242,0.72)',
+    card: 'rgba(255,255,255,0.05)', cardBorder: 'rgba(158,240,26,0.24)', cardAccent: '#9ef01a',
+    text: '#eef2f4', name: '#ffffff', secondary: 'rgba(233,240,242,0.62)', muted: 'rgba(233,240,242,0.4)',
+    colHeader: '#b6e85f', mainStat: '#c7f56f', mainStatTop3: '#9ef01a',
+    medals: ['#9ef01a', '#c7f56f', '#6fb80f'], medalText: '#0a0e12', medalRing: '#9ef01a',
+    rank: 'rgba(233,240,242,0.4)', logoFallback: 'rgba(255,255,255,0.1)',
+    footerBg: '#070a0d', footerText: '#eef2f4', footerMuted: 'rgba(233,240,242,0.55)',
+    sponsor: 'chaptrains', sponsorAccent: '#9ef01a', sponsorPill: '#9ef01a', sponsorPillText: '#0a0e12',
+  },
+  {
+    id: 'chaptrains-light', label: 'ChapTrains · Day',
+    bgStops: ['#f7f9f4', '#eaf1e0'], grain: true, grainDark: 'rgba(60,90,20,0.06)', grainLight: 'rgba(255,255,255,0.6)',
+    headerStops: ['#1c2a16', '#101a0c'], headerRule: '#9ef01a',
+    kicker: '#cdeb9a', headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: '#ffffff', cardBorder: 'rgba(60,90,20,0.18)', cardAccent: '#5a8c1a',
+    text: '#1c2410', name: '#3f6112', secondary: '#5a6448', muted: '#8a937a',
+    colHeader: '#4a7314', mainStat: '#4a7314', mainStatTop3: '#3f6112',
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: '#1c2410', medalRing: '#5a8c1a',
+    rank: '#9aa389', logoFallback: '#e6ecdb',
+    footerBg: '#141d0c', footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+    sponsor: 'chaptrains', sponsorAccent: '#9ef01a', sponsorPill: '#9ef01a', sponsorPillText: '#141d0c',
+  },
 ]
 function buildTheme(p) {
   return { ...p, swatch: p.bgStops.length > 1 ? `linear-gradient(135deg, ${p.bgStops.join(', ')})` : p.bgStops[0] }
@@ -254,6 +352,42 @@ function fmtGain(d, format) {
 // ════════════════════════════════════════════════════════════════
 // Canvas renderer — one pipeline for preview AND export (WCL engine).
 // ════════════════════════════════════════════════════════════════
+// ChapTrains co-brand footer band. He has no logo, so his Instagram handle IS the
+// mark — set big and centered as the focal point, with the value-prop + promo around
+// it and NWBB's own branding kept on the left.
+function drawChapTrainsFooter(ctx, w, fy, fh, theme, footerNote) {
+  const padX = 44, cx = w / 2
+  ctx.fillStyle = theme.sponsorAccent; ctx.fillRect(0, fy, w, 3)   // accent rule
+
+  // LEFT: NWBB mark + qualifier note
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = theme.footerText; ctx.font = `800 18px ${FONT}`
+  ctx.fillText('NWBB STATS', padX, fy + 54)
+  ctx.fillStyle = theme.footerMuted; ctx.font = `700 14px ${FONT}`
+  ctx.fillText('nwbaseballstats.com' + (footerNote ? '  ·  ' + footerNote : ''), padX, fy + 80)
+
+  // CENTER (focal): the @handle, big, with kicker above + tagline below
+  ctx.textAlign = 'center'
+  ctx.fillStyle = theme.footerMuted; ctx.font = `800 15px ${FONT}`
+  ctx.fillText('TRAINING PARTNER', cx, fy + 33)
+  ctx.fillStyle = theme.sponsorAccent; ctx.font = `900 54px ${FONT}`
+  ctx.fillText('@chaptrains', cx, fy + 87)
+  ctx.fillStyle = theme.footerText; ctx.font = `600 17px ${FONT}`
+  ctx.fillText('Personal training · trusted by dozens of PNW ballplayers', cx, fy + 117)
+
+  // RIGHT: promo pill + line
+  ctx.textBaseline = 'middle'; ctx.font = `800 16px ${FONT}`
+  const promo = "DM 'NWBB' · 50% OFF"
+  const pw = ctx.measureText(promo).width + 30, ph = 40
+  const px = w - padX - pw, py = fy + 38
+  ctx.fillStyle = theme.sponsorPill; canvasRoundRect(ctx, px, py, pw, ph, 9); ctx.fill()
+  ctx.fillStyle = theme.sponsorPillText; ctx.textAlign = 'center'
+  ctx.fillText(promo, px + pw / 2, py + ph / 2 + 1)
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right'
+  ctx.fillStyle = theme.footerMuted; ctx.font = `700 14px ${FONT}`
+  ctx.fillText('your first month of training', w - padX, py + ph + 24)
+}
+
 async function renderBoard(canvas, opts) {
   const { items, config, title, subtitle, footerNote, theme, isTeamMode, count, twoCol, loading } = opts
   const w = SIZE.w, h = SIZE.h, dpr = 2
@@ -307,14 +441,18 @@ async function renderBoard(canvas, opts) {
   ctx.fillText(brand, w - padX, 50)
   if (favicon) drawImageContain(ctx, favicon, w - padX - ctx.measureText(brand).width - 30, 36, 22, 22)
 
-  // footer strip
-  const footerH = 56, footerY = h - footerH
+  // footer strip — a taller co-brand band for sponsor themes
+  const footerH = theme.sponsor ? 150 : 56, footerY = h - footerH
   ctx.fillStyle = theme.footerBg; ctx.fillRect(0, footerY, w, footerH)
-  ctx.fillStyle = theme.footerText; ctx.font = `700 15px ${FONT}`
-  ctx.textAlign = 'left'; ctx.fillText('nwbaseballstats.com', 40, footerY + 35)
-  ctx.font = `500 13px ${FONT}`; ctx.fillStyle = theme.footerMuted
-  ctx.textAlign = 'right'; ctx.fillText('@nwbbstats', w - 40, footerY + 35)
-  if (footerNote) { ctx.textAlign = 'center'; ctx.fillText(footerNote, w / 2, footerY + 35) }
+  if (theme.sponsor === 'chaptrains') {
+    drawChapTrainsFooter(ctx, w, footerY, footerH, theme, footerNote)
+  } else {
+    ctx.fillStyle = theme.footerText; ctx.font = `700 15px ${FONT}`
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText('nwbaseballstats.com', 40, footerY + 35)
+    ctx.font = `500 13px ${FONT}`; ctx.fillStyle = theme.footerMuted
+    ctx.textAlign = 'right'; ctx.fillText('@nwbbstats', w - 40, footerY + 35)
+    if (footerNote) { ctx.textAlign = 'center'; ctx.fillText(footerNote, w / 2, footerY + 35) }
+  }
 
   // body geometry
   const bodyPadX = 36, bodyTop = headerH + 16, bodyBottom = footerY - 14, colHeaderH = 26
@@ -676,11 +814,16 @@ export default function ProjectionLeaderboardGraphic() {
 
           <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border dark:border-gray-700 p-3 space-y-3">
             <div>
-              <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Theme</div>
-              <div className="flex gap-2">{THEMES.map(t => (
+              <div className="flex items-baseline justify-between mb-1.5">
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Theme</div>
+                <div className="text-[11px] text-gray-500">{theme.label}{theme.sponsor ? ' · sponsor' : ''}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">{THEMES.map(t => (
                 <button key={t.id} onClick={() => setThemeId(t.id)} title={t.label}
-                  className={`h-8 w-8 rounded-full border-2 ${themeId === t.id ? 'border-nw-teal' : 'border-transparent'}`}
-                  style={{ background: t.bgStops.length > 1 ? `linear-gradient(135deg, ${t.bgStops[0]}, ${t.headerStops[0]})` : t.bgStops[0] }} />
+                  className={`h-8 w-8 rounded-full border-2 relative ${themeId === t.id ? 'border-nw-teal' : 'border-transparent'}`}
+                  style={{ background: t.bgStops.length > 1 ? `linear-gradient(135deg, ${t.bgStops[0]}, ${t.headerStops[0]})` : t.bgStops[0] }}>
+                  {t.sponsor && <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full" style={{ background: t.sponsorAccent, border: '1px solid #fff' }} />}
+                </button>
               ))}</div>
             </div>
             <input value={customTitle} onChange={e => setCustomTitle(e.target.value)} placeholder="Custom title (optional)"
