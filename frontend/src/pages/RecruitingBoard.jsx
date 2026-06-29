@@ -14,8 +14,10 @@ import {
   listBoards, createBoard, getBoard, renameBoard, deleteBoard,
   addMember, removeMember, addPlayer, updatePlayer, removePlayer,
 } from '../lib/recruitingBoards'
+import RecruitFinder from '../components/RecruitFinder'
 
 export default function RecruitingBoard() {
+  const [view, setView] = useState('board')   // 'board' | 'finder'
   const [boards, setBoards] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [newTitle, setNewTitle] = useState('')
@@ -49,18 +51,30 @@ export default function RecruitingBoard() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-3 sm:px-5 py-6">
-      <div className="mb-5">
+    <div className={`${view === 'finder' ? 'max-w-7xl' : 'max-w-6xl'} mx-auto px-3 sm:px-5 py-6`}>
+      <div className="mb-4">
         <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100">Recruiting Board</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          Build boards of players to track, add notes, and share with your staff. Add anyone from
-          their <Link to="/players" className="text-nw-teal hover:underline">player page</Link> with
-          “Add to board”, or enter non-PNW recruits manually.
+          {view === 'finder'
+            ? 'Find uncommitted NWAC, transfer-portal, and WCL-portal players by position, archetype, or custom stat filters.'
+            : 'Build boards of players to track, add notes, and share with your staff.'}
         </p>
+      </div>
+
+      {/* Board / Finder toggle */}
+      <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-5">
+        {[['board', 'My Boards'], ['finder', 'Recruit Finder']].map(([v, l]) => (
+          <button key={v} onClick={() => setView(v)}
+            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors
+              ${view === v ? 'bg-white dark:bg-gray-700 text-nw-teal shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            {l}
+          </button>
+        ))}
       </div>
 
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded px-3 py-2">{error}</div>}
 
+      {view === 'finder' ? <RecruitFinder /> : (
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
         {/* Left rail: boards */}
         <aside>
@@ -115,6 +129,7 @@ export default function RecruitingBoard() {
               </div>}
         </main>
       </div>
+      )}
     </div>
   )
 }
@@ -183,6 +198,8 @@ function BoardPanel({ boardId, onChanged, onDeleted }) {
         <MembersBox boardId={boardId} board={board} members={members} isOwner={isOwner} onChanged={reload} />
       </div>
 
+      {players.length > 0 && <BoardSummary players={players} />}
+
       {/* Add players (search our DB or manual) */}
       <AddPlayersCard boardId={boardId} onAdded={() => { reload(); onChanged() }} />
 
@@ -206,6 +223,85 @@ function BoardPanel({ boardId, onChanged, onDeleted }) {
   )
 }
 
+
+// Parse a free-text offer ("$5,000/yr", "12k", "5000") into a number, or null.
+function parseMoney(s) {
+  if (s == null) return null
+  const m = String(s).replace(/,/g, '').match(/(\d+(?:\.\d+)?)\s*([kK])?/)
+  if (!m) return null
+  let n = parseFloat(m[1])
+  if (m[2]) n *= 1000
+  return Number.isFinite(n) ? n : null
+}
+function fmtMoney(n) {
+  return '$' + Math.round(n || 0).toLocaleString()
+}
+function posGroup(pos) {
+  if (!pos) return 'Other'
+  const first = pos.toUpperCase().split('/')[0].trim()
+  if (['RHP', 'LHP', 'P', 'SP', 'RP'].includes(first)) return 'P'
+  if (first === 'C') return 'C'
+  if (['1B', '2B', '3B', 'SS', 'IF'].includes(first)) return 'IF'
+  if (['OF', 'LF', 'CF', 'RF'].includes(first)) return 'OF'
+  if (first === 'DH') return 'DH'
+  return 'Other'
+}
+
+function SummaryTile({ label, value, sub }) {
+  return (
+    <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5">
+      <div className="text-2xl font-bold text-nw-teal tabular-nums leading-none">{value}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mt-1">{label}</div>
+      {sub && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{sub}</div>}
+    </div>
+  )
+}
+
+function BoardSummary({ players }) {
+  const commits = players.filter(p => p.committed)
+  const commitAmts = commits.map(p => parseMoney(p.offer_amount)).filter(n => n != null)
+  const totalCommitted = commitAmts.reduce((a, b) => a + b, 0)
+  const avgSchol = commitAmts.length ? totalCommitted / commitAmts.length : 0
+  const offers = players.filter(p => !p.committed && parseMoney(p.offer_amount) != null)
+  const totalOffers = offers.reduce((a, p) => a + parseMoney(p.offer_amount), 0)
+
+  const groups = ['C', 'IF', 'OF', 'P', 'DH', 'Other']
+  const breakdown = groups
+    .map(g => ({
+      g,
+      commits: commits.filter(p => posGroup(p.position) === g).length,
+      offers: offers.filter(p => posGroup(p.position) === g).length,
+    }))
+    .filter(r => r.commits || r.offers)
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <SummaryTile label="Committed" value={commits.length}
+          sub={commitAmts.length ? `${commitAmts.length} with $ set` : null} />
+        <SummaryTile label="Committed $" value={fmtMoney(totalCommitted)}
+          sub={commitAmts.length ? `${fmtMoney(avgSchol)} avg scholarship` : 'no amounts set'} />
+        <SummaryTile label="Offers out" value={offers.length} />
+        <SummaryTile label="$ on offer" value={fmtMoney(totalOffers)} />
+      </div>
+      {breakdown.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">By position</div>
+          <div className="flex flex-wrap gap-2">
+            {breakdown.map(r => (
+              <div key={r.g} className="rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5">
+                <span className="text-[12px] font-bold text-gray-700 dark:text-gray-200">{r.g}</span>
+                <span className="text-[11px] text-gray-500 ml-2">
+                  {r.commits} committed · {r.offers} offered
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function MembersBox({ boardId, board, members, isOwner, onChanged }) {
   const [email, setEmail] = useState('')

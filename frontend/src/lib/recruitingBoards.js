@@ -36,6 +36,23 @@ export const renameBoard  = (id, title) => req('PATCH', `/${id}`, { title })
 export const deleteBoard  = (id) => req('DELETE', `/${id}`)
 export const addMember    = (id, email) => req('POST', `/${id}/members`, { email })
 export const removeMember = (id, memberId) => req('DELETE', `/${id}/members/${memberId}`)
+// ── Recruit Finder (different prefix, same auth) ──
+async function finderReq(path, body) {
+  const res = await fetch('/api/v1/recruit-finder' + path, {
+    method: body ? 'POST' : 'GET',
+    headers: await headers(),
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+  if (!res.ok) {
+    let detail = `Request failed (${res.status})`
+    try { detail = (await res.json()).detail || detail } catch { /* ignore */ }
+    throw new Error(detail)
+  }
+  return res.json()
+}
+export const finderMeta   = () => finderReq('/meta')
+export const finderSearch = (q) => finderReq('/search', q)
+
 export const addPlayer    = (id, payload) => req('POST', `/${id}/players`, payload)
 export const updatePlayer = (id, rbpId, payload) => req('PATCH', `/${id}/players/${rbpId}`, payload)
 export const removePlayer = (id, rbpId) => req('DELETE', `/${id}/players/${rbpId}`)
