@@ -15,6 +15,15 @@ import { useProjectionPlayerLeaders, useProjectionTeamLeaders } from '../hooks/u
 const SIZE = { w: 1080, h: 1080 }
 const SEASON = 2027
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
+const POSITIONS = ['All', 'C', '1B', '2B', '3B', 'SS', 'OF', 'DH']
+// a player's pos can be multi (e.g. "RF/LF", "1B/DH"); match if ANY slot fits.
+function posMatch(pos, filter) {
+  if (filter === 'All') return true
+  if (!pos) return false
+  const ps = pos.split('/').map(s => s.trim().toUpperCase())
+  if (filter === 'OF') return ps.some(p => ['LF', 'CF', 'RF', 'OF'].includes(p))
+  return ps.includes(filter)
+}
 const FONT = "-apple-system, 'Inter', 'Helvetica Neue', sans-serif"
 
 // ─── Palette ───
@@ -583,6 +592,7 @@ export default function ProjectionLeaderboardGraphic() {
   const canvasRef = useRef(null)
   const [category, setCategory] = useState('bat')
   const [level, setLevel] = useState('All')
+  const [position, setPosition] = useState('All')
   const [mode, setMode] = useState('leaders')        // leaders | gains | every
   const [presetIdx, setPresetIdx] = useState(0)
   const [statMode, setStatMode] = useState('preset') // preset | custom
@@ -608,6 +618,7 @@ export default function ProjectionLeaderboardGraphic() {
   useEffect(() => {
     setPresetIdx(0); setStatMode('preset'); setCustomMain(''); setCustomExtra([])
     setMinSample(cat?.sampleDefault ? String(cat.sampleDefault) : '')
+    if (category !== 'bat') setPosition('All')   // positions are a hitter filter only
     if (CAT_BY_ID[category].kind === 'team' && mode !== 'leaders') setMode('leaders')
   }, [category]) // eslint-disable-line
 
@@ -634,16 +645,18 @@ export default function ProjectionLeaderboardGraphic() {
     }
     const minN = minSample !== '' ? Number(minSample) : (cat.sampleDefault || 0)
     let r = (playerData?.players || []).filter(p => level === 'All' || p.level === level)
+    if (cat.side === 'bat' && position !== 'All') r = r.filter(p => posMatch(p.pos, position))
     if (qualified) r = r.filter(p => cat.side === 'bat' ? (p.PT || 0) >= minN : ipNum(p.IP) >= minN)
     return r.map(p => ({ ...p, name: p.name, team_short: p.team, college: p.level, logo_url: p.logo_url }))
-  }, [isTeam, teamData, playerData, level, qualified, minSample, cat])
+  }, [isTeam, teamData, playerData, level, position, qualified, minSample, cat])
 
   // shape items + config for the active mode
   const { items, config, title, subtitle, footerNote } = useMemo(() => {
     const lvlLabel = level === 'All' ? 'PNW' : level
-    const sideLabel = isTeam ? 'Teams' : cat.side === 'bat' ? 'Hitters' : 'Pitchers'
+    const posLabel = (cat.side === 'bat' && position !== 'All') ? ` ${position}` : ''
+    const sideLabel = (isTeam ? 'Teams' : cat.side === 'bat' ? 'Hitters' : 'Pitchers')
     const qualNote = isTeam ? `${pool.length} teams` : qualified ? `Min ${minSample || cat.sampleDefault} ${cat.sampleLabel}` : 'All players'
-    const sub = `${SEASON} projected · ${lvlLabel} ${sideLabel}`
+    const sub = `${SEASON} projected · ${lvlLabel}${posLabel} ${sideLabel}`
 
     if (mode === 'every' && !isTeam) {
       const rows = catalog.map(s => {
@@ -690,7 +703,7 @@ export default function ProjectionLeaderboardGraphic() {
       items: v, config: { key: mainKey, label: mainDef.label, format: mainDef.format, extra },
       title: ttl, subtitle: sub, footerNote: qualNote,
     }
-  }, [pool, mode, mainKey, mainDef, extraKeys, catalog, isTeam, cat, level, qualified, minSample, min2026, count, customTitle, preset, statMode])
+  }, [pool, mode, mainKey, mainDef, extraKeys, catalog, isTeam, cat, level, position, qualified, minSample, min2026, count, customTitle, preset, statMode])
 
   const isTwoCol = useTwoColumns(count)
   const effConfig = isTwoCol ? { ...config, extra: [] } : config
@@ -738,6 +751,12 @@ export default function ProjectionLeaderboardGraphic() {
               <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Level</div>
               <div className="flex flex-wrap gap-1">{LEVELS.map(lv => <Chip key={lv} sm active={level === lv} onClick={() => setLevel(lv)}>{lv}</Chip>)}</div>
             </div>
+            {category === 'bat' && (
+              <div>
+                <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Position</div>
+                <div className="flex flex-wrap gap-1">{POSITIONS.map(p => <Chip key={p} sm active={position === p} onClick={() => setPosition(p)}>{p}</Chip>)}</div>
+              </div>
+            )}
             {!isTeam && (
               <div>
                 <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Mode</div>
