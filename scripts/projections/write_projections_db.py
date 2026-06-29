@@ -438,6 +438,14 @@ def _achievable_targets(cur):
             for r in cur.fetchall():
                 tmp.setdefault(r["lvl"], []).append(float(r["x"]))
             for lvl, vals in tmp.items():
+                # ERA/WHIP are derived OUTCOME stats whose actual distribution has a
+                # garbage high tail — a 60-BF arm shelled for a 20+ ERA isn't a real
+                # talent level, but it inflates the winsorized ceiling so bad projected
+                # arms map up to absurd 17 ERAs. Drop the unrealistic high end (the LOW
+                # end, the sub-2 floor Nate cares about, is kept).
+                if key in ("ERA", "WHIP"):
+                    cap = 11.0 if key == "ERA" else 2.6
+                    vals = [v for v in vals if 0 < v <= cap]
                 if len(vals) >= 8:
                     out[(side, lvl, key)] = np.array(sorted(vals))
     return out
@@ -952,17 +960,19 @@ def expand_to_achievable(rows, workload):
                 p["ERA_lo"] = round(era - hw, 2); p["ERA_hi"] = round(era + hw, 2)
 
     # --- pass 3: map the DERIVED outcome stats (ERA, WHIP) to each level's actual
-    # distribution. Both are built from FIP / K% / BB% / regressed-BABIP above (so
-    # they rank arms by skill), but in low-run / wood-bat environments (NWAC most of
-    # all) arms SYSTEMATICALLY beat those component estimates — the actual ERA/WHIP
-    # floors sit below what FIP-anchoring or a regressed-BABIP WHIP produce (2026
-    # NWAC: 10 qualified arms under 2.00 ERA, beating FIP by ~0.4 on average; our
-    # FIP-anchored ERA floored near 2.7, and the derived WHIP barely tracked real
-    # WHIP at all). Rank by the skill-derived value (NOT demonstrated, so this never
-    # credits an individual's lucky season) and map to what arms at that level
-    # ACTUALLY post. Regulars only (BF>=60), like pass 1; the only-widen clamp means
-    # the map can only push a pitcher further from the level mean (an ace toward the
-    # floor, a scuffler up), never back toward average.
+    # distribution, WORKLOAD-AWARE. Both are built from FIP / K% / BB% / regressed-
+    # BABIP above (so they rank arms by skill), but in low-run / wood-bat environments
+    # (NWAC most of all) arms beat those component estimates, so the achievable floor
+    # sits below what FIP-anchoring produces. The catch: the lowest ERAs/WHIPs in any
+    # league come from SMALL-SAMPLE RELIEVERS — a workhorse starter throws enough
+    # innings that his ERA regresses most of the way back to his FIP (2026: |ERA-FIP|
+    # shrinks 2.1 -> 0.9 from short relievers to 320+ BF starters, and the 320+ group
+    # had ZERO sub-2 ERAs vs many among short relievers). So we map to the achievable
+    # (reliever-reachable) value, then BLEND each arm back toward its FIP-anchored
+    # seed by projected workload: a full-time reliever keeps the whole map move, a
+    # workhorse starter keeps ~40% of it and lands near his FIP. Rank by skill (never
+    # demonstrated ERA), regulars only (BF>=60).
+    RP_BF, SP_BF, MAX_SHRINK = 100, 350, 0.58   # realize: 1.0 at <=100 BF -> 0.42 at >=350
     for level in {r["proj"]["level"] for r in rows if r["side"] == "pit"}:
         grp = [r for r in rows if r["side"] == "pit" and r["proj"]["level"] == level]
         for stat in ("ERA", "WHIP"):
@@ -973,12 +983,12 @@ def expand_to_achievable(rows, workload):
                     if r["proj"].get(stat) is not None and (r["proj"].get("BF") or 0) >= 60]
             if len(idxs) < 5:
                 continue
-            proj_vals = [grp[i]["proj"][stat] for i in idxs]
-            mapped = _quantile_map(proj_vals, arr)
-            mu = float(np.mean(arr))
+            seeds = [grp[i]["proj"][stat] for i in idxs]
+            mapped = _quantile_map(seeds, arr)
             for j, i in enumerate(idxs):
-                v, m = proj_vals[j], mapped[j]
-                val = round(max(v, m) if v >= mu else min(v, m), 2)
+                bf = grp[i]["proj"].get("BF") or 0
+                realize = 1.0 - MAX_SHRINK * min(1.0, max(0.0, (bf - RP_BF) / (SP_BF - RP_BF)))
+                val = round(seeds[j] + realize * (mapped[j] - seeds[j]), 2)
                 grp[i]["proj"][stat] = val
                 if stat == "ERA":
                     hw = band_half(grp[i]["proj"].get("reliability", 0.3), "pit")
