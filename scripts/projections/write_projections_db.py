@@ -1001,7 +1001,16 @@ def expand_to_achievable(rows, workload):
         else:
             ipbf = ip_per_bf.get(p.get("level"), IP_PER_BF)
             k = p.get("K_pct", 0) or 0; bb = p.get("BB_pct", 0) or 0
-            hrb = p.get("HR_bf", 0) or 0; babip = p.get("babip_against") or 0.31
+            babip = p.get("babip_against") or 0.31
+            # HR rate can't realistically be 0 over a full season. A pitcher who
+            # allowed 0 HR in a small 2026 sample (Joe Thornton: 0 HR in 30 IP)
+            # ranks as the best HR-suppressor and the per-level map sends him to the
+            # distribution's 0.0 floor (D1 has 0-HR qualified arms). Floor the mapped
+            # HR_bf at half his FB%-based (xFIP-style) estimate so a fly-ball arm
+            # always projects a believable HR rate. `hr_bf` (lowercase) is that
+            # component value; it survives the map.
+            hrb = max(p.get("HR_bf", 0) or 0, 0.5 * (p.get("hr_bf") or 0))
+            p["HR_bf"] = round(hrb, 4)
             p["BF"] = round(pt)
             p["IP"] = to_ip_notation(pt * ipbf)           # baseball notation (.1=1/3)
             p["HR_allowed"] = round(hrb * pt, 1)
