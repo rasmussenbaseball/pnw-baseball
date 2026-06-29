@@ -604,19 +604,18 @@ def load_prior_workload(cur, season):
 
 
 def load_prior_starts(cur, season):
-    """canonical_id -> (games_started, BF-weighted ERA) in `season`. Used to keep a
-    proven returning starter in the rotation: a guy who started and pitched well
-    last year is a strong candidate to start again."""
+    """canonical_id -> (games_started, appearances) in `season`. Used to read a
+    pitcher's ROLE: prior GS (did he start?) plus IP/G (does he go multiple innings,
+    so could stretch into a starter, or is he a one-inning reliever who shouldn't)."""
     cur.execute("""
         WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
         SELECT COALESCE(c.cid, p.player_id) AS cid,
                SUM(COALESCE(p.games_started, 0)) AS gs,
-               SUM(p.era * p.batters_faced) / NULLIF(SUM(p.batters_faced), 0) AS era
+               SUM(COALESCE(p.games, 0)) AS g
         FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
         WHERE p.season = %s GROUP BY 1
     """, (season,))
-    return {r["cid"]: (int(r["gs"] or 0), float(r["era"]) if r["era"] is not None else None)
-            for r in cur.fetchall()}
+    return {r["cid"]: (int(r["gs"] or 0), int(r["g"] or 0)) for r in cur.fetchall()}
 
 
 def _level_quality(rows):
@@ -759,44 +758,58 @@ def allocate_pitcher_ip(rows, workload, prior_ip, prior_starts, qlev):
         ipbf = wl["ip_per_bf"]; cap = wl["ip_cap"]; total = wl["ip"]
         qm, qs = qlev.get(("pit", lvl), (0.0, 1e-9))
         n_sp = SP_COUNT.get(lvl, 4)
+        gate = lambda z: 1.0 if z >= 0 else max(0.40, 1.0 + 0.45 * z)   # below-avg arms shed IP
         scored = []
         for i, r in enumerate(team_rows):
             era = r["proj"].get("ERA")
             q = -float(era) if era is not None else -float(r.get("sort_val") or 0)
             z = (q - qm) / qs                      # level-relative quality (higher=better)
-            gs, _ = prior_starts.get(r["canonical_id"], (0, None))
-            # a proven returning starter gets pushed into the rotation (more if good)
-            sp_bonus = (0.6 + (0.4 if z >= 0 else 0.0)) if (not r.get("is_incoming") and gs >= 5) else 0.0
-            scored.append({"i": i, "r": r, "z": z, "gs": gs, "sp": z + sp_bonus})
-        scored.sort(key=lambda d: d["sp"], reverse=True)
-        starters, relievers = scored[:n_sp], scored[n_sp:]
+            gs, g = prior_starts.get(r["canonical_id"], (0, 0))
+            pi = prior_ip.get(r["canonical_id"], 0.0)
+            ipg = (pi / g) if g >= 1 else None      # innings per appearance = role signal
+            inc = bool(r.get("is_incoming"))
+            proven_sp = (not inc) and gs >= 5
+            # a CLEAR reliever (many appearances, ~no starts, almost always 1 inning)
+            # should NOT be converted to a starter no matter how good — bench him in
+            # the pen. A multi-inning swingman (IP/G >= 2.3) is a real conversion option.
+            clear_rp = (not inc) and g >= 8 and gs < 3 and ipg is not None and ipg < 1.5
+            swing = ipg is not None and ipg >= 2.3
+            sp = z + (0.8 if proven_sp else 0.0) + (0.3 if swing else 0.0)
+            scored.append({"i": i, "r": r, "z": z, "gs": gs, "pi": pi, "inc": inc,
+                           "proven_sp": proven_sp, "eligible": not clear_rp, "sp": sp})
+        # rotation = top n_sp among STARTER-ELIGIBLE arms (clear relievers excluded);
+        # everyone else is a reliever.
+        eligible = sorted([d for d in scored if d["eligible"]], key=lambda d: d["sp"], reverse=True)
+        starters = eligible[:n_sp]
+        sp_set = {d["i"] for d in starters}
+        relievers = [d for d in scored if d["i"] not in sp_set]
         merit = [0.0] * len(team_rows)
         starters.sort(key=lambda d: d["z"], reverse=True)       # ace first
         for rank, d in enumerate(starters):
             base = (SP_TRICKLE[rank] if rank < len(SP_TRICKLE) else 0.45) * cap
-            r = d["r"]
-            if r.get("is_incoming"):
+            if d["inc"]:
                 base *= TRANS_IP_DISCOUNT
+            elif d["proven_sp"] and d["pi"] > base:   # anchor a proven starter (lightly gated)
+                base = min(cap, max(0.65 * d["pi"], d["pi"] * gate(d["z"])))
             else:
-                pi = prior_ip.get(r["canonical_id"], 0.0)
-                if d["gs"] >= 5 and pi > base:     # proven starter: don't cut his innings
-                    base = min(cap, pi)
+                base *= gate(d["z"])                  # weak/unproven arm sheds IP -> pool
             merit[d["i"]] = min(cap, base)
         relievers.sort(key=lambda d: d["z"], reverse=True)      # best bullpen arm first
         for rank, d in enumerate(relievers):
             base = (RP_TRICKLE[rank] if rank < len(RP_TRICKLE) else 0.04) * cap
-            r = d["r"]
-            if r.get("is_incoming"):
+            if d["inc"]:
                 base *= TRANS_IP_DISCOUNT
-            elif prior_ip.get(r["canonical_id"], 0.0) >= 15:    # established role -> anchor up
-                base = max(base, min(cap, prior_ip[r["canonical_id"]]))
+            elif d["pi"] >= 15:                       # established role -> anchor (gated)
+                base = max(base * gate(d["z"]), min(cap, d["pi"] * gate(d["z"])))
+            else:
+                base *= gate(d["z"])
             merit[d["i"]] = base
         sm = sum(merit)
         pool = 0.0
-        if sm > total:                             # deep returning staff -> scale to fit
+        if sm > total:                             # deep, quality staff -> scale to fit
             sc = total / sm
             merit = [m * sc for m in merit]
-        else:                                      # thin staff -> remainder to incoming pool
+        else:                                      # not enough quality -> rest to incoming pool
             pool = total - sm
         for k, r in enumerate(team_rows):
             ip = merit[k]
