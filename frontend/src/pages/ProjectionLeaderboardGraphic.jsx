@@ -1,347 +1,662 @@
-// Projection Leaderboard Graphic — a shareable 2027-projection stat card.
+// ProjectionLeaderboardGraphic — /projections/graphic
 //
-// Three modes:
-//   • Stat Leaders     — top N projected players in one stat (5–50)
-//   • Best in Every Stat — the #1 projected player in every stat at once
-//   • Biggest Gains     — largest 2026 -> 2027 improvement in one stat (breakouts)
+// 2027-projection leaderboard cards, built on the same single-canvas engine and
+// visual identity as the WCL / spring leaderboard graphics (WclLeaderboardGraphic):
+// fixed 1080×1080, header band + accent rule, white stat-row cards, medallions for
+// the top 3, team logos, footer strip. One canvas feeds both preview and PNG export.
 //
-// Filters: side (hitting/pitching), level, qualifier (min PA / IP), count, theme.
-// One canvas drawing pipeline feeds both the live preview and the PNG download.
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { useProjectionPlayerLeaders } from '../hooks/useApi'
+// Projection-specific: side (hitting/pitching/teams), LEVEL filter (All/D1…/JUCO),
+// qualifier (min PA/IP), count, stat presets + full custom mode (main stat + up to 5
+// extra columns), themes, custom title — plus a "Biggest Gains" mode that ranks the
+// largest 2026→2027 improvement in any stat (breakout candidates).
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useProjectionPlayerLeaders, useProjectionTeamLeaders } from '../hooks/useApi'
 
+const SIZE = { w: 1080, h: 1080 }
 const SEASON = 2027
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
-const COUNTS = [5, 10, 15, 20, 25, 30, 40, 50]
 const FONT = "-apple-system, 'Inter', 'Helvetica Neue', sans-serif"
 
-// ── formatters ──
-const slash = (v) => (v == null ? '–' : Number(v).toFixed(3).replace(/^0/, ''))
-const f2 = (v) => (v == null ? '–' : Number(v).toFixed(2))
-const f1 = (v) => (v == null ? '–' : Number(v).toFixed(1))
-const int0 = (v) => (v == null ? '–' : Math.round(v).toLocaleString())
-const pct1 = (v) => (v == null ? '–' : `${(v * 100).toFixed(1)}%`)
-const ipNum = (ip) => { if (ip == null) return 0; const w = Math.floor(ip); const f = Math.round((ip - w) * 10); return w + (f >= 1 ? f / 3 : 0) }
+// ─── Palette ───
+const C = {
+  navy: '#13294b', navyDark: '#0b1a33', blue: '#1f4f7a',
+  teal: '#0d7d76', tealDeep: '#0a5f5a', tealLight: '#5fd0c7',
+  gold: '#c9a44c', goldDeep: '#a9842f', goldLight: '#e2c577',
+  cream: '#f6f3ea', maroon: '#7c2740', maroonDeep: '#5b1b2e',
+}
 
-// every projected stat we can show. delta = has a 2026 actual to diff for Gains.
+// ─── Themes (same shape buildTheme/renderBoard consume) ───
+const THEMES = [
+  {
+    id: 'classic', label: 'Cream Classic',
+    bgStops: [C.cream, C.cream], grain: true, grainDark: 'rgba(19,41,75,0.05)', grainLight: 'rgba(255,255,255,0.6)',
+    headerStops: [C.navy, C.blue], headerRule: C.gold,
+    kicker: C.goldLight, headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: '#ffffff', cardBorder: 'rgba(19,41,75,0.16)', cardAccent: C.navy,
+    text: '#1a1a1a', name: C.navy, secondary: '#5a5a5a', muted: '#8a8a8a',
+    colHeader: C.goldDeep, mainStat: C.navy, mainStatTop3: C.goldDeep,
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: C.navyDark, medalRing: C.navyDark,
+    rank: '#9a9483', logoFallback: '#e8e4d6',
+    footerBg: C.navyDark, footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+  },
+  {
+    id: 'teal', label: 'PNW Teal',
+    bgStops: [C.cream, '#e7f1ef'], grain: true, grainDark: 'rgba(13,125,118,0.06)', grainLight: 'rgba(255,255,255,0.6)',
+    headerStops: [C.tealDeep, C.teal], headerRule: C.goldLight,
+    kicker: '#cdeee9', headerText: '#ffffff', headerSub: 'rgba(255,255,255,0.85)',
+    card: '#ffffff', cardBorder: 'rgba(13,125,118,0.2)', cardAccent: C.teal,
+    text: '#16302d', name: C.tealDeep, secondary: '#4a625f', muted: '#84948f',
+    colHeader: C.tealDeep, mainStat: C.tealDeep, mainStatTop3: C.goldDeep,
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: C.navyDark, medalRing: C.tealDeep,
+    rank: '#9aa8a4', logoFallback: '#dcebe8',
+    footerBg: C.tealDeep, footerText: '#ffffff', footerMuted: 'rgba(255,255,255,0.7)',
+  },
+  {
+    id: 'midnight', label: 'Midnight Navy',
+    bgStops: [C.navyDark, C.navy, C.blue], grain: false,
+    headerStops: [C.navyDark, C.navyDark], headerRule: C.gold,
+    kicker: C.goldLight, headerText: '#ffffff', headerSub: 'rgba(246,243,234,0.75)',
+    card: 'rgba(246,243,234,0.07)', cardBorder: 'rgba(226,197,119,0.28)', cardAccent: C.gold,
+    text: C.cream, name: C.cream, secondary: 'rgba(246,243,234,0.6)', muted: 'rgba(246,243,234,0.4)',
+    colHeader: C.goldLight, mainStat: C.goldLight, mainStatTop3: C.goldLight,
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: C.navyDark, medalRing: C.goldLight,
+    rank: 'rgba(246,243,234,0.45)', logoFallback: 'rgba(246,243,234,0.12)',
+    footerBg: 'rgba(0,0,0,0.35)', footerText: C.cream, footerMuted: 'rgba(246,243,234,0.6)',
+  },
+  {
+    id: 'maroon', label: 'Maroon',
+    bgStops: [C.maroonDeep, C.maroon], grain: false,
+    headerStops: [C.maroonDeep, C.maroonDeep], headerRule: C.goldLight,
+    kicker: C.goldLight, headerText: '#ffffff', headerSub: 'rgba(253,242,245,0.78)',
+    card: 'rgba(253,242,245,0.07)', cardBorder: 'rgba(226,197,119,0.3)', cardAccent: C.goldLight,
+    text: '#fdf2f5', name: '#fdf2f5', secondary: 'rgba(253,242,245,0.62)', muted: 'rgba(253,242,245,0.4)',
+    colHeader: C.goldLight, mainStat: '#ffffff', mainStatTop3: C.goldLight,
+    medals: [C.gold, C.goldLight, C.goldDeep], medalText: C.maroonDeep, medalRing: C.goldLight,
+    rank: 'rgba(253,242,245,0.45)', logoFallback: 'rgba(253,242,245,0.12)',
+    footerBg: 'rgba(0,0,0,0.32)', footerText: '#fdf2f5', footerMuted: 'rgba(253,242,245,0.6)',
+  },
+]
+function buildTheme(p) {
+  return { ...p, swatch: p.bgStops.length > 1 ? `linear-gradient(135deg, ${p.bgStops.join(', ')})` : p.bgStops[0] }
+}
+
+// ─── Stat catalogs (key = projection field, dir = leaderboard direction) ───
 const HIT_STATS = [
-  { key: 'wOBA', label: 'wOBA', fmt: slash, delta: true },
-  { key: 'OPS', label: 'OPS', fmt: slash, delta: true },
-  { key: 'AVG', label: 'AVG', fmt: slash, delta: true },
-  { key: 'OBP', label: 'OBP', fmt: slash, delta: true },
-  { key: 'SLG', label: 'SLG', fmt: slash, delta: true },
-  { key: 'iso', label: 'ISO', fmt: slash, delta: true },
-  { key: 'HR', label: 'Home Runs', fmt: int0, delta: true },
-  { key: 'R', label: 'Runs', fmt: int0, delta: true },
-  { key: 'RBI', label: 'RBI', fmt: int0, delta: true },
-  { key: 'BB', label: 'Walks', fmt: int0, delta: true },
-  { key: 'bb_pct', label: 'BB%', fmt: pct1, delta: true },
-  { key: 'k_pct', label: 'K%', fmt: pct1, lowerBetter: true, delta: true },
-  { key: 'WAR', label: 'WAR', fmt: f1, delta: false },
-  { key: 'PT', label: 'Plate Appearances', fmt: int0, delta: false },
+  { key: 'wOBA', label: 'wOBA', format: 'avg', dir: 'desc' },
+  { key: 'OPS', label: 'OPS', format: 'avg', dir: 'desc' },
+  { key: 'AVG', label: 'AVG', format: 'avg', dir: 'desc' },
+  { key: 'OBP', label: 'OBP', format: 'avg', dir: 'desc' },
+  { key: 'SLG', label: 'SLG', format: 'avg', dir: 'desc' },
+  { key: 'iso', label: 'ISO', format: 'avg', dir: 'desc' },
+  { key: 'HR', label: 'HR', format: 'int', dir: 'desc' },
+  { key: 'R', label: 'R', format: 'int', dir: 'desc' },
+  { key: 'RBI', label: 'RBI', format: 'int', dir: 'desc' },
+  { key: 'BB', label: 'BB', format: 'int', dir: 'desc' },
+  { key: 'bb_pct', label: 'BB%', format: 'pct', dir: 'desc' },
+  { key: 'k_pct', label: 'K%', format: 'pct', dir: 'asc' },
+  { key: 'WAR', label: 'WAR', format: 'war', dir: 'desc' },
+  { key: 'PT', label: 'PA', format: 'int', dir: 'desc' },
 ]
 const PIT_STATS = [
-  { key: 'ERA', label: 'ERA', fmt: f2, lowerBetter: true, delta: true },
-  { key: 'FIP', label: 'FIP', fmt: f2, lowerBetter: true, delta: true },
-  { key: 'WHIP', label: 'WHIP', fmt: f2, lowerBetter: true, delta: true },
-  { key: 'K_pct', label: 'K%', fmt: pct1, delta: true },
-  { key: 'BB_pct', label: 'BB%', fmt: pct1, lowerBetter: true, delta: true },
-  { key: 'HR9', label: 'HR/9', fmt: f2, lowerBetter: true, delta: true },
-  { key: 'opp_avg', label: 'Opp AVG', fmt: slash, lowerBetter: true, delta: true },
-  { key: 'WAR', label: 'WAR', fmt: f1, delta: false },
-  { key: 'IP', label: 'Innings', fmt: f1, delta: false },
+  { key: 'ERA', label: 'ERA', format: 'era', dir: 'asc' },
+  { key: 'FIP', label: 'FIP', format: 'era', dir: 'asc' },
+  { key: 'WHIP', label: 'WHIP', format: 'era', dir: 'asc' },
+  { key: 'K_pct', label: 'K%', format: 'pct', dir: 'desc' },
+  { key: 'BB_pct', label: 'BB%', format: 'pct', dir: 'asc' },
+  { key: 'HR9', label: 'HR/9', format: 'era', dir: 'asc' },
+  { key: 'opp_avg', label: 'Opp AVG', format: 'avg', dir: 'asc' },
+  { key: 'WAR', label: 'WAR', format: 'war', dir: 'desc' },
+  { key: 'IP', label: 'IP', format: 'ip', dir: 'desc' },
 ]
+const TEAM_STATS = [
+  { key: 'AVG', label: 'AVG', format: 'avg', dir: 'desc' },
+  { key: 'OBP', label: 'OBP', format: 'avg', dir: 'desc' },
+  { key: 'SLG', label: 'SLG', format: 'avg', dir: 'desc' },
+  { key: 'OPS', label: 'OPS', format: 'avg', dir: 'desc' },
+  { key: 'wOBA', label: 'wOBA', format: 'avg', dir: 'desc' },
+  { key: 'HR', label: 'HR', format: 'int', dir: 'desc' },
+  { key: 'R', label: 'R', format: 'int', dir: 'desc' },
+  { key: 'RBI', label: 'RBI', format: 'int', dir: 'desc' },
+  { key: 'oWAR', label: 'oWAR', format: 'war', dir: 'desc' },
+  { key: 'ERA', label: 'ERA', format: 'era', dir: 'asc' },
+  { key: 'WHIP', label: 'WHIP', format: 'era', dir: 'asc' },
+  { key: 'FIP', label: 'FIP', format: 'era', dir: 'asc' },
+  { key: 'K_pct', label: 'K%', format: 'pct', dir: 'desc' },
+  { key: 'BB_pct', label: 'BB%', format: 'pct', dir: 'asc' },
+  { key: 'HR9', label: 'HR/9', format: 'era', dir: 'asc' },
+  { key: 'pWAR', label: 'pWAR', format: 'war', dir: 'desc' },
+]
+const CATALOG = { bat: HIT_STATS, pit: PIT_STATS, teams: TEAM_STATS }
 
-const THEMES = {
-  midnight: { name: 'Midnight', bg: ['#0b1f2a', '#10303d'], band: ['#0d9488', '#0f766e'],
-    text: '#f1f5f9', muted: '#93a3b3', accent: '#2dd4bf', bandText: '#ecfeff', bandSub: '#a7f3e6',
-    row: 'rgba(255,255,255,0.05)', rule: 'rgba(255,255,255,0.08)', chip: '#134e4a', chipText: '#5eead4', up: '#34d399' },
-  paper: { bg: ['#ffffff', '#eef2f6'], band: ['#0d9488', '#0f766e'],
-    text: '#0f172a', muted: '#64748b', accent: '#0d9488', bandText: '#ffffff', bandSub: '#c8fff2',
-    row: 'rgba(2,6,23,0.035)', rule: 'rgba(2,6,23,0.08)', chip: '#ccfbf1', chipText: '#0f766e', up: '#059669' },
-  maroon: { name: 'Maroon', bg: ['#1a0f14', '#2a1620'], band: ['#7f1d3a', '#5b1228'],
-    text: '#fdf2f5', muted: '#c4a3ad', accent: '#fb7185', bandText: '#fff1f4', bandSub: '#f8c6d2',
-    row: 'rgba(255,255,255,0.05)', rule: 'rgba(255,255,255,0.08)', chip: '#4c1d2e', chipText: '#fda4af', up: '#fb7185' },
+const CATEGORIES = [
+  { id: 'bat', label: 'Hitting', kind: 'player', side: 'bat', sampleLabel: 'PA', sampleDefault: 100 },
+  { id: 'pit', label: 'Pitching', kind: 'player', side: 'pit', sampleLabel: 'IP', sampleDefault: 20 },
+  { id: 'teams', label: 'Teams', kind: 'team' },
+]
+const CAT_BY_ID = Object.fromEntries(CATEGORIES.map(c => [c.id, c]))
+
+const PRESETS = {
+  bat: [
+    { name: 'Advanced', key: 'wOBA', title: 'wOBA Leaders', extra: ['OPS', 'iso', 'bb_pct', 'k_pct', 'PT'] },
+    { name: 'Slash', key: 'AVG', title: 'Batting Average Leaders', extra: ['OBP', 'SLG', 'OPS', 'PT'] },
+    { name: 'Power', key: 'HR', title: 'Home Run Leaders', extra: ['SLG', 'iso', 'RBI', 'R', 'PT'] },
+    { name: 'On-Base', key: 'OBP', title: 'On-Base Leaders', extra: ['bb_pct', 'k_pct', 'AVG', 'PT'] },
+    { name: 'Value', key: 'WAR', title: 'Position-Player WAR Leaders', extra: ['wOBA', 'OPS', 'HR', 'PT'] },
+  ],
+  pit: [
+    { name: 'ERA', key: 'ERA', title: 'ERA Leaders', extra: ['FIP', 'WHIP', 'K_pct', 'IP'] },
+    { name: 'Strikeouts', key: 'K_pct', title: 'Strikeout-Rate Leaders', extra: ['BB_pct', 'WHIP', 'ERA', 'IP'] },
+    { name: 'WHIP', key: 'WHIP', title: 'WHIP Leaders', extra: ['ERA', 'FIP', 'opp_avg', 'IP'] },
+    { name: 'FIP', key: 'FIP', title: 'FIP Leaders', extra: ['ERA', 'K_pct', 'BB_pct', 'HR9', 'IP'] },
+    { name: 'Value', key: 'WAR', title: 'Pitching WAR Leaders', extra: ['ERA', 'FIP', 'K_pct', 'IP'] },
+  ],
+  teams: [
+    { name: 'Batting', key: 'OPS', title: 'Team Batting Leaders', extra: ['AVG', 'OBP', 'SLG', 'HR'] },
+    { name: 'Power', key: 'HR', title: 'Team Home Run Leaders', extra: ['SLG', 'R', 'RBI', 'OPS'] },
+    { name: 'Pitching', key: 'ERA', title: 'Team Pitching Leaders', extra: ['WHIP', 'FIP', 'K_pct', 'HR9'] },
+    { name: 'Run Prev.', key: 'WHIP', title: 'Team WHIP Leaders', extra: ['ERA', 'FIP', 'BB_pct', 'K_pct'] },
+    { name: 'Value', key: 'oWAR', title: 'Team WAR Leaders', extra: ['pWAR', 'OPS', 'ERA', 'HR'] },
+  ],
 }
 
-function grad(ctx, stops, x, y, w, h) {
-  const g = ctx.createLinearGradient(x, y, x, y + h)
-  stops.forEach((c, i) => g.addColorStop(stops.length > 1 ? i / (stops.length - 1) : 0, c))
-  return g
+// ─── Format helper (same as the WCL/spring exporter) ───
+function fmt(val, format) {
+  if (val == null || val === '') return '-'
+  switch (format) {
+    case 'avg': return Number(val).toFixed(3).replace(/^0/, '')
+    case 'era': return Number(val).toFixed(2)
+    case 'pct': return (Number(val) * 100).toFixed(1) + '%'
+    case 'ip': return Number(val).toFixed(1)
+    case 'war': return Number(val).toFixed(1)
+    case 'int': return Math.round(Number(val)).toString()
+    default: return String(val)
+  }
 }
-function rrect(ctx, x, y, w, h, r) {
+
+// ─── Canvas helpers (copied from the WCL exporter) ───
+async function loadExportImage(src) {
+  if (!src) return null
+  const isExternal = src.startsWith('http') && !src.includes(window.location.hostname)
+  const url = isExternal ? `/api/v1/proxy-image?url=${encodeURIComponent(src)}` : src
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) return null
+    const blob = await resp.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    return await new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => { resolve(img); URL.revokeObjectURL(objectUrl) }
+      img.onerror = () => { resolve(null); URL.revokeObjectURL(objectUrl) }
+      img.src = objectUrl
+    })
+  } catch { return null }
+}
+function drawImageContain(ctx, img, x, y, boxW, boxH) {
+  if (!img) return
+  const scale = Math.min(boxW / img.width, boxH / img.height)
+  const dw = img.width * scale, dh = img.height * scale
+  ctx.drawImage(img, x + (boxW - dw) / 2, y + (boxH - dh) / 2, dw, dh)
+}
+function canvasRoundRect(ctx, x, y, w, h, r) {
   ctx.beginPath()
-  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r)
-  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath()
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath()
 }
-function clip(ctx, text, maxW) {
+function truncText(ctx, text, maxW) {
   if (ctx.measureText(text).width <= maxW) return text
   let t = text
-  while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1)
+  while (t.length > 0 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1)
   return t + '…'
 }
+const logoCache = {}
+function loadLogoCached(src) {
+  if (!src) return Promise.resolve(null)
+  if (!logoCache[src]) logoCache[src] = loadExportImage(src)
+  return logoCache[src]
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+const useTwoColumns = (count) => count >= 15
 
-const W = 1080, PAD = 56, HEADER = 220, FOOTER = 92
-
-function renderGraphic(canvas, { title, subtitle, rows, leadIsStat, mode, t }) {
-  const twoCol = rows.length > 14
-  const perCol = twoCol ? Math.ceil(rows.length / 2) : rows.length
-  const ROWH = 70
-  const bodyTop = HEADER + 26
-  const height = bodyTop + perCol * ROWH + 24 + FOOTER
-  canvas.width = W; canvas.height = height
-  const ctx = canvas.getContext('2d')
-
-  ctx.fillStyle = grad(ctx, t.bg, 0, 0, W, height); ctx.fillRect(0, 0, W, height)
-
-  // header band
-  ctx.fillStyle = grad(ctx, t.band, 0, 0, W, HEADER); ctx.fillRect(0, 0, W, HEADER)
-  ctx.fillStyle = t.bandSub
-  ctx.font = `700 26px ${FONT}`; ctx.textBaseline = 'alphabetic'
-  ctx.fillText('2027 PROJECTIONS', PAD, 64)
-  ctx.fillStyle = t.bandText
-  ctx.font = `800 56px ${FONT}`
-  ctx.fillText(clip(ctx, title, W - PAD * 2), PAD, 128)
-  ctx.fillStyle = t.bandSub
-  ctx.font = `500 27px ${FONT}`
-  ctx.fillText(clip(ctx, subtitle, W - PAD * 2), PAD, 174)
-
-  const colW = twoCol ? (W - PAD * 2 - 36) / 2 : (W - PAD * 2)
-  const cols = twoCol ? [PAD, PAD + colW + 36] : [PAD]
-
-  rows.forEach((r, i) => {
-    const col = twoCol ? Math.floor(i / perCol) : 0
-    const idxInCol = twoCol ? i % perCol : i
-    const x = cols[col]
-    const y = bodyTop + idxInCol * ROWH
-    if (i % 2 === 0) { ctx.fillStyle = t.row; rrect(ctx, x, y, colW, ROWH - 8, 12); ctx.fill() }
-
-    // lead: rank chip OR stat label
-    const leadW = leadIsStat ? 168 : 56
-    if (leadIsStat) {
-      ctx.fillStyle = t.accent
-      ctx.font = `800 30px ${FONT}`
-      ctx.fillText(clip(ctx, r.lead, leadW), x + 12, y + 42)
-    } else {
-      const rank = r.lead
-      ctx.fillStyle = rank === '1' ? t.accent : t.chip
-      rrect(ctx, x + 8, y + 14, 44, 36, 10); ctx.fill()
-      ctx.fillStyle = rank === '1' ? '#06231f' : t.chipText
-      ctx.font = `800 24px ${FONT}`; ctx.textAlign = 'center'
-      ctx.fillText(rank, x + 30, y + 40); ctx.textAlign = 'left'
-    }
-
-    // name + team
-    const nameX = x + leadW + 8
-    const valW = 150
-    ctx.fillStyle = t.text
-    ctx.font = `700 31px ${FONT}`
-    ctx.fillText(clip(ctx, r.name, colW - leadW - valW - 24), nameX, y + 33)
-    ctx.fillStyle = t.muted
-    ctx.font = `500 22px ${FONT}`
-    const sub = r.sub ? `${r.team} · ${r.sub}` : r.team
-    ctx.fillText(clip(ctx, sub, colW - leadW - valW - 24), nameX, y + 58)
-
-    // value (right)
-    ctx.textAlign = 'right'
-    ctx.fillStyle = t.accent
-    ctx.font = `800 38px ${FONT}`
-    ctx.fillText(r.value, x + colW - 10, y + 34)
-    if (r.delta) {
-      ctx.fillStyle = t.up
-      ctx.font = `700 21px ${FONT}`
-      ctx.fillText(r.delta, x + colW - 10, y + 60)
-    }
-    ctx.textAlign = 'left'
-  })
-
-  // footer
-  const fy = height - FOOTER
-  ctx.strokeStyle = t.rule; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.moveTo(PAD, fy); ctx.lineTo(W - PAD, fy); ctx.stroke()
-  ctx.fillStyle = t.text
-  ctx.font = `800 30px ${FONT}`
-  ctx.fillText('NW Baseball Stats', PAD, fy + 52)
-  ctx.fillStyle = t.muted
-  ctx.font = `500 24px ${FONT}`
-  ctx.textAlign = 'right'
-  ctx.fillText('nwbaseballstats.com', W - PAD, fy + 52)
-  ctx.textAlign = 'left'
+// signed delta string for the Biggest-Gains main column
+function fmtGain(d, format) {
+  if (d == null) return '-'
+  const s = d > 0 ? '+' : d < 0 ? '-' : ''
+  const a = Math.abs(d)
+  if (format === 'pct') return `${s}${(a * 100).toFixed(1)}pt`
+  if (format === 'int') return `${s}${Math.round(a)}`
+  if (format === 'avg') return `${s}${a.toFixed(3).replace(/^0/, '')}`
+  return `${s}${a.toFixed(2)}`
 }
 
-export default function ProjectionLeaderboardGraphic() {
-  const [side, setSide] = useState('bat')
-  const [mode, setMode] = useState('leaders')   // leaders | every | gains
-  const [level, setLevel] = useState('All')
-  const [statKey, setStatKey] = useState('wOBA')
-  const [count, setCount] = useState(10)
-  const [minQual, setMinQual] = useState(side === 'bat' ? 100 : 20)
-  const [themeId, setThemeId] = useState('midnight')
-  const canvasRef = useRef(null)
+// ════════════════════════════════════════════════════════════════
+// Canvas renderer — one pipeline for preview AND export (WCL engine).
+// ════════════════════════════════════════════════════════════════
+async function renderBoard(canvas, opts) {
+  const { items, config, title, subtitle, footerNote, theme, isTeamMode, count, twoCol, loading } = opts
+  const w = SIZE.w, h = SIZE.h, dpr = 2
+  canvas.width = w * dpr; canvas.height = h * dpr
+  const ctx = canvas.getContext('2d')
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-  const { data, loading } = useProjectionPlayerLeaders(side, SEASON)
-  const STATS = side === 'bat' ? HIT_STATS : PIT_STATS
-  const stat = STATS.find((s) => s.key === statKey) || STATS[0]
-  const t = THEMES[themeId]
-
-  // reset stat + qualifier when side flips
-  const flipSide = (s) => {
-    setSide(s)
-    setStatKey(s === 'bat' ? 'wOBA' : 'ERA')
-    setMinQual(s === 'bat' ? 100 : 20)
-    if (mode === 'gains' && !(s === 'bat' ? HIT_STATS : PIT_STATS).find((x) => x.key === statKey)?.delta) setStatKey(s === 'bat' ? 'wOBA' : 'ERA')
+  // background + grain
+  if (theme.bgStops.length > 1) {
+    const g = ctx.createLinearGradient(0, 0, 0, h)
+    theme.bgStops.forEach((c, i) => g.addColorStop(i / (theme.bgStops.length - 1), c))
+    ctx.fillStyle = g
+  } else ctx.fillStyle = theme.bgStops[0]
+  ctx.fillRect(0, 0, w, h)
+  if (theme.grain) {
+    const rand = mulberry32(20270129)
+    for (let i = 0; i < 1600; i++) {
+      const x = rand() * w, y = rand() * h, s = rand() < 0.5 ? 1 : 2
+      ctx.fillStyle = rand() < 0.5 ? theme.grainDark : theme.grainLight
+      ctx.fillRect(x, y, s, s)
+    }
   }
 
-  const pool = useMemo(() => {
-    let r = (data?.players || []).filter((p) => level === 'All' || p.level === level)
-    r = r.filter((p) => (side === 'bat' ? (p.PT || 0) >= minQual : ipNum(p.IP) >= minQual))
-    return r
-  }, [data, level, minQual, side])
+  // header band
+  const headerH = 150
+  const hg = ctx.createLinearGradient(0, 0, w, headerH)
+  theme.headerStops.forEach((c, i) => hg.addColorStop(theme.headerStops.length > 1 ? i / (theme.headerStops.length - 1) : 0, c))
+  ctx.fillStyle = hg; ctx.fillRect(0, 0, w, headerH)
+  ctx.fillStyle = theme.headerRule; ctx.fillRect(0, headerH - 6, w, 6)
 
-  const { rows, title, subtitle, leadIsStat } = useMemo(() => {
-    const lvlLabel = level === 'All' ? 'PNW' : level
-    const sideLabel = side === 'bat' ? 'Hitters' : 'Pitchers'
-    const qualLabel = side === 'bat' ? `${minQual}+ PA` : `${minQual}+ IP`
+  const padX = 48
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = theme.kicker
+  ctx.font = `900 15px ${FONT}`
+  ctx.fillText('PNW BASEBALL · 2027 PROJECTIONS', padX, 48)
 
-    const topBy = (arr, s, n) => {
-      const v = arr.filter((p) => p[s.key] != null)
-      v.sort((a, b) => s.lowerBetter ? a[s.key] - b[s.key] : b[s.key] - a[s.key])
-      return v.slice(0, n)
+  let titleSize = 44
+  ctx.font = `900 ${titleSize}px ${FONT}`
+  while (titleSize > 24 && ctx.measureText(title).width > w - padX * 2 - 200) {
+    titleSize -= 2; ctx.font = `900 ${titleSize}px ${FONT}`
+  }
+  ctx.fillStyle = theme.headerText; ctx.fillText(title, padX, 102)
+  ctx.fillStyle = theme.headerSub; ctx.font = `600 17px ${FONT}`
+  ctx.fillText(subtitle, padX, 130)
+
+  // brand mark top-right
+  const favicon = await loadLogoCached('/favicon.png')
+  ctx.textAlign = 'right'; ctx.font = `800 14px ${FONT}`
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'
+  const brand = 'NWBB STATS'
+  ctx.fillText(brand, w - padX, 50)
+  if (favicon) drawImageContain(ctx, favicon, w - padX - ctx.measureText(brand).width - 30, 36, 22, 22)
+
+  // footer strip
+  const footerH = 56, footerY = h - footerH
+  ctx.fillStyle = theme.footerBg; ctx.fillRect(0, footerY, w, footerH)
+  ctx.fillStyle = theme.footerText; ctx.font = `700 15px ${FONT}`
+  ctx.textAlign = 'left'; ctx.fillText('nwbaseballstats.com', 40, footerY + 35)
+  ctx.font = `500 13px ${FONT}`; ctx.fillStyle = theme.footerMuted
+  ctx.textAlign = 'right'; ctx.fillText('@nwbbstats', w - 40, footerY + 35)
+  if (footerNote) { ctx.textAlign = 'center'; ctx.fillText(footerNote, w / 2, footerY + 35) }
+
+  // body geometry
+  const bodyPadX = 36, bodyTop = headerH + 16, bodyBottom = footerY - 14, colHeaderH = 26
+  const bodyH = bodyBottom - bodyTop - colHeaderH
+  const renderCount = Math.min(count, Math.max(items.length, 1))
+  const columns = twoCol ? 2 : 1, colGap = twoCol ? 14 : 0
+  const colWidth = (w - bodyPadX * 2 - colGap * (columns - 1)) / columns
+  const itemsPerCol = Math.max(1, Math.ceil(renderCount / columns))
+  const rowGap = twoCol ? 6 : Math.min(10, Math.max(4, Math.floor(60 / itemsPerCol) + 2))
+  const rowH = Math.floor((bodyH - rowGap * (itemsPerCol - 1)) / itemsPerCol)
+  const fontSize = twoCol ? Math.min(Math.max(Math.floor(colWidth / 28), 10), 16) : Math.min(Math.max(Math.floor(w / 55), 13), 22)
+  const rankSize = twoCol ? fontSize : Math.max(fontSize + 2, 16)
+  const logoSize = Math.min(Math.floor(rowH * 0.62), twoCol ? 24 : 36)
+  const mainStatW = twoCol ? Math.floor(colWidth * 0.2) : Math.floor(w * 0.12)
+  const extraW = Math.floor(w * 0.095)
+  const rankW = twoCol ? Math.floor(colWidth * 0.09) : Math.floor(w * 0.052)
+  const logoW = logoSize + (twoCol ? 6 : 10)
+  const rowPadX = twoCol ? 8 : 14
+  const extraCols = twoCol ? [] : (config.extra || [])
+
+  if (loading || !items.length) {
+    ctx.fillStyle = theme.name; ctx.font = `700 22px ${FONT}`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(loading ? 'Loading…' : 'No data for these filters', w / 2, (bodyTop + bodyBottom) / 2)
+    return
+  }
+
+  const logoImgs = await Promise.all(items.slice(0, renderCount).map(p => loadLogoCached(p.logo_url)))
+
+  // column headers
+  for (let col = 0; col < columns; col++) {
+    const colX = bodyPadX + col * (colWidth + colGap)
+    ctx.font = `800 ${Math.max(Math.floor(fontSize * 0.62), 10)}px ${FONT}`
+    ctx.fillStyle = theme.colHeader; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    const hy = bodyTop + colHeaderH / 2 - 4
+    ctx.fillText(isTeamMode ? 'TEAM' : 'PLAYER', colX + rowPadX + rankW + logoW, hy)
+    let hx = colX + colWidth - rowPadX; ctx.textAlign = 'right'
+    for (let ei = extraCols.length - 1; ei >= 0; ei--) { ctx.fillText(extraCols[ei].label.toUpperCase(), hx, hy); hx -= extraW }
+    ctx.fillText(config.label.toUpperCase(), hx, hy)
+  }
+
+  // rows
+  const rowStartY = bodyTop + colHeaderH
+  for (let i = 0; i < Math.min(renderCount, items.length); i++) {
+    const p = items[i]
+    const name = p.name || '-'
+    const subText = p.team_short || ''
+    const collegeText = p.college || ''
+    const mainVal = p[config.key]
+    const isTop3 = i < 3
+    const col = twoCol ? Math.floor(i / itemsPerCol) : 0
+    const rowInCol = twoCol ? i % itemsPerCol : i
+    const x = bodyPadX + col * (colWidth + colGap)
+    const y = rowStartY + rowInCol * (rowH + rowGap)
+    const r = twoCol ? 8 : 12
+
+    ctx.fillStyle = theme.card; canvasRoundRect(ctx, x, y, colWidth, rowH, r); ctx.fill()
+    ctx.strokeStyle = isTop3 ? theme.medals[i] : theme.cardBorder; ctx.lineWidth = isTop3 ? 2 : 1; ctx.stroke()
+    ctx.save(); canvasRoundRect(ctx, x, y, colWidth, rowH, r); ctx.clip()
+    ctx.fillStyle = isTop3 ? theme.medals[i] : theme.cardAccent; ctx.fillRect(x, y, 5, rowH); ctx.restore()
+
+    let cellX = x + rowPadX
+    const cy = y + rowH / 2
+    if (isTop3 && !twoCol) {
+      const mr = Math.min(rowH * 0.3, 17)
+      ctx.beginPath(); ctx.arc(cellX + rankW / 2, cy, mr, 0, Math.PI * 2)
+      ctx.fillStyle = theme.medals[i]; ctx.fill()
+      ctx.strokeStyle = theme.medalRing; ctx.lineWidth = 1.5; ctx.stroke()
+      ctx.fillStyle = theme.medalText; ctx.font = `900 ${Math.floor(mr * 1.05)}px ${FONT}`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), cellX + rankW / 2, cy + 1)
+    } else {
+      ctx.font = `900 ${rankSize}px ${FONT}`; ctx.fillStyle = isTop3 ? theme.medals[i] : theme.rank
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), cellX + rankW / 2, cy)
+    }
+    cellX += rankW
+
+    const logoImg = logoImgs[i]
+    if (logoImg) drawImageContain(ctx, logoImg, cellX, cy - logoSize / 2, logoSize, logoSize)
+    else {
+      ctx.fillStyle = theme.logoFallback; canvasRoundRect(ctx, cellX, cy - logoSize / 2, logoSize, logoSize, 4); ctx.fill()
+      ctx.font = `700 ${Math.floor(logoSize * 0.35)}px ${FONT}`; ctx.fillStyle = theme.muted; ctx.textAlign = 'center'
+      ctx.fillText((subText || name).slice(0, 3).toUpperCase(), cellX + logoSize / 2, cy)
+    }
+    cellX += logoW
+
+    const statsEndX = x + colWidth - rowPadX
+    const nameMaxW = statsEndX - (extraCols.length * extraW + mainStatW) - cellX - 10
+    if (twoCol) {
+      ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      const dn = truncText(ctx, name, nameMaxW * 0.62); ctx.fillText(dn, cellX, cy)
+      const nw = ctx.measureText(dn + ' ').width
+      ctx.font = `500 ${Math.floor(fontSize * 0.78)}px ${FONT}`; ctx.fillStyle = theme.secondary
+      ctx.fillText(truncText(ctx, subText, Math.max(nameMaxW - nw, 0)), cellX + nw, cy)
+    } else {
+      const subSize = Math.floor(fontSize * 0.68), gap = Math.floor(fontSize * 0.2)
+      const nameY = subText || collegeText ? cy - (subSize + gap) / 2 : cy
+      ctx.font = `700 ${fontSize}px ${FONT}`; ctx.fillStyle = theme.name; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(truncText(ctx, name, nameMaxW), cellX, nameY)
+      if (subText || collegeText) {
+        const teamY = nameY + fontSize / 2 + gap + subSize / 2
+        ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = theme.secondary
+        const st = truncText(ctx, subText, nameMaxW * 0.6); ctx.fillText(st, cellX, teamY)
+        if (collegeText) {
+          const tw = ctx.measureText(st + ' ').width
+          ctx.font = `600 ${Math.floor(fontSize * 0.56)}px ${FONT}`; ctx.fillStyle = theme.muted
+          ctx.fillText(truncText(ctx, collegeText, nameMaxW - tw - 6), cellX + tw + 6, teamY)
+        }
+      }
     }
 
-    if (mode === 'every') {
-      const rows = STATS.map((s) => {
-        const top = topBy(pool, s, 1)[0]
-        if (!top) return null
-        return { lead: s.label, name: top.name, team: top.team, sub: top.level === level ? null : top.level,
-          value: s.fmt(top[s.key]) }
-      }).filter(Boolean)
-      return { rows, leadIsStat: true,
-        title: `Best Projected ${sideLabel}`,
-        subtitle: `${lvlLabel} · top in every stat · ${qualLabel}` }
+    let sX = statsEndX; ctx.textBaseline = 'middle'
+    for (let ei = extraCols.length - 1; ei >= 0; ei--) {
+      ctx.font = `500 ${Math.floor(fontSize * 0.78)}px ${FONT}`; ctx.fillStyle = theme.secondary; ctx.textAlign = 'right'
+      ctx.fillText(fmt(p[extraCols[ei].key], extraCols[ei].format), sX, cy); sX -= extraW
     }
+    ctx.font = `900 ${Math.floor(fontSize * (twoCol ? 1.1 : 1.3))}px ${FONT}`
+    ctx.fillStyle = isTop3 ? theme.mainStatTop3 : theme.mainStat; ctx.textAlign = 'right'
+    ctx.fillText(fmt(mainVal, config.format), sX, cy)
+  }
+}
 
-    if (mode === 'gains') {
-      const v = pool.filter((p) => p.a && p.a[stat.key] != null && p[stat.key] != null)
-        .map((p) => ({ p, d: p[stat.key] - p.a[stat.key] }))
-      // improvement: higher-better stat wants largest +d; lower-better wants largest -d
-      v.sort((a, b) => stat.lowerBetter ? a.d - b.d : b.d - a.d)
-      const rows = v.slice(0, count).map(({ p, d }, i) => {
-        const sign = d > 0 ? '+' : ''
-        const dStr = (['HR', 'R', 'RBI', 'BB'].includes(stat.key)) ? `${sign}${Math.round(d)}`
-          : stat.fmt === pct1 ? `${sign}${(d * 100).toFixed(1)}pt`
-          : `${sign}${d.toFixed(stat.fmt === slash ? 3 : 2).replace(/^(\+|-)?0\./, '$1.')}`
-        return { lead: String(i + 1), name: p.name, team: p.team,
-          sub: p.level === level ? null : p.level,
-          value: stat.fmt(p[stat.key]),
-          delta: `${stat.fmt(p.a[stat.key])} → ${dStr}` }
-      })
-      return { rows, leadIsStat: false,
-        title: `Biggest ${stat.label} Gains`,
-        subtitle: `${lvlLabel} ${sideLabel} · 2026 → 2027 · ${qualLabel}` }
-    }
+// ════════════════════════════════════════════════════════════════
+// Component
+// ════════════════════════════════════════════════════════════════
+const ipNum = (ip) => { if (ip == null) return 0; const w = Math.floor(ip); const f = Math.round((ip - w) * 10); return w + (f >= 1 ? f / 3 : 0) }
 
-    // leaders
-    const rows = topBy(pool, stat, count).map((p, i) => ({
-      lead: String(i + 1), name: p.name, team: p.team,
-      sub: p.level === level ? null : p.level, value: stat.fmt(p[stat.key]),
-    }))
-    return { rows, leadIsStat: false,
-      title: `${stat.label} Leaders`,
-      subtitle: `${lvlLabel} ${sideLabel} · projected ${SEASON} · ${qualLabel}` }
-  }, [pool, mode, stat, count, side, level, minQual, STATS])
+export default function ProjectionLeaderboardGraphic() {
+  const canvasRef = useRef(null)
+  const [category, setCategory] = useState('bat')
+  const [level, setLevel] = useState('All')
+  const [mode, setMode] = useState('leaders')        // leaders | gains | every
+  const [presetIdx, setPresetIdx] = useState(0)
+  const [statMode, setStatMode] = useState('preset') // preset | custom
+  const [customMain, setCustomMain] = useState('')
+  const [customExtra, setCustomExtra] = useState([])
+  const [count, setCount] = useState(10)
+  const [qualified, setQualified] = useState(true)
+  const [minSample, setMinSample] = useState('')
+  const [customTitle, setCustomTitle] = useState('')
+  const [themeId, setThemeId] = useState('classic')
 
+  const cat = CAT_BY_ID[category]
+  const isTeam = cat.kind === 'team'
+  const catalog = CATALOG[category]
+  const theme = buildTheme(THEMES.find(t => t.id === themeId) || THEMES[0])
+
+  const { data: playerData, loading: pLoading } = useProjectionPlayerLeaders(isTeam ? 'bat' : cat.side, SEASON)
+  const { data: teamData, loading: tLoading } = useProjectionTeamLeaders(SEASON)
+  const loading = isTeam ? tLoading : pLoading
+
+  // reset per-category bits on switch
   useEffect(() => {
-    if (canvasRef.current && rows.length) renderGraphic(canvasRef.current, { title, subtitle, rows, leadIsStat, mode, t })
-  }, [rows, title, subtitle, leadIsStat, mode, t])
+    setPresetIdx(0); setStatMode('preset'); setCustomMain(''); setCustomExtra([])
+    setMinSample(cat?.sampleDefault ? String(cat.sampleDefault) : '')
+    if (CAT_BY_ID[category].kind === 'team' && mode !== 'leaders') setMode('leaders')
+  }, [category]) // eslint-disable-line
+
+  const preset = PRESETS[category]?.[presetIdx] || PRESETS[category]?.[0]
+  const statDef = (key) => catalog.find(s => s.key === key)
+  // the active main stat (preset or custom)
+  const mainKey = statMode === 'custom' && customMain ? customMain : preset.key
+  const mainDef = statDef(mainKey) || catalog[0]
+  const extraKeys = statMode === 'custom' ? customExtra : preset.extra
+  const statChoices = (mode === 'gains') ? catalog.filter(s => s.format !== 'int' || ['HR', 'R', 'RBI', 'BB'].includes(s.key)) : catalog
+
+  // build the raw pool (level + qualifier filtered)
+  const pool = useMemo(() => {
+    if (isTeam) {
+      return (teamData || [])
+        .filter(t => level === 'All' || t.level === level)
+        .map(t => ({
+          name: t.short_name, team_short: t.level, logo_url: t.logo_url, level: t.level,
+          ...(t.hitting || {}), ...(t.pitching ? { ERA: t.pitching.ERA, WHIP: t.pitching.WHIP, FIP: t.pitching.FIP, K_pct: t.pitching.K_pct, BB_pct: t.pitching.BB_pct, HR9: t.pitching.HR9, pWAR: t.pitching.WAR } : {}),
+          oWAR: t.hitting?.WAR,
+        }))
+    }
+    const minN = minSample !== '' ? Number(minSample) : (cat.sampleDefault || 0)
+    let r = (playerData?.players || []).filter(p => level === 'All' || p.level === level)
+    if (qualified) r = r.filter(p => cat.side === 'bat' ? (p.PT || 0) >= minN : ipNum(p.IP) >= minN)
+    return r.map(p => ({ ...p, name: p.name, team_short: p.team, college: p.level, logo_url: p.logo_url }))
+  }, [isTeam, teamData, playerData, level, qualified, minSample, cat])
+
+  // shape items + config for the active mode
+  const { items, config, title, subtitle, footerNote } = useMemo(() => {
+    const lvlLabel = level === 'All' ? 'PNW' : level
+    const sideLabel = isTeam ? 'Teams' : cat.side === 'bat' ? 'Hitters' : 'Pitchers'
+    const qualNote = isTeam ? `${pool.length} teams` : qualified ? `Min ${minSample || cat.sampleDefault} ${cat.sampleLabel}` : 'All players'
+    const sub = `${SEASON} projected · ${lvlLabel} ${sideLabel}`
+
+    if (mode === 'every' && !isTeam) {
+      const rows = catalog.map(s => {
+        const v = pool.filter(p => p[s.key] != null)
+        v.sort((a, b) => s.dir === 'asc' ? a[s.key] - b[s.key] : b[s.key] - a[s.key])
+        const top = v[0]
+        if (!top) return null
+        return { name: s.label, team_short: top.name, college: top.team, logo_url: top.logo_url, _v: fmt(top[s.key], s.format) }
+      }).filter(Boolean)
+      return {
+        items: rows, config: { key: '_v', label: 'Leader', format: 'raw', extra: [] },
+        title: customTitle || `Best Projected ${sideLabel}`, subtitle: `${sub} · top in every stat`, footerNote: qualNote,
+      }
+    }
+
+    if (mode === 'gains' && !isTeam) {
+      const v = pool.filter(p => p.a && p.a[mainKey] != null && p[mainKey] != null)
+        .map(p => ({ ...p, _gn: p[mainKey] - p.a[mainKey] }))
+      // improvement direction: for "lower is better" stats a gain is a DECREASE
+      v.sort((a, b) => mainDef.dir === 'asc' ? a._gn - b._gn : b._gn - a._gn)
+      const items = v.map(p => ({
+        ...p, _y26: p.a[mainKey], _y27: p[mainKey], _gain: fmtGain(p._gn, mainDef.format),
+      }))
+      return {
+        items, config: { key: '_gain', label: `${mainDef.label} +/-`, format: 'raw', extra: [{ key: '_y26', label: '2026', format: mainDef.format }, { key: '_y27', label: '2027', format: mainDef.format }] },
+        title: customTitle || `Biggest ${mainDef.label} Gains`, subtitle: `${sub} · 2026 → 2027`, footerNote: qualNote,
+      }
+    }
+
+    // leaders (default; the only team mode)
+    const v = [...pool].filter(p => p[mainKey] != null)
+    v.sort((a, b) => mainDef.dir === 'asc' ? a[mainKey] - b[mainKey] : b[mainKey] - a[mainKey])
+    const extra = (extraKeys || []).map(k => { const d = statDef(k); return d ? { key: d.key, label: d.label, format: d.format } : null }).filter(Boolean)
+    const ttl = customTitle || (isTeam ? (preset.title || `${mainDef.label} Leaders`) : `Top ${count} ${mainDef.label}`)
+    return {
+      items: v, config: { key: mainKey, label: mainDef.label, format: mainDef.format, extra },
+      title: ttl, subtitle: sub, footerNote: qualNote,
+    }
+  }, [pool, mode, mainKey, mainDef, extraKeys, catalog, isTeam, cat, level, qualified, minSample, count, customTitle, preset, statMode])
+
+  const isTwoCol = useTwoColumns(count)
+  const effConfig = isTwoCol ? { ...config, extra: [] } : config
+
+  const renderToken = useRef(0)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const token = ++renderToken.current
+    renderBoard(canvas, { items, config: effConfig, title, subtitle, footerNote, theme, isTeamMode: isTeam, count, twoCol: isTwoCol, loading })
+      .catch(err => console.error('projection board render failed:', err))
+    return () => { if (renderToken.current === token) renderToken.current++ }
+  }, [items, loading, themeId, title, subtitle, footerNote, isTwoCol, count, isTeam, JSON.stringify(effConfig)]) // eslint-disable-line
 
   const download = useCallback(() => {
-    if (!canvasRef.current || !rows.length) return
+    if (!canvasRef.current || !items.length) return
     const a = document.createElement('a')
-    a.download = `nwbb-proj-${mode}-${side}-${statKey}-${level}.png`
-    a.href = canvasRef.current.toDataURL('image/png')
-    a.click()
-  }, [rows.length, mode, side, statKey, level])
+    a.download = `nwbb-proj-${category}-${mode}-${mainKey}-${level}.png`
+    a.href = canvasRef.current.toDataURL('image/png'); a.click()
+  }, [items.length, category, mode, mainKey, level])
 
-  const Btn = ({ active, onClick, children }) => (
+  const toggleExtra = (k) => setCustomExtra(prev => prev.includes(k) ? prev.filter(x => x !== k) : prev.length >= 5 ? prev : [...prev, k])
+
+  const Chip = ({ active, onClick, children, sm }) => (
     <button onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-semibold rounded-md border ${active ? 'bg-nw-teal text-white border-nw-teal' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+      className={`${sm ? 'px-2 py-1 text-[11px]' : 'px-2.5 py-1.5 text-xs'} font-semibold rounded transition-all
+        ${active ? 'bg-nw-teal text-white shadow' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
       {children}
     </button>
   )
-  const statChoices = mode === 'gains' ? STATS.filter((s) => s.delta) : STATS
 
   return (
     <div className="max-w-screen-xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Projection Leaderboard Graphics</h1>
-      <p className="text-sm text-gray-500 mb-5">Shareable 2027-projection stat cards. Top leaders in any stat, the best player in every stat, or the biggest 2026 → 2027 breakouts.</p>
+      <p className="text-sm text-gray-500 mb-5">Shareable 2027-projection stat cards (1080×1080), in the leaderboard-graphic style. Pick a stat or build a custom one, filter by level, or rank the biggest projected breakouts.</p>
 
-      <div className="grid lg:grid-cols-[320px_1fr] gap-6">
-        <div className="space-y-4">
-          <div>
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">Side</div>
-            <div className="flex gap-2">
-              <Btn active={side === 'bat'} onClick={() => flipSide('bat')}>Hitting</Btn>
-              <Btn active={side === 'pit'} onClick={() => flipSide('pit')}>Pitching</Btn>
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">Mode</div>
-            <div className="flex flex-wrap gap-2">
-              <Btn active={mode === 'leaders'} onClick={() => setMode('leaders')}>Stat Leaders</Btn>
-              <Btn active={mode === 'every'} onClick={() => setMode('every')}>Best in Every Stat</Btn>
-              <Btn active={mode === 'gains'} onClick={() => { setMode('gains'); if (!stat.delta) setStatKey(statChoices[0].key) }}>Biggest Gains</Btn>
-            </div>
-          </div>
-          {mode !== 'every' && (
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="lg:w-80 shrink-0 space-y-3">
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border dark:border-gray-700 p-3 space-y-3">
             <div>
-              <div className="text-xs font-semibold text-gray-500 mb-1.5">Stat</div>
-              <select value={statKey} onChange={(e) => setStatKey(e.target.value)}
-                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm">
-                {statChoices.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
+              <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Category</div>
+              <div className="grid grid-cols-3 gap-1">{CATEGORIES.map(c => <Chip key={c.id} active={category === c.id} onClick={() => setCategory(c.id)}>{c.label}</Chip>)}</div>
             </div>
-          )}
-          <div>
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">Level</div>
-            <div className="flex flex-wrap gap-1.5">
-              {LEVELS.map((lv) => <Btn key={lv} active={level === lv} onClick={() => setLevel(lv)}>{lv}</Btn>)}
-            </div>
-          </div>
-          {mode !== 'every' && (
             <div>
-              <div className="text-xs font-semibold text-gray-500 mb-1.5">How many</div>
-              <div className="flex flex-wrap gap-1.5">
-                {COUNTS.map((n) => <Btn key={n} active={count === n} onClick={() => setCount(n)}>{n}</Btn>)}
+              <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Level</div>
+              <div className="flex flex-wrap gap-1">{LEVELS.map(lv => <Chip key={lv} sm active={level === lv} onClick={() => setLevel(lv)}>{lv}</Chip>)}</div>
+            </div>
+            {!isTeam && (
+              <div>
+                <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Mode</div>
+                <div className="flex gap-1">
+                  <Chip active={mode === 'leaders'} onClick={() => setMode('leaders')}>Leaders</Chip>
+                  <Chip active={mode === 'gains'} onClick={() => { setMode('gains'); if (!statChoices.find(s => s.key === mainKey)) { setStatMode('custom'); setCustomMain(statChoices[0].key) } }}>Biggest Gains</Chip>
+                  <Chip active={mode === 'every'} onClick={() => setMode('every')}>Every Stat</Chip>
+                </div>
               </div>
+            )}
+          </div>
+
+          {mode !== 'every' && (
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border dark:border-gray-700 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Stat</div>
+                <div className="flex gap-1">
+                  <Chip sm active={statMode === 'preset'} onClick={() => setStatMode('preset')}>Preset</Chip>
+                  <Chip sm active={statMode === 'custom'} onClick={() => setStatMode('custom')}>Custom</Chip>
+                </div>
+              </div>
+              {statMode === 'preset' ? (
+                <div className="flex flex-wrap gap-1">{(PRESETS[category] || []).map((p, i) => <Chip key={p.name} sm active={presetIdx === i} onClick={() => setPresetIdx(i)}>{p.name}</Chip>)}</div>
+              ) : (
+                <>
+                  <select value={mainKey} onChange={e => setCustomMain(e.target.value)} className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm">
+                    {statChoices.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                  {mode === 'leaders' && (
+                    <div>
+                      <div className="text-[11px] text-gray-500 mb-1">Extra columns ({customExtra.length}/5)</div>
+                      <div className="flex flex-wrap gap-1">{catalog.filter(s => s.key !== mainKey).map(s => <Chip key={s.key} sm active={customExtra.includes(s.key)} onClick={() => toggleExtra(s.key)}>{s.label}</Chip>)}</div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
-          <div>
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">Qualifier — min {side === 'bat' ? 'PA' : 'IP'}</div>
-            <input type="number" value={minQual} min={0} step={side === 'bat' ? 10 : 5}
-              onChange={(e) => setMinQual(Number(e.target.value) || 0)}
-              className="w-32 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">Theme</div>
-            <div className="flex gap-2">
-              {Object.entries(THEMES).map(([id, th]) => (
-                <button key={id} onClick={() => setThemeId(id)} title={th.name}
-                  className={`h-8 w-8 rounded-full border-2 ${themeId === id ? 'border-nw-teal' : 'border-transparent'}`}
-                  style={{ background: `linear-gradient(135deg, ${th.bg[0]}, ${th.band[0]})` }} />
-              ))}
+
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border dark:border-gray-700 p-3 space-y-3">
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">How many</div>
+              <div className="flex flex-wrap gap-1">{[5, 10, 15, 20, 25, 30, 40, 50].map(n => <Chip key={n} sm active={count === n} onClick={() => setCount(n)}>{n}</Chip>)}</div>
             </div>
+            {!isTeam && (
+              <div>
+                <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Qualifier</div>
+                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mb-2">
+                  <input type="checkbox" checked={qualified} onChange={e => setQualified(e.target.checked)} /> Qualified only
+                </label>
+                {qualified && (
+                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                    <span>Min {cat.sampleLabel}</span>
+                    <input type="number" value={minSample} placeholder={String(cat.sampleDefault)} onChange={e => setMinSample(e.target.value)}
+                      className="w-20 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1" />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <button onClick={download} disabled={!rows.length}
-            className="w-full py-2.5 rounded-md bg-nw-teal text-white font-semibold text-sm hover:bg-nw-teal/90 disabled:opacity-50">
-            ⬇ Download PNG
-          </button>
+
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border dark:border-gray-700 p-3 space-y-3">
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Theme</div>
+              <div className="flex gap-2">{THEMES.map(t => (
+                <button key={t.id} onClick={() => setThemeId(t.id)} title={t.label}
+                  className={`h-8 w-8 rounded-full border-2 ${themeId === t.id ? 'border-nw-teal' : 'border-transparent'}`}
+                  style={{ background: t.bgStops.length > 1 ? `linear-gradient(135deg, ${t.bgStops[0]}, ${t.headerStops[0]})` : t.bgStops[0] }} />
+              ))}</div>
+            </div>
+            <input value={customTitle} onChange={e => setCustomTitle(e.target.value)} placeholder="Custom title (optional)"
+              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm" />
+          </div>
+
+          <button onClick={download} disabled={!items.length}
+            className="w-full py-2.5 rounded-md bg-nw-teal text-white font-semibold text-sm hover:bg-nw-teal/90 disabled:opacity-50">⬇ Download PNG</button>
         </div>
 
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 overflow-auto">
-          {loading ? <p className="text-sm text-gray-500 py-10 text-center">Loading projections…</p>
-            : !rows.length ? <p className="text-sm text-gray-500 py-10 text-center">No players match these filters.</p>
-            : <canvas ref={canvasRef} className="w-full h-auto rounded-md shadow" style={{ maxWidth: 640, margin: '0 auto', display: 'block' }} />}
+        <div className="flex-1 min-w-0">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 flex justify-center">
+            <canvas ref={canvasRef} className="w-full h-auto rounded shadow" style={{ maxWidth: 540, aspectRatio: '1 / 1' }} />
+          </div>
         </div>
       </div>
     </div>
