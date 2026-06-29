@@ -11100,9 +11100,15 @@ def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027
             WHERE pp.season = %s AND pp.side = %s
               AND t.state IN ('WA','OR','ID','MT','BC')
         """, (season, side))
-        keys = (["PT", "AVG", "OBP", "SLG", "wOBA", "iso", "HR", "BB", "R", "RBI",
-                 "bb_pct", "k_pct", "WAR"] if side == "bat"
-                else ["IP", "BF", "ERA", "FIP", "WHIP", "K_pct", "BB_pct", "HR9", "opp_avg", "WAR"])
+        keys = (["PT", "AVG", "OBP", "SLG", "wOBA", "wobacon", "iso", "HR", "BB", "R", "RBI",
+                 "bb_pct", "k_pct", "WAR",
+                 # PBP/plate-skill rates + their 2026 value (for the Gains mode baseline)
+                 "p_whiff", "p_swing", "p_gb", "p_ld", "p_airpull",
+                 "p_whiff_prev", "p_swing_prev", "p_gb_prev", "p_ld_prev", "p_airpull_prev"]
+                if side == "bat"
+                else ["IP", "BF", "ERA", "FIP", "WHIP", "K_pct", "BB_pct", "HR9", "opp_avg", "WAR",
+                      "p_whiff", "p_strike", "p_gb", "p_fb",
+                      "p_whiff_prev", "p_strike_prev", "p_gb_prev", "p_fb_prev"])
         out = []
         for r in cur.fetchall():
             if r["player_id"] in departing or r["canonical_id"] in departing:

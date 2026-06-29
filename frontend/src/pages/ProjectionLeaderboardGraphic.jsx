@@ -88,12 +88,19 @@ const HIT_STATS = [
   { key: 'OBP', label: 'OBP', format: 'avg', dir: 'desc' },
   { key: 'SLG', label: 'SLG', format: 'avg', dir: 'desc' },
   { key: 'iso', label: 'ISO', format: 'avg', dir: 'desc' },
+  { key: 'wobacon', label: 'wOBACON', format: 'avg', dir: 'desc' },
   { key: 'HR', label: 'HR', format: 'int', dir: 'desc' },
   { key: 'R', label: 'R', format: 'int', dir: 'desc' },
   { key: 'RBI', label: 'RBI', format: 'int', dir: 'desc' },
   { key: 'BB', label: 'BB', format: 'int', dir: 'desc' },
   { key: 'bb_pct', label: 'BB%', format: 'pct', dir: 'desc' },
   { key: 'k_pct', label: 'K%', format: 'pct', dir: 'asc' },
+  // PBP / plate-skill rates
+  { key: 'p_airpull', label: 'AirPull%', format: 'pct', dir: 'desc' },
+  { key: 'p_ld', label: 'LD%', format: 'pct', dir: 'desc' },
+  { key: 'p_gb', label: 'GB%', format: 'pct', dir: 'desc' },
+  { key: 'p_swing', label: 'Swing%', format: 'pct', dir: 'desc' },
+  { key: 'p_whiff', label: 'Whiff%', format: 'pct', dir: 'asc' },
   { key: 'WAR', label: 'WAR', format: 'war', dir: 'desc' },
   { key: 'PT', label: 'PA', format: 'int', dir: 'desc' },
 ]
@@ -105,9 +112,16 @@ const PIT_STATS = [
   { key: 'BB_pct', label: 'BB%', format: 'pct', dir: 'asc' },
   { key: 'HR9', label: 'HR/9', format: 'era', dir: 'asc' },
   { key: 'opp_avg', label: 'Opp AVG', format: 'avg', dir: 'asc' },
+  // PBP / pitch-shape rates
+  { key: 'p_whiff', label: 'Whiff%', format: 'pct', dir: 'desc' },
+  { key: 'p_strike', label: 'Strike%', format: 'pct', dir: 'desc' },
+  { key: 'p_gb', label: 'GB%', format: 'pct', dir: 'desc' },
+  { key: 'p_fb', label: 'FB%', format: 'pct', dir: 'asc' },
   { key: 'WAR', label: 'WAR', format: 'war', dir: 'desc' },
   { key: 'IP', label: 'IP', format: 'ip', dir: 'desc' },
 ]
+// stats with no 2026 baseline (can't be a "Biggest Gains" stat)
+const NO_GAIN = new Set(['WAR', 'PT', 'IP', 'BF', 'wobacon'])
 const TEAM_STATS = [
   { key: 'AVG', label: 'AVG', format: 'avg', dir: 'desc' },
   { key: 'OBP', label: 'OBP', format: 'avg', dir: 'desc' },
@@ -439,6 +453,7 @@ export default function ProjectionLeaderboardGraphic() {
   const [count, setCount] = useState(10)
   const [qualified, setQualified] = useState(true)
   const [minSample, setMinSample] = useState('')
+  const [min2026, setMin2026] = useState('')   // Biggest-Gains: min 2026 sample
   const [customTitle, setCustomTitle] = useState('')
   const [themeId, setThemeId] = useState('classic')
 
@@ -464,7 +479,7 @@ export default function ProjectionLeaderboardGraphic() {
   const mainKey = statMode === 'custom' && customMain ? customMain : preset.key
   const mainDef = statDef(mainKey) || catalog[0]
   const extraKeys = statMode === 'custom' ? customExtra : preset.extra
-  const statChoices = (mode === 'gains') ? catalog.filter(s => s.format !== 'int' || ['HR', 'R', 'RBI', 'BB'].includes(s.key)) : catalog
+  const statChoices = (mode === 'gains') ? catalog.filter(s => !NO_GAIN.has(s.key)) : catalog
 
   // build the raw pool (level + qualifier filtered)
   const pool = useMemo(() => {
@@ -505,16 +520,24 @@ export default function ProjectionLeaderboardGraphic() {
     }
 
     if (mode === 'gains' && !isTeam) {
-      const v = pool.filter(p => p.a && p.a[mainKey] != null && p[mainKey] != null)
-        .map(p => ({ ...p, _gn: p[mainKey] - p.a[mainKey] }))
+      // 2026 baseline: PBP rates from the projection's *_prev field, box stats from
+      // the 2026 actuals (`a`). A player with NO 2026 (or a 0 in the stat) is excluded
+      // — a .000→.245 jump is a small-sample artifact, not a breakout.
+      const isPbp = mainKey.startsWith('p_')
+      const base26 = (p) => isPbp ? p[mainKey + '_prev'] : (p.a ? p.a[mainKey] : null)
+      const samp26 = (p) => cat.side === 'bat' ? (p.a?.PT || 0) : ipNum(p.a?.IP)
+      const minN26 = min2026 !== '' ? Number(min2026) : (cat.side === 'bat' ? 50 : 10)
+      const v = pool.filter(p => {
+        const b = base26(p)
+        return b != null && b !== 0 && p[mainKey] != null && samp26(p) >= minN26
+      }).map(p => ({ ...p, _b26: base26(p), _gn: p[mainKey] - base26(p) }))
       // improvement direction: for "lower is better" stats a gain is a DECREASE
       v.sort((a, b) => mainDef.dir === 'asc' ? a._gn - b._gn : b._gn - a._gn)
-      const items = v.map(p => ({
-        ...p, _y26: p.a[mainKey], _y27: p[mainKey], _gain: fmtGain(p._gn, mainDef.format),
-      }))
+      const items = v.map(p => ({ ...p, _y26: p._b26, _y27: p[mainKey], _gain: fmtGain(p._gn, mainDef.format) }))
       return {
         items, config: { key: '_gain', label: `${mainDef.label} +/-`, format: 'raw', extra: [{ key: '_y26', label: '2026', format: mainDef.format }, { key: '_y27', label: '2027', format: mainDef.format }] },
-        title: customTitle || `Biggest ${mainDef.label} Gains`, subtitle: `${sub} · 2026 → 2027`, footerNote: qualNote,
+        title: customTitle || `Biggest ${mainDef.label} Gains`, subtitle: `${sub} · 2026 → 2027`,
+        footerNote: `Min ${minN26} 2026 ${cat.sampleLabel}`,
       }
     }
 
@@ -527,7 +550,7 @@ export default function ProjectionLeaderboardGraphic() {
       items: v, config: { key: mainKey, label: mainDef.label, format: mainDef.format, extra },
       title: ttl, subtitle: sub, footerNote: qualNote,
     }
-  }, [pool, mode, mainKey, mainDef, extraKeys, catalog, isTeam, cat, level, qualified, minSample, count, customTitle, preset, statMode])
+  }, [pool, mode, mainKey, mainDef, extraKeys, catalog, isTeam, cat, level, qualified, minSample, min2026, count, customTitle, preset, statMode])
 
   const isTwoCol = useTwoColumns(count)
   const effConfig = isTwoCol ? { ...config, extra: [] } : config
@@ -629,6 +652,13 @@ export default function ProjectionLeaderboardGraphic() {
                   <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                     <span>Min {cat.sampleLabel}</span>
                     <input type="number" value={minSample} placeholder={String(cat.sampleDefault)} onChange={e => setMinSample(e.target.value)}
+                      className="w-20 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1" />
+                  </div>
+                )}
+                {mode === 'gains' && (
+                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                    <span title="Players with fewer than this many 2026 PA/IP are excluded — keeps small-sample flukes (e.g. .000 → .245) off the breakout list.">Min 2026 {cat.sampleLabel}</span>
+                    <input type="number" value={min2026} placeholder={cat.side === 'bat' ? '50' : '10'} onChange={e => setMin2026(e.target.value)}
                       className="w-20 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1" />
                   </div>
                 )}
