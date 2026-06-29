@@ -655,7 +655,7 @@ export default function ProjectionLeaderboardGraphic() {
       }).filter(Boolean)
       return {
         items: rows, config: { key: '_v', label: 'Leader', format: 'raw', extra: [] },
-        title: customTitle || `Best Projected ${sideLabel}`, subtitle: `${sub} · top in every stat`, footerNote: qualNote,
+        title: customTitle || `Projected Best ${sideLabel}`, subtitle: `${sub} · top in every stat`, footerNote: qualNote,
       }
     }
 
@@ -676,7 +676,7 @@ export default function ProjectionLeaderboardGraphic() {
       const items = v.map(p => ({ ...p, _y26: p._b26, _y27: p[mainKey], _gain: fmtGain(p._gn, mainDef.format) }))
       return {
         items, config: { key: '_gain', label: `${mainDef.label} +/-`, format: 'raw', extra: [{ key: '_y26', label: '2026', format: mainDef.format }, { key: '_y27', label: '2027', format: mainDef.format }] },
-        title: customTitle || `Biggest ${mainDef.label} Gains`, subtitle: `${sub} · 2026 → 2027`,
+        title: customTitle || `Projected Biggest ${mainDef.label} Gains`, subtitle: `${sub} · 2026 → 2027`,
         footerNote: `Min ${minN26} 2026 ${cat.sampleLabel}`,
       }
     }
@@ -685,7 +685,7 @@ export default function ProjectionLeaderboardGraphic() {
     const v = [...pool].filter(p => p[mainKey] != null)
     v.sort((a, b) => mainDef.dir === 'asc' ? a[mainKey] - b[mainKey] : b[mainKey] - a[mainKey])
     const extra = (extraKeys || []).map(k => { const d = statDef(k); return d ? { key: d.key, label: d.label, format: d.format } : null }).filter(Boolean)
-    const ttl = customTitle || (isTeam ? (preset.title || `${mainDef.label} Leaders`) : `Top ${count} ${mainDef.label}`)
+    const ttl = customTitle || (isTeam ? `Projected ${preset.title || `${mainDef.label} Leaders`}` : `Projected Top ${count} ${mainDef.label}`)
     return {
       items: v, config: { key: mainKey, label: mainDef.label, format: mainDef.format, extra },
       title: ttl, subtitle: sub, footerNote: qualNote,
