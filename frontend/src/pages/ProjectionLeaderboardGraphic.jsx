@@ -475,8 +475,10 @@ export default function ProjectionLeaderboardGraphic() {
 
   const preset = PRESETS[category]?.[presetIdx] || PRESETS[category]?.[0]
   const statDef = (key) => catalog.find(s => s.key === key)
-  // the active main stat (preset or custom)
-  const mainKey = statMode === 'custom' && customMain ? customMain : preset.key
+  // the active main stat (preset or custom). In Gains mode a stat with no 2026
+  // baseline (WAR/PA/IP…) can't be diffed, so fall back to the first gainable stat.
+  let mainKey = statMode === 'custom' && customMain ? customMain : preset.key
+  if (mode === 'gains' && NO_GAIN.has(mainKey)) mainKey = catalog.find(s => !NO_GAIN.has(s.key))?.key || mainKey
   const mainDef = statDef(mainKey) || catalog[0]
   const extraKeys = statMode === 'custom' ? customExtra : preset.extra
   const statChoices = (mode === 'gains') ? catalog.filter(s => !NO_GAIN.has(s.key)) : catalog
@@ -603,7 +605,13 @@ export default function ProjectionLeaderboardGraphic() {
                 <div className="text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Mode</div>
                 <div className="flex gap-1">
                   <Chip active={mode === 'leaders'} onClick={() => setMode('leaders')}>Leaders</Chip>
-                  <Chip active={mode === 'gains'} onClick={() => { setMode('gains'); if (!statChoices.find(s => s.key === mainKey)) { setStatMode('custom'); setCustomMain(statChoices[0].key) } }}>Biggest Gains</Chip>
+                  <Chip active={mode === 'gains'} onClick={() => {
+                    setMode('gains')
+                    if (NO_GAIN.has(mainKey)) {
+                      if (statMode === 'custom') setCustomMain(catalog.find(s => !NO_GAIN.has(s.key)).key)
+                      else setPresetIdx(Math.max(0, (PRESETS[category] || []).findIndex(p => !NO_GAIN.has(p.key))))
+                    }
+                  }}>Biggest Gains</Chip>
                   <Chip active={mode === 'every'} onClick={() => setMode('every')}>Every Stat</Chip>
                 </div>
               </div>
@@ -620,7 +628,7 @@ export default function ProjectionLeaderboardGraphic() {
                 </div>
               </div>
               {statMode === 'preset' ? (
-                <div className="flex flex-wrap gap-1">{(PRESETS[category] || []).map((p, i) => <Chip key={p.name} sm active={presetIdx === i} onClick={() => setPresetIdx(i)}>{p.name}</Chip>)}</div>
+                <div className="flex flex-wrap gap-1">{(PRESETS[category] || []).map((p, i) => ({ p, i })).filter(({ p }) => mode !== 'gains' || !NO_GAIN.has(p.key)).map(({ p, i }) => <Chip key={p.name} sm active={presetIdx === i} onClick={() => setPresetIdx(i)}>{p.name}</Chip>)}</div>
               ) : (
                 <>
                   <select value={mainKey} onChange={e => setCustomMain(e.target.value)} className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm">
