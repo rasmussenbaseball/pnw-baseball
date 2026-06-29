@@ -442,13 +442,16 @@ async function renderBoard(canvas, opts) {
   ctx.fillStyle = theme.headerSub; ctx.font = `600 17px ${FONT}`
   ctx.fillText(subtitle, padX, 130)
 
-  // brand mark top-right
-  const favicon = await loadLogoCached('/favicon.png')
-  ctx.textAlign = 'right'; ctx.font = `800 14px ${FONT}`
-  ctx.fillStyle = 'rgba(255,255,255,0.75)'
-  const brand = 'NWBB STATS'
-  ctx.fillText(brand, w - padX, 50)
-  if (favicon) drawImageContain(ctx, favicon, w - padX - ctx.measureText(brand).width - 30, 36, 22, 22)
+  // brand mark top-right — the large white NW logo (falls back to text if it fails)
+  const nwLogo = await loadLogoCached('/images/nw-logo-white.png')
+  const logoSz = 90
+  if (nwLogo) {
+    drawImageContain(ctx, nwLogo, w - padX - logoSz, (headerH - 6 - logoSz) / 2, logoSz, logoSz)
+  } else {
+    ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'
+    ctx.font = `800 14px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.75)'
+    ctx.fillText('NWBB STATS', w - padX, 50)
+  }
 
   // footer strip — a taller co-brand band for sponsor themes
   const footerH = theme.sponsor ? 122 : 56, footerY = h - footerH
