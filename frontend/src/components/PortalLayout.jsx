@@ -29,7 +29,10 @@ import { ensureGoogleFonts } from '../lib/loadFonts'
 // sheet, catcher cards, player cards, tournament sheet) which are
 // designed to render as white paper — darkening them would fight the
 // print output.
-export default function PortalLayout({ children, lightOnly = false }) {
+// `noGate` skips the forced team-picker. The portal HOME uses it so the
+// tool launcher is visible immediately (the team-specific tools still
+// gate on a focus team when you open them).
+export default function PortalLayout({ children, lightOnly = false, noGate = false }) {
   // Outfit (the portal typeface) loads here, not in index.html — most
   // site visitors never enter the portal.
   useEffect(() => {
@@ -48,11 +51,15 @@ export default function PortalLayout({ children, lightOnly = false }) {
           : 'bg-portal-cream dark:bg-gray-900 text-gray-900 dark:text-gray-100'
       }`}>
         <PortalHeader />
-        <PortalTeamGate>
-          <main>
-            {children}
-          </main>
-        </PortalTeamGate>
+        {noGate ? (
+          <main>{children}</main>
+        ) : (
+          <PortalTeamGate>
+            <main>
+              {children}
+            </main>
+          </PortalTeamGate>
+        )}
       </div>
     </PortalTeamProvider>
   )

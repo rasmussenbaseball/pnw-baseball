@@ -466,7 +466,7 @@ export default function App() {
               Anyone else (including signed-in non-owners) gets bounced
               to the main-site homepage. */}
           <Route path="/portal"
-                 element={<RequirePortalAccess><PortalLayout><PortalHome /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout noGate><PortalHome /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/trends"
                  element={<RequirePortalAccess><PortalLayout><OpponentTrends /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/historic"
