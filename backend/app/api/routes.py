@@ -11114,7 +11114,8 @@ def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027
                 pr = json.loads(pr)
             if not pr or pr.get("no_data") or pr.get("is_pool"):
                 continue
-            row = {"player_id": r["player_id"], "name": r["name"], "pos": r["pos"],
+            row = {"player_id": r["player_id"], "canonical_id": r["canonical_id"],
+                   "name": r["name"], "pos": r["pos"],
                    "team_id": r["team_id"], "team": r["short_name"], "logo_url": r["logo_url"],
                    "level": r["level"], "is_incoming": r["is_incoming"],
                    "insufficient": bool(pr.get("insufficient"))}
@@ -11123,6 +11124,58 @@ def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027
             if side == "bat" and pr.get("OBP") is not None and pr.get("SLG") is not None:
                 row["OPS"] = round(pr["OBP"] + pr["SLG"], 3)
             out.append(row)
+        # 2026 actuals (by canonical id) keyed to the projected stat names, so the
+        # graphic can compute 2026 -> 2027 increases (breakout candidates).
+        cids = [r["canonical_id"] for r in out] or [0]
+        if side == "bat":
+            cur.execute("""
+                WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
+                SELECT COALESCE(c.cid, b.player_id) AS cid,
+                       SUM(b.plate_appearances) pa, SUM(b.at_bats) ab, SUM(b.home_runs) hr,
+                       SUM(b.walks) bb, SUM(b.strikeouts) so, SUM(b.runs) r, SUM(b.rbi) rbi,
+                       AVG(b.batting_avg) avg, AVG(b.on_base_pct) obp, AVG(b.slugging_pct) slg, AVG(b.woba) woba
+                FROM batting_stats b LEFT JOIN canon c ON c.pid = b.player_id
+                WHERE b.season = 2026 AND COALESCE(c.cid, b.player_id) = ANY(%s) GROUP BY 1
+            """, (cids,))
+            a26 = {}
+            for r in cur.fetchall():
+                pa = float(r["pa"] or 0); ab = float(r["ab"] or 0)
+                a26[r["cid"]] = {
+                    "AVG": float(r["avg"]) if r["avg"] is not None else None,
+                    "OBP": float(r["obp"]) if r["obp"] is not None else None,
+                    "SLG": float(r["slg"]) if r["slg"] is not None else None,
+                    "wOBA": float(r["woba"]) if r["woba"] is not None else None,
+                    "OPS": (float(r["obp"]) + float(r["slg"])) if (r["obp"] is not None and r["slg"] is not None) else None,
+                    "iso": (float(r["slg"]) - float(r["avg"])) if (r["slg"] is not None and r["avg"] is not None) else None,
+                    "HR": float(r["hr"] or 0), "R": float(r["r"] or 0), "RBI": float(r["rbi"] or 0),
+                    "BB": float(r["bb"] or 0), "PT": pa,
+                    "bb_pct": (float(r["bb"] or 0) / pa) if pa else None,
+                    "k_pct": (float(r["so"] or 0) / pa) if pa else None}
+        else:
+            cur.execute("""
+                WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
+                SELECT COALESCE(c.cid, p.player_id) AS cid,
+                       SUM(FLOOR(p.innings_pitched)+(p.innings_pitched-FLOOR(p.innings_pitched))*10/3.0) ipd,
+                       AVG(p.era) era, AVG(p.fip) fip, AVG(p.whip) whip, AVG(p.k_pct) k_pct, AVG(p.bb_pct) bb_pct,
+                       SUM(p.home_runs_allowed) hr, SUM(p.batters_faced) bf, SUM(p.walks) w, SUM(p.hit_batters) hbp,
+                       SUM(p.hits_allowed) h
+                FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
+                WHERE p.season = 2026 AND COALESCE(c.cid, p.player_id) = ANY(%s) GROUP BY 1
+            """, (cids,))
+            a26 = {}
+            for r in cur.fetchall():
+                ipd = float(r["ipd"] or 0); ab = float(r["bf"] or 0) - float(r["w"] or 0) - float(r["hbp"] or 0)
+                a26[r["cid"]] = {
+                    "ERA": float(r["era"]) if r["era"] is not None else None,
+                    "FIP": float(r["fip"]) if r["fip"] is not None else None,
+                    "WHIP": float(r["whip"]) if r["whip"] is not None else None,
+                    "K_pct": float(r["k_pct"]) if r["k_pct"] is not None else None,
+                    "BB_pct": float(r["bb_pct"]) if r["bb_pct"] is not None else None,
+                    "HR9": (float(r["hr"] or 0) * 9.0 / ipd) if ipd else None,
+                    "opp_avg": (float(r["h"] or 0) / ab) if ab > 0 else None,
+                    "IP": ipd}
+        for row in out:
+            row["a"] = a26.get(row["canonical_id"])
         return {"side": side, "season": season, "players": out}
 
 

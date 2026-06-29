@@ -189,6 +189,7 @@ import SummerPlayerDetail from './pages/SummerPlayerDetail'
 const WclRecapGraphic = lazyWithRetry(() => import('./pages/WclRecapGraphic'))
 const WclGameRecapGraphic = lazyWithRetry(() => import('./pages/WclGameRecapGraphic'))
 const WclLeaderboardGraphic = lazyWithRetry(() => import('./pages/WclLeaderboardGraphic'))
+const ProjectionLeaderboardGraphic = lazyWithRetry(() => import('./pages/ProjectionLeaderboardGraphic'))
 const TransferPortalGraphic = lazyWithRetry(() => import('./pages/TransferPortalGraphic'))
 const CommitmentEditor = lazyWithRetry(() => import('./pages/CommitmentEditor'))
 const WclStandingsGraphic = lazyWithRetry(() => import('./pages/WclStandingsGraphic'))
@@ -403,6 +404,7 @@ export default function App() {
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />
           <Route path="/projections" element={<RequireTier minTier="premium"><TeamProjections /></RequireTier>} />
+          <Route path="/projections/graphic" element={<RequireTier minTier="premium"><ProjectionLeaderboardGraphic /></RequireTier>} />
           <Route path="/trackman-data" element={<RequireDev><TrackManData /></RequireDev>} />
           <Route path="/commitment-editor" element={<RequireDev emails={COMMITMENT_EDITOR_EMAILS}><CommitmentEditor /></RequireDev>} />
           <Route path="/pro-tracker" element={<ProTracker />} />
