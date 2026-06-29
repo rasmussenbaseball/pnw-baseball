@@ -10937,7 +10937,8 @@ def _all_team_projection_totals(cur, season):
         d["bat" if r["side"] == "bat" else "pit"].append({"proj": pr})
     team_totals = {tid: _team_projection_totals(d["bat"], d["pit"], team_level[tid], baselines)
                    for tid, d in by_team.items()}
-    out = {tid: {"hitting": {}, "pitching": {}, "level": t["level"]}
+    out = {tid: {"hitting": t["hitting"], "pitching": t["pitching"], "level": t["level"],
+                 "ranks": {"hitting": {}, "pitching": {}}}
            for tid, t in team_totals.items()}
     levels = {}
     for tid, t in team_totals.items():
@@ -10949,7 +10950,7 @@ def _all_team_projection_totals(cur, season):
                         if team_totals[tid].get(grp) and team_totals[tid][grp].get(stat) is not None]
                 vals.sort(key=lambda x: x[1], reverse=higher)
                 for i, (tid, _) in enumerate(vals):
-                    out[tid][grp][stat] = {"rank": i + 1, "of": len(vals)}
+                    out[tid]["ranks"][grp][stat] = {"rank": i + 1, "of": len(vals)}
     _PROJ_RANKS_CACHE[season] = out
     return out
 
@@ -11048,9 +11049,81 @@ def team_projections(team_id: int, season: int = Query(2027),
                       if (r["proj"] or {}).get("level")), "D1")
         totals = _team_projection_totals(hitters, pitchers, level,
                                          _proj_league_baselines(cur, season))
-        totals["ranks"] = _all_team_projection_totals(cur, season).get(team_id)
+        totals["ranks"] = (_all_team_projection_totals(cur, season).get(team_id) or {}).get("ranks")
         return {"team": dict(team), "season": season,
                 "hitters": hitters, "pitchers": pitchers, "totals": totals}
+
+
+@router.get("/projections/team-leaders")
+@cached_endpoint(ttl_seconds=1800)
+def projection_team_leaders(season: int = Query(2027),
+                            _user: str = Depends(require_tier("premium"))):
+    """Every PNW team's projected hitting + pitching totals (with within-level
+    ranks), for the team-leaderboard view."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        allt = _all_team_projection_totals(cur, season)
+        ids = list(allt) or [0]
+        cur.execute("SELECT id, short_name, school_name, logo_url FROM teams WHERE id = ANY(%s)", (ids,))
+        meta = {r["id"]: dict(r) for r in cur.fetchall()}
+        return [{"team_id": tid, "short_name": meta[tid]["short_name"],
+                 "logo_url": meta[tid]["logo_url"], "level": e["level"],
+                 "hitting": e["hitting"], "pitching": e["pitching"], "ranks": e["ranks"]}
+                for tid, e in allt.items() if tid in meta]
+
+
+@router.get("/projections/player-leaders")
+@cached_endpoint(ttl_seconds=1800)
+def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027),
+                              _user: str = Depends(require_tier("premium"))):
+    """All projected players for a side (bat|pit) with team + level, for the
+    individual-player projection leaderboard. Same departing/portal filtering as the
+    team pages; pool + no-data rows excluded."""
+    side = "pit" if side == "pit" else "bat"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT player_id FROM player_returning_overrides "
+                    "WHERE season = %s AND status = 'departing'", (season - 1,))
+        departing = {r["player_id"] for r in cur.fetchall()}
+        try:
+            cur.execute("SELECT player_id FROM transfer_portal_members")
+            portal = {r["player_id"] for r in cur.fetchall()}
+        except Exception:
+            portal = set()
+        cur.execute("""
+            SELECT pp.player_id, pp.canonical_id, pp.name, pp.pos, pp.is_incoming,
+                   pp.proj, t.id AS team_id, t.short_name, t.logo_url, d.level
+            FROM player_projections pp
+            JOIN teams t ON t.id = pp.team_id
+            JOIN conferences c ON c.id = t.conference_id
+            JOIN divisions d ON d.id = c.division_id
+            WHERE pp.season = %s AND pp.side = %s
+              AND t.state IN ('WA','OR','ID','MT','BC')
+        """, (season, side))
+        keys = (["PT", "AVG", "OBP", "SLG", "wOBA", "iso", "HR", "BB", "R", "RBI",
+                 "bb_pct", "k_pct", "WAR"] if side == "bat"
+                else ["IP", "BF", "ERA", "FIP", "WHIP", "K_pct", "BB_pct", "HR9", "opp_avg", "WAR"])
+        out = []
+        for r in cur.fetchall():
+            if r["player_id"] in departing or r["canonical_id"] in departing:
+                continue
+            if not r["is_incoming"] and (r["player_id"] in portal or r["canonical_id"] in portal):
+                continue
+            pr = r["proj"]
+            if isinstance(pr, str):
+                pr = json.loads(pr)
+            if not pr or pr.get("no_data") or pr.get("is_pool"):
+                continue
+            row = {"player_id": r["player_id"], "name": r["name"], "pos": r["pos"],
+                   "team_id": r["team_id"], "team": r["short_name"], "logo_url": r["logo_url"],
+                   "level": r["level"], "is_incoming": r["is_incoming"],
+                   "insufficient": bool(pr.get("insufficient"))}
+            for k in keys:
+                row[k] = pr.get(k)
+            if side == "bat" and pr.get("OBP") is not None and pr.get("SLG") is not None:
+                row["OPS"] = round(pr["OBP"] + pr["SLG"], 3)
+            out.append(row)
+        return {"side": side, "season": season, "players": out}
 
 
 # ── Per-player projection card (paywalled preview on player pages) ──────────

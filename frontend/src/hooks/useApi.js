@@ -127,6 +127,16 @@ export function useTeamProjections(teamId, season = 2027) {
   return useApi(teamId ? `/teams/${teamId}/projections` : null, { season }, [teamId, season])
 }
 
+/** Every team's projected totals (hitting + pitching) for the team leaderboard. */
+export function useProjectionTeamLeaders(season = 2027) {
+  return useApi('/projections/team-leaders', { season }, [season])
+}
+
+/** All projected players for a side (bat|pit) for the player leaderboard. */
+export function useProjectionPlayerLeaders(side = 'bat', season = 2027) {
+  return useApi('/projections/player-leaders', { side, season }, [side, season])
+}
+
 /**
  * Fetch the rich team-overview payload used by the social info-graphic
  * — record splits, run diff, Pythag, national/conf/power ranks, top 5

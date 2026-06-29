@@ -7,10 +7,16 @@
 // (10th–90th percentile) outcomes.
 
 import { useState, useMemo, Fragment } from 'react'
-import { useProjectionTeams, useTeamProjections } from '../hooks/useApi'
+import { Link } from 'react-router-dom'
+import { useProjectionTeams, useTeamProjections,
+         useProjectionTeamLeaders, useProjectionPlayerLeaders } from '../hooks/useApi'
 
 const SEASON = 2027
 const LEVEL_ORDER = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
+const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
+const int0 = (v) => (v === null || v === undefined ? '–' : Math.round(v).toLocaleString())
+// baseball-notation IP (73.1 = 73⅓) -> decimal, for qualifier math
+const ipNum = (ip) => { if (ip == null) return 0; const w = Math.floor(ip); const f = Math.round((ip - w) * 10); return w + (f >= 1 ? f / 3 : 0) }
 
 const f3 = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(3))
 const f2 = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(2))
@@ -364,11 +370,187 @@ function TeamTotals({ totals }) {
   )
 }
 
+// ── Leaderboards ───────────────────────────────────────────────────────────
+function LevelFilter({ value, onChange }) {
+  return (
+    <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden flex-wrap">
+      {LEVELS.map((lv, i) => (
+        <button key={lv} onClick={() => onChange(lv)}
+          className={`px-3 py-1.5 text-xs font-medium ${i ? 'border-l border-gray-300 dark:border-gray-600' : ''} ${value === lv ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+          {lv}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function SideToggle({ value, onChange }) {
+  return (
+    <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
+      {[['bat', 'Hitting'], ['pit', 'Pitching']].map(([v, label], i) => (
+        <button key={v} onClick={() => onChange(v)}
+          className={`px-4 py-1.5 text-xs font-semibold ${i ? 'border-l border-gray-300 dark:border-gray-600' : ''} ${value === v ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// Generic sortable leaderboard. `meta` = leading non-sortable columns
+// [{label, render}]; `columns` = sortable stat columns [{key,label,fmt,lowerBetter}].
+function LeaderTable({ rows, meta, columns, defaultSort, rowKey }) {
+  const [sortKey, setSortKey] = useState(defaultSort.key)
+  const [asc, setAsc] = useState(!!defaultSort.asc)
+  const sorted = useMemo(() => {
+    const arr = [...rows]
+    arr.sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey]
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      return asc ? av - bv : bv - av
+    })
+    return arr
+  }, [rows, sortKey, asc])
+  const click = (c) => {
+    if (c.key === sortKey) setAsc((x) => !x)
+    else { setSortKey(c.key); setAsc(!!c.lowerBetter) }
+  }
+  if (!rows.length) return <p className="text-sm text-gray-500 py-6">No projected players match these filters.</p>
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+      <table className="min-w-full text-xs">
+        <thead><tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
+          <th className={TH + ' text-left w-8'}>#</th>
+          {meta.map((m) => <th key={m.label} className={THL}>{m.label}</th>)}
+          {columns.map((c) => (
+            <th key={c.key} onClick={() => click(c)}
+              className={`${TH} cursor-pointer select-none hover:text-nw-teal ${c.key === sortKey ? 'text-nw-teal' : ''}`}
+              title="Click to sort">
+              {c.label}{c.key === sortKey ? (asc ? ' ▲' : ' ▼') : ''}
+            </th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {sorted.map((r, i) => (
+            <tr key={rowKey(r)} className={`border-b border-gray-100 dark:border-gray-800 ${i % 2 ? 'bg-gray-50/40 dark:bg-gray-800/20' : ''} hover:bg-nw-teal/5`}>
+              <td className={TD + ' text-left text-gray-400'}>{i + 1}</td>
+              {meta.map((m) => <td key={m.label} className={TDL}>{m.render(r)}</td>)}
+              {columns.map((c) => (
+                <td key={c.key} className={`${TD} ${c.key === sortKey ? 'font-semibold text-gray-900 dark:text-gray-100' : ''}`}>{c.fmt(r[c.key])}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const TEAM_HIT_COLS = [
+  { key: 'AVG', label: 'AVG', fmt: slash }, { key: 'OBP', label: 'OBP', fmt: slash },
+  { key: 'SLG', label: 'SLG', fmt: slash }, { key: 'OPS', label: 'OPS', fmt: slash },
+  { key: 'wOBA', label: 'wOBA', fmt: slash }, { key: 'HR', label: 'HR', fmt: int0 },
+  { key: 'BB', label: 'BB', fmt: int0 }, { key: 'R', label: 'R', fmt: int0 },
+  { key: 'WAR', label: 'WAR', fmt: f1 },
+]
+const TEAM_PIT_COLS = [
+  { key: 'ERA', label: 'ERA', fmt: f2, lowerBetter: true }, { key: 'WHIP', label: 'WHIP', fmt: f2, lowerBetter: true },
+  { key: 'FIP', label: 'FIP', fmt: f2, lowerBetter: true }, { key: 'K_pct', label: 'K%', fmt: pctInt },
+  { key: 'BB_pct', label: 'BB%', fmt: pctInt, lowerBetter: true }, { key: 'HR9', label: 'HR/9', fmt: f2, lowerBetter: true },
+  { key: 'WAR', label: 'WAR', fmt: f1 },
+]
+const PLR_HIT_COLS = [
+  { key: 'PT', label: 'PA', fmt: int0 }, { key: 'AVG', label: 'AVG', fmt: slash },
+  { key: 'OBP', label: 'OBP', fmt: slash }, { key: 'SLG', label: 'SLG', fmt: slash },
+  { key: 'OPS', label: 'OPS', fmt: slash }, { key: 'wOBA', label: 'wOBA', fmt: slash },
+  { key: 'iso', label: 'ISO', fmt: slash }, { key: 'HR', label: 'HR', fmt: int0 },
+  { key: 'bb_pct', label: 'BB%', fmt: pctInt }, { key: 'k_pct', label: 'K%', fmt: pctInt, lowerBetter: true },
+  { key: 'WAR', label: 'WAR', fmt: f1 },
+]
+const PLR_PIT_COLS = [
+  { key: 'IP', label: 'IP', fmt: f1 }, { key: 'ERA', label: 'ERA', fmt: f2, lowerBetter: true },
+  { key: 'FIP', label: 'FIP', fmt: f2, lowerBetter: true }, { key: 'WHIP', label: 'WHIP', fmt: f2, lowerBetter: true },
+  { key: 'K_pct', label: 'K%', fmt: pctInt }, { key: 'BB_pct', label: 'BB%', fmt: pctInt, lowerBetter: true },
+  { key: 'HR9', label: 'HR/9', fmt: f2, lowerBetter: true }, { key: 'opp_avg', label: 'Opp AVG', fmt: slash, lowerBetter: true },
+  { key: 'WAR', label: 'WAR', fmt: f1 },
+]
+
+function TeamLeaders() {
+  const { data, loading } = useProjectionTeamLeaders(SEASON)
+  const [level, setLevel] = useState('All')
+  const [side, setSide] = useState('bat')
+  const rows = useMemo(() => {
+    return (data || [])
+      .filter((t) => level === 'All' || t.level === level)
+      .map((t) => {
+        const s = side === 'bat' ? t.hitting : t.pitching
+        return s ? { team_id: t.team_id, short_name: t.short_name, logo_url: t.logo_url, level: t.level, ...s } : null
+      }).filter(Boolean)
+  }, [data, level, side])
+  const meta = [
+    { label: 'Team', render: (r) => <span className="flex items-center gap-1.5 font-medium text-gray-900 dark:text-gray-100">{r.logo_url && <img src={r.logo_url} className="h-4 w-4 object-contain" alt="" />}{r.short_name}</span> },
+    { label: 'Lvl', render: (r) => <span className="text-gray-400">{r.level}</span> },
+  ]
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <SideToggle value={side} onChange={setSide} />
+        <LevelFilter value={level} onChange={setLevel} />
+      </div>
+      {loading ? <p className="text-sm text-gray-500 py-6">Loading…</p> : (
+        <LeaderTable rows={rows} meta={meta} rowKey={(r) => r.team_id}
+          columns={side === 'bat' ? TEAM_HIT_COLS : TEAM_PIT_COLS}
+          defaultSort={side === 'bat' ? { key: 'OPS', asc: false } : { key: 'ERA', asc: true }} />
+      )}
+      <p className="text-[11px] text-gray-400">Team totals include the projected roster plus unaccounted playing time filled at ~90% of a league-average player. Click any column to sort.</p>
+    </div>
+  )
+}
+
+function PlayerLeaders() {
+  const [side, setSide] = useState('bat')
+  const { data, loading } = useProjectionPlayerLeaders(side, SEASON)
+  const [level, setLevel] = useState('All')
+  const [qualified, setQualified] = useState(true)
+  const rows = useMemo(() => {
+    let r = (data?.players || []).filter((p) => level === 'All' || p.level === level)
+    if (qualified) r = r.filter((p) => side === 'bat' ? (p.PT || 0) >= 100 : ipNum(p.IP) >= 20)
+    return r
+  }, [data, level, qualified, side])
+  const meta = [
+    { label: 'Player', render: (r) => <Link to={`/player/${r.player_id}`} className="font-medium text-nw-teal hover:underline">{r.name}</Link> },
+    { label: 'Team', render: (r) => <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">{r.logo_url && <img src={r.logo_url} className="h-4 w-4 object-contain" alt="" />}{r.team}</span> },
+    { label: 'Lvl', render: (r) => <span className="text-gray-400">{r.level}</span> },
+    { label: 'Pos', render: (r) => <span className="text-gray-400">{r.pos || '–'}</span> },
+  ]
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <SideToggle value={side} onChange={setSide} />
+        <LevelFilter value={level} onChange={setLevel} />
+        <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+          <input type="checkbox" checked={qualified} onChange={(e) => setQualified(e.target.checked)} className="rounded" />
+          Qualified only ({side === 'bat' ? '100+ PA' : '20+ IP'})
+        </label>
+      </div>
+      {loading ? <p className="text-sm text-gray-500 py-6">Loading…</p> : (
+        <LeaderTable rows={rows} meta={meta} rowKey={(r) => r.player_id}
+          columns={side === 'bat' ? PLR_HIT_COLS : PLR_PIT_COLS}
+          defaultSort={side === 'bat' ? { key: 'wOBA', asc: false } : { key: 'ERA', asc: true }} />
+      )}
+      <p className="text-[11px] text-gray-400">Projected 2027 individual stats. Click a name for the player page, or any column to sort.</p>
+    </div>
+  )
+}
+
 export default function TeamProjections() {
   const { data: teams } = useProjectionTeams(SEASON)
   const [picked, setPicked] = useState(null)
   const [expanded, setExpanded] = useState(null)
-  const [norm, setNorm] = useState(true)
+  const [norm, setNorm] = useState(false)
+  const [view, setView] = useState('team')   // team | teamLeaders | playerLeaders
   const effectiveTeamId = picked || teams?.[0]?.id || null
   const { data: payload, loading } = useTeamProjections(effectiveTeamId, SEASON)
   const toggle = (id) => setExpanded((cur) => (cur === id ? null : id))
@@ -382,43 +564,53 @@ export default function TeamProjections() {
 
   return (
     <div className="max-w-screen-2xl mx-auto px-4 py-6">
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">2027 Projections</h1>
+      <div className="mb-5">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">2027 Projections</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          Returning players + incoming transfers and freshmen. Graduating seniors and departed NWAC sophomores excluded.
+          Browse a single team, or see who projects best across a level.
+        </p>
+      </div>
+
+      {/* top-level view switcher */}
+      <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden mb-5">
+        {[['team', 'By Team'], ['teamLeaders', 'Team Leaders'], ['playerLeaders', 'Player Leaders']].map(([v, label], i) => (
+          <button key={v} onClick={() => setView(v)}
+            className={`px-4 py-2 text-sm font-semibold whitespace-nowrap ${i ? 'border-l border-gray-300 dark:border-gray-600' : ''} ${view === v ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'teamLeaders' && <TeamLeaders />}
+      {view === 'playerLeaders' && <PlayerLeaders />}
+
+      {view === 'team' && (<>
+      <div className="flex flex-wrap items-end justify-end gap-3 mb-5">
+        <div className="text-sm">
+          <span className="block text-xs text-gray-500 mb-1">View</span>
+          <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
+            <button onClick={() => setNorm(false)}
+              className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${!norm ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+              Projected totals
+            </button>
+            <button onClick={() => setNorm(true)}
+              className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-l border-gray-300 dark:border-gray-600 ${norm ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+              Per 200 PA / 50 IP
+            </button>
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Returning players + incoming transfers and freshmen. Graduating seniors and departed NWAC sophomores excluded.
-            Incoming players with no college stats yet are listed but flagged "no projection yet."
-            Click any player for their 2026 → 2027 change and floor/ceiling outcomes.
-          </p>
         </div>
-        <div className="flex items-end gap-3">
-          <div className="text-sm">
-            <span className="block text-xs text-gray-500 mb-1">View</span>
-            <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
-              <button onClick={() => setNorm(false)}
-                className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${!norm ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                Projected totals
-              </button>
-              <button onClick={() => setNorm(true)}
-                className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-l border-gray-300 dark:border-gray-600 ${norm ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                Per 200 PA / 50 IP
-              </button>
-            </div>
-          </div>
-          <label className="text-sm">
-            <span className="block text-xs text-gray-500 mb-1">Team</span>
-            <select className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm min-w-[240px]"
-              value={effectiveTeamId || ''} onChange={(e) => { setPicked(Number(e.target.value)); setExpanded(null) }}>
-              {LEVEL_ORDER.filter((lv) => grouped[lv]).map((lv) => (
-                <optgroup key={lv} label={lv}>
-                  {grouped[lv].map((t) => <option key={t.id} value={t.id}>{t.short_name}</option>)}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-        </div>
+        <label className="text-sm">
+          <span className="block text-xs text-gray-500 mb-1">Team</span>
+          <select className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm min-w-[240px]"
+            value={effectiveTeamId || ''} onChange={(e) => { setPicked(Number(e.target.value)); setExpanded(null) }}>
+            {LEVEL_ORDER.filter((lv) => grouped[lv]).map((lv) => (
+              <optgroup key={lv} label={lv}>
+                {grouped[lv].map((t) => <option key={t.id} value={t.id}>{t.short_name}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </label>
       </div>
 
       {loading && <p className="text-sm text-gray-500 py-8">Loading projections…</p>}
@@ -451,6 +643,7 @@ export default function TeamProjections() {
           </div>
         </div>
       )}
+      </>)}
     </div>
   )
 }
