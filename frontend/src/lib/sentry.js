@@ -88,6 +88,20 @@ export function initSentry() {
       // below is the primary filter; these back it up.)
       'Java object is gone',
       'enableDidUserTypeOnKeyboardLogging',
+
+      // Snapchat's iOS in-app browser injects an "SCDynimacBridge" global plus an
+      // inline script that references it before it exists, throwing "Can't find
+      // variable: SCDynimacBridge" attributed to our page (seen on /login). Not
+      // our code. (Same class as the Instagram bridge noise above.)
+      'SCDynimacBridge',
+
+      // A browser extension / injected script using the native DecompressionStream
+      // API fails to inflate its own data ("The compressed data was not valid:
+      // incorrect data check.") and it bubbles up as an unhandled rejection on
+      // our pages (seen on /park-factors). We never call DecompressionStream — the
+      // only decompression we do is LZ-string in the GM save, which throws a
+      // different message — so this isn't ours.
+      'compressed data was not valid',
     ],
     // Drop errors whose stack originates in third-party injected scripts (browser
     // extensions, in-app browsers, translation proxies) rather than our bundle.
