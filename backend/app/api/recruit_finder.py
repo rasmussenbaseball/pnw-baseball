@@ -75,11 +75,10 @@ HITTER_ARCHETYPES = {
     "allaround":  {"label": "Best Available (all-around)", "weights": {"wrc_plus": 1.0, "woba": 0.8, "iso": 0.6, "bb_pct": 0.4}},
 }
 PITCHER_ARCHETYPES = {
-    "power":      {"label": "Power Arm / Strikeout", "weights": {"k_pct": 1.0, "whiff_pct": 0.9, "k_bb": 0.7}},
+    "swingmiss":  {"label": "Swing & Miss", "weights": {"whiff_pct": 1.0, "k_pct": 0.9, "k_bb": 0.6}},
     "command":    {"label": "Command / Control", "weights": {"bb_pct": 1.0, "strike_pct": 0.8, "k_bb": 0.6}},
     "groundball": {"label": "Groundball", "weights": {"gb_pct": 1.0, "hr9": 0.6}},
     "prevention": {"label": "Run Prevention (best arm)", "weights": {"fip": 1.0, "xfip": 0.8, "k_bb": 0.6}},
-    "swingmiss":  {"label": "Swing & Miss", "weights": {"whiff_pct": 1.0, "k_pct": 0.9}},
 }
 
 HITTER_POSITIONS = {
