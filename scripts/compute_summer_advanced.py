@@ -41,6 +41,31 @@ def get_connection():
     return psycopg2.connect(DATABASE_URL)
 
 
+def load_park_factors():
+    """
+    Load WCL summer park factors → {summer_team_id: park_adjustment}.
+
+    park_adjustment = 1 + (park_factor_pct / 100 * 0.50), the same convention
+    spring uses in recalculate_league_adjusted.py (the 0.50 accounts for ~half
+    of a team's games being at home). Only WCL parks are in the file, so teams
+    not present (e.g. PIL) fall back to a neutral 1.0 at the call site.
+    """
+    import json
+    pf_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'park_factors_wcl.json')
+    factors = {}
+    try:
+        with open(pf_path) as f:
+            data = json.load(f)
+        for team in data.get('teams', []):
+            tid = team.get('team_id')
+            pct = team.get('park_factor_pct', 0) or 0
+            if tid is not None:
+                factors[tid] = 1.0 + (pct / 100.0 * 0.50)
+    except FileNotFoundError:
+        print("  WARNING: park_factors_wcl.json not found — using neutral park factors")
+    return factors
+
+
 def compute_league_averages(conn, league_id, season):
     """Compute league-wide averages from raw batting/pitching data."""
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -206,8 +231,9 @@ def compute_league_averages(conn, league_id, season):
     return averages
 
 
-def compute_batting(conn, league_id, season, avgs):
+def compute_batting(conn, league_id, season, avgs, park_factors=None):
     """Compute advanced batting stats for all players in a league/season."""
+    park_factors = park_factors or {}
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     weights = LinearWeights(
@@ -218,7 +244,7 @@ def compute_batting(conn, league_id, season, avgs):
     )
 
     cur.execute("""
-        SELECT sbs.id, sbs.plate_appearances, sbs.at_bats, sbs.hits,
+        SELECT sbs.id, sbs.team_id, sbs.plate_appearances, sbs.at_bats, sbs.hits,
                sbs.doubles, sbs.triples, sbs.home_runs, sbs.walks,
                sbs.intentional_walks, sbs.hit_by_pitch, sbs.sacrifice_flies,
                sbs.sacrifice_bunts, sbs.strikeouts, sbs.stolen_bases,
@@ -254,7 +280,7 @@ def compute_batting(conn, league_id, season, avgs):
             line, weights=weights,
             league_woba=avgs['avg_woba'],
             league_obp=avgs['avg_obp'],
-            park_factor=1.0,
+            park_factor=park_factors.get(row['team_id'], 1.0),
         )
 
         cur.execute("""
@@ -277,12 +303,13 @@ def compute_batting(conn, league_id, season, avgs):
     return updated
 
 
-def compute_pitching(conn, league_id, season, avgs):
+def compute_pitching(conn, league_id, season, avgs, park_factors=None):
     """Compute advanced pitching stats for all players in a league/season."""
+    park_factors = park_factors or {}
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     cur.execute("""
-        SELECT sps.id, sps.innings_pitched, sps.hits_allowed, sps.earned_runs,
+        SELECT sps.id, sps.team_id, sps.innings_pitched, sps.hits_allowed, sps.earned_runs,
                sps.runs_allowed, sps.walks, sps.strikeouts,
                sps.home_runs_allowed, sps.hit_batters, sps.batters_faced,
                sps.wild_pitches, sps.wins, sps.losses, sps.saves,
@@ -345,11 +372,14 @@ def compute_pitching(conn, league_id, season, avgs):
             runs_per_win=avgs['runs_per_win'],
         )
 
-        # League-adjusted (100 = league average, higher is better). Summer has
-        # no park factors, so these are straight league-relative ratios.
+        # League- and park-adjusted (100 = league average, higher is better).
+        # Dividing the pitcher's ERA/FIP by his home park factor credits arms in
+        # hitter parks and discounts arms in pitcher parks (same convention as
+        # spring). park factor defaults to neutral 1.0 for teams without one.
+        pf = park_factors.get(row['team_id'], 1.0)
         era_val = row['era']
-        era_plus = round(100.0 * avgs['avg_era'] / era_val) if era_val and era_val > 0 else None
-        fip_plus = round(100.0 * avgs['avg_fip'] / adv.fip) if adv.fip and adv.fip > 0 else None
+        era_plus = round(100.0 * avgs['avg_era'] / (era_val / pf)) if era_val and era_val > 0 else None
+        fip_plus = round(100.0 * avgs['avg_fip'] / (adv.fip / pf)) if adv.fip and adv.fip > 0 else None
         k_bb_pct = round(adv.k_pct - adv.bb_pct, 3)
 
         cur.execute("""
@@ -395,8 +425,11 @@ def process_season(conn, season):
             print(f"  No data found, skipping")
             continue
 
-        compute_batting(conn, league['id'], season, avgs)
-        compute_pitching(conn, league['id'], season, avgs)
+        park_factors = load_park_factors()
+        print(f"  Loaded {len(park_factors)} park factors "
+              f"(applied to teams present; others neutral)")
+        compute_batting(conn, league['id'], season, avgs, park_factors)
+        compute_pitching(conn, league['id'], season, avgs, park_factors)
 
 
 def main():
