@@ -33,48 +33,14 @@
    "home_road_games": 272,
    "effects": {
     "elevation_pct": 20.29,
-    "dimension_pct": -0.88,
+    "dimension_pct": -1.54,
     "temperature_pct": 2.42,
-    "conditions_pct": 21.83,
-    "observed_weight": 0.48
+    "conditions_pct": 21.17,
+    "observed_weight": 0.288
    },
-   "park_index": 111.1,
-   "park_factor_pct": 11.1,
+   "park_index": 111.3,
+   "park_factor_pct": 11.3,
    "logo_url": "/logos/summer/bend-elks.png"
-  },
-  {
-   "team_id": 8,
-   "short_name": "Wenatchee AppleSox",
-   "full_name": "Wenatchee AppleSox",
-   "division": "North",
-   "stadium": "Paul Thomas Sr. Stadium",
-   "city": "Wenatchee",
-   "state": "WA",
-   "elevation_ft": 669,
-   "surface": "Dirt INF/Grass OF",
-   "wind": "Calm",
-   "avg_temp_f": 80,
-   "dimensions": {
-    "lf": 335,
-    "lcf": 368,
-    "cf": 391,
-    "rcf": 361,
-    "rf": 323,
-    "avg_of": 355.6,
-    "status": "confirmed"
-   },
-   "home_road_split_pct": 18.8,
-   "home_road_games": 277,
-   "effects": {
-    "elevation_pct": 4.63,
-    "dimension_pct": -1.12,
-    "temperature_pct": 4.0,
-    "conditions_pct": 7.52,
-    "observed_weight": 0.48
-   },
-   "park_index": 108.5,
-   "park_factor_pct": 8.5,
-   "logo_url": "/logos/summer/wenatchee-applesox.png"
   },
   {
    "team_id": 17,
@@ -101,13 +67,13 @@
    "home_road_games": 274,
    "effects": {
     "elevation_pct": 7.29,
-    "dimension_pct": 3.17,
+    "dimension_pct": 5.55,
     "temperature_pct": 4.02,
-    "conditions_pct": 14.48,
-    "observed_weight": 0.48
+    "conditions_pct": 16.86,
+    "observed_weight": 0.288
    },
-   "park_index": 106.0,
-   "park_factor_pct": 6.0,
+   "park_index": 107.4,
+   "park_factor_pct": 7.4,
    "logo_url": "/logos/summer/yakima-valley-pippins.png"
   },
   {
@@ -135,14 +101,48 @@
    "home_road_games": 280,
    "effects": {
     "elevation_pct": 0.77,
-    "dimension_pct": 3.87,
+    "dimension_pct": 6.77,
     "temperature_pct": 3.19,
-    "conditions_pct": 7.83,
-    "observed_weight": 0.48
+    "conditions_pct": 10.73,
+    "observed_weight": 0.288
    },
-   "park_index": 105.9,
-   "park_factor_pct": 5.9,
+   "park_index": 105.1,
+   "park_factor_pct": 5.1,
    "logo_url": "/logos/summer/ridgefield-raptors.png"
+  },
+  {
+   "team_id": 8,
+   "short_name": "Wenatchee AppleSox",
+   "full_name": "Wenatchee AppleSox",
+   "division": "North",
+   "stadium": "Paul Thomas Sr. Stadium",
+   "city": "Wenatchee",
+   "state": "WA",
+   "elevation_ft": 669,
+   "surface": "Dirt INF/Grass OF",
+   "wind": "Calm",
+   "avg_temp_f": 80,
+   "dimensions": {
+    "lf": 335,
+    "lcf": 368,
+    "cf": 391,
+    "rcf": 361,
+    "rf": 323,
+    "avg_of": 355.6,
+    "status": "confirmed"
+   },
+   "home_road_split_pct": 18.8,
+   "home_road_games": 277,
+   "effects": {
+    "elevation_pct": 4.63,
+    "dimension_pct": -1.96,
+    "temperature_pct": 4.0,
+    "conditions_pct": 6.67,
+    "observed_weight": 0.288
+   },
+   "park_index": 103.8,
+   "park_factor_pct": 3.8,
+   "logo_url": "/logos/summer/wenatchee-applesox.png"
   },
   {
    "team_id": 15,
@@ -169,48 +169,14 @@
    "home_road_games": 215,
    "effects": {
     "elevation_pct": 3.02,
-    "dimension_pct": 1.57,
+    "dimension_pct": 2.75,
     "temperature_pct": 2.81,
-    "conditions_pct": 7.4,
-    "observed_weight": 0.42
+    "conditions_pct": 8.58,
+    "observed_weight": 0.252
    },
-   "park_index": 102.7,
-   "park_factor_pct": 2.7,
+   "park_index": 101.8,
+   "park_factor_pct": 1.8,
    "logo_url": "/logos/summer/springfield-drifters.png"
-  },
-  {
-   "team_id": 3,
-   "short_name": "Kamloops NorthPaws",
-   "full_name": "Kamloops NorthPaws",
-   "division": "North",
-   "stadium": "NorBrock Stadium",
-   "city": "Kamloops",
-   "state": "BC",
-   "elevation_ft": 1140,
-   "surface": "Dirt INF/Grass OF",
-   "wind": "Calm",
-   "avg_temp_f": 80,
-   "dimensions": {
-    "lf": 320,
-    "lcf": 366,
-    "cf": 400,
-    "rcf": 372,
-    "rf": 320,
-    "avg_of": 355.6,
-    "status": "confirmed"
-   },
-   "home_road_split_pct": 1.6,
-   "home_road_games": 216,
-   "effects": {
-    "elevation_pct": 7.79,
-    "dimension_pct": -1.12,
-    "temperature_pct": 4.02,
-    "conditions_pct": 10.69,
-    "observed_weight": 0.42
-   },
-   "park_index": 102.4,
-   "park_factor_pct": 2.4,
-   "logo_url": "/logos/summer/kamloops-northpaws.png"
   },
   {
    "team_id": 4,
@@ -240,11 +206,181 @@
     "dimension_pct": 0.0,
     "temperature_pct": 3.59,
     "conditions_pct": 11.28,
-    "observed_weight": 0.42
+    "observed_weight": 0.252
    },
-   "park_index": 101.5,
-   "park_factor_pct": 1.5,
+   "park_index": 101.7,
+   "park_factor_pct": 1.7,
    "logo_url": "/logos/summer/kelowna-falcons.png"
+  },
+  {
+   "team_id": 3,
+   "short_name": "Kamloops NorthPaws",
+   "full_name": "Kamloops NorthPaws",
+   "division": "North",
+   "stadium": "NorBrock Stadium",
+   "city": "Kamloops",
+   "state": "BC",
+   "elevation_ft": 1140,
+   "surface": "Dirt INF/Grass OF",
+   "wind": "Calm",
+   "avg_temp_f": 80,
+   "dimensions": {
+    "lf": 320,
+    "lcf": 366,
+    "cf": 400,
+    "rcf": 372,
+    "rf": 320,
+    "avg_of": 355.6,
+    "status": "confirmed"
+   },
+   "home_road_split_pct": 1.6,
+   "home_road_games": 216,
+   "effects": {
+    "elevation_pct": 7.79,
+    "dimension_pct": -1.96,
+    "temperature_pct": 4.02,
+    "conditions_pct": 9.85,
+    "observed_weight": 0.252
+   },
+   "park_index": 101.4,
+   "park_factor_pct": 1.4,
+   "logo_url": "/logos/summer/kamloops-northpaws.png"
+  },
+  {
+   "team_id": 16,
+   "short_name": "Walla Walla Sweets",
+   "full_name": "Walla Walla Sweets",
+   "division": "South",
+   "stadium": "Borleske Stadium",
+   "city": "Walla Walla",
+   "state": "WA",
+   "elevation_ft": 942,
+   "surface": "Dirt INF/Grass OF",
+   "wind": "Calm",
+   "avg_temp_f": 80,
+   "dimensions": {
+    "lf": 305,
+    "lcf": 367,
+    "cf": 394,
+    "rcf": 356,
+    "rf": 309,
+    "avg_of": 346.2,
+    "status": "confirmed"
+   },
+   "home_road_split_pct": -3.4,
+   "home_road_games": 265,
+   "effects": {
+    "elevation_pct": 6.49,
+    "dimension_pct": 1.31,
+    "temperature_pct": 4.0,
+    "conditions_pct": 11.8,
+    "observed_weight": 0.282
+   },
+   "park_index": 101.2,
+   "park_factor_pct": 1.2,
+   "logo_url": "/logos/summer/walla-walla-sweets.png"
+  },
+  {
+   "team_id": 13,
+   "short_name": "Portland Pickles",
+   "full_name": "Portland Pickles",
+   "division": "South",
+   "stadium": "Walker Stadium",
+   "city": "Portland",
+   "state": "OR",
+   "elevation_ft": 200,
+   "surface": "Dirt INF/Grass OF",
+   "wind": "Calm",
+   "avg_temp_f": 77,
+   "dimensions": {
+    "lf": 310,
+    "lcf": 330,
+    "cf": 347,
+    "rcf": 340,
+    "rf": 309,
+    "avg_of": 327.2,
+    "status": "confirmed"
+   },
+   "home_road_split_pct": -7.9,
+   "home_road_games": 275,
+   "effects": {
+    "elevation_pct": 1.4,
+    "dimension_pct": 8.02,
+    "temperature_pct": 3.4,
+    "conditions_pct": 12.82,
+    "observed_weight": 0.288
+   },
+   "park_index": 100.5,
+   "park_factor_pct": 0.5,
+   "logo_url": "/logos/summer/portland-pickles.png"
+  },
+  {
+   "team_id": 12,
+   "short_name": "Marion Berries",
+   "full_name": "Marion Berries",
+   "division": "South",
+   "stadium": "Chemeketa CC Field",
+   "city": "Salem",
+   "state": "OR",
+   "elevation_ft": 154,
+   "surface": "Turf INF/Turf OF",
+   "wind": "Calm",
+   "avg_temp_f": 75,
+   "dimensions": {
+    "lf": 326,
+    "lcf": 365,
+    "cf": 355,
+    "rcf": 364,
+    "rf": 324,
+    "avg_of": 346.8,
+    "status": "estimated"
+   },
+   "home_road_split_pct": 2.9,
+   "home_road_games": 56,
+   "effects": {
+    "elevation_pct": 1.08,
+    "dimension_pct": 1.12,
+    "temperature_pct": 3.01,
+    "conditions_pct": 5.21,
+    "observed_weight": 0.096
+   },
+   "park_index": 98.7,
+   "park_factor_pct": -1.3,
+   "logo_url": "/logos/summer/marion-berries.png"
+  },
+  {
+   "team_id": 5,
+   "short_name": "Nanaimo NightOwls",
+   "full_name": "Nanaimo NightOwls",
+   "division": "North",
+   "stadium": "Serauxmen Stadium",
+   "city": "Nanaimo",
+   "state": "BC",
+   "elevation_ft": 95,
+   "surface": "Dirt INF/Grass OF",
+   "wind": "Calm",
+   "avg_temp_f": 67,
+   "dimensions": {
+    "lf": 321,
+    "lcf": 352,
+    "cf": 375,
+    "rcf": 328,
+    "rf": 296,
+    "avg_of": 334.4,
+    "status": "estimated"
+   },
+   "home_road_split_pct": -4.7,
+   "home_road_games": 216,
+   "effects": {
+    "elevation_pct": 0.67,
+    "dimension_pct": 5.46,
+    "temperature_pct": 1.4,
+    "conditions_pct": 7.53,
+    "observed_weight": 0.252
+   },
+   "park_index": 98.1,
+   "park_factor_pct": -1.9,
+   "logo_url": "/logos/summer/nanaimo-nightowls.png"
   },
   {
    "team_id": 7,
@@ -274,79 +410,11 @@
     "dimension_pct": 0.0,
     "temperature_pct": 1.19,
     "conditions_pct": 1.4,
-    "observed_weight": 0.43
+    "observed_weight": 0.258
    },
-   "park_index": 101.3,
-   "park_factor_pct": 1.3,
+   "park_index": 97.7,
+   "park_factor_pct": -2.3,
    "logo_url": "/logos/summer/victoria-harbourcats.png"
-  },
-  {
-   "team_id": 12,
-   "short_name": "Marion Berries",
-   "full_name": "Marion Berries",
-   "division": "South",
-   "stadium": "Chemeketa CC Field",
-   "city": "Salem",
-   "state": "OR",
-   "elevation_ft": 154,
-   "surface": "Turf INF/Turf OF",
-   "wind": "Calm",
-   "avg_temp_f": 75,
-   "dimensions": {
-    "lf": 326,
-    "lcf": 365,
-    "cf": 355,
-    "rcf": 364,
-    "rf": 324,
-    "avg_of": 346.8,
-    "status": "estimated"
-   },
-   "home_road_split_pct": 2.9,
-   "home_road_games": 56,
-   "effects": {
-    "elevation_pct": 1.08,
-    "dimension_pct": 0.64,
-    "temperature_pct": 3.01,
-    "conditions_pct": 4.74,
-    "observed_weight": 0.16
-   },
-   "park_index": 100.0,
-   "park_factor_pct": -0.0,
-   "logo_url": "/logos/summer/marion-berries.png"
-  },
-  {
-   "team_id": 16,
-   "short_name": "Walla Walla Sweets",
-   "full_name": "Walla Walla Sweets",
-   "division": "South",
-   "stadium": "Borleske Stadium",
-   "city": "Walla Walla",
-   "state": "WA",
-   "elevation_ft": 942,
-   "surface": "Dirt INF/Grass OF",
-   "wind": "Calm",
-   "avg_temp_f": 80,
-   "dimensions": {
-    "lf": 305,
-    "lcf": 367,
-    "cf": 394,
-    "rcf": 356,
-    "rf": 309,
-    "avg_of": 346.2,
-    "status": "confirmed"
-   },
-   "home_road_split_pct": -3.4,
-   "home_road_games": 265,
-   "effects": {
-    "elevation_pct": 6.49,
-    "dimension_pct": 0.75,
-    "temperature_pct": 4.0,
-    "conditions_pct": 11.25,
-    "observed_weight": 0.47
-   },
-   "park_index": 99.9,
-   "park_factor_pct": -0.1,
-   "logo_url": "/logos/summer/walla-walla-sweets.png"
   },
   {
    "team_id": 2,
@@ -373,82 +441,14 @@
    "home_road_games": 222,
    "effects": {
     "elevation_pct": 13.21,
-    "dimension_pct": -4.0,
+    "dimension_pct": -7.0,
     "temperature_pct": 1.61,
-    "conditions_pct": 10.82,
-    "observed_weight": 0.43
+    "conditions_pct": 7.82,
+    "observed_weight": 0.258
    },
-   "park_index": 97.6,
-   "park_factor_pct": -2.4,
+   "park_index": 96.9,
+   "park_factor_pct": -3.1,
    "logo_url": "/logos/summer/edmonton-riverhawks.png"
-  },
-  {
-   "team_id": 5,
-   "short_name": "Nanaimo NightOwls",
-   "full_name": "Nanaimo NightOwls",
-   "division": "North",
-   "stadium": "Serauxmen Stadium",
-   "city": "Nanaimo",
-   "state": "BC",
-   "elevation_ft": 95,
-   "surface": "Dirt INF/Grass OF",
-   "wind": "Calm",
-   "avg_temp_f": 67,
-   "dimensions": {
-    "lf": 321,
-    "lcf": 352,
-    "cf": 375,
-    "rcf": 328,
-    "rf": 296,
-    "avg_of": 334.4,
-    "status": "estimated"
-   },
-   "home_road_split_pct": -4.7,
-   "home_road_games": 216,
-   "effects": {
-    "elevation_pct": 0.67,
-    "dimension_pct": 3.12,
-    "temperature_pct": 1.4,
-    "conditions_pct": 5.19,
-    "observed_weight": 0.42
-   },
-   "park_index": 96.6,
-   "park_factor_pct": -3.4,
-   "logo_url": "/logos/summer/nanaimo-nightowls.png"
-  },
-  {
-   "team_id": 13,
-   "short_name": "Portland Pickles",
-   "full_name": "Portland Pickles",
-   "division": "South",
-   "stadium": "Walker Stadium",
-   "city": "Portland",
-   "state": "OR",
-   "elevation_ft": 200,
-   "surface": "Dirt INF/Grass OF",
-   "wind": "Calm",
-   "avg_temp_f": 77,
-   "dimensions": {
-    "lf": 310,
-    "lcf": 330,
-    "cf": 347,
-    "rcf": 340,
-    "rf": 309,
-    "avg_of": 327.2,
-    "status": "confirmed"
-   },
-   "home_road_split_pct": -7.9,
-   "home_road_games": 275,
-   "effects": {
-    "elevation_pct": 1.4,
-    "dimension_pct": 4.58,
-    "temperature_pct": 3.4,
-    "conditions_pct": 9.38,
-    "observed_weight": 0.48
-   },
-   "park_index": 96.6,
-   "park_factor_pct": -3.4,
-   "logo_url": "/logos/summer/portland-pickles.png"
   },
   {
    "team_id": 6,
@@ -475,48 +475,14 @@
    "home_road_games": 264,
    "effects": {
     "elevation_pct": 0.36,
-    "dimension_pct": 1.0,
+    "dimension_pct": 1.75,
     "temperature_pct": 0.81,
-    "conditions_pct": 2.17,
-    "observed_weight": 0.47
+    "conditions_pct": 2.92,
+    "observed_weight": 0.282
    },
-   "park_index": 95.7,
-   "park_factor_pct": -4.3,
+   "park_index": 95.1,
+   "park_factor_pct": -4.9,
    "logo_url": "/logos/summer/port-angeles-lefties.png"
-  },
-  {
-   "team_id": 10,
-   "short_name": "Corvallis Knights",
-   "full_name": "Corvallis Knights",
-   "division": "South",
-   "stadium": "Goss Stadium at Coleman Field",
-   "city": "Corvallis",
-   "state": "OR",
-   "elevation_ft": 235,
-   "surface": "Turf INF/Turf OF",
-   "wind": "Calm",
-   "avg_temp_f": 74,
-   "dimensions": {
-    "lf": 331,
-    "lcf": 370,
-    "cf": 400,
-    "rcf": 365,
-    "rf": 328,
-    "avg_of": 358.8,
-    "status": "confirmed"
-   },
-   "home_road_split_pct": -3.1,
-   "home_road_games": 288,
-   "effects": {
-    "elevation_pct": 1.65,
-    "dimension_pct": -1.76,
-    "temperature_pct": 2.8,
-    "conditions_pct": 2.69,
-    "observed_weight": 0.49
-   },
-   "park_index": 95.4,
-   "park_factor_pct": -4.6,
-   "logo_url": "/logos/summer/corvallis-knights.png"
   },
   {
    "team_id": 11,
@@ -543,14 +509,48 @@
    "home_road_games": 272,
    "effects": {
     "elevation_pct": 0.15,
-    "dimension_pct": 1.98,
+    "dimension_pct": 3.46,
     "temperature_pct": 2.62,
-    "conditions_pct": 4.75,
-    "observed_weight": 0.48
+    "conditions_pct": 6.23,
+    "observed_weight": 0.288
    },
-   "park_index": 92.8,
-   "park_factor_pct": -7.2,
+   "park_index": 95.0,
+   "park_factor_pct": -5.0,
    "logo_url": "/logos/summer/cowlitz-black-bears.png"
+  },
+  {
+   "team_id": 10,
+   "short_name": "Corvallis Knights",
+   "full_name": "Corvallis Knights",
+   "division": "South",
+   "stadium": "Goss Stadium at Coleman Field",
+   "city": "Corvallis",
+   "state": "OR",
+   "elevation_ft": 235,
+   "surface": "Turf INF/Turf OF",
+   "wind": "Calm",
+   "avg_temp_f": 74,
+   "dimensions": {
+    "lf": 331,
+    "lcf": 370,
+    "cf": 400,
+    "rcf": 365,
+    "rf": 328,
+    "avg_of": 358.8,
+    "status": "confirmed"
+   },
+   "home_road_split_pct": -3.1,
+   "home_road_games": 288,
+   "effects": {
+    "elevation_pct": 1.65,
+    "dimension_pct": -3.08,
+    "temperature_pct": 2.8,
+    "conditions_pct": 1.37,
+    "observed_weight": 0.294
+   },
+   "park_index": 93.7,
+   "park_factor_pct": -6.3,
+   "logo_url": "/logos/summer/corvallis-knights.png"
   },
   {
    "team_id": 1,
@@ -577,14 +577,15 @@
    "home_road_games": 281,
    "effects": {
     "elevation_pct": 0.42,
-    "dimension_pct": 1.9,
+    "dimension_pct": 3.32,
     "temperature_pct": 1.38,
-    "conditions_pct": 3.71,
-    "observed_weight": 0.48
+    "conditions_pct": 5.12,
+    "observed_weight": 0.288
    },
-   "park_index": 86.1,
-   "park_factor_pct": -13.9,
+   "park_index": 90.5,
+   "park_factor_pct": -9.5,
    "logo_url": "/logos/summer/bellingham-bells.png"
   }
- ]
+ ],
+ "tuning_note": "Dimension sensitivity x1.75 and observed home/road weight x0.60 (cap 0.60) so extreme-dimension parks (e.g. Walker Stadium short fences) are not overridden by noisier home/road splits; league re-centered to 100."
 }
