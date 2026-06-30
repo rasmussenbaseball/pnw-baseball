@@ -1,13 +1,13 @@
 {
   "description": "PNW College Baseball Park Factors \u2014 empirical-Bayes blend of measured park conditions and six-season home/road run splits.",
-  "methodology": "Park Index centered at 100 (>100 favors hitters). Each park blends a physical prior (elevation with altitude saturation, outfield depth vs 350 ft, temperature) with its observed home/road run split, weighted by sample size (games/(games+300)). Coefficients from leave-one-season-out cross-validation, 2021-2026. Indices re-centered (games-weighted) so the average PNW park = 100. Built on the Park Factors tool by Kai Malloch (intern, June 2026).",
+  "methodology": "Park Index centered at 100 (>100 favors hitters). Each park blends a physical prior (elevation with altitude saturation, outfield depth vs 350 ft, temperature) with its observed home/road run split, weighted by sample size (games/(games+300)). Coefficients from leave-one-season-out cross-validation, 2021-2026. Indices re-centered (games-weighted) so the average PNW park = 100. Built on the Park Factors tool by Kai Malloch (intern, June 2026). Dimension (0.16%/ft) and temperature (0.22%/deg F) sensitivities trimmed June 2026 to match the WCL model and a physics review (Nathan/SABR/Statcast): outfield dimensions and temperature move HR rate far more than total RUNS, so for a runs-based factor they carry less weight than elevation. Elevation (7%/1000ft, saturating) left as Kai cross-validated it.",
   "coefficients": {
     "elev_pct_per_1000ft": 7.0,
     "elev_saturation_ft": 4000,
-    "dim_pct_per_ft": 0.2,
-    "temp_pct_per_deg_f": 0.45,
+    "dim_pct_per_ft": 0.16,
+    "temp_pct_per_deg_f": 0.22,
     "regression_games": 300,
-    "recenter_shift": 2.07
+    "recenter_shift": 2.126
   },
   "baseline_dimensions": "350 ft average outfield depth",
   "baseline_outfield_depth_ft": 350,
@@ -40,13 +40,13 @@
       "home_road_games": 140,
       "effects": {
         "elevation_pct": 16.82,
-        "dimension_pct": 0.04,
-        "temperature_pct": -1.57,
-        "conditions_pct": 15.28,
+        "dimension_pct": 0.03,
+        "temperature_pct": -0.77,
+        "conditions_pct": 16.08,
         "observed_weight": 0.318
       },
-      "park_index": 125.8,
-      "park_factor_pct": 25.8
+      "park_index": 126.3,
+      "park_factor_pct": 26.3
     },
     {
       "team_id": 20,
@@ -73,13 +73,13 @@
       "home_road_games": 159,
       "effects": {
         "elevation_pct": 21.64,
-        "dimension_pct": -5.68,
-        "temperature_pct": -1.35,
-        "conditions_pct": 14.61,
+        "dimension_pct": -4.54,
+        "temperature_pct": -0.66,
+        "conditions_pct": 16.44,
         "observed_weight": 0.346
       },
-      "park_index": 116.4,
-      "park_factor_pct": 16.4
+      "park_index": 117.6,
+      "park_factor_pct": 17.6
     },
     {
       "team_id": 483,
@@ -106,13 +106,13 @@
       "home_road_games": 155,
       "effects": {
         "elevation_pct": 12.06,
-        "dimension_pct": -1.84,
-        "temperature_pct": -0.68,
-        "conditions_pct": 9.54,
+        "dimension_pct": -1.47,
+        "temperature_pct": -0.33,
+        "conditions_pct": 10.26,
         "observed_weight": 0.341
       },
-      "park_index": 113.0,
-      "park_factor_pct": 13.0
+      "park_index": 113.5,
+      "park_factor_pct": 13.5
     },
     {
       "team_id": 36,
@@ -139,13 +139,13 @@
       "home_road_games": 143,
       "effects": {
         "elevation_pct": 13.75,
-        "dimension_pct": 0.56,
-        "temperature_pct": 2.02,
-        "conditions_pct": 16.34,
+        "dimension_pct": 0.45,
+        "temperature_pct": 0.99,
+        "conditions_pct": 15.19,
         "observed_weight": 0.323
       },
-      "park_index": 111.7,
-      "park_factor_pct": 11.7
+      "park_index": 110.9,
+      "park_factor_pct": 10.9
     },
     {
       "team_id": 13,
@@ -172,9 +172,9 @@
       "home_road_games": 168,
       "effects": {
         "elevation_pct": 12.06,
-        "dimension_pct": 0.88,
-        "temperature_pct": -0.68,
-        "conditions_pct": 12.26,
+        "dimension_pct": 0.7,
+        "temperature_pct": -0.33,
+        "conditions_pct": 12.43,
         "observed_weight": 0.359
       },
       "park_index": 109.9,
@@ -205,13 +205,13 @@
       "home_road_games": 192,
       "effects": {
         "elevation_pct": 10.25,
-        "dimension_pct": -2.48,
-        "temperature_pct": -0.68,
-        "conditions_pct": 7.09,
+        "dimension_pct": -1.98,
+        "temperature_pct": -0.33,
+        "conditions_pct": 7.93,
         "observed_weight": 0.39
       },
-      "park_index": 109.4,
-      "park_factor_pct": 9.4
+      "park_index": 109.9,
+      "park_factor_pct": 9.9
     },
     {
       "team_id": 35,
@@ -238,13 +238,13 @@
       "home_road_games": 149,
       "effects": {
         "elevation_pct": 12.06,
-        "dimension_pct": 0.28,
-        "temperature_pct": -0.68,
-        "conditions_pct": 11.66,
+        "dimension_pct": 0.22,
+        "temperature_pct": -0.33,
+        "conditions_pct": 11.95,
         "observed_weight": 0.332
       },
-      "park_index": 109.0,
-      "park_factor_pct": 9.0
+      "park_index": 109.1,
+      "park_factor_pct": 9.1
     },
     {
       "team_id": 9,
@@ -271,13 +271,13 @@
       "home_road_games": 197,
       "effects": {
         "elevation_pct": 15.24,
-        "dimension_pct": -1.56,
-        "temperature_pct": 1.12,
-        "conditions_pct": 14.8,
+        "dimension_pct": -1.25,
+        "temperature_pct": 0.55,
+        "conditions_pct": 14.54,
         "observed_weight": 0.396
       },
-      "park_index": 108.8,
-      "park_factor_pct": 8.8
+      "park_index": 108.6,
+      "park_factor_pct": 8.6
     },
     {
       "team_id": 12,
@@ -304,13 +304,13 @@
       "home_road_games": 166,
       "effects": {
         "elevation_pct": 6.47,
-        "dimension_pct": -1.56,
-        "temperature_pct": 1.57,
-        "conditions_pct": 6.49,
+        "dimension_pct": -1.25,
+        "temperature_pct": 0.77,
+        "conditions_pct": 5.99,
         "observed_weight": 0.356
       },
-      "park_index": 107.9,
-      "park_factor_pct": 7.9
+      "park_index": 107.5,
+      "park_factor_pct": 7.5
     },
     {
       "team_id": 45,
@@ -337,13 +337,13 @@
       "home_road_games": 137,
       "effects": {
         "elevation_pct": 2.27,
-        "dimension_pct": 1.12,
-        "temperature_pct": 0.45,
-        "conditions_pct": 3.84,
+        "dimension_pct": 0.9,
+        "temperature_pct": 0.22,
+        "conditions_pct": 3.39,
         "observed_weight": 0.314
       },
-      "park_index": 106.8,
-      "park_factor_pct": 6.8
+      "park_index": 106.5,
+      "park_factor_pct": 6.5
     },
     {
       "team_id": 33,
@@ -370,13 +370,13 @@
       "home_road_games": 142,
       "effects": {
         "elevation_pct": 7.25,
-        "dimension_pct": -1.24,
-        "temperature_pct": 0.9,
-        "conditions_pct": 6.91,
+        "dimension_pct": -0.99,
+        "temperature_pct": 0.44,
+        "conditions_pct": 6.7,
         "observed_weight": 0.321
       },
-      "park_index": 106.5,
-      "park_factor_pct": 6.5
+      "park_index": 106.3,
+      "park_factor_pct": 6.3
     },
     {
       "team_id": 37,
@@ -403,13 +403,13 @@
       "home_road_games": 127,
       "effects": {
         "elevation_pct": 6.47,
-        "dimension_pct": 0.76,
-        "temperature_pct": 1.57,
-        "conditions_pct": 8.81,
+        "dimension_pct": 0.61,
+        "temperature_pct": 0.77,
+        "conditions_pct": 7.85,
         "observed_weight": 0.297
       },
-      "park_index": 106.4,
-      "park_factor_pct": 6.4
+      "park_index": 105.6,
+      "park_factor_pct": 5.6
     },
     {
       "team_id": 7,
@@ -436,13 +436,13 @@
       "home_road_games": 202,
       "effects": {
         "elevation_pct": 18.3,
-        "dimension_pct": -4.0,
-        "temperature_pct": -1.12,
-        "conditions_pct": 13.17,
+        "dimension_pct": -3.2,
+        "temperature_pct": -0.55,
+        "conditions_pct": 14.55,
         "observed_weight": 0.402
       },
-      "park_index": 106.2,
-      "park_factor_pct": 6.2
+      "park_index": 106.9,
+      "park_factor_pct": 6.9
     },
     {
       "team_id": 34,
@@ -469,13 +469,13 @@
       "home_road_games": 156,
       "effects": {
         "elevation_pct": 2.84,
-        "dimension_pct": -1.88,
-        "temperature_pct": 2.93,
-        "conditions_pct": 3.88,
+        "dimension_pct": -1.5,
+        "temperature_pct": 1.43,
+        "conditions_pct": 2.77,
         "observed_weight": 0.342
       },
-      "park_index": 105.9,
-      "park_factor_pct": 5.9
+      "park_index": 105.1,
+      "park_factor_pct": 5.1
     },
     {
       "team_id": 42,
@@ -502,13 +502,13 @@
       "home_road_games": 119,
       "effects": {
         "elevation_pct": 2.27,
-        "dimension_pct": -0.04,
-        "temperature_pct": 0.45,
-        "conditions_pct": 2.68,
+        "dimension_pct": -0.03,
+        "temperature_pct": 0.22,
+        "conditions_pct": 2.46,
         "observed_weight": 0.284
       },
-      "park_index": 104.7,
-      "park_factor_pct": 4.7
+      "park_index": 104.5,
+      "park_factor_pct": 4.5
     },
     {
       "team_id": 40,
@@ -535,13 +535,13 @@
       "home_road_games": 138,
       "effects": {
         "elevation_pct": 7.32,
-        "dimension_pct": -0.36,
-        "temperature_pct": 0.45,
-        "conditions_pct": 7.41,
+        "dimension_pct": -0.29,
+        "temperature_pct": 0.22,
+        "conditions_pct": 7.25,
         "observed_weight": 0.315
       },
-      "park_index": 104.5,
-      "park_factor_pct": 4.5
+      "park_index": 104.4,
+      "park_factor_pct": 4.4
     },
     {
       "team_id": 4,
@@ -568,13 +568,13 @@
       "home_road_games": 306,
       "effects": {
         "elevation_pct": 15.77,
-        "dimension_pct": -3.0,
-        "temperature_pct": -1.57,
-        "conditions_pct": 11.19,
+        "dimension_pct": -2.4,
+        "temperature_pct": -0.77,
+        "conditions_pct": 12.6,
         "observed_weight": 0.505
       },
-      "park_index": 104.0,
-      "park_factor_pct": 4.0
+      "park_index": 104.7,
+      "park_factor_pct": 4.7
     },
     {
       "team_id": 25,
@@ -601,13 +601,13 @@
       "home_road_games": 159,
       "effects": {
         "elevation_pct": 0.64,
-        "dimension_pct": -2.28,
-        "temperature_pct": -0.23,
-        "conditions_pct": -1.86,
+        "dimension_pct": -1.82,
+        "temperature_pct": -0.11,
+        "conditions_pct": -1.3,
         "observed_weight": 0.346
       },
-      "park_index": 103.5,
-      "park_factor_pct": 3.5
+      "park_index": 103.9,
+      "park_factor_pct": 3.9
     },
     {
       "team_id": 21,
@@ -634,13 +634,13 @@
       "home_road_games": 202,
       "effects": {
         "elevation_pct": 14.91,
-        "dimension_pct": -2.32,
-        "temperature_pct": 1.12,
-        "conditions_pct": 13.72,
+        "dimension_pct": -1.86,
+        "temperature_pct": 0.55,
+        "conditions_pct": 13.6,
         "observed_weight": 0.402
       },
-      "park_index": 103.4,
-      "park_factor_pct": 3.4
+      "park_index": 103.3,
+      "park_factor_pct": 3.3
     },
     {
       "team_id": 43,
@@ -667,13 +667,13 @@
       "home_road_games": 149,
       "effects": {
         "elevation_pct": 3.0,
-        "dimension_pct": 0.88,
-        "temperature_pct": 0.9,
-        "conditions_pct": 4.78,
+        "dimension_pct": 0.7,
+        "temperature_pct": 0.44,
+        "conditions_pct": 4.14,
         "observed_weight": 0.332
       },
-      "park_index": 102.7,
-      "park_factor_pct": 2.7
+      "park_index": 102.2,
+      "park_factor_pct": 2.2
     },
     {
       "team_id": 53,
@@ -700,13 +700,13 @@
       "home_road_games": 135,
       "effects": {
         "elevation_pct": 2.66,
-        "dimension_pct": 2.16,
-        "temperature_pct": -0.45,
-        "conditions_pct": 4.37,
+        "dimension_pct": 1.73,
+        "temperature_pct": -0.22,
+        "conditions_pct": 4.17,
         "observed_weight": 0.31
       },
-      "park_index": 102.6,
-      "park_factor_pct": 2.6
+      "park_index": 102.5,
+      "park_factor_pct": 2.5
     },
     {
       "team_id": 22,
@@ -733,13 +733,13 @@
       "home_road_games": 211,
       "effects": {
         "elevation_pct": 4.92,
-        "dimension_pct": -0.4,
-        "temperature_pct": 1.12,
-        "conditions_pct": 5.64,
+        "dimension_pct": -0.32,
+        "temperature_pct": 0.55,
+        "conditions_pct": 5.15,
         "observed_weight": 0.413
       },
-      "park_index": 101.9,
-      "park_factor_pct": 1.9
+      "park_index": 101.5,
+      "park_factor_pct": 1.5
     },
     {
       "team_id": 39,
@@ -767,12 +767,12 @@
       "effects": {
         "elevation_pct": 7.48,
         "dimension_pct": 0.0,
-        "temperature_pct": 0.9,
-        "conditions_pct": 8.38,
+        "temperature_pct": 0.44,
+        "conditions_pct": 7.92,
         "observed_weight": 0.332
       },
-      "park_index": 101.8,
-      "park_factor_pct": 1.8
+      "park_index": 101.4,
+      "park_factor_pct": 1.4
     },
     {
       "team_id": 49,
@@ -799,13 +799,13 @@
       "home_road_games": 130,
       "effects": {
         "elevation_pct": 1.31,
-        "dimension_pct": 1.32,
-        "temperature_pct": -0.45,
-        "conditions_pct": 2.18,
+        "dimension_pct": 1.06,
+        "temperature_pct": -0.22,
+        "conditions_pct": 2.15,
         "observed_weight": 0.302
       },
-      "park_index": 101.3,
-      "park_factor_pct": 1.3
+      "park_index": 101.2,
+      "park_factor_pct": 1.2
     },
     {
       "team_id": 16,
@@ -832,13 +832,13 @@
       "home_road_games": 38,
       "effects": {
         "elevation_pct": 1.08,
-        "dimension_pct": 2.44,
-        "temperature_pct": 0.9,
-        "conditions_pct": 4.42,
+        "dimension_pct": 1.95,
+        "temperature_pct": 0.44,
+        "conditions_pct": 3.47,
         "observed_weight": 0.112
       },
-      "park_index": 99.9,
-      "park_factor_pct": -0.1
+      "park_index": 99.0,
+      "park_factor_pct": -1.0
     },
     {
       "team_id": 52,
@@ -865,13 +865,13 @@
       "home_road_games": 161,
       "effects": {
         "elevation_pct": 0.16,
-        "dimension_pct": 1.96,
-        "temperature_pct": 0.23,
-        "conditions_pct": 2.35,
+        "dimension_pct": 1.57,
+        "temperature_pct": 0.11,
+        "conditions_pct": 1.84,
         "observed_weight": 0.349
       },
-      "park_index": 99.6,
-      "park_factor_pct": -0.4
+      "park_index": 99.2,
+      "park_factor_pct": -0.8
     },
     {
       "team_id": 24,
@@ -898,13 +898,13 @@
       "home_road_games": 152,
       "effects": {
         "elevation_pct": 3.0,
-        "dimension_pct": 1.56,
-        "temperature_pct": 0.9,
-        "conditions_pct": 5.46,
+        "dimension_pct": 1.25,
+        "temperature_pct": 0.44,
+        "conditions_pct": 4.69,
         "observed_weight": 0.336
       },
-      "park_index": 99.0,
-      "park_factor_pct": -1.0
+      "park_index": 98.4,
+      "park_factor_pct": -1.6
     },
     {
       "team_id": 23,
@@ -931,13 +931,13 @@
       "home_road_games": 143,
       "effects": {
         "elevation_pct": 1.08,
-        "dimension_pct": -0.6,
-        "temperature_pct": 0.9,
-        "conditions_pct": 1.38,
+        "dimension_pct": -0.48,
+        "temperature_pct": 0.44,
+        "conditions_pct": 1.04,
         "observed_weight": 0.323
       },
-      "park_index": 98.7,
-      "park_factor_pct": -1.3
+      "park_index": 98.4,
+      "park_factor_pct": -1.6
     },
     {
       "team_id": 10,
@@ -964,13 +964,13 @@
       "home_road_games": 116,
       "effects": {
         "elevation_pct": 2.66,
-        "dimension_pct": 0.36,
-        "temperature_pct": -0.45,
-        "conditions_pct": 2.57,
+        "dimension_pct": 0.29,
+        "temperature_pct": -0.22,
+        "conditions_pct": 2.73,
         "observed_weight": 0.279
       },
-      "park_index": 98.7,
-      "park_factor_pct": -1.3
+      "park_index": 98.8,
+      "park_factor_pct": -1.2
     },
     {
       "team_id": 18,
@@ -997,13 +997,13 @@
       "home_road_games": 116,
       "effects": {
         "elevation_pct": 1.25,
-        "dimension_pct": -0.52,
-        "temperature_pct": 0.45,
-        "conditions_pct": 1.18,
+        "dimension_pct": -0.42,
+        "temperature_pct": 0.22,
+        "conditions_pct": 1.05,
         "observed_weight": 0.279
       },
-      "park_index": 98.3,
-      "park_factor_pct": -1.7
+      "park_index": 98.1,
+      "park_factor_pct": -1.9
     },
     {
       "team_id": 27,
@@ -1030,13 +1030,13 @@
       "home_road_games": 145,
       "effects": {
         "elevation_pct": 2.75,
-        "dimension_pct": 1.08,
-        "temperature_pct": -0.9,
-        "conditions_pct": 2.93,
+        "dimension_pct": 0.86,
+        "temperature_pct": -0.44,
+        "conditions_pct": 3.17,
         "observed_weight": 0.326
       },
-      "park_index": 97.9,
-      "park_factor_pct": -2.1
+      "park_index": 98.1,
+      "park_factor_pct": -1.9
     },
     {
       "team_id": 11,
@@ -1063,13 +1063,13 @@
       "home_road_games": 113,
       "effects": {
         "elevation_pct": 2.66,
-        "dimension_pct": -1.04,
-        "temperature_pct": -0.45,
-        "conditions_pct": 1.17,
+        "dimension_pct": -0.83,
+        "temperature_pct": -0.22,
+        "conditions_pct": 1.61,
         "observed_weight": 0.274
       },
-      "park_index": 97.8,
-      "park_factor_pct": -2.2
+      "park_index": 98.1,
+      "park_factor_pct": -1.9
     },
     {
       "team_id": 38,
@@ -1096,13 +1096,13 @@
       "home_road_games": 154,
       "effects": {
         "elevation_pct": 4.64,
-        "dimension_pct": -1.12,
+        "dimension_pct": -0.9,
         "temperature_pct": 0.0,
-        "conditions_pct": 3.52,
+        "conditions_pct": 3.74,
         "observed_weight": 0.339
       },
-      "park_index": 97.7,
-      "park_factor_pct": -2.3
+      "park_index": 97.8,
+      "park_factor_pct": -2.2
     },
     {
       "team_id": 31,
@@ -1129,13 +1129,13 @@
       "home_road_games": 137,
       "effects": {
         "elevation_pct": 3.34,
-        "dimension_pct": -1.52,
-        "temperature_pct": -0.68,
-        "conditions_pct": 1.14,
+        "dimension_pct": -1.22,
+        "temperature_pct": -0.33,
+        "conditions_pct": 1.79,
         "observed_weight": 0.314
       },
-      "park_index": 97.7,
-      "park_factor_pct": -2.3
+      "park_index": 98.1,
+      "park_factor_pct": -1.9
     },
     {
       "team_id": 17,
@@ -1162,9 +1162,9 @@
       "home_road_games": 160,
       "effects": {
         "elevation_pct": 1.48,
-        "dimension_pct": -2.0,
-        "temperature_pct": 0.45,
-        "conditions_pct": -0.07,
+        "dimension_pct": -1.6,
+        "temperature_pct": 0.22,
+        "conditions_pct": 0.1,
         "observed_weight": 0.348
       },
       "park_index": 97.4,
@@ -1195,13 +1195,13 @@
       "home_road_games": 152,
       "effects": {
         "elevation_pct": 0.57,
-        "dimension_pct": -0.04,
-        "temperature_pct": -0.9,
-        "conditions_pct": -0.37,
+        "dimension_pct": -0.03,
+        "temperature_pct": -0.44,
+        "conditions_pct": 0.1,
         "observed_weight": 0.336
       },
-      "park_index": 97.2,
-      "park_factor_pct": -2.8
+      "park_index": 97.4,
+      "park_factor_pct": -2.6
     },
     {
       "team_id": 46,
@@ -1228,13 +1228,13 @@
       "home_road_games": 146,
       "effects": {
         "elevation_pct": 0.16,
-        "dimension_pct": -1.12,
-        "temperature_pct": -0.9,
-        "conditions_pct": -1.86,
+        "dimension_pct": -0.9,
+        "temperature_pct": -0.44,
+        "conditions_pct": -1.18,
         "observed_weight": 0.327
       },
-      "park_index": 97.1,
-      "park_factor_pct": -2.9
+      "park_index": 97.5,
+      "park_factor_pct": -2.5
     },
     {
       "team_id": 44,
@@ -1261,13 +1261,13 @@
       "home_road_games": 146,
       "effects": {
         "elevation_pct": 1.49,
-        "dimension_pct": -1.28,
-        "temperature_pct": 1.12,
-        "conditions_pct": 1.33,
+        "dimension_pct": -1.02,
+        "temperature_pct": 0.55,
+        "conditions_pct": 1.01,
         "observed_weight": 0.327
       },
-      "park_index": 96.9,
-      "park_factor_pct": -3.1
+      "park_index": 96.6,
+      "park_factor_pct": -3.4
     },
     {
       "team_id": 47,
@@ -1294,13 +1294,13 @@
       "home_road_games": 146,
       "effects": {
         "elevation_pct": 3.34,
-        "dimension_pct": -0.92,
-        "temperature_pct": 1.8,
-        "conditions_pct": 4.22,
+        "dimension_pct": -0.74,
+        "temperature_pct": 0.88,
+        "conditions_pct": 3.48,
         "observed_weight": 0.327
       },
-      "park_index": 96.6,
-      "park_factor_pct": -3.4
+      "park_index": 96.0,
+      "park_factor_pct": -4.0
     },
     {
       "team_id": 50,
@@ -1327,13 +1327,13 @@
       "home_road_games": 139,
       "effects": {
         "elevation_pct": 0.07,
-        "dimension_pct": 0.56,
-        "temperature_pct": -1.8,
-        "conditions_pct": -1.17,
+        "dimension_pct": 0.45,
+        "temperature_pct": -0.88,
+        "conditions_pct": -0.36,
         "observed_weight": 0.317
       },
-      "park_index": 96.5,
-      "park_factor_pct": -3.5
+      "park_index": 97.0,
+      "park_factor_pct": -3.0
     },
     {
       "team_id": 15,
@@ -1360,13 +1360,13 @@
       "home_road_games": 165,
       "effects": {
         "elevation_pct": 0.14,
-        "dimension_pct": -0.68,
-        "temperature_pct": 0.9,
-        "conditions_pct": 0.36,
+        "dimension_pct": -0.54,
+        "temperature_pct": 0.44,
+        "conditions_pct": 0.04,
         "observed_weight": 0.355
       },
-      "park_index": 96.4,
-      "park_factor_pct": -3.6
+      "park_index": 96.1,
+      "park_factor_pct": -3.9
     },
     {
       "team_id": 30,
@@ -1393,13 +1393,13 @@
       "home_road_games": 150,
       "effects": {
         "elevation_pct": 1.49,
-        "dimension_pct": 0.04,
-        "temperature_pct": -0.9,
-        "conditions_pct": 0.63,
+        "dimension_pct": 0.03,
+        "temperature_pct": -0.44,
+        "conditions_pct": 1.08,
         "observed_weight": 0.333
       },
-      "park_index": 96.4,
-      "park_factor_pct": -3.6
+      "park_index": 96.7,
+      "park_factor_pct": -3.3
     },
     {
       "team_id": 32,
@@ -1426,13 +1426,13 @@
       "home_road_games": 130,
       "effects": {
         "elevation_pct": 0.85,
-        "dimension_pct": 0.04,
-        "temperature_pct": -1.35,
-        "conditions_pct": -0.46,
+        "dimension_pct": 0.03,
+        "temperature_pct": -0.66,
+        "conditions_pct": 0.22,
         "observed_weight": 0.302
       },
-      "park_index": 96.1,
-      "park_factor_pct": -3.9
+      "park_index": 96.5,
+      "park_factor_pct": -3.5
     },
     {
       "team_id": 48,
@@ -1459,13 +1459,13 @@
       "home_road_games": 152,
       "effects": {
         "elevation_pct": 1.31,
-        "dimension_pct": -1.0,
-        "temperature_pct": -0.45,
-        "conditions_pct": -0.14,
+        "dimension_pct": -0.8,
+        "temperature_pct": -0.22,
+        "conditions_pct": 0.29,
         "observed_weight": 0.336
       },
-      "park_index": 96.1,
-      "park_factor_pct": -3.9
+      "park_index": 96.4,
+      "park_factor_pct": -3.6
     },
     {
       "team_id": 26,
@@ -1492,13 +1492,13 @@
       "home_road_games": 84,
       "effects": {
         "elevation_pct": 0.64,
-        "dimension_pct": -0.8,
-        "temperature_pct": -1.8,
-        "conditions_pct": -1.96,
+        "dimension_pct": -0.64,
+        "temperature_pct": -0.88,
+        "conditions_pct": -0.88,
         "observed_weight": 0.219
       },
-      "park_index": 95.6,
-      "park_factor_pct": -4.4
+      "park_index": 96.4,
+      "park_factor_pct": -3.6
     },
     {
       "team_id": 2,
@@ -1525,13 +1525,13 @@
       "home_road_games": 356,
       "effects": {
         "elevation_pct": 3.0,
-        "dimension_pct": -2.08,
-        "temperature_pct": 0.9,
-        "conditions_pct": 1.82,
+        "dimension_pct": -1.66,
+        "temperature_pct": 0.44,
+        "conditions_pct": 1.78,
         "observed_weight": 0.543
       },
-      "park_index": 95.4,
-      "park_factor_pct": -4.6
+      "park_index": 95.3,
+      "park_factor_pct": -4.7
     },
     {
       "team_id": 3,
@@ -1558,13 +1558,13 @@
       "home_road_games": 373,
       "effects": {
         "elevation_pct": 1.64,
-        "dimension_pct": -1.76,
-        "temperature_pct": 0.9,
-        "conditions_pct": 0.78,
+        "dimension_pct": -1.41,
+        "temperature_pct": 0.44,
+        "conditions_pct": 0.67,
         "observed_weight": 0.554
       },
-      "park_index": 95.0,
-      "park_factor_pct": -5.0
+      "park_index": 94.9,
+      "park_factor_pct": -5.1
     },
     {
       "team_id": 29,
@@ -1591,13 +1591,13 @@
       "home_road_games": 139,
       "effects": {
         "elevation_pct": 0.77,
-        "dimension_pct": -1.6,
-        "temperature_pct": -1.12,
-        "conditions_pct": -1.95,
+        "dimension_pct": -1.28,
+        "temperature_pct": -0.55,
+        "conditions_pct": -1.06,
         "observed_weight": 0.317
       },
-      "park_index": 92.6,
-      "park_factor_pct": -7.4
+      "park_index": 93.2,
+      "park_factor_pct": -6.8
     },
     {
       "team_id": 482,
@@ -1624,13 +1624,13 @@
       "home_road_games": 319,
       "effects": {
         "elevation_pct": 0.14,
-        "dimension_pct": -1.04,
-        "temperature_pct": 0.9,
-        "conditions_pct": -0.0,
+        "dimension_pct": -0.83,
+        "temperature_pct": 0.44,
+        "conditions_pct": -0.25,
         "observed_weight": 0.515
       },
-      "park_index": 94.6,
-      "park_factor_pct": -5.4
+      "park_index": 94.5,
+      "park_factor_pct": -5.5
     },
     {
       "team_id": 41,
@@ -1657,13 +1657,13 @@
       "home_road_games": 139,
       "effects": {
         "elevation_pct": 1.08,
-        "dimension_pct": 0.64,
-        "temperature_pct": 0.9,
-        "conditions_pct": 2.62,
+        "dimension_pct": 0.51,
+        "temperature_pct": 0.44,
+        "conditions_pct": 2.03,
         "observed_weight": 0.317
       },
-      "park_index": 94.4,
-      "park_factor_pct": -5.6
+      "park_index": 93.9,
+      "park_factor_pct": -6.1
     },
     {
       "team_id": 484,
@@ -1690,13 +1690,13 @@
       "home_road_games": 257,
       "effects": {
         "elevation_pct": 0.64,
-        "dimension_pct": -1.36,
-        "temperature_pct": -0.23,
-        "conditions_pct": -0.94,
+        "dimension_pct": -1.09,
+        "temperature_pct": -0.11,
+        "conditions_pct": -0.56,
         "observed_weight": 0.461
       },
-      "park_index": 94.4,
-      "park_factor_pct": -5.6
+      "park_index": 94.5,
+      "park_factor_pct": -5.5
     },
     {
       "team_id": 14,
@@ -1723,13 +1723,13 @@
       "home_road_games": 158,
       "effects": {
         "elevation_pct": 1.12,
-        "dimension_pct": 0.52,
-        "temperature_pct": 0.45,
-        "conditions_pct": 2.09,
+        "dimension_pct": 0.42,
+        "temperature_pct": 0.22,
+        "conditions_pct": 1.76,
         "observed_weight": 0.345
       },
-      "park_index": 92.7,
-      "park_factor_pct": -7.3
+      "park_index": 92.5,
+      "park_factor_pct": -7.5
     },
     {
       "team_id": 5720,
@@ -1756,13 +1756,13 @@
       "home_road_games": 226,
       "effects": {
         "elevation_pct": 1.61,
-        "dimension_pct": 0.56,
-        "temperature_pct": -2.02,
-        "conditions_pct": 0.14,
+        "dimension_pct": 0.45,
+        "temperature_pct": -0.99,
+        "conditions_pct": 1.07,
         "observed_weight": 0.43
       },
-      "park_index": 90.0,
-      "park_factor_pct": -10.0
+      "park_index": 90.4,
+      "park_factor_pct": -9.6
     },
     {
       "team_id": 505,
@@ -1789,13 +1789,13 @@
       "home_road_games": 83,
       "effects": {
         "elevation_pct": 0.35,
-        "dimension_pct": -5.64,
-        "temperature_pct": 0.9,
-        "conditions_pct": -4.39,
+        "dimension_pct": -4.51,
+        "temperature_pct": 0.44,
+        "conditions_pct": -3.72,
         "observed_weight": 0.217
       },
-      "park_index": 89.9,
-      "park_factor_pct": -10.1
+      "park_index": 90.4,
+      "park_factor_pct": -9.6
     },
     {
       "team_id": 1,
@@ -1822,9 +1822,9 @@
       "home_road_games": 313,
       "effects": {
         "elevation_pct": 0.92,
-        "dimension_pct": -0.76,
-        "temperature_pct": -0.23,
-        "conditions_pct": -0.07,
+        "dimension_pct": -0.61,
+        "temperature_pct": -0.11,
+        "conditions_pct": 0.2,
         "observed_weight": 0.511
       },
       "park_index": 88.9,
@@ -1855,13 +1855,13 @@
       "home_road_games": 190,
       "effects": {
         "elevation_pct": 1.5,
-        "dimension_pct": -3.56,
-        "temperature_pct": 0.23,
-        "conditions_pct": -1.84,
+        "dimension_pct": -2.85,
+        "temperature_pct": 0.11,
+        "conditions_pct": -1.24,
         "observed_weight": 0.388
       },
-      "park_index": 88.9,
-      "park_factor_pct": -11.1
+      "park_index": 89.2,
+      "park_factor_pct": -10.8
     },
     {
       "team_id": 6,
@@ -1888,13 +1888,13 @@
       "home_road_games": 196,
       "effects": {
         "elevation_pct": 1.42,
-        "dimension_pct": -2.0,
-        "temperature_pct": -0.68,
-        "conditions_pct": -1.26,
+        "dimension_pct": -1.6,
+        "temperature_pct": -0.33,
+        "conditions_pct": -0.51,
         "observed_weight": 0.395
       },
-      "park_index": 86.9,
-      "park_factor_pct": -13.1
+      "park_index": 87.3,
+      "park_factor_pct": -12.7
     }
   ]
 }

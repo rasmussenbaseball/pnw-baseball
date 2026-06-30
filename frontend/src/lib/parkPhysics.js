@@ -6,11 +6,11 @@
 
 // Games-weighted re-center shift so the builder's projected index matches the
 // site leaderboard + the factors used in advanced stats.
-export const RECENTER = 2.07
+export const RECENTER = 2.126
 
 export const CONFIG = {
-  leaderboard: { elevPer1000: 7.0, elevSatFt: 4000, dimPerFt: 0.20, tempPerDeg: 0.45, regressGames: 300 },
-  builder: { elevPer1000: 7.0, elevSatFt: 4000, dimPerFt: 0.20, wind: { Calm: 0, Light: 0.3, Moderate: 0.7, Strong: 1.2 } },
+  leaderboard: { elevPer1000: 7.0, elevSatFt: 4000, dimPerFt: 0.16, tempPerDeg: 0.22, regressGames: 300 },
+  builder: { elevPer1000: 7.0, elevSatFt: 4000, dimPerFt: 0.16, wind: { Calm: 0, Light: 0.3, Moderate: 0.7, Strong: 1.2 } },
 }
 
 const PHYS = {
