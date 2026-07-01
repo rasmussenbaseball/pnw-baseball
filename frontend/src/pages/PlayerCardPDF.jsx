@@ -611,42 +611,46 @@ function SplitsPanel({ side, hitterPbp, pitcherPbp }) {
   }
   return (
     <MiniCard title="Splits">
-      <div className="grid grid-cols-[1fr_repeat(3,minmax(0,36px))] gap-x-1 text-[9.5px]">
-        <div />
-        {cols.map(([_, label]) => (
-          <div key={label} className="text-[8.5px] text-gray-500 text-right font-bold">
-            {label}
-          </div>
-        ))}
-        {rows.map(r => (
-          <Row key={r.label} label={r.label}>
-            {cols.map(([colKey]) => {
-              const block = lookup(colKey)
-              const raw = cellValue(block, r.keys)
-              const score = r.threshold ? thresholdScore(r.threshold, raw) : null
-              const bg = score != null ? scoreColor(score, 0.85) : undefined
-              return (
-                <div key={colKey} className="text-right tabular-nums font-semibold">
-                  <span className="px-1 rounded" style={bg ? { backgroundColor: bg } : undefined}>
-                    {r.fmt(raw)}
-                  </span>
-                </div>
-              )
-            })}
-          </Row>
-        ))}
-      </div>
+      {/* A real <table> (not a CSS grid) so html2canvas image export renders
+          the rows correctly — grid auto-flow with fragment cells collapsed the
+          rows in the saved PNG. */}
+      <table className="w-full text-[9.5px] tabular-nums" style={{ borderCollapse: 'collapse' }}>
+        <colgroup>
+          <col />
+          {cols.map(([k]) => <col key={k} style={{ width: '34px' }} />)}
+        </colgroup>
+        <thead>
+          <tr>
+            <th />
+            {cols.map(([_, label]) => (
+              <th key={label} className="text-[8.5px] text-gray-500 text-right font-bold pb-0.5">
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.label}>
+              <td className="text-gray-700 pr-1">{r.label}</td>
+              {cols.map(([colKey]) => {
+                const block = lookup(colKey)
+                const raw = cellValue(block, r.keys)
+                const score = r.threshold ? thresholdScore(r.threshold, raw) : null
+                const bg = score != null ? scoreColor(score, 0.85) : undefined
+                return (
+                  <td key={colKey} className="text-right font-semibold">
+                    <span className="px-1 rounded" style={bg ? { backgroundColor: bg } : undefined}>
+                      {r.fmt(raw)}
+                    </span>
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </MiniCard>
-  )
-}
-
-
-function Row({ label, children }) {
-  return (
-    <>
-      <div className="text-gray-700">{label}</div>
-      {children}
-    </>
   )
 }
 
