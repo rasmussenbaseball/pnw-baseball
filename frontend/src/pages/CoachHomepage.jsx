@@ -30,6 +30,8 @@ export default function CoachHomepage() {
 // live uncommitted-JUCO board on the side.
 // ============================================================
 const PORTAL_TOOLS = [
+  { to: '/portal/advance-report', label: 'Advance Report',
+    desc: 'Auto game plan + how to attack every opponent', icon: 'target' },
   { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
     desc: 'Uncommitted NWAC transfer targets', icon: 'search' },
   { to: '/portal/lineup-helper', label: 'Lineup Helper',
@@ -59,6 +61,7 @@ function PortalToolIcon({ name }) {
     user: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM5 21v-1a6 6 0 0112 0v1',
     pdf: 'M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1zm7 0v5h5M9 13h6m-6 3h4',
     bullpen: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 0v9l5 3',
+    target: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 4a5 5 0 100 10 5 5 0 000-10zm0 4a1 1 0 100 2 1 1 0 000-2z',
   }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
