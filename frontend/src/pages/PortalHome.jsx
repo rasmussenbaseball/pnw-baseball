@@ -220,18 +220,6 @@ function PvBulkCards() {
   )
 }
 
-function PvBracket() {
-  return (
-    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
-      <rect width="240" height="120" fill={PAPER} />
-      {[24, 44, 76, 96].map(y => <rect key={y} x="20" y={y - 5} width="44" height="9" rx="3" fill={LINE} />)}
-      {[34, 86].map(y => <rect key={y} x="96" y={y - 5} width="44" height="9" rx="3" fill="#d8d2c6" />)}
-      <rect x="172" y="55" width="48" height="11" rx="4" fill={GOLD} />
-      <path d="M64 24 H80 V34 H96 M64 44 H80 V34 M64 76 H80 V86 H96 M64 96 H80 V86 M140 34 H156 V60 H172 M140 86 H156 V60" fill="none" stroke="#cfc8bb" strokeWidth="1.6" />
-    </svg>
-  )
-}
-
 // ── Tool catalog (mirrors the portal nav) ──
 const SECTIONS = [
   {
@@ -262,7 +250,6 @@ const SECTIONS = [
       { to: '/portal/catcher-cards', label: 'Catcher Cards', desc: 'Pocket 5×2 pitch-calling cards (top 14 opposing hitters).', Preview: PvCatcherCards },
       { to: '/portal/pdfs', label: 'Player Card', desc: 'One-page Statcast-style profile: spray chart, percentiles, splits.', Preview: PvPlayerCard },
       { to: '/portal/pdfs', label: 'Bulk Player Cards', desc: 'Print cards for an entire roster (or a subset) in one job.', Preview: PvBulkCards },
-      { to: '/portal/nwac-tournament-sheet', label: 'NWAC Tournament Sheet', desc: 'Bracket-ready field report for the NWAC championship.', Preview: PvBracket },
     ],
   },
 ]

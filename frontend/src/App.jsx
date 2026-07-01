@@ -258,7 +258,6 @@ const BulkPlayerCards = lazyWithRetry(() => import('./pages/BulkPlayerCards'))
 const PortalPDFs = lazyWithRetry(() => import('./pages/PortalPDFs'))
 const BullpenSheet = lazyWithRetry(() => import('./pages/BullpenSheet'))
 const CatcherCards = lazyWithRetry(() => import('./pages/CatcherCards'))
-const NWACTournamentSheet = lazyWithRetry(() => import('./pages/NWACTournamentSheet'))
 import NewsList from './pages/NewsList'
 const NewsArticle = lazyWithRetry(() => import('./pages/NewsArticle'))  // pulls react-markdown — lazy to split it off the main bundle
 import NewsCommitments from './pages/NewsCommitments'
@@ -507,8 +506,6 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout lightOnly><CatcherCards /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/catcher-cards/:teamId"
                  element={<RequirePortalAccess><PortalLayout lightOnly><CatcherCards /></PortalLayout></RequirePortalAccess>} />
-          <Route path="/portal/nwac-tournament-sheet"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><NWACTournamentSheet /></PortalLayout></RequirePortalAccess>} />
           {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
           <Route path="/news/commitments" element={<RequireTier minTier="recruiting"><NewsCommitments /></RequireTier>} />
