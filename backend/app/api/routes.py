@@ -1353,7 +1353,14 @@ def conference_standings_graphic(
             PLAYOFF_SPOTS[key] = 4
 
         for conf in conferences.values():
-            conf["teams"].sort(key=lambda t: (t["conf_win_pct"], t["win_pct"]), reverse=True)
+            # Sort by conf win% then break ties by head-to-head (matching the
+            # /standings endpoint). Overall record is only the LAST fallback,
+            # inside apply_head_to_head — never the primary tiebreaker, or a
+            # team that won the conference series would be ranked below a team
+            # with a better non-conference record (the L&C vs UPS bug).
+            conf["teams"].sort(key=lambda t: t["conf_win_pct"], reverse=True)
+            conf["teams"] = apply_head_to_head(
+                conf["teams"], get_connection, season, primary_key="conf_win_pct")
 
             # Playoff spots + games back from playoff CUTOFF (not from 1st place)
             abbrev = conf.get("conference_abbrev", "")
