@@ -22,7 +22,7 @@
 // `@media print` rules in src/styles/index.css strip the portal
 // chrome so each table prints on its own portrait page.
 
-import { useRef } from 'react'
+import { useRef, useState, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReportActions from '../components/ReportActions'
 import { useApi, useTeams } from '../hooks/useApi'
@@ -139,6 +139,50 @@ const PITCHER_COLS = [
 ]
 
 
+// Advanced split pages come from /portal/splits (build_splits), which returns a
+// player's stats UNDER the filter. These drop the vs-RHP/vs-LHP split columns
+// (the whole page IS one split) and carry no conference percentiles, so cells
+// aren't shaded. ISO is derived (SLG - AVG).
+const HIT_SPLIT_COLS = [
+  { label: 'PA',    val: r => fmt.int(r.pa),   width: '5%'  },
+  { label: 'AVG',   val: r => fmt.rate(r.avg), width: '6.5%' },
+  { label: 'OBP',   val: r => fmt.rate(r.obp), width: '6.5%' },
+  { label: 'SLG',   val: r => fmt.rate(r.slg), width: '6.5%' },
+  { label: 'OPS',   val: r => fmt.rate(r.ops), width: '7%'  },
+  { label: 'wOBA',  val: r => fmt.rate(r.woba), width: '6.5%' },
+  { label: 'ISO',   val: r => (r.slg != null && r.avg != null) ? fmt.rate(r.slg - r.avg) : '–', width: '6%' },
+  { label: 'K%',    val: r => fmt.pct(r.k_pct), width: '5.5%' },
+  { label: 'BB%',   val: r => fmt.pct(r.bb_pct), width: '5.5%' },
+  { label: 'Cont%', val: r => fmt.pct(r.contact_pct), width: '6%' },
+  { label: 'GB / FB', val: r => fmt.gbfb(r), width: '9%', direction: 'neutral' },
+]
+const PIT_SPLIT_COLS = [
+  { label: 'BF',    val: r => fmt.int(r.pa),   width: '5%'  },
+  { label: 'oAVG',  val: r => fmt.rate(r.avg), width: '7%'  },
+  { label: 'oOBP',  val: r => fmt.rate(r.obp), width: '7%'  },
+  { label: 'oSLG',  val: r => fmt.rate(r.slg), width: '7%'  },
+  { label: 'K%',    val: r => fmt.pct(r.k_pct), width: '6%' },
+  { label: 'BB%',   val: r => fmt.pct(r.bb_pct), width: '6%' },
+  { label: 'Whf%',  val: r => fmt.pct(r.whiff_pct), width: '6.5%' },
+  { label: 'Stk%',  val: r => fmt.pct(r.strike_pct), width: '6.5%' },
+  { label: 'GB / FB', val: r => fmt.gbfb(r), width: '9%', direction: 'neutral' },
+]
+
+// Every downloadable page. `filter` null = the plain full-season page (from the
+// scouting-sheet endpoint, percentile-shaded). Filtered pages hit /portal/splits.
+const PAGES = [
+  { id: 'hitters',  label: 'Hitters (season)',  header: 'HITTERS',            side: 'hitters',  hand: 'bats',   cols: HITTER_COLS,    def: true },
+  { id: 'pitchers', label: 'Pitchers (season)', header: 'PITCHING STAFF',     side: 'pitchers', hand: 'throws', cols: PITCHER_COLS,   def: true },
+  { id: 'h_lhp',    label: 'Hitters vs LHP',    header: 'HITTERS vs LHP',     side: 'hitters',  hand: 'bats',   cols: HIT_SPLIT_COLS, filter: { handedness: 'vs_lhp' } },
+  { id: 'h_rhp',    label: 'Hitters vs RHP',    header: 'HITTERS vs RHP',     side: 'hitters',  hand: 'bats',   cols: HIT_SPLIT_COLS, filter: { handedness: 'vs_rhp' } },
+  { id: 'h_risp',   label: 'Hitters w/ RISP',   header: 'HITTERS w/ RISP',    side: 'hitters',  hand: 'bats',   cols: HIT_SPLIT_COLS, filter: { base_state: 'risp' } },
+  { id: 'h_pinch',  label: 'Hitters pinch-hit', header: 'HITTERS OFF THE BENCH', side: 'hitters', hand: 'bats', cols: HIT_SPLIT_COLS, filter: { entry: 'bench' } },
+  { id: 'p_rhh',    label: 'Pitchers vs RHH',   header: 'PITCHERS vs RHH',    side: 'pitchers', hand: 'throws', cols: PIT_SPLIT_COLS, filter: { handedness: 'vs_rhb' } },
+  { id: 'p_lhh',    label: 'Pitchers vs LHH',   header: 'PITCHERS vs LHH',    side: 'pitchers', hand: 'throws', cols: PIT_SPLIT_COLS, filter: { handedness: 'vs_lhb' } },
+  { id: 'p_risp',   label: 'Pitchers w/ RISP',  header: 'PITCHERS w/ RISP',   side: 'pitchers', hand: 'throws', cols: PIT_SPLIT_COLS, filter: { base_state: 'risp' } },
+]
+
+
 // ─────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────
@@ -157,6 +201,34 @@ export default function ScoutingSheet() {
     [teamId]
   )
   const { data: teamsList } = useTeams()
+
+  // Which pages to include. Full-season hitters + pitchers are checked by default.
+  const [selected, setSelected] = useState(() => new Set(PAGES.filter(p => p.def).map(p => p.id)))
+  const togglePage = (id) => setSelected(prev => {
+    const n = new Set(prev)
+    n.has(id) ? n.delete(id) : n.add(id)
+    return n
+  })
+
+  // Advanced split pages pull from /portal/splits — one fixed useApi call per
+  // page (never conditional, so hook order is stable), active only when checked.
+  const P = '/portal/splits'
+  const spHLHP  = useApi(teamId && selected.has('h_lhp')  ? P : null, { team_id: teamId, side: 'hitters',  season: SEASON, min_pa: 1, handedness: 'vs_lhp' }, [teamId, selected.has('h_lhp')])
+  const spHRHP  = useApi(teamId && selected.has('h_rhp')  ? P : null, { team_id: teamId, side: 'hitters',  season: SEASON, min_pa: 1, handedness: 'vs_rhp' }, [teamId, selected.has('h_rhp')])
+  const spHRISP = useApi(teamId && selected.has('h_risp') ? P : null, { team_id: teamId, side: 'hitters',  season: SEASON, min_pa: 1, base_state: 'risp' },  [teamId, selected.has('h_risp')])
+  const spHPin  = useApi(teamId && selected.has('h_pinch')? P : null, { team_id: teamId, side: 'hitters',  season: SEASON, min_pa: 1, entry: 'bench' },      [teamId, selected.has('h_pinch')])
+  const spPRHH  = useApi(teamId && selected.has('p_rhh')  ? P : null, { team_id: teamId, side: 'pitchers', season: SEASON, min_pa: 1, handedness: 'vs_rhb' }, [teamId, selected.has('p_rhh')])
+  const spPLHH  = useApi(teamId && selected.has('p_lhh')  ? P : null, { team_id: teamId, side: 'pitchers', season: SEASON, min_pa: 1, handedness: 'vs_lhb' }, [teamId, selected.has('p_lhh')])
+  const spPRISP = useApi(teamId && selected.has('p_risp') ? P : null, { team_id: teamId, side: 'pitchers', season: SEASON, min_pa: 1, base_state: 'risp' },  [teamId, selected.has('p_risp')])
+  const splitRows = {
+    h_lhp:  spHLHP.data?.players  || [],
+    h_rhp:  spHRHP.data?.players  || [],
+    h_risp: spHRISP.data?.players || [],
+    h_pinch: spHPin.data?.players || [],
+    p_rhh:  spPRHH.data?.players  || [],
+    p_lhh:  spPLHH.data?.players  || [],
+    p_risp: spPRISP.data?.players || [],
+  }
 
   // Teams sorted alphabetically and grouped by conference for the picker.
   const teamsByConf = (teamsList || []).reduce((acc, t) => {
@@ -224,39 +296,48 @@ export default function ScoutingSheet() {
         </div>
       </div>
 
+      {/* Page selector — choose which pages to include (hidden on print/export) */}
+      <div className="print:hidden max-w-[820px] mx-auto mb-3 border border-gray-200 rounded-lg p-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1.5">Pages to download</div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
+          {PAGES.map(p => (
+            <label key={p.id} className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" checked={selected.has(p.id)} onChange={() => togglePage(p.id)}
+                className="accent-portal-purple" />
+              <span className="text-gray-700">{p.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
       <div ref={sheetRef} className="bg-white">
-      {/* Page 1: HITTERS */}
-      <section className="sheet-page max-w-[820px] mx-auto print:max-w-none">
-        <SheetHeader team={team} season={data.season} side="HITTERS" count={hitters.length} />
-        <RosterTable
-          rows={hitters}
-          cols={HITTER_COLS}
-          handField="bats"
-          totals={teamHitterTotals}
-          totalsLabel="TEAM"
-          totalsHint={teamHitterTotals?.n_teams ? `vs ${teamHitterTotals.n_teams} teams` : ''}
-        />
-        <SheetLegend kind="hitters" thresholds={data.thresholds} />
-        <NotesPanel label="Notes" />
-      </section>
-
-      {/* Page break for print */}
-      <div className="sheet-pagebreak" />
-
-      {/* Page 2: PITCHERS */}
-      <section className="sheet-page max-w-[820px] mx-auto print:max-w-none">
-        <SheetHeader team={team} season={data.season} side="PITCHING STAFF" count={pitchers.length} />
-        <RosterTable
-          rows={pitchers}
-          cols={PITCHER_COLS}
-          handField="throws"
-          totals={teamPitcherTotals}
-          totalsLabel="TEAM"
-          totalsHint={teamPitcherTotals?.n_teams ? `vs ${teamPitcherTotals.n_teams} teams` : ''}
-        />
-        <SheetLegend kind="pitchers" thresholds={data.thresholds} />
-        <NotesPanel label="Notes" />
-      </section>
+        {PAGES.filter(p => selected.has(p.id)).length === 0 && (
+          <div className="text-center text-gray-400 italic py-8 text-sm">Select at least one page above.</div>
+        )}
+        {PAGES.filter(p => selected.has(p.id)).map((page, idx) => {
+          const rows = page.filter
+            ? (splitRows[page.id] || [])
+            : (page.side === 'hitters' ? hitters : pitchers)
+          const totals = page.filter ? null : (page.side === 'hitters' ? teamHitterTotals : teamPitcherTotals)
+          return (
+            <Fragment key={page.id}>
+              {idx > 0 && <div className="sheet-pagebreak" />}
+              <section className="sheet-page max-w-[820px] mx-auto print:max-w-none">
+                <SheetHeader team={team} season={data.season} side={page.header} count={rows.length} />
+                <RosterTable
+                  rows={rows}
+                  cols={page.cols}
+                  handField={page.hand}
+                  totals={totals}
+                  totalsLabel="TEAM"
+                  totalsHint={totals?.n_teams ? `vs ${totals.n_teams} teams` : ''}
+                />
+                {!page.filter && <SheetLegend kind={page.side} thresholds={data.thresholds} />}
+                <NotesPanel label="Notes" />
+              </section>
+            </Fragment>
+          )
+        })}
       </div>
     </div>
   )

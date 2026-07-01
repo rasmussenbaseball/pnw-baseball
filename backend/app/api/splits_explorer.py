@@ -223,6 +223,7 @@ def build_splits(cur, team_id: int, season: int, side: str,
         SELECT {pid_col} AS pid,
                MAX(pl.first_name) AS first_name, MAX(pl.last_name) AS last_name,
                MAX(pl.position) AS position, MAX(pl.bats) AS bats, MAX(pl.throws) AS throws,
+               MAX(pl.jersey_number) AS jersey_number, MAX(pl.year_in_school) AS year_in_school,
                {_OUTCOME_COLS},
                {_SEQ_COLS}
         FROM pa ge
@@ -242,6 +243,10 @@ def build_splits(cur, team_id: int, season: int, side: str,
         players.append({
             "player_id": d["pid"],
             "name": f"{d.get('first_name') or ''} {d.get('last_name') or ''}".strip() or "Unnamed",
+            "first_name": d.get("first_name"),
+            "last_name": d.get("last_name"),
+            "jersey_number": d.get("jersey_number"),
+            "year_in_school": d.get("year_in_school"),
             "position": d.get("position"),
             "bats": d.get("bats"),
             "throws": d.get("throws"),
