@@ -33,6 +33,10 @@ const NAV_SECTIONS = [
   {
     label: 'Opponent Scouting',
     items: [
+      { to: '/portal/advance-report', label: 'Advance Report',
+        desc: 'Auto game plan + how to attack every hitter & pitcher' },
+      { to: '/portal/splits', label: 'Splits Explorer',
+        desc: 'Filter any team by game state, count, hand, home/away' },
       { to: '/portal/team-scouting', label: 'Team Scouting',
         desc: 'Full team report — every stat with percentile context' },
       { to: '/portal/historic', label: 'Historic Matchups',
