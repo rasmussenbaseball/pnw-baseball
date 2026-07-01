@@ -46,8 +46,8 @@ const PORTAL_TOOLS = [
     desc: 'Per-PA matchup history vs an opponent', icon: 'history' },
   { to: '/portal/player-scouting', label: 'Player Scouting',
     desc: 'Individual scouting reports', icon: 'user' },
-  { to: '/portal/pdfs', label: 'Printable PDFs',
-    desc: 'Scouting sheets, catcher cards, player cards', icon: 'pdf' },
+  { to: '/portal/pdfs', label: 'Reporting',
+    desc: 'Scouting sheets, cards & boards — save as PDF or image', icon: 'pdf' },
   { to: '/portal/bullpen-sheet', label: 'Bullpen Sheet',
     desc: 'In-game pitcher decision card', icon: 'bullpen' },
 ]

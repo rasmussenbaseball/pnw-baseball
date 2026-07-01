@@ -20,7 +20,8 @@
 // query param, defaulting to higher-WAR side). The PDFs picker
 // surfaces both sides for two-way guys.
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import ReportActions from '../components/ReportActions'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
   usePlayer,
@@ -266,6 +267,7 @@ export default function PlayerCardPDF() {
 // instances stacked, no per-card toolbar).
 // ───────────────────────────────────────────────────────────
 export function PlayerCard({ playerId, sideParam, showToolbar = true }) {
+  const cardRef = useRef(null)
   const { data, loading, error } = usePlayer(playerId, null)
   const { data: hitterPbp } = usePlayerPitchLevelStats(playerId, SEASON)
   const { data: pitcherPbp } = usePlayerPitchLevelStatsPitcher(playerId, SEASON)
@@ -335,17 +337,12 @@ export function PlayerCard({ playerId, sideParam, showToolbar = true }) {
             Player Card · {player.first_name} {player.last_name} ·{' '}
             <span className="capitalize">{side}</span>
           </h1>
-          <button
-            onClick={() => window.print()}
-            className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
-                       bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
-          >
-            Print / Save as PDF
-          </button>
+          <ReportActions targetRef={cardRef}
+            filename={`card_${player.last_name || 'player'}_${player.first_name || ''}_${side}`.replace(/\s+/g, '')} />
         </div>
       )}
 
-      <section className="card-page">
+      <section className="card-page" ref={cardRef}>
         <CardHeader player={player} side={side} season={SEASON} />
 
         <div className="grid grid-cols-[1fr_1.1fr] gap-3 mt-2 items-stretch">

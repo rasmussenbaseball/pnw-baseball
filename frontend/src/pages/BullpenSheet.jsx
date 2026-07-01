@@ -20,7 +20,8 @@
 // All values color-coded green/red by college-baseball thresholds so
 // a coach can scan it under dugout lights.
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import ReportActions from '../components/ReportActions'
 import { useParams } from 'react-router-dom'
 import { useApi, useTeams } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
@@ -131,6 +132,7 @@ function Cell({ value, statKey, formatter = fmt.pct }) {
 // Page
 // ─────────────────────────────────────────────────────────────
 export default function BullpenSheet() {
+  const sheetRef = useRef(null)
   const { teamId: paramTeamId } = useParams()
   const navigate = useNavigate()
   const { data: teamsData } = useTeams()
@@ -201,16 +203,11 @@ export default function BullpenSheet() {
         <h1 className="text-xl font-bold text-portal-purple-dark">
           Bullpen Sheet · {team.short_name || team.name}
         </h1>
-        <button
-          onClick={() => window.print()}
-          className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
-                     bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
-        >
-          Print / Save as PDF
-        </button>
+        <ReportActions targetRef={sheetRef}
+          filename={`bullpen_${(team.short_name || team.name || 'team').replace(/\s+/g, '_')}`} />
       </div>
 
-      <section className="bullpen-page">
+      <section className="bullpen-page" ref={sheetRef}>
         <SheetHeader team={team} season={data.season} pitcherCount={pitchers.length} />
         <RosterTable pitchers={pitchers} />
         <Leaderboards leaderboards={leaderboards} />

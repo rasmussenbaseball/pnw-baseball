@@ -15,7 +15,8 @@
 // slice the top 14 by PA on the client. Print uses a named @page rule
 // so the saved PDF is a 2-page PDF with each page exactly 5×2 inches.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
+import ReportActions from '../components/ReportActions'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApi, useTeams } from '../hooks/useApi'
 import { CURRENT_SEASON } from '../lib/seasons'
@@ -104,6 +105,7 @@ function handColor(bats) {
 // Page
 // ───────────────────────────────────────────────────────────
 export default function CatcherCards() {
+  const cardsRef = useRef(null)
   const { teamId: paramTeamId } = useParams()
   const navigate = useNavigate()
   const { data: teamsData } = useTeams()
@@ -236,18 +238,13 @@ export default function CatcherCards() {
             7 hitters per card · top 14 by PA.
           </p>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
-                     bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
-        >
-          Print / Save as PDF
-        </button>
+        <ReportActions targetRef={cardsRef}
+          filename={`catcher_cards_${(team.short_name || team.name || 'team').replace(/\s+/g, '_')}`} />
       </div>
 
       {/* Cards stacked vertically. On screen they show at actual size
           (480×192 at 96dpi) so the coach sees what will print. */}
-      <div className="space-y-4">
+      <div className="space-y-4" ref={cardsRef}>
         {groups.map((hitters, i) => (
           <Card key={i} hitters={hitters} team={team} cardNumber={i + 1} totalCards={groups.length} />
         ))}

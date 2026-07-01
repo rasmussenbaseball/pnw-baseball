@@ -42,10 +42,10 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'PDFs',
+    label: 'Reporting',
     items: [
-      { to: '/portal/pdfs', label: 'All PDFs',
-        desc: 'Pickers for every printable PDF in one place' },
+      { to: '/portal/pdfs', label: 'All Reports',
+        desc: 'Every report in one place — save each as a PDF or image' },
       { to: '/portal/scouting-sheet', label: 'Scouting Sheet',
         desc: 'Printable hitter + pitcher rosters with conference percentiles' },
       { to: '/portal/bullpen-sheet', label: 'Bullpen Sheet',

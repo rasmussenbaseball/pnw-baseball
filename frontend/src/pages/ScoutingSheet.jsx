@@ -22,7 +22,9 @@
 // `@media print` rules in src/styles/index.css strip the portal
 // chrome so each table prints on its own portrait page.
 
+import { useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import ReportActions from '../components/ReportActions'
 import { useApi, useTeams } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import { CURRENT_SEASON } from '../lib/seasons'
@@ -141,6 +143,7 @@ const PITCHER_COLS = [
 // Page
 // ─────────────────────────────────────────────────────────
 export default function ScoutingSheet() {
+  const sheetRef = useRef(null)
   const params = useParams()
   const navigate = useNavigate()
   const { team: portalTeam } = usePortalTeam()
@@ -216,16 +219,12 @@ export default function ScoutingSheet() {
             onPick={(id) => navigate(`/portal/scouting-sheet/${id}`)}
             compact
           />
-          <button
-            onClick={() => window.print()}
-            className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
-                       bg-portal-purple text-portal-cream hover:bg-portal-purple-dark"
-          >
-            Print / Save as PDF
-          </button>
+          <ReportActions targetRef={sheetRef}
+            filename={`scouting_${(team.short_name || team.name || 'team').replace(/\s+/g, '_')}`} />
         </div>
       </div>
 
+      <div ref={sheetRef} className="bg-white">
       {/* Page 1: HITTERS */}
       <section className="sheet-page max-w-[820px] mx-auto print:max-w-none">
         <SheetHeader team={team} season={data.season} side="HITTERS" count={hitters.length} />
@@ -258,6 +257,7 @@ export default function ScoutingSheet() {
         <SheetLegend kind="pitchers" thresholds={data.thresholds} />
         <NotesPanel label="Notes" />
       </section>
+      </div>
     </div>
   )
 }

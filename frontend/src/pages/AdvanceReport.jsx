@@ -8,11 +8,12 @@
  * Data: /api/v1/portal/advance-report?team_id=X&season=Y
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import { CURRENT_SEASON } from '../lib/seasons'
+import ReportActions from '../components/ReportActions'
 
 const SEASON = CURRENT_SEASON
 
@@ -172,6 +173,7 @@ export default function AdvanceReport() {
   }, [teams])
 
   const n = data?.advance_narrative
+  const reportRef = useRef(null)
 
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-5 py-5 space-y-4">
@@ -196,12 +198,8 @@ export default function AdvanceReport() {
             <div className="ml-auto flex items-center gap-3">
               <Link to={`/portal/team-scouting?team_id=${selectedId}`}
                     className="text-sm text-nw-teal hover:underline">Full stat report →</Link>
-              <button
-                onClick={() => window.print()}
-                className="px-3 py-2 rounded-lg bg-portal-purple text-portal-cream text-sm font-semibold hover:opacity-90"
-              >
-                Print
-              </button>
+              <ReportActions targetRef={reportRef}
+                filename={`advance_${(data.team.short_name || data.team.name || 'team').replace(/\s+/g, '_')}_${data.season}`} />
             </div>
           )}
         </div>
@@ -215,7 +213,7 @@ export default function AdvanceReport() {
       )}
 
       {data && !data.error && n && (
-        <>
+        <div ref={reportRef} className="space-y-4 bg-white dark:bg-gray-900 p-1">
           {/* Header */}
           <section className="bg-portal-purple text-portal-cream rounded-xl px-5 py-4 shadow">
             <div className="flex items-center gap-4 flex-wrap">
@@ -306,7 +304,7 @@ export default function AdvanceReport() {
             Auto-generated from box score and play-by-play data. Tendencies, discipline, splits and batted-ball
             profiles only (no radar velocity or pitch types). Cross-check with video before game day.
           </p>
-        </>
+        </div>
       )}
     </div>
   )

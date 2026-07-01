@@ -23,17 +23,18 @@ export default function PortalPDFs() {
   // here, since PlayerCardPDF's cleanup doesn't always restore the
   // pre-card title cleanly.
   useEffect(() => {
-    document.title = 'PDFs · NW Baseball Stats'
+    document.title = 'Reporting · NW Baseball Stats'
   }, [])
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-portal-purple-dark dark:text-gray-100">Printable PDFs</h1>
+        <h1 className="text-2xl font-bold text-portal-purple-dark dark:text-gray-100">Reporting</h1>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          One-page reports built for the dugout. Print or save as PDF.
+          Reports built for the dugout. Open any one and save it as a PDF or an image.
         </p>
       </div>
 
+      <AdvanceReportCard onPick={(id) => navigate(`/portal/advance-report?team_id=${id}`)} />
       <NWACChampBoardCard onOpen={() => navigate('/portal/nwac-tournament-sheet')} />
       <ScoutingSheetCard onPick={(id) => navigate(`/portal/scouting-sheet/${id}`)} />
       <BullpenSheetCard onPick={(id) => navigate(`/portal/bullpen-sheet/${id}`)} />
@@ -81,6 +82,54 @@ function NWACChampBoardCard({ onOpen }) {
 // ─────────────────────────────────────────────────────────
 // Scouting sheet picker — group teams by conference
 // ─────────────────────────────────────────────────────────
+// Advance Report — auto game plan + per-player attack bullets (savable as PDF/image).
+function AdvanceReportCard({ onPick }) {
+  const { data } = useTeams()
+  const teams = Array.isArray(data) ? data : []
+  const grouped = useMemo(() => {
+    const g = {}
+    for (const t of teams) {
+      const k = t.conference_abbrev || t.conference_name || 'Other'
+      if (!g[k]) g[k] = []
+      g[k].push(t)
+    }
+    Object.values(g).forEach(arr =>
+      arr.sort((a, b) => (a.short_name || a.name || '').localeCompare(b.short_name || b.name || '')))
+    return g
+  }, [teams])
+  const [teamId, setTeamId] = useState('')
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Advance Report</h2>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">auto game plan</span>
+      </div>
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+        Auto-generated series prep: game plan plus how to attack every key hitter and pitcher,
+        with count tendencies. Save the whole report as a PDF or an image.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={teamId} onChange={(e) => setTeamId(e.target.value)}
+          className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 flex-1 min-w-[220px]">
+          <option value="">Pick an opponent...</option>
+          {Object.keys(grouped).sort().map(g => (
+            <optgroup key={g} label={g}>
+              {grouped[g].map(t => <option key={t.id} value={t.id}>{t.short_name || t.name}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        <button disabled={!teamId} onClick={() => teamId && onPick(parseInt(teamId, 10))}
+          className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
+                     bg-portal-purple text-portal-cream hover:bg-portal-purple-dark
+                     disabled:opacity-50 disabled:cursor-not-allowed">
+          Open Report
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
 function ScoutingSheetCard({ onPick }) {
   // Important: useApi starts with `data: null`, and a `data = []` default
   // in destructuring only kicks in for `undefined` — not `null`. If we
