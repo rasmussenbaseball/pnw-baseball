@@ -90,6 +90,23 @@ const fmt = {
   },
 }
 
+// Threshold 0-100 score for the advanced split pages, which have no conference
+// percentiles. `good` scores ~100, `bad` ~0; works either direction (good < bad
+// means lower-is-better, e.g. opponent AVG). Fed to pctColor for good/bad shading.
+function tscore(v, good, bad) {
+  if (v == null || good === bad) return null
+  const s = (Number(v) - bad) / (good - bad)
+  return Math.max(0, Math.min(1, s)) * 100
+}
+// GB / FB (whichever is higher) from build_splits gb_pct / fb_pct fractions.
+function gbfbSplit(r) {
+  const gb = r.gb_pct, fb = r.fb_pct
+  if (gb == null && fb == null) return '–'
+  return (gb ?? 0) >= (fb ?? 0)
+    ? `GB ${((gb ?? 0) * 100).toFixed(1)}%`
+    : `FB ${((fb ?? 0) * 100).toFixed(1)}%`
+}
+
 
 // Column specs.
 //
@@ -144,28 +161,30 @@ const PITCHER_COLS = [
 // (the whole page IS one split) and carry no conference percentiles, so cells
 // aren't shaded. ISO is derived (SLG - AVG).
 const HIT_SPLIT_COLS = [
-  { label: 'PA',    val: r => fmt.int(r.pa),   width: '5%'  },
-  { label: 'AVG',   val: r => fmt.rate(r.avg), width: '6.5%' },
-  { label: 'OBP',   val: r => fmt.rate(r.obp), width: '6.5%' },
-  { label: 'SLG',   val: r => fmt.rate(r.slg), width: '6.5%' },
-  { label: 'OPS',   val: r => fmt.rate(r.ops), width: '7%'  },
-  { label: 'wOBA',  val: r => fmt.rate(r.woba), width: '6.5%' },
-  { label: 'ISO',   val: r => (r.slg != null && r.avg != null) ? fmt.rate(r.slg - r.avg) : '–', width: '6%' },
-  { label: 'K%',    val: r => fmt.pct(r.k_pct), width: '5.5%' },
-  { label: 'BB%',   val: r => fmt.pct(r.bb_pct), width: '5.5%' },
-  { label: 'Cont%', val: r => fmt.pct(r.contact_pct), width: '6%' },
-  { label: 'GB / FB', val: r => fmt.gbfb(r), width: '9%', direction: 'neutral' },
+  { label: 'PA',    val: r => fmt.int(r.pa),   width: '4.5%', direction: 'neutral' },
+  { label: 'AVG',   val: r => fmt.rate(r.avg),  score: r => tscore(r.avg, .330, .220),  width: '6%' },
+  { label: 'OBP',   val: r => fmt.rate(r.obp),  score: r => tscore(r.obp, .430, .290),  width: '6%' },
+  { label: 'SLG',   val: r => fmt.rate(r.slg),  score: r => tscore(r.slg, .500, .300),  width: '6%' },
+  { label: 'OPS',   val: r => fmt.rate(r.ops),  score: r => tscore(r.ops, .900, .600),  width: '6.5%' },
+  { label: 'wOBA',  val: r => fmt.rate(r.woba), score: r => tscore(r.woba, .420, .290), width: '6%' },
+  { label: 'ISO',   val: r => (r.slg != null && r.avg != null) ? fmt.rate(r.slg - r.avg) : '–',
+                    score: r => (r.slg != null && r.avg != null) ? tscore(r.slg - r.avg, .200, .080) : null, width: '5.5%' },
+  { label: 'K%',    val: r => fmt.pct(r.k_pct),  score: r => tscore(r.k_pct, .12, .28),  width: '5.5%' },
+  { label: 'BB%',   val: r => fmt.pct(r.bb_pct), score: r => tscore(r.bb_pct, .15, .04), width: '5.5%' },
+  { label: 'Sw%',   val: r => fmt.pct(r.swing_pct), width: '5%', direction: 'neutral' },
+  { label: 'Cont%', val: r => fmt.pct(r.contact_pct), score: r => tscore(r.contact_pct, .88, .72), width: '6%' },
+  { label: 'GB / FB', val: r => gbfbSplit(r), width: '8.5%', direction: 'neutral' },
 ]
 const PIT_SPLIT_COLS = [
-  { label: 'BF',    val: r => fmt.int(r.pa),   width: '5%'  },
-  { label: 'oAVG',  val: r => fmt.rate(r.avg), width: '7%'  },
-  { label: 'oOBP',  val: r => fmt.rate(r.obp), width: '7%'  },
-  { label: 'oSLG',  val: r => fmt.rate(r.slg), width: '7%'  },
-  { label: 'K%',    val: r => fmt.pct(r.k_pct), width: '6%' },
-  { label: 'BB%',   val: r => fmt.pct(r.bb_pct), width: '6%' },
-  { label: 'Whf%',  val: r => fmt.pct(r.whiff_pct), width: '6.5%' },
-  { label: 'Stk%',  val: r => fmt.pct(r.strike_pct), width: '6.5%' },
-  { label: 'GB / FB', val: r => fmt.gbfb(r), width: '9%', direction: 'neutral' },
+  { label: 'BF',    val: r => fmt.int(r.pa),   width: '5%', direction: 'neutral' },
+  { label: 'oAVG',  val: r => fmt.rate(r.avg), score: r => tscore(r.avg, .220, .320), width: '7%'  },
+  { label: 'oOBP',  val: r => fmt.rate(r.obp), score: r => tscore(r.obp, .290, .400), width: '7%'  },
+  { label: 'oSLG',  val: r => fmt.rate(r.slg), score: r => tscore(r.slg, .320, .480), width: '7%'  },
+  { label: 'K%',    val: r => fmt.pct(r.k_pct),  score: r => tscore(r.k_pct, .28, .12),  width: '6%' },
+  { label: 'BB%',   val: r => fmt.pct(r.bb_pct), score: r => tscore(r.bb_pct, .05, .12), width: '6%' },
+  { label: 'Whf%',  val: r => fmt.pct(r.whiff_pct),  score: r => tscore(r.whiff_pct, .28, .15),  width: '6.5%' },
+  { label: 'Stk%',  val: r => fmt.pct(r.strike_pct), score: r => tscore(r.strike_pct, .68, .58), width: '6.5%' },
+  { label: 'GB / FB', val: r => gbfbSplit(r), width: '8.5%', direction: 'neutral' },
 ]
 
 // Every downloadable page. `filter` null = the plain full-season page (from the
@@ -315,8 +334,14 @@ export default function ScoutingSheet() {
           <div className="text-center text-gray-400 italic py-8 text-sm">Select at least one page above.</div>
         )}
         {PAGES.filter(p => selected.has(p.id)).map((page, idx) => {
+          // Split pages come from /portal/splits, which includes anyone who
+          // batted/threw a pitch — restrict to the team's actual hitter/pitcher
+          // roster so a position player who pitched mop-up (or vice versa)
+          // doesn't leak onto the wrong sheet.
+          const rosterIds = new Set(
+            (page.side === 'hitters' ? hitters : pitchers).map(r => r.player_id))
           const rows = page.filter
-            ? (splitRows[page.id] || [])
+            ? (splitRows[page.id] || []).filter(r => rosterIds.has(r.player_id))
             : (page.side === 'hitters' ? hitters : pitchers)
           const totals = page.filter ? null : (page.side === 'hitters' ? teamHitterTotals : teamPitcherTotals)
           return (
@@ -478,7 +503,11 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
                 {row[handField] || '–'}
               </td>
               {cols.map(c => {
-                const pct = row.percentiles ? row.percentiles[c.pctKey] : null
+                // Plain pages shade by conference percentile; advanced split
+                // pages (no percentiles) shade by a threshold score instead.
+                const pct = row.percentiles
+                  ? row.percentiles[c.pctKey]
+                  : (c.score ? c.score(row) : null)
                 const bg = isLow
                   ? lowSampleBg
                   : pctColor(pct, c.direction || 'higher_better')
