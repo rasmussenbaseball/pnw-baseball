@@ -132,6 +132,7 @@ _OUTCOME_COLS = """
     COUNT(*) FILTER (WHERE bb_type='GB') AS gb,
     COUNT(*) FILTER (WHERE bb_type='FB') AS fb,
     COUNT(*) FILTER (WHERE bb_type='LD') AS ld,
+    COUNT(*) FILTER (WHERE bb_type='PU') AS pu,
     COUNT(*) FILTER (WHERE bb_type IS NOT NULL) AS bip
 """
 
@@ -156,19 +157,31 @@ def _row_stats(r: dict, side: str) -> dict:
     gb = r.get("gb") or 0
     fb = r.get("fb") or 0
     ld = r.get("ld") or 0
+    pu = r.get("pu") or 0
     bip = r.get("bip") or 0
     disc = _discipline(r)
+    k_pct = (k / pa) if pa else None
+    bb_pct = (bb / pa) if pa else None
+    ops = (obp + slg) if (obp is not None and slg is not None) else None
+    iso = (slg - avg) if (slg is not None and avg is not None) else None
+    babip_den = ab - k - hr + sf
+    babip = (h - hr) / babip_den if babip_den > 0 else None
     stats = {
-        "pa": pa,  # BF for pitchers, but same column
-        "avg": avg, "obp": obp, "slg": slg,
-        "ops": (obp + slg) if (obp is not None and slg is not None) else None,
+        # raw counts (BF == pa for pitchers)
+        "pa": pa, "ab": ab, "h": h, "singles": s1, "doubles": d2, "triples": t3,
+        "hr": hr, "bb": bb, "so": k, "hbp": hbp, "tb": tb,
+        # rate + advanced
+        "avg": avg, "obp": obp, "slg": slg, "ops": ops,
         "woba": _woba(bb, hbp, s1, d2, t3, hr, ab, sf),
-        "k_pct": (k / pa) if pa else None,
-        "bb_pct": (bb / pa) if pa else None,
-        "hr": hr,
+        "iso": iso, "babip": babip,
+        "k_pct": k_pct, "bb_pct": bb_pct,
+        "k_bb_pct": (k_pct - bb_pct) if (k_pct is not None and bb_pct is not None) else None,
+        "hr_pct": (hr / pa) if pa else None,
+        # batted ball
         "gb_pct": (gb / bip) if bip else None,
         "ld_pct": (ld / bip) if bip else None,
         "fb_pct": (fb / bip) if bip else None,
+        "pu_pct": (pu / bip) if bip else None,
         **disc,
     }
     return stats

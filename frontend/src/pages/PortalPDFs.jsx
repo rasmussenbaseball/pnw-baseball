@@ -36,6 +36,11 @@ export default function PortalPDFs() {
 
       <AdvanceReportCard onPick={(id) => navigate(`/portal/advance-report?team_id=${id}`)} />
       <ScoutingSheetCard onPick={(id) => navigate(`/portal/scouting-sheet/${id}`)} />
+      <SimpleOpenCard
+        title="Custom Scouting Sheet"
+        hint="build your own"
+        desc="Pick a team, stack any filters (game state, count, hand, home/away, pinch-hit), and choose exactly which stat columns to show. Builds live; save as PDF or image."
+        onOpen={() => navigate('/portal/custom-sheet')} />
       <BullpenSheetCard onPick={(id) => navigate(`/portal/bullpen-sheet/${id}`)} />
       <CatcherCardsCard onPick={(id) => navigate(`/portal/catcher-cards/${id}`)} />
       <PlayerCardCard onPick={(id, side) =>
@@ -50,6 +55,27 @@ export default function PortalPDFs() {
 // ─────────────────────────────────────────────────────────
 // Scouting sheet picker — group teams by conference
 // ─────────────────────────────────────────────────────────
+// A picker-less card that just opens a tool (the tool has its own team picker).
+function SimpleOpenCard({ title, hint, desc, onOpen }) {
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">{title}</h2>
+        {hint && <span className="text-[11px] text-gray-500 dark:text-gray-400">{hint}</span>}
+      </div>
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">{desc}</p>
+      <div className="flex items-center justify-end">
+        <button onClick={onOpen}
+          className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
+                     bg-portal-purple text-portal-cream hover:bg-portal-purple-dark">
+          Open Builder
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
 // Advance Report — auto game plan + per-player attack bullets (savable as PDF/image).
 function AdvanceReportCard({ onPick }) {
   const { data } = useTeams()

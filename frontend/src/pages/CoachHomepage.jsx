@@ -34,6 +34,8 @@ const PORTAL_TOOLS = [
     desc: 'Auto game plan + how to attack every opponent', icon: 'target' },
   { to: '/portal/splits', label: 'Splits Explorer',
     desc: 'Filter any team by game state, count, hand, home/away', icon: 'trend' },
+  { to: '/portal/custom-sheet', label: 'Custom Sheet',
+    desc: 'Build a sheet: pick the filters and stat columns you want', icon: 'clipboard' },
   { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
     desc: 'Uncommitted NWAC transfer targets', icon: 'search' },
   { to: '/portal/lineup-helper', label: 'Lineup Helper',
