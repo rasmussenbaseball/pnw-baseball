@@ -37,6 +37,7 @@ const F_COUNT = [
 ]
 const F_HAND_HIT = [['all', 'vs Any hand'], ['vs_rhp', 'vs RHP'], ['vs_lhp', 'vs LHP']]
 const F_HAND_PIT = [['all', 'vs Any hand'], ['vs_rhb', 'vs RHB'], ['vs_lhb', 'vs LHB']]
+const F_ENTRY = [['all', 'Any entry'], ['starter', 'Started (batted by 3rd)'], ['bench', 'Off the bench (1st PA after 3rd)']]
 
 // Column catalogs
 const HIT_COLS = [
@@ -69,6 +70,7 @@ export default function SplitsExplorer() {
   const [venue, setVenue] = useState('all')
   const [timing, setTiming] = useState('all')
   const [count, setCount] = useState('all')
+  const [entry, setEntry] = useState('all')
   const [minPa, setMinPa] = useState(10)
   const [sortKey, setSortKey] = useState('pa')
   const [sortDir, setSortDir] = useState('desc')
@@ -80,8 +82,8 @@ export default function SplitsExplorer() {
 
   const { data, loading } = useApi('/portal/splits',
     teamId ? { team_id: teamId, side, season: SEASON, base_state: baseState,
-               handedness, venue, timing, count, min_pa: minPa } : {},
-    [teamId, side, baseState, handedness, venue, timing, count, minPa])
+               handedness, venue, timing, count, entry, min_pa: minPa } : {},
+    [teamId, side, baseState, handedness, venue, timing, count, entry, minPa])
 
   const teamOptions = useMemo(() => (teams || []).filter(t => t.is_active)
     .sort((a, b) => (a.short_name || a.name).localeCompare(b.short_name || b.name)), [teams])
@@ -130,6 +132,7 @@ export default function SplitsExplorer() {
           <Select value={venue} onChange={setVenue} options={F_VENUE} />
           <Select value={timing} onChange={setTiming} options={F_TIMING} />
           <Select value={count} onChange={setCount} options={F_COUNT} />
+          {side === 'hitters' && <Select value={entry} onChange={setEntry} options={F_ENTRY} />}
           <label className="text-xs text-gray-500 flex items-center gap-1">
             min <input type="number" min="1" value={minPa} onChange={(e) => setMinPa(Math.max(1, Number(e.target.value) || 1))}
               className="w-14 px-2 py-1 rounded border border-gray-300 text-sm" />
@@ -170,8 +173,9 @@ export default function SplitsExplorer() {
         )}
       </div>
       <p className="text-[11px] text-gray-400 px-1">
-        {data ? `${rows.length} players · ` : ''}From play-by-play. Under a specific-count filter, discipline rates reflect
-        plate appearances that reached that count. Pinch-hit and true leverage filters are not yet available.
+        {data ? `${rows.length} players · ` : ''}From play-by-play. "Off the bench" flags players whose first plate appearance
+        of a game came after the 3rd inning (a pinch-hit / late-sub proxy). Under a specific-count filter, discipline rates
+        reflect plate appearances that reached that count.
       </p>
     </div>
   )

@@ -70,6 +70,15 @@ HAND_PITCHER = {
     "vs_rhb": "UPPER(pb.bats) = 'R'",
     "vs_lhb": "UPPER(pb.bats) = 'L'",
 }
+
+# Entry / usage (hitters only). Heuristic: a starter almost always bats by the
+# end of the 3rd inning (the order turns over ~9 hitters by then), so a first
+# plate appearance in the 4th or later means the player came off the bench.
+ENTRY = {
+    "all": "",
+    "bench": "ge.first_pa_inning >= 4",   # pinch-hit / late sub
+    "starter": "ge.first_pa_inning <= 3",
+}
 VENUE = {"all": "", "home": None, "away": None}  # filled with team_id at build time
 
 
@@ -167,12 +176,11 @@ def _row_stats(r: dict, side: str) -> dict:
 
 def build_splits(cur, team_id: int, season: int, side: str,
                  base_state="all", handedness="all", venue="all",
-                 timing="all", count="all", min_pa=1) -> dict:
+                 timing="all", count="all", entry="all", min_pa=1) -> dict:
     """Per-player filtered stat table for one team's hitters or pitchers."""
     side = "pitchers" if side == "pitchers" else "hitters"
     team_id = int(team_id)
 
-    clauses = ["ge.result_type IS NOT NULL"]
     if side == "hitters":
         pid_col = "ge.batter_player_id"
         team_col = "ge.batting_team_id"
@@ -184,7 +192,8 @@ def build_splits(cur, team_id: int, season: int, side: str,
         hand = HAND_PITCHER.get(handedness, "")
         name_join = "ge.pitcher_player_id"
 
-    clauses.append(f"{team_col} = {team_id}")
+    # Per-PA filters applied AFTER the first-PA-inning window is computed.
+    clauses = []
     for frag in (BASE_STATE.get(base_state, ""), TIMING.get(timing, ""),
                  COUNT.get(count, ""), hand):
         if frag:
@@ -193,20 +202,35 @@ def build_splits(cur, team_id: int, season: int, side: str,
         clauses.append(f"g.home_team_id = {team_id}")
     elif venue == "away":
         clauses.append(f"g.away_team_id = {team_id}")
+    if side == "hitters":  # entry/pinch-hit heuristic is a hitter concept
+        ef = ENTRY.get(entry, "")
+        if ef:
+            clauses.append(ef)
+    where = (" AND " + " AND ".join(clauses)) if clauses else ""
 
-    where = " AND ".join(clauses)
+    # CTE tags every PA with the player's earliest batting inning that game, over
+    # ALL their PAs for this team (before the per-PA filters), so the entry filter
+    # reflects true game entry.
     cur.execute(f"""
+        WITH pa AS (
+            SELECT ge.*,
+                   MIN(ge.inning) OVER (PARTITION BY ge.game_id, {pid_col}) AS first_pa_inning
+            FROM game_events ge
+            JOIN games g0 ON g0.id = ge.game_id
+            WHERE g0.season = %s AND {pid_col} IS NOT NULL
+              AND ge.result_type IS NOT NULL AND {team_col} = {team_id}
+        )
         SELECT {pid_col} AS pid,
                MAX(pl.first_name) AS first_name, MAX(pl.last_name) AS last_name,
                MAX(pl.position) AS position, MAX(pl.bats) AS bats, MAX(pl.throws) AS throws,
                {_OUTCOME_COLS},
                {_SEQ_COLS}
-        FROM game_events ge
+        FROM pa ge
         JOIN games g ON g.id = ge.game_id
         JOIN players pl ON pl.id = {name_join}
         LEFT JOIN players pb ON pb.id = ge.batter_player_id
         LEFT JOIN players pp ON pp.id = ge.pitcher_player_id
-        WHERE g.season = %s AND {pid_col} IS NOT NULL AND {where}
+        WHERE TRUE{where}
         GROUP BY {pid_col}
         HAVING COUNT(*) >= %s
         ORDER BY COUNT(*) DESC
@@ -229,7 +253,7 @@ def build_splits(cur, team_id: int, season: int, side: str,
         "season": season,
         "side": side,
         "filters": {"base_state": base_state, "handedness": handedness,
-                    "venue": venue, "timing": timing, "count": count},
+                    "venue": venue, "timing": timing, "count": count, "entry": entry},
         "players": players,
         "count": len(players),
     }

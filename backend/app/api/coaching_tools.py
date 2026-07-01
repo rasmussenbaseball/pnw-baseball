@@ -1265,6 +1265,7 @@ def portal_splits(
     venue: str = Query("all"),
     timing: str = Query("all"),
     count: str = Query("all"),
+    entry: str = Query("all"),
     min_pa: int = Query(1, ge=1),
     _user: str = Depends(require_tier("coach")),
 ):
@@ -1276,7 +1277,7 @@ def portal_splits(
         cur = conn.cursor()
         return build_splits(cur, team_id, season, side, base_state=base_state,
                             handedness=handedness, venue=venue, timing=timing,
-                            count=count, min_pa=min_pa)
+                            count=count, entry=entry, min_pa=min_pa)
 
 
 @router.get("/portal/bullpen-sheet/{team_id}")
