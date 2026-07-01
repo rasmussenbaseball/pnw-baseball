@@ -52,6 +52,33 @@ const PIT_COLS = [
   ['gb_pct', 'GB%', pct], ['ld_pct', 'LD%', pct], ['fb_pct', 'FB%', pct],
 ]
 
+function CountGrid({ data, side }) {
+  if (!data?.counts?.length) return <p className="text-sm text-gray-500 italic p-4">No data.</p>
+  const cols = side === 'pitchers'
+    ? [['strike_pct', 'Strike%'], ['whiff_pct', 'Whiff%'], ['swing_pct', 'Swing%'], ['contact_pct', 'Contact%']]
+    : [['swing_pct', 'Swing%'], ['contact_pct', 'Contact%'], ['whiff_pct', 'Whiff%'], ['strike_pct', 'Strike%']]
+  return (
+    <table className="w-full text-sm tabular-nums">
+      <thead className="bg-gray-50 dark:bg-gray-900/40 text-[11px] uppercase text-gray-500">
+        <tr>
+          <th className="text-left px-3 py-2 font-semibold">Count</th>
+          <th className="text-right px-3 py-2 font-semibold">Pitches</th>
+          {cols.map(([k, l]) => <th key={k} className="text-right px-3 py-2 font-semibold">{l}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {data.counts.map(r => (
+          <tr key={r.count} className={`border-t border-gray-100 dark:border-gray-700 ${r.strike_pct == null ? 'opacity-40' : ''}`}>
+            <td className="text-left px-3 py-1.5 font-semibold text-portal-purple-dark dark:text-gray-100">{r.count}</td>
+            <td className="text-right px-3 py-1.5 text-gray-400">{r.pitches}</td>
+            {cols.map(([k]) => <td key={k} className="text-right px-3 py-1.5 text-gray-700 dark:text-gray-200">{pct(r[k])}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 function Select({ value, onChange, options }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}
@@ -72,6 +99,7 @@ export default function SplitsExplorer() {
   const [count, setCount] = useState('all')
   const [entry, setEntry] = useState('all')
   const [minPa, setMinPa] = useState(10)
+  const [view, setView] = useState('players')  // 'players' | 'counts'
   const [sortKey, setSortKey] = useState('pa')
   const [sortDir, setSortDir] = useState('desc')
 
@@ -81,9 +109,14 @@ export default function SplitsExplorer() {
   useEffect(() => { setHandedness('all') }, [side])
 
   const { data, loading } = useApi('/portal/splits',
-    teamId ? { team_id: teamId, side, season: SEASON, base_state: baseState,
+    (teamId && view === 'players') ? { team_id: teamId, side, season: SEASON, base_state: baseState,
                handedness, venue, timing, count, entry, min_pa: minPa } : {},
-    [teamId, side, baseState, handedness, venue, timing, count, entry, minPa])
+    [teamId, side, view, baseState, handedness, venue, timing, count, entry, minPa])
+
+  const { data: gridData, loading: gridLoading } = useApi('/portal/count-grid',
+    (teamId && view === 'counts') ? { team_id: teamId, side, season: SEASON, base_state: baseState,
+               handedness, venue, timing, entry } : {},
+    [teamId, side, view, baseState, handedness, venue, timing, entry])
 
   const teamOptions = useMemo(() => (teams || []).filter(t => t.is_active)
     .sort((a, b) => (a.short_name || a.name).localeCompare(b.short_name || b.name)), [teams])
@@ -120,6 +153,14 @@ export default function SplitsExplorer() {
               </button>
             ))}
           </div>
+          <div className="inline-flex rounded-lg overflow-hidden border border-gray-300">
+            {[['players', 'Players'], ['counts', 'Count grid']].map(([v, label]) => (
+              <button key={v} onClick={() => setView(v)}
+                className={`px-3 py-1.5 text-sm font-medium ${view === v ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select value={teamId ?? ''} onChange={(e) => setTeamId(Number(e.target.value))}
@@ -131,17 +172,23 @@ export default function SplitsExplorer() {
           <Select value={handedness} onChange={setHandedness} options={handOpts} />
           <Select value={venue} onChange={setVenue} options={F_VENUE} />
           <Select value={timing} onChange={setTiming} options={F_TIMING} />
-          <Select value={count} onChange={setCount} options={F_COUNT} />
+          {view === 'players' && <Select value={count} onChange={setCount} options={F_COUNT} />}
           {side === 'hitters' && <Select value={entry} onChange={setEntry} options={F_ENTRY} />}
-          <label className="text-xs text-gray-500 flex items-center gap-1">
-            min <input type="number" min="1" value={minPa} onChange={(e) => setMinPa(Math.max(1, Number(e.target.value) || 1))}
-              className="w-14 px-2 py-1 rounded border border-gray-300 text-sm" />
-          </label>
+          {view === 'players' && (
+            <label className="text-xs text-gray-500 flex items-center gap-1">
+              min <input type="number" min="1" value={minPa} onChange={(e) => setMinPa(Math.max(1, Number(e.target.value) || 1))}
+                className="w-14 px-2 py-1 rounded border border-gray-300 text-sm" />
+            </label>
+          )}
         </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-x-auto">
-        {loading && !data ? (
+        {view === 'counts' ? (
+          gridLoading && !gridData
+            ? <p className="text-sm text-gray-500 italic p-4">Loading count grid...</p>
+            : <CountGrid data={gridData} side={side} />
+        ) : loading && !data ? (
           <p className="text-sm text-gray-500 italic p-4">Loading splits...</p>
         ) : !rows.length ? (
           <p className="text-sm text-gray-500 italic p-4">No players match these filters (try lowering the min sample).</p>
@@ -173,9 +220,9 @@ export default function SplitsExplorer() {
         )}
       </div>
       <p className="text-[11px] text-gray-400 px-1">
-        {data ? `${rows.length} players · ` : ''}From play-by-play. "Off the bench" flags players whose first plate appearance
-        of a game came after the 3rd inning (a pinch-hit / late-sub proxy). Under a specific-count filter, discipline rates
-        reflect plate appearances that reached that count.
+        From play-by-play. {view === 'counts'
+          ? 'Count grid measures swing/contact/whiff/strike rates AT each ball-strike count (pitch-by-pitch), for the whole team under the filters above.'
+          : '"Off the bench" flags players whose first plate appearance of a game came after the 3rd inning (a pinch-hit / late-sub proxy).'}
       </p>
     </div>
   )

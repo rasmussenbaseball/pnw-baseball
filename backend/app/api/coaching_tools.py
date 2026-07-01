@@ -1280,6 +1280,27 @@ def portal_splits(
                             count=count, entry=entry, min_pa=min_pa)
 
 
+@router.get("/portal/count-grid")
+def portal_count_grid(
+    team_id: int = Query(...),
+    side: str = Query("hitters"),
+    season: int = Query(CURRENT_SEASON),
+    base_state: str = Query("all"),
+    handedness: str = Query("all"),
+    venue: str = Query("all"),
+    timing: str = Query("all"),
+    entry: str = Query("all"),
+    _user: str = Depends(require_tier("coach")),
+):
+    """True per-count discipline grid (swing/contact/whiff/strike% measured at
+    each ball-strike count via pitch-sequence walking)."""
+    from .splits_explorer import build_count_grid
+    with get_connection() as conn:
+        cur = conn.cursor()
+        return build_count_grid(cur, team_id, season, side, base_state=base_state,
+                               handedness=handedness, venue=venue, timing=timing, entry=entry)
+
+
 @router.get("/portal/bullpen-sheet/{team_id}")
 def portal_bullpen_sheet(
     team_id: int,

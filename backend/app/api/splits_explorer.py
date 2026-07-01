@@ -257,3 +257,97 @@ def build_splits(cur, team_id: int, season: int, side: str,
         "players": players,
         "count": len(players),
     }
+
+
+def build_count_grid(cur, team_id: int, season: int, side: str,
+                     base_state="all", handedness="all", venue="all",
+                     timing="all", entry="all", min_pitches=15) -> dict:
+    """
+    TRUE per-count discipline: walks every PA's pitch_sequence pitch-by-pitch,
+    tracking the ball/strike count at each pitch, so swing/contact/whiff/strike
+    rates are measured AT each count (0-0 .. 3-2) rather than over whole PAs.
+
+    Encoding: B=ball, K=called strike, S=swinging strike, F=foul, H=HBP. A pitch
+    put in play has no letter (the PA ends), so it's added at the terminal count
+    as a swing with contact.
+    """
+    from collections import defaultdict
+    side = "pitchers" if side == "pitchers" else "hitters"
+    team_id = int(team_id)
+    if side == "hitters":
+        pid_col, team_col = "ge.batter_player_id", "ge.batting_team_id"
+        hand = HAND_HITTER.get(handedness, "")
+    else:
+        pid_col, team_col = "ge.pitcher_player_id", "ge.defending_team_id"
+        hand = HAND_PITCHER.get(handedness, "")
+
+    clauses = []
+    for frag in (BASE_STATE.get(base_state, ""), TIMING.get(timing, ""), hand):
+        if frag:
+            clauses.append(frag)
+    if venue == "home":
+        clauses.append(f"g.home_team_id = {team_id}")
+    elif venue == "away":
+        clauses.append(f"g.away_team_id = {team_id}")
+    if side == "hitters":
+        ef = ENTRY.get(entry, "")
+        if ef:
+            clauses.append(ef)
+    where = (" AND " + " AND ".join(clauses)) if clauses else ""
+
+    cur.execute(f"""
+        WITH pa AS (
+            SELECT ge.*,
+                   MIN(ge.inning) OVER (PARTITION BY ge.game_id, {pid_col}) AS first_pa_inning
+            FROM game_events ge
+            JOIN games g0 ON g0.id = ge.game_id
+            WHERE g0.season = %s AND {pid_col} IS NOT NULL
+              AND ge.result_type IS NOT NULL AND {team_col} = {team_id}
+        )
+        SELECT ge.pitch_sequence AS seq, ge.was_in_play AS wip
+        FROM pa ge
+        JOIN games g ON g.id = ge.game_id
+        LEFT JOIN players pb ON pb.id = ge.batter_player_id
+        LEFT JOIN players pp ON pp.id = ge.pitcher_player_id
+        WHERE TRUE{where}
+    """, (season,))
+
+    grid = defaultdict(lambda: {"p": 0, "strk": 0, "sw": 0, "wh": 0, "ct": 0, "bl": 0})
+    for row in cur.fetchall():
+        seq = row["seq"] or ""
+        b = s = 0
+        for ch in seq:
+            g = grid[(min(b, 3), min(s, 2))]
+            g["p"] += 1
+            if ch == 'B':
+                g["bl"] += 1; b += 1
+            elif ch == 'K':                      # called strike
+                g["strk"] += 1; s += 1
+            elif ch == 'S':                      # swinging strike (whiff)
+                g["strk"] += 1; g["sw"] += 1; g["wh"] += 1; s += 1
+            elif ch == 'F':                      # foul (a swing with contact)
+                g["strk"] += 1; g["sw"] += 1; g["ct"] += 1
+                s += 1 if s < 2 else 0
+            # 'H' (HBP) ends the PA, counts as a pitch but no swing/strike bucket beyond pitch
+        if row["wip"]:                           # ball put in play at the terminal count
+            g = grid[(min(b, 3), min(s, 2))]
+            g["p"] += 1; g["strk"] += 1; g["sw"] += 1; g["ct"] += 1
+
+    counts = []
+    for b in range(4):
+        for s in range(3):
+            g = grid.get((b, s))
+            p = g["p"] if g else 0
+            sw = g["sw"] if g else 0
+            if not g or p < min_pitches:
+                counts.append({"count": f"{b}-{s}", "pitches": p, "swing_pct": None,
+                               "contact_pct": None, "whiff_pct": None, "strike_pct": None})
+                continue
+            counts.append({
+                "count": f"{b}-{s}", "pitches": p,
+                "swing_pct": sw / p if p else None,
+                "contact_pct": (g["ct"] / sw) if sw else None,
+                "whiff_pct": (g["wh"] / sw) if sw else None,
+                "strike_pct": (g["strk"] / p) if p else None,
+            })
+    return {"team_id": team_id, "season": season, "side": side, "counts": counts}
