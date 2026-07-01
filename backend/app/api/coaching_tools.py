@@ -1236,6 +1236,25 @@ def portal_team_scouting(
         return result
 
 
+@router.get("/portal/advance-report")
+def portal_advance_report(
+    team_id: int = Query(..., description="Opponent team to scout"),
+    season: int = Query(CURRENT_SEASON, description="Season year"),
+    _user: str = Depends(require_tier("coach")),
+):
+    """Opponent Advance Report: the full Team Scouting payload PLUS an
+    auto-generated, coach-ready game plan and per-key-player attack bullets
+    (how to get each hitter out, how to hit each pitcher). Built entirely from
+    our scraped + play-by-play data."""
+    from .advance_report import build_advance_report
+    with get_connection() as conn:
+        cur = conn.cursor()
+        result = build_advance_report(cur, team_id, season)
+        if 'error' in result and 'team' not in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+        return result
+
+
 @router.get("/portal/bullpen-sheet/{team_id}")
 def portal_bullpen_sheet(
     team_id: int,
