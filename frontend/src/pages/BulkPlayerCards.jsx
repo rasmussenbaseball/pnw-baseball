@@ -1,30 +1,32 @@
-// BulkPlayerCards — renders many <PlayerCard /> instances stacked,
-// each on its own printable page, so a coach can print a whole
-// roster's worth of player cards in one print job.
+// BulkPlayerCards — renders many player cards stacked, each on its own
+// printable page, so a coach can print a whole roster's worth of cards in one
+// job.
 //
-// URL shape:  /portal/pdfs/bulk-player-cards?ids=1234:batting,1234:pitching,5678:batting
+// URL shape:  /portal/pdfs/bulk-player-cards?ids=1234:batting,5678:pitching
+//             &template=<templateId>   (optional)
 //
-// Each `id:side` combo becomes one card. Two-way players appear twice
-// in the URL (one per side they want printed) — so a hitter+pitcher
-// like Saelens can be requested as `3372:batting,3372:pitching` and
-// gets two separate pages.
-//
-// Print: each .card-page is `page-break-inside: avoid` and we put a
-// .sheet-pagebreak between cards (same trick as the scouting sheet)
-// so the browser places one card per physical page.
+// Each `id:side` combo becomes one card. Two-way players appear twice in the
+// URL (one per side). With no template, we render the standard fixed
+// <PlayerCard> and print via the browser dialog. With a template (built in the
+// Custom Player Card builder, saved to localStorage), we render <CustomCard>
+// per player in that layout and export a multi-page PDF via html2canvas — the
+// custom card is 8.5in wide, which the @media print margins would clip, so the
+// image path is the reliable one.
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PlayerCard } from './PlayerCardPDF'
+import { CustomCard } from './CustomCard'
+import { getTemplate } from '../lib/cardTemplates'
+import { saveNodesAsPdf } from '../lib/reportExport'
 
 
 export default function BulkPlayerCards() {
   const [searchParams] = useSearchParams()
   const idsParam = searchParams.get('ids') || ''
+  const templateId = searchParams.get('template') || ''
+  const template = useMemo(() => (templateId ? getTemplate(templateId) : null), [templateId])
 
-  // Parse "1234:batting,5678:pitching,..." into an array of {id, side}
-  // tuples. We tolerate plain "1234" entries (default to batting) so
-  // hand-typed URLs still work.
   const items = useMemo(() => {
     return idsParam.split(',')
       .map(s => s.trim()).filter(Boolean)
@@ -38,16 +40,30 @@ export default function BulkPlayerCards() {
       .filter(Boolean)
   }, [idsParam])
 
-  // Set the document title once based on how many cards are in the
-  // batch. The print dialog's "Save as PDF" suggestion picks this up.
-  // No cleanup/restore — other portal pages set their own titles on
-  // mount, which avoids the React 18 effect-double-invocation pitfall
-  // of capturing a stale "original" value.
   useEffect(() => {
-    document.title = items.length === 1
-      ? 'PlayerCards_1'
-      : `PlayerCards_${items.length}`
+    document.title = `PlayerCards_${items.length}`
   }, [items.length])
+
+  const cardRefs = useRef([])
+  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState('')
+
+  const onExportPdf = async () => {
+    setBusy(true)
+    setProgress('Rendering…')
+    try {
+      await saveNodesAsPdf(
+        cardRefs.current,
+        `PlayerCards_${items.length}${template ? '_' + template.name.replace(/\s+/g, '') : ''}`,
+        (done, total) => setProgress(`Rendering ${done}/${total}…`),
+      )
+    } catch (e) {
+      console.error('bulk pdf failed', e)
+    } finally {
+      setBusy(false)
+      setProgress('')
+    }
+  }
 
   if (!items.length) {
     return (
@@ -61,38 +77,63 @@ export default function BulkPlayerCards() {
     )
   }
 
+  // Side for a template card: honor the token's side, but a template that pins
+  // a side (not 'auto') overrides it for the whole batch.
+  const templateSide = it => (template && template.sidePref && template.sidePref !== 'auto') ? template.sidePref : it.side
+
   return (
     <div className="bulk-cards">
-      {/* Toolbar — single print button covers all cards. Hidden on
-          print so it doesn't show up in the saved PDF. */}
       <div className="bg-portal-purple text-portal-cream sticky top-0 z-10 px-4 py-3 print:hidden flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] uppercase tracking-widest text-portal-cream/70 leading-none">
-            Bulk Player Cards
+            Bulk Player Cards{template ? ` · ${template.name}` : ''}
           </div>
           <div className="text-base font-bold leading-tight">
-            {items.length} card{items.length === 1 ? '' : 's'} ready to print
+            {items.length} card{items.length === 1 ? '' : 's'} ready
           </div>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="px-5 py-2 text-xs font-bold uppercase tracking-wider rounded
-                     bg-portal-cream text-portal-purple-dark hover:bg-white"
-        >
-          Print / Save as PDF
-        </button>
+        {template ? (
+          <button
+            onClick={onExportPdf}
+            disabled={busy}
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider rounded
+                       bg-portal-cream text-portal-purple-dark hover:bg-white disabled:opacity-60"
+          >
+            {busy ? progress || 'Rendering…' : 'Save all as PDF'}
+          </button>
+        ) : (
+          <button
+            onClick={() => window.print()}
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider rounded
+                       bg-portal-cream text-portal-purple-dark hover:bg-white"
+          >
+            Print / Save as PDF
+          </button>
+        )}
       </div>
 
-      {/* Cards stacked. Each is wrapped in a div so we can insert a
-          page break between them without modifying PlayerCard itself. */}
+      {template && (
+        <div className="print:hidden max-w-2xl mx-auto px-4 pt-3 text-[11px] text-gray-500">
+          Using your “{template.name}” template. Cards render below and export as a multi-page PDF (one card per page).
+          Give them a moment to load before exporting.
+        </div>
+      )}
+
       {items.map((it, i) => (
-        <div key={`${it.id}-${it.side}-${i}`}>
-          <PlayerCard
-            playerId={it.id}
-            sideParam={it.side}
-            showToolbar={false}
-          />
-          {i < items.length - 1 && <div className="sheet-pagebreak" />}
+        <div key={`${it.id}-${it.side}-${i}`} className={template ? 'flex justify-center py-3' : ''}>
+          {template ? (
+            <CustomCard
+              playerId={it.id}
+              blocks={template.blocks}
+              sideParam={templateSide(it)}
+              cardRef={el => { cardRefs.current[i] = el }}
+            />
+          ) : (
+            <>
+              <PlayerCard playerId={it.id} sideParam={it.side} showToolbar={false} />
+              {i < items.length - 1 && <div className="sheet-pagebreak" />}
+            </>
+          )}
         </div>
       ))}
     </div>

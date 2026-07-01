@@ -55,7 +55,7 @@ const NAV_SECTIONS = [
       { to: '/portal/custom-sheet', label: 'Custom Sheet',
         desc: 'Build your own sheet — pick the filters and stat columns' },
       { to: '/portal/custom-card', label: 'Custom Player Card',
-        desc: 'Build a one-page player card — pick charts, tables & blocks' },
+        desc: 'Build a one-page card, save templates, run a full roster in bulk' },
       { to: '/portal/bullpen-sheet', label: 'Bullpen Sheet',
         desc: 'Pitcher roster + situational leaderboards for in-game decisions' },
       { to: '/portal/catcher-cards', label: 'Catcher Cards',

@@ -37,7 +37,7 @@ const PORTAL_TOOLS = [
   { to: '/portal/custom-sheet', label: 'Custom Sheet',
     desc: 'Build a sheet: pick the filters and stat columns you want', icon: 'clipboard' },
   { to: '/portal/custom-card', label: 'Custom Player Card',
-    desc: 'Build a one-page player card from blocks you choose', icon: 'user' },
+    desc: 'Build cards from blocks, save templates, print rosters in bulk', icon: 'user' },
   { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
     desc: 'Uncommitted NWAC transfer targets', icon: 'search' },
   { to: '/portal/lineup-helper', label: 'Lineup Helper',

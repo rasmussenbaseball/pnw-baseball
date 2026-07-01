@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTeams, usePlayerSearch, useApi } from '../hooks/useApi'
 import { CURRENT_SEASON } from '../lib/seasons'
+import { loadTemplates } from '../lib/cardTemplates'
 
 
 export default function PortalPDFs() {
@@ -44,14 +45,14 @@ export default function PortalPDFs() {
       <SimpleOpenCard
         title="Custom Player Card"
         hint="build your own"
-        desc="Pick a player, then add / reorder / resize blocks (percentile bars, spray charts, splits, stat tables) onto one page. Auto-fits to a single sheet; save as PDF or image."
+        desc="Add / reorder / resize blocks (percentile bars, spray charts, splits, stat tables, 20-80 grades, measurables, auto 'how to attack' notes, scout's take) onto one auto-fitting page. Save layouts as templates and run a whole roster in bulk. Export PDF or image."
         onOpen={() => navigate('/portal/custom-card')} />
       <BullpenSheetCard onPick={(id) => navigate(`/portal/bullpen-sheet/${id}`)} />
       <CatcherCardsCard onPick={(id) => navigate(`/portal/catcher-cards/${id}`)} />
       <PlayerCardCard onPick={(id, side) =>
         navigate(`/portal/pdfs/player-card/${id}${side ? `?side=${side}` : ''}`)} />
-      <BulkPlayerCardsCard onGenerate={(idsParam) =>
-        navigate(`/portal/pdfs/bulk-player-cards?ids=${encodeURIComponent(idsParam)}`)} />
+      <BulkPlayerCardsCard onGenerate={(idsParam, templateId) =>
+        navigate(`/portal/pdfs/bulk-player-cards?ids=${encodeURIComponent(idsParam)}${templateId ? `&template=${encodeURIComponent(templateId)}` : ''}`)} />
     </div>
   )
 }
@@ -450,6 +451,8 @@ function BulkPlayerCardsCard({ onGenerate }) {
   }, [teams])
 
   const [teamId, setTeamId] = useState('')
+  const [templateId, setTemplateId] = useState('')
+  const templates = useMemo(() => loadTemplates(), [])
 
   // Roster fetched from the existing scouting-sheet endpoint — it
   // returns hitters + pitchers grouped, with player_ids and meta.
@@ -547,7 +550,7 @@ function BulkPlayerCardsCard({ onGenerate }) {
         tokens.push(`${p.player_id}:${side}`)
       }
     }
-    if (tokens.length) onGenerate(tokens.join(','))
+    if (tokens.length) onGenerate(tokens.join(','), templateId)
   }
 
   return (
@@ -562,11 +565,12 @@ function BulkPlayerCardsCard({ onGenerate }) {
       </div>
       <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
         Pick a team, then check off which players you want cards for. For two-way
-        players you can choose hitting, pitching, or both. Hits one big print
-        dialog for the entire batch: one player card per physical page.
+        players you can choose hitting, pitching, or both. Choose a saved
+        template to print the whole batch in your own custom layout, or leave it
+        on the standard card. One card per page.
       </p>
 
-      {/* Team picker */}
+      {/* Team + template pickers */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <select
           value={teamId}
@@ -582,7 +586,25 @@ function BulkPlayerCardsCard({ onGenerate }) {
             </optgroup>
           ))}
         </select>
+        <select
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+          className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 min-w-[180px]"
+          title="Card layout"
+        >
+          <option value="">Standard card</option>
+          {templates.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
       </div>
+      {templates.length === 0 && (
+        <p className="text-[11px] text-gray-400 -mt-1 mb-3">
+          Tip: build a layout in the{' '}
+          <a href="/portal/custom-card" className="text-portal-purple underline">Custom Player Card</a>{' '}
+          tool and save it as a template to use it here.
+        </p>
+      )}
 
       {/* Roster checkbox list */}
       {teamId && (
