@@ -32,6 +32,8 @@ export default function CoachHomepage() {
 const PORTAL_TOOLS = [
   { to: '/portal/advance-report', label: 'Advance Report',
     desc: 'Auto game plan + how to attack every opponent', icon: 'target' },
+  { to: '/portal/splits', label: 'Splits Explorer',
+    desc: 'Filter any team by game state, count, hand, home/away', icon: 'trend' },
   { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
     desc: 'Uncommitted NWAC transfer targets', icon: 'search' },
   { to: '/portal/lineup-helper', label: 'Lineup Helper',

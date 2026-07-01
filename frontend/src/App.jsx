@@ -251,6 +251,7 @@ const NwacAdvancement = lazyWithRetry(() => import('./pages/NwacAdvancement'))
 const PlayerScouting = lazyWithRetry(() => import('./pages/PlayerScouting'))
 const TeamScouting = lazyWithRetry(() => import('./pages/TeamScouting'))
 const AdvanceReport = lazyWithRetry(() => import('./pages/AdvanceReport'))
+const SplitsExplorer = lazyWithRetry(() => import('./pages/SplitsExplorer'))
 const ScoutingSheet = lazyWithRetry(() => import('./pages/ScoutingSheet'))
 const PlayerCardPDF = lazyWithRetry(() => import('./pages/PlayerCardPDF'))
 const BulkPlayerCards = lazyWithRetry(() => import('./pages/BulkPlayerCards'))
@@ -486,6 +487,8 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><TeamScouting /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/advance-report"
                  element={<RequirePortalAccess><PortalLayout><AdvanceReport /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/splits"
+                 element={<RequirePortalAccess><PortalLayout><SplitsExplorer /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/scouting-sheet"
                  element={<RequirePortalAccess><PortalLayout lightOnly><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/scouting-sheet/:teamId"

@@ -1255,6 +1255,30 @@ def portal_advance_report(
         return result
 
 
+@router.get("/portal/splits")
+def portal_splits(
+    team_id: int = Query(..., description="Team to explore"),
+    side: str = Query("hitters", description="hitters | pitchers"),
+    season: int = Query(CURRENT_SEASON),
+    base_state: str = Query("all"),
+    handedness: str = Query("all"),
+    venue: str = Query("all"),
+    timing: str = Query("all"),
+    count: str = Query("all"),
+    min_pa: int = Query(1, ge=1),
+    _user: str = Depends(require_tier("coach")),
+):
+    """Splits Explorer: a deeply filterable per-player PBP stat table. Stack
+    game-state, handedness, home/away, timing, and count filters to dig into
+    how a team's hitters or pitchers perform in any situation."""
+    from .splits_explorer import build_splits
+    with get_connection() as conn:
+        cur = conn.cursor()
+        return build_splits(cur, team_id, season, side, base_state=base_state,
+                            handedness=handedness, venue=venue, timing=timing,
+                            count=count, min_pa=min_pa)
+
+
 @router.get("/portal/bullpen-sheet/{team_id}")
 def portal_bullpen_sheet(
     team_id: int,
