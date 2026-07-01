@@ -157,7 +157,7 @@ export default function CustomSheet() {
   const groups = [...new Set(catalog.map(c => c.group))]
 
   return (
-    <div className="max-w-full mx-auto px-3 sm:px-5 py-5 space-y-4">
+    <div className="custom-sheet-page max-w-full mx-auto px-3 sm:px-5 py-5 space-y-4">
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 space-y-3 print:hidden">
         <div className="flex items-center gap-3 flex-wrap">
@@ -208,56 +208,65 @@ export default function CustomSheet() {
         </div>
       </div>
 
-      {/* Live sheet */}
-      <div ref={reportRef} className="bg-white overflow-x-auto rounded-xl border border-gray-200">
-        {!teamId ? (
-          <p className="text-sm text-gray-500 italic p-4">Pick a team to build a sheet.</p>
-        ) : !cols.length ? (
-          <p className="text-sm text-gray-500 italic p-4">Select at least one stat column.</p>
-        ) : !rows.length ? (
-          <p className="text-sm text-gray-500 italic p-4">No players match these filters.</p>
-        ) : (
-          <>
-            <div className="flex items-baseline justify-between px-3 pt-3">
-              <div className="font-bold text-portal-purple-dark">{teamRow?.short_name || teamRow?.name} · <span className="uppercase text-sm">{side}</span></div>
-              <div className="text-[11px] text-gray-400">{rows.length} players · {SEASON}</div>
-            </div>
-            <table className="w-full border-collapse text-[10px] leading-tight tabular-nums mt-2">
-              <thead>
-                <tr className="bg-portal-purple text-portal-cream">
-                  <th className="text-right px-1 py-1 border border-portal-purple-dark">#</th>
-                  <th className="text-left px-1 py-1 border border-portal-purple-dark">Name</th>
-                  <th className="text-left px-0.5 py-1 border border-portal-purple-dark">Pos</th>
-                  <th className="text-center px-0.5 py-1 border border-portal-purple-dark">{isHit ? 'B' : 'T'}</th>
-                  {cols.map(c => (
-                    <th key={c.key} onClick={() => toggleSort(c.key)}
-                      className="text-center px-0.5 py-1 border border-portal-purple-dark font-semibold cursor-pointer whitespace-nowrap print:cursor-auto">
-                      {c.label}{sortKey === c.key ? (sortDir === 'desc' ? ' ▾' : ' ▴') : ''}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(r => (
-                  <tr key={r.player_id}>
-                    <td className="text-right px-1 py-0.5 border border-gray-200 text-gray-500">{r.jersey_number || '–'}</td>
-                    <td className="text-left px-1 py-0.5 border border-gray-200 font-bold whitespace-nowrap" style={{ color: handColor(r[handField]) }}>
-                      {r.first_name?.[0]}. {r.last_name}
-                    </td>
-                    <td className="text-left px-0.5 py-0.5 border border-gray-200 text-gray-600">{r.position || '–'}</td>
-                    <td className="text-center px-0.5 py-0.5 border border-gray-200 text-gray-600">{r[handField] || '–'}</td>
+      {/* Live sheet — fixed page width so the PDF/image are a standard size */}
+      <div className="flex justify-center">
+        <section ref={reportRef} className="sheet-page bg-white w-full max-w-[816px] border border-gray-200 rounded-xl overflow-hidden print:border-0 print:rounded-none">
+          {!teamId ? (
+            <p className="text-sm text-gray-500 italic p-4">Pick a team to build a sheet.</p>
+          ) : !cols.length ? (
+            <p className="text-sm text-gray-500 italic p-4">Select at least one stat column.</p>
+          ) : !rows.length ? (
+            <p className="text-sm text-gray-500 italic p-4">No players match these filters.</p>
+          ) : (
+            <>
+              <div className="flex items-baseline justify-between px-3 pt-2 pb-1">
+                <div className="font-bold text-portal-purple-dark">{teamRow?.short_name || teamRow?.name} · <span className="uppercase text-sm">{side}</span></div>
+                <div className="text-[11px] text-gray-400">{rows.length} players · {SEASON}</div>
+              </div>
+              <table className="w-full border-collapse text-[9px] leading-tight tabular-nums table-fixed">
+                <colgroup>
+                  <col style={{ width: '4%' }} />
+                  <col style={{ width: '19%' }} />
+                  <col style={{ width: '4.5%' }} />
+                  <col style={{ width: '3.5%' }} />
+                  {cols.map(c => <col key={c.key} style={{ width: `${69 / cols.length}%` }} />)}
+                </colgroup>
+                <thead>
+                  <tr className="bg-portal-purple text-portal-cream">
+                    <th className="text-right px-1 py-1 border border-portal-purple-dark">#</th>
+                    <th className="text-left px-1 py-1 border border-portal-purple-dark">Name</th>
+                    <th className="text-left px-0.5 py-1 border border-portal-purple-dark">Pos</th>
+                    <th className="text-center px-0.5 py-1 border border-portal-purple-dark">{isHit ? 'B' : 'T'}</th>
                     {cols.map(c => (
-                      <td key={c.key} className="text-center px-0.5 py-0.5 border border-gray-200"
-                        style={{ backgroundColor: shade(tscore(r[c.key], c.good, c.bad)) }}>
-                        {c.fmt(r[c.key])}
-                      </td>
+                      <th key={c.key} onClick={() => toggleSort(c.key)}
+                        className="text-center px-0.5 py-1 border border-portal-purple-dark font-semibold cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis print:cursor-auto">
+                        {c.label}{sortKey === c.key ? (sortDir === 'desc' ? ' ▾' : ' ▴') : ''}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.player_id}>
+                      <td className="text-right px-1 py-0.5 border border-gray-200 text-gray-500">{r.jersey_number || '–'}</td>
+                      <td className="text-left px-1 py-0.5 border border-gray-200 font-bold whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: handColor(r[handField]) }}>
+                        {r.first_name?.[0]}. {r.last_name}
+                      </td>
+                      <td className="text-left px-0.5 py-0.5 border border-gray-200 text-gray-600">{r.position || '–'}</td>
+                      <td className="text-center px-0.5 py-0.5 border border-gray-200 text-gray-600">{r[handField] || '–'}</td>
+                      {cols.map(c => (
+                        <td key={c.key} className="text-center px-0.5 py-0.5 border border-gray-200 overflow-hidden text-ellipsis"
+                          style={{ backgroundColor: shade(tscore(r[c.key], c.good, c.bad)) }}>
+                          {c.fmt(r[c.key])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </section>
       </div>
       <p className="text-[11px] text-gray-400 px-1 print:hidden">
         From play-by-play, computed under the filters above. Shading is good→bad on an absolute scale (green good, red poor).

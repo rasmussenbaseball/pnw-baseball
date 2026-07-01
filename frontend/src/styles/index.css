@@ -241,6 +241,8 @@ html.dark .player-link:hover {
      the full printable width of a US Letter portrait page. */
   .scouting-sheet-page,
   .scouting-sheet-page .sheet-page,
+  .custom-sheet-page,
+  .custom-sheet-page .sheet-page,
   .player-card-pdf,
   .player-card-pdf .card-page,
   .bullpen-sheet-page,
@@ -255,13 +257,22 @@ html.dark .player-link:hover {
   }
   .scouting-sheet-page,
   .scouting-sheet-page *,
+  .custom-sheet-page,
+  .custom-sheet-page *,
   .player-card-pdf,
   .player-card-pdf *,
   .bullpen-sheet-page,
   .bullpen-sheet-page * {
     visibility: visible;
   }
+  /* Colored good/bad shading must print, not be dropped as background. */
+  .custom-sheet-page,
+  .custom-sheet-page * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   .scouting-sheet-page,
+  .custom-sheet-page,
   .player-card-pdf,
   .bullpen-sheet-page {
     position: absolute;
