@@ -54,6 +54,8 @@ const NAV_SECTIONS = [
         desc: 'Printable hitter + pitcher rosters with conference percentiles' },
       { to: '/portal/custom-sheet', label: 'Custom Sheet',
         desc: 'Build your own sheet — pick the filters and stat columns' },
+      { to: '/portal/custom-card', label: 'Custom Player Card',
+        desc: 'Build a one-page player card — pick charts, tables & blocks' },
       { to: '/portal/bullpen-sheet', label: 'Bullpen Sheet',
         desc: 'Pitcher roster + situational leaderboards for in-game decisions' },
       { to: '/portal/catcher-cards', label: 'Catcher Cards',

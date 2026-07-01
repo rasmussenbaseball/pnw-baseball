@@ -476,13 +476,19 @@ function PercentilePanel({ side, battingPercentiles, pitchingPercentiles }) {
 // ───────────────────────────────────────────────────────────
 // Spray chart panel
 // ───────────────────────────────────────────────────────────
-function SprayPanel({ side, hitterPbp, pitcherPbp, player }) {
+// `filter` (custom card builder) locks the spray to one split so several fixed
+// spray charts can be stacked. Default 'all' keeps the original interactive card.
+const SPRAY_TITLES = { all: 'Spray Chart', vs_rhp: 'Spray vs RHP', vs_lhp: 'Spray vs LHP',
+  vs_rhb: 'Opp Spray vs RHB', vs_lhb: 'Opp Spray vs LHB', xbh: 'XBH Spray', hr: 'HR Spray' }
+function SprayPanel({ side, hitterPbp, pitcherPbp, player, filter = 'all' }) {
   // Hitter: own spray. Pitcher: opposing batters' spray vs this pitcher.
   const data = side === 'pitching' ? pitcherPbp?.opp_spray_chart : hitterPbp?.spray_chart
-  const title = side === 'pitching' ? 'Opp. Spray vs This Pitcher' : 'Spray Chart'
+  const title = filter !== 'all'
+    ? (SPRAY_TITLES[filter] || 'Spray Chart')
+    : (side === 'pitching' ? 'Opp. Spray vs This Pitcher' : 'Spray Chart')
   // For the SprayChart component, `bats` controls pull/oppo orientation;
   // for pitcher mode we pass through but the spray chart's mode handles it.
-  const bats = side === 'pitching' ? null : (player.bats || 'R')
+  const bats = side === 'pitching' ? null : (player?.bats || 'R')
   const mode = side === 'pitching' ? 'pitcher' : 'hitter'
   return (
     <div className="border border-gray-200 rounded p-2 flex flex-col">
@@ -491,7 +497,8 @@ function SprayPanel({ side, hitterPbp, pitcherPbp, player }) {
       </div>
       <div className="flex-1 min-h-[180px]">
         {data ? (
-          <SprayChart data={data} bats={bats} mode={mode} defaultFilter="all" />
+          <SprayChart data={data} bats={bats} mode={mode}
+            defaultFilter={filter} staticFilter={filter !== 'all' ? filter : null} />
         ) : (
           <div className="text-[10px] text-gray-400 italic">No PBP coverage yet.</div>
         )}
@@ -1243,4 +1250,11 @@ function aggregatePitching(rows) {
     whip: ip > 0 ? (hits_allowed + walks_allowed) / ip : 0,
     baa: bf > 0 ? hits_allowed / (bf - walks_allowed) : 0,
   }
+}
+
+// Reusable card blocks for the Custom Player Card builder (CustomPlayerCard.jsx).
+export {
+  CardHeader, PercentilePanel, SprayPanel, DisciplinePanel, BattedBallPanel,
+  SplitsPanel, CountStatesPanel, SeasonStatsTable, SummerBallTable,
+  RecentKsPanel, VsTeamPanel,
 }

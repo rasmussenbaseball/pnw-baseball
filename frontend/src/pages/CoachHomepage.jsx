@@ -36,6 +36,8 @@ const PORTAL_TOOLS = [
     desc: 'Filter any team by game state, count, hand, home/away', icon: 'trend' },
   { to: '/portal/custom-sheet', label: 'Custom Sheet',
     desc: 'Build a sheet: pick the filters and stat columns you want', icon: 'clipboard' },
+  { to: '/portal/custom-card', label: 'Custom Player Card',
+    desc: 'Build a one-page player card from blocks you choose', icon: 'user' },
   { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
     desc: 'Uncommitted NWAC transfer targets', icon: 'search' },
   { to: '/portal/lineup-helper', label: 'Lineup Helper',

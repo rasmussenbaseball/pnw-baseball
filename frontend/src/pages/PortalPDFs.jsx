@@ -41,6 +41,11 @@ export default function PortalPDFs() {
         hint="build your own"
         desc="Pick a team, stack any filters (game state, count, hand, home/away, pinch-hit), and choose exactly which stat columns to show. Builds live; save as PDF or image."
         onOpen={() => navigate('/portal/custom-sheet')} />
+      <SimpleOpenCard
+        title="Custom Player Card"
+        hint="build your own"
+        desc="Pick a player, then add / reorder / resize blocks (percentile bars, spray charts, splits, stat tables) onto one page. Auto-fits to a single sheet; save as PDF or image."
+        onOpen={() => navigate('/portal/custom-card')} />
       <BullpenSheetCard onPick={(id) => navigate(`/portal/bullpen-sheet/${id}`)} />
       <CatcherCardsCard onPick={(id) => navigate(`/portal/catcher-cards/${id}`)} />
       <PlayerCardCard onPick={(id, side) =>

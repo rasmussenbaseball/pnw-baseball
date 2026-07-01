@@ -108,9 +108,12 @@ const PITCHER_FILTERS = [
   ['hr',     'HR'],
 ]
 
-export default function SprayChart({ data, bats, defaultFilter = 'all', mode = 'hitter' }) {
+export default function SprayChart({ data, bats, defaultFilter = 'all', mode = 'hitter', staticFilter = null }) {
   const FILTERS = mode === 'pitcher' ? PITCHER_FILTERS : HITTER_FILTERS
-  const [filter, setFilter] = useState(defaultFilter)
+  // staticFilter (used by the custom card builder) locks the view to one filter
+  // and hides the interactive toggle chips, so you can stack several fixed sprays.
+  const [filterState, setFilter] = useState(defaultFilter)
+  const filter = staticFilter || filterState
   const counts = condense(data?.[filter])
   const total = data?.[`${filter}_total`] || 0
 
@@ -180,7 +183,7 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
     <div className="bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 p-3">
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Spray Chart</h3>
-        <div className="flex items-center flex-wrap gap-1 text-[10px]">
+        <div className={`flex items-center flex-wrap gap-1 text-[10px] ${staticFilter ? 'hidden' : ''}`}>
           {FILTERS.map(([k, label]) => (
             <button
               key={k}
