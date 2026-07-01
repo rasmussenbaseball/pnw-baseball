@@ -45,6 +45,41 @@ function PlanBullet({ text }) {
   )
 }
 
+// ── count-state tendency table ───────────────────────────────────
+const fmtRate = (v) => v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')
+const fmtPct = (v) => v == null ? '—' : `${Math.round(v * 100)}%`
+
+function CountTable({ title, rows }) {
+  if (!rows || !rows.length) return null
+  return (
+    <div>
+      <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">{title}</div>
+      <table className="w-full text-sm tabular-nums">
+        <thead>
+          <tr className="text-[11px] uppercase text-gray-400 text-right">
+            <th className="text-left font-medium py-1">Count</th>
+            <th className="font-medium">PA</th><th className="font-medium">AVG</th>
+            <th className="font-medium">OPS</th><th className="font-medium">K%</th><th className="font-medium">BB%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.label}
+                className={`text-right border-t border-gray-100 dark:border-gray-700 ${r.label === '2 Strikes' ? 'font-semibold' : ''}`}>
+              <td className="text-left py-1 text-gray-700 dark:text-gray-200">{r.label}</td>
+              <td className="text-gray-400">{r.pa}</td>
+              <td>{fmtRate(r.avg)}</td>
+              <td>{fmtRate(r.ops)}</td>
+              <td>{fmtPct(r.k_pct)}</td>
+              <td>{fmtPct(r.bb_pct)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function Card({ children, className = '' }) {
   return (
     <section className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 ${className}`}>
@@ -221,6 +256,19 @@ export default function AdvanceReport() {
                 : <p className="text-sm text-gray-400 italic">No stand-out staff tendencies.</p>}
             </Card>
           </div>
+
+          {/* Count tendencies */}
+          {(n.count_tendencies?.offense?.length > 0 || n.count_tendencies?.pitching?.length > 0) && (
+            <Card className="p-4 break-inside-avoid">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-portal-purple-dark dark:text-gray-100 mb-3">
+                Count tendencies <span className="text-gray-400 font-normal normal-case">· work the count in your favor</span>
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <CountTable title="Their hitters, by count" rows={n.count_tendencies.offense} />
+                <CountTable title="Their pitchers allow, by count" rows={n.count_tendencies.pitching} />
+              </div>
+            </Card>
+          )}
 
           {/* Key hitters */}
           <Card className="p-4">
