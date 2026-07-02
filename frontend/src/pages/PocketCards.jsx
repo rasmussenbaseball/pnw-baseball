@@ -13,7 +13,7 @@
  * Data: /api/v1/portal/alignments?team_id=&season=
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { CURRENT_SEASON } from '../lib/seasons'
@@ -42,18 +42,30 @@ export default function PocketCards() {
     teamId ? { team_id: teamId, season: SEASON } : {},
     [teamId],
   )
-  const hitters = data?.hitters || []
+  // Order the lineup by jersey number (like a roster/lineup card); unnumbered
+  // players fall to the bottom, then alphabetical.
+  const jnum = j => {
+    const n = parseInt(j, 10)
+    return (j == null || Number.isNaN(n)) ? Infinity : n
+  }
+  const hitters = [...(data?.hitters || [])].sort((a, b) => {
+    const d = jnum(a.jersey) - jnum(b.jersey)
+    return d !== 0 ? d : (a.last_name || a.name || '').localeCompare(b.last_name || b.name || '')
+  })
   const gridRef = useRef(null)
+  const [pdfWidth, setPdfWidth] = useState(5)   // inches — download size
   useEffect(() => { document.title = `DefCard_${data?.team?.short_name || ''}` }, [data])
 
   const fname = `DefCard_${(data?.team?.short_name || 'team').replace(/\s+/g, '')}`
 
-  // Export at the card's exact rendered size (5in wide, whatever height it is).
+  // The card renders at 5in on screen; the PDF is scaled to the chosen width
+  // (same content, smaller print) so teams can pick a more compact card.
   const exportPdf = () => {
     const node = gridRef.current
     if (!node) return
-    const wIn = node.offsetWidth / 96
-    const hIn = node.offsetHeight / 96
+    const aspect = node.offsetHeight / node.offsetWidth
+    const wIn = pdfWidth
+    const hIn = wIn * aspect
     saveNodeAsPdf(node, fname, { unit: 'in', format: [wIn, hIn], orientation: wIn > hIn ? 'landscape' : 'portrait' })
   }
 
@@ -66,7 +78,17 @@ export default function PocketCards() {
           <div className="text-[10px] uppercase tracking-widest text-portal-cream/70 leading-none">Defensive Card</div>
           <div className="text-sm font-bold leading-tight">{data?.team?.short_name} · {hitters.length} hitters</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* PDF size — same card, printed smaller for teams that want compact. */}
+          <div className="inline-flex rounded overflow-hidden border border-portal-cream/40 text-[10px] font-bold">
+            {[['Std', 5], ['Compact', 4], ['Mini', 3.25]].map(([label, w]) => (
+              <button key={label} onClick={() => setPdfWidth(w)}
+                className={`px-2 py-1 ${pdfWidth === w ? 'bg-portal-cream text-portal-purple-dark' : 'text-portal-cream hover:bg-portal-purple-light'}`}
+                title={`${w}″ wide PDF`}>
+                {label}
+              </button>
+            ))}
+          </div>
           <button onClick={exportPdf} disabled={!hitters.length}
             className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded bg-portal-cream text-portal-purple-dark hover:bg-white disabled:opacity-60">
             Save PDF
