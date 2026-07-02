@@ -6,6 +6,22 @@ export function printReport() {
   window.print()
 }
 
+// Map a 0-100 "good-direction" score (higher = better, 50 = neutral) to a
+// tone. Used to tag shaded cells so the black-&-white export can swap color
+// shading for typography: bold = good, italic = bad, normal = middle.
+export function toneOf(score) {
+  if (score == null || Number.isNaN(Number(score))) return null
+  const s = Number(score)
+  if (s >= 65) return 'good'
+  if (s <= 35) return 'bad'
+  return 'mid'
+}
+// Spread onto a shaded element: {...toneAttr(score)} → data-tone="good|bad|mid".
+export function toneAttr(score) {
+  const t = toneOf(score)
+  return t ? { 'data-tone': t } : {}
+}
+
 // Render a fixed-size node to a single-page letter PDF (image-based, so it
 // matches the PNG exactly). Used by the Custom Player Card builder, whose page
 // is already sized to one sheet — avoids the @media print machinery entirely.

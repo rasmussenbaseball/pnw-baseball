@@ -34,6 +34,7 @@ import {
 import { usePortalTeam } from '../context/PortalTeamContext'
 import SprayChart from '../components/SprayChart'
 import { CURRENT_SEASON } from '../lib/seasons'
+import { toneAttr } from '../lib/reportExport'
 
 
 const SEASON = CURRENT_SEASON
@@ -85,12 +86,13 @@ function PercentileRow({ label, value, percentile }) {
         {pct != null && (
           <div
             className="h-full"
+            data-bar
             style={{ width: `${pct}%`, backgroundColor: pctColor(pct) }}
           />
         )}
         <div className="absolute inset-y-0 left-1/2 w-px bg-gray-300" />
       </div>
-      <div className="text-[10px] tabular-nums w-12 text-right font-semibold">
+      <div className="text-[10px] tabular-nums w-12 text-right font-semibold" {...toneAttr(pct)}>
         {value}
       </div>
       <div className="text-[8.5px] tabular-nums w-7 text-right text-gray-500">
@@ -648,7 +650,7 @@ function SplitsPanel({ side, hitterPbp, pitcherPbp }) {
                 const bg = score != null ? scoreColor(score, 0.85) : undefined
                 return (
                   <td key={colKey} className="text-right font-semibold">
-                    <span className="px-1 rounded" style={bg ? { backgroundColor: bg } : undefined}>
+                    <span className="px-1 rounded" {...toneAttr(score)} style={bg ? { backgroundColor: bg } : undefined}>
                       {r.fmt(raw)}
                     </span>
                   </td>
@@ -915,7 +917,7 @@ function CountStatesPanel({ side, hitterPbp, pitcherPbp }) {
           <div key={k} className="flex justify-between items-baseline border-b border-gray-100 last:border-0 py-0.5">
             <span className="text-gray-600 text-[9px]">{labels[k]}</span>
             <div className="flex items-baseline gap-1">
-              <span className="font-semibold tabular-nums px-1 rounded"
+              <span className="font-semibold tabular-nums px-1 rounded" {...toneAttr(score)}
                     style={bg ? { backgroundColor: bg } : undefined}>
                 {fmt.rate(woba)}
               </span>
@@ -956,7 +958,7 @@ function StatLine({ label, value, statKey, rawValue }) {
   return (
     <div className="flex justify-between items-baseline border-b border-gray-100 last:border-0 py-0.5">
       <span className="text-gray-600">{label}</span>
-      <span className="font-semibold tabular-nums px-1 rounded"
+      <span className="font-semibold tabular-nums px-1 rounded" {...toneAttr(score)}
             style={bg ? { backgroundColor: bg } : undefined}>
         {value}
       </span>
@@ -1465,7 +1467,7 @@ function GradesPanel({ side, cfg }) {
                 <td className="text-gray-700 pr-1">{label}</td>
                 {[p, f].map((g, i) => (
                   <td key={i} className="text-center font-semibold">
-                    <span className="px-1 rounded inline-block min-w-[18px]"
+                    <span className="px-1 rounded inline-block min-w-[18px]" {...toneAttr(g ? gradeScore(g) : null)}
                       style={{ backgroundColor: g ? scoreColor(gradeScore(g), 0.8) : undefined }}>
                       {g || '–'}
                     </span>
@@ -1536,7 +1538,7 @@ function MeasurablesPanel({ player, cfg }) {
         return (
           <div key={m.key} className="flex justify-between items-baseline border-b border-gray-100 last:border-0 py-0.5">
             <span className="text-gray-600 text-[9.5px]">{m.label}</span>
-            <span className="font-semibold tabular-nums text-[9.5px] px-1 rounded" style={{ backgroundColor: bg }}>
+            <span className="font-semibold tabular-nums text-[9.5px] px-1 rounded" {...toneAttr(measScore(m, v))} style={{ backgroundColor: bg }}>
               {v}{m.unit}
             </span>
           </div>

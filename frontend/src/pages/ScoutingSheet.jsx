@@ -25,6 +25,7 @@
 import { useRef, useState, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReportActions from '../components/ReportActions'
+import { toneAttr } from '../lib/reportExport'
 import { useApi, useTeams } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import { CURRENT_SEASON } from '../lib/seasons'
@@ -508,12 +509,13 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
                 const pct = row.percentiles
                   ? row.percentiles[c.pctKey]
                   : (c.score ? c.score(row) : null)
-                const bg = isLow
-                  ? lowSampleBg
-                  : pctColor(pct, c.direction || 'higher_better')
+                const dir = c.direction || 'higher_better'
+                const bg = isLow ? lowSampleBg : pctColor(pct, dir)
+                const tone = (isLow || dir === 'neutral') ? {} : toneAttr(pct)
                 return (
                   <td key={c.label}
                       className="text-center px-0.5 py-0.5 border border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis"
+                      {...tone}
                       style={{ backgroundColor: bg }}
                       title={isLow
                         ? 'Below qualifier, not ranked'
@@ -539,11 +541,13 @@ function RosterTable({ rows, cols, handField, totals, totalsLabel, totalsHint })
               {totalsLabel}
             </td>
             {cols.map(c => {
+              const dir = c.direction || 'higher_better'
               const pct = totals.percentiles ? totals.percentiles[c.pctKey] : null
-              const bg = pctColor(pct, c.direction || 'higher_better')
+              const bg = pctColor(pct, dir)
               return (
                 <td key={c.label}
                     className="text-center px-0.5 py-1 border border-portal-purple-dark font-bold whitespace-nowrap overflow-hidden text-ellipsis"
+                    {...(dir === 'neutral' ? {} : toneAttr(pct))}
                     style={{ backgroundColor: bg }}
                     title={pct != null ? `${pct}th percentile vs other teams` : undefined}>
                   {c.val(totals)}

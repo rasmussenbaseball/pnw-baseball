@@ -16,6 +16,7 @@ import { useApi } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import { CURRENT_SEASON } from '../lib/seasons'
 import ReportActions from '../components/ReportActions'
+import { toneAttr } from '../lib/reportExport'
 
 const SEASON = CURRENT_SEASON
 
@@ -256,6 +257,7 @@ export default function CustomSheet() {
                       <td className="text-center px-0.5 py-0.5 border border-gray-200 text-gray-600">{r[handField] || '–'}</td>
                       {cols.map(c => (
                         <td key={c.key} className="text-center px-0.5 py-0.5 border border-gray-200 overflow-hidden text-ellipsis"
+                          {...toneAttr(tscore(r[c.key], c.good, c.bad))}
                           style={{ backgroundColor: shade(tscore(r[c.key], c.good, c.bad)) }}>
                           {c.fmt(r[c.key])}
                         </td>

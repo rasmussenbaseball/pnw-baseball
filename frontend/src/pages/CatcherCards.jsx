@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react'
 import ReportActions from '../components/ReportActions'
+import { toneAttr } from '../lib/reportExport'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApi, useTeams } from '../hooks/useApi'
 import { CURRENT_SEASON } from '../lib/seasons'
@@ -372,6 +373,8 @@ function Row({ hitter }) {
     const score = thresholdScore(key, val)
     return score != null ? scoreColor(score, 0.85) : 'transparent'
   }
+  // Same score → data-tone so B&W export can bold/italic instead of shade.
+  const cellTone = (key, val) => toneAttr(thresholdScore(key, val))
 
   return (
     <tr style={{ height: 'calc((2in - 24px) / 7)' }}>
@@ -384,32 +387,32 @@ function Row({ hitter }) {
       }}>
         {hitter.first_name?.[0]}. {hitter.last_name}
       </td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('woba', hitter.woba_vs_rhp) }}>
+      <td {...cellTone('woba', hitter.woba_vs_rhp)} style={{ ...tdStyle, backgroundColor: cellBg('woba', hitter.woba_vs_rhp) }}>
         {fmt.rate(hitter.woba_vs_rhp)}
       </td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('woba', hitter.woba_vs_lhp) }}>
+      <td {...cellTone('woba', hitter.woba_vs_lhp)} style={{ ...tdStyle, backgroundColor: cellBg('woba', hitter.woba_vs_lhp) }}>
         {fmt.rate(hitter.woba_vs_lhp)}
       </td>
       <td style={tdStyle}>{gbLabel}</td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('k_pct', hitter.k_pct) }}>
+      <td {...cellTone('k_pct', hitter.k_pct)} style={{ ...tdStyle, backgroundColor: cellBg('k_pct', hitter.k_pct) }}>
         {fmt.pct(hitter.k_pct)}
       </td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('bb_pct', hitter.bb_pct) }}>
+      <td {...cellTone('bb_pct', hitter.bb_pct)} style={{ ...tdStyle, backgroundColor: cellBg('bb_pct', hitter.bb_pct) }}>
         {fmt.pct(hitter.bb_pct)}
       </td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('swing_pct', hitter.swing_pct) }}>
+      <td {...cellTone('swing_pct', hitter.swing_pct)} style={{ ...tdStyle, backgroundColor: cellBg('swing_pct', hitter.swing_pct) }}>
         {fmt.pct(hitter.swing_pct)}
       </td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('fps_pct', hitter.first_pitch_swing_pct) }}>
+      <td {...cellTone('fps_pct', hitter.first_pitch_swing_pct)} style={{ ...tdStyle, backgroundColor: cellBg('fps_pct', hitter.first_pitch_swing_pct) }}>
         {fmt.pct(hitter.first_pitch_swing_pct)}
       </td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('contact_pct', hitter.contact_pct) }}>
+      <td {...cellTone('contact_pct', hitter.contact_pct)} style={{ ...tdStyle, backgroundColor: cellBg('contact_pct', hitter.contact_pct) }}>
         {fmt.pct(hitter.contact_pct)}
       </td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('iso', hitter.iso) }}>
+      <td {...cellTone('iso', hitter.iso)} style={{ ...tdStyle, backgroundColor: cellBg('iso', hitter.iso) }}>
         {fmt.rate(hitter.iso)}
       </td>
-      <td style={{ ...tdStyle, backgroundColor: cellBg('sb_made', hitter.sb_made) }}>
+      <td {...cellTone('sb_made', hitter.sb_made)} style={{ ...tdStyle, backgroundColor: cellBg('sb_made', hitter.sb_made) }}>
         {hitter.sb_made ?? 0}
       </td>
       {/* Notes — intentionally blank for handwritten coach notes. */}

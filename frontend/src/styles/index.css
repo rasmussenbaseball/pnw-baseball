@@ -397,6 +397,39 @@ html.dark .player-link:hover {
   }
 }
 
+/* ── Black & white export mode (ReportActions "B&W" toggle) ──────────
+   Added to a report node just before html2canvas capture or print, then
+   removed. Strips all color shading (so nothing turns to muddy gray on a
+   mono printer) and encodes the good/bad signal as typography instead:
+   bold = good, italic = bad, normal = middle — driven by data-tone
+   attributes on the shaded cells. Global (not @media print) so it also
+   applies to the html2canvas image/PDF path. */
+.bw-report,
+.bw-report * {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+/* Desaturate anything still colored (logos, spray SVGs, bar fills). Note:
+   html2canvas ignores CSS filters, so an exported PNG/PDF may keep hue — but a
+   mono printer greys it anyway; the shading removal above is the point. The
+   filter still helps the browser-print path and the on-screen check. */
+.bw-report { filter: grayscale(1) !important; }
+/* Force text black so white-on-color header text stays legible once its
+   background is stripped. SVG paints with fill/stroke (not color), so charts
+   survive. */
+.bw-report *:not(svg):not(path):not(g):not(circle):not(rect):not(line):not(polygon):not(polyline):not(image) {
+  color: #000 !important;
+  border-color: #6b7280 !important;
+}
+.bw-report [data-tone="good"] { font-weight: 800 !important; }
+.bw-report [data-tone="bad"] { font-style: italic !important; }
+/* Bars (percentile / score) keep their magnitude as a dark-gray fill instead of
+   vanishing when their color background is stripped. More specific than the
+   blanket transparent rule, so it wins. */
+.bw-report [data-bar] { background-color: #374151 !important; }
+
 /* ─────────────────────────────────────────────────────────
    GM DYNASTY GAME — PIXEL THEME OVERRIDES
    ─────────────────────────────────────────────────────────

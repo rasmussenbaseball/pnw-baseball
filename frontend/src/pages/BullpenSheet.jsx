@@ -22,6 +22,7 @@
 
 import { useEffect, useRef } from 'react'
 import ReportActions from '../components/ReportActions'
+import { toneAttr } from '../lib/reportExport'
 import { useParams } from 'react-router-dom'
 import { useApi, useTeams } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
@@ -120,7 +121,7 @@ function Cell({ value, statKey, formatter = fmt.pct }) {
   const bg = score != null ? scoreColor(score, 0.85) : undefined
   return (
     <td className="px-1 py-0.5 text-right tabular-nums whitespace-nowrap">
-      <span className="px-1 rounded" style={bg ? { backgroundColor: bg } : undefined}>
+      <span className="px-1 rounded" {...toneAttr(score)} style={bg ? { backgroundColor: bg } : undefined}>
         {formatter(value)}
       </span>
     </td>

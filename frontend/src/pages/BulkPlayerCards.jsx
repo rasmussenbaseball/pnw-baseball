@@ -47,22 +47,38 @@ export default function BulkPlayerCards() {
   const cardRefs = useRef([])
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
+  const [bw, setBw] = useState(false)
 
   const onExportPdf = async () => {
     setBusy(true)
     setProgress('Rendering…')
+    const nodes = cardRefs.current.filter(Boolean)
+    if (bw) nodes.forEach(n => n.classList.add('bw-report'))
     try {
       await saveNodesAsPdf(
         cardRefs.current,
-        `PlayerCards_${items.length}${template ? '_' + template.name.replace(/\s+/g, '') : ''}`,
+        `PlayerCards_${items.length}${template ? '_' + template.name.replace(/\s+/g, '') : ''}${bw ? '_bw' : ''}`,
         (done, total) => setProgress(`Rendering ${done}/${total}…`),
       )
     } catch (e) {
       console.error('bulk pdf failed', e)
     } finally {
+      if (bw) nodes.forEach(n => n.classList.remove('bw-report'))
       setBusy(false)
       setProgress('')
     }
+  }
+
+  // Standard (non-template) cards print via the browser dialog; apply B&W to
+  // the whole stack for the duration of the print.
+  const onPrint = () => {
+    const wrap = document.querySelector('.bulk-cards')
+    if (bw && wrap) {
+      wrap.classList.add('bw-report')
+      const cleanup = () => { wrap.classList.remove('bw-report'); window.removeEventListener('afterprint', cleanup) }
+      window.addEventListener('afterprint', cleanup)
+    }
+    window.print()
   }
 
   if (!items.length) {
@@ -92,24 +108,31 @@ export default function BulkPlayerCards() {
             {items.length} card{items.length === 1 ? '' : 's'} ready
           </div>
         </div>
-        {template ? (
-          <button
-            onClick={onExportPdf}
-            disabled={busy}
-            className="px-5 py-2 text-xs font-bold uppercase tracking-wider rounded
-                       bg-portal-cream text-portal-purple-dark hover:bg-white disabled:opacity-60"
-          >
-            {busy ? progress || 'Rendering…' : 'Save all as PDF'}
-          </button>
-        ) : (
-          <button
-            onClick={() => window.print()}
-            className="px-5 py-2 text-xs font-bold uppercase tracking-wider rounded
-                       bg-portal-cream text-portal-purple-dark hover:bg-white"
-          >
-            Print / Save as PDF
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-portal-cream/90 cursor-pointer select-none"
+                 title="Strip color shading for mono printers (bold = good, italic = bad)">
+            <input type="checkbox" checked={bw} onChange={e => setBw(e.target.checked)} className="h-3.5 w-3.5 accent-portal-accent" />
+            B&amp;W
+          </label>
+          {template ? (
+            <button
+              onClick={onExportPdf}
+              disabled={busy}
+              className="px-5 py-2 text-xs font-bold uppercase tracking-wider rounded
+                         bg-portal-cream text-portal-purple-dark hover:bg-white disabled:opacity-60"
+            >
+              {busy ? progress || 'Rendering…' : 'Save all as PDF'}
+            </button>
+          ) : (
+            <button
+              onClick={onPrint}
+              className="px-5 py-2 text-xs font-bold uppercase tracking-wider rounded
+                         bg-portal-cream text-portal-purple-dark hover:bg-white"
+            >
+              Print / Save as PDF
+            </button>
+          )}
+        </div>
       </div>
 
       {template && (
