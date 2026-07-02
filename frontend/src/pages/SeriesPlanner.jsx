@@ -24,7 +24,6 @@ const TABS = [
   ['hitters', 'Hitters'],
   ['pitching', 'Pitching Plan'],
   ['states', 'Game States'],
-  ['alignments', 'Alignments'],
 ]
 
 // ── formatters ──
@@ -327,58 +326,6 @@ function StatesTab({ plan, counts }) {
   )
 }
 
-// ── TAB: Alignments ──
-function SprayTriple({ split, label }) {
-  const total = split?.total || 0
-  const seg = [['Pull', split?.pull || 0, '#0d5c63'], ['Mid', split?.middle || 0, '#c98a2b'], ['Oppo', split?.opposite || 0, '#4a7fb5']]
-  return (
-    <div>
-      <div className="text-[10px] uppercase text-gray-400 font-semibold mb-0.5">{label}</div>
-      {total === 0 ? <div className="text-[11px] text-gray-400 italic">—</div> : (
-        <>
-          <div className="flex h-2.5 rounded-full overflow-hidden mb-0.5">
-            {seg.map(([l, v, c]) => <div key={l} style={{ width: `${(v || 0) * 100}%`, backgroundColor: c }} title={`${l} ${Math.round((v || 0) * 100)}%`} />)}
-          </div>
-          <div className="flex justify-between text-[9px] text-gray-500 tabular-nums">
-            {seg.map(([l, v]) => <span key={l}>{l} {Math.round((v || 0) * 100)}%</span>)}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-function AlignmentsTab({ plan }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {(plan.defensive_positioning || []).map((d, i) => (
-        <Card key={i} className="p-3.5">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="font-bold text-portal-purple-dark dark:text-gray-100 truncate">{d.name}</span>
-            <span className="text-xs text-gray-500">{d.position}</span>
-            <HandBadge h={d.bats} />
-            {d.power_level && d.power_level !== 'Contact' && (
-              <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">{d.power_level}</span>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-3 mb-2">
-            <div>
-              <div className="text-[10px] uppercase text-gray-400 font-semibold mb-0.5">Contact</div>
-              <div className="text-[11px] text-gray-600 dark:text-gray-300 tabular-nums leading-tight">
-                GB {fmtPct(d.gb_pct)}<br />FB {fmtPct(d.fb_pct)}<br />LD {fmtPct(d.ld_pct)}
-              </div>
-            </div>
-            <SprayTriple split={d.infield} label="Infield" />
-            <SprayTriple split={d.air} label="Air / OF" />
-          </div>
-          <p className="text-[12px] text-gray-700 dark:text-gray-200 leading-snug border-t border-gray-100 dark:border-gray-700 pt-2">
-            {d.recommendation} <span className="text-gray-400">({d.confidence} · {d.sample} BIP)</span>
-          </p>
-        </Card>
-      ))}
-    </div>
-  )
-}
-
 // ── page ──
 export default function SeriesPlanner() {
   const { team: portalTeam } = usePortalTeam()
@@ -499,7 +446,6 @@ export default function SeriesPlanner() {
           {tab === 'hitters' && <HittersTab plan={plan} />}
           {tab === 'pitching' && <PitchersTab plan={plan} />}
           {tab === 'states' && <StatesTab plan={plan} counts={data.count_tendencies} />}
-          {tab === 'alignments' && <AlignmentsTab plan={plan} />}
         </>
       )}
     </div>
