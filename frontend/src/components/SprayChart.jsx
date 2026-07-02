@@ -77,6 +77,11 @@ const FAN_HALF_ANGLE = 45
 // folds into MID.
 const OF_ZONES = ['LF', 'LC', 'CF', 'RC', 'RF']
 const IF_ZONES = ['IF_3B', 'IF_SS', 'IF_MID', 'IF_2B', 'IF_1B']
+// Wedge widths are NOT equal — they mirror the real field. The LC/RC gaps are
+// narrow seams between outfielders, and the corner infielders (3B/1B) guard a
+// small slice near the line, while SS/2B cover a lot more ground.
+const OF_WEIGHTS = [1.35, 0.7, 1.3, 0.7, 1.35]   // LF, LC, CF, RC, RF
+const IF_WEIGHTS = [0.72, 1.35, 0.9, 1.35, 0.72] // 3B, SS, MID, 2B, 1B
 const ZONE_LABEL = {
   LF: 'LF', LC: 'LC', CF: 'CF', RC: 'RC', RF: 'RF',
   IF_3B: '3B', IF_SS: 'SS', IF_MID: 'M', IF_2B: '2B', IF_1B: '1B',
@@ -146,16 +151,18 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
   // OUTSIDE the fence) free of overlap.
   const R_HR_BADGE = R_OF_OUT - 26
 
-  const ofWedge = (FAN_HALF_ANGLE * 2) / OF_ZONES.length
-  const ifWedge = (FAN_HALF_ANGLE * 2) / IF_ZONES.length
-  const ofAngles = i => [
-    -FAN_HALF_ANGLE + i * ofWedge,
-    -FAN_HALF_ANGLE + (i + 1) * ofWedge,
-  ]
-  const ifAngles = i => [
-    -FAN_HALF_ANGLE + i * ifWedge,
-    -FAN_HALF_ANGLE + (i + 1) * ifWedge,
-  ]
+  // Build [start,end] angle accessors from the per-zone weights so wedges
+  // have field-realistic widths (narrow gaps + narrow corners).
+  const makeAngles = (weights) => {
+    const total = weights.reduce((a, b) => a + b, 0)
+    const span = FAN_HALF_ANGLE * 2
+    const bounds = [-FAN_HALF_ANGLE]
+    let acc = 0
+    for (const w of weights) { acc += w; bounds.push(-FAN_HALF_ANGLE + (acc / total) * span) }
+    return i => [bounds[i], bounds[i + 1]]
+  }
+  const ofAngles = makeAngles(OF_WEIGHTS)
+  const ifAngles = makeAngles(IF_WEIGHTS)
 
   // Bases positions for the diamond (1B right, 2B up, 3B left).
   // Bases sit ~midway up the IF wedge ring; smaller size + nudged
