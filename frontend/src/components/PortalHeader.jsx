@@ -62,6 +62,8 @@ const NAV_SECTIONS = [
         desc: 'Pitcher roster + situational leaderboards for in-game decisions' },
       { to: '/portal/catcher-cards', label: 'Catcher Cards',
         desc: 'Pocket-sized 5×2 inch pitch-calling cards (top 14 opposing hitters)' },
+      { to: '/portal/alignments', label: 'Defensive Card',
+        desc: 'One-page shift grid: where each fielder plays vs every hitter' },
       { to: '/portal/pdfs', label: 'Player Card',
         desc: 'One-page Statcast-style profile (spray chart, percentiles, splits)' },
       { to: '/portal/pdfs', label: 'Bulk Player Cards',

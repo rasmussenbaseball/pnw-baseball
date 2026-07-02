@@ -49,6 +49,7 @@ export default function PortalPDFs() {
         onOpen={() => navigate('/portal/custom-card')} />
       <BullpenSheetCard onPick={(id) => navigate(`/portal/bullpen-sheet/${id}`)} />
       <CatcherCardsCard onPick={(id) => navigate(`/portal/catcher-cards/${id}`)} />
+      <DefensiveCardCard onPick={(id) => navigate(`/portal/alignments/cards?team_id=${id}`)} />
       <PlayerCardCard onPick={(id, side) =>
         navigate(`/portal/pdfs/player-card/${id}${side ? `?side=${side}` : ''}`)} />
       <BulkPlayerCardsCard onGenerate={(idsParam, templateId) =>
@@ -424,6 +425,66 @@ function CatcherCardsCard({ onPick }) {
                      disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Open Cards
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────
+// Defensive Card — pick the opposing team, get the one-page shift grid.
+// ─────────────────────────────────────────────────────────
+function DefensiveCardCard({ onPick }) {
+  const { data: teamsData } = useTeams()
+  const teams = Array.isArray(teamsData) ? teamsData : []
+  const grouped = useMemo(() => {
+    const g = {}
+    for (const t of teams) {
+      const k = t.conference_abbrev || t.conference_name || 'Other'
+      if (!g[k]) g[k] = []
+      g[k].push(t)
+    }
+    Object.values(g).forEach(arr =>
+      arr.sort((a, b) => (a.short_name || a.name || '').localeCompare(b.short_name || b.name || '')))
+    return g
+  }, [teams])
+  const [teamId, setTeamId] = useState('')
+
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Defensive Card</h2>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">5″ wide · pocket-size</span>
+      </div>
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+        Pick the opposing team. One grid for the whole lineup: every hitter with a
+        shift code per fielder (1B, 2B, 3B, SS, LF, CF, RF), plus bunt and steal
+        columns. Save as a PDF or image for the dugout.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={teamId}
+          onChange={(e) => setTeamId(e.target.value)}
+          className="rounded border border-gray-300 px-3 py-2 text-sm bg-white text-gray-900 flex-1 min-w-[220px]"
+        >
+          <option value="">Pick the opposing team...</option>
+          {Object.keys(grouped).sort().map(g => (
+            <optgroup key={g} label={g}>
+              {grouped[g].map(t => (
+                <option key={t.id} value={t.id}>{t.short_name || t.name}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <button
+          disabled={!teamId}
+          onClick={() => teamId && onPick(parseInt(teamId, 10))}
+          className="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
+                     bg-portal-purple text-portal-cream hover:bg-portal-purple-dark
+                     disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Open Card
         </button>
       </div>
     </div>
