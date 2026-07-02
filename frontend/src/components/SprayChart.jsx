@@ -353,24 +353,32 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
           )
         })}
 
-        {/* Positioning reference lines (Defensive Alignments) — rays from home
-            marking the lanes: solid = standard corner-OF / CF seams (LF ~ the
-            3B-2B lane, RF ~ the 1B-2B lane, CF straight up the middle); dashed =
-            the extreme-shift lanes halfway between the corners and the middle. */}
-        {fielders && [
-          { a: -26, dash: false }, { a: 0, dash: false }, { a: 26, dash: false },
-          { a: -13, dash: true }, { a: 13, dash: true },
-        ].map(({ a, dash }, i) => {
-          const aMid = (a - 90) * Math.PI / 180
-          return (
-            <line key={`ref-${i}`}
-              x1={HOME.x} y1={HOME.y}
-              x2={HOME.x + R_OF_OUT * Math.cos(aMid)}
-              y2={HOME.y + R_OF_OUT * Math.sin(aMid)}
-              stroke="rgba(255,255,255,0.75)" strokeWidth="1.25"
-              strokeDasharray={dash ? '3 4' : undefined} />
-          )
-        })}
+        {/* Standard-positioning reference lines (Defensive Alignments): the
+            outfielders line up on the lines drawn THROUGH the bases — 3B
+            through 2B out to RF, 1B through 2B out to LF, and home through 2B
+            straight to CF. Drawn by extending each base→2B line to the fence. */}
+        {fielders && (() => {
+          const R = R_OF_OUT
+          const extend = (from, through) => {
+            const dx = through.x - from.x, dy = through.y - from.y
+            const len = Math.hypot(dx, dy) || 1
+            const ux = dx / len, uy = dy / len
+            const vx = from.x - HOME.x, vy = from.y - HOME.y
+            const b = vx * ux + vy * uy
+            const c = vx * vx + vy * vy - R * R
+            const t = -b + Math.sqrt(Math.max(0, b * b - c))
+            return { x: from.x + t * ux, y: from.y + t * uy }
+          }
+          const lines = [
+            [thirdBase, extend(thirdBase, secondBase)],   // 3B → 2B → RF
+            [firstBase, extend(firstBase, secondBase)],   // 1B → 2B → LF
+            [HOME, { x: HOME.x, y: HOME.y - R }],         // home → 2B → CF
+          ]
+          return lines.map(([p1, p2], i) => (
+            <line key={`ref-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+              stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" />
+          ))
+        })()}
 
         {/* Fielder dots — ideal defensive positions (P/C omitted; they don't
             roam). Only the 7 movable fielders. */}
