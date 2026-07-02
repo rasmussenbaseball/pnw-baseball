@@ -51,13 +51,14 @@ export const STARTER_TEMPLATES = [
   },
   {
     id: 'hit_advanced', name: 'Hitter · Advanced', for: 'hitter',
-    desc: 'Spray + defensive alignment up top, then percentiles alongside vs-elite / off-the-bench splits, season line, and a notes section.',
+    desc: 'Spray + defensive alignment up top, percentiles beside the detailed count grid, a row of advanced splits, then season line and notes.',
     blocks: [
       b('header', F),
       b('spray', H, { filter: 'all' }), b('fielddiagram', H),
-      b('percentiles', H), b('velite', Q), b('bench', Q),
+      b('percentiles', H), b('countdetail', H),
+      b('velite', Q), b('bench', Q), b('batted', Q), b('counts', Q),
       b('season', F),
-      b('notes', H), b('countdetail', Q), b('tendencies', Q),
+      b('notes', F),
     ],
   },
 

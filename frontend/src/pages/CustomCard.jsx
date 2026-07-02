@@ -44,11 +44,11 @@ export const BLOCKS = {
   header:      { label: 'Header',           w: 'full', tag: 'Core',   for: 'both', render: c => <CardHeader player={c.player} side={c.side} season={SEASON} /> },
   percentiles: { label: 'Percentile Bars',  w: 'half', tag: 'Stats',  for: 'both', render: c => <PercentilePanel side={c.side} battingPercentiles={c.data?.batting_percentiles} pitchingPercentiles={c.data?.pitching_percentiles} /> },
   spray:       { label: 'Spray Chart',      w: 'half', tag: 'Charts', for: 'both', spray: true, render: (c, cfg) => <SprayPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} player={c.player} filter={cfg.filter || 'all'} /> },
-  discipline:  { label: 'Plate Discipline', w: 'half', tag: 'Stats',  for: 'both', render: c => <DisciplinePanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  batted:      { label: 'Batted Ball',      w: 'half', tag: 'Stats',  for: 'both', render: c => <BattedBallPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  splits:      { label: 'Splits',           w: 'half', tag: 'Stats',  for: 'both', render: c => <SplitsPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  discipline:  { label: 'Plate Discipline', w: 'quarter', tag: 'Stats',  for: 'both', render: c => <DisciplinePanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  batted:      { label: 'Batted Ball',      w: 'quarter', tag: 'Stats',  for: 'both', render: c => <BattedBallPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  splits:      { label: 'Splits',           w: 'quarter', tag: 'Stats',  for: 'both', render: c => <SplitsPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
   counts:      { label: 'Count States',     w: 'quarter', tag: 'Stats',  for: 'both', render: c => <CountStatesPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  countdetail: { label: 'Count States (detail)', w: 'quarter', tag: 'Stats', for: 'both', render: c => <CountDetailPanel side={c.side} playerId={c.playerId} /> },
+  countdetail: { label: 'Count States (detail)', w: 'half', tag: 'Stats', for: 'both', render: c => <CountDetailPanel side={c.side} playerId={c.playerId} /> },
   tto:         { label: 'Times Thru Order', w: 'half', tag: 'Stats',  for: 'pitcher', render: c => <TTOPanel playerId={c.playerId} /> },
   velite:      { label: 'vs Elite Pitching', w: 'quarter', tag: 'Stats', for: 'hitter', render: c => <VsElitePanel playerId={c.playerId} /> },
   bench:       { label: 'Off the Bench',    w: 'quarter', tag: 'Stats',  for: 'hitter', render: c => <BenchPanel playerId={c.playerId} /> },
@@ -179,9 +179,12 @@ export function CustomCard({ playerId, blocks, sideParam, cardRef, onMeta, class
         <div className="p-8 text-gray-400 italic text-sm animate-pulse">Loading player…</div>
       ) : (
         <div ref={contentRef} style={{ width: `${PAGE_W}px`, transform: `scale(${scale})`, transformOrigin: 'top left', padding: '12px' }}>
-          <div className="grid grid-cols-4 gap-2 items-start">
+          {/* items-stretch + [&>*]:h-full make every block in a row the same
+              height (its panel fills the tallest cell), so blocks tile into
+              clean bands instead of leaving ragged gaps under the short one. */}
+          <div className="grid grid-cols-4 gap-2 items-stretch">
             {(blocks || []).filter(b => BLOCKS[b.type] && blockFitsSide(b.type, side)).map((b, i) => (
-              <div key={b.uid || `${b.type}-${i}`} className={WIDTH_SPAN[b.w] || 'col-span-2'}>
+              <div key={b.uid || `${b.type}-${i}`} className={`${WIDTH_SPAN[b.w] || 'col-span-2'} [&>*]:h-full`}>
                 {BLOCKS[b.type].render(ctx, b)}
               </div>
             ))}
