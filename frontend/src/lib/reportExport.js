@@ -25,8 +25,9 @@ export function toneAttr(score) {
 // Render a fixed-size node to a single-page letter PDF (image-based, so it
 // matches the PNG exactly). Used by the Custom Player Card builder, whose page
 // is already sized to one sheet — avoids the @media print machinery entirely.
-export async function saveNodeAsPdf(node, filename = 'card') {
+export async function saveNodeAsPdf(node, filename = 'card', opts = {}) {
   if (!node) return
+  const { unit = 'pt', format = 'letter', orientation = 'portrait' } = opts
   const [{ default: html2canvas }, jspdf] = await Promise.all([
     import('html2canvas'), import('jspdf'),
   ])
@@ -35,7 +36,7 @@ export async function saveNodeAsPdf(node, filename = 'card') {
     backgroundColor: '#ffffff', scale: 2, useCORS: true, allowTaint: false, logging: false,
   })
   const img = canvas.toDataURL('image/png')
-  const pdf = new JsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' })
+  const pdf = new JsPDF({ unit, format, orientation })
   const pw = pdf.internal.pageSize.getWidth()
   const ph = pdf.internal.pageSize.getHeight()
   const ar = canvas.width / canvas.height

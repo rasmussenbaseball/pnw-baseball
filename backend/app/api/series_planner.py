@@ -1491,20 +1491,23 @@ def _dominant(counts):
 # straight-up alignment; each fielder is interpolated toward a handedness-
 # specific full-shift target scaled by the hitter's pull tendency.
 # NCAA has NO shift restriction, so full overload shifts are legal.
+# OF depths sit ~70-75% of the way to the fence at baseline — never against the
+# wall, so an outfielder can still retreat to catch the heavy hitters' shots.
+# Power only nudges them a touch deeper (capped well short of the fence).
 _FIELD_BASE = {
     "3B": (-37, 0.40), "SS": (-20, 0.48), "2B": (20, 0.48), "1B": (37, 0.40),
-    "LF": (-29, 0.80), "CF": (0, 0.87), "RF": (29, 0.80),
+    "LF": (-29, 0.70), "CF": (0, 0.75), "RF": (29, 0.70),
     "P": (0, 0.27), "C": (0, -0.05),
 }
 # Overload LEFT — batter pulls to the left (RHB): 3 IF left of 2B.
 _FULL_SHIFT_LEFT = {
     "3B": (-41, 0.42), "SS": (-27, 0.52), "2B": (-8, 0.50), "1B": (26, 0.46),
-    "LF": (-34, 0.84), "CF": (-11, 0.88), "RF": (18, 0.82),
+    "LF": (-34, 0.72), "CF": (-11, 0.76), "RF": (18, 0.70),
 }
 # Overload RIGHT — batter pulls to the right (LHB): 3 IF right of 2B.
 _FULL_SHIFT_RIGHT = {
     "1B": (41, 0.42), "2B": (27, 0.52), "SS": (8, 0.50), "3B": (-26, 0.46),
-    "RF": (34, 0.84), "CF": (11, 0.88), "LF": (-18, 0.82),
+    "RF": (34, 0.72), "CF": (11, 0.76), "LF": (-18, 0.70),
 }
 _MOVABLE = ("3B", "SS", "2B", "1B", "LF", "CF", "RF")
 
@@ -1522,12 +1525,37 @@ def _shift_strength(if_pull_pct, is_lhb, is_switch, if_total):
     return clamp((if_pull_pct - 0.50) / 0.27, 0, 1)
 
 
+def _fielder_abbr(pos, ba, bd, ang, dep, pull_angle_sign):
+    """Short pocket-grid code for how far a fielder deviates from straight-up:
+    SL/HV (slight/heavy) + PL/OP (pull/oppo) for lateral, DP/IN/BK for depth.
+    '—' means play him straight up."""
+    dA = ang - ba
+    dD = dep - bd
+    parts = []
+    if abs(dA) >= 4:
+        lvl = "HV" if abs(dA) >= 13 else "SL"
+        direction = "PL" if (dA * pull_angle_sign) > 0 else "OP"
+        parts.append(lvl + direction)
+    if pos in ("LF", "CF", "RF"):
+        if dD >= 0.04:
+            parts.append("DP")
+        elif dD <= -0.04:
+            parts.append("IN")
+    elif dD >= 0.05:
+        parts.append("BK")
+    return " ".join(parts) if parts else "—"
+
+
 def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, if_total):
     """Return (fielders, shift_strength). fielders = list of {pos, angle, depth,
-    movable} for a 9-man alignment against this hitter."""
+    movable, abbr} for a 9-man alignment against this hitter."""
     s = _shift_strength(if_pull_pct, is_lhb, is_switch, if_total)
     target = _FULL_SHIFT_RIGHT if is_lhb else _FULL_SHIFT_LEFT
-    of_depth_adj = clamp((iso - 0.11) / 0.20, -0.06, 0.09) if iso else 0.0
+    # Pull is +angle for LHB, -angle for RHB.
+    pull_angle_sign = 1 if is_lhb else -1
+    # Realistic OF depth from power — a touch deeper for pop, but capped short
+    # of the wall so they can still get back on it.
+    of_depth_adj = clamp((iso - 0.11) / 0.28, -0.06, 0.07) if iso else 0.0
     out = []
     for pos, (ba, bd) in _FIELD_BASE.items():
         if pos in _MOVABLE and pos in target and s > 0:
@@ -1537,9 +1565,11 @@ def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, if_total):
         else:
             ang, dep = ba, bd
         if pos in ("LF", "CF", "RF"):
-            dep = clamp(dep + of_depth_adj, 0.55, 0.98)
+            dep = clamp(dep + of_depth_adj, 0.55, 0.84)
+        movable = pos in _MOVABLE
+        abbr = _fielder_abbr(pos, ba, bd, ang, dep, pull_angle_sign) if movable else ""
         out.append({"pos": pos, "angle": round(ang, 1), "depth": round(dep, 3),
-                    "movable": pos in _MOVABLE})
+                    "movable": movable, "abbr": abbr})
     return out, s
 
 
@@ -1674,8 +1704,13 @@ def build_alignment_for_hitter(hitter, spray):
             "pull_side": pull_side, "oppo_side": oppo_side,
         },
         "spray_chart": sc,            # full 11-zone object for the fan visual
-        "fielders": fielders,         # ideal (angle, depth) per fielder
+        "fielders": fielders,         # ideal (angle, depth, abbr) per fielder
         "shift": shift,               # {label, strength, moves[]}
+        "run_game": {                 # season steals + sac bunts (bunt hits added live)
+            "sb": hitter.get("stolen_bases") or 0,
+            "cs": hitter.get("caught_stealing") or 0,
+            "sac_bunts": hitter.get("sacrifice_bunts") or 0,
+        },
         "recommendations": recs,
     }
 
@@ -1704,6 +1739,35 @@ def alignments(
         a = build_alignment_for_hitter(h, spray.get(h.get("player_id")))
         if a:
             out.append(a)
+
+    # Live: bunt counts (total + bunt-for-hit) per batter from PBP text, and
+    # jersey numbers — neither is on the stored leaderboard rows.
+    ids = [a["player_id"] for a in out if a.get("player_id")]
+    if ids:
+        try:
+            with get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT ge.batter_player_id AS pid,
+                           COUNT(*) AS bunts,
+                           COUNT(*) FILTER (WHERE ge.result_type = 'single') AS bunt_hits
+                    FROM game_events ge JOIN games g ON g.id = ge.game_id
+                    WHERE g.season = %s AND ge.batting_team_id = %s
+                      AND ge.batter_player_id = ANY(%s)
+                      AND LOWER(ge.result_text) LIKE '%%bunt%%'
+                    GROUP BY ge.batter_player_id
+                """, (season, team_id, ids))
+                bunts = {r["pid"]: r for r in cur.fetchall()}
+                cur.execute("SELECT id, jersey_number FROM players WHERE id = ANY(%s)", (ids,))
+                jerseys = {r["id"]: r["jersey_number"] for r in cur.fetchall()}
+            for a in out:
+                b = bunts.get(a["player_id"])
+                a["run_game"]["bunts"] = (b["bunts"] if b else 0)
+                a["run_game"]["bunt_hits"] = (b["bunt_hits"] if b else 0)
+                a["jersey"] = jerseys.get(a["player_id"])
+        except Exception:  # noqa: BLE001 — bunt/jersey extras never fail the report
+            pass
+
     return {
         "meta": {"season": data["season"], "generated_at": data["generated_at"], "team_id": team_id},
         "team": rec["team"],
