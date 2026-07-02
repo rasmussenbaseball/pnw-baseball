@@ -350,6 +350,170 @@ def team_stats_agg(
         return rows
 
 
+# ── Times Through The Order (PBP-derived, used by Opponent Trends) ──────
+
+# Result types that DON'T end a plate appearance (baserunning / sub-events).
+# Excluded so a stolen base or wild pitch mid-AB doesn't inflate the
+# batter-facing count or count as its own PA.
+_TTO_NON_PA = (
+    'stolen_base', 'caught_stealing', 'wild_pitch', 'passed_ball',
+    'pickoff', 'balk', 'runner_other', 'runner_sub',
+)
+_TTO_HITS = {'single', 'double', 'triple', 'home_run'}
+_TTO_SO = {'strikeout_swinging', 'strikeout_looking'}
+_TTO_BB = {'walk', 'intentional_walk'}
+
+
+def _tto_finalize(agg):
+    """Turn a raw counter dict into a slash-line bucket."""
+    pa = agg['pa']
+    if pa <= 0:
+        return None
+    ab = agg['ab']
+    h = agg['h']
+    tb = agg['tb']
+    bb = agg['bb']
+    hbp = agg['hbp']
+    sf = agg['sf']
+    obp_den = ab + bb + hbp + sf
+    return {
+        'pa': pa,
+        'ab': ab,
+        'h': h,
+        'hr': agg['hr'],
+        'bb': bb,
+        'so': agg['so'],
+        'avg': round(h / ab, 3) if ab > 0 else None,
+        'obp': round((h + bb + hbp) / obp_den, 3) if obp_den > 0 else None,
+        'slg': round(tb / ab, 3) if ab > 0 else None,
+        'ops': (round(((h + bb + hbp) / obp_den) + (tb / ab), 3)
+                if ab > 0 and obp_den > 0 else None),
+        'k_pct': round(agg['so'] / pa, 3),
+        'bb_pct': round(bb / pa, 3),
+    }
+
+
+def _build_tto(cur, game_ids, ph, team_id, season):
+    """Build per-pitcher times-through-the-order splits from game_events.
+
+    For each pitcher on this team, walk their plate appearances in game
+    order and count how many times they had already faced that batter in
+    the game. Bucket the outcome as 1st / 2nd / 3rd / 4th+ time through.
+    Returns {"starters": [...], "relievers": [...]} sorted by BF.
+    """
+    from collections import defaultdict
+
+    if not game_ids:
+        return {"starters": [], "relievers": []}
+
+    cur.execute(f"""
+        SELECT game_id, inning, half, sequence_idx,
+               pitcher_player_id, batter_player_id, result_type
+        FROM game_events
+        WHERE game_id IN ({ph})
+          AND defending_team_id = %s
+          AND pitcher_player_id IS NOT NULL
+          AND batter_player_id IS NOT NULL
+          AND result_type IS NOT NULL
+          AND result_type NOT IN %s
+        ORDER BY game_id, inning,
+                 CASE WHEN half = 'top' THEN 0 ELSE 1 END, sequence_idx
+    """, game_ids + [team_id, _TTO_NON_PA])
+    events = cur.fetchall()
+
+    # Running count of (game, pitcher, batter) matchups → the TTO index.
+    seen = defaultdict(int)
+    # buckets[pitcher_id][tto] = raw counter dict
+    def _blank():
+        return {k: 0 for k in ('pa', 'ab', 'h', 'tb', 'bb', 'hbp', 'so', 'hr', 'sf')}
+    buckets = defaultdict(lambda: defaultdict(_blank))
+
+    for e in events:
+        pid = e['pitcher_player_id']
+        key = (e['game_id'], pid, e['batter_player_id'])
+        seen[key] += 1
+        tto = min(seen[key], 4)  # 4 = 4th time or later
+        rt = e['result_type']
+        agg = buckets[pid][tto]
+        agg['pa'] += 1
+        if rt in _TTO_HITS:
+            agg['h'] += 1
+            agg['ab'] += 1
+            if rt == 'single':
+                agg['tb'] += 1
+            elif rt == 'double':
+                agg['tb'] += 2
+            elif rt == 'triple':
+                agg['tb'] += 3
+            else:
+                agg['tb'] += 4
+                agg['hr'] += 1
+        elif rt in _TTO_SO:
+            agg['so'] += 1
+            agg['ab'] += 1
+        elif rt in _TTO_BB:
+            agg['bb'] += 1
+        elif rt == 'hbp':
+            agg['hbp'] += 1
+        elif rt == 'sac_fly':
+            agg['sf'] += 1
+        elif rt in ('sac_bunt', 'catcher_interference'):
+            pass  # PA but not an AB and not an OBP-denominator event
+        else:
+            # in-play outs, fielders_choice, error, double_play → an at-bat
+            agg['ab'] += 1
+
+    if not buckets:
+        return {"starters": [], "relievers": []}
+
+    # ── Names, hand, and starter/reliever role for each pitcher ──
+    pids = list(buckets.keys())
+    pid_ph = ",".join(["%s"] * len(pids))
+    cur.execute(f"""
+        SELECT p.id,
+               p.first_name, p.last_name, p.throws,
+               COALESCE(SUM(ps.games_started), 0) AS gs
+        FROM players p
+        LEFT JOIN pitching_stats ps
+               ON ps.player_id = p.id AND ps.season = %s
+        WHERE p.id IN ({pid_ph})
+        GROUP BY p.id, p.first_name, p.last_name, p.throws
+    """, [season] + pids)
+    meta = {r['id']: r for r in cur.fetchall()}
+
+    starters, relievers = [], []
+    for pid, by_tto in buckets.items():
+        m = meta.get(pid)
+        if not m:
+            continue
+        total_bf = sum(b['pa'] for b in by_tto.values())
+        if total_bf < 15:  # too little to show a meaningful split
+            continue
+        finalized = {}
+        for tto, agg in by_tto.items():
+            fb = _tto_finalize(agg)
+            if fb:
+                finalized[str(tto)] = fb
+        name = f"{m['first_name'] or ''} {m['last_name'] or ''}".strip() or m['last_name']
+        entry = {
+            "player_id": pid,
+            "name": name,
+            "throws": m['throws'],
+            "total_bf": total_bf,
+            "buckets": finalized,
+        }
+        # gs>=2 → treat as a rotation piece; otherwise a reliever. A guy
+        # with one spot start still lives with the bullpen.
+        if (m['gs'] or 0) >= 2:
+            starters.append(entry)
+        else:
+            relievers.append(entry)
+
+    starters.sort(key=lambda x: -x['total_bf'])
+    relievers.sort(key=lambda x: -x['total_bf'])
+    return {"starters": starters, "relievers": relievers}
+
+
 # ── Opponent Trends (Coaching Tool) ─────────────────────────────────────
 
 @router.get("/opponent-trends/{team_id}")
@@ -1810,6 +1974,17 @@ def opponent_trends(
             if pid:
                 spot["tendencies"] = batter_tendencies.get(pid)
 
+        # ═══════════════════════════════════════════════════════════
+        # TIMES THROUGH THE ORDER (TTO) — PBP-derived
+        # For each pitcher, split the results AGAINST them by how many
+        # times they had already faced that specific batter in the game
+        # (1st / 2nd / 3rd / 4th+ time through). The classic "third time
+        # through the order" penalty for starters, plus how relievers
+        # fare the first vs second time they see a hitter. Built purely
+        # from game_events. Starters and relievers listed separately.
+        # ═══════════════════════════════════════════════════════════
+        tto_trends = _build_tto(cur, game_ids, ph, team_id, season)
+
         return {
             "team": team,
             "games_analyzed": n_games,
@@ -1818,6 +1993,7 @@ def opponent_trends(
                 "starters": starters_list,
                 "predicted_rotation": predicted_rotation,
                 "relievers": relievers_list,
+                "tto": tto_trends,
             },
         }
 

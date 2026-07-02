@@ -416,6 +416,7 @@ function PitchingTab({ d }) {
         {[
           { id: 'rotation', label: 'Rotation' },
           { id: 'bullpen', label: 'Bullpen' },
+          { id: 'tto', label: 'Times Thru Order' },
         ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)}
             className={`px-3 py-1 rounded text-xs font-medium ${view === t.id ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
@@ -426,8 +427,9 @@ function PitchingTab({ d }) {
 
       {view === 'rotation' && <RotationView d={d} />}
       {view === 'bullpen' && <BullpenView relievers={d.relievers} />}
+      {view === 'tto' && <TTOView d={d.tto} />}
 
-      <PitchingLegend />
+      {view !== 'tto' && <PitchingLegend />}
     </div>
   )
 }
@@ -899,6 +901,149 @@ function PitcherIcons({ p }) {
         <span key={ic.key} className="text-[11px] leading-none" title={ic.title}>{ic.char}</span>
       ))}
     </span>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// TIMES THROUGH THE ORDER
+// How a pitcher fares the 1st / 2nd / 3rd / 4th+ time he faces
+// a given hitter in the same game. The classic "third time
+// through" penalty for starters; 1st-vs-2nd look for relievers.
+// ═══════════════════════════════════════════════════════════
+
+const TTO_COLS = [
+  { key: '1', label: '1st' },
+  { key: '2', label: '2nd' },
+  { key: '3', label: '3rd' },
+  { key: '4', label: '4th+' },
+]
+
+// Color an OPS-against value from the PITCHER'S perspective: low is good.
+function opsTone(ops) {
+  if (ops == null) return 'text-gray-400'
+  if (ops < 0.600) return 'text-green-600 dark:text-green-400'
+  if (ops < 0.750) return 'text-emerald-600 dark:text-emerald-400'
+  if (ops < 0.900) return 'text-amber-600 dark:text-amber-400'
+  return 'text-rose-600 dark:text-rose-500'
+}
+
+function TTOView({ d }) {
+  if (!d || ((d.starters?.length || 0) === 0 && (d.relievers?.length || 0) === 0)) {
+    return <Empty icon="📊" text="Not enough play-by-play to build times-through-the-order splits" />
+  }
+  return (
+    <div className="space-y-4">
+      <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+        Batting line <span className="font-semibold">against</span> each pitcher, split by how many times he had already faced that hitter in the game.
+        Each cell shows OPS-against with PA below. Green is good for the pitcher, red is bad. Click a row for the full slash line, K% and BB%.
+      </div>
+      <TTOTable title="Starters" rows={d.starters} />
+      <TTOTable title="Relievers" rows={d.relievers} />
+    </div>
+  )
+}
+
+function TTOTable({ title, rows }) {
+  const [openId, setOpenId] = useState(null)
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
+        <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{title}</span>
+        <span className="text-[10px] text-gray-400 ml-2">OPS-against by time through the order</span>
+      </div>
+      {(!rows || rows.length === 0) ? (
+        <div className="text-center py-4 text-gray-400 text-xs">No {title.toLowerCase()} with enough batters faced</div>
+      ) : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[10px] text-gray-400 border-b border-gray-100 dark:border-gray-700">
+              <th className="py-1.5 pl-3 text-left">Pitcher</th>
+              <th className="py-1.5 text-center">T</th>
+              <th className="py-1.5 text-center" title="Total batters faced">BF</th>
+              {TTO_COLS.map(c => <th key={c.key} className="py-1.5 text-center">{c.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(p => {
+              const isOpen = openId === p.player_id
+              return (
+                <Fragment key={p.player_id}>
+                  <tr className="border-b border-gray-50 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                    onClick={() => setOpenId(isOpen ? null : p.player_id)}>
+                    <td className="py-1.5 pl-3 font-medium text-gray-900 dark:text-gray-100">
+                      <span className="inline-flex items-center gap-1">
+                        <span className={`text-gray-400 text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+                        <span>{p.name}</span>
+                      </span>
+                    </td>
+                    <td className="text-center"><Hand t={p.throws} /></td>
+                    <td className="text-center text-gray-500 dark:text-gray-400">{p.total_bf}</td>
+                    {TTO_COLS.map(c => {
+                      const b = p.buckets?.[c.key]
+                      return (
+                        <td key={c.key} className="text-center py-1">
+                          {b && b.pa >= 3 ? (
+                            <div>
+                              <div className={`font-bold tabular-nums ${opsTone(b.ops)}`}>{fmt3(b.ops)}</div>
+                              <div className="text-[9px] text-gray-400">{b.pa} PA</div>
+                            </div>
+                          ) : b ? (
+                            <div className="text-gray-300 text-[10px]">{b.pa} PA</div>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  {isOpen && (
+                    <tr>
+                      <td colSpan={3 + TTO_COLS.length} className="bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+                        <table className="w-full text-[11px]">
+                          <thead>
+                            <tr className="text-[10px] text-gray-400">
+                              <th className="text-left py-0.5">Time Thru</th>
+                              <th className="text-center py-0.5">PA</th>
+                              <th className="text-center py-0.5">AB</th>
+                              <th className="text-center py-0.5">H</th>
+                              <th className="text-center py-0.5">HR</th>
+                              <th className="text-center py-0.5">AVG</th>
+                              <th className="text-center py-0.5">OBP</th>
+                              <th className="text-center py-0.5">SLG</th>
+                              <th className="text-center py-0.5">OPS</th>
+                              <th className="text-center py-0.5">K%</th>
+                              <th className="text-center py-0.5">BB%</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {TTO_COLS.filter(c => p.buckets?.[c.key]).map(c => {
+                              const b = p.buckets[c.key]
+                              return (
+                                <tr key={c.key} className="border-t border-gray-100 dark:border-gray-700">
+                                  <td className="py-0.5 font-medium">{c.label}</td>
+                                  <td className="text-center">{b.pa}</td>
+                                  <td className="text-center">{b.ab}</td>
+                                  <td className="text-center">{b.h}</td>
+                                  <td className="text-center">{b.hr}</td>
+                                  <td className="text-center">{fmt3(b.avg)}</td>
+                                  <td className="text-center">{fmt3(b.obp)}</td>
+                                  <td className="text-center">{fmt3(b.slg)}</td>
+                                  <td className={`text-center font-medium ${opsTone(b.ops)}`}>{fmt3(b.ops)}</td>
+                                  <td className="text-center">{b.k_pct != null ? (b.k_pct * 100).toFixed(0) + '%' : '—'}</td>
+                                  <td className="text-center">{b.bb_pct != null ? (b.bb_pct * 100).toFixed(0) + '%' : '—'}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
   )
 }
 
