@@ -1515,14 +1515,19 @@ _MOVABLE = ("3B", "SS", "2B", "1B", "LF", "CF", "RF")
 def _shift_strength(if_pull_pct, is_lhb, is_switch, if_total):
     """0 (straight up) → 1 (full shift), from pull-side grounder rate. RHH need
     a higher pull rate than LHH to justify a shift (bigger hole right of 2B);
-    switch hitters get a mild cap since 'all' mixes both stances."""
-    if if_total < 10:
+    switch hitters get a mild cap since 'all' mixes both stances. Damped by
+    SAMPLE SIZE so a bench guy with a handful of PAs is never shifted hard —
+    confidence ramps 8→30 grounders."""
+    if if_total < 8:
         return 0.0
     if is_switch:
-        return clamp((if_pull_pct - 0.46) / 0.30, 0, 1) * 0.5
-    if is_lhb:
-        return clamp((if_pull_pct - 0.42) / 0.30, 0, 1)
-    return clamp((if_pull_pct - 0.50) / 0.27, 0, 1)
+        base = clamp((if_pull_pct - 0.46) / 0.30, 0, 1) * 0.5
+    elif is_lhb:
+        base = clamp((if_pull_pct - 0.42) / 0.30, 0, 1)
+    else:
+        base = clamp((if_pull_pct - 0.50) / 0.27, 0, 1)
+    confidence = clamp((if_total - 8) / 22, 0, 1)
+    return base * confidence
 
 
 def _fielder_abbr(pos, ba, bd, ang, dep, pull_angle_sign):
@@ -1618,7 +1623,7 @@ def build_alignment_for_hitter(hitter, spray):
     if_total = sum(if_counts.values())
     of_total = sum(of_counts.values())
     bip = if_total + of_total
-    if bip < 12:
+    if bip < 4:  # need a few batted balls to say anything; thin guys play straight up
         return None
 
     infield = _pct_map(if_counts, if_total)
@@ -1690,6 +1695,7 @@ def build_alignment_for_hitter(hitter, spray):
     return {
         "player_id": hitter.get("player_id"),
         "name": player_name(hitter),
+        "last_name": hitter.get("last_name") or (player_name(hitter).split() or [""])[-1],
         "position": hitter.get("position"),
         "bats": bats,
         "pa": hitter.get("plate_appearances"),
@@ -1730,8 +1736,10 @@ def alignments(
     if not rec:
         return {"error": "team_missing", "message": "No data for that team this season."}
     spray = data["spray"]
+    # Include anyone who might hit in a series (~8+ PA), not just regulars —
+    # they still need a positioning row (thin-data guys just play straight up).
     hitters = sorted(
-        [h for h in rec["hitters"] if (h.get("plate_appearances") or 0) >= 30],
+        [h for h in rec["hitters"] if (h.get("plate_appearances") or 0) >= 8],
         key=lambda r: r.get("plate_appearances") or 0, reverse=True,
     )
     out = []

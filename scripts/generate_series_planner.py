@@ -115,10 +115,12 @@ def main():
     peer_records = list(records.values())
 
     # Fetch spray only for each team's projected top-9 hitters.
+    # Spray for anyone who might hit in a series (~8+ PA, up to 30/team) — the
+    # Defensive Alignments card shows every such hitter, not just the regulars.
     spray_ids = set()
     for rec in records.values():
-        top = sorted([h for h in rec["hitters"] if (h.get("plate_appearances") or 0) >= 20],
-                     key=lambda r: r.get("plate_appearances") or 0, reverse=True)[:9]
+        top = sorted([h for h in rec["hitters"] if (h.get("plate_appearances") or 0) >= 8],
+                     key=lambda r: r.get("plate_appearances") or 0, reverse=True)[:30]
         spray_ids.update(h.get("player_id") for h in top if h.get("player_id"))
 
     def fetch_spray(pid):
