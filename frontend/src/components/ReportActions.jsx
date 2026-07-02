@@ -11,7 +11,13 @@ import { saveNodeAsImage, saveNodeAsPdf } from '../lib/reportExport'
 
 // pdfFromCanvas: when true, "Save PDF" renders the target node to a single-page
 // letter PDF (via html2canvas + jsPDF) instead of the browser print dialog.
-export default function ReportActions({ targetRef, filename = 'report', className = '', pdfFromCanvas = false }) {
+// fullBleedPrint: when true (and NOT pdfFromCanvas), "Save PDF" uses the native
+// browser print with a full-bleed @page (margin: 0) — used for the Custom Player
+// Card, whose node is already sized to exactly one letter page. Native print
+// renders the real DOM, so cross-origin headshots, the SVG spray chart, text
+// baselines and color shading all come out exactly as shown (html2canvas can't
+// do any of those faithfully).
+export default function ReportActions({ targetRef, filename = 'report', className = '', pdfFromCanvas = false, fullBleedPrint = false }) {
   const [busy, setBusy] = useState(false)
   const [bw, setBw] = useState(false)
 
@@ -32,11 +38,24 @@ export default function ReportActions({ targetRef, filename = 'report', classNam
   const onPdf = () => run(saveNodeAsPdf)
 
   // Print path: keep the B&W class on through the print dialog, then clean up.
+  // For a full-bleed card, inject a margin:0 @page rule (overriding the global
+  // 0.4in) so the 816×1056px card maps 1:1 to a letter page.
   const onPrint = () => {
     const node = targetRef?.current
-    if (bw && node) {
-      node.classList.add('bw-report')
-      const cleanup = () => { node.classList.remove('bw-report'); window.removeEventListener('afterprint', cleanup) }
+    let styleEl = null
+    if (bw && node) node.classList.add('bw-report')
+    if (fullBleedPrint) {
+      styleEl = document.createElement('style')
+      styleEl.setAttribute('media', 'print')
+      styleEl.textContent = '@page { size: letter portrait; margin: 0; }'
+      document.head.appendChild(styleEl)
+    }
+    if ((bw && node) || styleEl) {
+      const cleanup = () => {
+        if (bw && node) node.classList.remove('bw-report')
+        if (styleEl) styleEl.remove()
+        window.removeEventListener('afterprint', cleanup)
+      }
       window.addEventListener('afterprint', cleanup)
     }
     window.print()

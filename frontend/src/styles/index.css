@@ -352,6 +352,28 @@ html.dark .player-link:hover {
     print-color-adjust: exact;
   }
 
+  /* ── Custom Player Card — full-bleed one-page letter card ──
+     Its node (.custom-card-page) is a fixed 816×1056px = exactly a US Letter
+     page at 96dpi. Reveal only the card, drop it at the page origin at its
+     natural size (the paired @page{margin:0} injected on print maps 816px →
+     8.5in), and force color shading to print. Native print renders the real
+     DOM, so the cross-origin headshot, SVG spray chart and text all come out
+     exactly as shown. The inner content keeps its fit-to-page transform. */
+  .custom-card-page,
+  .custom-card-page * {
+    visibility: visible;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .custom-card-page {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+
   /* Each .sheet-page is its own physical page. Lay it out as a
      flex column with min-height = printable area (10.2in for
      letter portrait at 0.4in margins). The Notes panel underneath

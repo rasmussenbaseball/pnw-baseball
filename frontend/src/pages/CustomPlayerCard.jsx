@@ -226,7 +226,7 @@ export default function CustomPlayerCard() {
             </div>
           </div>
 
-          {player && <ReportActions targetRef={pageRef} pdfFromCanvas
+          {player && <ReportActions targetRef={pageRef} fullBleedPrint
             filename={`card_${(player.last_name || 'player')}_${player.first_name || ''}_${side}`.replace(/\s+/g, '')} />}
         </div>
 
