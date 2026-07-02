@@ -11,12 +11,11 @@
  * rule logic on the daily-batch team records so any coach sees their own side.
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import { CURRENT_SEASON } from '../lib/seasons'
-import ReportActions from '../components/ReportActions'
 
 const SEASON = CURRENT_SEASON
 
@@ -26,7 +25,6 @@ const TABS = [
   ['pitching', 'Pitching Plan'],
   ['states', 'Game States'],
   ['alignments', 'Alignments'],
-  ['print', 'Print Card'],
 ]
 
 // ── formatters ──
@@ -381,57 +379,6 @@ function AlignmentsTab({ plan }) {
   )
 }
 
-// ── TAB: Print Card ──
-function PrintCard({ plan, own, reportRef }) {
-  const b = plan.brief
-  return (
-    <div ref={reportRef} className="series-planner-page bg-white mx-auto p-6 max-w-[816px] text-gray-900" style={{ width: '816px' }}>
-      <div className="flex items-center justify-between border-b-2 border-portal-purple pb-2 mb-3">
-        <div>
-          <div className="text-[10px] uppercase tracking-widest text-portal-purple/70 font-bold">Series Plan</div>
-          <div className="text-xl font-extrabold text-portal-purple-dark">{own.team.short_name} vs {plan.team.short_name}</div>
-        </div>
-        <div className="text-right text-[11px] text-gray-500">
-          {plan.record?.wins}-{plan.record?.losses} · {plan.team.conference}
-        </div>
-      </div>
-      <p className="text-sm mb-1">{b.identity_sentence}</p>
-      <p className="text-sm text-amber-700 font-medium">{b.primary_concern}</p>
-      <p className="text-sm text-emerald-700 font-medium mb-3">{b.best_path}</p>
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        {(b.plan_points || []).map((p, i) => (
-          <div key={i} className="border border-gray-300 rounded p-2">
-            <div className="text-[9px] font-bold uppercase text-portal-purple/70">{p.label}</div>
-            <div className="text-lg font-extrabold tabular-nums leading-tight">{p.number}</div>
-            <div className="text-[12px] font-bold">{p.title}</div>
-            <div className="text-[10px] text-gray-500 leading-snug">{p.detail}</div>
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="text-[11px] font-bold uppercase text-portal-purple-dark mb-1">Series Priorities</div>
-          <ol className="text-[12px] space-y-0.5 list-decimal list-inside">{(b.keys || []).map((k, i) => <li key={i}>{k}</li>)}</ol>
-          <div className="text-[11px] font-bold uppercase text-portal-purple-dark mt-2 mb-1">Big 3 Hitters</div>
-          <ul className="text-[12px] space-y-0.5">
-            {(plan.big_three || []).map((h, i) => <li key={i}><b>{h.name}</b> ({h.position}) — {h.reason}</li>)}
-          </ul>
-        </div>
-        <div>
-          <div className="text-[11px] font-bold uppercase text-portal-purple-dark mb-1">Pitcher Attack</div>
-          <ul className="text-[12px] space-y-0.5">
-            {(plan.pitcher_attack || []).slice(0, 5).map((p, i) => <li key={i}><b>{p.name}</b> ({p.role}) — {fmtNum(p.stats?.era)} ERA</li>)}
-          </ul>
-          <div className="text-[11px] font-bold uppercase text-portal-purple-dark mt-2 mb-1">Dugout Calls</div>
-          <ul className="text-[12px] space-y-0.5">
-            {(plan.decisions || []).slice(0, 4).map((d, i) => <li key={i}><b>{d.question}</b> {d.answer}</li>)}
-          </ul>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── page ──
 export default function SeriesPlanner() {
   const { team: portalTeam } = usePortalTeam()
@@ -440,7 +387,6 @@ export default function SeriesPlanner() {
   // ?team_id= kept as a fallback so old Advance Report deep links still land.
   const [oppId, setOppId] = useState(Number(searchParams.get('opp_team_id') || searchParams.get('team_id')) || null)
   const [tab, setTab] = useState('board')
-  const reportRef = useRef(null)
 
   const { data: teamsData } = useApi('/portal/series-planner/teams', {})
   const teams = teamsData?.teams || []
@@ -554,17 +500,6 @@ export default function SeriesPlanner() {
           {tab === 'pitching' && <PitchersTab plan={plan} />}
           {tab === 'states' && <StatesTab plan={plan} counts={data.count_tendencies} />}
           {tab === 'alignments' && <AlignmentsTab plan={plan} />}
-          {tab === 'print' && (
-            <Card className="p-4">
-              <div className="flex justify-end mb-3 print:hidden">
-                <ReportActions targetRef={reportRef} pdfFromCanvas
-                  filename={`series_${own.team.short_name}_vs_${plan.team.short_name}`.replace(/\s+/g, '')} />
-              </div>
-              <div className="overflow-auto">
-                <PrintCard plan={plan} own={own} reportRef={reportRef} />
-              </div>
-            </Card>
-          )}
         </>
       )}
     </div>
