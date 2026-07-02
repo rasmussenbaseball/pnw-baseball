@@ -146,17 +146,31 @@ export function CustomCard({ playerId, blocks, sideParam, cardRef, onMeta, class
 
   // Auto-fit: shrink content so the whole card stays on one page. Transform
   // doesn't change scrollHeight, so measurement stays stable across scales.
+  // Several blocks (TTO, count-detail, alignment, vs-elite, bench...) fetch
+  // their own data via hooks INSIDE the panels, so they grow the card after
+  // this effect has run without changing its deps. A ResizeObserver plus a
+  // MutationObserver plus a few delayed re-measures guarantee we catch that
+  // late growth and rescale — otherwise the card overflows and clips on screen
+  // (and then the export wouldn't match what's shown).
   useLayoutEffect(() => {
     const el = contentRef.current
     if (!el) return
+    let raf = 0
     const measure = () => {
       const h = el.scrollHeight
       setScale(h > USABLE_H ? USABLE_H / h : 1)
     }
+    const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure) }
     measure()
-    const ro = new ResizeObserver(measure)
+    const ro = new ResizeObserver(schedule)
     ro.observe(el)
-    return () => ro.disconnect()
+    const mo = new MutationObserver(schedule)
+    mo.observe(el, { childList: true, subtree: true, characterData: true })
+    const timers = [200, 500, 1000, 1800, 3000].map(ms => setTimeout(measure, ms))
+    return () => {
+      ro.disconnect(); mo.disconnect()
+      cancelAnimationFrame(raf); timers.forEach(clearTimeout)
+    }
   }, [blocks, side, playerId, data, hitterPbp, pitcherPbp])
 
   // Report metadata up to a parent builder.
@@ -178,7 +192,7 @@ export function CustomCard({ playerId, blocks, sideParam, cardRef, onMeta, class
       {!player ? (
         <div className="p-8 text-gray-400 italic text-sm animate-pulse">Loading player…</div>
       ) : (
-        <div ref={contentRef} style={{ width: `${PAGE_W}px`, transform: `scale(${scale})`, transformOrigin: 'top left', padding: '12px' }}>
+        <div ref={contentRef} data-scale-content style={{ width: `${PAGE_W}px`, transform: `scale(${scale})`, transformOrigin: 'top left', padding: '12px' }}>
           {/* items-stretch + [&>*]:h-full make every block in a row the same
               height (its panel fills the tallest cell), so blocks tile into
               clean bands instead of leaving ragged gaps under the short one. */}

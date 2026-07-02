@@ -22,6 +22,33 @@ export function toneAttr(score) {
   return t ? { 'data-tone': t } : {}
 }
 
+const CAPTURE_OPTS = {
+  backgroundColor: '#ffffff', scale: 2, useCORS: true, allowTaint: false, logging: false,
+}
+
+// Capture a node to a canvas. If the node contains a fit-to-page scaled element
+// (`[data-scale-content]`, e.g. the Custom Player Card), html2canvas would
+// mis-render it — capturing a CSS-`transform: scale()`ed element drifts text and
+// blends the color shading. So we temporarily neutralize the scale and capture
+// the content at its NATURAL 1:1 size; callers fit the resulting image to the
+// page, reproducing the on-screen scaling exactly. What saves == what's shown.
+async function captureCanvas(html2canvas, node) {
+  const content = node && node.querySelector ? node.querySelector('[data-scale-content]') : null
+  if (!content) return html2canvas(node, CAPTURE_OPTS)
+  const page = content.closest('.custom-card-page') || node
+  const saved = { t: content.style.transform, h: page.style.height, o: page.style.overflow }
+  content.style.transform = 'none'
+  page.style.height = 'auto'
+  page.style.overflow = 'visible'
+  try {
+    return await html2canvas(content, CAPTURE_OPTS)
+  } finally {
+    content.style.transform = saved.t
+    page.style.height = saved.h
+    page.style.overflow = saved.o
+  }
+}
+
 // Render a fixed-size node to a single-page letter PDF (image-based, so it
 // matches the PNG exactly). Used by the Custom Player Card builder, whose page
 // is already sized to one sheet — avoids the @media print machinery entirely.
@@ -32,9 +59,7 @@ export async function saveNodeAsPdf(node, filename = 'card', opts = {}) {
     import('html2canvas'), import('jspdf'),
   ])
   const JsPDF = jspdf.jsPDF || jspdf.default
-  const canvas = await html2canvas(node, {
-    backgroundColor: '#ffffff', scale: 2, useCORS: true, allowTaint: false, logging: false,
-  })
+  const canvas = await captureCanvas(html2canvas, node)
   const img = canvas.toDataURL('image/png')
   const pdf = new JsPDF({ unit, format, orientation })
   const pw = pdf.internal.pageSize.getWidth()
@@ -62,9 +87,7 @@ export async function saveNodesAsPdf(nodes, filename = 'cards', onProgress, opts
   const pw = pdf.internal.pageSize.getWidth()
   const ph = pdf.internal.pageSize.getHeight()
   for (let i = 0; i < list.length; i++) {
-    const canvas = await html2canvas(list[i], {
-      backgroundColor: '#ffffff', scale: 2, useCORS: true, allowTaint: false, logging: false,
-    })
+    const canvas = await captureCanvas(html2canvas, list[i])
     const img = canvas.toDataURL('image/png')
     const ar = canvas.width / canvas.height
     let w = pw, h = pw / ar
@@ -79,14 +102,7 @@ export async function saveNodesAsPdf(nodes, filename = 'cards', onProgress, opts
 export async function saveNodeAsImage(node, filename = 'report') {
   if (!node) return
   const { default: html2canvas } = await import('html2canvas')
-  const canvas = await html2canvas(node, {
-    // White backdrop so dark-mode reports still read on a saved PNG.
-    backgroundColor: '#ffffff',
-    scale: 2,                 // retina-crisp
-    useCORS: true,            // pull in cross-origin logos where allowed
-    allowTaint: false,        // a logo that can't load CORS renders blank, never taints
-    logging: false,
-  })
+  const canvas = await captureCanvas(html2canvas, node)
   await new Promise((resolve) => {
     canvas.toBlob((blob) => {
       if (!blob) return resolve()

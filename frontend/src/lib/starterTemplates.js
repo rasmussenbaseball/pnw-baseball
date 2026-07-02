@@ -84,6 +84,18 @@ export const STARTER_TEMPLATES = [
     ],
   },
   {
+    id: 'pit_advanced', name: 'Pitcher · Advanced', for: 'pitcher',
+    desc: 'Percentiles + opp spray, times-through-order + induced counts, a quarter-row of discipline/batted/splits/pitch-mix, season line, and two notes columns.',
+    blocks: [
+      b('header', F),
+      b('percentiles', H), b('spray', H, { filter: 'all' }),
+      b('tto', H), b('countdetail', H),
+      b('discipline', Q), b('batted', Q), b('splits', Q), b('pitchmix', Q, { title: 'Pitch Mix' }),
+      b('season', F),
+      b('notes', H), b('notes', H),
+    ],
+  },
+  {
     id: 'pit_full', name: 'Pitcher · Full Scout', for: 'pitcher',
     desc: 'Everything: percentiles + spray, TTO + detailed counts, a quarter-row of splits plus a blank pitch-mix, grades and a write-up.',
     blocks: [
