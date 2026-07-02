@@ -798,14 +798,14 @@ def combine_spray_zones(zones, bats):
         air_mid = zones.get("CF") or 0
         air_oppo = (zones.get("LF") or 0) + (zones.get("LC") or 0)
         inf_pull = zones.get("IF_1B") or 0
-        inf_mid = (zones.get("IF_MID") or 0) + (zones.get("IF_C") or 0)
+        inf_mid = (zones.get("IF_MID") or 0) + (zones.get("IF_2B") or 0) + (zones.get("IF_C") or 0)
         inf_oppo = (zones.get("IF_3B") or 0) + (zones.get("IF_SS") or 0)
     else:
         air_pull = (zones.get("LF") or 0) + (zones.get("LC") or 0)
         air_mid = zones.get("CF") or 0
         air_oppo = (zones.get("RF") or 0) + (zones.get("RC") or 0)
         inf_pull = (zones.get("IF_3B") or 0) + (zones.get("IF_SS") or 0)
-        inf_mid = (zones.get("IF_MID") or 0) + (zones.get("IF_C") or 0)
+        inf_mid = (zones.get("IF_MID") or 0) + (zones.get("IF_2B") or 0) + (zones.get("IF_C") or 0)
         inf_oppo = zones.get("IF_1B") or 0
     air_total = air_pull + air_mid + air_oppo
     inf_total = inf_pull + inf_mid + inf_oppo
@@ -1460,3 +1460,149 @@ def series_planner_teams(_user: str = Depends(require_tier("coach"))):
     teams = [rec["team"] for rec in data["peers"]]
     teams.sort(key=lambda t: (t.get("short_name") or "").lower())
     return {"teams": teams, "generated_at": data["generated_at"], "season": data["season"]}
+
+
+# ============================================================
+# DEFENSIVE ALIGNMENTS — per-fielder positioning from the 5+5 fine zones
+# ============================================================
+
+_ALIGN_IF = ["IF_3B", "IF_SS", "IF_MID", "IF_2B", "IF_1B"]
+_ALIGN_OF = ["LF", "LC", "CF", "RC", "RF"]
+_IF_LONG = {"IF_3B": "third base", "IF_SS": "shortstop", "IF_MID": "up the middle",
+            "IF_2B": "second base", "IF_1B": "first base"}
+_OF_LONG = {"LF": "left field", "LC": "the left-center gap", "CF": "center field",
+            "RC": "the right-center gap", "RF": "right field"}
+
+
+def _pct_map(counts, total):
+    return {k: (safe_div(v, total, 0)) for k, v in counts.items()}
+
+
+def _dominant(counts):
+    if not counts or sum(counts.values()) == 0:
+        return None
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def build_alignment_for_hitter(hitter, spray):
+    """Per-hitter defensive alignment from the fine spray zones. `spray` is the
+    stored {spray_chart, contact_profile, bats}. Returns None if too few BIP."""
+    sc = (spray or {}).get("spray_chart") or {}
+    z = sc.get("all") or {}
+    bats = (spray or {}).get("bats") or hitter.get("bats") or "R"
+    if_counts = {k: (z.get(k) or 0) for k in _ALIGN_IF}
+    if_counts["IF_MID"] += (z.get("IF_C") or 0)  # fold catcher/bunt into middle
+    of_counts = {k: (z.get(k) or 0) for k in _ALIGN_OF}
+    if_total = sum(if_counts.values())
+    of_total = sum(of_counts.values())
+    bip = if_total + of_total
+    if bip < 12:
+        return None
+
+    infield = _pct_map(if_counts, if_total)
+    outfield = _pct_map(of_counts, of_total)
+
+    is_lhb = str(bats).upper().startswith("L")
+    # Pull/oppo depends on handedness. RHB pulls to the left (3B/SS, LF/LC).
+    if is_lhb:
+        if_pull = (if_counts["IF_1B"] + if_counts["IF_2B"])
+        if_oppo = (if_counts["IF_3B"] + if_counts["IF_SS"])
+        of_pull = (of_counts["RF"] + of_counts["RC"])
+        of_oppo = (of_counts["LF"] + of_counts["LC"])
+        pull_side, oppo_side = "right", "left"
+    else:
+        if_pull = (if_counts["IF_3B"] + if_counts["IF_SS"])
+        if_oppo = (if_counts["IF_1B"] + if_counts["IF_2B"])
+        of_pull = (of_counts["LF"] + of_counts["LC"])
+        of_oppo = (of_counts["RF"] + of_counts["RC"])
+        pull_side, oppo_side = "left", "right"
+    if_pull_pct = safe_div(if_pull, if_total, 0)
+    if_oppo_pct = safe_div(if_oppo, if_total, 0)
+    if_mid_pct = safe_div(if_counts["IF_MID"], if_total, 0)
+    of_pull_pct = safe_div(of_pull, of_total, 0)
+    of_gap_pct = safe_div(of_counts["LC"] + of_counts["RC"], of_total, 0)
+    bunt_pct = safe_div(z.get("IF_C") or 0, if_total, 0)
+
+    dom_if = _dominant(if_counts)
+    dom_of = _dominant(of_counts)
+
+    recs = []
+    # ── Infield shift call ──
+    if if_total >= 8:
+        if if_pull_pct >= 0.60:
+            if is_lhb:
+                recs.append({"tone": "shift", "text": f"Heavy pull ({round(if_pull_pct*100)}% of grounders to the right side). Full shift: 2B into short RF, SS up the middle, 1B on the line."})
+            else:
+                recs.append({"tone": "shift", "text": f"Heavy pull ({round(if_pull_pct*100)}% of grounders to the left side). Full shift: SS into the 5-6 hole, 3B on the line, 2B up the middle."})
+        elif if_pull_pct >= 0.48:
+            recs.append({"tone": "shade", "text": f"Pull-leaning grounders ({round(if_pull_pct*100)}% {pull_side} side). Shade the infield toward {pull_side}."})
+        elif if_oppo_pct >= 0.40:
+            recs.append({"tone": "note", "text": f"Uses the whole field ({round(if_oppo_pct*100)}% oppo grounders). Play him straight up, no shift."})
+        else:
+            recs.append({"tone": "note", "text": "Fairly balanced on the ground. Straight-up alignment."})
+        if if_mid_pct >= 0.32:
+            recs.append({"tone": "note", "text": f"Lots up the middle ({round(if_mid_pct*100)}%). Keep the middle infielders honest to the bag."})
+        if dom_if:
+            recs.append({"tone": "data", "text": f"Most grounders to {_IF_LONG[dom_if]} ({round(infield[dom_if]*100)}%)."})
+    # ── Outfield ──
+    if of_total >= 6:
+        if of_pull_pct >= 0.52:
+            recs.append({"tone": "shift", "text": f"Pull-side air ({round(of_pull_pct*100)}%). Rotate the outfield toward {pull_side}."})
+        elif of_gap_pct >= 0.22:
+            recs.append({"tone": "note", "text": f"Gap threat ({round(of_gap_pct*100)}% to the alleys). Outfielders honor the gaps and play deep."})
+        if dom_of:
+            recs.append({"tone": "data", "text": f"Most air balls to {_OF_LONG[dom_of]} ({round(outfield[dom_of]*100)}%)."})
+    # ── Bunt ──
+    if bunt_pct >= 0.06 and (z.get("IF_C") or 0) >= 2:
+        recs.append({"tone": "note", "text": "Will drop a bunt — corners stay alert."})
+
+    return {
+        "player_id": hitter.get("player_id"),
+        "name": player_name(hitter),
+        "position": hitter.get("position"),
+        "bats": bats,
+        "pa": hitter.get("plate_appearances"),
+        "bip": bip,
+        "if_total": if_total,
+        "of_total": of_total,
+        "infield": infield,           # {IF_3B: pct, ...} of grounders
+        "outfield": outfield,         # {LF: pct, ...} of air balls
+        "lanes": {
+            "if_pull": if_pull_pct, "if_mid": if_mid_pct, "if_oppo": if_oppo_pct,
+            "of_pull": of_pull_pct, "of_gap": of_gap_pct,
+            "pull_side": pull_side, "oppo_side": oppo_side,
+        },
+        "spray_chart": sc,            # full 11-zone object for the fan visual
+        "recommendations": recs,
+    }
+
+
+@router.get("/portal/alignments")
+def alignments(
+    team_id: int = Query(..., description="Opponent team to build alignments for"),
+    season: int = Query(CURRENT_SEASON),
+    _user: str = Depends(require_tier("coach")),
+):
+    """Per-hitter defensive alignments for an opponent, from the fine (5 infield
+    + 5 outfield) spray zones. Sourced from the daily Series Planner records."""
+    data = _load_records()
+    if not data:
+        return {"error": "not_generated", "message": "Series Planner data has not been generated yet."}
+    rec = data["records"].get(team_id)
+    if not rec:
+        return {"error": "team_missing", "message": "No data for that team this season."}
+    spray = data["spray"]
+    hitters = sorted(
+        [h for h in rec["hitters"] if (h.get("plate_appearances") or 0) >= 30],
+        key=lambda r: r.get("plate_appearances") or 0, reverse=True,
+    )
+    out = []
+    for h in hitters:
+        a = build_alignment_for_hitter(h, spray.get(h.get("player_id")))
+        if a:
+            out.append(a)
+    return {
+        "meta": {"season": data["season"], "generated_at": data["generated_at"], "team_id": team_id},
+        "team": rec["team"],
+        "hitters": out,
+    }

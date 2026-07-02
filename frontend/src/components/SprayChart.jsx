@@ -72,24 +72,30 @@ function wedgeLabelPos(cx, cy, r1, r2, angStart, angEnd, radiusFrac = 0.5) {
 }
 
 const FAN_HALF_ANGLE = 45
-const OF_ZONES = ['LF', 'CF', 'RF']
-const IF_ZONES = ['IF_3B', 'IF_SS', 'IF_MID', 'IF_1B']
+// Full 6-4-3-style split: 5 outfield lanes (incl. the LC/RC gaps) and 5
+// infield lanes (3B, SS, up-middle, 2B, 1B). Only the tiny catcher/bunt zone
+// folds into MID.
+const OF_ZONES = ['LF', 'LC', 'CF', 'RC', 'RF']
+const IF_ZONES = ['IF_3B', 'IF_SS', 'IF_MID', 'IF_2B', 'IF_1B']
 const ZONE_LABEL = {
-  LF: 'LF', CF: 'CF', RF: 'RF',
-  IF_3B: '3B', IF_SS: 'SS', IF_MID: 'MID', IF_1B: '1B',
+  LF: 'LF', LC: 'LC', CF: 'CF', RC: 'RC', RF: 'RF',
+  IF_3B: '3B', IF_SS: 'SS', IF_MID: 'M', IF_2B: '2B', IF_1B: '1B',
 }
 
-// Fold the fine zones (10) into the visual zones (3 OF + 4 IF).
-// LC → LF, RC → RF, IF_C → IF_MID.
+// Pass the fine zones straight through; only fold the catcher/bunt zone into
+// the up-the-middle wedge (too thin to render on its own).
 function condense(counts = {}) {
   return {
-    LF:     (counts.LF     || 0) + (counts.LC || 0),
-    CF:     (counts.CF     || 0),
-    RF:     (counts.RF     || 0) + (counts.RC || 0),
-    IF_3B:  counts.IF_3B   || 0,
-    IF_SS:  counts.IF_SS   || 0,
+    LF: counts.LF || 0,
+    LC: counts.LC || 0,
+    CF: counts.CF || 0,
+    RC: counts.RC || 0,
+    RF: counts.RF || 0,
+    IF_3B: counts.IF_3B || 0,
+    IF_SS: counts.IF_SS || 0,
     IF_MID: (counts.IF_MID || 0) + (counts.IF_C || 0),
-    IF_1B:  counts.IF_1B   || 0,
+    IF_2B: counts.IF_2B || 0,
+    IF_1B: counts.IF_1B || 0,
   }
 }
 

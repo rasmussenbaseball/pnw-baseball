@@ -206,6 +206,12 @@ PYTHONPATH=backend python3 scripts/compute_wpa.py --season 2026
 # rescrape, same as compute_wpa.
 PYTHONPATH=backend python3 scripts/compute_holds_blown_saves.py --season 2026
 
+# Batted-ball type + fine field zone (5 IF + 5 OF lanes) from game_events
+# result_text. Idempotent (only rows with bb_derived_at IS NULL). Feeds the
+# spray charts and Defensive Alignments. Runs before the Series Planner regen
+# so its stored spray is fresh.
+PYTHONPATH=backend python3 scripts/derive_batted_ball.py --season "$SEASON"
+
 # Series Planner — rebuild the per-team aggregate records the live
 # /portal/series-planner endpoint reads. Pulls from the local API (this
 # server's nwbb service), so it runs LAST, after all stats are fresh.

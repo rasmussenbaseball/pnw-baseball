@@ -44,6 +44,8 @@ const PORTAL_TOOLS = [
     desc: 'Optimal batting orders vs RHP / LHP', icon: 'lineup' },
   { to: '/portal/team-scouting', label: 'Team Scouting',
     desc: 'Full opponent report, every stat + percentile', icon: 'clipboard' },
+  { to: '/portal/alignments', label: 'Defensive Alignments',
+    desc: 'Per-hitter spray + shift calls (5 IF / 5 OF lanes)', icon: 'target' },
   { to: '/portal/trends', label: 'Trends',
     desc: 'Lineup, rotation & bullpen tendencies', icon: 'trend' },
   { to: '/portal/historic', label: 'Historic Matchups',

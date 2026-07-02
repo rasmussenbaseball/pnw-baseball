@@ -802,7 +802,7 @@ def get_player_pitch_level_stats(
         #   hr        — home runs only
         # Plus hr_by_outfield (LF/CF/RF totals — for fence badges).
         FINE_ZONES = ["LF", "LC", "CF", "RC", "RF",
-                      "IF_3B", "IF_SS", "IF_MID", "IF_1B", "IF_C"]
+                      "IF_3B", "IF_SS", "IF_MID", "IF_2B", "IF_1B", "IF_C"]
         cur.execute("""
             SELECT field_zone_fine,
                    CASE
@@ -1583,7 +1583,7 @@ def get_player_pitch_level_stats_pitcher(
 
         # ── Phase F: opponent spray chart (zone × LHB/RHB × xbh/hr) ──
         FINE_ZONES = ["LF", "LC", "CF", "RC", "RF",
-                      "IF_3B", "IF_SS", "IF_MID", "IF_1B", "IF_C"]
+                      "IF_3B", "IF_SS", "IF_MID", "IF_2B", "IF_1B", "IF_C"]
         cur.execute("""
             SELECT field_zone_fine,
                    CASE

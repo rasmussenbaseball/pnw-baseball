@@ -144,6 +144,13 @@ _ZONE_PATTERNS = [
 #   IF_MID    — 2nd base, pitcher, "up the middle"
 #   IF_1B     — 1st base, "right side" of infield
 #   IF_C      — catcher (foul pops behind plate)
+#   IF_2B     — 2nd base / second baseman (the 3-4 hole side)
+#   IF_MID    — pitcher, "up the middle" (dead center, through the box)
+#
+# Splitting IF_2B out of IF_MID (2026-07) gives a true 5-lane infield that
+# matches 6-4-3 Charts (3B line, 5-6 hole, up-middle, 3-4 hole, 1B line),
+# which is far more actionable for defensive shifts than lumping 2B with the
+# pitcher/middle.
 _ZONE_FINE_PATTERNS = [
     # Outfield gaps must beat OF positions
     ("LC", ["left center", "lf to left center", "cf to left center"]),
@@ -154,10 +161,105 @@ _ZONE_FINE_PATTERNS = [
     # Infield positions
     ("IF_C",   ["catcher"]),
     ("IF_3B",  ["3b", "third base", "third", "3b line"]),
-    ("IF_SS",  ["ss", "shortstop", "left side"]),
-    ("IF_1B",  ["1b", "first base", "right side", "1b line"]),
-    ("IF_MID", ["2b", "second base", "up the middle", "middle", "pitcher"]),
+    ("IF_SS",  ["ss", "shortstop", "short", "left side"]),
+    ("IF_2B",  ["2b", "second base", "second"]),
+    ("IF_1B",  ["1b", "first base", "first", "right side", "1b line"]),
+    ("IF_MID", ["up the middle", "middle", "pitcher"]),
 ]
+
+# ── Fielder-notation → fine zone ──
+# Scorekeeper number and abbreviation to the zone where the ball was FIELDED.
+# 1=P 2=C 3=1B 4=2B 5=3B 6=SS 7=LF 8=CF 9=RF. Lets us recover a zone from
+# fielding-sequence ("ss to 1b", "6-4-3"), error ("(E5)"), fielder's-choice,
+# and double-play notation that has no "singled to X" location tail.
+_NUM_ZONE = {
+    "1": "IF_MID", "2": "IF_C", "3": "IF_1B", "4": "IF_2B", "5": "IF_3B",
+    "6": "IF_SS", "7": "LF", "8": "CF", "9": "RF",
+}
+_ABBR_ZONE = {
+    "p": "IF_MID", "pitcher": "IF_MID",
+    "c": "IF_C", "catcher": "IF_C",
+    "1b": "IF_1B", "first base": "IF_1B",
+    "2b": "IF_2B", "second base": "IF_2B",
+    "3b": "IF_3B", "third base": "IF_3B",
+    "ss": "IF_SS", "shortstop": "IF_SS",
+    "lf": "LF", "left field": "LF",
+    "cf": "CF", "center field": "CF", "centerfield": "CF",
+    "rf": "RF", "right field": "RF",
+}
+_COARSE_OF_FINE = {
+    "LF": "LEFT", "LC": "LEFT", "IF_3B": "LEFT", "IF_SS": "LEFT",
+    "CF": "CENTER", "IF_MID": "CENTER", "IF_2B": "CENTER", "IF_C": "CENTER",
+    "RF": "RIGHT", "RC": "RIGHT", "IF_1B": "RIGHT",
+}
+# Remove any "(0-0 BBKF)" count/sequence groups so a count like "2-1" isn't
+# mistaken for a "5-3" fielding sequence.
+_COUNT_GROUP_RE = re.compile(r"\(\d-\d[^)]*\)")
+# Numeric fielding sequence: 6-4-3 / 5-3 / 4-6-3. First digit = fielder.
+_NUM_SEQ_RE = re.compile(r"\b([1-9])(?:-[1-9])+\b")
+# Abbreviation putout: first "<pos> to" / "<pos> unassisted".
+_ABBR_SEQ_RE = re.compile(
+    r"\b(p|c|1b|2b|3b|ss|lf|cf|rf|pitcher|catcher|shortstop|"
+    r"first base|second base|third base|left field|center field|right field)\b"
+    r"\s*(?:to\b|unassisted\b)",
+    re.IGNORECASE,
+)
+# Error code: (E5) → fielder 5.
+_ECODE_RE = re.compile(r"\(e([1-9])\)", re.IGNORECASE)
+# Error by fielder: "error by 3b" / "fielding error fielding by ss".
+_ERROR_POS_RE = re.compile(
+    r"error(?:\s+\w+)*?\s+by\s+(p|c|1b|2b|3b|ss|lf|cf|rf|pitcher|catcher|"
+    r"shortstop|first base|second base|third base|left field|center field|"
+    r"right field)\b",
+    re.IGNORECASE,
+)
+
+
+def _coarse_from_fine(fine):
+    return _COARSE_OF_FINE.get(fine) if fine else None
+
+
+def _extract_fielder_zone(text):
+    """Recover a fine zone from fielding-sequence / putout notation
+    ("grounded out, ss to 1b" / "6-4-3" / "3b unassisted"). Returns the FIRST
+    fielder's zone (where the ball was actually fielded), or None."""
+    if not text:
+        return None
+    s = _COUNT_GROUP_RE.sub(" ", text.lower())
+    m = _NUM_SEQ_RE.search(s)
+    if m:
+        return _NUM_ZONE.get(m.group(1))
+    m = _ABBR_SEQ_RE.search(s)
+    if m:
+        return _ABBR_ZONE.get(m.group(1).lower())
+    return None
+
+
+def _extract_error_zone(text):
+    """Zone for an 'error' result_type: prefer the (E#) code, then 'error by
+    <pos>', then any fielding sequence."""
+    if not text:
+        return None
+    m = _ECODE_RE.search(text)
+    if m:
+        return _NUM_ZONE.get(m.group(1))
+    m = _ERROR_POS_RE.search(text)
+    if m:
+        return _ABBR_ZONE.get(m.group(1).lower())
+    return _extract_fielder_zone(text)
+
+
+# "fielder's choice hit to second base" / "choice to short" → location tail.
+_HIT_TO_RE = re.compile(
+    r"\b(?:hit\s+to|choice\s+to)\s+(?P<loc>[a-z0-9 ]+?)"
+    r"(?=\s*(?:[,.;(]|$))",
+    re.IGNORECASE,
+)
+
+
+def _extract_hit_to_zone(text):
+    m = _HIT_TO_RE.search(text or "")
+    return _classify_zone_fine(m.group("loc")) if m else None
 
 
 def _classify_zone_fine(loc: str):
@@ -297,31 +399,22 @@ def classify(result_type: str, result_text: str):
 
     # Special cases that bypass verb matching
     if result_type in ("double_play", "triple_play", "fielders_choice"):
-        # Always GB; try to find a field zone. DP narratives often start
-        # "X grounded into double play SS to 2B to 1B" — the FIRST
-        # position mentioned (SS here) is where the ball was hit.
-        m = _VERB_LOC_RE.search(result_text)
-        loc = m.group("loc") if m else None
-        zone = _classify_zone(loc) if loc else None
-        zone_fine = _classify_zone_fine(loc) if loc else None
-        if not zone:
-            m2 = re.search(r"\b(?:double\s+play|fielder'?s\s+choice|triple\s+play)\s+"
-                           r"(?:to\s+)?([a-z0-9]+(?:\s+base)?)\b",
-                           result_text, re.IGNORECASE)
-            if m2:
-                zone = _classify_zone(m2.group(1))
-                zone_fine = _classify_zone_fine(m2.group(1))
-        return "GB", zone, zone_fine
+        # Always GB. Find where the ball was fielded: "hit to <pos>" tail,
+        # then the fielding sequence ("6-4-3" / "ss to 2b to 1b" — first
+        # fielder is where the ball went), then any "into DP to <pos>".
+        fine = _extract_hit_to_zone(result_text) or _extract_fielder_zone(result_text)
+        if not fine:
+            m = _VERB_LOC_RE.search(result_text)
+            if m:
+                fine = _classify_zone_fine(m.group("loc"))
+        return "GB", _coarse_from_fine(fine), fine
 
     if result_type == "error":
-        m = _ERROR_BY_RE.search(result_text)
-        loc = m.group("loc") if m else None
-        zone = _classify_zone(loc) if loc else None
-        fine = _classify_zone_fine(loc) if loc else None
+        fine = _extract_error_zone(result_text)
         # Errors at infield positions are nearly always ground balls.
         # OF errors stay None (could be misplayed fly OR liner — ambiguous).
         bb = "GB" if (fine and fine.startswith("IF_")) else None
-        return bb, zone, fine
+        return bb, _coarse_from_fine(fine), fine
 
     if result_type == "sac_fly":
         m = _VERB_LOC_RE.search(result_text)
@@ -347,9 +440,16 @@ def classify(result_type: str, result_text: str):
         bb = _classify_bb_type(verb, location, result_type, batter_clause)
         zone = _classify_zone(location)
         fine = _classify_zone_fine(location)
+        # Backup the zone from a fielding sequence when "to X" didn't yield one
+        # (e.g. "grounded out, ss to 1b" parses the verb but not the location).
+        if not fine:
+            fz = _extract_fielder_zone(batter_clause)
+            if fz:
+                fine, zone = fz, _coarse_from_fine(fz)
         return bb, zone, fine
 
-    # Fallback: result_type implies bb_type but no "to X" location.
+    # Fallback: result_type implies bb_type but no "to X" location. Still try
+    # to recover a zone from fielding-sequence notation ("ss to 1b", "6-4-3").
     bb_only = {
         "ground_out": "GB",
         "fly_out":    "FB",
@@ -358,7 +458,16 @@ def classify(result_type: str, result_text: str):
         "home_run":   "FB",
     }.get(result_type)
     if bb_only:
-        return bb_only, None, None
+        fz = _extract_fielder_zone(batter_clause)
+        return bb_only, _coarse_from_fine(fz), fz
+    # Even hits ("singled" with no location) get a last-chance sequence parse.
+    fz = _extract_fielder_zone(batter_clause)
+    if fz:
+        bb = "GB" if fz.startswith("IF_") else "LD"
+        return bb, _coarse_from_fine(fz), fz
+    # Bunt singles/hits with no fielder named are still ground balls.
+    if "bunt" in batter_clause.lower():
+        return "GB", None, None
     return None, None, None
 
 

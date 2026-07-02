@@ -39,6 +39,8 @@ const NAV_SECTIONS = [
         desc: 'Filter any team by game state, count, hand, home/away' },
       { to: '/portal/team-scouting', label: 'Team Scouting',
         desc: 'Full team report — every stat with percentile context' },
+      { to: '/portal/alignments', label: 'Defensive Alignments',
+        desc: 'Per-hitter spray (5 IF + 5 OF lanes) with shift calls' },
       { to: '/portal/historic', label: 'Historic Matchups',
         desc: 'Per-PA matchup history vs an opponent' },
       { to: '/portal/player-scouting', label: 'Player Scouting',
