@@ -33,6 +33,13 @@ const CAPTURE_OPTS = {
 // the content at its NATURAL 1:1 size; callers fit the resulting image to the
 // page, reproducing the on-screen scaling exactly. What saves == what's shown.
 async function captureCanvas(html2canvas, node) {
+  // Wait for web fonts (Inter) to load — html2canvas 1.4.1 otherwise measures
+  // and paints with FALLBACK font metrics, which shifts the color-shading pills
+  // off their numbers and adds phantom spacing / clips text. This is the main
+  // reason a saved card didn't match the screen.
+  if (document.fonts && document.fonts.ready) {
+    try { await document.fonts.ready } catch { /* older browsers */ }
+  }
   const content = node && node.querySelector ? node.querySelector('[data-scale-content]') : null
   if (!content) return html2canvas(node, CAPTURE_OPTS)
   const page = content.closest('.custom-card-page') || node
@@ -41,7 +48,24 @@ async function captureCanvas(html2canvas, node) {
   page.style.height = 'auto'
   page.style.overflow = 'visible'
   try {
-    return await html2canvas(content, CAPTURE_OPTS)
+    // Pin the capture to the content's FULL natural size + matching viewport so
+    // nothing is cropped by the real window/viewport being shorter than the card.
+    const w = content.scrollWidth
+    const h = content.scrollHeight
+    return await html2canvas(content, {
+      ...CAPTURE_OPTS,
+      width: w, height: h, windowWidth: w, windowHeight: h, scrollX: 0, scrollY: 0,
+      onclone: (_doc, el) => {
+        // html2canvas 1.4.1 mis-positions glyphs under `tabular-nums`
+        // (font-variant-numeric), inserting a phantom space before "%" and
+        // nudging text within the shaded pills. Render the clone with normal
+        // numeric spacing so the capture matches the screen. The clone is
+        // off-DOM, so the on-screen card is unaffected.
+        if (!el || !el.querySelectorAll) return
+        el.style.fontVariantNumeric = 'normal'
+        el.querySelectorAll('*').forEach(n => { n.style.fontVariantNumeric = 'normal' })
+      },
+    })
   } finally {
     content.style.transform = saved.t
     page.style.height = saved.h
