@@ -359,6 +359,24 @@ export function usePlayerCountDetail(playerId, side = 'batter', season = CURRENT
   )
 }
 
+/** Hitter's line vs elite pitching (top-quartile-ERA arms). Custom-card block. */
+export function usePlayerVsElite(playerId, season = CURRENT_SEASON) {
+  return useApi(
+    playerId ? `/players/${playerId}/vs-elite` : null,
+    { season },
+    [playerId, season]
+  )
+}
+
+/** Off-the-bench line: pinch-hit slash + pinch-run apps. Custom-card block. */
+export function usePlayerBench(playerId, season = CURRENT_SEASON) {
+  return useApi(
+    playerId ? `/players/${playerId}/bench` : null,
+    { season },
+    [playerId, season]
+  )
+}
+
 /**
  * Player's stats vs a specific opposing team (PBP-derived). Used by the
  * Player Card PDF when a portal team is set. Pass null teamId to skip

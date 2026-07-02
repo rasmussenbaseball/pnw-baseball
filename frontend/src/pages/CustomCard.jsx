@@ -26,6 +26,7 @@ import {
   ScoutTakePanel, GradesPanel, MeasurablesPanel,
   TendenciesPanel, TrendPanel, NotesLinesPanel,
   FieldingGridPanel, FieldingDiagramPanel, TTOPanel, CountDetailPanel,
+  VsElitePanel, BenchPanel, PitchMixPanel,
 } from './PlayerCardPDF'
 
 export const SEASON = CURRENT_SEASON
@@ -46,9 +47,11 @@ export const BLOCKS = {
   discipline:  { label: 'Plate Discipline', w: 'half', tag: 'Stats',  for: 'both', render: c => <DisciplinePanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
   batted:      { label: 'Batted Ball',      w: 'half', tag: 'Stats',  for: 'both', render: c => <BattedBallPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
   splits:      { label: 'Splits',           w: 'half', tag: 'Stats',  for: 'both', render: c => <SplitsPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  counts:      { label: 'Count States',     w: 'half', tag: 'Stats',  for: 'both', render: c => <CountStatesPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  countdetail: { label: 'Count States (detail)', w: 'half', tag: 'Stats', for: 'both', render: c => <CountDetailPanel side={c.side} playerId={c.playerId} /> },
+  counts:      { label: 'Count States',     w: 'quarter', tag: 'Stats',  for: 'both', render: c => <CountStatesPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  countdetail: { label: 'Count States (detail)', w: 'quarter', tag: 'Stats', for: 'both', render: c => <CountDetailPanel side={c.side} playerId={c.playerId} /> },
   tto:         { label: 'Times Thru Order', w: 'half', tag: 'Stats',  for: 'pitcher', render: c => <TTOPanel playerId={c.playerId} /> },
+  velite:      { label: 'vs Elite Pitching', w: 'quarter', tag: 'Stats', for: 'hitter', render: c => <VsElitePanel playerId={c.playerId} /> },
+  bench:       { label: 'Off the Bench',    w: 'quarter', tag: 'Stats',  for: 'hitter', render: c => <BenchPanel playerId={c.playerId} /> },
   tendencies:  { label: 'How to Attack',    w: 'half', tag: 'Scouting', for: 'both', render: c => <TendenciesPanel side={c.side} data={c.data} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
   trend:       { label: 'Season Trend',     w: 'half', tag: 'Charts', for: 'both', render: c => <TrendPanel playerId={c.playerId} side={c.side} /> },
   fieldgrid:   { label: 'Ideal Fielding — Grid',  w: 'half', tag: 'Defense', for: 'hitter', render: c => <FieldingGridPanel playerId={c.playerId} /> },
@@ -59,6 +62,7 @@ export const BLOCKS = {
   recentk:     { label: 'Recent Ks',        w: 'half', tag: 'Scouting', for: 'both', render: c => <RecentKsPanel playerId={c.playerId} side={c.side} portalTeam={c.portalTeam} /> },
   grades:      { label: 'Scouting Grades',  w: 'half', tag: 'Report', for: 'both', edit: 'grades', render: (c, cfg) => <GradesPanel side={c.side} cfg={cfg} /> },
   measurables: { label: 'Measurables',      w: 'half', tag: 'Report', for: 'both', edit: 'measurables', render: (c, cfg) => <MeasurablesPanel side={c.side} player={c.player} cfg={cfg} /> },
+  pitchmix:    { label: 'Pitch Mix (blank)', w: 'quarter', tag: 'Report', for: 'both', edit: 'pitchmix', render: (c, cfg) => <PitchMixPanel cfg={cfg} /> },
   scouttake:   { label: "Scout's Take",     w: 'full', tag: 'Report', for: 'both', edit: 'text', render: (c, cfg) => <ScoutTakePanel cfg={cfg} /> },
   notes:       { label: 'Notes (blank)',    w: 'half', tag: 'Report', for: 'both', edit: 'notes', render: (c, cfg) => <NotesLinesPanel cfg={cfg} /> },
 }
@@ -66,6 +70,12 @@ export const PALETTE = Object.keys(BLOCKS)
 
 // Palette groupings for the picker UI.
 export const PALETTE_GROUPS = ['Core', 'Stats', 'Charts', 'Defense', 'Scouting', 'Report']
+
+// Grid is 4 columns wide. Map a block width to its column span.
+export const WIDTHS = ['quarter', 'half', 'full']
+export const WIDTH_SPAN = { quarter: 'col-span-1', half: 'col-span-2', full: 'col-span-4' }
+export const WIDTH_LABEL = { quarter: '¼', half: '½', full: 'Full' }
+export const nextWidth = w => WIDTHS[(WIDTHS.indexOf(w) + 1) % WIDTHS.length]
 
 // Does a block belong on this side's card? 'both' always; otherwise match.
 export function blockFitsSide(type, side) {
@@ -77,9 +87,19 @@ export function blockFitsSide(type, side) {
 export const SPRAY_FILTERS_HIT = [['all', 'All'], ['vs_rhp', 'vs RHP'], ['vs_lhp', 'vs LHP'], ['xbh', 'XBH'], ['hr', 'HR']]
 export const SPRAY_FILTERS_PIT = [['all', 'All'], ['vs_rhb', 'vs RHB'], ['vs_lhb', 'vs LHB'], ['xbh', 'XBH'], ['hr', 'HR']]
 
-// Default 8-block layout used when the builder first loads.
-export const DEFAULT_BLOCKS = ['header', 'percentiles', 'spray', 'discipline', 'batted', 'splits', 'counts', 'season']
-  .map(type => ({ type, w: BLOCKS[type].w, ...(type === 'spray' ? { filter: 'all' } : {}) }))
+// Default 8-block layout used when the builder first loads. Widths chosen to
+// fill the page: percentiles + spray share a row, the four stat blocks pack
+// into a single quarter-width row, season line spans full.
+export const DEFAULT_BLOCKS = [
+  { type: 'header', w: 'full' },
+  { type: 'percentiles', w: 'half' },
+  { type: 'spray', w: 'half', filter: 'all' },
+  { type: 'discipline', w: 'quarter' },
+  { type: 'batted', w: 'quarter' },
+  { type: 'splits', w: 'quarter' },
+  { type: 'counts', w: 'quarter' },
+  { type: 'season', w: 'full' },
+]
 
 let _uid = 100
 export const nextUid = () => `b${_uid++}`
@@ -159,9 +179,9 @@ export function CustomCard({ playerId, blocks, sideParam, cardRef, onMeta, class
         <div className="p-8 text-gray-400 italic text-sm animate-pulse">Loading player…</div>
       ) : (
         <div ref={contentRef} style={{ width: `${PAGE_W}px`, transform: `scale(${scale})`, transformOrigin: 'top left', padding: '12px' }}>
-          <div className="grid grid-cols-2 gap-2 items-start">
+          <div className="grid grid-cols-4 gap-2 items-start">
             {(blocks || []).filter(b => BLOCKS[b.type] && blockFitsSide(b.type, side)).map((b, i) => (
-              <div key={b.uid || `${b.type}-${i}`} className={b.w === 'full' ? 'col-span-2' : 'col-span-1'}>
+              <div key={b.uid || `${b.type}-${i}`} className={WIDTH_SPAN[b.w] || 'col-span-2'}>
                 {BLOCKS[b.type].render(ctx, b)}
               </div>
             ))}

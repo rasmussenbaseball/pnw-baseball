@@ -33,6 +33,8 @@ import {
   usePlayerAlignment,
   usePlayerTto,
   usePlayerCountDetail,
+  usePlayerVsElite,
+  usePlayerBench,
 } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import SprayChart from '../components/SprayChart'
@@ -1769,6 +1771,96 @@ function CountDetailPanel({ side, playerId }) {
   )
 }
 
+// ───────────────────────────────────────────────────────────
+// vs Elite Pitching — hitter slash vs top-quartile-ERA arms [hitter]
+// ───────────────────────────────────────────────────────────
+function VsElitePanel({ playerId }) {
+  const { data } = usePlayerVsElite(playerId, SEASON)
+  const e = data?.vs_elite
+  return (
+    <MiniCard title="vs Elite Pitching">
+      {!e || e.pa < 3 ? (
+        <div className="text-[9px] text-gray-400 italic">Not enough PAs vs top arms yet.</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-1 text-center mb-1">
+            {[['AVG', fmt.rate(e.avg)], ['OBP', fmt.rate(e.obp)], ['SLG', fmt.rate(e.slg)]].map(([l, v]) => (
+              <div key={l}><div className="text-[8px] text-gray-400 uppercase">{l}</div><div className="text-[11px] font-bold tabular-nums">{v}</div></div>
+            ))}
+          </div>
+          <StatLine label="OPS" value={fmt.rate(e.ops)} />
+          <StatLine label="K% / BB%" value={`${(e.k_pct * 100).toFixed(0)}% / ${(e.bb_pct * 100).toFixed(0)}%`} />
+          <div className="text-[7px] text-gray-400 mt-0.5">{e.pa} PA vs ERA ≤ {data.era_cutoff} ({data.n_pitchers} arms)</div>
+        </>
+      )}
+    </MiniCard>
+  )
+}
+
+// ───────────────────────────────────────────────────────────
+// Off the Bench — pinch-hit slash + pinch-run apps [hitter]
+// ───────────────────────────────────────────────────────────
+function BenchPanel({ playerId }) {
+  const { data } = usePlayerBench(playerId, SEASON)
+  const ph = data?.ph
+  const pr = data?.pr
+  return (
+    <MiniCard title="Off the Bench">
+      {!ph && !pr ? (
+        <div className="text-[9px] text-gray-400 italic">No bench appearances.</div>
+      ) : (
+        <>
+          {ph ? (
+            <>
+              <div className="text-[8px] uppercase text-gray-400 font-bold mb-0.5">Pinch Hit · {ph.apps} app</div>
+              <StatLine label="Slash" value={`${fmt.rate(ph.avg)}/${fmt.rate(ph.obp)}/${fmt.rate(ph.slg)}`} />
+              <StatLine label="AB · H · HR" value={`${ph.ab} · ${ph.h} · ${ph.hr}`} />
+              <StatLine label="RBI · BB · K" value={`${ph.rbi} · ${ph.bb} · ${ph.so}`} />
+            </>
+          ) : <div className="text-[9px] text-gray-400 italic mb-1">No pinch-hit AB.</div>}
+          {pr && <StatLine label="Pinch Run" value={`${pr.apps} app · ${pr.sb} SB · ${pr.r} R`} />}
+        </>
+      )}
+    </MiniCard>
+  )
+}
+
+// ───────────────────────────────────────────────────────────
+// Pitch Mix — BLANK write-in grid for coaches [both]
+// Rows default to common pitch types; coach fills velo / usage / notes.
+// ───────────────────────────────────────────────────────────
+const PITCHMIX_ROWS = ['FB', 'SL', 'CB', 'CH', 'CT', 'SPL']
+
+function PitchMixPanel({ cfg = {} }) {
+  const rows = cfg.rows || PITCHMIX_ROWS
+  const title = cfg.title || 'Pitch Mix'
+  return (
+    <MiniCard title={title}>
+      <table className="w-full text-[9px]" style={{ borderCollapse: 'collapse' }}>
+        <thead>
+          <tr className="text-[8px] text-gray-400">
+            <th className="text-left font-bold pb-0.5">Pitch</th>
+            <th className="font-bold pb-0.5">Velo</th>
+            <th className="font-bold pb-0.5">Usage</th>
+            <th className="text-left font-bold pb-0.5 pl-1">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} style={{ height: '15px' }}>
+              <td className="border border-gray-200 px-1 font-semibold text-gray-700">{r}</td>
+              <td className="border border-gray-200" style={{ width: '38px' }} />
+              <td className="border border-gray-200" style={{ width: '38px' }} />
+              <td className="border border-gray-200" />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="text-[7px] text-gray-400 mt-0.5">Fill in velo band, usage % and shape/notes.</div>
+    </MiniCard>
+  )
+}
+
 export {
   CardHeader, PercentilePanel, SprayPanel, DisciplinePanel, BattedBallPanel,
   SplitsPanel, CountStatesPanel, SeasonStatsTable, SummerBallTable,
@@ -1776,5 +1868,6 @@ export {
   TendenciesPanel, TrendPanel, GradesPanel, MeasurablesPanel,
   ScoutTakePanel, NotesLinesPanel,
   FieldingGridPanel, FieldingDiagramPanel, TTOPanel, CountDetailPanel,
+  VsElitePanel, BenchPanel, PitchMixPanel,
   MEAS, MEAS_BY_KEY, HIT_TOOLS, PIT_TOOLS,
 }

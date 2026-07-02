@@ -3,15 +3,16 @@
  *
  * These ship with the app (read-only) so a coach can pick a proven layout in
  * one click instead of assembling blocks by hand. They're split into HITTER
- * and PITCHER sets because the useful blocks differ by player type — e.g. only
- * hitters get the defensive-alignment blocks, only pitchers get times-through-
- * the-order. Loading one drops its blocks into the builder (with the correct
- * side locked) where the coach can still tweak, then Save-As to keep a copy.
+ * and PITCHER sets because the useful blocks differ by player type. Each layout
+ * is designed to FILL the page: rows are sized so their block widths sum to a
+ * full row (¼+¼+¼+¼, ½+½, or full), and short stat blocks are dropped to a
+ * quarter so they pack tightly instead of leaving whitespace.
  *
- * Block shape mirrors the live builder: { type, w, filter? }.
+ * Block shape mirrors the live builder: { type, w:'quarter'|'half'|'full', filter? }.
  * `for` sets the side ('hitter' → batting, 'pitcher' → pitching).
  */
 
+const Q = 'quarter'
 const H = 'half'
 const F = 'full'
 const b = (type, w = H, extra = {}) => ({ type, w, ...extra })
@@ -20,67 +21,77 @@ export const STARTER_TEMPLATES = [
   // ── HITTERS ──
   {
     id: 'hit_standard', name: 'Hitter · Standard', for: 'hitter',
-    desc: 'The everyday card: percentiles, spray, discipline, batted ball, splits, season line.',
+    desc: 'Everyday card: percentiles + spray up top, a tight row of discipline/batted/splits/counts, season line.',
     blocks: [
-      b('header', F), b('percentiles'), b('spray', H, { filter: 'all' }),
-      b('discipline'), b('batted'), b('splits'), b('counts'), b('season', F),
+      b('header', F),
+      b('percentiles', H), b('spray', H, { filter: 'all' }),
+      b('discipline', Q), b('batted', Q), b('splits', Q), b('counts', Q),
+      b('season', F),
     ],
   },
   {
     id: 'hit_sprays', name: 'Hitter · Advanced Sprays', for: 'hitter',
-    desc: 'Four spray views (all / vs RHP / vs LHP / extra-base) plus batted-ball mix and how-to-attack.',
+    desc: 'Four spray views (all / vs RHP / vs LHP / extra-base), batted-ball mix, splits and how-to-attack.',
     blocks: [
       b('header', F),
       b('spray', H, { filter: 'all' }), b('spray', H, { filter: 'vs_rhp' }),
       b('spray', H, { filter: 'vs_lhp' }), b('spray', H, { filter: 'xbh' }),
-      b('batted'), b('tendencies'),
+      b('batted', Q), b('splits', Q), b('tendencies', H),
     ],
   },
   {
     id: 'hit_defense', name: 'Hitter · Defensive Alignment', for: 'hitter',
-    desc: 'Where to play the defense: field diagram + position grid, with spray and batted-ball context.',
+    desc: 'Where to play the defense: field diagram + position grid + spray, with a quarter-row of context stats.',
     blocks: [
       b('header', F),
-      b('fielddiagram'), b('fieldgrid'),
-      b('spray', H, { filter: 'all' }), b('batted'),
-      b('tendencies'), b('counts'),
+      b('fielddiagram', H), b('spray', H, { filter: 'all' }),
+      b('fieldgrid', H), b('tendencies', H),
+      b('batted', Q), b('splits', Q), b('counts', Q), b('bench', Q),
     ],
   },
   {
-    id: 'hit_full', name: 'Hitter · Full Scout', for: 'hitter',
-    desc: 'Everything: percentiles, spray, discipline, detailed counts, splits, attack plan, 20-80 grades, write-up.',
+    id: 'hit_advanced', name: 'Hitter · Advanced', for: 'hitter',
+    desc: 'Spray + defensive alignment up top, then percentiles alongside vs-elite / off-the-bench splits, season line, and a notes section.',
     blocks: [
-      b('header', F), b('percentiles'), b('spray', H, { filter: 'all' }),
-      b('discipline'), b('batted'), b('countdetail'), b('splits'),
-      b('tendencies'), b('grades'), b('scouttake', F),
+      b('header', F),
+      b('spray', H, { filter: 'all' }), b('fielddiagram', H),
+      b('percentiles', H), b('velite', Q), b('bench', Q),
+      b('season', F),
+      b('notes', H), b('countdetail', Q), b('tendencies', Q),
     ],
   },
 
   // ── PITCHERS ──
   {
     id: 'pit_standard', name: 'Pitcher · Standard', for: 'pitcher',
-    desc: 'The everyday card: percentiles, opp spray, discipline, batted ball, splits, season line.',
+    desc: 'Everyday card: percentiles + opp spray, a tight row of discipline/batted/splits/counts, season line.',
     blocks: [
-      b('header', F), b('percentiles'), b('spray', H, { filter: 'all' }),
-      b('discipline'), b('batted'), b('splits'), b('counts'), b('season', F),
+      b('header', F),
+      b('percentiles', H), b('spray', H, { filter: 'all' }),
+      b('discipline', Q), b('batted', Q), b('splits', Q), b('counts', Q),
+      b('season', F),
     ],
   },
   {
     id: 'pit_attack', name: 'Pitcher · Attack Plan', for: 'pitcher',
-    desc: 'Times-through-the-order, per-count induced swing/whiff, discipline, splits and how-to-attack.',
+    desc: 'Times-through-the-order + per-count induced swing/whiff up top, a quarter-row of splits, then how-to-attack and recent Ks.',
     blocks: [
-      b('header', F), b('tto'), b('discipline'),
-      b('countdetail'), b('splits'), b('tendencies'),
-      b('spray', H, { filter: 'all' }), b('recentk'),
+      b('header', F),
+      b('tto', H), b('countdetail', H),
+      b('discipline', Q), b('splits', Q), b('counts', Q), b('batted', Q),
+      b('tendencies', H), b('recentk', H),
     ],
   },
   {
     id: 'pit_full', name: 'Pitcher · Full Scout', for: 'pitcher',
-    desc: 'Everything: percentiles, discipline, TTO, detailed counts, batted ball, splits, grades, write-up.',
+    desc: 'Everything: percentiles + spray, TTO + detailed counts, a quarter-row of splits plus a blank pitch-mix, grades and a write-up.',
     blocks: [
-      b('header', F), b('percentiles'), b('discipline'), b('tto'),
-      b('countdetail'), b('batted'), b('splits'), b('tendencies'),
-      b('grades'), b('scouttake', F),
+      b('header', F),
+      b('percentiles', H), b('spray', H, { filter: 'all' }),
+      b('tto', H), b('countdetail', H),
+      b('discipline', Q), b('batted', Q), b('splits', Q), b('pitchmix', Q, { title: 'Pitch Mix' }),
+      b('grades', H), b('measurables', H),
+      b('scouttake', F),
     ],
   },
 ]

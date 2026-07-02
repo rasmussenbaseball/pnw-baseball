@@ -18,6 +18,7 @@ import ReportActions from '../components/ReportActions'
 import {
   CustomCard, BLOCKS, PALETTE_GROUPS, DEFAULT_BLOCKS, withUids, nextUid,
   SPRAY_FILTERS_HIT, SPRAY_FILTERS_PIT, blockFitsSide,
+  WIDTH_LABEL, nextWidth,
 } from './CustomCard'
 import { HIT_TOOLS, PIT_TOOLS, MEAS } from './PlayerCardPDF'
 import { loadTemplates, saveTemplate, deleteTemplate } from '../lib/cardTemplates'
@@ -53,6 +54,7 @@ export default function CustomPlayerCard() {
     const seed = { uid: nextUid(), type, w: BLOCKS[type].w }
     if (BLOCKS[type].spray) seed.filter = 'all'
     if (BLOCKS[type].edit === 'notes') { seed.title = 'Notes'; seed.lines = 4 }
+    if (BLOCKS[type].edit === 'pitchmix') { seed.title = 'Pitch Mix' }
     setBlocks(b => [...b, seed])
   }
   const removeBlock = uid => { setBlocks(b => b.filter(x => x.uid !== uid)); if (editingUid === uid) setEditingUid(null) }
@@ -207,9 +209,9 @@ export default function CustomPlayerCard() {
                         className={`px-1.5 py-0.5 rounded border text-[10px] ${editingUid === b.uid ? 'bg-nw-teal text-white border-nw-teal' : 'border-gray-300 hover:bg-gray-100'}`}
                         title="Configure">⚙</button>
                     )}
-                    <button onClick={() => setW(b.uid, b.w === 'full' ? 'half' : 'full')}
-                      className="px-1.5 py-0.5 rounded border border-gray-300 text-[10px] hover:bg-gray-100" title="Toggle width">
-                      {b.w === 'full' ? 'Full' : 'Half'}
+                    <button onClick={() => setW(b.uid, nextWidth(b.w))}
+                      className="px-1.5 py-0.5 rounded border border-gray-300 text-[10px] hover:bg-gray-100 w-8" title="Cycle width (¼ / ½ / full)">
+                      {WIDTH_LABEL[b.w] || '½'}
                     </button>
                     <button onClick={() => move(i, -1)} className="px-1 text-gray-500 hover:text-nw-teal" title="Up">▲</button>
                     <button onClick={() => move(i, 1)} className="px-1 text-gray-500 hover:text-nw-teal" title="Down">▼</button>
@@ -273,6 +275,19 @@ function BlockEditor({ block, side, onChange }) {
         <textarea value={block.text || ''} onChange={e => onChange({ text: e.target.value })} rows={2}
           placeholder="Optional pre-filled text (blank = ruled write-in lines)"
           className="w-full px-2 py-1 text-xs border border-gray-300 rounded resize-y focus:outline-none focus:ring-1 focus:ring-nw-teal" />
+      </div>
+    )
+  }
+  if (kind === 'pitchmix') {
+    const rowsStr = (block.rows || ['FB', 'SL', 'CB', 'CH', 'CT', 'SPL']).join(', ')
+    return (
+      <div className="mt-1.5 space-y-1.5">
+        <input value={block.title || ''} onChange={e => onChange({ title: e.target.value })} placeholder="Box title (e.g. Arsenal)"
+          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-nw-teal" />
+        <input value={rowsStr} onChange={e => onChange({ rows: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+          placeholder="Pitch rows, comma-separated"
+          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-nw-teal" />
+        <div className="text-[9px] text-gray-400">Blank grid to fill in by hand (velo / usage / notes).</div>
       </div>
     )
   }

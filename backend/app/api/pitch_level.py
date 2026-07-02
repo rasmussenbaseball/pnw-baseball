@@ -1990,3 +1990,114 @@ def get_player_count_detail(
         })
     return {"side": side, "counts": counts,
             "total_pitches": sum(c.get("pitches", 0) for c in counts)}
+
+@router.get("/players/{player_id}/vs-elite")
+@cached_endpoint(ttl_seconds=1800)
+def get_player_vs_elite(
+    player_id: int,
+    season: int = Query(CURRENT_SEASON),
+):
+    """A hitter's line vs ELITE pitching — pitchers with a top-quartile ERA
+    (min 20 IP) this season. A quick read on whether he holds up against good
+    arms. Returns {vs_elite: null} if he hasn't faced enough of them."""
+    from .team_stats import _tto_finalize, _TTO_NON_PA, _TTO_HITS, _TTO_SO, _TTO_BB
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT player_id, era
+            FROM pitching_stats
+            WHERE season = %s AND innings_pitched >= 20
+              AND era IS NOT NULL AND player_id IS NOT NULL
+        """, (season,))
+        quals = [dict(r) for r in cur.fetchall()]
+        if len(quals) < 8:
+            return {"vs_elite": None, "n_pitchers": 0, "era_cutoff": None}
+        eras = sorted(q["era"] for q in quals)
+        cutoff = eras[max(0, int(len(eras) * 0.25) - 1)]   # 25th-percentile ERA
+        elite_ids = tuple({q["player_id"] for q in quals if q["era"] <= cutoff})
+        if not elite_ids:
+            return {"vs_elite": None, "n_pitchers": 0, "era_cutoff": None}
+
+        cur.execute("""
+            SELECT ge.result_type AS rt, COUNT(*) AS n
+            FROM game_events ge JOIN games g ON ge.game_id = g.id
+            WHERE ge.batter_player_id = %s AND g.season = %s
+              AND ge.pitcher_player_id IN %s
+              AND ge.result_type IS NOT NULL AND ge.result_type NOT IN %s
+            GROUP BY ge.result_type
+        """, (player_id, season, elite_ids, _TTO_NON_PA))
+        counts = {r["rt"]: r["n"] for r in cur.fetchall()}
+
+    agg = {k: 0 for k in ("pa", "ab", "h", "tb", "bb", "hbp", "so", "hr", "sf")}
+    for rt, n in counts.items():
+        agg["pa"] += n
+        if rt in _TTO_HITS:
+            agg["h"] += n; agg["ab"] += n
+            agg["tb"] += {"single": 1, "double": 2, "triple": 3, "home_run": 4}[rt] * n
+            if rt == "home_run":
+                agg["hr"] += n
+        elif rt in _TTO_SO:
+            agg["so"] += n; agg["ab"] += n
+        elif rt in _TTO_BB:
+            agg["bb"] += n
+        elif rt == "hbp":
+            agg["hbp"] += n
+        elif rt == "sac_fly":
+            agg["sf"] += n
+        elif rt in ("sac_bunt", "catcher_interference"):
+            pass
+        else:
+            agg["ab"] += n
+    return {"vs_elite": _tto_finalize(agg), "n_pitchers": len(elite_ids),
+            "era_cutoff": round(cutoff, 2)}
+
+
+@router.get("/players/{player_id}/bench")
+@cached_endpoint(ttl_seconds=1800)
+def get_player_bench(
+    player_id: int,
+    season: int = Query(CURRENT_SEASON),
+):
+    """Off-the-bench production: the hitter's line as a PINCH HITTER plus his
+    pinch-run appearances, from box-score position codes (PH / PR)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS apps,
+                   COALESCE(SUM(at_bats), 0) AS ab, COALESCE(SUM(hits), 0) AS h,
+                   COALESCE(SUM(doubles), 0) AS d, COALESCE(SUM(triples), 0) AS t,
+                   COALESCE(SUM(home_runs), 0) AS hr, COALESCE(SUM(walks), 0) AS bb,
+                   COALESCE(SUM(strikeouts), 0) AS so, COALESCE(SUM(rbi), 0) AS rbi,
+                   COALESCE(SUM(hit_by_pitch), 0) AS hbp, COALESCE(SUM(sacrifice_flies), 0) AS sf
+            FROM game_batting gb JOIN games g ON gb.game_id = g.id
+            WHERE gb.player_id = %s AND g.season = %s AND UPPER(gb.position) = 'PH'
+        """, (player_id, season))
+        ph = dict(cur.fetchone() or {})
+        cur.execute("""
+            SELECT COUNT(*) AS apps, COALESCE(SUM(stolen_bases), 0) AS sb,
+                   COALESCE(SUM(runs), 0) AS r, COALESCE(SUM(caught_stealing), 0) AS cs
+            FROM game_batting gb JOIN games g ON gb.game_id = g.id
+            WHERE gb.player_id = %s AND g.season = %s AND UPPER(gb.position) = 'PR'
+        """, (player_id, season))
+        pr = dict(cur.fetchone() or {})
+
+    ab = ph.get("ab") or 0
+    h = ph.get("h") or 0
+    bb = ph.get("bb") or 0
+    hbp = ph.get("hbp") or 0
+    sf = ph.get("sf") or 0
+    tb = (h - ph.get("d", 0) - ph.get("t", 0) - ph.get("hr", 0)) + 2 * ph.get("d", 0) + 3 * ph.get("t", 0) + 4 * ph.get("hr", 0)
+    obp_den = ab + bb + hbp + sf
+    ph_out = {
+        "apps": ph.get("apps") or 0, "ab": ab, "h": h, "hr": ph.get("hr") or 0,
+        "bb": bb, "so": ph.get("so") or 0, "rbi": ph.get("rbi") or 0,
+        "avg": round(h / ab, 3) if ab > 0 else None,
+        "obp": round((h + bb + hbp) / obp_den, 3) if obp_den > 0 else None,
+        "slg": round(tb / ab, 3) if ab > 0 else None,
+    } if (ph.get("apps") or 0) > 0 else None
+    if ph_out and ph_out["obp"] is not None and ph_out["slg"] is not None:
+        ph_out["ops"] = round(ph_out["obp"] + ph_out["slg"], 3)
+    pr_out = {"apps": pr.get("apps") or 0, "sb": pr.get("sb") or 0,
+              "cs": pr.get("cs") or 0, "r": pr.get("r") or 0} if (pr.get("apps") or 0) > 0 else None
+    return {"ph": ph_out, "pr": pr_out}
