@@ -353,19 +353,37 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
           )
         })}
 
-        {/* Fielder dots — ideal defensive positions (Defensive Alignments). */}
-        {fielders && fielders.map(f => {
+        {/* Positioning reference lines (Defensive Alignments) — rays from home
+            marking the lanes: solid = standard corner-OF / CF seams (LF ~ the
+            3B-2B lane, RF ~ the 1B-2B lane, CF straight up the middle); dashed =
+            the extreme-shift lanes halfway between the corners and the middle. */}
+        {fielders && [
+          { a: -26, dash: false }, { a: 0, dash: false }, { a: 26, dash: false },
+          { a: -13, dash: true }, { a: 13, dash: true },
+        ].map(({ a, dash }, i) => {
+          const aMid = (a - 90) * Math.PI / 180
+          return (
+            <line key={`ref-${i}`}
+              x1={HOME.x} y1={HOME.y}
+              x2={HOME.x + R_OF_OUT * Math.cos(aMid)}
+              y2={HOME.y + R_OF_OUT * Math.sin(aMid)}
+              stroke="rgba(255,255,255,0.75)" strokeWidth="1.25"
+              strokeDasharray={dash ? '3 4' : undefined} />
+          )
+        })}
+
+        {/* Fielder dots — ideal defensive positions (P/C omitted; they don't
+            roam). Only the 7 movable fielders. */}
+        {fielders && fielders.filter(f => f.movable).map(f => {
           const r = f.depth * R_OF_OUT
           const aMid = (f.angle - 90) * Math.PI / 180
           const x = HOME.x + r * Math.cos(aMid)
           const y = HOME.y + r * Math.sin(aMid)
-          const mov = f.movable
           return (
             <g key={`fld-${f.pos}`}>
-              <circle cx={x} cy={y} r={mov ? 11 : 8}
-                fill={mov ? '#f59e0b' : '#94a3b8'} stroke="#ffffff" strokeWidth="2" />
+              <circle cx={x} cy={y} r={11} fill="#f59e0b" stroke="#ffffff" strokeWidth="2" />
               <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
-                style={{ fontSize: mov ? '9px' : '7.5px', fontWeight: 800, fill: '#ffffff', pointerEvents: 'none' }}>
+                style={{ fontSize: '9px', fontWeight: 800, fill: '#ffffff', pointerEvents: 'none' }}>
                 {f.pos}
               </text>
             </g>
