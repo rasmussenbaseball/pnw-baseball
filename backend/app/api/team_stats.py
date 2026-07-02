@@ -406,18 +406,30 @@ def _build_tto(cur, game_ids, ph, team_id, season):
     if not game_ids:
         return {"starters": [], "relievers": []}
 
+    # Guard against PBP pitcher mis-attribution: a handful of games have the
+    # play-by-play pitcher wrongly parsed as a position player (e.g. Eli Pupo,
+    # a Bushnell LF, credited with a teammate's complete game). Drop any
+    # "pitcher" who bats but has never thrown a real inning (has batting_stats
+    # and no pitching_stats). Two-way players (both tables) and real pitchers
+    # are kept; PBP-only phantom pitcher rows (neither table) are kept too.
     cur.execute(f"""
-        SELECT game_id, inning, half, sequence_idx,
-               pitcher_player_id, batter_player_id, result_type
-        FROM game_events
-        WHERE game_id IN ({ph})
-          AND defending_team_id = %s
-          AND pitcher_player_id IS NOT NULL
-          AND batter_player_id IS NOT NULL
-          AND result_type IS NOT NULL
-          AND result_type NOT IN %s
-        ORDER BY game_id, inning,
-                 CASE WHEN half = 'top' THEN 0 ELSE 1 END, sequence_idx
+        SELECT ge.game_id, ge.inning, ge.half, ge.sequence_idx,
+               ge.pitcher_player_id, ge.batter_player_id, ge.result_type
+        FROM game_events ge
+        WHERE ge.game_id IN ({ph})
+          AND ge.defending_team_id = %s
+          AND ge.pitcher_player_id IS NOT NULL
+          AND ge.batter_player_id IS NOT NULL
+          AND ge.result_type IS NOT NULL
+          AND ge.result_type NOT IN %s
+          AND NOT (
+              EXISTS (SELECT 1 FROM batting_stats bs
+                      WHERE bs.player_id = ge.pitcher_player_id)
+              AND NOT EXISTS (SELECT 1 FROM pitching_stats ps
+                              WHERE ps.player_id = ge.pitcher_player_id)
+          )
+        ORDER BY ge.game_id, ge.inning,
+                 CASE WHEN ge.half = 'top' THEN 0 ELSE 1 END, ge.sequence_idx
     """, game_ids + [team_id, _TTO_NON_PA])
     events = cur.fetchall()
 
