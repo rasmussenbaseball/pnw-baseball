@@ -54,8 +54,16 @@ function HandBadge({ h }) {
   return <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-nw-teal/10 text-nw-teal">{h}</span>
 }
 
+const SHIFT_STYLE = shift => {
+  const l = (shift?.label || '').toLowerCase()
+  if (l.startsWith('full shift')) return 'bg-rose-100 text-rose-800 border-rose-300'
+  if (l.startsWith('shade')) return 'bg-amber-100 text-amber-800 border-amber-300'
+  return 'bg-slate-100 text-slate-600 border-slate-300'
+}
+
 function HitterCard({ h }) {
   const lanes = h.lanes || {}
+  const shift = h.shift || {}
   return (
     <Card className="p-3.5">
       <div className="flex items-center gap-2 mb-2">
@@ -67,11 +75,33 @@ function HitterCard({ h }) {
         <span className="ml-auto text-[10px] text-gray-400">{h.bip} BIP · {h.pa} PA</span>
       </div>
 
-      {/* Spray fan — interactive so a coach can flip to vs RHP / vs LHP */}
-      <SprayChart data={h.spray_chart} bats={h.bats} />
+      {/* Shift call */}
+      {shift.label && (
+        <div className="mb-1.5">
+          <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SHIFT_STYLE(shift)}`}>{shift.label}</span>
+        </div>
+      )}
+
+      {/* Field + fielder dots (amber = where to play) over the spray density */}
+      <SprayChart data={h.spray_chart} bats={h.bats} fielders={h.fielders} />
+      <div className="text-[10px] text-gray-400 mt-0.5 mb-1 text-center">
+        <span className="inline-block w-2 h-2 rounded-full bg-amber-500 align-middle mr-1" />
+        amber = ideal fielder spot · shading = where balls go
+      </div>
+
+      {/* Fielder move notes */}
+      {(shift.moves || []).length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {shift.moves.map((m, i) => (
+            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+              <b>{m.pos}</b> {m.note}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Infield lane summary */}
-      <div className="mt-2.5 mb-2">
+      <div className="mb-2">
         <div className="text-[10px] uppercase font-semibold text-gray-400 mb-0.5">Ground-ball lanes</div>
         <LaneBar pull={lanes.if_pull} mid={lanes.if_mid} oppo={lanes.if_oppo} pullSide={lanes.pull_side} />
       </div>
@@ -131,6 +161,12 @@ export default function Alignments() {
               </optgroup>
             ))}
           </select>
+          {teamId && (
+            <Link to={`/portal/alignments/cards?team_id=${teamId}`}
+              className="px-3 py-2 rounded-lg bg-portal-purple text-portal-cream text-sm font-semibold hover:bg-portal-purple-dark whitespace-nowrap">
+              Pocket cards →
+            </Link>
+          )}
         </div>
         {teamsData?.generated_at && (
           <div className="text-[10px] text-gray-400 mt-2">Data generated {teamsData.generated_at}. Grounder / air-ball lanes from play-by-play.</div>

@@ -49,14 +49,15 @@ export async function saveNodeAsPdf(node, filename = 'card') {
 // page. Used by bulk custom-card generation (each card is already sized to a
 // sheet, so we image each and drop it on its own page). onProgress(done,total)
 // lets the caller show a "rendering 3/30" status.
-export async function saveNodesAsPdf(nodes, filename = 'cards', onProgress) {
+export async function saveNodesAsPdf(nodes, filename = 'cards', onProgress, opts = {}) {
   const list = (nodes || []).filter(Boolean)
   if (!list.length) return
+  const { unit = 'pt', format = 'letter', orientation = 'portrait' } = opts
   const [{ default: html2canvas }, jspdf] = await Promise.all([
     import('html2canvas'), import('jspdf'),
   ])
   const JsPDF = jspdf.jsPDF || jspdf.default
-  const pdf = new JsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' })
+  const pdf = new JsPDF({ unit, format, orientation })
   const pw = pdf.internal.pageSize.getWidth()
   const ph = pdf.internal.pageSize.getHeight()
   for (let i = 0; i < list.length; i++) {
@@ -67,8 +68,8 @@ export async function saveNodesAsPdf(nodes, filename = 'cards', onProgress) {
     const ar = canvas.width / canvas.height
     let w = pw, h = pw / ar
     if (h > ph) { h = ph; w = ph * ar }
-    if (i > 0) pdf.addPage('letter', 'portrait')
-    pdf.addImage(img, 'PNG', (pw - w) / 2, 0, w, h)
+    if (i > 0) pdf.addPage(format, orientation)
+    pdf.addImage(img, 'PNG', (pw - w) / 2, (ph - h) / 2, w, h)
     if (onProgress) onProgress(i + 1, list.length)
   }
   pdf.save(`${filename}.pdf`)

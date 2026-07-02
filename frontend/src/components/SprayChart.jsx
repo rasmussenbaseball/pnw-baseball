@@ -119,7 +119,7 @@ const PITCHER_FILTERS = [
   ['hr',     'HR'],
 ]
 
-export default function SprayChart({ data, bats, defaultFilter = 'all', mode = 'hitter', staticFilter = null }) {
+export default function SprayChart({ data, bats, defaultFilter = 'all', mode = 'hitter', staticFilter = null, fielders = null }) {
   const FILTERS = mode === 'pitcher' ? PITCHER_FILTERS : HITTER_FILTERS
   // staticFilter (used by the custom card builder) locks the view to one filter
   // and hides the interactive toggle chips, so you can stack several fixed sprays.
@@ -127,6 +127,10 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
   const filter = staticFilter || filterState
   const counts = condense(data?.[filter])
   const total = data?.[`${filter}_total`] || 0
+  // When fielder dots are overlaid (Defensive Alignments), suppress the wedge
+  // percentages + HR badges so the positioning reads cleanly — the density
+  // shading still shows where the balls go.
+  const showPct = !fielders
 
   // HR badges: % of HRs hit to each OF third
   const hrCondensed = useMemo(() => condense(data?.hr), [data])
@@ -232,7 +236,7 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
                 stroke="white"
                 strokeWidth="2"
               />
-              {n > 0 && (
+              {showPct && n > 0 && (
                 <text
                   x={lx} y={ly}
                   textAnchor="middle"
@@ -265,7 +269,7 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
                 stroke="white"
                 strokeWidth="2"
               />
-              {n > 0 && (
+              {showPct && n > 0 && (
                 <text
                   x={lx} y={ly}
                   textAnchor="middle"
@@ -321,7 +325,7 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
         {/* HR badges INSIDE the OF wedge near the wall — only shown when
             player has HRs. Sits clear of the LF/CF/RF zone labels which
             are positioned just OUTSIDE the fence. */}
-        {hrTotal > 0 && OF_ZONES.map((z, i) => {
+        {showPct && hrTotal > 0 && OF_ZONES.map((z, i) => {
           const hr = hrCondensed[z] || 0
           if (hr === 0) return null
           const [a1, a2] = ofAngles(i)
@@ -344,6 +348,25 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
                 style={{ fontSize: '10px', fontWeight: 700, fill: '#ffffff' }}
               >
                 HR {pct}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* Fielder dots — ideal defensive positions (Defensive Alignments). */}
+        {fielders && fielders.map(f => {
+          const r = f.depth * R_OF_OUT
+          const aMid = (f.angle - 90) * Math.PI / 180
+          const x = HOME.x + r * Math.cos(aMid)
+          const y = HOME.y + r * Math.sin(aMid)
+          const mov = f.movable
+          return (
+            <g key={`fld-${f.pos}`}>
+              <circle cx={x} cy={y} r={mov ? 11 : 8}
+                fill={mov ? '#f59e0b' : '#94a3b8'} stroke="#ffffff" strokeWidth="2" />
+              <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
+                style={{ fontSize: mov ? '9px' : '7.5px', fontWeight: 800, fill: '#ffffff', pointerEvents: 'none' }}>
+                {f.pos}
               </text>
             </g>
           )

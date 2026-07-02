@@ -252,6 +252,7 @@ const PlayerScouting = lazyWithRetry(() => import('./pages/PlayerScouting'))
 const TeamScouting = lazyWithRetry(() => import('./pages/TeamScouting'))
 const SeriesPlanner = lazyWithRetry(() => import('./pages/SeriesPlanner'))
 const Alignments = lazyWithRetry(() => import('./pages/Alignments'))
+const PocketCards = lazyWithRetry(() => import('./pages/PocketCards'))
 const SplitsExplorer = lazyWithRetry(() => import('./pages/SplitsExplorer'))
 const ScoutingSheet = lazyWithRetry(() => import('./pages/ScoutingSheet'))
 const CustomSheet = lazyWithRetry(() => import('./pages/CustomSheet'))
@@ -491,6 +492,8 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><SeriesPlanner /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/alignments"
                  element={<RequirePortalAccess><PortalLayout><Alignments /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/alignments/cards"
+                 element={<RequirePortalAccess><PortalLayout lightOnly><PocketCards /></PortalLayout></RequirePortalAccess>} />
           {/* Retired Advance Report → Series Planner (keeps old deep links alive via ?team_id fallback) */}
           <Route path="/portal/advance-report"
                  element={<RequirePortalAccess><PortalLayout><SeriesPlanner /></PortalLayout></RequirePortalAccess>} />

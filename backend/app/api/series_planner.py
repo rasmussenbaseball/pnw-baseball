@@ -1484,6 +1484,98 @@ def _dominant(counts):
     return max(counts.items(), key=lambda kv: kv[1])[0]
 
 
+# ── Fielder positioning model ──
+# Positions are (angle_deg, depth_frac): angle -45 = LF/3B line, 0 = up the
+# middle, +45 = RF/1B line; depth 0 = home, ~0.5 = infield-dirt edge, 1 = OF
+# fence (the frontend scales depth to its field radius). Baseline = a
+# straight-up alignment; each fielder is interpolated toward a handedness-
+# specific full-shift target scaled by the hitter's pull tendency.
+# NCAA has NO shift restriction, so full overload shifts are legal.
+_FIELD_BASE = {
+    "3B": (-37, 0.40), "SS": (-20, 0.48), "2B": (20, 0.48), "1B": (37, 0.40),
+    "LF": (-29, 0.80), "CF": (0, 0.87), "RF": (29, 0.80),
+    "P": (0, 0.27), "C": (0, -0.05),
+}
+# Overload LEFT — batter pulls to the left (RHB): 3 IF left of 2B.
+_FULL_SHIFT_LEFT = {
+    "3B": (-41, 0.42), "SS": (-27, 0.52), "2B": (-8, 0.50), "1B": (26, 0.46),
+    "LF": (-34, 0.84), "CF": (-11, 0.88), "RF": (18, 0.82),
+}
+# Overload RIGHT — batter pulls to the right (LHB): 3 IF right of 2B.
+_FULL_SHIFT_RIGHT = {
+    "1B": (41, 0.42), "2B": (27, 0.52), "SS": (8, 0.50), "3B": (-26, 0.46),
+    "RF": (34, 0.84), "CF": (11, 0.88), "LF": (-18, 0.82),
+}
+_MOVABLE = ("3B", "SS", "2B", "1B", "LF", "CF", "RF")
+
+
+def _shift_strength(if_pull_pct, is_lhb, is_switch, if_total):
+    """0 (straight up) → 1 (full shift), from pull-side grounder rate. RHH need
+    a higher pull rate than LHH to justify a shift (bigger hole right of 2B);
+    switch hitters get a mild cap since 'all' mixes both stances."""
+    if if_total < 10:
+        return 0.0
+    if is_switch:
+        return clamp((if_pull_pct - 0.46) / 0.30, 0, 1) * 0.5
+    if is_lhb:
+        return clamp((if_pull_pct - 0.42) / 0.30, 0, 1)
+    return clamp((if_pull_pct - 0.50) / 0.27, 0, 1)
+
+
+def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, if_total):
+    """Return (fielders, shift_strength). fielders = list of {pos, angle, depth,
+    movable} for a 9-man alignment against this hitter."""
+    s = _shift_strength(if_pull_pct, is_lhb, is_switch, if_total)
+    target = _FULL_SHIFT_RIGHT if is_lhb else _FULL_SHIFT_LEFT
+    of_depth_adj = clamp((iso - 0.11) / 0.20, -0.06, 0.09) if iso else 0.0
+    out = []
+    for pos, (ba, bd) in _FIELD_BASE.items():
+        if pos in _MOVABLE and pos in target and s > 0:
+            ta, td = target[pos]
+            ang = ba + (ta - ba) * s
+            dep = bd + (td - bd) * s
+        else:
+            ang, dep = ba, bd
+        if pos in ("LF", "CF", "RF"):
+            dep = clamp(dep + of_depth_adj, 0.55, 0.98)
+        out.append({"pos": pos, "angle": round(ang, 1), "depth": round(dep, 3),
+                    "movable": pos in _MOVABLE})
+    return out, s
+
+
+def _shift_summary(s, pull_side, is_lhb, of_pull_pct, iso):
+    """One-line label + the notable fielder moves for the pocket card."""
+    if s < 0.18:
+        label = "Straight up"
+    elif s < 0.55:
+        label = f"Shade {pull_side}"
+    else:
+        label = f"Full shift {pull_side}"
+    if iso and iso >= 0.20:
+        label += " · OF deep"
+    elif iso and iso <= 0.07:
+        label += " · OF in"
+    moves = []
+    if s >= 0.55:
+        if is_lhb:
+            moves = [{"pos": "SS", "note": "right of 2B bag"},
+                     {"pos": "2B", "note": "3-4 hole / short RF"},
+                     {"pos": "1B", "note": "guard the line"},
+                     {"pos": "3B", "note": "shade to the SS spot"}]
+        else:
+            moves = [{"pos": "SS", "note": "deep in the 5-6 hole"},
+                     {"pos": "2B", "note": "left of 2B bag"},
+                     {"pos": "3B", "note": "guard the line"},
+                     {"pos": "1B", "note": "shade the hole, deep"}]
+    elif s >= 0.18:
+        moves = [{"pos": "IF", "note": f"shade the infield toward {pull_side}"}]
+    if of_pull_pct >= 0.52 or s >= 0.55:
+        moves.append({"pos": "OF", "note": f"rotate toward {pull_side}"})
+    if iso and iso >= 0.20:
+        moves.append({"pos": "OF", "note": "play deep (power)"})
+    return {"label": label, "strength": round(s, 2), "moves": moves}
+
+
 def build_alignment_for_hitter(hitter, spray):
     """Per-hitter defensive alignment from the fine spray zones. `spray` is the
     stored {spray_chart, contact_profile, bats}. Returns None if too few BIP."""
@@ -1556,6 +1648,15 @@ def build_alignment_for_hitter(hitter, spray):
     if bunt_pct >= 0.06 and (z.get("IF_C") or 0) >= 2:
         recs.append({"tone": "note", "text": "Will drop a bunt — corners stay alert."})
 
+    # ── Ideal fielder positions + shift summary ──
+    iso = hitter.get("iso")
+    if iso is None:
+        slg, avg = hitter.get("slugging_pct"), hitter.get("batting_avg")
+        iso = (slg - avg) if (slg is not None and avg is not None) else 0
+    is_switch = str(bats).upper().startswith("S")
+    fielders, s = _compute_fielders(if_pull_pct, is_lhb, is_switch, iso or 0, if_total)
+    shift = _shift_summary(s, pull_side, is_lhb, of_pull_pct, iso or 0)
+
     return {
         "player_id": hitter.get("player_id"),
         "name": player_name(hitter),
@@ -1573,6 +1674,8 @@ def build_alignment_for_hitter(hitter, spray):
             "pull_side": pull_side, "oppo_side": oppo_side,
         },
         "spray_chart": sc,            # full 11-zone object for the fan visual
+        "fielders": fielders,         # ideal (angle, depth) per fielder
+        "shift": shift,               # {label, strength, moves[]}
         "recommendations": recs,
     }
 
