@@ -1497,22 +1497,23 @@ def _dominant(counts):
 # the cut in _compute_fielders. SS plays a touch deeper than 2B at baseline.
 _FIELD_BASE = {
     "3B": (-37, 0.40), "SS": (-20, 0.47), "2B": (20, 0.44), "1B": (37, 0.40),
-    "LF": (-29, 0.70), "CF": (0, 0.75), "RF": (29, 0.70),
+    "LF": (-29, 0.80), "CF": (0, 0.83), "RF": (29, 0.80),
     "P": (0, 0.27), "C": (0, -0.05),
 }
 # Overload LEFT — batter pulls to the left (RHB): 3 IF left of 2B. The SS slides
 # laterally into the 5-6 hole but STAYS at normal infield depth (a SS on the cut
-# can't make the throw); no infielder goes onto the grass here.
+# can't make the throw); no infielder goes onto the grass here. OF entries only
+# rotate the ANGLE — OF depth is set per-fielder from power (see below).
 _FULL_SHIFT_LEFT = {
     "3B": (-41, 0.42), "SS": (-27, 0.49), "2B": (-8, 0.46), "1B": (26, 0.46),
-    "LF": (-34, 0.72), "CF": (-11, 0.76), "RF": (18, 0.70),
+    "LF": (-34, 0.80), "CF": (-11, 0.83), "RF": (18, 0.80),
 }
 # Overload RIGHT — batter pulls to the right (LHB): 3 IF right of 2B. The classic
 # look — the 2B pushes DEEP into short right field (the throw from there is
 # short, so it works), while SS (right of the bag) and 1B hold.
 _FULL_SHIFT_RIGHT = {
     "1B": (41, 0.42), "2B": (27, 0.60), "SS": (8, 0.46), "3B": (-26, 0.46),
-    "RF": (34, 0.72), "CF": (11, 0.76), "LF": (-18, 0.70),
+    "RF": (34, 0.80), "CF": (11, 0.83), "LF": (-18, 0.80),
 }
 _MOVABLE = ("3B", "SS", "2B", "1B", "LF", "CF", "RF")
 
@@ -1559,45 +1560,57 @@ def _fielder_abbr(pos, ba, bd, ang, dep, pull_angle_sign):
     return " ".join(parts) if parts else "—"
 
 
-def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, wobacon, sb, if_total):
+def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, wobacon, sb, of_counts, if_total):
     """Return (fielders, shift_strength). fielders = list of {pos, angle, depth,
-    movable, abbr} for a 9-man alignment. Depth blends the shift with contact
-    quality (wOBAcon → deeper) and runner speed (steals → infield in a step).
-    SS/3B/1B are capped at the cut (they must make the throw); only the 2B in a
-    lefty shift may push onto the outfield grass in short RF."""
+    movable, abbr}. Infield depth blends the shift with contact quality and
+    speed (SS/3B/1B capped at the cut; only the lefty-shift 2B reaches short RF).
+    OUTFIELD depth is set PER FIELDER from power AND where the balls actually go
+    — a pull slugger's LF plays deep while the oppo RF holds standard, so we
+    don't push all three back on a one-way power hitter."""
     s = _shift_strength(if_pull_pct, is_lhb, is_switch, if_total)
     target = _FULL_SHIFT_RIGHT if is_lhb else _FULL_SHIFT_LEFT
-    # Pull is +angle for LHB, -angle for RHB.
     pull_angle_sign = 1 if is_lhb else -1
-    # Contact quality (wOBAcon = wOBA on contact — how hard he hits it) drives
-    # depth; fall back to ISO if wOBAcon is missing. Higher = play deeper.
     hard = wobacon if wobacon else None
+    # Infield: hard contact a touch back, speed a step in.
     if hard is not None:
-        of_depth_adj = clamp((hard - 0.42) / 0.24, -0.06, 0.08)
         if_back = clamp((hard - 0.42) / 0.30, 0, 0.05)
+        of_power = clamp((hard - 0.40) / 0.22, -0.12, 0.12)   # -in … +deep
     else:
-        of_depth_adj = clamp((iso - 0.11) / 0.28, -0.06, 0.07) if iso else 0.0
         if_back = clamp((iso - 0.11) / 0.30, 0, 0.04) if iso else 0.0
-    # Speed (steals as a proxy) — a fast batter makes the infield creep in a
-    # step to shorten the throw to first.
+        of_power = clamp((iso - 0.11) / 0.28, -0.10, 0.10) if iso else 0.0
     speed_in = clamp((int(sb or 0) - 6) / 20.0, 0, 1) * 0.05
     if_depth_adj = if_back - speed_in
+    # Air-ball share by outfielder (LF gets LF+LC, RF gets RC+RF).
+    oc = of_counts or {}
+    of_tot = sum((oc.get(z) or 0) for z in _ALIGN_OF) or 1
+    of_share = {
+        "LF": ((oc.get("LF") or 0) + (oc.get("LC") or 0)) / of_tot,
+        "CF": (oc.get("CF") or 0) / of_tot,
+        "RF": ((oc.get("RC") or 0) + (oc.get("RF") or 0)) / of_tot,
+    }
     out = []
     for pos, (ba, bd) in _FIELD_BASE.items():
-        if pos in _MOVABLE and pos in target and s > 0:
-            ta, td = target[pos]
-            ang = ba + (ta - ba) * s
-            dep = bd + (td - bd) * s
-        else:
-            ang, dep = ba, bd
+        ta_td = target.get(pos)
+        ang = ba + (ta_td[0] - ba) * s if (pos in _MOVABLE and ta_td and s > 0) else ba
         if pos in ("LF", "CF", "RF"):
-            dep = clamp(dep + of_depth_adj, 0.55, 0.84)
+            # Deeper only where the power goes. Scale by this fielder's share of
+            # air balls vs the 1/3 average: a field must be ABOVE average to
+            # earn depth, so a one-way (pull-only) slugger backs up his pull OF
+            # while the oppo OF holds standard. Weak hitters play in uniformly.
+            rel = of_share[pos] / (1 / 3.0)
+            if of_power >= 0:
+                bump = of_power * clamp((rel - 0.6) / 0.55, -0.15, 1.3)
+            else:
+                bump = of_power * clamp(rel, 0.8, 1.1)
+            dep = clamp(bd + bump, 0.66, 0.93)
         elif pos == "2B":
-            # The one infielder allowed onto the grass (short RF on a lefty shift).
-            dep = clamp(dep + if_depth_adj, 0.33, 0.64)
+            td = ta_td[1] if (ta_td and s > 0) else bd
+            dep = clamp(bd + (td - bd) * s + if_depth_adj, 0.33, 0.64)
         elif pos in ("3B", "SS", "1B"):
-            # Capped at the cut (~0.50): deeper and they can't make the throw.
-            dep = clamp(dep + if_depth_adj, 0.33, 0.50)
+            td = ta_td[1] if (ta_td and s > 0) else bd
+            dep = clamp(bd + (td - bd) * s + if_depth_adj, 0.33, 0.50)
+        else:
+            dep = bd
         movable = pos in _MOVABLE
         abbr = _fielder_abbr(pos, ba, bd, ang, dep, pull_angle_sign) if movable else ""
         out.append({"pos": pos, "angle": round(ang, 1), "depth": round(dep, 3),
@@ -1718,7 +1731,7 @@ def build_alignment_for_hitter(hitter, spray):
     is_switch = str(bats).upper().startswith("S")
     wobacon = hitter.get("wobacon")
     sb = hitter.get("stolen_bases") or 0
-    fielders, s = _compute_fielders(if_pull_pct, is_lhb, is_switch, iso or 0, wobacon, sb, if_total)
+    fielders, s = _compute_fielders(if_pull_pct, is_lhb, is_switch, iso or 0, wobacon, sb, of_counts, if_total)
     shift = _shift_summary(s, pull_side, is_lhb, of_pull_pct, iso or 0)
 
     return {

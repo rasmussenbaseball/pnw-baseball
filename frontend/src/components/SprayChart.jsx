@@ -180,6 +180,17 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
   const thirdBase  = { x: HOME.x - BASE_DIST * Math.sin(a45), y: HOME.y - BASE_DIST * Math.cos(a45) }
   const secondBase = { x: HOME.x, y: HOME.y - BASE_DIST * Math.sqrt(2) }
 
+  // On the alignments view (fielders shown) fade the wedge separators so the
+  // amber positioning lines + fielder dots aren't lost in a sea of white lines.
+  const sepStroke = fielders ? 'rgba(255,255,255,0.3)' : '#ffffff'
+  const sepWidth = fielders ? 1 : 2
+  // Point on the fan at (angle from straight-up, depth fraction of the fence).
+  const fanPoint = (angleDeg, depthFrac) => {
+    const aMid = (angleDeg - 90) * Math.PI / 180
+    const r = depthFrac * R_OF_OUT
+    return { x: HOME.x + r * Math.cos(aMid), y: HOME.y + r * Math.sin(aMid) }
+  }
+
   function renderBase(b, key) {
     return (
       <rect
@@ -233,8 +244,8 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
               <path
                 d={wedgePath(HOME.x, HOME.y, R_INF_OUT, R_OF_OUT, a1, a2)}
                 fill={fill}
-                stroke="white"
-                strokeWidth="2"
+                stroke={sepStroke}
+                strokeWidth={sepWidth}
               />
               {showPct && n > 0 && (
                 <text
@@ -266,8 +277,8 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
               <path
                 d={wedgePath(HOME.x, HOME.y, R_HOME, R_INF_OUT, a1, a2)}
                 fill={fill}
-                stroke="white"
-                strokeWidth="2"
+                stroke={sepStroke}
+                strokeWidth={sepWidth}
               />
               {showPct && n > 0 && (
                 <text
@@ -353,12 +364,13 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
           )
         })}
 
-        {/* Standard-positioning reference lines (Defensive Alignments): the
-            outfielders line up on the lines drawn THROUGH the bases — 3B
-            through 2B out to RF, 1B through 2B out to LF, and home through 2B
-            straight to CF. Drawn by extending each base→2B line to the fence. */}
+        {/* Positioning reference (Defensive Alignments), in amber so it reads
+            distinctly from the white wedge separators:
+             • base lines through the bags — 3B→2B→RF, 1B→2B→LF, home→2B→CF
+             • three dashed depth arcs across the OF — in / standard / deep. */}
         {fielders && (() => {
           const R = R_OF_OUT
+          const AMBER = '#c2760a'
           const extend = (from, through) => {
             const dx = through.x - from.x, dy = through.y - from.y
             const len = Math.hypot(dx, dy) || 1
@@ -369,15 +381,37 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
             const t = -b + Math.sqrt(Math.max(0, b * b - c))
             return { x: from.x + t * ux, y: from.y + t * uy }
           }
-          const lines = [
+          const baseLines = [
             [thirdBase, extend(thirdBase, secondBase)],   // 3B → 2B → RF
             [firstBase, extend(firstBase, secondBase)],   // 1B → 2B → LF
             [HOME, { x: HOME.x, y: HOME.y - R }],         // home → 2B → CF
           ]
-          return lines.map(([p1, p2], i) => (
-            <line key={`ref-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-              stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" />
-          ))
+          const depthArcs = [['IN', 0.70], ['STD', 0.80], ['DEEP', 0.92]]
+          return (
+            <g>
+              {baseLines.map(([p1, p2], i) => (
+                <line key={`ref-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                  stroke={AMBER} strokeWidth="1.4" strokeOpacity="0.85" />
+              ))}
+              {depthArcs.map(([label, frac], i) => {
+                const a = fanPoint(-FAN_HALF_ANGLE, frac)
+                const b = fanPoint(FAN_HALF_ANGLE, frac)
+                const r = frac * R_OF_OUT
+                const lp = fanPoint(-FAN_HALF_ANGLE - 3, frac)
+                return (
+                  <g key={`arc-${i}`}>
+                    <path d={`M ${a.x} ${a.y} A ${r} ${r} 0 0 1 ${b.x} ${b.y}`}
+                      fill="none" stroke={AMBER} strokeWidth="1" strokeOpacity="0.7"
+                      strokeDasharray="2 4" />
+                    <text x={lp.x} y={lp.y} textAnchor="end" dominantBaseline="middle"
+                      style={{ fontSize: '7px', fontWeight: 700, fill: AMBER, opacity: 0.85 }}>
+                      {label}
+                    </text>
+                  </g>
+                )
+              })}
+            </g>
+          )
         })()}
 
         {/* Fielder dots — ideal defensive positions (P/C omitted; they don't
