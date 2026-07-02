@@ -1491,25 +1491,27 @@ def _dominant(counts):
 # straight-up alignment; each fielder is interpolated toward a handedness-
 # specific full-shift target scaled by the hitter's pull tendency.
 # NCAA has NO shift restriction, so full overload shifts are legal.
-# SS plays a touch deeper than 2B at baseline (more range). OF depths sit
-# ~70-75% to the fence so they can still get back on the heavy hitters.
+# Depth scale: 0.25 ≈ the bags (90 ft), ~0.50 ≈ the cut where dirt meets grass
+# (~115 ft), >0.50 = on the outfield grass. Infielders live between the bags and
+# the cut — deeper = more range but a longer throw, so SS/3B/1B are CAPPED at
+# the cut in _compute_fielders. SS plays a touch deeper than 2B at baseline.
 _FIELD_BASE = {
-    "3B": (-37, 0.40), "SS": (-20, 0.50), "2B": (20, 0.47), "1B": (37, 0.40),
+    "3B": (-37, 0.40), "SS": (-20, 0.47), "2B": (20, 0.44), "1B": (37, 0.40),
     "LF": (-29, 0.70), "CF": (0, 0.75), "RF": (29, 0.70),
     "P": (0, 0.27), "C": (0, -0.05),
 }
-# Overload LEFT — batter pulls to the left (RHB): 3 IF left of 2B. The SS works
-# the wide-open 5-6 hole so it plays DEEP for range; the 2B (now left of the
-# bag) and 1B hold normal depth.
+# Overload LEFT — batter pulls to the left (RHB): 3 IF left of 2B. The SS slides
+# laterally into the 5-6 hole but STAYS at normal infield depth (a SS on the cut
+# can't make the throw); no infielder goes onto the grass here.
 _FULL_SHIFT_LEFT = {
-    "3B": (-41, 0.42), "SS": (-27, 0.57), "2B": (-8, 0.49), "1B": (26, 0.47),
+    "3B": (-41, 0.42), "SS": (-27, 0.49), "2B": (-8, 0.46), "1B": (26, 0.46),
     "LF": (-34, 0.72), "CF": (-11, 0.76), "RF": (18, 0.70),
 }
-# Overload RIGHT — batter pulls to the right (LHB): 3 IF right of 2B. The 2B
-# works the 3-4 hole / short RF so it plays DEEP; SS (right of the bag) and 1B
-# hold — this is why 2B should not mirror SS's depth on a pull lefty.
+# Overload RIGHT — batter pulls to the right (LHB): 3 IF right of 2B. The classic
+# look — the 2B pushes DEEP into short right field (the throw from there is
+# short, so it works), while SS (right of the bag) and 1B hold.
 _FULL_SHIFT_RIGHT = {
-    "1B": (41, 0.42), "2B": (27, 0.57), "SS": (8, 0.49), "3B": (-26, 0.47),
+    "1B": (41, 0.42), "2B": (27, 0.60), "SS": (8, 0.46), "3B": (-26, 0.46),
     "RF": (34, 0.72), "CF": (11, 0.76), "LF": (-18, 0.70),
 }
 _MOVABLE = ("3B", "SS", "2B", "1B", "LF", "CF", "RF")
@@ -1557,11 +1559,12 @@ def _fielder_abbr(pos, ba, bd, ang, dep, pull_angle_sign):
     return " ".join(parts) if parts else "—"
 
 
-def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, wobacon, sb, sac_bunts, if_total):
+def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, wobacon, sb, if_total):
     """Return (fielders, shift_strength). fielders = list of {pos, angle, depth,
     movable, abbr} for a 9-man alignment. Depth blends the shift with contact
-    quality (wOBAcon → deeper), runner speed (steals → infield in a step), and
-    for the corners a bunt charge (frequent bunters → 3B/1B in)."""
+    quality (wOBAcon → deeper) and runner speed (steals → infield in a step).
+    SS/3B/1B are capped at the cut (they must make the throw); only the 2B in a
+    lefty shift may push onto the outfield grass in short RF."""
     s = _shift_strength(if_pull_pct, is_lhb, is_switch, if_total)
     target = _FULL_SHIFT_RIGHT if is_lhb else _FULL_SHIFT_LEFT
     # Pull is +angle for LHB, -angle for RHB.
@@ -1579,8 +1582,6 @@ def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, wobacon, sb, sac_bunt
     # step to shorten the throw to first.
     speed_in = clamp((int(sb or 0) - 6) / 20.0, 0, 1) * 0.05
     if_depth_adj = if_back - speed_in
-    # Corner bunt charge — a bunter pulls 3B & 1B in on top of the above.
-    corner_bunt_in = clamp(int(sac_bunts or 0) / 4.0, 0, 1) * 0.07
     out = []
     for pos, (ba, bd) in _FIELD_BASE.items():
         if pos in _MOVABLE and pos in target and s > 0:
@@ -1591,10 +1592,12 @@ def _compute_fielders(if_pull_pct, is_lhb, is_switch, iso, wobacon, sb, sac_bunt
             ang, dep = ba, bd
         if pos in ("LF", "CF", "RF"):
             dep = clamp(dep + of_depth_adj, 0.55, 0.84)
-        elif pos in ("3B", "1B"):  # corners: same drivers + bunt charge
-            dep = clamp(dep + if_depth_adj - corner_bunt_in, 0.30, 0.58)
-        elif pos in ("SS", "2B"):
-            dep = clamp(dep + if_depth_adj, 0.33, 0.62)
+        elif pos == "2B":
+            # The one infielder allowed onto the grass (short RF on a lefty shift).
+            dep = clamp(dep + if_depth_adj, 0.33, 0.64)
+        elif pos in ("3B", "SS", "1B"):
+            # Capped at the cut (~0.50): deeper and they can't make the throw.
+            dep = clamp(dep + if_depth_adj, 0.33, 0.50)
         movable = pos in _MOVABLE
         abbr = _fielder_abbr(pos, ba, bd, ang, dep, pull_angle_sign) if movable else ""
         out.append({"pos": pos, "angle": round(ang, 1), "depth": round(dep, 3),
@@ -1715,8 +1718,7 @@ def build_alignment_for_hitter(hitter, spray):
     is_switch = str(bats).upper().startswith("S")
     wobacon = hitter.get("wobacon")
     sb = hitter.get("stolen_bases") or 0
-    sac_bunts = hitter.get("sacrifice_bunts") or 0
-    fielders, s = _compute_fielders(if_pull_pct, is_lhb, is_switch, iso or 0, wobacon, sb, sac_bunts, if_total)
+    fielders, s = _compute_fielders(if_pull_pct, is_lhb, is_switch, iso or 0, wobacon, sb, if_total)
     shift = _shift_summary(s, pull_side, is_lhb, of_pull_pct, iso or 0)
 
     return {
