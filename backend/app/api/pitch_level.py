@@ -1774,3 +1774,219 @@ def get_player_pitch_level_stats_pitcher(
         }
 
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# Custom-card blocks: per-player defensive alignment, times-through-the-
+# order, and per-count discipline. All PBP-derived, all public (they feed
+# the coach's Custom Player Card but expose nothing sensitive).
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/players/{player_id}/alignment")
+@cached_endpoint(ttl_seconds=1800)
+def get_player_alignment(
+    player_id: int,
+    season: int = Query(CURRENT_SEASON),
+):
+    """Ideal defensive alignment vs THIS hitter — fielder (angle, depth, code)
+    per position + a shift summary. Reuses the Series Planner fielder model on
+    the hitter's own fine spray zones. Returns {alignment: null} if too few
+    batted balls to say anything."""
+    from .series_planner import build_alignment_for_hitter, _ALIGN_IF, _ALIGN_OF
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.first_name, p.last_name, p.bats,
+                   t.short_name AS team_short
+            FROM players p LEFT JOIN teams t ON p.team_id = t.id
+            WHERE p.id = %s
+        """, (player_id,))
+        prow = cur.fetchone()
+        if not prow:
+            raise HTTPException(status_code=404, detail="Player not found")
+        prow = dict(prow)
+
+        # Fine batted-ball zones for this hitter (this season).
+        cur.execute("""
+            SELECT field_zone_fine AS z, COUNT(*) AS n
+            FROM game_events ge
+            JOIN games g ON ge.game_id = g.id
+            WHERE ge.batter_player_id = %s AND g.season = %s
+              AND ge.field_zone_fine IS NOT NULL
+            GROUP BY field_zone_fine
+        """, (player_id, season))
+        zones = {r["z"]: r["n"] for r in cur.fetchall()}
+
+        # Season batting line for iso / wobacon / speed (weight by PA if split).
+        cur.execute("""
+            SELECT plate_appearances AS pa, batting_avg AS avg, slugging_pct AS slg,
+                   iso, wobacon, stolen_bases
+            FROM batting_stats WHERE player_id = %s AND season = %s
+            ORDER BY plate_appearances DESC NULLS LAST
+        """, (player_id, season))
+        brow = dict(cur.fetchone() or {})
+
+    bip = sum(zones.get(z, 0) for z in (_ALIGN_IF + _ALIGN_OF)) + (zones.get("IF_C") or 0)
+    hitter = {
+        "iso": brow.get("iso"),
+        "avg": brow.get("avg"),
+        "slg": brow.get("slg"),
+        "wobacon": brow.get("wobacon"),
+        "stolen_bases": brow.get("stolen_bases") or 0,
+        "bats": prow.get("bats"),
+    }
+    spray = {"spray_chart": {"all": zones}, "bats": prow.get("bats")}
+    alignment = build_alignment_for_hitter(hitter, spray)
+
+    return {
+        "player": {"id": player_id, "name": f"{prow.get('first_name') or ''} {prow.get('last_name') or ''}".strip(),
+                   "bats": prow.get("bats"), "team_short": prow.get("team_short")},
+        "bip": bip,
+        "alignment": alignment,   # {fielders, shift, recs, ...} or None
+    }
+
+
+@router.get("/players/{player_id}/tto")
+@cached_endpoint(ttl_seconds=1800)
+def get_player_tto(
+    player_id: int,
+    season: int = Query(CURRENT_SEASON),
+):
+    """Times-through-the-order splits for one PITCHER: the batting line against
+    him the 1st / 2nd / 3rd / 4th+ time he faces a hitter in a game."""
+    from collections import defaultdict
+    from .team_stats import (
+        _tto_finalize, _TTO_NON_PA, _TTO_HITS, _TTO_SO, _TTO_BB,
+    )
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ge.game_id, ge.inning, ge.half, ge.sequence_idx,
+                   ge.batter_player_id, ge.result_type
+            FROM game_events ge
+            JOIN games g ON ge.game_id = g.id
+            WHERE ge.pitcher_player_id = %s AND g.season = %s
+              AND ge.batter_player_id IS NOT NULL
+              AND ge.result_type IS NOT NULL
+              AND ge.result_type NOT IN %s
+            ORDER BY ge.game_id, ge.inning,
+                     CASE WHEN ge.half = 'top' THEN 0 ELSE 1 END, ge.sequence_idx
+        """, (player_id, season, _TTO_NON_PA))
+        events = cur.fetchall()
+
+    seen = defaultdict(int)
+
+    def _blank():
+        return {k: 0 for k in ('pa', 'ab', 'h', 'tb', 'bb', 'hbp', 'so', 'hr', 'sf')}
+    buckets = defaultdict(_blank)
+    for e in events:
+        key = (e["game_id"], e["batter_player_id"])
+        seen[key] += 1
+        tto = min(seen[key], 4)
+        rt = e["result_type"]
+        a = buckets[tto]
+        a["pa"] += 1
+        if rt in _TTO_HITS:
+            a["h"] += 1; a["ab"] += 1
+            a["tb"] += {"single": 1, "double": 2, "triple": 3, "home_run": 4}[rt]
+            if rt == "home_run":
+                a["hr"] += 1
+        elif rt in _TTO_SO:
+            a["so"] += 1; a["ab"] += 1
+        elif rt in _TTO_BB:
+            a["bb"] += 1
+        elif rt == "hbp":
+            a["hbp"] += 1
+        elif rt == "sac_fly":
+            a["sf"] += 1
+        elif rt in ("sac_bunt", "catcher_interference"):
+            pass
+        else:
+            a["ab"] += 1
+
+    out = {}
+    for tto, agg in buckets.items():
+        fb = _tto_finalize(agg)
+        if fb:
+            out[str(tto)] = fb
+    return {"buckets": out, "total_bf": sum(b["pa"] for b in buckets.values())}
+
+
+# Count order for the per-count discipline grid (hitter's counts → pitcher's).
+_COUNT_GRID = [(0, 0), (1, 0), (0, 1), (2, 0), (1, 1), (0, 2),
+               (3, 0), (2, 1), (1, 2), (3, 1), (2, 2), (3, 2)]
+
+
+@router.get("/players/{player_id}/count-detail")
+@cached_endpoint(ttl_seconds=1800)
+def get_player_count_detail(
+    player_id: int,
+    season: int = Query(CURRENT_SEASON),
+    side: str = Query("batter", description="'batter' or 'pitcher'"),
+):
+    """Per-count plate discipline replayed from pitch sequences. For a hitter:
+    his swing / whiff / contact by count. For a pitcher: what he induces plus
+    the rate he throws a strike in each count. Encoding (corrected site-wide
+    2026-06-12): S=swinging strike (whiff), K=called strike, F=foul, B=ball,
+    H=HBP. The ball put in play is an implicit final pitch (no letter)."""
+    col = "pitcher_player_id" if side == "pitcher" else "batter_player_id"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT ge.pitch_sequence AS seq, ge.was_in_play AS bip
+            FROM game_events ge
+            JOIN games g ON ge.game_id = g.id
+            WHERE ge.{col} = %s AND g.season = %s
+              AND ge.pitch_sequence IS NOT NULL
+        """, (player_id, season))
+        rows = cur.fetchall()
+
+    from collections import defaultdict
+    agg = defaultdict(lambda: {"p": 0, "sw": 0, "wh": 0, "st": 0, "bl": 0})
+    for r in rows:
+        seq = r["seq"] or ""
+        b = s = 0
+        for ch in seq:
+            b = min(b, 3); s = min(s, 2)
+            a = agg[(b, s)]
+            a["p"] += 1
+            if ch == "B":
+                a["bl"] += 1
+                if b < 3:
+                    b += 1
+            elif ch == "K":               # called strike
+                a["st"] += 1
+                if s < 2:
+                    s += 1
+            elif ch == "S":               # swinging strike (whiff)
+                a["sw"] += 1; a["wh"] += 1; a["st"] += 1
+                if s < 2:
+                    s += 1
+            elif ch == "F":               # foul
+                a["sw"] += 1; a["st"] += 1
+                if s < 2:
+                    s += 1
+            # H / N / P: counted as a pitch, not classified, no count change
+        if r["bip"]:
+            b = min(b, 3); s = min(s, 2)
+            a = agg[(b, s)]
+            a["p"] += 1; a["sw"] += 1; a["st"] += 1   # in-play = swing + contact + strike
+
+    counts = []
+    for (b, s) in _COUNT_GRID:
+        a = agg.get((b, s))
+        if not a or a["p"] == 0:
+            counts.append({"count": f"{b}-{s}", "pitches": 0})
+            continue
+        p, sw, wh = a["p"], a["sw"], a["wh"]
+        counts.append({
+            "count": f"{b}-{s}",
+            "pitches": p,
+            "swing_pct": round(sw / p, 3),
+            "whiff_pct": round(wh / sw, 3) if sw > 0 else None,
+            "contact_pct": round((sw - wh) / sw, 3) if sw > 0 else None,
+            "strike_pct": round(a["st"] / p, 3),
+        })
+    return {"side": side, "counts": counts,
+            "total_pitches": sum(c.get("pitches", 0) for c in counts)}

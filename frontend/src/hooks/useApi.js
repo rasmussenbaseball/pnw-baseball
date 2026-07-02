@@ -323,6 +323,43 @@ export function usePlayerPitchLevelStatsPitcher(playerId, season = CURRENT_SEASO
 }
 
 /**
+ * Ideal defensive alignment vs this hitter — fielder (angle, depth, code)
+ * per position + shift summary. Powers the fielding-grid and field-diagram
+ * blocks on the Custom Player Card.
+ */
+export function usePlayerAlignment(playerId, season = CURRENT_SEASON) {
+  return useApi(
+    playerId ? `/players/${playerId}/alignment` : null,
+    { season },
+    [playerId, season]
+  )
+}
+
+/**
+ * Times-through-the-order splits for one pitcher (1st/2nd/3rd/4th+ time
+ * facing a hitter). Powers the TTO block on the Custom Player Card.
+ */
+export function usePlayerTto(playerId, season = CURRENT_SEASON) {
+  return useApi(
+    playerId ? `/players/${playerId}/tto` : null,
+    { season },
+    [playerId, season]
+  )
+}
+
+/**
+ * Per-count plate discipline (swing/whiff/strike% by count) for a hitter
+ * or pitcher. Powers the detailed count-state block on the Custom Card.
+ */
+export function usePlayerCountDetail(playerId, side = 'batter', season = CURRENT_SEASON) {
+  return useApi(
+    playerId ? `/players/${playerId}/count-detail` : null,
+    { season, side },
+    [playerId, side, season]
+  )
+}
+
+/**
  * Player's stats vs a specific opposing team (PBP-derived). Used by the
  * Player Card PDF when a portal team is set. Pass null teamId to skip
  * the fetch (no team selected).

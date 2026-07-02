@@ -17,10 +17,11 @@ import { usePlayerSearch } from '../hooks/useApi'
 import ReportActions from '../components/ReportActions'
 import {
   CustomCard, BLOCKS, PALETTE_GROUPS, DEFAULT_BLOCKS, withUids, nextUid,
-  SPRAY_FILTERS_HIT, SPRAY_FILTERS_PIT,
+  SPRAY_FILTERS_HIT, SPRAY_FILTERS_PIT, blockFitsSide,
 } from './CustomCard'
 import { HIT_TOOLS, PIT_TOOLS, MEAS } from './PlayerCardPDF'
 import { loadTemplates, saveTemplate, deleteTemplate } from '../lib/cardTemplates'
+import { starterTemplatesFor } from '../lib/starterTemplates'
 
 const GRADE_OPTS = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80]
 
@@ -76,6 +77,12 @@ export default function CustomPlayerCard() {
     setEditingUid(null)
   }
   const onDeleteTemplate = (id) => { deleteTemplate(id); refreshTemplates() }
+  // Pre-built starter templates lock the side to what they were designed for.
+  const onLoadStarter = (t) => {
+    setBlocks(withUids(t.blocks))
+    setSideParam(t.for === 'pitcher' ? 'pitching' : 'batting')
+    setEditingUid(null)
+  }
 
   return (
     <div className="max-w-full mx-auto px-3 sm:px-5 py-5">
@@ -113,9 +120,28 @@ export default function CustomPlayerCard() {
             </div>
           )}
 
+          {/* Starter templates — pre-built, read-only */}
+          <div className="border border-nw-teal/30 rounded-lg p-3 bg-nw-teal/[0.04]">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-nw-teal mb-1.5">Starter templates</div>
+            {[['Hitters', 'batting'], ['Pitchers', 'pitching']].map(([label, s]) => (
+              <div key={s} className="mb-1.5 last:mb-0">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1">{label}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {starterTemplatesFor(s).map(t => (
+                    <button key={t.id} onClick={() => onLoadStarter(t)} title={t.desc}
+                      className="px-2 py-1 text-[11px] rounded border border-nw-teal/40 hover:bg-nw-teal/10 text-gray-700 dark:text-gray-200 font-medium">
+                      {t.name.replace(/^(Hitter|Pitcher) · /, '')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="text-[9px] text-gray-400 mt-1">Loads a proven layout you can tweak, then Save-As below to keep your own copy.</div>
+          </div>
+
           {/* Templates */}
           <div className="border border-portal-purple/30 dark:border-portal-purple/50 rounded-lg p-3 bg-portal-purple/[0.03]">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-portal-purple-dark dark:text-portal-accent mb-1.5">Templates</div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-portal-purple-dark dark:text-portal-accent mb-1.5">My templates</div>
             {templates.length > 0 && (
               <div className="space-y-1 mb-2">
                 {templates.map(t => (
@@ -143,7 +169,7 @@ export default function CustomPlayerCard() {
             <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1.5">Add a block</div>
             <div className="space-y-2">
               {PALETTE_GROUPS.map(group => {
-                const types = Object.keys(BLOCKS).filter(t => BLOCKS[t].tag === group)
+                const types = Object.keys(BLOCKS).filter(t => BLOCKS[t].tag === group && blockFitsSide(t, side))
                 if (!types.length) return null
                 return (
                   <div key={group}>

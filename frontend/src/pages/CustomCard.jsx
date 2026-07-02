@@ -25,6 +25,7 @@ import {
   RecentKsPanel, VsTeamPanel,
   ScoutTakePanel, GradesPanel, MeasurablesPanel,
   TendenciesPanel, TrendPanel, NotesLinesPanel,
+  FieldingGridPanel, FieldingDiagramPanel, TTOPanel, CountDetailPanel,
 } from './PlayerCardPDF'
 
 export const SEASON = CURRENT_SEASON
@@ -36,30 +37,42 @@ export const USABLE_H = 1030
 // `w` = default width. `render(ctx, cfg)` builds the panel from the render
 // context + this block's own config. `spray` marks blocks with a filter dropdown.
 // `edit` names a config editor the builder shows (text / grades / measurables).
-// `tag` groups blocks in the palette.
+// `tag` groups blocks in the palette. `for` limits a block to one player type
+// ('hitter' | 'pitcher' | 'both') so the palette only offers what makes sense.
 export const BLOCKS = {
-  header:      { label: 'Header',           w: 'full', tag: 'Core',   render: c => <CardHeader player={c.player} side={c.side} season={SEASON} /> },
-  percentiles: { label: 'Percentile Bars',  w: 'half', tag: 'Stats',  render: c => <PercentilePanel side={c.side} battingPercentiles={c.data?.batting_percentiles} pitchingPercentiles={c.data?.pitching_percentiles} /> },
-  spray:       { label: 'Spray Chart',      w: 'half', tag: 'Charts', spray: true, render: (c, cfg) => <SprayPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} player={c.player} filter={cfg.filter || 'all'} /> },
-  discipline:  { label: 'Plate Discipline', w: 'half', tag: 'Stats',  render: c => <DisciplinePanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  batted:      { label: 'Batted Ball',      w: 'half', tag: 'Stats',  render: c => <BattedBallPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  splits:      { label: 'Splits',           w: 'half', tag: 'Stats',  render: c => <SplitsPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  counts:      { label: 'Count States',     w: 'half', tag: 'Stats',  render: c => <CountStatesPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  tendencies:  { label: 'How to Attack',    w: 'half', tag: 'Scouting', render: c => <TendenciesPanel side={c.side} data={c.data} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
-  trend:       { label: 'Season Trend',     w: 'half', tag: 'Charts', render: c => <TrendPanel playerId={c.playerId} side={c.side} /> },
-  season:      { label: 'Season Stats',     w: 'full', tag: 'Stats',  render: c => <SeasonStatsTable side={c.side} battingStats={c.battingStats} pitchingStats={c.pitchingStats} /> },
-  summer:      { label: 'Summer Ball',      w: 'full', tag: 'Stats',  render: c => <SummerBallTable side={c.side} summerBatting={c.summerBatting} summerPitching={c.summerPitching} /> },
-  vsteam:      { label: 'vs Your Team',     w: 'half', tag: 'Scouting', render: c => <VsTeamPanel playerId={c.playerId} side={c.side} portalTeam={c.portalTeam} /> },
-  recentk:     { label: 'Recent Ks',        w: 'half', tag: 'Scouting', render: c => <RecentKsPanel playerId={c.playerId} side={c.side} portalTeam={c.portalTeam} /> },
-  grades:      { label: 'Scouting Grades',  w: 'half', tag: 'Report', edit: 'grades', render: (c, cfg) => <GradesPanel side={c.side} cfg={cfg} /> },
-  measurables: { label: 'Measurables',      w: 'half', tag: 'Report', edit: 'measurables', render: (c, cfg) => <MeasurablesPanel side={c.side} player={c.player} cfg={cfg} /> },
-  scouttake:   { label: "Scout's Take",     w: 'full', tag: 'Report', edit: 'text', render: (c, cfg) => <ScoutTakePanel cfg={cfg} /> },
-  notes:       { label: 'Notes (blank)',    w: 'half', tag: 'Report', edit: 'notes', render: (c, cfg) => <NotesLinesPanel cfg={cfg} /> },
+  header:      { label: 'Header',           w: 'full', tag: 'Core',   for: 'both', render: c => <CardHeader player={c.player} side={c.side} season={SEASON} /> },
+  percentiles: { label: 'Percentile Bars',  w: 'half', tag: 'Stats',  for: 'both', render: c => <PercentilePanel side={c.side} battingPercentiles={c.data?.batting_percentiles} pitchingPercentiles={c.data?.pitching_percentiles} /> },
+  spray:       { label: 'Spray Chart',      w: 'half', tag: 'Charts', for: 'both', spray: true, render: (c, cfg) => <SprayPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} player={c.player} filter={cfg.filter || 'all'} /> },
+  discipline:  { label: 'Plate Discipline', w: 'half', tag: 'Stats',  for: 'both', render: c => <DisciplinePanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  batted:      { label: 'Batted Ball',      w: 'half', tag: 'Stats',  for: 'both', render: c => <BattedBallPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  splits:      { label: 'Splits',           w: 'half', tag: 'Stats',  for: 'both', render: c => <SplitsPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  counts:      { label: 'Count States',     w: 'half', tag: 'Stats',  for: 'both', render: c => <CountStatesPanel side={c.side} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  countdetail: { label: 'Count States (detail)', w: 'half', tag: 'Stats', for: 'both', render: c => <CountDetailPanel side={c.side} playerId={c.playerId} /> },
+  tto:         { label: 'Times Thru Order', w: 'half', tag: 'Stats',  for: 'pitcher', render: c => <TTOPanel playerId={c.playerId} /> },
+  tendencies:  { label: 'How to Attack',    w: 'half', tag: 'Scouting', for: 'both', render: c => <TendenciesPanel side={c.side} data={c.data} hitterPbp={c.hitterPbp} pitcherPbp={c.pitcherPbp} /> },
+  trend:       { label: 'Season Trend',     w: 'half', tag: 'Charts', for: 'both', render: c => <TrendPanel playerId={c.playerId} side={c.side} /> },
+  fieldgrid:   { label: 'Ideal Fielding — Grid',  w: 'half', tag: 'Defense', for: 'hitter', render: c => <FieldingGridPanel playerId={c.playerId} /> },
+  fielddiagram:{ label: 'Ideal Fielding — Field', w: 'half', tag: 'Defense', for: 'hitter', render: c => <FieldingDiagramPanel playerId={c.playerId} player={c.player} hitterPbp={c.hitterPbp} /> },
+  season:      { label: 'Season Stats',     w: 'full', tag: 'Stats',  for: 'both', render: c => <SeasonStatsTable side={c.side} battingStats={c.battingStats} pitchingStats={c.pitchingStats} /> },
+  summer:      { label: 'Summer Ball',      w: 'full', tag: 'Stats',  for: 'both', render: c => <SummerBallTable side={c.side} summerBatting={c.summerBatting} summerPitching={c.summerPitching} /> },
+  vsteam:      { label: 'vs Your Team',     w: 'half', tag: 'Scouting', for: 'both', render: c => <VsTeamPanel playerId={c.playerId} side={c.side} portalTeam={c.portalTeam} /> },
+  recentk:     { label: 'Recent Ks',        w: 'half', tag: 'Scouting', for: 'both', render: c => <RecentKsPanel playerId={c.playerId} side={c.side} portalTeam={c.portalTeam} /> },
+  grades:      { label: 'Scouting Grades',  w: 'half', tag: 'Report', for: 'both', edit: 'grades', render: (c, cfg) => <GradesPanel side={c.side} cfg={cfg} /> },
+  measurables: { label: 'Measurables',      w: 'half', tag: 'Report', for: 'both', edit: 'measurables', render: (c, cfg) => <MeasurablesPanel side={c.side} player={c.player} cfg={cfg} /> },
+  scouttake:   { label: "Scout's Take",     w: 'full', tag: 'Report', for: 'both', edit: 'text', render: (c, cfg) => <ScoutTakePanel cfg={cfg} /> },
+  notes:       { label: 'Notes (blank)',    w: 'half', tag: 'Report', for: 'both', edit: 'notes', render: (c, cfg) => <NotesLinesPanel cfg={cfg} /> },
 }
 export const PALETTE = Object.keys(BLOCKS)
 
 // Palette groupings for the picker UI.
-export const PALETTE_GROUPS = ['Core', 'Stats', 'Charts', 'Scouting', 'Report']
+export const PALETTE_GROUPS = ['Core', 'Stats', 'Charts', 'Defense', 'Scouting', 'Report']
+
+// Does a block belong on this side's card? 'both' always; otherwise match.
+export function blockFitsSide(type, side) {
+  const f = BLOCKS[type]?.for || 'both'
+  if (f === 'both') return true
+  return f === (side === 'pitching' ? 'pitcher' : 'hitter')
+}
 
 export const SPRAY_FILTERS_HIT = [['all', 'All'], ['vs_rhp', 'vs RHP'], ['vs_lhp', 'vs LHP'], ['xbh', 'XBH'], ['hr', 'HR']]
 export const SPRAY_FILTERS_PIT = [['all', 'All'], ['vs_rhb', 'vs RHB'], ['vs_lhb', 'vs LHB'], ['xbh', 'XBH'], ['hr', 'HR']]
@@ -147,9 +160,9 @@ export function CustomCard({ playerId, blocks, sideParam, cardRef, onMeta, class
       ) : (
         <div ref={contentRef} style={{ width: `${PAGE_W}px`, transform: `scale(${scale})`, transformOrigin: 'top left', padding: '12px' }}>
           <div className="grid grid-cols-2 gap-2 items-start">
-            {(blocks || []).map((b, i) => (
+            {(blocks || []).filter(b => BLOCKS[b.type] && blockFitsSide(b.type, side)).map((b, i) => (
               <div key={b.uid || `${b.type}-${i}`} className={b.w === 'full' ? 'col-span-2' : 'col-span-1'}>
-                {BLOCKS[b.type] ? BLOCKS[b.type].render(ctx, b) : null}
+                {BLOCKS[b.type].render(ctx, b)}
               </div>
             ))}
           </div>

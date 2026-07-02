@@ -30,6 +30,9 @@ import {
   usePlayerVsTeam,
   usePlayerRecentKs,
   usePlayerGameLogs,
+  usePlayerAlignment,
+  usePlayerTto,
+  usePlayerCountDetail,
 } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import SprayChart from '../components/SprayChart'
@@ -1590,11 +1593,188 @@ function NotesLinesPanel({ cfg }) {
 }
 
 
+// ───────────────────────────────────────────────────────────
+// Ideal Fielding — GRID (positions → shift code) [hitter]
+// Where each fielder should play vs this hitter, as short codes.
+// ───────────────────────────────────────────────────────────
+const FIELD_POS = ['1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
+
+function fieldCodeTone(abbr) {
+  if (!abbr || abbr === '—') return ''
+  const heavy = abbr.includes('HV')
+  if (abbr.includes('PL')) return heavy ? 'bg-rose-200 text-rose-900 font-bold' : 'bg-rose-50 text-rose-800'
+  if (abbr.includes('OP')) return heavy ? 'bg-sky-200 text-sky-900 font-bold' : 'bg-sky-50 text-sky-800'
+  if (abbr.includes('DP')) return 'bg-indigo-50 text-indigo-800'
+  if (abbr.includes('IN')) return 'bg-amber-50 text-amber-800'
+  return 'text-gray-700'
+}
+
+function FieldingGridPanel({ playerId }) {
+  const { data } = usePlayerAlignment(playerId, SEASON)
+  const a = data?.alignment
+  const byPos = {}
+  for (const f of (a?.fielders || [])) byPos[f.pos] = f.abbr
+  return (
+    <MiniCard title="Ideal Fielding — Grid">
+      {!a ? (
+        <div className="text-[9px] text-gray-400 italic">Not enough batted balls to position.</div>
+      ) : (
+        <>
+          {a.shift?.label && <div className="text-[9px] font-bold text-portal-purple-dark mb-1">{a.shift.label}</div>}
+          <table className="w-full text-center tabular-nums" style={{ fontSize: '8.5px' }}>
+            <thead><tr className="text-gray-400">{FIELD_POS.map(p => <th key={p} className="py-0.5 font-semibold">{p}</th>)}</tr></thead>
+            <tbody><tr>
+              {FIELD_POS.map(p => (
+                <td key={p} className={`py-1 border border-gray-100 rounded ${fieldCodeTone(byPos[p])}`}>{byPos[p] || '—'}</td>
+              ))}
+            </tr></tbody>
+          </table>
+          <div className="text-gray-400 mt-1 flex flex-wrap gap-x-1.5" style={{ fontSize: '6.5px' }}>
+            <span><b>PL</b> pull</span><span><b>OP</b> oppo</span><span><b>SL</b> slight</span>
+            <span><b>HV</b> heavy</span><span><b>DP</b> deep</span><span><b>IN</b> in</span><span><b>—</b> straight</span>
+          </div>
+        </>
+      )}
+    </MiniCard>
+  )
+}
+
+// ───────────────────────────────────────────────────────────
+// Ideal Fielding — FIELD DIAGRAM (spray + fielder dots) [hitter]
+// ───────────────────────────────────────────────────────────
+function FieldingDiagramPanel({ playerId, player, hitterPbp }) {
+  const { data } = usePlayerAlignment(playerId, SEASON)
+  const a = data?.alignment
+  const spray = hitterPbp?.spray_chart
+  return (
+    <div className="border border-gray-200 rounded p-2 flex flex-col">
+      <div className="text-[10px] uppercase tracking-widest text-portal-purple-dark font-bold mb-1">
+        Ideal Fielding — Field
+      </div>
+      <div className="flex-1 min-h-[180px]">
+        {spray && a?.fielders ? (
+          <SprayChart data={spray} bats={player?.bats || 'R'} mode="hitter" fielders={a.fielders} />
+        ) : (
+          <div className="text-[9px] text-gray-400 italic">Not enough batted balls to position.</div>
+        )}
+      </div>
+      {a?.shift?.label && <div className="text-[8.5px] text-center text-gray-500 mt-0.5">{a.shift.label}</div>}
+    </div>
+  )
+}
+
+// ───────────────────────────────────────────────────────────
+// Times Through The Order [pitcher]
+// ───────────────────────────────────────────────────────────
+function ttoOpsTone(ops) {
+  if (ops == null) return 'text-gray-400'
+  if (ops < 0.600) return 'text-green-700'
+  if (ops < 0.750) return 'text-emerald-700'
+  if (ops < 0.900) return 'text-amber-700'
+  return 'text-rose-700'
+}
+const TTO_LABELS = { '1': '1st', '2': '2nd', '3': '3rd', '4': '4th+' }
+
+function TTOPanel({ playerId }) {
+  const { data } = usePlayerTto(playerId, SEASON)
+  const buckets = data?.buckets || {}
+  const keys = ['1', '2', '3', '4'].filter(k => buckets[k])
+  return (
+    <MiniCard title="Times Thru Order">
+      {keys.length === 0 ? (
+        <div className="text-[9px] text-gray-400 italic">No play-by-play coverage yet.</div>
+      ) : (
+        <table className="w-full text-center tabular-nums" style={{ fontSize: '8.5px' }}>
+          <thead>
+            <tr className="text-gray-400">
+              <th className="py-0.5 text-left font-semibold">Time</th>
+              <th className="py-0.5 font-semibold">PA</th>
+              <th className="py-0.5 font-semibold">AVG</th>
+              <th className="py-0.5 font-semibold">OPS</th>
+              <th className="py-0.5 font-semibold">K%</th>
+              <th className="py-0.5 font-semibold">BB%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {keys.map(k => {
+              const b = buckets[k]
+              return (
+                <tr key={k} className="border-t border-gray-100">
+                  <td className="py-0.5 text-left font-medium">{TTO_LABELS[k]}</td>
+                  <td className="py-0.5">{b.pa}</td>
+                  <td className="py-0.5">{fmt.rate(b.avg)}</td>
+                  <td className={`py-0.5 font-bold ${ttoOpsTone(b.ops)}`}>{fmt.rate(b.ops)}</td>
+                  <td className="py-0.5">{b.k_pct != null ? (b.k_pct * 100).toFixed(0) + '%' : '–'}</td>
+                  <td className="py-0.5">{b.bb_pct != null ? (b.bb_pct * 100).toFixed(0) + '%' : '–'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      <div className="text-gray-400 mt-1" style={{ fontSize: '6.5px' }}>OPS-against by time facing a hitter. Green good, red bad (pitcher view).</div>
+    </MiniCard>
+  )
+}
+
+// ───────────────────────────────────────────────────────────
+// Detailed Count States — per-count swing / whiff / strike% [both]
+// ───────────────────────────────────────────────────────────
+function pctTone(v, good) {
+  // good='high' means a high value is green; 'low' means low is green.
+  if (v == null) return ''
+  const hot = good === 'high' ? v >= 0.5 : v <= 0.15
+  const cold = good === 'high' ? v <= 0.2 : v >= 0.4
+  if (hot) return 'text-emerald-700 font-semibold'
+  if (cold) return 'text-rose-700'
+  return 'text-gray-700'
+}
+
+function CountDetailPanel({ side, playerId }) {
+  const isPitcher = side === 'pitching'
+  const { data } = usePlayerCountDetail(playerId, isPitcher ? 'pitcher' : 'batter', SEASON)
+  const counts = (data?.counts || []).filter(c => c.pitches > 0)
+  return (
+    <MiniCard title={isPitcher ? 'Count States (induced)' : 'Count States (detail)'}>
+      {counts.length === 0 ? (
+        <div className="text-[9px] text-gray-400 italic">No pitch-level coverage yet.</div>
+      ) : (
+        <table className="w-full text-center tabular-nums" style={{ fontSize: '8px' }}>
+          <thead>
+            <tr className="text-gray-400">
+              <th className="py-0.5 text-left font-semibold">Ct</th>
+              <th className="py-0.5 font-semibold">P</th>
+              <th className="py-0.5 font-semibold">Sw%</th>
+              <th className="py-0.5 font-semibold">Wh%</th>
+              <th className="py-0.5 font-semibold">Str%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {counts.map(c => (
+              <tr key={c.count} className="border-t border-gray-100">
+                <td className="py-0.5 text-left font-medium">{c.count}</td>
+                <td className="py-0.5 text-gray-500">{c.pitches}</td>
+                <td className="py-0.5">{(c.swing_pct * 100).toFixed(0)}%</td>
+                <td className={`py-0.5 ${pctTone(c.whiff_pct, isPitcher ? 'high' : 'low')}`}>{c.whiff_pct != null ? (c.whiff_pct * 100).toFixed(0) + '%' : '–'}</td>
+                <td className="py-0.5">{(c.strike_pct * 100).toFixed(0)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="text-gray-400 mt-1" style={{ fontSize: '6.5px' }}>
+        {isPitcher ? 'Swing / whiff induced + strike% thrown by count.' : 'Swing / whiff / strike-seen by count.'}
+      </div>
+    </MiniCard>
+  )
+}
+
 export {
   CardHeader, PercentilePanel, SprayPanel, DisciplinePanel, BattedBallPanel,
   SplitsPanel, CountStatesPanel, SeasonStatsTable, SummerBallTable,
   RecentKsPanel, VsTeamPanel,
   TendenciesPanel, TrendPanel, GradesPanel, MeasurablesPanel,
   ScoutTakePanel, NotesLinesPanel,
+  FieldingGridPanel, FieldingDiagramPanel, TTOPanel, CountDetailPanel,
   MEAS, MEAS_BY_KEY, HIT_TOOLS, PIT_TOOLS,
 }
