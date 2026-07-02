@@ -33,8 +33,8 @@ const NAV_SECTIONS = [
   {
     label: 'Opponent Scouting',
     items: [
-      { to: '/portal/advance-report', label: 'Advance Report',
-        desc: 'Auto game plan + how to attack every hitter & pitcher' },
+      { to: '/portal/series-planner', label: 'Series Planner',
+        desc: 'Full pre-series game plan: identity, Big 3, pitcher attack, alignments' },
       { to: '/portal/splits', label: 'Splits Explorer',
         desc: 'Filter any team by game state, count, hand, home/away' },
       { to: '/portal/team-scouting', label: 'Team Scouting',

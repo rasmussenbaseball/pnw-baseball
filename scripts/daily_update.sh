@@ -205,3 +205,10 @@ PYTHONPATH=backend python3 scripts/compute_wpa.py --season 2026
 # recompute for the season each run). Also run manually after any PBP
 # rescrape, same as compute_wpa.
 PYTHONPATH=backend python3 scripts/compute_holds_blown_saves.py --season 2026
+
+# Series Planner — rebuild the per-team aggregate records the live
+# /portal/series-planner endpoint reads. Pulls from the local API (this
+# server's nwbb service), so it runs LAST, after all stats are fresh.
+# Output backend/data/series_planner.json is gitignored; the live endpoint
+# hot-reloads it on mtime change (no restart needed).
+PYTHONPATH=backend python3 scripts/generate_series_planner.py --season "$SEASON" --base http://localhost:8000/api/v1

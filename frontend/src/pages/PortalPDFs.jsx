@@ -35,7 +35,7 @@ export default function PortalPDFs() {
         </p>
       </div>
 
-      <AdvanceReportCard onPick={(id) => navigate(`/portal/advance-report?team_id=${id}`)} />
+      <AdvanceReportCard onPick={(id) => navigate(`/portal/series-planner?opp_team_id=${id}`)} />
       <ScoutingSheetCard onPick={(id) => navigate(`/portal/scouting-sheet/${id}`)} />
       <SimpleOpenCard
         title="Custom Scouting Sheet"
@@ -101,12 +101,13 @@ function AdvanceReportCard({ onPick }) {
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Advance Report</h2>
-        <span className="text-[11px] text-gray-500 dark:text-gray-400">auto game plan</span>
+        <h2 className="text-lg font-bold text-portal-purple-dark dark:text-gray-100">Series Planner</h2>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">full game plan</span>
       </div>
       <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-        Auto-generated series prep: game plan plus how to attack every key hitter and pitcher,
-        with count tendencies. Save the whole report as a PDF or an image.
+        Full pre-series game plan for any opponent: identity, priorities, our advantages, Big 3
+        hitters, pitcher attack plan, count tendencies, dugout calls, and defensive alignments.
+        Print a one-page card.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <select value={teamId} onChange={(e) => setTeamId(e.target.value)}

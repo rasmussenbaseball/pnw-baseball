@@ -32,6 +32,7 @@ backend/data/future_schedules.json
 backend/data/key_matchup_cache.json
 backend/data/rapsodo_anchors.json
 backend/data/rapsodo_stuff_model.json
+backend/data/series_planner.json
 
 # Vite temp files
 frontend/vite.config.js.timestamp*

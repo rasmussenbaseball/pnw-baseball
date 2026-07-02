@@ -30,8 +30,8 @@ export default function CoachHomepage() {
 // live uncommitted-JUCO board on the side.
 // ============================================================
 const PORTAL_TOOLS = [
-  { to: '/portal/advance-report', label: 'Advance Report',
-    desc: 'Auto game plan + how to attack every opponent', icon: 'target' },
+  { to: '/portal/series-planner', label: 'Series Planner',
+    desc: 'Full pre-series game plan for any opponent', icon: 'target' },
   { to: '/portal/splits', label: 'Splits Explorer',
     desc: 'Filter any team by game state, count, hand, home/away', icon: 'trend' },
   { to: '/portal/custom-sheet', label: 'Custom Sheet',

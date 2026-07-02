@@ -250,7 +250,7 @@ const NwacAdvancement = lazyWithRetry(() => import('./pages/NwacAdvancement'))
 // Coach-portal scouting + print/PDF pages (coach tier only) — lazy.
 const PlayerScouting = lazyWithRetry(() => import('./pages/PlayerScouting'))
 const TeamScouting = lazyWithRetry(() => import('./pages/TeamScouting'))
-const AdvanceReport = lazyWithRetry(() => import('./pages/AdvanceReport'))
+const SeriesPlanner = lazyWithRetry(() => import('./pages/SeriesPlanner'))
 const SplitsExplorer = lazyWithRetry(() => import('./pages/SplitsExplorer'))
 const ScoutingSheet = lazyWithRetry(() => import('./pages/ScoutingSheet'))
 const CustomSheet = lazyWithRetry(() => import('./pages/CustomSheet'))
@@ -486,8 +486,11 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><LineupHelper /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/team-scouting"
                  element={<RequirePortalAccess><PortalLayout><TeamScouting /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/series-planner"
+                 element={<RequirePortalAccess><PortalLayout><SeriesPlanner /></PortalLayout></RequirePortalAccess>} />
+          {/* Retired Advance Report → Series Planner (keeps old deep links alive via ?team_id fallback) */}
           <Route path="/portal/advance-report"
-                 element={<RequirePortalAccess><PortalLayout><AdvanceReport /></PortalLayout></RequirePortalAccess>} />
+                 element={<RequirePortalAccess><PortalLayout><SeriesPlanner /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/splits"
                  element={<RequirePortalAccess><PortalLayout><SplitsExplorer /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/custom-sheet"
