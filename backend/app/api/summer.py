@@ -344,6 +344,51 @@ def _school_from_team(name, mascot):
     return name
 
 
+def _wcl_portal_member_ids(cur, season, restrict=None):
+    """Summer player_ids considered 'in the WCL portal' — the SAME set the WCL
+    Transfer Portal Tracker (/summer/wcl-portal) shows:
+
+      * manually-added rows in wcl_portal_members, PLUS
+      * auto-included uncommitted NWAC (JUCO) sophomores who played WCL this
+        season (aging out of juco → effectively in the portal).
+
+    Both the tracker and the recap-graphic 'Portal' label go through here so
+    they can't drift apart. Pass `restrict` (an id iterable) to scope the
+    auto-JUCO scan when resolving a single graphic.
+    """
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS wcl_portal_members (
+             summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
+             position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
+    )
+    cur.execute("SELECT summer_player_id FROM wcl_portal_members")
+    ids = {int(r["summer_player_id"]) for r in cur.fetchall()}
+    if not season:
+        return ids
+    sql = """
+        SELECT DISTINCT spl.summer_player_id
+        FROM summer_player_links spl
+        JOIN players p ON p.id = spl.spring_player_id
+        JOIN teams t ON t.id = p.team_id
+        JOIN conferences c ON c.id = t.conference_id
+        JOIN divisions d ON d.id = c.division_id
+        JOIN summer_players sp ON sp.id = spl.summer_player_id
+        JOIN summer_teams stt ON stt.id = sp.team_id AND stt.league_id = 1
+        WHERE d.level = 'JUCO'
+          AND COALESCE(p.is_committed, 0) <> 1
+          AND lower(COALESCE(p.year_in_school, '')) LIKE '%%so%%'
+          AND (EXISTS (SELECT 1 FROM summer_batting_stats b WHERE b.player_id = sp.id AND b.season = %s)
+               OR EXISTS (SELECT 1 FROM summer_pitching_stats ps WHERE ps.player_id = sp.id AND ps.season = %s))
+    """
+    params: list = [season, season]
+    if restrict:
+        sql += " AND spl.summer_player_id = ANY(%s)"
+        params.append(sorted({int(x) for x in restrict if x}))
+    cur.execute(sql, params)
+    ids |= {int(r["summer_player_id"]) for r in cur.fetchall()}
+    return ids
+
+
 def _resolve_colleges(cur, player_ids, season):
     """summer player_id -> the school string to show on the recap graphic.
 
@@ -397,11 +442,17 @@ def _resolve_colleges(cur, player_ids, season):
             if sch:
                 out[r["spid"]] = sch
 
-    # 2) Portal — applied BEFORE assigned_school so a committed ex-portal player
-    #    (assigned_school set below) shows their new team, not 'Portal'.
-    cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE summer_player_id = ANY(%s)", (ids,))
-    for r in cur.fetchall():
-        out[r["summer_player_id"]] = "Portal"
+    # 2) Portal — the SAME membership the WCL Transfer Portal Tracker uses
+    #    (manual members + auto-included uncommitted JUCO sophomores), so a
+    #    player the tracker calls "in the portal" shows 'Portal' on the graphic
+    #    instead of a stale old-team label. Applied BEFORE assigned_school so a
+    #    committed ex-portal player (assigned_school set below) shows their new
+    #    team, not 'Portal'.
+    portal_ids = _wcl_portal_member_ids(cur, season, restrict=ids)
+    id_set = set(ids)
+    for pid in portal_ids:
+        if pid in id_set:
+            out[pid] = "Portal"
 
     # 1) Curated assigned_school wins (committed/current spring team; covers non-PNW).
     cur.execute(
@@ -3649,38 +3700,10 @@ def wcl_portal_players(
     _user: str = Depends(require_tier("recruiting")),
 ):
     with get_connection() as _mc:
-        _mcur = _mc.cursor()
-        _mcur.execute(
-            """CREATE TABLE IF NOT EXISTS wcl_portal_members (
-                 summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
-                 position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
-        )
-        _mcur.execute("SELECT summer_player_id FROM wcl_portal_members")
-        ids = {int(r["summer_player_id"]) for r in _mcur.fetchall()}
-
-        # Auto-include uncommitted NWAC (JUCO) sophomores playing in the WCL this
-        # season — they're aging out of juco and effectively in the portal. Same
-        # criteria as the JUCO tracker (level=JUCO, sophomore, not committed).
-        _mcur.execute(
-            """
-            SELECT DISTINCT spl.summer_player_id
-            FROM summer_player_links spl
-            JOIN players p ON p.id = spl.spring_player_id
-            JOIN teams t ON t.id = p.team_id
-            JOIN conferences c ON c.id = t.conference_id
-            JOIN divisions d ON d.id = c.division_id
-            JOIN summer_players sp ON sp.id = spl.summer_player_id
-            JOIN summer_teams stt ON stt.id = sp.team_id AND stt.league_id = 1
-            WHERE d.level = 'JUCO'
-              AND COALESCE(p.is_committed, 0) <> 1
-              AND lower(COALESCE(p.year_in_school, '')) LIKE '%%so%%'
-              AND (EXISTS (SELECT 1 FROM summer_batting_stats b WHERE b.player_id = sp.id AND b.season = %s)
-                   OR EXISTS (SELECT 1 FROM summer_pitching_stats ps WHERE ps.player_id = sp.id AND ps.season = %s))
-            """,
-            (season, season),
-        )
-        ids |= {int(r["summer_player_id"]) for r in _mcur.fetchall()}
-        ids = sorted(ids)
+        # Portal membership = manual members + auto-included uncommitted JUCO
+        # sophomores. Shared with the recap-graphic 'Portal' label via the same
+        # helper so the two can't drift apart.
+        ids = sorted(_wcl_portal_member_ids(_mc.cursor(), season))
     if not ids:
         return []
 
