@@ -220,13 +220,103 @@ function PvBulkCards() {
   )
 }
 
+function PvSeriesPlanner() {
+  return (
+    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
+      <rect width="240" height="120" fill={PAPER} />
+      <rect x="16" y="12" width="208" height="15" rx="4" fill={INK} />
+      <rect x="22" y="17" width="72" height="5" rx="2.5" fill={CREAM} opacity="0.9" />
+      {[52, 120, 188].map((x, i) => (
+        <g key={i}>
+          <circle cx={x} cy="50" r="12" fill={i === 0 ? REDP : INK2} />
+          <text x={x} y="54" fontSize="10" fill={CREAM} textAnchor="middle" fontWeight="700">{i + 3}</text>
+        </g>
+      ))}
+      {[78, 90, 102].map((y, i) => (
+        <g key={y}>
+          <rect x="24" y={y} width="78" height="7" rx="3.5" fill={LINE} />
+          <rect x="118" y={y} width="98" height="7" rx="3.5" fill="#efece6" />
+          <rect x="118" y={y} width={[72, 44, 60][i]} height="7" rx="3.5" fill={GOLD} opacity="0.85" />
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+function PvSplits() {
+  const chips = [REDP, GOLD, INK2, GOLDL]
+  const grid = [[.8, .3, .6, .4], [.2, .7, .5, .9], [.6, .5, .3, .7], [.4, .8, .55, .2]]
+  return (
+    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
+      <rect width="240" height="120" fill={PAPER} />
+      {chips.map((c, i) => <rect key={i} x={16 + i * 40} y="14" width="34" height="12" rx="6" fill={c} opacity="0.85" />)}
+      {grid.map((row, r) => (
+        <g key={r}>
+          <rect x="16" y={38 + r * 17} width="40" height="12" rx="3" fill="#e7e3da" />
+          {row.map((v, c) => {
+            const fill = v >= 0.6 ? REDP : v >= 0.4 ? GOLD : BLUEP
+            return <rect key={c} x={62 + c * 42} y={38 + r * 17} width="36" height="12" rx="3" fill={fill} opacity={0.35 + v * 0.5} />
+          })}
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+function PvAlignments() {
+  const dots = [[92, 66], [120, 56], [148, 66], [80, 86], [160, 86], [120, 80]]
+  return (
+    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
+      <rect width="240" height="120" fill={PAPER} />
+      <path d="M120 104 L74 50 A62 62 0 0 1 166 50 Z" fill="#eef0f5" stroke={LINE} strokeWidth="1.5" />
+      <line x1="120" y1="104" x2="74" y2="50" stroke={LINE} strokeWidth="1" />
+      <line x1="120" y1="104" x2="166" y2="50" stroke={LINE} strokeWidth="1" />
+      <line x1="120" y1="104" x2="120" y2="40" stroke={LINE} strokeWidth="1" />
+      {dots.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="5.5" fill={GOLD} stroke="#fff" strokeWidth="1.5" />)}
+      <rect x="113" y="99" width="14" height="9" rx="2" fill={INK} />
+    </svg>
+  )
+}
+
+function PvDefCard() {
+  const codes = [[REDP, LINE, BLUEP, LINE, GOLD], [LINE, GOLD, LINE, REDP, LINE], [BLUEP, LINE, GOLD, LINE, REDP], [LINE, REDP, LINE, GOLD, LINE]]
+  return (
+    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
+      <rect width="240" height="120" fill={PAPER} />
+      <rect x="30" y="14" width="180" height="92" rx="6" fill="#fff" stroke={LINE} strokeWidth="2" />
+      <rect x="30" y="14" width="180" height="14" rx="6" fill={INK} />
+      {codes.map((row, r) => (
+        <g key={r}>
+          <rect x="38" y={36 + r * 16} width="30" height="10" rx="2" fill="#e7e3da" />
+          {row.map((c, i) => <rect key={i} x={74 + i * 26} y={36 + r * 16} width="22" height="10" rx="2" fill={c} opacity={c === LINE ? 1 : 0.75} />)}
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+function PvCustomCard() {
+  return (
+    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
+      <rect width="240" height="120" fill={PAPER} />
+      <rect x="66" y="10" width="108" height="100" rx="7" fill="#fff" stroke={LINE} strokeWidth="2" />
+      <rect x="72" y="16" width="96" height="12" rx="3" fill={INK} />
+      <rect x="72" y="32" width="46" height="20" rx="3" fill="#ece7dd" />
+      <rect x="122" y="32" width="46" height="20" rx="3" fill="#e6ecf5" />
+      {[0, 1, 2, 3].map(i => <rect key={i} x={72 + i * 24.5} y="56" width="21" height="16" rx="3" fill={i % 2 ? GOLDL : LINE} opacity="0.7" />)}
+      <rect x="72" y="76" width="96" height="12" rx="3" fill="#efece6" />
+      <rect x="72" y="92" width="60" height="10" rx="3" fill={LINE} />
+    </svg>
+  )
+}
+
 // ── Tool catalog (mirrors the portal nav) ──
 const SECTIONS = [
   {
     label: 'Coaching Tools',
     blurb: 'Plan around an opponent and tighten your own staff.',
     tools: [
-      { to: '/portal/trends', label: 'Trends', desc: 'Lineups, rotation & bullpen usage scouting over time.', Preview: PvTrends },
+      { to: '/portal/trends', label: 'Trends', desc: 'Lineups, rotation, bullpen usage & times-thru-order over time.', Preview: PvTrends },
       { to: '/portal/lineup-helper', label: 'Lineup Helper', desc: 'Optimal batting orders vs RHP / vs LHP, plus the bench.', Preview: PvLineup },
       { to: '/portal/rapsodo', label: 'Rapsodo Lab', desc: 'Upload bullpen CSVs for cleaned pitch profiles & movement.', Preview: PvRapsodo },
     ],
@@ -235,17 +325,23 @@ const SECTIONS = [
     label: 'Opponent Scouting',
     blurb: 'Know who you are facing, down to the plate appearance.',
     tools: [
+      { to: '/portal/series-planner', label: 'Series Planner', desc: 'Full pre-series game plan: identity, Big 3, pitcher attack, alignments.', Preview: PvSeriesPlanner, flag: 'Flagship' },
       { to: '/portal/team-scouting', label: 'Team Scouting', desc: 'Full team report — every stat with percentile context.', Preview: PvBars },
+      { to: '/portal/splits', label: 'Splits Explorer', desc: 'Filter any team by game state, count, hand, and home/away.', Preview: PvSplits },
+      { to: '/portal/alignments', label: 'Defensive Alignments', desc: 'Per-hitter spray (5 IF + 5 OF lanes) with fielder shift calls.', Preview: PvAlignments, flag: 'New' },
       { to: '/portal/historic', label: 'Historic Matchups', desc: 'Per-PA matchup history vs a specific opponent.', Preview: PvMatchup },
       { to: '/portal/player-scouting', label: 'Player Scouting', desc: 'Individual scouting reports on any hitter or pitcher.', Preview: PvPlayerScout },
     ],
   },
   {
-    label: 'PDFs & Printables',
-    blurb: 'Dugout-ready paper you can print the morning of a game.',
+    label: 'Reporting',
+    blurb: 'Build and print dugout-ready cards and sheets for game day.',
     tools: [
-      { to: '/portal/pdfs', label: 'All PDFs', desc: 'Pickers for every printable PDF in one place.', Preview: PvPdfs },
+      { to: '/portal/pdfs', label: 'All Reports', desc: 'Every report in one place — save each as a PDF or image.', Preview: PvPdfs },
+      { to: '/portal/custom-card', label: 'Custom Player Card', desc: 'Build a one-page card, save templates, run a full roster in bulk.', Preview: PvCustomCard, flag: 'New' },
+      { to: '/portal/alignments', label: 'Defensive Card', desc: 'One-page shift grid: where each fielder plays vs every hitter.', Preview: PvDefCard, flag: 'New' },
       { to: '/portal/scouting-sheet', label: 'Scouting Sheet', desc: 'Hitter + pitcher rosters with conference percentiles.', Preview: PvSheet },
+      { to: '/portal/custom-sheet', label: 'Custom Sheet', desc: 'Build your own sheet — pick the filters and the stat columns.', Preview: PvSheet },
       { to: '/portal/bullpen-sheet', label: 'Bullpen Sheet', desc: 'Pitcher roster + situational leaderboards for in-game calls.', Preview: PvBullpen },
       { to: '/portal/catcher-cards', label: 'Catcher Cards', desc: 'Pocket 5×2 pitch-calling cards (top 14 opposing hitters).', Preview: PvCatcherCards },
       { to: '/portal/pdfs', label: 'Player Card', desc: 'One-page Statcast-style profile: spray chart, percentiles, splits.', Preview: PvPlayerCard },
@@ -255,7 +351,7 @@ const SECTIONS = [
 ]
 
 
-function ToolCard({ to, label, desc, Preview }) {
+function ToolCard({ to, label, desc, Preview, flag }) {
   return (
     <Link
       to={to}
@@ -266,6 +362,15 @@ function ToolCard({ to, label, desc, Preview }) {
     >
       <div className="relative h-28 bg-portal-cream dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700">
         <Preview />
+        {flag && (
+          <span className={`absolute top-2 left-2 text-[9px] font-bold uppercase tracking-wider
+                            px-1.5 py-0.5 rounded-full shadow-sm
+                            ${flag === 'Flagship'
+                              ? 'bg-portal-accent text-portal-purple-dark'
+                              : 'bg-portal-purple text-portal-cream'}`}>
+            {flag}
+          </span>
+        )}
         <span className="absolute top-2 right-2 text-[10px] font-bold uppercase tracking-wider
                          text-portal-accent opacity-0 group-hover:opacity-100 transition-opacity">
           Open →
