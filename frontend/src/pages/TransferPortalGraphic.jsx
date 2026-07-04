@@ -365,7 +365,9 @@ export default function TransferPortalGraphic() {
     let alive = true
     setLoading(true); setErr(null)
     const sortBy = SORT_KEY[side]
-    const base = board === 'portal' ? '/api/v1/transfer-portal' : '/api/v1/players/juco/uncommitted'
+    const base = board === 'portal' ? '/api/v1/transfer-portal'
+      : board === 'wcl' ? '/api/v1/wcl-portal'
+      : '/api/v1/players/juco/uncommitted'
     const params = new URLSearchParams({ season: String(SEASON), sort_by: sortBy, sort_dir: 'desc', limit: '150' })
     if (board === 'juco') params.set('year_in_school', 'So')
     ;(async () => {
@@ -402,8 +404,11 @@ export default function TransferPortalGraphic() {
     const canvas = canvasRef.current
     if (!canvas) return
     const config = { key: tier[0][0], label: tier[0][1], format: tier[0][2], extra: tier.slice(1).map(([k, l, f]) => ({ key: k, label: l, format: f })) }
-    const kicker = board === 'portal' ? 'TRANSFER PORTAL · TRACKER' : 'NWAC JUCO · TRACKER'
-    const title = `Top ${count} ${board === 'portal' ? 'Portal' : 'JUCO'} ${side === 'hitters' ? 'Hitters' : 'Pitchers'}`
+    const kicker = board === 'portal' ? 'TRANSFER PORTAL · TRACKER'
+      : board === 'wcl' ? 'WCL PORTAL · TRACKER'
+      : 'NWAC JUCO · TRACKER'
+    const boardWord = board === 'portal' ? 'Portal' : board === 'wcl' ? 'WCL Portal' : 'JUCO'
+    const title = `Top ${count} ${boardWord} ${side === 'hitters' ? 'Hitters' : 'Pitchers'}`
     const subtitle = `Sorted by ${tier[0][1]} · ${SEASON}`
     renderBoard(canvas, {
       items: rows, config, title, kicker, subtitle,
@@ -435,12 +440,13 @@ export default function TransferPortalGraphic() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Portal / JUCO Tracker Graphics</h1>
-      <p className="text-sm text-gray-500 mb-4">Green PNWCBR co-branded leaderboard graphics for the Transfer Portal and NWAC JUCO trackers. Fixed 1080×1080 for every size.</p>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Portal / JUCO / WCL Tracker Graphics</h1>
+      <p className="text-sm text-gray-500 mb-4">Green PNWCBR co-branded leaderboard graphics for the Transfer Portal, NWAC JUCO, and WCL Portal trackers. Fixed 1080×1080 for every size.</p>
 
       <div className="flex flex-wrap gap-2 mb-3">
         <Btn on={board === 'portal'} onClick={() => setBoard('portal')}>Transfer Portal</Btn>
         <Btn on={board === 'juco'} onClick={() => setBoard('juco')}>JUCO Tracker</Btn>
+        <Btn on={board === 'wcl'} onClick={() => setBoard('wcl')}>WCL Portal</Btn>
         <span className="w-px bg-gray-300 mx-1" />
         <Btn on={side === 'hitters'} onClick={() => setSide('hitters')}>Hitters</Btn>
         <Btn on={side === 'pitchers'} onClick={() => setSide('pitchers')}>Pitchers</Btn>
