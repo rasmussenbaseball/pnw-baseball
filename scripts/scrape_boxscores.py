@@ -2047,9 +2047,11 @@ def _parse_batting_table(table):
                     # Remove leading position prefixes stuck to name (e.g. "dhStevens, Nate", "b/phSmith, John")
                     # Multi-char positions (dh, ss, cf, etc.) match standalone.
                     # Single-letter positions (c, b, p) match in slash combos (c/dh, b/ph)
-                    # OR when followed by a capital letter that ISN'T a typical name start
-                    # pattern — specifically, "b" followed by a capital + period ("bA. Moon")
-                    # or "b" followed by a capital + lowercase ("bSmith") are stripped.
+                    # OR before ANY capital — real names never start with a lowercase
+                    # letter, so a leading lone c/b/p + capital is always a position.
+                    # The old lookahead ([A-Z][a-z]) missed abbreviated names
+                    # ("pW. Adams"), double capitals ("cJJ Fontana"), ALL-CAPS
+                    # ("cSMITH, Conner") and O'-names ("pO'Connor") — ~7k leaked rows.
                     pos_prefix_m = re.match(
                         r'^(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
                         name
@@ -2057,7 +2059,7 @@ def _parse_batting_table(table):
                         r'^(?:c|b|p)/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
                         name
                     ) or re.match(
-                        r'^[cbp](?=[A-Z][a-z])',
+                        r'^[cbp](?=[A-Z])',
                         name
                     )
                     if pos_prefix_m:
@@ -2350,11 +2352,14 @@ def _parse_pitching_table(table):
                 val = cell.get_text(strip=True)
 
                 if key == "player":
-                    # Clean up name, detect decision
+                    # Clean up name, detect decision. Match multi-letter codes
+                    # too ("(Sv, 1)", "(BS, 2)") — the old single-letter class
+                    # left them glued to the name. Anchored to the END so a
+                    # real nickname like "Travis (TJ) Hallsson" is never eaten.
                     name = val
-                    dec_m = re.search(r'\(([WLS])\s*,?\s*[\d-]*\)', name)
+                    dec_m = re.search(r'\((W|L|S|Sv|SV|H|BS)\s*,?\s*[\d, -]*\)\s*$', name)
                     if dec_m:
-                        pitcher["decision"] = dec_m.group(1).upper()
+                        pitcher["decision"] = dec_m.group(1).upper()[0]
                         name = name[:dec_m.start()].strip()
 
                     # Also check for W/L/S suffix
@@ -2366,7 +2371,9 @@ def _parse_pitching_table(table):
                     name = re.sub(r'^\d+\s*', '', name)  # Remove jersey #
                     # Remove leading position prefixes stuck to name
                     # Same logic as batting parser: multi-char match standalone,
-                    # single-char (c/b/p) match in slash combos or before CapitalLower.
+                    # single-char (c/b/p) match in slash combos or before ANY
+                    # capital (names never start lowercase — the old [A-Z][a-z]
+                    # lookahead missed "pW. Adams" / "pO'Connor" / "pHALL").
                     pfx = re.match(
                         r'^(dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
                         name
@@ -2374,7 +2381,7 @@ def _parse_pitching_table(table):
                         r'^(?:c|b|p)/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p)(?:/(?:dh|ph|pr|cr|eh|lf|cf|rf|ss|1b|2b|3b|c|b|p))*\s*(?=[A-Z])',
                         name
                     ) or re.match(
-                        r'^[cbp](?=[A-Z][a-z])',
+                        r'^[cbp](?=[A-Z])',
                         name
                     )
                     if pfx:
