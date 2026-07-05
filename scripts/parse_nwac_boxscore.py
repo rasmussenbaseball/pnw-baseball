@@ -360,20 +360,34 @@ def parse_presto_xml_boxscore(html, box_score_url=""):
             if th.get_text(strip=True).lower() == "totals":
                 continue
 
-            # Player name from link
-            link = th.find("a")
-            if link:
-                player_name = link.get_text(strip=True)
+            # Presto marks up the row head as
+            #   <span class="position">cf</span> +
+            #   <a class="player-name">   (league players, roster link)  OR
+            #   <span class="player-name"> (non-league opponents, no roster page)
+            # The old link-else-whole-th fallback ran the position into the
+            # name for non-league players ("cfDylan Mamiya"). Select by class,
+            # with the legacy fallbacks kept for older Presto templates.
+            name_el = th.select_one("a.player-name, span.player-name") or th.find("a")
+            if name_el is not None:
+                player_name = name_el.get_text(strip=True)
             else:
                 player_name = th.get_text(strip=True)
-                if not player_name or player_name.lower() == "totals":
-                    continue
+            if not player_name or player_name.lower() == "totals":
+                continue
 
-            # Position from span inside th
-            pos_span = th.find("span")
-            position = pos_span.get_text(strip=True) if pos_span else ""
-            # Clean position — remove leading/trailing whitespace
-            position = position.strip()
+            # Position: the classed span; legacy fallback = first span that
+            # isn't the name element itself.
+            pos_el = th.select_one("span.position")
+            if pos_el is None:
+                for _sp in th.find_all("span"):
+                    if _sp is not name_el:
+                        pos_el = _sp
+                        break
+            position = (pos_el.get_text(strip=True) if pos_el else "").strip()
+            # Positions are short tokens like p / cf / ss/2b — anything longer
+            # is leaked text (usually a name), not a position.
+            if position and not re.fullmatch(r"[A-Za-z0-9/ .\-]{1,8}", position):
+                position = ""
 
             # Parse stat columns
             values = [td.get_text(strip=True) for td in tds]
@@ -484,13 +498,20 @@ def parse_presto_xml_boxscore(html, box_score_url=""):
             if th.get_text(strip=True).lower() == "totals":
                 continue
 
-            link = th.find("a")
-            if link:
-                player_name = link.get_text(strip=True)
+            # Same class-based selection as the batting table: league players
+            # have <a class="player-name">, non-league opponents have
+            # <span class="player-name">. The old whole-th fallback leaked the
+            # decision decoration into the name ("Leo Charinos(L, 0-1)").
+            name_el = th.select_one("a.player-name, span.player-name") or th.find("a")
+            if name_el is not None:
+                player_name = name_el.get_text(strip=True)
             else:
                 player_name = th.get_text(strip=True)
-                if not player_name or player_name.lower() == "totals":
-                    continue
+            # Strip any residual decision suffix — the real decision is
+            # inferred from score/order in _infer_decisions.
+            player_name = re.sub(r"\s*\((?:W|L|S|SV|H|BS)[^)]*\)\s*$", "", player_name).strip()
+            if not player_name or player_name.lower() == "totals":
+                continue
 
             values = [td.get_text(strip=True) for td in tds]
 
