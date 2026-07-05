@@ -243,6 +243,9 @@ export default function Account() {
         />
       </Section>
 
+      {/* ─── Staff seats (Coach & Scout owners share with up to 3 staff) ─── */}
+      <StaffSeatsSection session={session} tier={tier} />
+
       {/* ─── Your Team block (Coach + Dev only) ─── */}
       <YourTeamSection />
 
@@ -342,6 +345,104 @@ function Row({ label, value }) {
       <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</span>
       <span className="text-gray-900 dark:text-gray-100">{value}</span>
     </div>
+  )
+}
+
+
+// ─── Staff seats — Coach & Scout subscription sharing ───
+// Shown only when /me/staff-seats says this account can manage seats
+// (an effectively-coach owner: paid, comped, or dev). Owners add up to
+// 3 staff emails; those accounts inherit the full Coach & Scout tier.
+function StaffSeatsSection({ session, tier }) {
+  const [data, setData] = useState(null)     // {seats, max_seats, can_manage}
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = () => {
+    fetch(`${API_BASE}/me/staff-seats`, { headers: authHeaders(session) })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(setData)
+      .catch(() => setData(null))
+  }
+  useEffect(() => { if (session) load() }, [session, tier])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!data?.can_manage) return null
+
+  const seats = data.seats || []
+  const maxSeats = data.max_seats || 3
+
+  async function add() {
+    const e = email.trim().toLowerCase()
+    if (!e) return
+    setBusy(true); setError('')
+    try {
+      const r = await fetch(`${API_BASE}/me/staff-seats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(session) },
+        body: JSON.stringify({ email: e }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`)
+      setEmail(''); load()
+    } catch (err) { setError(err.message || 'Could not add that email.') }
+    finally { setBusy(false) }
+  }
+
+  async function remove(id) {
+    setError('')
+    try {
+      const r = await fetch(`${API_BASE}/me/staff-seats/${id}`, {
+        method: 'DELETE', headers: authHeaders(session),
+      })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      load()
+    } catch (err) { setError(err.message || 'Could not remove that seat.') }
+  }
+
+  return (
+    <Section
+      title="Share with your staff"
+      right={
+        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+          {seats.length}/{maxSeats} seats used
+        </span>
+      }
+    >
+      <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-3 leading-snug">
+        Your Coach &amp; Scout subscription covers your whole staff. Add up to {maxSeats} email
+        addresses; when they sign in with that email they get full Coach &amp; Scout access,
+        no extra charge.
+      </p>
+      {seats.length > 0 && (
+        <ul className="mb-3 space-y-1.5">
+          {seats.map(s => (
+            <li key={s.id} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+              <span className="text-sm font-mono text-gray-800 dark:text-gray-200">{s.email}</span>
+              <button onClick={() => remove(s.id)}
+                className="text-[12px] font-medium text-gray-400 hover:text-red-500">Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {seats.length < maxSeats ? (
+        <div className="flex gap-2">
+          <input
+            value={email} onChange={e => setEmail(e.target.value)} type="email"
+            onKeyDown={e => { if (e.key === 'Enter') add() }}
+            placeholder="assistant.coach@school.edu"
+            className="flex-1 max-w-xs rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-900
+                       px-3 py-1.5 text-sm focus:ring-2 focus:ring-nw-teal focus:border-transparent"
+          />
+          <button onClick={add} disabled={busy || !email.trim()}
+            className="rounded-lg bg-nw-teal text-white text-sm font-semibold px-4 py-1.5 hover:bg-nw-teal-dark disabled:opacity-50">
+            {busy ? 'Adding…' : 'Add seat'}
+          </button>
+        </div>
+      ) : (
+        <p className="text-[12px] text-gray-400">All {maxSeats} seats are in use. Remove one to add someone else.</p>
+      )}
+      {error && <div className="mt-2 text-[12px] text-red-600">{error}</div>}
+    </Section>
   )
 }
 

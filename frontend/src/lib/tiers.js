@@ -160,6 +160,7 @@ export const FEATURE_MIN_TIER = {
   // ─── FREE (signed-in, free account) ─────────────────────────
   player_page_advanced:   'free',  // savant pages, percentiles, WAR breakdowns
   favorites:              'free',  // save players & teams
+  recruiting_boards:      'free',  // build & share boards (Recruit Finder stays 'recruiting')
   newsletter:             'free',  // opt-in to broadcasts
   account_page:           'free',
   summerball:             'free',
@@ -248,6 +249,7 @@ export const ROUTE_FEATURE = [
   // Free
   ['/account',                'account_page'],
   ['/favorites',              'favorites'],
+  ['/coaching/recruiting-board', 'recruiting_boards'],
   ['/percentiles',            'percentiles'],
   ['/records',                'records'],
   ['/playoff-projections',    'playoff_projections'],

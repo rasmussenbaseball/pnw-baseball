@@ -1,23 +1,29 @@
 """
 Recruiting Boards API.
 
-Coaches (recruiting tier or higher) can build their own recruiting boards:
-unlimited boards with custom titles, populated either from our player pages
-("Add to board") or with manually-entered non-PNW players. Boards are
-shareable with other coaches BY EMAIL — anyone whose email is on a board can
-view it and add players to it.
+Any signed-in user (free tier and up — opened up from recruiting tier
+2026-07-04) can build their own recruiting boards: unlimited boards with
+custom titles, populated either from our player pages ("Add to board") or
+with manually-entered non-PNW players. Boards are shareable two ways:
+  - BY EMAIL — anyone whose email is on a board can view it and add players.
+  - BY LINK — the owner can create a share link; anyone with the link gets a
+    READ-ONLY view of the board (no account needed).
+
+(The Recruit Finder tab stays recruiting-tier — it surfaces the paid
+JUCO/portal tracker data. That gate lives in recruit_finder.py.)
 
 Identity & access:
-  - Every authenticated request resolves to {user_id, email} via current_member,
-    which also enforces the recruiting tier.
+  - Every authenticated request resolves to {user_id, email} via current_member.
   - A user can ACCESS a board if their email is the owner_email OR their email is
     in recruiting_board_members. Owner-only actions (rename, delete, manage
-    members) additionally require owner_email == the caller's email.
+    members, share links) additionally require owner_email == the caller's email.
   - Emails are stored lowercased so sharing is case-insensitive.
 
 Tables are created lazily (IF NOT EXISTS) on first use, matching the pattern used
 elsewhere (e.g. pickem).
 """
+
+import secrets
 
 from typing import Optional, List
 
@@ -30,15 +36,17 @@ from ._tier_allowlist import email_for_token
 
 router = APIRouter(prefix="/recruiting-boards", tags=["recruiting-boards"])
 
-_recruiting_gate = require_tier("recruiting")
+# Free tier = any signed-in account. (Was recruiting tier; opened up so every
+# coach can keep boards, while the Recruit Finder stays paid.)
+_boards_gate = require_tier("free")
 
 
 def current_member(request: Request) -> dict:
-    """Enforce the recruiting tier and resolve {user_id, email} in one place.
+    """Require a signed-in user and resolve {user_id, email} in one place.
 
-    require_tier already verifies the token + tier and returns the user_id;
+    require_tier verifies the token and returns the user_id;
     email_for_token reads the email (cached) for sharing + attribution."""
-    user_id = _recruiting_gate(request)
+    user_id = _boards_gate(request)
     token = _extract_token(request)
     email = (email_for_token(token) or "").strip().lower()
     if not email:
@@ -89,6 +97,9 @@ def _ensure_tables(cur):
     cur.execute("ALTER TABLE recruiting_board_players ADD COLUMN IF NOT EXISTS committed BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE recruiting_board_players ADD COLUMN IF NOT EXISTS offer_amount TEXT")
     cur.execute("ALTER TABLE recruiting_board_players ADD COLUMN IF NOT EXISTS last_contacted DATE")
+    # share_token: non-null = a public read-only link is active for this board
+    cur.execute("ALTER TABLE recruiting_boards ADD COLUMN IF NOT EXISTS share_token TEXT")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_rb_share_token ON recruiting_boards(share_token) WHERE share_token IS NOT NULL")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_rbp_board ON recruiting_board_players(board_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_rbm_email ON recruiting_board_members(LOWER(email))")
 
@@ -287,7 +298,9 @@ def get_board(board_id: int, member: dict = Depends(current_member)):
         conn.commit()
         return {
             "board": {"id": board["id"], "title": board["title"],
-                      "owner_email": board["owner_email"], "is_owner": is_owner},
+                      "owner_email": board["owner_email"], "is_owner": is_owner,
+                      # only the owner sees/controls the public link
+                      "share_token": (board.get("share_token") if is_owner else None)},
             "players": players,
             "members": members,
             "viewer_email": email,
@@ -351,6 +364,66 @@ def remove_member(board_id: int, member_row_id: int, member: dict = Depends(curr
                     (member_row_id, board_id))
         conn.commit()
         return {"status": "ok"}
+
+
+# ── Sharing (public read-only link) ──────────────────────────
+@router.post("/{board_id}/share-link")
+def create_share_link(board_id: int, member: dict = Depends(current_member)):
+    """Owner only: turn on (or return the existing) public read-only link."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        board, _ = _require_board(cur, board_id, member["email"], owner_only=True)
+        token = board.get("share_token")
+        if not token:
+            token = secrets.token_urlsafe(16)
+            cur.execute("UPDATE recruiting_boards SET share_token = %s, updated_at = NOW() WHERE id = %s",
+                        (token, board_id))
+        conn.commit()
+        return {"status": "ok", "share_token": token}
+
+
+@router.delete("/{board_id}/share-link")
+def revoke_share_link(board_id: int, member: dict = Depends(current_member)):
+    """Owner only: turn the public link off (old links stop working)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        _require_board(cur, board_id, member["email"], owner_only=True)
+        cur.execute("UPDATE recruiting_boards SET share_token = NULL, updated_at = NOW() WHERE id = %s",
+                    (board_id,))
+        conn.commit()
+        return {"status": "ok"}
+
+
+@router.get("/shared/{token}")
+def get_shared_board(token: str):
+    """PUBLIC read-only view of a board via its share link. No auth.
+
+    Deliberately excludes member emails and per-player added_by attribution —
+    the link only exposes what a printed board would."""
+    token = (token or "").strip()
+    if not token:
+        raise HTTPException(status_code=404, detail="Board not found.")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute("SELECT * FROM recruiting_boards WHERE share_token = %s", (token,))
+        board = cur.fetchone()
+        if not board:
+            raise HTTPException(status_code=404, detail="This share link is no longer active.")
+        cur.execute("""SELECT id, player_id, name, position, class_year, school, height,
+                              weight, stats, notes, committed, offer_amount, last_contacted
+                       FROM recruiting_board_players WHERE board_id = %s
+                       ORDER BY committed DESC, created_at DESC, id DESC""", (board["id"],))
+        players = [dict(r) for r in cur.fetchall()]
+        _attach_stat_lines(cur, players)
+        conn.commit()
+        return {
+            "board": {"title": board["title"], "owner_email": board["owner_email"]},
+            "players": players,
+            "read_only": True,
+        }
 
 
 # ── Players on a board ───────────────────────────────────────

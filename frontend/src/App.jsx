@@ -310,6 +310,7 @@ import Percentiles from './pages/Percentiles'
 import PlayerComps from './pages/PlayerComps'
 import PlayerComparison from './pages/PlayerComparison'
 const RecruitingBoard = lazyWithRetry(() => import('./pages/RecruitingBoard'))
+const SharedRecruitingBoard = lazyWithRetry(() => import('./pages/SharedRecruitingBoard'))  // public read-only board via share link
 import TeamQuiz from './pages/TeamQuiz'
 const FieldGuessr = lazyWithRetry(() => import('./pages/FieldGuessr'))  // image-based ballpark guessing game
 const PnwPickle = lazyWithRetry(() => import('./pages/PnwPickle'))  // guess-the-player game
@@ -452,7 +453,11 @@ export default function App() {
           <Route path="/coaching/transfer-portal" element={<RequireTier minTier="recruiting"><TransferPortalTracker /></RequireTier>} />
           <Route path="/coaching/wcl-portal" element={<RequireTier minTier="recruiting"><WclTransferTracker /></RequireTier>} />
           <Route path="/coaching/player-comparison" element={<RequireTier minTier="premium"><PlayerComparison /></RequireTier>} />
-          <Route path="/coaching/recruiting-board" element={<RequireTier minTier="recruiting"><RecruitingBoard /></RequireTier>} />
+          {/* Recruiting boards are FREE (any signed-in user) as of 2026-07-04;
+              the Recruit Finder tab inside stays recruiting-tier. */}
+          <Route path="/coaching/recruiting-board" element={<RequireTier minTier="free"><RecruitingBoard /></RequireTier>} />
+          {/* Public read-only board view via share link — no auth. */}
+          <Route path="/recruiting-board/shared/:token" element={<SharedRecruitingBoard />} />
           <Route path="/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/portal/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />

@@ -18,7 +18,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..models.database import get_connection
-from .auth import get_current_user, _extract_token, require_tier, comp_aware_tier
+from .auth import (
+    get_current_user, _extract_token, require_tier, comp_aware_tier,
+    staff_seat_grant, _ensure_staff_seats_table, MAX_STAFF_SEATS,
+)
 from ._tier_allowlist import email_for_token, resolve_comped_tier
 
 router = APIRouter()
@@ -79,6 +82,24 @@ def get_my_subscription(request: Request, user_id: str = Depends(get_current_use
         row = cur.fetchone()
 
     if not row:
+        # No subscription of their own — do they occupy a STAFF SEAT shared
+        # by a Coach & Scout subscriber? If so they inherit the coach tier.
+        seat_owner = staff_seat_grant(comped_email)
+        if seat_owner:
+            return {
+                "tier": "coach",
+                "started_at": None,
+                "ends_at": None,
+                "external_ref": None,
+                "interval": None,
+                "current_period_end": None,
+                "cancel_at_period_end": False,
+                "has_stripe_customer": False,
+                "comped": True,
+                "comped_label": f"Coach & Scout · Staff seat (shared by {seat_owner})",
+                "staff_seat": True,
+                "staff_seat_owner": seat_owner,
+            }
         return {
             "tier": "free",
             "started_at": None,
@@ -104,11 +125,117 @@ def get_my_subscription(request: Request, user_id: str = Depends(get_current_use
     r["comped"] = comp_active
     if comp_active:
         r["comped_label"] = f"Comp · {eff_tier.title()} (through {r['ends_at'][:10]})"
+    # A staff seat lifts an own-subscription tier BELOW coach up to coach
+    # (their own billing info stays as-is so Manage Subscription still works).
+    if eff_tier not in ("coach", "dev"):
+        seat_owner = staff_seat_grant(comped_email)
+        if seat_owner:
+            r["tier"] = "coach"
+            r["staff_seat"] = True
+            r["staff_seat_owner"] = seat_owner
+            r["comped_label"] = f"Coach & Scout · Staff seat (shared by {seat_owner})"
     # Don't leak the raw customer_id / subscription_id / provider to the frontend.
     r.pop("customer_id", None)
     r.pop("subscription_id", None)
     r.pop("provider", None)
     return r
+
+
+# ─────────────────────────────────────────────────────────────
+# Staff seats — Coach & Scout subscription sharing.
+# A coach-tier subscriber can share their subscription with up to
+# MAX_STAFF_SEATS other emails ("the rest of the coaching staff").
+# Seat members inherit the coach tier via staff_seat_grant() in
+# auth.py; these endpoints let the OWNER manage who has a seat.
+# ─────────────────────────────────────────────────────────────
+
+class SeatAdd(BaseModel):
+    email: str
+
+
+def _own_effective_tier(user_id: str, email: Optional[str]) -> str:
+    """The user's OWN effective tier (allowlists + own subscription row),
+    deliberately ignoring any staff seat they occupy — a seat member
+    must not be able to re-share the subscription onward."""
+    t = resolve_comped_tier(email)
+    if t:
+        return t
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return "free"
+    return comp_aware_tier(row.get("tier"), row.get("provider"), row.get("ends_at"))
+
+
+def _seat_owner_ctx(request: Request, user_id: str) -> dict:
+    email = (email_for_token(_extract_token(request)) or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Could not resolve your account email.")
+    tier = _own_effective_tier(user_id, email)
+    return {"user_id": user_id, "email": email, "can_manage": tier in ("coach", "dev")}
+
+
+@router.get("/me/staff-seats")
+def list_staff_seats(request: Request, user_id: str = Depends(get_current_user)):
+    ctx = _seat_owner_ctx(request, user_id)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_staff_seats_table(cur)
+        cur.execute(
+            "SELECT id, member_email, created_at FROM coach_staff_seats "
+            "WHERE owner_user_id = %s ORDER BY created_at",
+            (user_id,),
+        )
+        seats = [
+            {"id": r["id"], "email": r["member_email"],
+             "created_at": r["created_at"].isoformat() if r["created_at"] else None}
+            for r in cur.fetchall()
+        ]
+        conn.commit()
+    return {"seats": seats, "max_seats": MAX_STAFF_SEATS, "can_manage": ctx["can_manage"]}
+
+
+@router.post("/me/staff-seats")
+def add_staff_seat(body: SeatAdd, request: Request, user_id: str = Depends(get_current_user)):
+    ctx = _seat_owner_ctx(request, user_id)
+    if not ctx["can_manage"]:
+        raise HTTPException(status_code=402, detail="Sharing seats requires an active Coach & Scout subscription.")
+    new_email = (body.email or "").strip().lower()
+    if not new_email or "@" not in new_email:
+        raise HTTPException(status_code=400, detail="A valid email is required.")
+    if new_email == ctx["email"]:
+        raise HTTPException(status_code=400, detail="That's your own account email.")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_staff_seats_table(cur)
+        cur.execute("SELECT COUNT(*) AS n FROM coach_staff_seats WHERE owner_user_id = %s", (user_id,))
+        if (cur.fetchone()["n"] or 0) >= MAX_STAFF_SEATS:
+            raise HTTPException(status_code=400, detail=f"You can share with up to {MAX_STAFF_SEATS} staff members.")
+        cur.execute(
+            """INSERT INTO coach_staff_seats (owner_user_id, owner_email, member_email)
+               VALUES (%s, %s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
+            (user_id, ctx["email"], new_email),
+        )
+        conn.commit()
+    return {"status": "ok", "email": new_email}
+
+
+@router.delete("/me/staff-seats/{seat_id}")
+def remove_staff_seat(seat_id: int, request: Request, user_id: str = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_staff_seats_table(cur)
+        cur.execute(
+            "DELETE FROM coach_staff_seats WHERE id = %s AND owner_user_id = %s",
+            (seat_id, user_id),
+        )
+        conn.commit()
+    return {"status": "ok"}
 
 
 # ─────────────────────────────────────────────────────────────

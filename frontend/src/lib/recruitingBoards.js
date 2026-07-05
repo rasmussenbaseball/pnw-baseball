@@ -56,3 +56,16 @@ export const finderSearch = (q) => finderReq('/search', q)
 export const addPlayer    = (id, payload) => req('POST', `/${id}/players`, payload)
 export const updatePlayer = (id, rbpId, payload) => req('PATCH', `/${id}/players/${rbpId}`, payload)
 export const removePlayer = (id, rbpId) => req('DELETE', `/${id}/players/${rbpId}`)
+
+// ── Public share link (owner manages; viewing needs no auth) ──
+export const createShareLink = (id) => req('POST', `/${id}/share-link`)
+export const revokeShareLink = (id) => req('DELETE', `/${id}/share-link`)
+export async function getSharedBoard(token) {
+  const res = await fetch(`${BASE}/shared/${encodeURIComponent(token)}`)
+  if (!res.ok) {
+    let detail = `Request failed (${res.status})`
+    try { detail = (await res.json()).detail || detail } catch { /* ignore */ }
+    throw new Error(detail)
+  }
+  return res.json()
+}

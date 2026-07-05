@@ -13,10 +13,39 @@ import { Link } from 'react-router-dom'
 import {
   listBoards, createBoard, getBoard, renameBoard, deleteBoard,
   addMember, removeMember, addPlayer, updatePlayer, removePlayer,
+  createShareLink, revokeShareLink,
 } from '../lib/recruitingBoards'
 import RecruitFinder from '../components/RecruitFinder'
+import { Link as RouterLink } from 'react-router-dom'
+import { useTier } from '../hooks/useTier'
+import { tierMeets } from '../lib/tiers'
+
+// The Recruit Finder surfaces the paid JUCO / transfer-portal / WCL-portal
+// tracker data, so it stays recruiting-tier even though boards are free.
+function FinderUpsell() {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center">
+      <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Recruit Finder is a Recruiting-tier tool</h3>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-md mx-auto">
+        Search uncommitted NWAC, transfer-portal, and WCL-portal players by position,
+        archetype, and custom stat filters. Boards are free for everyone; the Finder
+        comes with the Recruiting plan.
+      </p>
+      <RouterLink to="/pricing" className="inline-block rounded-lg bg-nw-teal text-white text-sm font-semibold px-4 py-2 hover:bg-nw-teal-dark">
+        See plans
+      </RouterLink>
+    </div>
+  )
+}
+
+// Mirrors RequireTier's soft/hard mode: pre-launch (flag off) every signed-in
+// user passes; once VITE_TIER_GATING_ENABLED=true the tier ladder is enforced.
+const GATING_ENABLED = (import.meta.env.VITE_TIER_GATING_ENABLED || '')
+  .toString().toLowerCase() === 'true'
 
 export default function RecruitingBoard() {
+  const { tier } = useTier()
+  const canUseFinder = !GATING_ENABLED || tierMeets(tier, 'recruiting')
   const [view, setView] = useState('board')   // 'board' | 'finder'
   const [boards, setBoards] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -74,7 +103,7 @@ export default function RecruitingBoard() {
 
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded px-3 py-2">{error}</div>}
 
-      {view === 'finder' ? <RecruitFinder /> : (
+      {view === 'finder' ? (canUseFinder ? <RecruitFinder /> : <FinderUpsell />) : (
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
         {/* Left rail: boards */}
         <aside>
@@ -347,7 +376,64 @@ function MembersBox({ boardId, board, members, isOwner, onChanged }) {
           </button>
         </div>
       )}
+      {isOwner && <ShareLinkRow boardId={boardId} token={board.share_token} onChanged={onChanged} />}
       {error && <div className="mt-1.5 text-[12px] text-red-600">{error}</div>}
+    </div>
+  )
+}
+
+// Owner-only public link controls. A live link gives ANYONE a read-only
+// view of the board at /recruiting-board/shared/<token> — no account needed.
+function ShareLinkRow({ boardId, token, onChanged }) {
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState('')
+  const url = token ? `${window.location.origin}/recruiting-board/shared/${token}` : null
+
+  async function enable() {
+    setBusy(true); setError('')
+    try { await createShareLink(boardId); onChanged() }
+    catch (e) { setError(e.message || 'Could not create link.') }
+    finally { setBusy(false) }
+  }
+  async function disable() {
+    if (!confirm('Turn off the share link? Anyone using the old link will lose access.')) return
+    setBusy(true); setError('')
+    try { await revokeShareLink(boardId); onChanged() }
+    catch (e) { setError(e.message || 'Could not turn off the link.') }
+    finally { setBusy(false) }
+  }
+  async function copy() {
+    try { await navigator.clipboard.writeText(url) } catch { /* fall through */ }
+    setCopied(true); setTimeout(() => setCopied(false), 1600)
+  }
+
+  return (
+    <div className="mt-2.5 pt-2.5 border-t border-dashed border-gray-200 dark:border-gray-700">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Share link</span>
+        {url ? (
+          <>
+            <input readOnly value={url} onFocus={e => e.target.select()}
+              className="flex-1 min-w-[180px] max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-2.5 py-1 text-[12px] text-gray-600 dark:text-gray-300" />
+            <button onClick={copy} className="rounded-lg bg-nw-teal text-white text-[12px] font-semibold px-3 py-1 hover:bg-nw-teal-dark">
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+            <button onClick={disable} disabled={busy} className="text-[12px] text-gray-400 hover:text-red-500 font-medium">
+              Turn off
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={enable} disabled={busy}
+              className="rounded-lg border border-nw-teal text-nw-teal text-[12px] font-semibold px-3 py-1 hover:bg-nw-teal hover:text-white disabled:opacity-50">
+              {busy ? 'Creating…' : 'Create share link'}
+            </button>
+            <span className="text-[11px] text-gray-400">Anyone with the link can view this board (read-only).</span>
+          </>
+        )}
+      </div>
+      {error && <div className="mt-1 text-[12px] text-red-600">{error}</div>}
     </div>
   )
 }

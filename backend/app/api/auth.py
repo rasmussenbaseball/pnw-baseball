@@ -194,6 +194,76 @@ def comp_aware_tier(tier, provider, ends_at):
     return tier
 
 
+# ── Staff seats — Coach & Scout subscription sharing ─────────────────
+# A Coach & Scout subscriber can share their subscription with up to
+# MAX_STAFF_SEATS other emails (their coaching staff). A seat member
+# inherits the 'coach' tier for gating purposes as long as the owner's
+# subscription is still effectively coach (Stripe active, comp not
+# expired, or on the comped-coach allowlist). Seats are managed from
+# the Account page (/me/staff-seats endpoints in account.py).
+
+MAX_STAFF_SEATS = 3
+
+
+def _ensure_staff_seats_table(cur):
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS coach_staff_seats (
+             id SERIAL PRIMARY KEY,
+             owner_user_id TEXT NOT NULL,
+             owner_email   TEXT NOT NULL,
+             member_email  TEXT NOT NULL,
+             created_at    TIMESTAMPTZ DEFAULT NOW(),
+             UNIQUE (owner_user_id, member_email)
+           )"""
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_css_member ON coach_staff_seats(LOWER(member_email))")
+
+
+def staff_seat_grant(email):
+    """If `email` occupies a staff seat shared by an owner whose subscription
+    is still effectively Coach & Scout, return the owner's email. Else None.
+
+    Checked lazily by require_tier / /me/subscription only when the user's own
+    tier is below the requirement, so the common path pays no extra query."""
+    if not email:
+        return None
+    from ..models.database import get_connection
+    from ._tier_allowlist import resolve_comped_tier
+    email = email.strip().lower()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # NOTE: no _ensure_staff_seats_table here — this runs on gated requests,
+        # and concurrent CREATE TABLE IF NOT EXISTS causes catalog-lock stalls.
+        # The table is created once (migration + the account.py management
+        # endpoints); if it somehow doesn't exist yet, treat as no seat.
+        try:
+            cur.execute(
+                "SELECT owner_user_id, owner_email FROM coach_staff_seats WHERE LOWER(member_email) = %s",
+                (email,),
+            )
+            rows = cur.fetchall()
+        except Exception:
+            conn.rollback()
+            return None
+        for r in rows:
+            # Owner on the comped allowlists (dev / lifetime coach)?
+            owner_tier = resolve_comped_tier((r["owner_email"] or "").lower())
+            if owner_tier in ("coach", "dev"):
+                return r["owner_email"]
+            try:
+                cur.execute(
+                    "SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s",
+                    (r["owner_user_id"],),
+                )
+                s = cur.fetchone()
+            except Exception:
+                conn.rollback()   # bad owner id shape etc. — fail closed, keep checking others
+                continue
+            if s and comp_aware_tier(s.get("tier"), s.get("provider"), s.get("ends_at")) == "coach":
+                return r["owner_email"]
+    return None
+
+
 def require_tier(min_tier: str):
     """Build a FastAPI dependency that enforces a minimum subscription
     tier. See module docstring for behavior under TIER_GATING_ENABLED."""
@@ -233,6 +303,13 @@ def require_tier(min_tier: str):
                                         (row or {}).get("provider"),
                                         (row or {}).get("ends_at")) if row else "free"
         if _TIER_RANK.get(user_tier, 0) < _TIER_RANK.get(min_tier, 0):
+            # Staff seat: a Coach & Scout subscriber can share their tier with
+            # up to MAX_STAFF_SEATS staff emails. Checked last (extra query)
+            # and only when the user would otherwise be rejected.
+            if _TIER_RANK.get("coach", 0) >= _TIER_RANK.get(min_tier, 0):
+                from ._tier_allowlist import email_for_token as _eft
+                if staff_seat_grant(_eft(token)):
+                    return user_id
             raise HTTPException(
                 status_code=402,
                 detail=f"Requires {min_tier} subscription",
