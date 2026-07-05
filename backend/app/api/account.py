@@ -21,6 +21,7 @@ from ..models.database import get_connection
 from .auth import (
     get_current_user, _extract_token, require_tier, comp_aware_tier,
     staff_seat_grant, _ensure_staff_seats_table, MAX_STAFF_SEATS,
+    _owner_can_share,
 )
 from ._tier_allowlist import email_for_token, resolve_comped_tier
 
@@ -153,31 +154,23 @@ class SeatAdd(BaseModel):
     email: str
 
 
-def _own_effective_tier(user_id: str, email: Optional[str]) -> str:
-    """The user's OWN effective tier (allowlists + own subscription row),
-    deliberately ignoring any staff seat they occupy — a seat member
-    must not be able to re-share the subscription onward."""
-    t = resolve_comped_tier(email)
-    if t:
-        return t
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s",
-            (user_id,),
-        )
-        row = cur.fetchone()
-    if not row:
-        return "free"
-    return comp_aware_tier(row.get("tier"), row.get("provider"), row.get("ends_at"))
-
-
 def _seat_owner_ctx(request: Request, user_id: str) -> dict:
+    """Resolve {user_id, email, can_manage} for the seat endpoints.
+
+    can_manage uses auth._owner_can_share: only a PAYING (non-comp) active
+    Coach & Scout subscription (or a developer account) may share seats.
+    Comped coaches and seat members themselves cannot."""
     email = (email_for_token(_extract_token(request)) or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Could not resolve your account email.")
-    tier = _own_effective_tier(user_id, email)
-    return {"user_id": user_id, "email": email, "can_manage": tier in ("coach", "dev")}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        try:
+            can_manage = bool(_owner_can_share(cur, user_id, email))
+        except Exception:
+            conn.rollback()
+            can_manage = False
+    return {"user_id": user_id, "email": email, "can_manage": can_manage}
 
 
 @router.get("/me/staff-seats")
@@ -204,7 +197,7 @@ def list_staff_seats(request: Request, user_id: str = Depends(get_current_user))
 def add_staff_seat(body: SeatAdd, request: Request, user_id: str = Depends(get_current_user)):
     ctx = _seat_owner_ctx(request, user_id)
     if not ctx["can_manage"]:
-        raise HTTPException(status_code=402, detail="Sharing seats requires an active Coach & Scout subscription.")
+        raise HTTPException(status_code=402, detail="Sharing seats requires an active paid Coach & Scout subscription.")
     new_email = (body.email or "").strip().lower()
     if not new_email or "@" not in new_email:
         raise HTTPException(status_code=400, detail="A valid email is required.")

@@ -350,9 +350,10 @@ function Row({ label, value }) {
 
 
 // ─── Staff seats — Coach & Scout subscription sharing ───
-// Shown only when /me/staff-seats says this account can manage seats
-// (an effectively-coach owner: paid, comped, or dev). Owners add up to
-// 3 staff emails; those accounts inherit the full Coach & Scout tier.
+// Shown only when /me/staff-seats says this account can manage seats:
+// a PAYING Coach & Scout subscription (or a dev account). Comped coaches
+// don't get sharing. Owners add up to 3 staff emails; those accounts
+// inherit the full Coach & Scout tier.
 function StaffSeatsSection({ session, tier }) {
   const [data, setData] = useState(null)     // {seats, max_seats, can_manage}
   const [email, setEmail] = useState('')

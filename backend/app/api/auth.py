@@ -195,14 +195,34 @@ def comp_aware_tier(tier, provider, ends_at):
 
 
 # ── Staff seats — Coach & Scout subscription sharing ─────────────────
-# A Coach & Scout subscriber can share their subscription with up to
-# MAX_STAFF_SEATS other emails (their coaching staff). A seat member
+# A PAYING Coach & Scout subscriber can share their subscription with up
+# to MAX_STAFF_SEATS other emails (their coaching staff). A seat member
 # inherits the 'coach' tier for gating purposes as long as the owner's
-# subscription is still effectively coach (Stripe active, comp not
-# expired, or on the comped-coach allowlist). Seats are managed from
-# the Account page (/me/staff-seats endpoints in account.py).
+# PAID subscription is still active. Comped coaches (allowlist or
+# provider='comp' grants) explicitly CANNOT share seats — sharing is a
+# paying-customer perk (per Nate, 2026-07-04). Developer accounts can,
+# so the feature stays testable. Seats are managed from the Account page
+# (/me/staff-seats endpoints in account.py).
 
 MAX_STAFF_SEATS = 3
+
+
+def _owner_can_share(cur, owner_user_id, owner_email) -> bool:
+    """True iff this seat owner is allowed to grant seats: a PAYING
+    (non-comp) active Coach & Scout subscription, or a developer account.
+    Comped coaches (allowlist or comp-provider rows) do not qualify.
+    May raise on malformed data — callers handle/rollback."""
+    from ._tier_allowlist import DEVELOPER_EMAILS
+    if (owner_email or "").strip().lower() in DEVELOPER_EMAILS:
+        return True
+    cur.execute(
+        "SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s",
+        (owner_user_id,),
+    )
+    s = cur.fetchone()
+    if not s or s.get("provider") == "comp":
+        return False
+    return comp_aware_tier(s.get("tier"), s.get("provider"), s.get("ends_at")) == "coach"
 
 
 def _ensure_staff_seats_table(cur):
@@ -220,15 +240,15 @@ def _ensure_staff_seats_table(cur):
 
 
 def staff_seat_grant(email):
-    """If `email` occupies a staff seat shared by an owner whose subscription
-    is still effectively Coach & Scout, return the owner's email. Else None.
+    """If `email` occupies a staff seat shared by an owner with a PAYING
+    Coach & Scout subscription (or a dev account), return the owner's email.
+    Else None. Comped coach owners never grant.
 
     Checked lazily by require_tier / /me/subscription only when the user's own
     tier is below the requirement, so the common path pays no extra query."""
     if not email:
         return None
     from ..models.database import get_connection
-    from ._tier_allowlist import resolve_comped_tier
     email = email.strip().lower()
     with get_connection() as conn:
         cur = conn.cursor()
@@ -246,21 +266,12 @@ def staff_seat_grant(email):
             conn.rollback()
             return None
         for r in rows:
-            # Owner on the comped allowlists (dev / lifetime coach)?
-            owner_tier = resolve_comped_tier((r["owner_email"] or "").lower())
-            if owner_tier in ("coach", "dev"):
-                return r["owner_email"]
             try:
-                cur.execute(
-                    "SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s",
-                    (r["owner_user_id"],),
-                )
-                s = cur.fetchone()
+                if _owner_can_share(cur, r["owner_user_id"], r["owner_email"]):
+                    return r["owner_email"]
             except Exception:
                 conn.rollback()   # bad owner id shape etc. — fail closed, keep checking others
                 continue
-            if s and comp_aware_tier(s.get("tier"), s.get("provider"), s.get("ends_at")) == "coach":
-                return r["owner_email"]
     return None
 
 
