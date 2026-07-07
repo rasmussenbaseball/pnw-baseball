@@ -53,7 +53,7 @@ export function getSchoolLogo(school) {
 export const DRAFT_DATA = {
   "26": {
     "year": 2026,
-    "lastUpdated": "2026-06-25",
+    "lastUpdated": "2026-07-06",
     "prospects": [
       {
         "rank": 1,
@@ -111,6 +111,22 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 6,
+        "name": "Eric Segura",
+        "pos": "RHP",
+        "year": "JR",
+        "school": "Oregon State",
+        "playerId": 3643
+      },
+      {
+        "rank": 7,
+        "name": "Wyatt Queen",
+        "pos": "RHP",
+        "year": "JR",
+        "school": "Oregon State",
+        "playerId": 3649
+      },
+      {
+        "rank": 8,
         "name": "Ryan Cooney",
         "pos": "IF",
         "year": "JR",
@@ -121,7 +137,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 7,
+        "rank": 9,
         "movement": "down",
         "name": "Eli Herst",
         "pos": "RHP",
@@ -134,15 +150,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 8,
-        "name": "Eric Segura",
-        "pos": "RHP",
-        "year": "JR",
-        "school": "Oregon State",
-        "playerId": 3643
-      },
-      {
-        "rank": 9,
+        "rank": 10,
         "movement": "down",
         "name": "Maddox Molony",
         "pos": "SS",
@@ -154,15 +162,16 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 10,
-        "name": "Wyatt Queen",
+        "rank": 11,
+        "name": "Bryce Collins",
         "pos": "RHP",
-        "year": "JR",
-        "school": "Oregon State",
-        "playerId": 3649
+        "year": "PREP",
+        "school": "Kelso (WA)",
+        "commit": "Mississippi",
+        "playerId": null
       },
       {
-        "rank": 11,
+        "rank": 12,
         "movement": "down",
         "name": "Grady Saunders",
         "pos": "RHP",
@@ -172,36 +181,7 @@ export const DRAFT_DATA = {
         "playerId": null
       },
       {
-        "rank": 12,
-        "name": "Bryce Collins",
-        "pos": "RHP",
-        "year": "PREP",
-        "school": "Kelso (WA)",
-        "commit": "Mississippi",
-        "playerId": null
-      },
-      {
         "rank": 13,
-        "name": "Miles Gosztola",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "Oregon",
-        "playerId": 3637,
-        "report": "Miles Gosztola is a 20-year-old LHP who just finished his junior year with the Oregon Ducks. This was his first year with the Ducks, as he transferred from Gonzaga, where he played the previous two years. He started off the year in the bullpen and worked his way up to becoming a midweek starter, and by the end of the year, he showed out as one of the Ducks' best weekend starters. He throws from a 3/4 slot and lives in the low 90s with a devastating changeup that gets a lot of whiffs due to its sharp fade as well as its velocity difference, which is 10 MPH slower than his fastball. His fastball has a lot of sink and natural run due to his arm slot. He also has a big sweeper, with which he is able to generate a lot of whiffs against LHH. He has a good strikeout rate of 25.5% and average command with a 9.2 BB%. He can command all three of his pitches, but prefers his changeup to RHH. All around, he is a very cerebral pitcher with good command of his mix who has had a lot of success. With his solid frame of 6'3, 200 lbs and his ability to limit hard contact and strike batters out, he definitely has a future at the next level, especially if his velocity ticks up just a bit.",
-        "reportAuthor": "Oliver Duthie",
-        "reportDate": "2026-06-10"
-      },
-      {
-        "rank": 14,
-        "name": "Anthony Karis",
-        "pos": "OF",
-        "year": "PREP",
-        "school": "Gonzaga Prep (WA)",
-        "commit": "Uncommitted",
-        "playerId": null
-      },
-      {
-        "rank": 15,
         "name": "Albert Roblez",
         "pos": "RHP",
         "year": "SR",
@@ -212,13 +192,33 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 16,
+        "rank": 14,
         "movement": "up",
         "name": "Toby Twist",
         "pos": "P",
         "year": "JR",
         "school": "Oregon",
         "playerId": 3635
+      },
+      {
+        "rank": 15,
+        "name": "Anthony Karis",
+        "pos": "OF",
+        "year": "PREP",
+        "school": "Gonzaga Prep (WA)",
+        "commit": "Uncommitted",
+        "playerId": null
+      },
+      {
+        "rank": 16,
+        "name": "Miles Gosztola",
+        "pos": "LHP",
+        "year": "JR",
+        "school": "Oregon",
+        "playerId": 3637,
+        "report": "Miles Gosztola is a 20-year-old LHP who just finished his junior year with the Oregon Ducks. This was his first year with the Ducks, as he transferred from Gonzaga, where he played the previous two years. He started off the year in the bullpen and worked his way up to becoming a midweek starter, and by the end of the year, he showed out as one of the Ducks' best weekend starters. He throws from a 3/4 slot and lives in the low 90s with a devastating changeup that gets a lot of whiffs due to its sharp fade as well as its velocity difference, which is 10 MPH slower than his fastball. His fastball has a lot of sink and natural run due to his arm slot. He also has a big sweeper, with which he is able to generate a lot of whiffs against LHH. He has a good strikeout rate of 25.5% and average command with a 9.2 BB%. He can command all three of his pitches, but prefers his changeup to RHH. All around, he is a very cerebral pitcher with good command of his mix who has had a lot of success. With his solid frame of 6'3, 200 lbs and his ability to limit hard contact and strike batters out, he definitely has a future at the next level, especially if his velocity ticks up just a bit.",
+        "reportAuthor": "Oliver Duthie",
+        "reportDate": "2026-06-10"
       },
       {
         "rank": 17,
@@ -239,6 +239,23 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 19,
+        "movement": "up",
+        "name": "Max Hartman",
+        "pos": "OF",
+        "year": "SR",
+        "school": "Washington St",
+        "playerId": 3534
+      },
+      {
+        "rank": 20,
+        "name": "Isaac Yeager",
+        "pos": "P",
+        "year": "SR",
+        "school": "Oregon St",
+        "playerId": 3650
+      },
+      {
+        "rank": 21,
         "name": "Kealoha Kepo'o-Sabate",
         "pos": "RHP",
         "year": "PREP",
@@ -247,7 +264,25 @@ export const DRAFT_DATA = {
         "playerId": null
       },
       {
-        "rank": 20,
+        "rank": 22,
+        "movement": "up",
+        "name": "Neal Burtis",
+        "pos": "LHP",
+        "year": "PREP",
+        "school": "Tahoma (WA)",
+        "commit": "Oregon St",
+        "playerId": null
+      },
+      {
+        "rank": 23,
+        "name": "Colton Bower",
+        "pos": "C",
+        "year": "R-JR",
+        "school": "Washington",
+        "playerId": 3484
+      },
+      {
+        "rank": 24,
         "movement": "up",
         "name": "Nick Lewis",
         "pos": "LHP",
@@ -259,34 +294,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-06-10"
       },
       {
-        "rank": 21,
-        "movement": "up",
-        "name": "Max Hartman",
-        "pos": "OF",
-        "year": "SR",
-        "school": "Washington St",
-        "playerId": 3534
-      },
-      {
-        "rank": 22,
-        "name": "Colton Bower",
-        "pos": "C",
-        "year": "R-JR",
-        "school": "Washington",
-        "playerId": 3484
-      },
-      {
-        "rank": 23,
-        "movement": "up",
-        "name": "Neal Burtis",
-        "pos": "LHP",
-        "year": "PREP",
-        "school": "Tahoma (WA)",
-        "commit": "Oregon St",
-        "playerId": null
-      },
-      {
-        "rank": 24,
+        "rank": 25,
         "name": "Jace Taylor",
         "pos": "RHP",
         "year": "SR",
@@ -297,22 +305,13 @@ export const DRAFT_DATA = {
         "reportDate": "2026-06-09"
       },
       {
-        "rank": 25,
+        "rank": 26,
         "name": "Trenton Hertzog",
         "pos": "UTIL",
         "year": "PREP",
         "school": "Tualatin (OR)",
         "commit": "Oregon",
         "playerId": null
-      },
-      {
-        "rank": 26,
-        "movement": "down",
-        "name": "Finbar O'Brien",
-        "pos": "RHP",
-        "year": "JR",
-        "school": "Gonzaga",
-        "playerId": 3575
       },
       {
         "rank": 27,
@@ -324,6 +323,15 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 28,
+        "movement": "down",
+        "name": "Finbar O'Brien",
+        "pos": "RHP",
+        "year": "JR",
+        "school": "Gonzaga",
+        "playerId": 3575
+      },
+      {
+        "rank": 29,
         "name": "Jackson Jaha",
         "pos": "UTIL",
         "year": "R-JR",
@@ -334,7 +342,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 29,
+        "rank": 30,
         "name": "August Ware",
         "pos": "LHP",
         "year": "PREP",
@@ -343,7 +351,16 @@ export const DRAFT_DATA = {
         "playerId": null
       },
       {
-        "rank": 30,
+        "rank": 31,
+        "name": "Cody Ells",
+        "pos": "OF/LHP",
+        "year": "PREP",
+        "school": "Asotin (WA)",
+        "commit": "LC State",
+        "playerId": null
+      },
+      {
+        "rank": 32,
         "name": "Ryan Featherston",
         "pos": "P",
         "year": "JR",
@@ -351,7 +368,7 @@ export const DRAFT_DATA = {
         "playerId": 3631
       },
       {
-        "rank": 31,
+        "rank": 33,
         "name": "Jacob Wrubleski",
         "pos": "C",
         "year": "JR",
@@ -359,15 +376,7 @@ export const DRAFT_DATA = {
         "playerId": 3560
       },
       {
-        "rank": 32,
-        "name": "Isaac Yeager",
-        "pos": "P",
-        "year": "SR",
-        "school": "Oregon St",
-        "playerId": 3650
-      },
-      {
-        "rank": 33,
+        "rank": 34,
         "name": "Zack Hankins",
         "pos": "LHP",
         "year": "PREP",
@@ -376,7 +385,15 @@ export const DRAFT_DATA = {
         "playerId": null
       },
       {
-        "rank": 34,
+        "rank": 35,
+        "name": "Sam DeCarlo",
+        "pos": "INF",
+        "year": "SR",
+        "school": "Washington",
+        "playerId": 3486
+      },
+      {
+        "rank": 36,
         "movement": "up",
         "name": "Devin Bell",
         "pos": "RHP",
@@ -385,7 +402,7 @@ export const DRAFT_DATA = {
         "playerId": 3634
       },
       {
-        "rank": 35,
+        "rank": 37,
         "name": "AJ Singer",
         "pos": "INF",
         "year": "SR",
@@ -393,29 +410,13 @@ export const DRAFT_DATA = {
         "playerId": 3523
       },
       {
-        "rank": 36,
-        "name": "Sam DeCarlo",
-        "pos": "INF",
-        "year": "SR",
-        "school": "Washington",
-        "playerId": 3486
-      },
-      {
-        "rank": 37,
+        "rank": 38,
         "movement": "up",
         "name": "Joe Thornton",
         "pos": "RHP",
         "year": "R-SO",
         "school": "Gonzaga",
         "playerId": 3571
-      },
-      {
-        "rank": 38,
-        "name": "Austin Wolfe",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "Bushnell",
-        "playerId": 2921
       },
       {
         "rank": 39,
@@ -427,182 +428,12 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 40,
-        "name": "Dawsyn Anderson",
-        "pos": "RHP",
-        "year": "PREP",
-        "school": "North Kitsap (WA)",
-        "commit": "Oregon",
-        "playerId": null
-      },
-      {
-        "rank": 41,
-        "name": "Jacob Galloway",
-        "pos": "C",
-        "year": "SR",
-        "school": "Oregon St",
-        "playerId": 3517
-      },
-      {
-        "rank": 42,
-        "movement": "down",
-        "name": "Dominic Hellman",
-        "pos": "UTIL",
-        "year": "SR",
-        "school": "Oregon",
-        "playerId": 3504
-      },
-      {
-        "rank": 43,
-        "movement": "up",
-        "name": "Mason Goodson",
-        "pos": "RHP",
-        "year": "JR",
-        "school": "LC State",
-        "playerId": 2732
-      },
-      {
-        "rank": 44,
-        "name": "Easton Talt",
-        "pos": "CF",
-        "year": "SR",
-        "school": "Oregon State",
-        "playerId": 3519
-      },
-      {
-        "rank": 45,
-        "movement": "down",
-        "name": "Erik Hoffberg",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "Gonzaga",
-        "playerId": 3568
-      },
-      {
-        "rank": 46,
-        "name": "Will Anderson",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "British Columbia",
-        "playerId": 2994
-      },
-      {
-        "rank": 47,
         "name": "Christopher Moore",
         "pos": "SS",
         "year": "PREP",
         "school": "Eastlake (WA)",
         "commit": "Washington",
         "playerId": null
-      },
-      {
-        "rank": 48,
-        "name": "Gavin Roy",
-        "pos": "SS-2B",
-        "year": "SR",
-        "school": "Washington St",
-        "playerId": 3532
-      },
-      {
-        "rank": 49,
-        "movement": "down",
-        "name": "Justin Feld",
-        "pos": "RHP",
-        "year": "SR",
-        "school": "Gonzaga",
-        "playerId": 3574
-      },
-      {
-        "rank": 50,
-        "name": "James Brock",
-        "pos": "RHP",
-        "year": "SR",
-        "school": "UBC",
-        "playerId": 2993
-      },
-      {
-        "rank": 51,
-        "movement": "up",
-        "name": "Graham Learing",
-        "pos": "P",
-        "year": "JC-1",
-        "school": "Lower Columbia",
-        "commit": "Washington",
-        "playerId": 1029
-      },
-      {
-        "rank": 52,
-        "name": "Evan Canfield",
-        "pos": "RHP",
-        "year": "R-JR",
-        "school": "LC State",
-        "playerId": 2731
-      },
-      {
-        "rank": 53,
-        "name": "Jacob Courtney",
-        "pos": "RHP",
-        "year": "SO",
-        "school": "Bushnell",
-        "playerId": 2928
-      },
-      {
-        "rank": 54,
-        "name": "Donny Tober",
-        "pos": "RHP",
-        "year": "R-JR",
-        "school": "Warner Pacific",
-        "playerId": 2950
-      },
-      {
-        "rank": 55,
-        "name": "Luke Meyers",
-        "pos": "RHP",
-        "year": "SR",
-        "school": "Washington St",
-        "playerId": 3767
-      },
-      {
-        "rank": 56,
-        "name": "Jack Brooks",
-        "pos": "CF",
-        "year": "SR",
-        "school": "Oregon",
-        "playerId": 3507
-      },
-      {
-        "rank": 57,
-        "name": "Michael Revell",
-        "pos": "RHP",
-        "year": "PREP",
-        "school": "Richland (WA)",
-        "commit": "GCU",
-        "playerId": null
-      },
-      {
-        "rank": 58,
-        "name": "Blake Smith",
-        "pos": "P",
-        "year": "SR",
-        "school": "Seattle U",
-        "playerId": 3690
-      },
-      {
-        "rank": 59,
-        "name": "Will Rohrbacher",
-        "pos": "IF",
-        "year": "PREP",
-        "school": "Bainbridge (WA)",
-        "commit": "Utah Valley",
-        "playerId": null
-      },
-      {
-        "rank": 60,
-        "movement": "down",
-        "name": "Zach Bowman",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "Gonzaga",
-        "playerId": 3570
       }
     ]
   },
