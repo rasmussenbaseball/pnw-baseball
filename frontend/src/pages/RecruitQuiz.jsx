@@ -9,6 +9,8 @@ import { Link } from 'react-router-dom'
 import { RECRUIT_QUESTIONS, RECRUIT_SCHOOLS, REAL_RECORDS_2026 } from '../data/recruitQuiz'
 import { usePersistedState } from '../hooks/usePersistedState'
 import InternCredit from '../components/InternCredit'
+import { useTier } from '../hooks/useTier'
+import { tierMeets } from '../lib/tiers'
 
 const LEVEL_CHIP = {
   D1:   'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
@@ -310,6 +312,12 @@ function ProgramDetail({ s }) {
 }
 
 export default function RecruitQuiz() {
+  // The Matchmaker is open to everyone (anonymous included) as the recruiting
+  // funnel: anyone can take the quiz, but only PAID users (Premium+) see the
+  // full ranked list. Everyone else gets their single #1 fit plus an upsell.
+  const { tier, user } = useTier()
+  const paidFull = tierMeets(tier, 'premium')
+
   // Answers, dealbreakers, and completion persist to localStorage so returning to
   // the Matchmaker lands on your saved results until you clear them and retake.
   const [ans, setAns] = usePersistedState('matchmaker_answers', {}, { storage: 'local' })
@@ -357,6 +365,11 @@ export default function RecruitQuiz() {
     const fillers = pool.filter(s => !bestPerLevel.includes(s)).slice(0, Math.max(0, N - bestPerLevel.length))
     return { results: [...bestPerLevel, ...fillers].sort((a, b) => b.pct - a.pct), dbFellBack: fellBack }
   }, [done, ans, activeDealbreakers])
+
+  // Free preview: everyone can take the quiz, but only paid (Premium+) users
+  // see the full ranked list. Everyone else gets their single best match.
+  const shown = paidFull ? results : results.slice(0, 1)
+  const hiddenCount = results.length - shown.length
 
   const pick = (question, val) => {
     setAns(prev => {
@@ -479,14 +492,18 @@ export default function RecruitQuiz() {
         <div>
           <div className="mb-4">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-2xl font-black text-nw-teal dark:text-gray-100">Your top program matches</h2>
+              <h2 className="text-2xl font-black text-nw-teal dark:text-gray-100">
+                {paidFull ? 'Your top program matches' : 'Your #1 program match'}
+              </h2>
               <button onClick={restart}
                 className="shrink-0 mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 underline decoration-dotted underline-offset-2 whitespace-nowrap">
                 Clear &amp; retake
               </button>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              Saved from your last quiz, ranked by fit across all five levels (D1, D2, D3, NAIA, NWAC), including your best option at each. Tap a school to see its full NWBB profile.
+              {paidFull
+                ? 'Saved from your last quiz, ranked by fit across all five levels (D1, D2, D3, NAIA, NWAC), including your best option at each. Tap a school to see its full NWBB profile.'
+                : 'Your single best fit out of all 57 PNW programs, scored from your answers. Premium unlocks the full ranked list, including your best option at every level.'}
             </p>
             {activeDealbreakers.length > 0 && !dbFellBack && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -504,7 +521,7 @@ export default function RecruitQuiz() {
           </div>
 
           <div className="space-y-2.5">
-            {results.map((s, i) => {
+            {shown.map((s, i) => {
               const open = expanded[s.name] ?? (i === 0)
               return (
               <div key={s.name}
@@ -563,6 +580,35 @@ export default function RecruitQuiz() {
               )
             })}
           </div>
+
+          {/* Free preview upsell — the rest of the ranked list is Premium. */}
+          {!paidFull && hiddenCount > 0 && (
+            <div className="mt-3 rounded-xl ring-1 ring-nw-teal/30 bg-teal-50/60 dark:bg-teal-900/20 p-5 text-center">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                {[2, 3, 4].map(n => (
+                  <span key={n} className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 flex items-center justify-center text-sm font-bold text-gray-300 dark:text-gray-600">{n}</span>
+                ))}
+                <span className="text-sm font-bold text-gray-300 dark:text-gray-600">…</span>
+              </div>
+              <div className="font-bold text-nw-teal dark:text-gray-100">
+                {hiddenCount} more matches are waiting
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 max-w-md mx-auto">
+                Premium unlocks your full ranked list, including your best-fit program at
+                every level (D1, D2, D3, NAIA, NWAC), full program breakdowns, and dealbreaker re-ranking.
+              </p>
+              <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+                <Link to="/pricing" className="bg-nw-teal text-white font-bold text-sm rounded-lg px-4 py-2 hover:bg-nw-teal-dark transition-colors">
+                  Unlock all my matches
+                </Link>
+                {!user && (
+                  <Link to="/login?next=/recruiting/quiz" className="text-sm font-semibold text-nw-teal hover:underline px-2 py-2">
+                    Sign in
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="mt-5 rounded-xl bg-gradient-to-br from-nw-teal to-[#1f3a4d] dark:from-gray-900 dark:to-gray-800 p-5 flex items-center justify-between gap-4 flex-wrap">
             <div className="text-white">

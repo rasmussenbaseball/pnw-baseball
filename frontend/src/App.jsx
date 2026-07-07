@@ -426,7 +426,10 @@ export default function App() {
           <Route path="/team-history" element={<RequireTier minTier="free"><TeamHistory /></RequireTier>} />
           {/* Public landing page for the whole Recruiting tab (all tiers, no gate) */}
           <Route path="/recruiting" element={<RecruitingHub />} />
-          <Route path="/recruiting/quiz" element={<RequireTier minTier="premium"><RecruitQuiz /></RequireTier>} />
+          {/* Matchmaker is open to EVERYONE (anonymous included) as a funnel:
+              non-paid users only see their #1 fit — the full ranked list is
+              gated inside RecruitQuiz.jsx at premium. */}
+          <Route path="/recruiting/quiz" element={<RecruitQuiz />} />
           <Route path="/recruiting-classes" element={<RequireTier minTier="premium"><RecruitingClasses /></RequireTier>} />
           <Route path="/recruiting/breakdown" element={<RequireTier minTier="premium"><RecruitingBreakdown /></RequireTier>} />
           <Route path="/recruiting/hometown" element={<RequireTier minTier="premium"><HometownSearch /></RequireTier>} />

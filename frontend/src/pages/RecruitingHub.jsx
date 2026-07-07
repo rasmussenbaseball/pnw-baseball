@@ -30,8 +30,8 @@ const ICONS = {
 
 // ── tools (recruit-facing unlock at Premium $5/mo) ────────────────
 const RECRUIT_TOOLS = [
-  { to: '/recruiting/quiz', icon: 'target', tier: 'premium', name: 'Recruit Matchmaker',
-    blurb: 'Answer a handful of honest questions about your level, academics, budget, and what you want out of college, and get your best-fit PNW programs ranked.',
+  { to: '/recruiting/quiz', icon: 'target', tier: 'free', name: 'Recruit Matchmaker',
+    blurb: 'Answer a handful of honest questions about your level, academics, budget, and what you want out of college, and get your best-fit PNW program. Free to take, no account needed; Premium unlocks your full ranked list.',
     why: 'Set hard dealbreakers (cost, division, distance) and the list rebuilds around them, so you only see schools that actually make sense for you.' },
   { to: '/recruiting/guide', icon: 'book', tier: 'premium', name: 'Recruiting Guide',
     blurb: 'A complete profile on all 57 PNW programs: coaching staff and contacts, academics, cost and aid, facilities, campus and location, plus on-field analytics.',
@@ -73,6 +73,7 @@ const COACH_TOOLS = [
 ]
 
 const TIER_PILL = {
+  free: { label: 'Free', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
   premium: { label: 'Premium', cls: 'bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300' },
   recruiting: { label: 'Recruiting plan', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
   soon: { label: 'Coming soon', cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400' },
@@ -272,8 +273,8 @@ export default function RecruitingHub() {
             note="Or $50/year."
             cta="Start with Premium" to="/pricing"
             points={[
-              'Recruit Matchmaker, Recruiting Guide, and the program book',
-              'Recruiting Tips, Breakdown, Hometown Search, and Map',
+              'Full Matchmaker results (your best fit at every level)',
+              'Recruiting Guide, the program book, Tips, Breakdown, Hometown Search, and Map',
               'Plus the full site: player pages, advanced stats, and the coaching sim',
             ]}
           />

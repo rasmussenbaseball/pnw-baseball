@@ -149,6 +149,8 @@ export const FEATURE_MIN_TIER = {
   articles_free:          'none',  // free-tier articles
   news_list:              'none',
   game_detail:            'none',
+  recruiting_hub:         'none',
+  recruit_matchmaker:     'none',  // quiz open to all; FULL ranked list gated at premium inside RecruitQuiz.jsx
   team_history:           'none',
   scatter_plot:           'none',
   about:                  'none',
@@ -235,6 +237,8 @@ export const ROUTE_FEATURE = [
   ['/scatter',                'scatter_plot'],
   ['/news',                   'news_list'],
   ['/news/:slug',             'articles_free'],     // some are premium — gating decided at article level
+  ['/recruiting',             'recruiting_hub'],
+  ['/recruiting/quiz',        'recruit_matchmaker'],  // #1 fit free; full list gated in-page at premium
   ['/news/commitments',       'commitments'],
   ['/about',                  'about'],
   ['/feature-request',        'feature_request'],
