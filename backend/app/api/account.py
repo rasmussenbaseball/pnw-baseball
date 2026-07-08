@@ -28,6 +28,80 @@ from ._tier_allowlist import email_for_token, resolve_comped_tier
 router = APIRouter()
 
 
+# ─────────────────────────────────────────────────────────────
+# Pending comps — comps granted BEFORE the person has an account.
+# grant_comp.py queues {email, tier, months} in pending_comps when
+# no auth.users row exists yet; the first time that email signs in
+# and the frontend loads /me/subscription, the comp is applied as a
+# normal provider='comp' user_subscriptions row (started THAT day,
+# so they get the full comp length) and the queue row is marked
+# applied. Never clobbers an existing active subscription.
+# ─────────────────────────────────────────────────────────────
+
+def _ensure_pending_comps_table(cur):
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS pending_comps (
+             id SERIAL PRIMARY KEY,
+             email      TEXT NOT NULL UNIQUE,
+             tier       TEXT NOT NULL,
+             months     INTEGER NOT NULL DEFAULT 1,
+             note       TEXT,
+             created_at TIMESTAMPTZ DEFAULT NOW(),
+             applied_at TIMESTAMPTZ
+           )"""
+    )
+
+
+def _apply_pending_comp(cur, user_id: str, email: Optional[str]) -> bool:
+    """Apply a queued comp for this email, if any. Returns True if applied.
+    Caller commits. Fail-safe: any error means 'no comp applied'."""
+    if not email:
+        return False
+    try:
+        cur.execute(
+            "SELECT id, tier, months, note FROM pending_comps "
+            "WHERE lower(email) = lower(%s) AND applied_at IS NULL",
+            (email,),
+        )
+        p = cur.fetchone()
+        if not p:
+            return False
+        # Don't downgrade someone who already has an active (non-free) sub.
+        cur.execute(
+            "SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if row and comp_aware_tier(row.get("tier"), row.get("provider"), row.get("ends_at")) != "free":
+            # Leave the queue row unapplied — it can apply later if their sub lapses,
+            # or Nate can clean it up via grant_comp.py --revoke.
+            return False
+        note = p["note"] or f"comp: {p['months']}-month {p['tier']} (pending_comps auto-apply)"
+        cur.execute(
+            """
+            INSERT INTO user_subscriptions
+                (user_id, tier, started_at, ends_at, current_period_end, provider, interval,
+                 cancel_at_period_end, external_ref, created_at, updated_at)
+            VALUES (%s, %s, now(), now() + (%s || ' months')::interval, now() + (%s || ' months')::interval,
+                    'comp', 'month', TRUE, %s, now(), now())
+            ON CONFLICT (user_id) DO UPDATE SET
+                tier=excluded.tier, started_at=now(),
+                ends_at=excluded.ends_at, current_period_end=excluded.current_period_end,
+                provider='comp', interval='month', cancel_at_period_end=TRUE,
+                external_ref=excluded.external_ref, updated_at=now()
+            """,
+            (user_id, p["tier"], p["months"], p["months"], note),
+        )
+        cur.execute("UPDATE pending_comps SET applied_at = now() WHERE id = %s", (p["id"],))
+        return True
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        return False
+
+
 @router.get("/me/subscription")
 def get_my_subscription(request: Request, user_id: str = Depends(get_current_user)):
     """Return this user's subscription tier and timing.
@@ -70,6 +144,10 @@ def get_my_subscription(request: Request, user_id: str = Depends(get_current_use
 
     with get_connection() as conn:
         cur = conn.cursor()
+        # Queued comp for this email (granted before they had an account)?
+        # First sign-in applies it, so the row below picks it up immediately.
+        if _apply_pending_comp(cur, user_id, comped_email):
+            conn.commit()
         cur.execute(
             """
             SELECT tier, started_at, ends_at, external_ref,
