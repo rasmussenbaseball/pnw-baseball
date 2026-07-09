@@ -53,7 +53,7 @@ export function getSchoolLogo(school) {
 export const DRAFT_DATA = {
   "26": {
     "year": 2026,
-    "lastUpdated": "2026-07-06",
+    "lastUpdated": "2026-07-08",
     "prospects": [
       {
         "rank": 1,
@@ -69,7 +69,17 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 2,
-        "movement": "up",
+        "name": "Ethan Kleinschmit",
+        "pos": "LHP",
+        "year": "JR",
+        "school": "Oregon State",
+        "playerId": 3644,
+        "report": "Kleinschmit, a Linn-Benton CC product, has been Dax Whitney's running mate for two years, solidifying the Beaver rotation as one of the best in the country. The lefty has some funk to him, with unique release traits helping his below average velocity succeed. After a stellar 2025, Kleinschmit has all but replicated the same numbers in 2026, striking out 31% of batters while running average walk rates and weak quality of contact numbers. While there is always some reliever risk with a funky lefty, Kleinschmit will be drafted and developed as a starter with the hope of expanding his offerings in the future.",
+        "reportAuthor": "Nate Rasmussen",
+        "reportDate": "2026-04-13"
+      },
+      {
+        "rank": 3,
         "name": "Teagan Scott",
         "pos": "C",
         "year": "PREP",
@@ -81,7 +91,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 3,
+        "rank": 4,
         "name": "Cal Scolari",
         "pos": "RHP",
         "year": "JR",
@@ -89,19 +99,7 @@ export const DRAFT_DATA = {
         "playerId": 3632
       },
       {
-        "rank": 4,
-        "name": "Ethan Kleinschmit",
-        "pos": "LHP",
-        "year": "JR",
-        "school": "Oregon State",
-        "playerId": 3644,
-        "report": "Kleinschmit, a Linn-Benton CC product, has been Dax Whitney's running mate for two years, solidifying the Beaver rotation as one of the best in the country. The lefty has some funk to him, with unique release traits helping his below average velocity succeed. After a stellar 2025, Kleinschmit has all but replicated the same numbers in 2026, striking out 31% of batters while running average walk rates and weak quality of contact numbers. While there is always some reliever risk with a funky lefty, Kleinschmit will be drafted and developed as a starter with the hope of expanding his offerings in the future.",
-        "reportAuthor": "Nate Rasmussen",
-        "reportDate": "2026-04-13"
-      },
-      {
         "rank": 5,
-        "movement": "up",
         "name": "Sawyer Nelson",
         "pos": "SS",
         "year": "PREP",
@@ -138,7 +136,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 9,
-        "movement": "down",
         "name": "Eli Herst",
         "pos": "RHP",
         "year": "PREP",
@@ -151,7 +148,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 10,
-        "movement": "down",
         "name": "Maddox Molony",
         "pos": "SS",
         "year": "JR",
@@ -172,7 +168,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 12,
-        "movement": "down",
         "name": "Grady Saunders",
         "pos": "RHP",
         "year": "PREP",
@@ -193,7 +188,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 14,
-        "movement": "up",
         "name": "Toby Twist",
         "pos": "P",
         "year": "JR",
@@ -202,15 +196,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 15,
-        "name": "Anthony Karis",
-        "pos": "OF",
-        "year": "PREP",
-        "school": "Gonzaga Prep (WA)",
-        "commit": "Uncommitted",
-        "playerId": null
-      },
-      {
-        "rank": 16,
         "name": "Miles Gosztola",
         "pos": "LHP",
         "year": "JR",
@@ -221,7 +206,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-06-10"
       },
       {
-        "rank": 17,
+        "rank": 16,
         "name": "Drew Smith",
         "pos": "3B",
         "year": "SR",
@@ -229,7 +214,7 @@ export const DRAFT_DATA = {
         "playerId": 3500
       },
       {
-        "rank": 18,
+        "rank": 17,
         "name": "Dylan Hicks",
         "pos": "P",
         "year": "JC-2",
@@ -238,8 +223,7 @@ export const DRAFT_DATA = {
         "playerId": 934
       },
       {
-        "rank": 19,
-        "movement": "up",
+        "rank": 18,
         "name": "Max Hartman",
         "pos": "OF",
         "year": "SR",
@@ -247,7 +231,7 @@ export const DRAFT_DATA = {
         "playerId": 3534
       },
       {
-        "rank": 20,
+        "rank": 19,
         "name": "Isaac Yeager",
         "pos": "P",
         "year": "SR",
@@ -255,17 +239,24 @@ export const DRAFT_DATA = {
         "playerId": 3650
       },
       {
+        "rank": 20,
+        "name": "Colton Bower",
+        "pos": "C",
+        "year": "R-JR",
+        "school": "Washington",
+        "playerId": 3484
+      },
+      {
         "rank": 21,
-        "name": "Kealoha Kepo'o-Sabate",
-        "pos": "RHP",
+        "name": "Anthony Karis",
+        "pos": "OF",
         "year": "PREP",
-        "school": "Meadowdale (WA)",
-        "commit": "Texas Tech",
+        "school": "Gonzaga Prep (WA)",
+        "commit": "Uncommitted",
         "playerId": null
       },
       {
         "rank": 22,
-        "movement": "up",
         "name": "Neal Burtis",
         "pos": "LHP",
         "year": "PREP",
@@ -275,15 +266,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 23,
-        "name": "Colton Bower",
-        "pos": "C",
-        "year": "R-JR",
-        "school": "Washington",
-        "playerId": 3484
-      },
-      {
-        "rank": 24,
-        "movement": "up",
         "name": "Nick Lewis",
         "pos": "LHP",
         "year": "R-SO",
@@ -294,7 +276,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-06-10"
       },
       {
-        "rank": 25,
+        "rank": 24,
         "name": "Jace Taylor",
         "pos": "RHP",
         "year": "SR",
@@ -303,6 +285,14 @@ export const DRAFT_DATA = {
         "report": "Jace Taylor is a big 6-foot-5 RHP from LC State who relies heavily on his high ride fastball coming from an over-the-top slot. He does not get much extension down the mound, but has strong vertical movement on the heater, and lives up in the zone with it, normally in the low 90s, touching the mid 90s. He has a four-pitch mix, with a curveball, slider, and changeup, with his best off-speed being his depthy curveball. The pitch garners swing and miss and plays well off of his top-shelf heater. He had a lot of success this past year, playing for nationally ranked LCSC, which has had plenty of draft picks throughout its history. He has always had the strikeout ability, as he has been in the 98th K percentile the past three years at LC State as well as for the Wenatchee Applesox in the WCL. He threw to a 0.86 ERA with 45 Ks to 13 BBs, showing average command with his control still burgeoning. He is a big body with a lot of confidence in his strikeout ability; however, he has not thrown many innings in the past three years (51.1 at LC State with 31.1 coming this past year). He does not have great feel for his off-speed, which causes him to throw it mostly when he is ahead in the count. His present velocity and frame are pro-ready, with questions coming from the other parts of the operation. There is plenty of clay for a professional organization to mold into a strong reliever.",
         "reportAuthor": "Oliver Duthie",
         "reportDate": "2026-06-09"
+      },
+      {
+        "rank": 25,
+        "name": "Trey Newmann",
+        "pos": "RHP",
+        "year": "JR",
+        "school": "Portland",
+        "playerId": 3601
       },
       {
         "rank": 26,
@@ -315,15 +305,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 27,
-        "name": "Trey Newmann",
-        "pos": "RHP",
-        "year": "JR",
-        "school": "Portland",
-        "playerId": 3601
-      },
-      {
-        "rank": 28,
-        "movement": "down",
         "name": "Finbar O'Brien",
         "pos": "RHP",
         "year": "JR",
@@ -331,7 +312,7 @@ export const DRAFT_DATA = {
         "playerId": 3575
       },
       {
-        "rank": 29,
+        "rank": 28,
         "name": "Jackson Jaha",
         "pos": "UTIL",
         "year": "R-JR",
@@ -342,21 +323,30 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 30,
-        "name": "August Ware",
-        "pos": "LHP",
-        "year": "PREP",
-        "school": "Glencoe (OR)",
-        "commit": "Oregon St",
-        "playerId": null
-      },
-      {
-        "rank": 31,
+        "rank": 29,
         "name": "Cody Ells",
         "pos": "OF/LHP",
         "year": "PREP",
         "school": "Asotin (WA)",
         "commit": "LC State",
+        "playerId": null
+      },
+      {
+        "rank": 30,
+        "name": "Kealoha Kepo'o-Sabate",
+        "pos": "RHP",
+        "year": "PREP",
+        "school": "Meadowdale (WA)",
+        "commit": "Texas Tech",
+        "playerId": null
+      },
+      {
+        "rank": 31,
+        "name": "August Ware",
+        "pos": "LHP",
+        "year": "PREP",
+        "school": "Glencoe (OR)",
+        "commit": "Oregon St",
         "playerId": null
       },
       {
@@ -394,7 +384,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 36,
-        "movement": "up",
         "name": "Devin Bell",
         "pos": "RHP",
         "year": "SR",
@@ -411,7 +400,14 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 38,
-        "movement": "up",
+        "name": "Dominic Hellman",
+        "pos": "UTIL",
+        "year": "SR",
+        "school": "Oregon",
+        "playerId": 3504
+      },
+      {
+        "rank": 39,
         "name": "Joe Thornton",
         "pos": "RHP",
         "year": "R-SO",
@@ -419,21 +415,12 @@ export const DRAFT_DATA = {
         "playerId": 3571
       },
       {
-        "rank": 39,
+        "rank": 40,
         "name": "Maddox Haley",
         "pos": "DH-RF",
         "year": "JR",
         "school": "Gonzaga",
         "playerId": 3558
-      },
-      {
-        "rank": 40,
-        "name": "Christopher Moore",
-        "pos": "SS",
-        "year": "PREP",
-        "school": "Eastlake (WA)",
-        "commit": "Washington",
-        "playerId": null
       }
     ]
   },
