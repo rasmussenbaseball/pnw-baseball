@@ -266,6 +266,50 @@ def show_existing_links(cur):
               f"[{l['match_type']}, conf={l['confidence']}]")
 
 
+def validate_existing_links(cur, apply=False):
+    """Find links CONTRADICTED by later data: the canonical and linked player
+    both have spring stats in the SAME season at DIFFERENT teams — one person
+    can't play for two colleges in one spring, so they're different people.
+
+    This happens when a link is created early in a season (before both sides
+    have stats) and the conflicting stats arrive later — the Payton Smith bug
+    (LCSC SS auto-linked to a Warner Pacific FR pitcher, 2026-03-31). With
+    apply=True the contradicted links are deleted; otherwise just reported.
+    Returns the number of contradicted links found."""
+    cur.execute("""
+        WITH seasons AS (
+            SELECT player_id, season, team_id FROM (
+                SELECT player_id, season, team_id FROM batting_stats
+                UNION
+                SELECT player_id, season, team_id FROM pitching_stats
+            ) x GROUP BY player_id, season, team_id
+        )
+        SELECT DISTINCT pl.id, pl.canonical_id, pl.linked_id, s1.season,
+               p.first_name || ' ' || p.last_name AS name,
+               t1.short_name AS canon_team, t2.short_name AS linked_team
+        FROM player_links pl
+        JOIN seasons s1 ON s1.player_id = pl.canonical_id
+        JOIN seasons s2 ON s2.player_id = pl.linked_id
+             AND s2.season = s1.season AND s2.team_id <> s1.team_id
+        JOIN players p ON p.id = pl.canonical_id
+        LEFT JOIN teams t1 ON t1.id = s1.team_id
+        LEFT JOIN teams t2 ON t2.id = s2.team_id
+        ORDER BY pl.id
+    """)
+    bad = cur.fetchall()
+    if not bad:
+        return 0
+    print(f"!! {len(bad)} existing link(s) contradicted by same-season stats at two teams:")
+    for b in bad:
+        print(f"   link #{b['id']}: {b['name']} — {b['canon_team']} AND {b['linked_team']} both in {b['season']}")
+    if apply:
+        cur.execute("DELETE FROM player_links WHERE id = ANY(%s)", ([b["id"] for b in bad],))
+        print(f"   → removed {len(bad)} contradicted link(s).")
+    else:
+        print("   (run with --link to remove them, or --unlink <id> individually)")
+    return len(bad)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--link", action="store_true", help="Actually create links")
@@ -291,6 +335,11 @@ def main():
             conn.commit()
             print(f"Removed link #{args.unlink}")
             return
+
+        # Self-heal: links created before conflicting stats arrived get
+        # detected (and with --link, removed) on every scan.
+        if validate_existing_links(cur, apply=args.link) and args.link:
+            conn.commit()
 
         print("Scanning for transfer matches...\n")
         matches = find_matches(cur)
