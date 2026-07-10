@@ -69,6 +69,14 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 2,
+        "name": "Eric Segura",
+        "pos": "RHP",
+        "year": "JR",
+        "school": "Oregon State",
+        "playerId": 3643
+      },
+      {
+        "rank": 3,
         "name": "Ethan Kleinschmit",
         "pos": "LHP",
         "year": "JR",
@@ -79,7 +87,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 3,
+        "rank": 4,
         "name": "Teagan Scott",
         "pos": "C",
         "year": "PREP",
@@ -91,7 +99,7 @@ export const DRAFT_DATA = {
         "reportDate": "2026-04-13"
       },
       {
-        "rank": 4,
+        "rank": 5,
         "name": "Cal Scolari",
         "pos": "RHP",
         "year": "JR",
@@ -99,21 +107,13 @@ export const DRAFT_DATA = {
         "playerId": 3632
       },
       {
-        "rank": 5,
+        "rank": 6,
         "name": "Sawyer Nelson",
         "pos": "SS",
         "year": "PREP",
         "school": "South Salem (OR)",
         "commit": "LMU",
         "playerId": null
-      },
-      {
-        "rank": 6,
-        "name": "Eric Segura",
-        "pos": "RHP",
-        "year": "JR",
-        "school": "Oregon State",
-        "playerId": 3643
       },
       {
         "rank": 7,
@@ -240,14 +240,6 @@ export const DRAFT_DATA = {
       },
       {
         "rank": 20,
-        "name": "Colton Bower",
-        "pos": "C",
-        "year": "R-JR",
-        "school": "Washington",
-        "playerId": 3484
-      },
-      {
-        "rank": 21,
         "name": "Anthony Karis",
         "pos": "OF",
         "year": "PREP",
@@ -256,7 +248,7 @@ export const DRAFT_DATA = {
         "playerId": null
       },
       {
-        "rank": 22,
+        "rank": 21,
         "name": "Neal Burtis",
         "pos": "LHP",
         "year": "PREP",
@@ -265,18 +257,7 @@ export const DRAFT_DATA = {
         "playerId": null
       },
       {
-        "rank": 23,
-        "name": "Nick Lewis",
-        "pos": "LHP",
-        "year": "R-SO",
-        "school": "Washington St",
-        "playerId": 3658,
-        "report": "Nick Lewis, a LHP out of Washington State, won the Mountain West pitcher of the year this spring in his second full season with the Cougs. His ERA dropped from 6.69 to a conference-leading 2.97 in 100 innings. He has a unique low 3/4 release with elite command, which lets his high 80s fastball play up. He has a great feel for all three of his pitches, and this shows, as he has the ability to zone all of his pitches, which led him to an above-average 6.4 BB%, which was in the 82nd percentile. His strengths are his ability to create soft contact and go deep into games, as he averaged 8.1 IP in his last four games of the season with an impressive complete-game win against Oregon St to end his year. His changeup and breaking ball are not going to wow stuff models away, but his ability to throw them consistently and often with unique release traits have let him have tremendous success this past year, showing a true number one at the Division I level.",
-        "reportAuthor": "Oliver Duthie",
-        "reportDate": "2026-06-10"
-      },
-      {
-        "rank": 24,
+        "rank": 22,
         "name": "Jace Taylor",
         "pos": "RHP",
         "year": "SR",
@@ -287,12 +268,31 @@ export const DRAFT_DATA = {
         "reportDate": "2026-06-09"
       },
       {
-        "rank": 25,
+        "rank": 23,
         "name": "Trey Newmann",
         "pos": "RHP",
         "year": "JR",
         "school": "Portland",
         "playerId": 3601
+      },
+      {
+        "rank": 24,
+        "name": "Colton Bower",
+        "pos": "C",
+        "year": "R-JR",
+        "school": "Washington",
+        "playerId": 3484
+      },
+      {
+        "rank": 25,
+        "name": "Nick Lewis",
+        "pos": "LHP",
+        "year": "R-SO",
+        "school": "Washington St",
+        "playerId": 3658,
+        "report": "Nick Lewis, a LHP out of Washington State, won the Mountain West pitcher of the year this spring in his second full season with the Cougs. His ERA dropped from 6.69 to a conference-leading 2.97 in 100 innings. He has a unique low 3/4 release with elite command, which lets his high 80s fastball play up. He has a great feel for all three of his pitches, and this shows, as he has the ability to zone all of his pitches, which led him to an above-average 6.4 BB%, which was in the 82nd percentile. His strengths are his ability to create soft contact and go deep into games, as he averaged 8.1 IP in his last four games of the season with an impressive complete-game win against Oregon St to end his year. His changeup and breaking ball are not going to wow stuff models away, but his ability to throw them consistently and often with unique release traits have let him have tremendous success this past year, showing a true number one at the Division I level.",
+        "reportAuthor": "Oliver Duthie",
+        "reportDate": "2026-06-10"
       },
       {
         "rank": 26,
