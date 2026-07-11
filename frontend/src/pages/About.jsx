@@ -106,6 +106,12 @@ const INTERNS = [
     highlight: { pct: 96, label: 'wRC+ (D3)', value: '146' },
     built: { label: 'Recruiting Matchmaker', to: '/recruiting/quiz' },
   },
+  {
+    name: "Joe O'Leary",
+    role: 'Intern',
+    headshot: '/team-photos/joe-oleary.jpg',
+    blurb: 'Joe is a journalism student working toward a bachelor\'s degree in Communications at Portland State University. He grew up loving the game, its nuances, and the numbers we can use to quantify it, and he brings that perspective to writing about baseball across the Pacific Northwest. He hopes to build a career in journalism or in baseball itself.',
+  },
 ]
 
 
