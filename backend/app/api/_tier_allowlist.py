@@ -40,6 +40,7 @@ DEVELOPER_EMAILS = {
     "tommy.richards@wsu.edu",
     "smith55@uw.edu",   # June 23, 2026 — lifetime dev account for TrackMan access (per Nate)
     "willytcell@gmail.com",   # June 27, 2026 — free forever dev tier (per Nate)
+    "olearyjoe101@gmail.com",   # July 8, 2026 — full dev access forever (per Nate)
 }
 
 # Commitment Editor — narrower than the dev tier. Only these accounts may
