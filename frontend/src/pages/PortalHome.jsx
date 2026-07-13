@@ -243,6 +243,29 @@ function PvSeriesPlanner() {
   )
 }
 
+function PvMatchupCalc() {
+  return (
+    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
+      <rect width="240" height="120" fill={PAPER} />
+      {/* two facing player cards */}
+      {[16, 138].map((x, i) => (
+        <g key={i}>
+          <rect x={x} y="36" width="86" height="68" rx="6" fill="#fff" stroke="#e7e3da" />
+          <rect x={x + 8} y="44" width="44" height="8" rx="4" fill={i ? REDP : BLUEP} opacity="0.85" />
+          <rect x={x + 8} y="58" width="70" height="5" rx="2.5" fill="#e7e3da" />
+          <rect x={x + 8} y="68" width="58" height="5" rx="2.5" fill="#e7e3da" />
+          <rect x={x + 8} y="82" width="70" height="6" rx="3" fill={i ? REDP : BLUEP} opacity="0.3" />
+          <rect x={x + 8} y="82" width={i ? 30 : 52} height="6" rx="3" fill={i ? REDP : BLUEP} opacity="0.8" />
+        </g>
+      ))}
+      {/* score ring between them */}
+      <circle cx="120" cy="52" r="22" fill="#fff" stroke={GOLD} strokeWidth="5" strokeDasharray="96 42" strokeLinecap="round" transform="rotate(-90 120 52)" />
+      <text x="120" y="57" textAnchor="middle" fontSize="15" fontWeight="800" fill={INK2}>7.4</text>
+      <rect x="96" y="86" width="48" height="10" rx="5" fill={GOLD} opacity="0.35" />
+    </svg>
+  )
+}
+
 function PvSplits() {
   const chips = [REDP, GOLD, INK2, GOLDL]
   const grid = [[.8, .3, .6, .4], [.2, .7, .5, .9], [.6, .5, .3, .7], [.4, .8, .55, .2]]
@@ -330,6 +353,7 @@ const SECTIONS = [
       { to: '/portal/splits', label: 'Splits Explorer', desc: 'Filter any team by game state, count, hand, and home/away.', Preview: PvSplits },
       { to: '/portal/alignments', label: 'Defensive Alignments', desc: 'Per-hitter spray (5 IF + 5 OF lanes) with fielder shift calls.', Preview: PvAlignments, flag: 'New' },
       { to: '/portal/historic', label: 'Historic Matchups', desc: 'Per-PA matchup history vs a specific opponent.', Preview: PvMatchup },
+      { to: '/portal/matchup-calculator', label: 'Matchup Calculator', desc: 'Grade any batter vs pitcher matchup 1-10, with outcome odds and a projected line.', Preview: PvMatchupCalc, flag: 'New' },
       { to: '/portal/player-scouting', label: 'Player Scouting', desc: 'Individual scouting reports on any hitter or pitcher.', Preview: PvPlayerScout },
     ],
   },

@@ -43,6 +43,8 @@ const NAV_SECTIONS = [
         desc: 'Per-hitter spray (5 IF + 5 OF lanes) with shift calls' },
       { to: '/portal/historic', label: 'Historic Matchups',
         desc: 'Per-PA matchup history vs an opponent' },
+      { to: '/portal/matchup-calculator', label: 'Matchup Calculator',
+        desc: 'Grade any batter vs pitcher matchup 1-10 with a Log5 outcome tree' },
       { to: '/portal/player-scouting', label: 'Player Scouting',
         desc: 'Individual scouting reports' },
     ],
