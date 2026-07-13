@@ -28,6 +28,8 @@ const NAV_SECTIONS = [
         desc: 'Optimal vs RHP / vs LHP batting orders + bench' },
       { to: '/portal/rapsodo', label: 'Rapsodo Lab',
         desc: 'Upload bullpen CSVs → cleaned pitch profiles & movement' },
+      { to: '/portal/trackman', label: 'TrackMan Suite',
+        desc: 'Upload TrackMan game CSVs: arsenals, contact quality, BP-to-game transfer' },
     ],
   },
   {

@@ -243,6 +243,28 @@ function PvSeriesPlanner() {
   )
 }
 
+function PvTrackman() {
+  return (
+    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
+      <rect width="240" height="120" fill={PAPER} />
+      {/* radar arc + tracked pitch dots */}
+      <path d="M 20 104 Q 120 -30 220 104" fill="none" stroke="#e7e3da" strokeWidth="2" />
+      <path d="M 50 104 Q 120 16 190 104" fill="none" stroke="#e7e3da" strokeWidth="2" />
+      {[[70,64],[96,44],[124,38],[152,46],[178,66]].map(([x,y],i) => (
+        <circle key={i} cx={x} cy={y} r="4" fill={[BLUEP,REDP,GOLD,BLUEP,REDP][i]} opacity="0.85" />
+      ))}
+      {/* CSV rows feeding in */}
+      {[0,1,2].map(i => (
+        <g key={i}>
+          <rect x="16" y={14 + i*11} width="52" height="7" rx="3" fill="#e7e3da" />
+          <rect x="16" y={14 + i*11} width={[34,20,42][i]} height="7" rx="3" fill={GOLD} opacity="0.5" />
+        </g>
+      ))}
+      <rect x="86" y="98" width="68" height="10" rx="5" fill={INK2} opacity="0.85" />
+    </svg>
+  )
+}
+
 function PvMatchupCalc() {
   return (
     <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
@@ -342,6 +364,7 @@ const SECTIONS = [
       { to: '/portal/trends', label: 'Trends', desc: 'Lineups, rotation, bullpen usage & times-thru-order over time.', Preview: PvTrends },
       { to: '/portal/lineup-helper', label: 'Lineup Helper', desc: 'Optimal batting orders vs RHP / vs LHP, plus the bench.', Preview: PvLineup },
       { to: '/portal/rapsodo', label: 'Rapsodo Lab', desc: 'Upload bullpen CSVs for cleaned pitch profiles & movement.', Preview: PvRapsodo },
+      { to: '/portal/trackman', label: 'TrackMan Suite', desc: 'Upload TrackMan game CSVs: arsenals, contact quality, and the BP-to-game transfer gap.', Preview: PvTrackman, flag: 'New' },
     ],
   },
   {
