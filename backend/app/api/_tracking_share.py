@@ -1,19 +1,24 @@
-"""Tracking-workspace sharing for the TrackMan Suite + Rapsodo Lab.
+"""Staff workspace sharing for the TrackMan Suite + Rapsodo Lab.
 
-Both tools are private per-coach workspaces keyed by owner_user_id. This
-module lets a coach share their workspace with staff emails so the whole
-staff sees ONE data pool: a member whose email is on a share list, and who
-has no uploads of their own, transparently acts AS the sharing owner —
-their reads, uploads, and overrides all resolve to the shared workspace.
-No per-query changes and no double counting; only the owner id that every
-endpoint already scopes by gets remapped at the gate.
+Both tools are private per-coach workspaces keyed by owner_user_id. A
+staff member whose email is on the coach's staff list, and who has no
+uploads of their own, transparently acts AS the coach's workspace: reads,
+uploads, and overrides all resolve to the shared pool. No per-query
+changes and no double counting; only the owner id that every endpoint
+already scopes by gets remapped at the gate.
+
+UNIFIED with Coach & Scout staff seats (July 2026): `coach_staff_seats`
+(the subscription-sharing list in account.py/auth.py) is the primary
+staff list — a seat grants the coach-tier membership AND both data
+workspaces. `tracking_workspace_shares` remains as the data-only layer
+for owners who can't grant seats (comped coaches; see _owner_can_share).
+The /portal/my-staff endpoints manage both as one list; the StaffManager
+widget (portal home + TrackMan Overview) is the UI.
 
 Rules:
   - Coach tier required as usual (staff-seat members qualify).
   - A member with their OWN uploads keeps their own workspace (we never
     silently merge two coaches' data).
-  - Managed from the TrackMan Suite Overview tab; one list covers both
-    tools. Max 6 staff emails per owner.
 """
 import time
 
@@ -64,16 +69,27 @@ def resolve_workspace(request: Request, owner: str) -> str:
         eff = None
         with get_connection() as conn:
             cur = conn.cursor()
+            owners = []
+            # Staff seats first (the membership relationship), then any
+            # data-only shares — one seat covers membership + workspaces.
+            try:
+                cur.execute(
+                    """SELECT owner_user_id FROM coach_staff_seats
+                       WHERE LOWER(member_email) = %s ORDER BY created_at DESC""",
+                    (email,),
+                )
+                owners += [str(r["owner_user_id"]) for r in cur.fetchall()]
+            except Exception:
+                conn.rollback()
             try:
                 cur.execute(
                     """SELECT owner_user_id FROM tracking_workspace_shares
                        WHERE member_email = %s ORDER BY created_at DESC""",
                     (email,),
                 )
-                owners = [str(r["owner_user_id"]) for r in cur.fetchall()]
+                owners += [str(r["owner_user_id"]) for r in cur.fetchall()]
             except Exception:
                 conn.rollback()
-                owners = []
             if owners and owners[0] != owner:
                 # Only adopt the shared workspace when the member has no
                 # uploads of their own (never merge two coaches' data).
@@ -158,6 +174,118 @@ def remove_share(share_id: int, owner: str = Depends(_gate)):
                     (share_id, owner))
         if not cur.rowcount:
             raise HTTPException(status_code=404, detail="Share not found.")
+        conn.commit()
+    invalidate_share_cache()
+    return {"status": "ok"}
+
+
+# ── Unified "My Staff" (seats + data sharing as ONE list) ────────
+# GET/POST/DELETE /portal/my-staff — the StaffManager widget's API.
+# POST adds a membership seat when the owner can grant them (paying
+# Coach & Scout sub or dev; auth._owner_can_share) and always shares
+# the TrackMan + Rapsodo workspaces. DELETE removes both.
+
+def _my_staff_ctx(request: Request, owner: str) -> dict:
+    from .auth import _owner_can_share
+    email = (email_for_token(_extract_token(request)) or "").strip().lower()
+    can_seats = False
+    if email:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            try:
+                can_seats = bool(_owner_can_share(cur, owner, email))
+            except Exception:
+                conn.rollback()
+    return {"email": email, "can_seats": can_seats}
+
+
+@router.get("/portal/my-staff")
+def my_staff(request: Request, owner: str = Depends(_gate)):
+    from .auth import MAX_STAFF_SEATS, _ensure_staff_seats_table
+    ctx = _my_staff_ctx(request, owner)
+    members: dict = {}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_staff_seats_table(cur)
+        _ensure_table(cur)
+        cur.execute(
+            "SELECT LOWER(member_email) AS email, created_at::date AS added FROM coach_staff_seats "
+            "WHERE owner_user_id = %s ORDER BY created_at", (owner,))
+        for r in cur.fetchall():
+            members[r["email"]] = {"email": r["email"], "seat": True, "data": True,
+                                   "added": r["added"].isoformat() if r["added"] else None}
+        cur.execute(
+            "SELECT member_email AS email, created_at::date AS added FROM tracking_workspace_shares "
+            "WHERE owner_user_id = %s ORDER BY created_at", (owner,))
+        for r in cur.fetchall():
+            m = members.setdefault(r["email"], {"email": r["email"], "seat": False, "data": True,
+                                                "added": r["added"].isoformat() if r["added"] else None})
+            m["data"] = True
+        # Is the caller viewing a workspace someone shared with THEM?
+        viewing = resolve_workspace(request, owner) != owner
+        conn.commit()
+    return {
+        "members": sorted(members.values(), key=lambda m: m["added"] or ""),
+        "max": MAX_STAFF_SEATS,
+        "can_seats": ctx["can_seats"],
+        "viewing_shared": viewing,
+    }
+
+
+@router.post("/portal/my-staff")
+def my_staff_add(body: ShareAdd, request: Request, owner: str = Depends(_gate)):
+    from .auth import MAX_STAFF_SEATS, _ensure_staff_seats_table
+    ctx = _my_staff_ctx(request, owner)
+    email = (body.email or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email is required.")
+    if email == ctx["email"]:
+        raise HTTPException(status_code=400, detail="That's your own account email.")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_staff_seats_table(cur)
+        _ensure_table(cur)
+        cur.execute(
+            """SELECT COUNT(DISTINCT e) AS n FROM (
+                 SELECT LOWER(member_email) AS e FROM coach_staff_seats WHERE owner_user_id = %s
+                 UNION SELECT member_email FROM tracking_workspace_shares WHERE owner_user_id = %s
+               ) u""", (owner, owner))
+        if (cur.fetchone()["n"] or 0) >= MAX_STAFF_SEATS:
+            raise HTTPException(status_code=400,
+                                detail=f"Your staff list is limited to {MAX_STAFF_SEATS} coaches.")
+        seat = False
+        if ctx["can_seats"]:
+            cur.execute(
+                """INSERT INTO coach_staff_seats (owner_user_id, owner_email, member_email)
+                   VALUES (%s, %s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
+                (owner, ctx["email"], email))
+            seat = True
+        cur.execute(
+            """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
+               VALUES (%s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
+            (owner, email))
+        conn.commit()
+    invalidate_share_cache()
+    return {"status": "ok", "email": email, "seat": seat}
+
+
+@router.delete("/portal/my-staff/{member_email}")
+def my_staff_remove(member_email: str, owner: str = Depends(_gate)):
+    email = (member_email or "").strip().lower()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        removed = 0
+        try:
+            cur.execute("DELETE FROM coach_staff_seats WHERE owner_user_id = %s AND LOWER(member_email) = %s",
+                        (owner, email))
+            removed += cur.rowcount
+        except Exception:
+            conn.rollback()
+        cur.execute("DELETE FROM tracking_workspace_shares WHERE owner_user_id = %s AND member_email = %s",
+                    (owner, email))
+        removed += cur.rowcount
+        if not removed:
+            raise HTTPException(status_code=404, detail="Not on your staff list.")
         conn.commit()
     invalidate_share_cache()
     return {"status": "ok"}

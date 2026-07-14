@@ -11,6 +11,7 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { usePortalTeam } from '../context/PortalTeamContext'
+import StaffManager from '../components/portal/StaffManager'
 
 // Portal palette (matches tailwind.config.js)
 const INK = '#1d1f4d', INK2 = '#2c2f6b', GOLD = '#8e7553', GOLDL = '#a89070'
@@ -529,6 +530,9 @@ export default function PortalHome() {
           )}
         </div>
       </div>
+
+      {/* Staff sharing — a coach sub covers the whole staff */}
+      <StaffManager variant="banner" />
 
       {/* Tool sections */}
       {SECTIONS.map(section => (

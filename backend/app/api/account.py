@@ -24,6 +24,7 @@ from .auth import (
     _owner_can_share,
 )
 from ._tier_allowlist import email_for_token, resolve_comped_tier
+from ._tracking_share import _ensure_table as _ts_ensure_table, invalidate_share_cache
 
 router = APIRouter()
 
@@ -292,7 +293,16 @@ def add_staff_seat(body: SeatAdd, request: Request, user_id: str = Depends(get_c
                VALUES (%s, %s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
             (user_id, ctx["email"], new_email),
         )
+        # A seat also shares the TrackMan + Rapsodo workspaces (unified
+        # staff list — see _tracking_share.py).
+        _ts_ensure_table(cur)
+        cur.execute(
+            """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
+               VALUES (%s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
+            (user_id, new_email),
+        )
         conn.commit()
+    invalidate_share_cache()
     return {"status": "ok", "email": new_email}
 
 
@@ -302,10 +312,18 @@ def remove_staff_seat(seat_id: int, request: Request, user_id: str = Depends(get
         cur = conn.cursor()
         _ensure_staff_seats_table(cur)
         cur.execute(
-            "DELETE FROM coach_staff_seats WHERE id = %s AND owner_user_id = %s",
+            "DELETE FROM coach_staff_seats WHERE id = %s AND owner_user_id = %s RETURNING member_email",
             (seat_id, user_id),
         )
+        row = cur.fetchone()
+        if row:
+            _ts_ensure_table(cur)
+            cur.execute(
+                "DELETE FROM tracking_workspace_shares WHERE owner_user_id = %s AND member_email = %s",
+                (user_id, (row["member_email"] or "").strip().lower()),
+            )
         conn.commit()
+    invalidate_share_cache()
     return {"status": "ok"}
 
 
