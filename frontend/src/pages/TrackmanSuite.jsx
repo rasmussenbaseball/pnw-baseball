@@ -38,8 +38,17 @@ async function authHeaders() {
 export default function TrackmanSuite() {
   const [tab, setTab] = useState('overview')
   const [labPitcher, setLabPitcher] = useState('')
+  const [reviewSession, setReviewSession] = useState(null)
   const { data: overview, refetch } = useApi('/trackman/overview')
   const hasData = (overview?.totals?.pitches || 0) > 0
+  // Team context: every roster view pre-selects the COACH'S team (the modal
+  // team code across their uploads) so opponents never mix into their lists.
+  // Persisted so a manual change sticks.
+  const [myTeam, setMyTeamRaw] = useState(() => localStorage.getItem('tmMyTeam') || '')
+  const teams = overview?.teams || []
+  const primary = myTeam && teams.includes(myTeam) ? myTeam : (overview?.primary_team || '')
+  const setMyTeam = (t) => { setMyTeamRaw(t); localStorage.setItem('tmMyTeam', t) }
+  const teamCtx = { teams, primary, setMyTeam }
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5">
@@ -56,7 +65,8 @@ export default function TrackmanSuite() {
       {/* Tabs */}
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
-          ['lab', 'Player Lab'], ['leaders', 'Leaderboards']].map(([k, label]) => (
+          ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
+          ['sessions', 'Session Review'], ['catching', 'Catching']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === k
@@ -68,12 +78,29 @@ export default function TrackmanSuite() {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab overview={overview} refetch={refetch} />}
-      {tab === 'pitching' && (hasData ? <PitchingTab onOpenLab={(name) => { setLabPitcher(name); setTab('lab') }} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'hitting' && (hasData ? <HittingTab /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'lab' && (hasData ? <PlayerLabTab pitcher={labPitcher} setPitcher={setLabPitcher} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'leaders' && (hasData ? <LeaderboardsTab /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'overview' && <OverviewTab overview={overview} refetch={refetch} onReview={(id) => { setReviewSession(id); setTab('sessions') }} />}
+      {tab === 'pitching' && (hasData ? <PitchingTab teamCtx={teamCtx} onOpenLab={(name) => { setLabPitcher(name); setTab('lab') }} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'hitting' && (hasData ? <HittingTab teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'lab' && (hasData ? <PlayerLabTab pitcher={labPitcher} setPitcher={setLabPitcher} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'hlab' && (hasData ? <HitterLabTab teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'leaders' && (hasData ? <LeaderboardsTab teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'catching' && (hasData ? <CatchingTab /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
+  )
+}
+
+// Team selector: coach's team pre-selected, opponents + All available.
+function TeamSelect({ teamCtx, value, onChange, allowAll = true }) {
+  const { teams, primary, setMyTeam } = teamCtx
+  return (
+    <select value={value} onChange={e => { onChange(e.target.value); if (e.target.value) setMyTeam(e.target.value) }}
+      className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm font-semibold">
+      {allowAll && <option value="">All teams</option>}
+      {teams.map(t => (
+        <option key={t} value={t}>{t}{t === primary ? ' (my team)' : ''}</option>
+      ))}
+    </select>
   )
 }
 
@@ -90,7 +117,7 @@ function EmptyNudge({ onGo }) {
 
 // ── Overview & Upload ────────────────────────────────────────────
 
-function OverviewTab({ overview, refetch }) {
+function OverviewTab({ overview, refetch, onReview }) {
   const [busy, setBusy] = useState(false)
   const [report, setReport] = useState(null)
   const inputRef = useRef(null)
@@ -204,7 +231,9 @@ function OverviewTab({ overview, refetch }) {
                       </td>
                       <td className="px-2 py-2 text-right tabular-nums">{s.pitch_count}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{s.bbe_count}</td>
-                      <td className="px-2 py-2 text-right">
+                      <td className="px-2 py-2 text-right whitespace-nowrap">
+                        <button onClick={() => onReview?.(s.id)}
+                          className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline mr-3">Review</button>
                         <button onClick={() => removeSession(s.id)}
                           className="text-[12px] text-gray-400 hover:text-rose-500">Delete</button>
                       </td>
@@ -224,12 +253,11 @@ function OverviewTab({ overview, refetch }) {
 
 const CONTEXTS = [['live', 'Games + Scrimmages'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['all', 'Everything']]
 
-function PitchingTab({ onOpenLab }) {
+function PitchingTab({ onOpenLab, teamCtx }) {
   const [context, setContext] = useState('live')
-  const { data, loading } = useApi(`/trackman/pitching?context=${context}`)
+  const { data, loading } = useApi('/trackman/pitching', { context })
   const pitchers = data?.pitchers || []
-  const teams = useMemo(() => [...new Set(pitchers.map(p => p.team).filter(Boolean))].sort(), [pitchers])
-  const [team, setTeam] = useState('')
+  const [team, setTeam] = useState(teamCtx.primary)
   const shown = team ? pitchers.filter(p => p.team === team) : pitchers
 
   return (
@@ -243,11 +271,7 @@ function PitchingTab({ onOpenLab }) {
             {label}
           </button>
         ))}
-        <select value={team} onChange={e => setTeam(e.target.value)}
-          className="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-sm">
-          <option value="">All teams</option>
-          {teams.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
       </div>
 
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> :
@@ -319,11 +343,10 @@ function PitchingTab({ onOpenLab }) {
 
 // ── Hitting ──────────────────────────────────────────────────────
 
-function HittingTab() {
+function HittingTab({ teamCtx }) {
   const { data, loading } = useApi('/trackman/hitting')
   const batters = data?.batters || []
-  const teams = useMemo(() => [...new Set(batters.map(b => b.team).filter(Boolean))].sort(), [batters])
-  const [team, setTeam] = useState('')
+  const [team, setTeam] = useState(teamCtx.primary)
   const shown = team ? batters.filter(b => b.team === team) : batters
 
   const Cell = ({ v, suffix = '' }) => <td className="px-2 py-1.5 text-right tabular-nums">{v == null ? '–' : `${v}${suffix}`}</td>
@@ -334,11 +357,7 @@ function HittingTab() {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Live = games + scrimmages. Transfer gap = live hard-hit% minus BP hard-hit% (negative means the BP swing isn't carrying into games).
         </p>
-        <select value={team} onChange={e => setTeam(e.target.value)}
-          className="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-sm">
-          <option value="">All teams</option>
-          {teams.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
       </div>
       <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
         <table className="w-full text-[13px]">
@@ -568,13 +587,17 @@ const PCTL_LABELS = {
   chase_pct: ['Chase%', '%', 1], csw_pct: ['CSW%', '%', 1], ev_against: ['EV against', ' mph', 1],
 }
 
-function PlayerLabTab({ pitcher, setPitcher }) {
+function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
   const [context, setContext] = useState('live')
-  const { data: list } = useApi(`/trackman/pitching?context=all`)
-  const names = (list?.pitchers || []).map(p => p.pitcher)
-  const active = pitcher || names[0] || ''
+  const [team, setTeam] = useState(teamCtx.primary)
+  const [conf, setConf] = useState('all')
+  const { data: list } = useApi('/trackman/pitching', { context: 'all' })
+  const roster = (list?.pitchers || []).filter(p => !team || p.team === team)
+  const names = roster.map(p => p.pitcher)
+  const active = names.includes(pitcher) ? pitcher : (names[0] || '')
   const { data, loading, error } = useApi(
-    active ? `/trackman/pitchers/detail?pitcher=${encodeURIComponent(active)}&context=${context}` : null)
+    active ? '/trackman/pitchers/detail' : null,
+    { pitcher: active, context, conf, team: team || undefined })
 
   const byType = useMemo(() => {
     const m = {}
@@ -588,6 +611,7 @@ function PlayerLabTab({ pitcher, setPitcher }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
+        <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} allowAll={false} />
         <select value={active} onChange={e => setPitcher(e.target.value)}
           className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm font-semibold">
           {names.map(n => <option key={n} value={n}>{n}</option>)}
@@ -600,6 +624,13 @@ function PlayerLabTab({ pitcher, setPitcher }) {
             {label}
           </button>
         ))}
+        <button onClick={() => setConf(conf === 'all' ? 'strict' : 'all')}
+          title="Strict drops pitches TrackMan flagged low-confidence on movement or location"
+          className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+            conf === 'strict' ? 'bg-emerald-600 text-white'
+              : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+          {conf === 'strict' ? 'High confidence only ✓' : 'All measurements'}
+        </button>
         {data && <span className="ml-auto text-xs text-gray-400 tabular-nums">{data.pitch_count} pitches</span>}
       </div>
 
@@ -670,10 +701,11 @@ function PlayerLabTab({ pitcher, setPitcher }) {
 
 // ── Leaderboards ─────────────────────────────────────────────────
 
-function LeaderboardsTab() {
+function LeaderboardsTab({ teamCtx }) {
   const [side, setSide] = useState('pitching')
   const [context, setContext] = useState('live')
-  const { data, loading } = useApi(`/trackman/leaderboards?side=${side}&context=${context}`)
+  const [team, setTeam] = useState(teamCtx.primary)
+  const { data, loading } = useApi('/trackman/leaderboards', { side, context, team: team || undefined })
   const boards = data?.boards || {}
 
   return (
@@ -696,6 +728,7 @@ function LeaderboardsTab() {
             {label}
           </button>
         ))}
+        <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
       </div>
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -722,6 +755,301 @@ function LeaderboardsTab() {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Hitter Lab ───────────────────────────────────────────────────
+
+const HITTER_PCTL_LABELS = {
+  avg_ev: ['Avg exit velo', ' mph', 1], max_ev: ['Max exit velo', ' mph', 1],
+  hard_hit_pct: ['Hard-hit%', '%', 1], sweet_spot_pct: ['Sweet-spot%', '%', 1],
+  whiff_pct: ['Whiff%', '%', 1], chase_pct: ['Chase%', '%', 1], zone_contact_pct: ['Zone contact%', '%', 1],
+}
+
+// 5x5 zone map colored by a rate (swing% or contact%) per bin.
+function ZoneRateMap({ pitches, num, den, title }) {
+  const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2, N = 5
+  const nums = Array.from({ length: N }, () => Array(N).fill(0))
+  const dens = Array.from({ length: N }, () => Array(N).fill(0))
+  pitches.forEach(p => {
+    if (p.plate_loc_side == null || p.plate_loc_height == null) return
+    const cx = Math.min(N - 1, Math.max(0, Math.floor(((p.plate_loc_side - XMIN) / (XMAX - XMIN)) * N)))
+    const cy = Math.min(N - 1, Math.max(0, Math.floor(((YMAX - p.plate_loc_height) / (YMAX - YMIN)) * N)))
+    if (den(p)) { dens[cy][cx] += 1; if (num(p)) nums[cy][cx] += 1 }
+  })
+  const W = 150, H = 150, cw = W / N, ch = H / N
+  const zx = (v) => ((v - XMIN) / (XMAX - XMIN)) * W
+  const zy = (v) => ((YMAX - v) / (YMAX - YMIN)) * H
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">{title}</div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded">
+        {dens.map((row, y) => row.map((d, x) => {
+          if (d < 3) return <rect key={`${x}${y}`} x={x * cw} y={y * ch} width={cw} height={ch} fill="currentColor" className="text-gray-100 dark:text-gray-700" opacity="0.4" />
+          const rate = nums[y][x] / d
+          return (
+            <g key={`${x}${y}`}>
+              <rect x={x * cw} y={y * ch} width={cw} height={ch} fill={rate >= 0.5 ? '#d22d49' : '#3661ad'}
+                opacity={0.12 + 0.7 * Math.abs(rate - 0.25)} />
+              <text x={x * cw + cw / 2} y={y * ch + ch / 2 + 3} textAnchor="middle" fontSize="9"
+                fill="#fff" fontWeight="700">{Math.round(rate * 100)}</text>
+            </g>
+          )
+        }))}
+        <rect x={zx(-0.83)} y={zy(3.5)} width={zx(0.83) - zx(-0.83)} height={zy(1.5) - zy(3.5)}
+          fill="none" stroke="currentColor" className="text-gray-600 dark:text-gray-200" strokeWidth="1.5" />
+      </svg>
+    </div>
+  )
+}
+
+// Spray chart from Bearing (deg from CF, +=right) + Distance.
+function SprayChart({ pitches }) {
+  const W = 300, H = 260, HOME_X = W / 2, HOME_Y = H - 18, MAXD = 420
+  const pts = pitches.filter(p => p.bearing != null && p.distance != null && p.exit_speed != null)
+  const px = (b, d) => HOME_X + (d / MAXD) * (H - 40) * Math.sin(b * Math.PI / 180)
+  const py = (b, d) => HOME_Y - (d / MAXD) * (H - 40) * Math.cos(b * Math.PI / 180)
+  const evColor = (ev) => ev >= 95 ? '#d22d49' : ev >= 85 ? '#f59e0b' : '#3661ad'
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      {/* foul lines + outfield arcs */}
+      <line x1={HOME_X} y1={HOME_Y} x2={px(-45, 420)} y2={py(-45, 420)} stroke="currentColor" className="text-gray-300 dark:text-gray-600" />
+      <line x1={HOME_X} y1={HOME_Y} x2={px(45, 420)} y2={py(45, 420)} stroke="currentColor" className="text-gray-300 dark:text-gray-600" />
+      {[150, 250, 350].map(d => (
+        <path key={d}
+          d={`M ${px(-45, d)} ${py(-45, d)} A ${(d / MAXD) * (H - 40)} ${(d / MAXD) * (H - 40)} 0 0 1 ${px(45, d)} ${py(45, d)}`}
+          fill="none" stroke="currentColor" className="text-gray-100 dark:text-gray-700" />
+      ))}
+      {pts.map((p, i) => (
+        <circle key={i} cx={px(Math.max(-55, Math.min(55, p.bearing)), Math.min(MAXD, p.distance))}
+          cy={py(Math.max(-55, Math.min(55, p.bearing)), Math.min(MAXD, p.distance))}
+          r="3.5" fill={evColor(p.exit_speed)} opacity="0.65" />
+      ))}
+      <text x="10" y={H - 6} fontSize="8" fill="#9ca3af">EV: <tspan fill="#3661ad">&lt;85</tspan> <tspan fill="#f59e0b">85-95</tspan> <tspan fill="#d22d49">95+</tspan></text>
+    </svg>
+  )
+}
+
+function HitterLabTab({ teamCtx }) {
+  const [team, setTeam] = useState(teamCtx.primary)
+  const [batter, setBatter] = useState('')
+  const [context, setContext] = useState('all')
+  const [conf, setConf] = useState('all')
+  const { data: list } = useApi('/trackman/hitting')
+  const roster = (list?.batters || []).filter(b => !team || b.team === team)
+  const names = roster.map(b => b.batter)
+  const active = names.includes(batter) ? batter : (names[0] || '')
+  const { data, loading, error } = useApi(
+    active ? '/trackman/batters/detail' : null,
+    { batter: active, context, conf, team: team || undefined })
+
+  const pct = data?.percentiles || {}
+  const pctKeys = Object.keys(HITTER_PCTL_LABELS).filter(k => pct[k])
+  const pitches = data?.pitches || []
+  const bbe = pitches.filter(p => p.exit_speed != null)
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} allowAll={false} />
+        <select value={active} onChange={e => setBatter(e.target.value)}
+          className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm font-semibold">
+          {names.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        {[['all', 'Everything'], ['live', 'Games + Scrimmages'], ['bp', 'BP only']].map(([k, label]) => (
+          <button key={k} onClick={() => setContext(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+              context === k ? 'bg-portal-purple text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+        <button onClick={() => setConf(conf === 'all' ? 'strict' : 'all')}
+          className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+            conf === 'strict' ? 'bg-emerald-600 text-white'
+              : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+          {conf === 'strict' ? 'High confidence only ✓' : 'All measurements'}
+        </button>
+        {data && <span className="ml-auto text-xs text-gray-400 tabular-nums">{data.pitch_count} pitches seen · {bbe.length} BBE</span>}
+      </div>
+
+      {loading && <div className="text-sm text-gray-400 p-6 text-center">Loading…</div>}
+      {error && <div className="text-sm text-gray-400 p-6 text-center">No data for this batter in this context.</div>}
+
+      {data && (
+        <>
+          {pctKeys.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">
+                Percentile vs your data ({pct[pctKeys[0]]?.pool} qualified bats, 30+ pitches seen)
+              </div>
+              <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
+                {pctKeys.map(k => {
+                  const [label, unit, dec] = HITTER_PCTL_LABELS[k]
+                  const v = pct[k].value
+                  const disp = k.endsWith('_pct') ? (v * 100).toFixed(dec) : v.toFixed(dec)
+                  return <PctlBar key={k} label={label} value={disp} unit={unit} pctl={pct[k].pctl} />
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Spray (colored by EV)</div>
+              <SprayChart pitches={bbe} />
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Swing decisions (rate per cell, min 3)</div>
+              <div className="grid grid-cols-2 gap-3">
+                <ZoneRateMap pitches={pitches} title="Swing%"
+                  den={() => true} num={(p) => p.is_swing} />
+                <ZoneRateMap pitches={pitches} title="Whiff% (of swings)"
+                  den={(p) => p.is_swing} num={(p) => p.is_whiff} />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Session Review ───────────────────────────────────────────────
+
+function SessionsTab({ overview, sessionId, setSessionId }) {
+  const sessions = overview?.sessions || []
+  const active = sessionId || sessions[0]?.id
+  const { data, loading } = useApi(active ? `/trackman/sessions/${active}/review` : null, {}, [active])
+  const sess = data?.session
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <select value={active || ''} onChange={e => setSessionId(Number(e.target.value))}
+          className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm font-semibold">
+          {sessions.map(s => (
+            <option key={s.id} value={s.id}>
+              {s.session_date} · {(TYPE_META[s.session_type] || {}).label || s.session_type} · {s.session_type === 'bp' ? (s.stadium || 'BP') : `${s.away_team} @ ${s.home_team}`}
+            </option>
+          ))}
+        </select>
+        {sess && <span className="ml-auto text-xs text-gray-400 tabular-nums">{sess.pitch_count} pitches · {sess.bbe_count} BBE</span>}
+      </div>
+
+      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : data && (
+        <>
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+              Pitcher lines
+            </div>
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                  <th className="px-4 py-1.5">Pitcher</th><th className="px-2 py-1.5">Team</th>
+                  <th className="px-2 py-1.5 text-right">Pitches</th><th className="px-2 py-1.5 text-right">BF</th>
+                  <th className="px-2 py-1.5 text-right">Velo</th><th className="px-2 py-1.5 text-right">Max</th>
+                  <th className="px-2 py-1.5 text-right">K</th><th className="px-2 py-1.5 text-right">BB</th>
+                  <th className="px-2 py-1.5 text-right">Whiffs</th><th className="px-2 py-1.5 text-right">CSW%</th>
+                  <th className="px-2 py-1.5 text-right">Zone%</th><th className="px-2 py-1.5 text-right">EV agn</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {(data.pitcher_lines || []).map(l => (
+                  <tr key={l.pitcher + l.pitcher_team}>
+                    <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{l.pitcher}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-400">{l.pitcher_team}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{l.pitches}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{l.bf}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(l.velo)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{fmt(l.max_velo)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{l.k}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{l.bb}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{l.whiffs}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(l.csw_pct)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(l.zone_pct)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(l.ev_against)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+              Hardest-hit balls
+            </div>
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                  <th className="px-4 py-1.5">Batter</th><th className="px-2 py-1.5">vs Pitcher</th>
+                  <th className="px-2 py-1.5 text-right">EV</th><th className="px-2 py-1.5 text-right">LA</th>
+                  <th className="px-2 py-1.5 text-right">Dist</th><th className="px-2 py-1.5">Type</th>
+                  <th className="px-2 py-1.5">Result</th><th className="px-2 py-1.5 text-right">Inn</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {(data.top_bbe || []).map((b, i) => (
+                  <tr key={i}>
+                    <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{b.batter} <span className="text-[10px] text-gray-400">{b.batter_team}</span></td>
+                    <td className="px-2 py-1.5 text-xs text-gray-500">{b.pitcher}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums font-bold">{fmt(b.exit_speed)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(b.launch_angle)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{b.distance ?? '–'}</td>
+                    <td className="px-2 py-1.5 text-xs">{b.tagged_hit_type || '–'}</td>
+                    <td className="px-2 py-1.5 text-xs">{b.play_result || '–'}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{b.inning ?? '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Catching ─────────────────────────────────────────────────────
+
+function CatchingTab() {
+  const { data, loading } = useApi('/trackman/catching')
+  const rows = data?.catchers || []
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Catcher throws (tracked steal/pickoff attempts)</span>
+        <span className="text-[10px] text-gray-400">Sorted by avg pop time</span>
+      </div>
+      {loading ? <div className="p-6 text-center text-sm text-gray-400">Loading…</div> :
+       rows.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No tracked catcher throws yet. TrackMan records pop times on steal attempts and pickoffs.</div> : (
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="px-4 py-2">Catcher</th><th className="px-2 py-2">Team</th>
+              <th className="px-2 py-2 text-right">Throws</th>
+              <th className="px-2 py-2 text-right">Avg pop</th><th className="px-2 py-2 text-right">Best pop</th>
+              <th className="px-2 py-2 text-right">Exchange</th>
+              <th className="px-2 py-2 text-right">Arm avg</th><th className="px-2 py-2 text-right">Arm max</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+            {rows.map(c => (
+              <tr key={c.catcher + c.catcher_team}>
+                <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{c.catcher}</td>
+                <td className="px-2 py-1.5 text-xs text-gray-400">{c.catcher_team}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{c.throws}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums font-bold">{fmt(c.avg_pop, 2)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmt(c.best_pop, 2)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.avg_exchange, 2)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.avg_throw)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.max_throw)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   )

@@ -148,7 +148,10 @@ def _context_clause(context):
 
 @router.get("/trackman/overview")
 def trackman_overview(owner: str = Depends(_gate)):
-    """Session list + workspace totals for the suite home."""
+    """Session list + workspace totals for the suite home. Also detects the
+    coach's PRIMARY team: the modal team code across their uploads (their
+    own program hosts the sessions, so it dominates) — every view defaults
+    its team selector to this so opponents never mix into the roster lists."""
     with get_connection() as conn:
         cur = conn.cursor()
         try:
@@ -160,9 +163,19 @@ def trackman_overview(owner: str = Depends(_gate)):
                 (owner,),
             )
             sessions = [dict(r) for r in cur.fetchall()]
+            cur.execute(
+                """SELECT team, COUNT(*) AS n FROM (
+                       SELECT pitcher_team AS team FROM tm_pitches WHERE owner_user_id = %s AND pitcher_team IS NOT NULL
+                       UNION ALL
+                       SELECT batter_team FROM tm_pitches WHERE owner_user_id = %s AND batter_team IS NOT NULL
+                   ) t GROUP BY team ORDER BY n DESC""",
+                (owner, owner),
+            )
+            team_rows = cur.fetchall()
         except Exception:
             conn.rollback()
-            return {"sessions": [], "totals": {"sessions": 0, "pitches": 0, "bbe": 0}}
+            return {"sessions": [], "totals": {"sessions": 0, "pitches": 0, "bbe": 0},
+                    "teams": [], "primary_team": None}
         for s in sessions:
             s["session_date"] = s["session_date"].isoformat() if s["session_date"] else None
             s["uploaded"] = s["uploaded"].isoformat() if s["uploaded"] else None
@@ -174,7 +187,10 @@ def trackman_overview(owner: str = Depends(_gate)):
         }
         for s in sessions:
             totals["by_type"][s["session_type"]] = totals["by_type"].get(s["session_type"], 0) + 1
-        return {"sessions": sessions, "totals": totals}
+        # SIM_UNI is TrackMan's simulated-opponent placeholder, never a program.
+        teams = [r["team"] for r in team_rows if r["team"] != "SIM_UNI"]
+        return {"sessions": sessions, "totals": totals,
+                "teams": teams, "primary_team": teams[0] if teams else None}
 
 
 @router.delete("/trackman/sessions/{session_id}")
@@ -365,6 +381,7 @@ def trackman_pitcher_detail(
     pitcher: str = Query(...),
     team: str | None = Query(None),
     context: str = Query("live"),
+    conf: str = Query("all"),
     owner: str = Depends(_gate),
 ):
     """Everything the Player Lab needs for one pitcher, in one call:
@@ -377,6 +394,10 @@ def trackman_pitcher_detail(
     with get_connection() as conn:
         cur = conn.cursor()
         # Raw per-pitch points (kept lean for the plots)
+        # Strict confidence: drop pitches TrackMan flagged Low on movement or
+        # location (keeps the plots honest; full sample stays the default).
+        conf_sql = (" AND COALESCE(p.mov_conf,'') <> 'Low' AND COALESCE(p.loc_conf,'') <> 'Low'"
+                    if conf == "strict" else "")
         cur.execute(
             f"""SELECT COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                        p.rel_speed, p.ivb, p.horz_break, p.spin_rate,
@@ -384,11 +405,12 @@ def trackman_pitcher_detail(
                        p.plate_loc_height, p.plate_loc_side,
                        p.balls, p.strikes, p.batter_side, p.pitch_call,
                        p.exit_speed, p.launch_angle, p.play_result,
+                       p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        s.session_date, s.id AS session_id
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher = %s
                   AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
-                  {extra}{team_sql}
+                  {extra}{team_sql}{conf_sql}
                 ORDER BY s.session_date, p.pitch_no""",
             [owner, pitcher] + params + tparams,
         )
@@ -483,6 +505,7 @@ _LB_CATS_HITTING = {
 def trackman_leaderboards(
     side: str = Query("pitching"),
     context: str = Query("live"),
+    team: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Corpus leaderboards with per-category minimum-sample gates. Each
@@ -490,8 +513,10 @@ def trackman_leaderboards(
     cats = _LB_CATS_PITCHING if side == "pitching" else _LB_CATS_HITTING
     who = "pitcher" if side == "pitching" else "batter"
     hand = "pitcher_throws" if side == "pitching" else "batter_side"
-    team = f"{who}_team"
+    team_col = f"{who}_team"
     extra, params = _context_clause(context)
+    team_sql = f" AND p.{team_col} = %s" if team else ""
+    tparams = [team] if team else []
 
     boards = {}
     with get_connection() as conn:
@@ -502,15 +527,15 @@ def trackman_leaderboards(
                     if "exit_speed" in expr or "distance" in expr else "COUNT(*)")
             try:
                 cur.execute(
-                    f"""SELECT p.{who} AS name, p.{hand} AS hand, p.{team} AS team,
+                    f"""SELECT p.{who} AS name, p.{hand} AS hand, p.{team_col} AS team,
                                COUNT(*) AS pitches, {gate} AS sample, {expr} AS val
                         FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                        WHERE p.owner_user_id = %s AND p.{who} IS NOT NULL {extra}
-                        GROUP BY p.{who}, p.{hand}, p.{team}
+                        WHERE p.owner_user_id = %s AND p.{who} IS NOT NULL {extra}{team_sql}
+                        GROUP BY p.{who}, p.{hand}, p.{team_col}
                         HAVING {gate} >= {min_n} AND {expr} IS NOT NULL
                         ORDER BY {expr} {'DESC' if higher else 'ASC'}
                         LIMIT 25""",
-                    [owner] + params,
+                    [owner] + params + tparams,
                 )
                 boards[key] = {
                     "label": label,
@@ -527,3 +552,173 @@ def trackman_leaderboards(
                 boards[key] = {"label": label, "higher_is_better": higher,
                                "min_sample": min_n, "rows": []}
     return {"side": side, "boards": boards}
+
+
+# ── Phase 2.5/3: Hitter Lab, Session Review, Catching ────────────
+
+_BATTER_PCTL = [
+    ("avg_ev", "AVG(exit_speed)", True),
+    ("max_ev", "MAX(exit_speed)", True),
+    ("hard_hit_pct", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN "
+                     "SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END),0) END", True),
+    ("sweet_spot_pct", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN "
+                       "SUM(CASE WHEN exit_speed IS NOT NULL AND launch_angle BETWEEN 8 AND 32 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END),0) END", True),
+    ("whiff_pct", "CASE WHEN SUM(CASE WHEN is_swing THEN 1 ELSE 0 END) >= 15 THEN "
+                  "SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END),0) END", False),
+    ("chase_pct", "CASE WHEN SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END) >= 15 THEN "
+                  "SUM(CASE WHEN is_chase THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END),0) END", False),
+    ("zone_contact_pct", "CASE WHEN SUM(CASE WHEN is_swing AND is_in_zone THEN 1 ELSE 0 END) >= 15 THEN "
+                         "SUM(CASE WHEN is_contact AND is_in_zone THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_swing AND is_in_zone THEN 1 ELSE 0 END),0) END", True),
+]
+
+
+@router.get("/trackman/batters/detail")
+def trackman_batter_detail(
+    batter: str = Query(...),
+    team: str | None = Query(None),
+    context: str = Query("all"),
+    conf: str = Query("all"),
+    owner: str = Depends(_gate),
+):
+    """Everything the Hitter Lab needs: every pitch SEEN (locations + swing
+    decisions), every BBE (EV/LA/spray from Direction+Distance), and
+    percentiles vs the other bats in this corpus (30+ pitches seen)."""
+    extra, params = _context_clause(context)
+    team_sql = " AND p.batter_team = %s" if team else ""
+    tparams = [team] if team else []
+    conf_sql = (" AND COALESCE(p.hit_launch_conf,'') <> 'Low'" if conf == "strict" else "")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+                       p.pitch_call, p.is_swing, p.is_whiff, p.is_contact, p.is_chase, p.is_in_zone,
+                       p.plate_loc_height, p.plate_loc_side, p.balls, p.strikes,
+                       p.pitcher_throws, p.exit_speed, p.launch_angle, p.distance,
+                       p.direction, p.bearing, p.play_result, p.tagged_hit_type,
+                       s.session_type, s.session_date
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.batter = %s {extra}{team_sql}{conf_sql}
+                ORDER BY s.session_date, p.pitch_no""",
+            [owner, batter] + params + tparams,
+        )
+        pitches = [dict(r) for r in cur.fetchall()]
+        for p in pitches:
+            p["session_date"] = p["session_date"].isoformat() if p["session_date"] else None
+        if not pitches:
+            raise HTTPException(status_code=404, detail="No pitches for that batter in this context.")
+
+        cols = ", ".join(f"{expr} AS {key}" for key, expr, _ in _BATTER_PCTL)
+        cur.execute(
+            f"""SELECT p.batter, COUNT(*) AS n, {cols}
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {extra}{conf_sql}
+                GROUP BY p.batter HAVING COUNT(*) >= 30""",
+            [owner] + params,
+        )
+        pool = [dict(r) for r in cur.fetchall()]
+
+    me = next((r for r in pool if r["batter"] == batter), None)
+    percentiles = {}
+    if me and len(pool) >= 5:
+        for key, _, higher in _BATTER_PCTL:
+            mine = me.get(key)
+            vals = [r[key] for r in pool if r.get(key) is not None]
+            if mine is None or len(vals) < 5:
+                continue
+            below = sum(1 for v in vals if (v < mine) == higher and v != mine)
+            pct = round(100 * (below + 0.5 * sum(1 for v in vals if v == mine)) / len(vals))
+            percentiles[key] = {"value": round(float(mine), 3), "pctl": max(1, min(99, pct)),
+                                "pool": len(vals)}
+
+    return {"batter": batter, "pitch_count": len(pitches),
+            "pitches": pitches, "percentiles": percentiles}
+
+
+@router.get("/trackman/sessions/{session_id}/review")
+def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
+    """One session's story: header, per-pitcher lines (grouped by team),
+    hardest-hit balls, and team discipline totals."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM tm_sessions WHERE id = %s AND owner_user_id = %s",
+                    (session_id, owner))
+        sess = cur.fetchone()
+        if not sess:
+            raise HTTPException(status_code=404, detail="Session not found.")
+
+        cur.execute(
+            """SELECT pitcher, pitcher_throws, pitcher_team, COUNT(*) AS pitches,
+                      COUNT(DISTINCT (inning, top_bottom, pa_of_inning)) AS bf,
+                      AVG(rel_speed) AS velo, MAX(rel_speed) AS max_velo,
+                      SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) AS whiffs,
+                      SUM(CASE WHEN pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1 ELSE 0 END) AS csw,
+                      SUM(CASE WHEN k_or_bb = 'Strikeout' THEN 1 ELSE 0 END) AS k,
+                      SUM(CASE WHEN k_or_bb = 'Walk' THEN 1 ELSE 0 END) AS bb,
+                      AVG(CASE WHEN is_in_zone THEN 1.0 WHEN is_in_zone IS FALSE THEN 0.0 END) AS zone,
+                      AVG(exit_speed) AS ev_against,
+                      SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bbe
+               FROM tm_pitches WHERE session_id = %s AND owner_user_id = %s AND pitcher IS NOT NULL
+               GROUP BY pitcher, pitcher_throws, pitcher_team
+               ORDER BY pitcher_team, COUNT(*) DESC""",
+            (session_id, owner),
+        )
+        lines = []
+        for r in cur.fetchall():
+            d = dict(r)
+            for k in ("velo", "max_velo", "ev_against"):
+                d[k] = round(d[k], 1) if d[k] is not None else None
+            d["zone_pct"] = round(100 * d.pop("zone"), 1) if d["zone"] is not None else None
+            d["csw_pct"] = round(100 * d["csw"] / d["pitches"], 1) if d["pitches"] else None
+            lines.append(d)
+
+        cur.execute(
+            """SELECT batter, batter_team, pitcher, exit_speed, launch_angle, distance,
+                      play_result, tagged_hit_type, inning
+               FROM tm_pitches WHERE session_id = %s AND owner_user_id = %s
+                 AND exit_speed IS NOT NULL
+               ORDER BY exit_speed DESC LIMIT 10""",
+            (session_id, owner),
+        )
+        top_bbe = [dict(r) for r in cur.fetchall()]
+        for b in top_bbe:
+            for k in ("exit_speed", "launch_angle"):
+                b[k] = round(b[k], 1) if b[k] is not None else None
+            b["distance"] = round(b["distance"]) if b["distance"] is not None else None
+
+        sess = dict(sess)
+        for k in ("session_date", "created_at"):
+            sess[k] = sess[k].isoformat() if sess.get(k) else None
+        sess.pop("owner_user_id", None)
+    return {"session": sess, "pitcher_lines": lines, "top_bbe": top_bbe}
+
+
+@router.get("/trackman/catching")
+def trackman_catching(owner: str = Depends(_gate)):
+    """Catcher throw metrics: pop time, exchange, throw speed. TrackMan only
+    records these on tracked throws (steal attempts / pickoffs)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """SELECT catcher, catcher_team, COUNT(*) AS throws,
+                          AVG(pop_time) AS avg_pop, MIN(pop_time) AS best_pop,
+                          AVG(exchange_time) AS avg_exchange,
+                          AVG(throw_speed) AS avg_throw, MAX(throw_speed) AS max_throw
+                   FROM tm_pitches
+                   WHERE owner_user_id = %s AND catcher IS NOT NULL AND pop_time IS NOT NULL
+                   GROUP BY catcher, catcher_team
+                   ORDER BY AVG(pop_time)""",
+                (owner,),
+            )
+            rows = []
+            for r in cur.fetchall():
+                d = dict(r)
+                for k in ("avg_pop", "best_pop", "avg_exchange"):
+                    d[k] = round(d[k], 2) if d[k] is not None else None
+                for k in ("avg_throw", "max_throw"):
+                    d[k] = round(d[k], 1) if d[k] is not None else None
+                rows.append(d)
+        except Exception:
+            conn.rollback()
+            rows = []
+    return {"catchers": rows}
