@@ -76,11 +76,21 @@ on every row and endpoint, coach tier gate.
   8-32°, zone contact%, whiff%, chase%, max distance), each with its own
   minimum-sample gate, side + context filters.
 
-Still open from the original Phase 2 list (now Phase 2.5):
-- Confidence filter toggle (drop Low-confidence rows, show readiness %).
-- Roster linking to our players table (Rapsodo link-endpoint pattern).
-- Hitter Lab (batter version of the deep dive: swing decisions by zone,
-  contact heatmaps, spray from Direction/Bearing).
+Phase 2.5/3 + final round — ALL SHIPPED (2026-07-13):
+- Hitter Lab (percentiles vs 30+ pitch bats, EV-colored spray from
+  Bearing+Distance, swing%/whiff% zone maps), Session Review (pitcher
+  lines + hardest-hit + called-pitch ZONE REPORT w/ shadow-zone strike
+  rate), Catching board (pop/exchange/arm), strict-confidence toggle,
+  TEAM-FIRST selection everywhere (coach's team auto-detected as the
+  modal team code, pre-selected in every roster view), Stuff + Loc
+  grades (transparent z-score vs same-type pitches in the corpus,
+  100=avg/10 per SD, 15-pitch min), two-pitch sequencing (whiff/CSW on
+  the second pitch), unambiguous roster links to player profiles, and
+  ReportActions PDF/PNG export on both Labs + Session Review.
+
+Known polish items: TaggedPitchType label variants (Fastball vs
+FourSeamFastBall) are graded as separate types — consider a label
+normalizer at parse time next re-ingest.
 
 ## Phase 3 — Session Review + Reports (Trevor's REVIEW section)
 
