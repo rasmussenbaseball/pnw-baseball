@@ -255,14 +255,61 @@ def trackman_pitching(
     for r in rows:
         by_pitcher[(r["pitcher"], r["pitcher_throws"], r["pitcher_team"])].append(r)
 
+    # Corpus baselines per pitch type (all teams, same context) for the
+    # Stuff / Location grades: 100 = corpus average, 10 points per SD.
+    # Stuff blends velo, type-signed IVB (ride is good on FBs, depth on
+    # breakers), sweep, spin, extension. Location blends zone% and shadow%
+    # (edge presence). Transparent by design — no black-box xRV claims.
+    base = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        if (r["n"] or 0) >= 15:
+            for k in ("velo", "ivb", "hb", "spin", "ext", "zone_pct"):
+                if r.get(k) is not None:
+                    base[r["ptype"]][k].append(float(r[k]))
+
+    def _z(vals, x):
+        if x is None or len(vals) < 6:
+            return None
+        x = float(x)  # psycopg2 AVG() yields Decimal
+        mu = sum(vals) / len(vals)
+        sd = (sum((v - mu) ** 2 for v in vals) / len(vals)) ** 0.5
+        return (x - mu) / sd if sd > 0.01 else 0.0
+
+    BREAKERS = {"Slider", "Curveball", "Sweeper", "Cutter", "Knuckleball"}
+
+    def _grades(t):
+        bt = base.get(t["ptype"], {})
+        sign = -1.0 if t["ptype"] in BREAKERS else 1.0
+        parts = [
+            (_z(bt.get("velo", []), t["velo"]), 0.35),
+            (_z([sign * v for v in bt.get("ivb", [])], sign * float(t["ivb"]) if t["ivb"] is not None else None), 0.25),
+            (_z([abs(v) for v in bt.get("hb", [])], abs(float(t["hb"])) if t["hb"] is not None else None), 0.15),
+            (_z(bt.get("spin", []), t["spin"]), 0.10),
+            (_z(bt.get("ext", []), t["ext"]), 0.15),
+        ]
+        used = [(z, w) for z, w in parts if z is not None]
+        stuff = None
+        if used and t["n"] >= 15:
+            wsum = sum(w for _, w in used)
+            stuff = round(100 + 10 * sum(z * w for z, w in used) / wsum)
+            stuff = max(60, min(140, stuff))
+        loc = None
+        zl = _z(bt.get("zone_pct", []), t["zone_pct"])
+        if zl is not None and t["n"] >= 15:
+            loc = max(60, min(140, round(100 + 10 * zl)))
+        return stuff, loc
+
     out = []
     for (name, throws, tteam), types in by_pitcher.items():
         total = sum(t["n"] for t in types)
         arsenal = []
         for t in sorted(types, key=lambda x: -x["n"]):
             swings, out_zone = t["swings"] or 0, t["out_zone"] or 0
+            stuff, loc = _grades(t)
             arsenal.append({
                 "pitch_type": t["ptype"],
+                "stuff": stuff,
+                "loc": loc,
                 "count": t["n"],
                 "usage_pct": round(100 * t["n"] / total, 1),
                 "velo": round(t["velo"], 1) if t["velo"] else None,
@@ -466,6 +513,9 @@ def trackman_pitcher_detail(
         for t, dates in trend.items()
     }
 
+    with get_connection() as conn:
+        link = _match_player(conn.cursor(), pitcher)
+
     return {
         "pitcher": pitcher,
         "pitch_count": len(pitches),
@@ -473,6 +523,7 @@ def trackman_pitcher_detail(
         "percentiles": percentiles,
         "count_usage": count_usage,
         "velo_trend": velo_trend,
+        "profile": link,
     }
 
 
@@ -554,6 +605,33 @@ def trackman_leaderboards(
     return {"side": side, "boards": boards}
 
 
+def _match_player(cur, tm_name):
+    """Best-effort link from TrackMan's 'Last, First' to our players table.
+    Only returns a match when the name resolves to EXACTLY one active
+    canonical player — ambiguity means no link (never guess)."""
+    if not tm_name or "," not in tm_name:
+        return None
+    last, first = [x.strip() for x in tm_name.split(",", 1)]
+    if not last or not first:
+        return None
+    try:
+        cur.execute(
+            """SELECT p.id, t.short_name AS team
+               FROM players p LEFT JOIN teams t ON t.id = p.team_id
+               WHERE LOWER(p.first_name) = LOWER(%s) AND LOWER(p.last_name) = LOWER(%s)
+                 AND COALESCE(p.is_phantom, FALSE) = FALSE
+                 AND NOT EXISTS (SELECT 1 FROM player_links pl WHERE pl.linked_id = p.id)
+               LIMIT 3""",
+            (first, last),
+        )
+        rows = cur.fetchall()
+    except Exception:
+        return None
+    if len(rows) == 1:
+        return {"player_id": rows[0]["id"], "team": rows[0]["team"]}
+    return None
+
+
 # ── Phase 2.5/3: Hitter Lab, Session Review, Catching ────────────
 
 _BATTER_PCTL = [
@@ -630,8 +708,10 @@ def trackman_batter_detail(
             percentiles[key] = {"value": round(float(mine), 3), "pctl": max(1, min(99, pct)),
                                 "pool": len(vals)}
 
+    with get_connection() as conn:
+        link = _match_player(conn.cursor(), batter)
     return {"batter": batter, "pitch_count": len(pitches),
-            "pitches": pitches, "percentiles": percentiles}
+            "pitches": pitches, "percentiles": percentiles, "profile": link}
 
 
 @router.get("/trackman/sessions/{session_id}/review")
@@ -685,11 +765,43 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
                 b[k] = round(b[k], 1) if b[k] is not None else None
             b["distance"] = round(b["distance"]) if b["distance"] is not None else None
 
+        # Zone report: how the plate was called. Shadow band = within
+        # 0.25 ft of the K-zone border (both sides). Accuracy = called
+        # strikes in the box + called balls out of it.
+        cur.execute(
+            """SELECT pitch_call, plate_loc_height AS h, plate_loc_side AS x, is_in_zone
+               FROM tm_pitches
+               WHERE session_id = %s AND owner_user_id = %s
+                 AND pitch_call IN ('StrikeCalled','BallCalled')
+                 AND plate_loc_height IS NOT NULL AND plate_loc_side IS NOT NULL""",
+            (session_id, owner),
+        )
+        called = cur.fetchall()
+        B = 0.25
+        def _shadow(r):
+            dx = abs(r["x"]) - 0.83
+            dyt = r["h"] - 3.5
+            dyb = 1.5 - r["h"]
+            return (abs(dx) <= B and r["h"] >= 1.5 - B and r["h"] <= 3.5 + B) or \
+                   (abs(dyt) <= B and abs(r["x"]) <= 0.83 + B) or \
+                   (abs(dyb) <= B and abs(r["x"]) <= 0.83 + B)
+        n_called = len(called)
+        correct = sum(1 for r in called if (r["pitch_call"] == "StrikeCalled") == bool(r["is_in_zone"]))
+        shadow = [r for r in called if _shadow(r)]
+        shadow_k = sum(1 for r in shadow if r["pitch_call"] == "StrikeCalled")
+        zone_report = {
+            "called": n_called,
+            "accuracy_pct": round(100 * correct / n_called, 1) if n_called else None,
+            "shadow_pitches": len(shadow),
+            "shadow_strike_pct": round(100 * shadow_k / len(shadow), 1) if shadow else None,
+        }
+
         sess = dict(sess)
         for k in ("session_date", "created_at"):
             sess[k] = sess[k].isoformat() if sess.get(k) else None
         sess.pop("owner_user_id", None)
-    return {"session": sess, "pitcher_lines": lines, "top_bbe": top_bbe}
+    return {"session": sess, "pitcher_lines": lines, "top_bbe": top_bbe,
+            "zone_report": zone_report}
 
 
 @router.get("/trackman/catching")

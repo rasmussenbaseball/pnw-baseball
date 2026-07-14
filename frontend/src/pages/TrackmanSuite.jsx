@@ -16,6 +16,8 @@ import { useMemo, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { supabase } from '../lib/supabase'
 import InternCredit from '../components/InternCredit'
+import ReportActions from '../components/ReportActions'
+import { Link } from 'react-router-dom'
 
 const fmt = (v, d = 1) => (v === null || v === undefined ? '–' : Number(v).toFixed(d))
 const PITCH_COLORS = {
@@ -294,6 +296,8 @@ function PitchingTab({ onOpenLab, teamCtx }) {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                     <th className="px-4 py-1.5">Pitch</th>
+                    <th className="px-2 py-1.5 text-right" title="Pitch quality vs every same-type pitch in your data. 100 = average, 10 pts per SD (velo, shape, spin, extension).">Stuff</th>
+                    <th className="px-2 py-1.5 text-right" title="Zone presence vs same-type pitches in your data. 100 = average.">Loc</th>
                     <th className="px-2 py-1.5 text-right">Use%</th>
                     <th className="px-2 py-1.5 text-right">Velo</th>
                     <th className="px-2 py-1.5 text-right">Max</th>
@@ -315,6 +319,8 @@ function PitchingTab({ onOpenLab, teamCtx }) {
                         <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: PITCH_COLORS[a.pitch_type] || '#9ca3af' }} />
                         {a.pitch_type}
                       </td>
+                      <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${a.stuff == null ? 'text-gray-300' : a.stuff >= 110 ? 'text-[#d22d49]' : a.stuff <= 90 ? 'text-[#3661ad]' : ''}`}>{a.stuff ?? '–'}</td>
+                      <td className={`px-2 py-1.5 text-right tabular-nums ${a.loc == null ? 'text-gray-300' : a.loc >= 110 ? 'text-[#d22d49]' : a.loc <= 90 ? 'text-[#3661ad]' : ''}`}>{a.loc ?? '–'}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.usage_pct)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(a.velo)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{fmt(a.max_velo)}</td>
@@ -581,6 +587,51 @@ function VeloTrend({ trend }) {
   )
 }
 
+// Two-pitch sequencing: pairs within the same PA, ordered by PitchofPA.
+function SequencingTable({ pitches }) {
+  const pairs = {}
+  const byPA = {}
+  pitches.forEach(p => {
+    if (p.pitch_of_pa == null) return
+    const key = `${p.session_id}|${p.inning}|${p.top_bottom}|${p.pa_of_inning}`
+    ;(byPA[key] = byPA[key] || []).push(p)
+  })
+  Object.values(byPA).forEach(pa => {
+    pa.sort((a, b) => a.pitch_of_pa - b.pitch_of_pa)
+    for (let i = 1; i < pa.length; i++) {
+      const k = `${pa[i - 1].ptype} → ${pa[i].ptype}`
+      const e = (pairs[k] = pairs[k] || { n: 0, swings: 0, whiffs: 0, csw: 0 })
+      e.n += 1
+      if (pa[i].is_swing) e.swings += 1
+      if (pa[i].is_whiff) e.whiffs += 1
+      if (pa[i].pitch_call === 'StrikeCalled' || pa[i].pitch_call === 'StrikeSwinging') e.csw += 1
+    }
+  })
+  const rows = Object.entries(pairs).filter(([, e]) => e.n >= 8).sort((a, b) => b[1].n - a[1].n).slice(0, 10)
+  if (!rows.length) return <div className="text-xs text-gray-400 p-4 text-center">Not enough in-PA sequences yet (needs 8+ of a combo).</div>
+  return (
+    <table className="w-full text-[12px]">
+      <thead>
+        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+          <th className="py-1">Sequence</th><th className="py-1 text-right">N</th>
+          <th className="py-1 text-right" title="Whiffs per swing on the SECOND pitch of the combo">Whiff%</th>
+          <th className="py-1 text-right" title="Called + swinging strikes on the second pitch">CSW%</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+        {rows.map(([k, e]) => (
+          <tr key={k}>
+            <td className="py-1 font-semibold">{k}</td>
+            <td className="py-1 text-right tabular-nums">{e.n}</td>
+            <td className="py-1 text-right tabular-nums font-semibold">{e.swings ? (100 * e.whiffs / e.swings).toFixed(1) : '–'}</td>
+            <td className="py-1 text-right tabular-nums">{(100 * e.csw / e.n).toFixed(1)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 const PCTL_LABELS = {
   velo: ['Velocity', ' mph', 1], ivb: ['Fastball ride (IVB)', '"', 1], spin: ['Spin rate', ' rpm', 0],
   extension: ['Extension', ' ft', 1], zone_pct: ['Zone%', '%', 1], whiff_pct: ['Whiff%', '%', 1],
@@ -588,6 +639,7 @@ const PCTL_LABELS = {
 }
 
 function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
+  const exportRef = useRef(null)
   const [context, setContext] = useState('live')
   const [team, setTeam] = useState(teamCtx.primary)
   const [conf, setConf] = useState('all')
@@ -631,14 +683,21 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
               : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
           {conf === 'strict' ? 'High confidence only ✓' : 'All measurements'}
         </button>
+        {data?.profile?.player_id && (
+          <Link to={`/player/${data.profile.player_id}`}
+            className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
+            Site profile →
+          </Link>
+        )}
         {data && <span className="ml-auto text-xs text-gray-400 tabular-nums">{data.pitch_count} pitches</span>}
+        {data && <ReportActions targetRef={exportRef} filename={`trackman_${(active || 'pitcher').replace(/[^a-z]+/gi, '_').toLowerCase()}`} />}
       </div>
 
       {loading && <div className="text-sm text-gray-400 p-6 text-center">Loading…</div>}
       {error && <div className="text-sm text-gray-400 p-6 text-center">No data for this pitcher in this context.</div>}
 
       {data && (
-        <>
+        <div ref={exportRef} className="space-y-3">
           {/* Percentiles vs the corpus */}
           {pctKeys.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
@@ -689,11 +748,17 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Velocity by session</div>
-            <VeloTrend trend={data.velo_trend} />
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Velocity by session</div>
+              <VeloTrend trend={data.velo_trend} />
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Two-pitch sequences (result on the 2nd pitch)</div>
+              <SequencingTable pitches={data.pitches} />
+            </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   )
@@ -833,6 +898,7 @@ function SprayChart({ pitches }) {
 }
 
 function HitterLabTab({ teamCtx }) {
+  const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
   const [batter, setBatter] = useState('')
   const [context, setContext] = useState('all')
@@ -872,14 +938,21 @@ function HitterLabTab({ teamCtx }) {
               : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
           {conf === 'strict' ? 'High confidence only ✓' : 'All measurements'}
         </button>
+        {data?.profile?.player_id && (
+          <Link to={`/player/${data.profile.player_id}`}
+            className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
+            Site profile →
+          </Link>
+        )}
         {data && <span className="ml-auto text-xs text-gray-400 tabular-nums">{data.pitch_count} pitches seen · {bbe.length} BBE</span>}
+        {data && <ReportActions targetRef={exportRef} filename={`trackman_${(active || 'batter').replace(/[^a-z]+/gi, '_').toLowerCase()}`} />}
       </div>
 
       {loading && <div className="text-sm text-gray-400 p-6 text-center">Loading…</div>}
       {error && <div className="text-sm text-gray-400 p-6 text-center">No data for this batter in this context.</div>}
 
       {data && (
-        <>
+        <div ref={exportRef} className="space-y-3">
           {pctKeys.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">
@@ -911,7 +984,7 @@ function HitterLabTab({ teamCtx }) {
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   )
@@ -920,6 +993,7 @@ function HitterLabTab({ teamCtx }) {
 // ── Session Review ───────────────────────────────────────────────
 
 function SessionsTab({ overview, sessionId, setSessionId }) {
+  const exportRef = useRef(null)
   const sessions = overview?.sessions || []
   const active = sessionId || sessions[0]?.id
   const { data, loading } = useApi(active ? `/trackman/sessions/${active}/review` : null, {}, [active])
@@ -937,10 +1011,26 @@ function SessionsTab({ overview, sessionId, setSessionId }) {
           ))}
         </select>
         {sess && <span className="ml-auto text-xs text-gray-400 tabular-nums">{sess.pitch_count} pitches · {sess.bbe_count} BBE</span>}
+        {data && <ReportActions targetRef={exportRef} filename={`trackman_session_${sess?.session_date || active}`} />}
       </div>
 
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : data && (
-        <>
+        <div ref={exportRef} className="space-y-3">
+          {data.zone_report?.called > 20 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {[
+                ['Called pitches', data.zone_report.called],
+                ['Call accuracy', data.zone_report.accuracy_pct != null ? `${data.zone_report.accuracy_pct}%` : '–'],
+                ['Shadow-zone pitches', data.zone_report.shadow_pitches],
+                ['Shadow strike rate', data.zone_report.shadow_strike_pct != null ? `${data.zone_report.shadow_strike_pct}%` : '–'],
+              ].map(([label, value]) => (
+                <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-4 py-3">
+                  <div className="text-xl font-bold text-portal-purple dark:text-gray-100 tabular-nums leading-none">{value}</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-1.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
             <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
               Pitcher lines
@@ -1006,7 +1096,7 @@ function SessionsTab({ overview, sessionId, setSessionId }) {
               </tbody>
             </table>
           </div>
-        </>
+        </div>
       )}
     </div>
   )
