@@ -24,9 +24,18 @@ from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_tunnel import tunnel_pairs
 from .auth import require_tier
 
+from fastapi import Request as _Request
+from ._tracking_share import resolve_workspace
+
 router = APIRouter(tags=["trackman-suite"])
 
-_gate = require_tier("coach")
+_tier_gate = require_tier("coach")
+
+
+def _gate(request: _Request, owner: str = Depends(_tier_gate)) -> str:
+    """Coach gate + workspace resolution: staff on a coach's share list
+    (with no uploads of their own) act as that coach's workspace."""
+    return resolve_workspace(request, owner)
 
 # All pitch columns in insert order: parser fields + derived flags.
 _DERIVED = ["is_in_zone", "is_swing", "is_whiff", "is_contact", "is_chase"]

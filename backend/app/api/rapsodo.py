@@ -20,8 +20,17 @@ from ..stats.rapsodo_parse import derive, parse_text, aggregate_arsenal, EXCLUDE
 from ..stats.rapsodo_suggest import generate_suggestions
 from ..stats.rapsodo_tunnel import tunnel_pairs, ssw_flags
 from .auth import require_tier
+from fastapi import Request as _Request
+from ._tracking_share import resolve_workspace
 
 router = APIRouter(tags=["rapsodo"])
+
+_tier_gate = require_tier("coach")
+
+
+def _ws_gate(request: _Request, owner: str = Depends(_tier_gate)) -> str:
+    """Coach gate + shared-workspace resolution (see _tracking_share)."""
+    return resolve_workspace(request, owner)
 
 # pitch columns inserted per row, in order (mirrors normalize_pitch output)
 _PITCH_FIELDS = [
@@ -99,7 +108,7 @@ def _ingest(cur, owner, parsed, mode="pnw"):
 async def upload_rapsodo(
     files: list[UploadFile] = File(...),
     mode: str = Form("pnw"),
-    owner: str = Depends(require_tier("coach")),
+    owner: str = Depends(_ws_gate),
 ):
     """Upload one or many Rapsodo session CSVs. Each file is parsed, quality-
     checked, re-classified, and stored under the uploading coach. `mode` tags the
@@ -122,7 +131,7 @@ async def upload_rapsodo(
 
 
 @router.get("/rapsodo/players")
-def list_rapsodo_players(owner: str = Depends(require_tier("coach"))):
+def list_rapsodo_players(owner: str = Depends(_ws_gate)):
     """The coach's private roster / staff leaderboard: every Rapsodo player they've
     uploaded, with session count, latest session, total pitches, peak FB velo, and
     arsenal-derived comparison metrics (arsenal depth, best Stuff grade, best tunnel)."""
@@ -176,7 +185,7 @@ def list_rapsodo_players(owner: str = Depends(require_tier("coach"))):
 
 @router.get("/rapsodo/players/{rapsodo_player_id}")
 def rapsodo_player_profile(rapsodo_player_id: str, session_id: int | None = None,
-                           owner: str = Depends(require_tier("coach"))):
+                           owner: str = Depends(_ws_gate)):
     """Full cross-session profile for one player: the aggregated arsenal (centroids
     over all reliable pitches), the movement-plot points, the session list, and a
     simple per-session velocity trend.
@@ -315,7 +324,7 @@ def rapsodo_player_profile(rapsodo_player_id: str, session_id: int | None = None
 
 
 @router.get("/rapsodo/sessions/{session_id}")
-def rapsodo_session_detail(session_id: int, owner: str = Depends(require_tier("coach"))):
+def rapsodo_session_detail(session_id: int, owner: str = Depends(_ws_gate)):
     """One bullpen: header, QC, re-classified arsenal, and its pitches."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -341,7 +350,7 @@ def rapsodo_session_detail(session_id: int, owner: str = Depends(require_tier("c
 
 
 @router.delete("/rapsodo/sessions/{session_id}")
-def delete_rapsodo_session(session_id: int, owner: str = Depends(require_tier("coach"))):
+def delete_rapsodo_session(session_id: int, owner: str = Depends(_ws_gate)):
     """Remove a session (and its pitches) the coach owns. Lets them undo a bad
     upload. Orphaned players (no sessions left) are cleaned up."""
     with get_connection() as conn:
@@ -364,7 +373,7 @@ def delete_rapsodo_session(session_id: int, owner: str = Depends(require_tier("c
 
 
 @router.delete("/portal/rapsodo/players/{rapsodo_player_id}")
-def delete_rapsodo_player(rapsodo_player_id: str, owner: str = Depends(require_tier("coach"))):
+def delete_rapsodo_player(rapsodo_player_id: str, owner: str = Depends(_ws_gate)):
     """Delete a player and ALL their sessions + pitches (e.g. a bugged upload, or a
     file that turned out to be a different pitcher). Owner-scoped."""
     with get_connection() as conn:
@@ -383,7 +392,7 @@ def delete_rapsodo_player(rapsodo_player_id: str, owner: str = Depends(require_t
 
 
 @router.get("/rapsodo/pnw-teams")
-def rapsodo_pnw_teams(owner: str = Depends(require_tier("coach"))):
+def rapsodo_pnw_teams(owner: str = Depends(_ws_gate)):
     """PNW colleges a coach can pick as 'their school' — the teams we actually track
     rosters/stats for (excludes out-of-conference opponents)."""
     with get_connection() as conn:
@@ -407,7 +416,7 @@ class LinkBody(BaseModel):
 
 @router.post("/portal/rapsodo/players/{rapsodo_player_id}/link")
 def link_rapsodo_player(rapsodo_player_id: str, body: LinkBody,
-                        owner: str = Depends(require_tier("coach"))):
+                        owner: str = Depends(_ws_gate)):
     """Link a Rapsodo player to a site player profile so their spring + summer stats
     show on the Rapsodo page. `players_id: null` unlinks (e.g. an incoming freshman or
     redshirt who has no profile yet). Stamps the linked player's team_id too."""
@@ -469,7 +478,7 @@ class LabelBody(BaseModel):
 
 
 @router.post("/portal/rapsodo/pitches/{pitch_id}/label")
-def relabel_pitch(pitch_id: int, body: LabelBody, owner: str = Depends(require_tier("coach"))):
+def relabel_pitch(pitch_id: int, body: LabelBody, owner: str = Depends(_ws_gate)):
     """Click-to-reclassify: set (or clear) a coach's manual pitch label on one
     pitch. The override persists forever — the auto classifier never overwrites it.
     Re-derives the player's pitches immediately so the profile reflects the change."""
@@ -502,7 +511,7 @@ class ArsenalBody(BaseModel):
 
 @router.post("/portal/rapsodo/players/{rapsodo_player_id}/arsenal")
 def set_arsenal(rapsodo_player_id: str, body: ArsenalBody,
-                owner: str = Depends(require_tier("coach"))):
+                owner: str = Depends(_ws_gate)):
     """Guided arsenal: the coach declares which pitch types a pitcher throws, and
     the classifier buckets every pitch into ONLY those types (snapping outliers to
     the nearest declared shape). An empty list clears it (back to auto). Re-derives

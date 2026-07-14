@@ -246,6 +246,8 @@ function OverviewTab({ overview, refetch, onReview }) {
         )}
       </div>
 
+      <StaffSharingCard />
+
       {/* Session library */}
       <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
@@ -1589,6 +1591,76 @@ function TunnelingCard({ tunneling }) {
       <p className="text-[10px] text-gray-400 mt-2">
         Same tunneling math as the Rapsodo Lab: release + commit-point separation vs late break.
       </p>
+    </div>
+  )
+}
+
+// ── Staff workspace sharing (covers TrackMan Suite + Rapsodo Lab) ──
+
+function StaffSharingCard() {
+  const { data, refetch } = useApi('/portal/tracking-share')
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const members = data?.members || []
+
+  async function add() {
+    const e = email.trim().toLowerCase()
+    if (!e) return
+    setBusy(true); setError('')
+    try {
+      const r = await fetch('/api/v1/portal/tracking-share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ email: e }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`)
+      setEmail(''); refetch()
+    } catch (err) { setError(err.message) }
+    finally { setBusy(false) }
+  }
+
+  async function remove(id) {
+    await fetch(`/api/v1/portal/tracking-share/${id}`, { method: 'DELETE', headers: await authHeaders() })
+    refetch()
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Staff sharing</span>
+        <span className="text-[10px] text-gray-400">{members.length}/{data?.max ?? 6} emails</span>
+      </div>
+      {data?.viewing_shared && (
+        <div className="mb-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 px-3 py-2 text-[12px] text-indigo-800 dark:text-indigo-200">
+          You're viewing a workspace shared with you. Uploads and edits go to the shared data pool.
+        </div>
+      )}
+      <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-2">
+        Staff on this list see YOUR sessions in both the TrackMan Suite and the Rapsodo Lab, and their
+        uploads land in this shared pool. They need Coach &amp; Scout access (a staff seat works).
+      </p>
+      {members.length > 0 && (
+        <ul className="mb-2 space-y-1">
+          {members.map(m => (
+            <li key={m.id} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-1.5">
+              <span className="text-[13px] font-mono text-gray-700 dark:text-gray-200">{m.email}</span>
+              <button onClick={() => remove(m.id)} className="text-[11px] text-gray-400 hover:text-rose-500">Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input value={email} onChange={e => setEmail(e.target.value)} type="email"
+          onKeyDown={e => { if (e.key === 'Enter') add() }}
+          placeholder="assistant.coach@school.edu"
+          className="flex-1 max-w-xs rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-3 py-1.5 text-sm" />
+        <button onClick={add} disabled={busy || !email.trim()}
+          className="rounded-lg bg-portal-purple text-white text-sm font-semibold px-3.5 py-1.5 disabled:opacity-50">
+          {busy ? 'Adding…' : 'Share'}
+        </button>
+      </div>
+      {error && <div className="mt-1.5 text-[12px] text-rose-600">{error}</div>}
     </div>
   )
 }
