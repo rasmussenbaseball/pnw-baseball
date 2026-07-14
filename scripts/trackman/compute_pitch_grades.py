@@ -41,6 +41,13 @@ COMMIT = "--commit" in sys.argv
 # Rapsodo Stuff model can apply THIS model (trained on WCL whiff/chase) to its own
 # data. Additive — does not change the TrackMan grading/commit path.
 EXPORT = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--export" and i + 1 < len(sys.argv)), None)
+# --game-csv-dir <dir>: ALSO train on raw TrackMan game CSVs (the V3 export the
+# TrackMan Suite ingests — e.g. Bushnell's Hamlin corpus). Pitches are deduped by
+# PitchUID, typed with the SITE shape classifier (same as the suite's grading
+# path), aggregated into per-pitcher/type centroids with whiff+chase targets from
+# the pitch calls (live sessions only — BP has no calls). These rows train and
+# validate but are NEVER written back to trackman_pitches (id=None guard).
+GAME_CSV_DIR = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--game-csv-dir" and i + 1 < len(sys.argv)), None)
 _SLOT_ALPHA = 0.6
 _EXPORT = {}   # pt -> {slot_coef, slot_ybar, coef, shrink, pred_mean, pred_std, means, stds}
 MIN_PITCHES = 5
@@ -179,6 +186,70 @@ def cv_lambda(X, y, w, grid, b0=None, folds=5):
     return best_lam, best_r
 
 
+def game_csv_centroids(csv_dir):
+    """Per-pitcher/type training centroids from raw TrackMan game CSVs."""
+    import glob
+    import os
+    from collections import defaultdict as dd
+    from app.stats.trackman_parse import parse_text
+    from app.stats.trackman_classify import _bridge, CLASS_TO_SUITE
+    from app.stats.trackman_stuff import SUITE_TO_MODEL
+    from app.stats.rapsodo_parse import classify, _fastball_centroid
+
+    by_uid = {}
+    for f in sorted(glob.glob(os.path.join(csv_dir, "*.csv"))):
+        try:
+            parsed = parse_text(open(f, encoding="utf-8-sig").read(), os.path.basename(f))
+        except ValueError:
+            continue
+        live = {gid for gid, m in parsed["sessions"].items() if m["session_type"] != "bp"}
+        for p in parsed["pitches"]:
+            if p["game_id"] in live and p.get("pitcher"):
+                by_uid[p["pitch_uid"]] = p
+    pitches = list(by_uid.values())
+
+    # classify per pitcher with the site shape classifier (suite-consistent)
+    by_arm = dd(list)
+    for p in pitches:
+        by_arm[(p["pitcher"], p.get("pitcher_team"))].append(p)
+    agg = dd(lambda: dd(list))
+    for (name, team), rs in by_arm.items():
+        hand = "L" if rs[0].get("pitcher_throws") == "Left" else "R"
+        bridged = [(r, _bridge({**r, "rel_speed": r["rel_speed"]})) for r in rs]
+        fb = _fastball_centroid([b for _, b in bridged])
+        for r, b in bridged:
+            if b["velo"] is None:
+                continue
+            label = CLASS_TO_SUITE.get(classify(b, fb, hand))
+            mt = SUITE_TO_MODEL.get(label) if label else None
+            if mt:
+                agg[(name, team)][mt].append(r)
+
+    rows = []
+    for (name, team), types in agg.items():
+        for mt, rs in types.items():
+            def m(k):
+                v = [float(r[k]) for r in rs if r.get(k) is not None]
+                return sum(v) / len(v) if v else None
+            swings = sum(1 for r in rs if r.get("is_swing"))
+            whiffs = sum(1 for r in rs if r.get("is_whiff"))
+            oz = sum(1 for r in rs if r.get("is_in_zone") is False)
+            chases = sum(1 for r in rs if r.get("is_chase"))
+            rows.append({
+                "id": None,  # synthetic — never written back
+                "summer_player_id": f"gamecsv:{name}|{team}",
+                "season": 2026,
+                "pitch_type": mt,
+                "pitch_count": len(rs),
+                "velo": m("rel_speed"), "spin": m("spin_rate"), "ivb": m("ivb"),
+                "hb": m("horz_break"), "extension": m("extension"),
+                "rel_height": m("rel_height"), "rel_side": m("rel_side"),
+                "whiff_pct": round(100 * whiffs / swings, 1) if swings >= 8 else None,
+                "chase_pct": round(100 * chases / oz, 1) if oz >= 8 else None,
+            })
+    return rows
+
+
 def main():
     with get_connection() as conn:
         _run(conn)
@@ -192,6 +263,12 @@ def _run(conn):
            FROM trackman_pitches"""
     )
     rows = [dict(r) for r in cur.fetchall()]
+
+    if GAME_CSV_DIR:
+        extra = game_csv_centroids(GAME_CSV_DIR)
+        print(f"+ {len(extra)} game-CSV centroids from {GAME_CSV_DIR} "
+              f"({sum(1 for r in extra if r['whiff_pct'] is not None)} with whiff targets)")
+        rows.extend(extra)
 
     # Per-pitcher primary fastball REFERENCE SHAPE (velo, ivb, hb) so we can
     # derive separation features. Prefer Four Seam, else any FB-family, else the
@@ -394,6 +471,8 @@ def _run(conn):
         cur.execute("UPDATE trackman_pitches SET pitch_grade = NULL")  # clear stale (e.g. now <5)
         n = 0
         for r in gradeable:
+            if r["id"] is None:
+                continue  # game-CSV centroid — trains only, never written back
             cur.execute(
                 "UPDATE trackman_pitches SET pitch_grade=%s, est_vaa=%s WHERE id=%s",
                 (r["pitch_grade"], round(r["est_vaa"], 2), r["id"]),
@@ -401,7 +480,7 @@ def _run(conn):
             n += 1
         # est_vaa for sub-5 rows too (harmless, useful), grade stays null
         for r in rows:
-            if not r["_ok"] and r["est_vaa"] is not None:
+            if r["id"] is not None and not r["_ok"] and r["est_vaa"] is not None:
                 cur.execute("UPDATE trackman_pitches SET est_vaa=%s WHERE id=%s",
                             (round(r["est_vaa"], 2), r["id"]))
         conn.commit()
