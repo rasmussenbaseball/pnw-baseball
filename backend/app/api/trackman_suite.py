@@ -137,6 +137,15 @@ def _ingest(cur, owner, parsed, filename):
 
 # ── Reads ────────────────────────────────────────────────────────
 
+def _date_clause(date_from, date_to):
+    sql, params = "", []
+    if date_from:
+        sql += " AND s.session_date >= %s"; params.append(date_from)
+    if date_to:
+        sql += " AND s.session_date <= %s"; params.append(date_to)
+    return sql, params
+
+
 def _context_clause(context):
     """WHERE fragment for the session-type filter every view shares."""
     if context in ("game", "scrimmage", "bp"):
@@ -337,11 +346,13 @@ def trackman_pitching(
 @router.get("/trackman/hitting")
 def trackman_hitting(
     team: str | None = Query(None),
+    pitch_type: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Per-batter contact quality, split live (game+scrimmage) vs BP —
     the game-to-practice transfer gap. Hard-hit threshold: 90+ mph EV."""
     team_sql = " AND p.batter_team = %s" if team else ""
+    pt_sql = " AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) = %s" if pitch_type else ""
     with get_connection() as conn:
         cur = conn.cursor()
         try:
@@ -360,10 +371,10 @@ def trackman_hitting(
                            AVG(p.launch_angle) AS avg_la,
                            MAX(p.distance) AS max_dist
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                    WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {team_sql}
+                    WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {team_sql}{pt_sql}
                     GROUP BY p.batter, p.batter_side, p.batter_team,
                              CASE WHEN s.session_type = 'bp' THEN 'bp' ELSE 'live' END""",
-                [owner] + ([team] if team else []),
+                [owner] + ([team] if team else []) + ([pitch_type] if pitch_type else []),
             )
             rows = [dict(r) for r in cur.fetchall()]
         except Exception:
@@ -429,6 +440,8 @@ def trackman_pitcher_detail(
     team: str | None = Query(None),
     context: str = Query("live"),
     conf: str = Query("all"),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Everything the Player Lab needs for one pitcher, in one call:
@@ -436,6 +449,8 @@ def trackman_pitcher_detail(
     trend, count-state usage, and corpus percentiles (min 50 pitches to
     qualify for the percentile pool)."""
     extra, params = _context_clause(context)
+    dsql, dparams = _date_clause(date_from, date_to)
+    extra, params = extra + dsql, params + dparams
     team_sql = " AND p.pitcher_team = %s" if team else ""
     tparams = [team] if team else []
     with get_connection() as conn:
@@ -449,7 +464,8 @@ def trackman_pitcher_detail(
             f"""SELECT COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                        p.rel_speed, p.ivb, p.horz_break, p.spin_rate,
                        p.rel_height, p.rel_side, p.extension,
-                       p.plate_loc_height, p.plate_loc_side,
+                       p.plate_loc_height, p.plate_loc_side, p.vaa,
+                       p.is_in_zone, p.is_swing, p.is_whiff, p.is_chase,
                        p.balls, p.strikes, p.batter_side, p.pitch_call,
                        p.exit_speed, p.launch_angle, p.play_result,
                        p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
@@ -656,12 +672,20 @@ def trackman_batter_detail(
     team: str | None = Query(None),
     context: str = Query("all"),
     conf: str = Query("all"),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    pitch_type: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Everything the Hitter Lab needs: every pitch SEEN (locations + swing
     decisions), every BBE (EV/LA/spray from Direction+Distance), and
     percentiles vs the other bats in this corpus (30+ pitches seen)."""
     extra, params = _context_clause(context)
+    dsql, dparams = _date_clause(date_from, date_to)
+    extra, params = extra + dsql, params + dparams
+    if pitch_type:
+        extra += " AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) = %s"
+        params = params + [pitch_type]
     team_sql = " AND p.batter_team = %s" if team else ""
     tparams = [team] if team else []
     conf_sql = (" AND COALESCE(p.hit_launch_conf,'') <> 'Low'" if conf == "strict" else "")
@@ -673,7 +697,8 @@ def trackman_batter_detail(
                        p.plate_loc_height, p.plate_loc_side, p.balls, p.strikes,
                        p.pitcher_throws, p.exit_speed, p.launch_angle, p.distance,
                        p.direction, p.bearing, p.play_result, p.tagged_hit_type,
-                       s.session_type, s.session_date
+                       p.k_or_bb, p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
+                       s.session_type, s.session_date, s.id AS session_id
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter = %s {extra}{team_sql}{conf_sql}
                 ORDER BY s.session_date, p.pitch_no""",
@@ -708,10 +733,37 @@ def trackman_batter_detail(
             percentiles[key] = {"value": round(float(mine), 3), "pctl": max(1, min(99, pct)),
                                 "pool": len(vals)}
 
+    # Expected stats: group pitches into PAs, take each PA's terminal pitch.
+    from ..stats.trackman_xstats import batter_xstats
+    pa_map = {}
+    for x in pitches:
+        key = (x["session_id"], x["inning"], x["top_bottom"], x["pa_of_inning"])
+        best = pa_map.get(key)
+        if best is None or (x["pitch_of_pa"] or 0) >= (best["pitch_of_pa"] or 0):
+            pa_map[key] = x
+    pas = []
+    for x in pa_map.values():
+        if x["k_or_bb"] == "Strikeout":
+            o = "K"
+        elif x["k_or_bb"] == "Walk":
+            o = "BB"
+        elif x["pitch_call"] == "HitByPitch":
+            o = "HBP"
+        elif x["play_result"] == "Sacrifice":
+            o = "Sac"
+        elif x["play_result"]:
+            o = "InPlay"
+        else:
+            o = "Other"  # PA didn't end in this filtered slice
+        pas.append({"outcome": o, "ev": x["exit_speed"], "la": x["launch_angle"],
+                    "play_result": x["play_result"]})
+    xstats = batter_xstats(pas)
+
     with get_connection() as conn:
         link = _match_player(conn.cursor(), batter)
     return {"batter": batter, "pitch_count": len(pitches),
-            "pitches": pitches, "percentiles": percentiles, "profile": link}
+            "pitches": pitches, "percentiles": percentiles, "profile": link,
+            "xstats": xstats}
 
 
 @router.get("/trackman/sessions/{session_id}/review")
