@@ -19,6 +19,9 @@ from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
 from ..stats.trackman_stuff import grade_trackman, FB_FAMILY
 from ..stats.rapsodo_location import location_plus
+from ..stats.trackman_classify import reclassify_owner, SUITE_TYPES
+from ..stats.rapsodo_arm import arm_profile
+from ..stats.rapsodo_tunnel import tunnel_pairs
 from .auth import require_tier
 
 router = APIRouter(tags=["trackman-suite"])
@@ -63,6 +66,8 @@ def _ensure_tables(cur):
             created_at    TIMESTAMPTZ DEFAULT NOW(),
             UNIQUE (owner_user_id, pitch_uid)
         )""")
+    cur.execute("ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS class_pitch_type TEXT")
+    cur.execute("ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS override_pitch_type TEXT")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_session ON tm_pitches(owner_user_id, session_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_pitcher ON tm_pitches(owner_user_id, pitcher)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_batter ON tm_pitches(owner_user_id, batter)")
@@ -91,8 +96,15 @@ async def upload_trackman(
                 results.append(_ingest(cur, owner, parsed, f.filename or "upload.csv"))
             except Exception as e:  # noqa: BLE001 — per-file, don't abort the batch
                 errors.append({"file": f.filename, "error": str(e)})
+        # Auto-classify with the site's shape classifier (per pitcher, vs their
+        # own fastball) so mis-tagged pitches never corrupt the Stuff grades.
+        try:
+            _, reclassified = reclassify_owner(cur, owner)
+        except Exception:
+            reclassified = 0
         conn.commit()
-    return {"uploaded": len(results), "results": results, "errors": errors}
+    return {"uploaded": len(results), "results": results, "errors": errors,
+            "reclassified": reclassified}
 
 
 def _ingest(cur, owner, parsed, filename):
@@ -233,7 +245,7 @@ def trackman_pitching(
         try:
             cur.execute(
                 f"""SELECT p.pitcher, p.pitcher_throws, p.pitcher_team,
-                           COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+                           COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                            COUNT(*) AS n,
                            AVG(p.rel_speed) AS velo, MAX(p.rel_speed) AS max_velo,
                            AVG(p.spin_rate) AS spin, AVG(p.ivb) AS ivb, AVG(p.horz_break) AS hb,
@@ -250,10 +262,10 @@ def trackman_pitching(
                            SUM(CASE WHEN p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bbe
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
-                      AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
+                      AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
                       {extra}{team_sql}
                     GROUP BY p.pitcher, p.pitcher_throws, p.pitcher_team,
-                             COALESCE(p.tagged_pitch_type, p.auto_pitch_type)
+                             COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type)
                     ORDER BY p.pitcher, n DESC""",
                 [owner] + params + ([team] if team else []),
             )
@@ -287,12 +299,12 @@ def trackman_pitching(
         try:
             c2.execute(
                 f"""SELECT p.pitcher, p.pitcher_team,
-                           COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+                           COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                            p.plate_loc_side, p.plate_loc_height
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
                       AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL
-                      AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
+                      AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
                       {extra}{team_sql}""",
                 [owner] + params + ([team] if team else []),
             )
@@ -355,7 +367,7 @@ def trackman_hitting(
     """Per-batter contact quality, split live (game+scrimmage) vs BP —
     the game-to-practice transfer gap. Hard-hit threshold: 90+ mph EV."""
     team_sql = " AND p.batter_team = %s" if team else ""
-    pt_sql = " AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) = %s" if pitch_type else ""
+    pt_sql = " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s" if pitch_type else ""
     with get_connection() as conn:
         cur = conn.cursor()
         try:
@@ -464,7 +476,8 @@ def trackman_pitcher_detail(
         conf_sql = (" AND COALESCE(p.mov_conf,'') <> 'Low' AND COALESCE(p.loc_conf,'') <> 'Low'"
                     if conf == "strict" else "")
         cur.execute(
-            f"""SELECT COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+            f"""SELECT p.id AS pitch_id, p.tagged_pitch_type, p.override_pitch_type, p.pitcher_throws,
+                       COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                        p.rel_speed, p.ivb, p.horz_break, p.spin_rate,
                        p.rel_height, p.rel_side, p.extension,
                        p.plate_loc_height, p.plate_loc_side, p.vaa,
@@ -475,7 +488,7 @@ def trackman_pitcher_detail(
                        s.session_date, s.id AS session_id
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher = %s
-                  AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
+                  AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
                   {extra}{team_sql}{conf_sql}
                 ORDER BY s.session_date, p.pitch_no""",
             [owner, pitcher] + params + tparams,
@@ -535,6 +548,33 @@ def trackman_pitcher_detail(
     with get_connection() as conn:
         link = _match_player(conn.cursor(), pitcher)
 
+    # Rapsodo Lab ports: arm/release profile + pairwise tunneling, fed from
+    # this pitcher's TrackMan rows (arm-side HB normalized by throwing hand).
+    arm = arm_profile([
+        {"pitch": (x["ptype"] or "").lower(), "rel_height": x["rel_height"],
+         "rel_side": x["rel_side"], "extension": x["extension"], "vaa": x.get("vaa")}
+        for x in pitches
+    ])
+    hand = "L" if pitches[0].get("pitcher_throws") == "Left" else "R"
+    sign = -1.0 if hand == "L" else 1.0
+    cents = defaultdict(lambda: defaultdict(list))
+    for x in pitches:
+        for k, v in (("velo", x["rel_speed"]), ("ivb", x["ivb"]),
+                     ("arm_hb", sign * x["horz_break"] if x["horz_break"] is not None else None),
+                     ("rel_height", x["rel_height"]), ("rel_side", x["rel_side"]),
+                     ("ext", x["extension"])):
+            if v is not None:
+                cents[x["ptype"]][k].append(float(v))
+    arsenal_cents = []
+    for t, vals in cents.items():
+        if not t:
+            continue
+        c = {"pitch": t.lower(), "count": len(vals.get("velo", []))}
+        for k, arr in vals.items():
+            c[k] = sum(arr) / len(arr) if arr else None
+        arsenal_cents.append(c)
+    tunneling = tunnel_pairs(arsenal_cents, hand)
+
     return {
         "pitcher": pitcher,
         "pitch_count": len(pitches),
@@ -543,13 +583,15 @@ def trackman_pitcher_detail(
         "count_usage": count_usage,
         "velo_trend": velo_trend,
         "profile": link,
+        "arm": arm,
+        "tunneling": tunneling,
     }
 
 
 _LB_CATS_PITCHING = {
-    "velo": ("Avg fastball velo", "AVG(rel_speed) FILTER (WHERE COALESCE(tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam','Sinker'))", True, 30),
+    "velo": ("Avg fastball velo", "AVG(rel_speed) FILTER (WHERE COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam','Sinker'))", True, 30),
     "max_velo": ("Max velo", "MAX(rel_speed)", True, 30),
-    "ivb": ("Fastball IVB", "AVG(ivb) FILTER (WHERE COALESCE(tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam'))", True, 30),
+    "ivb": ("Fastball IVB", "AVG(ivb) FILTER (WHERE COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam'))", True, 30),
     "spin": ("Avg spin", "AVG(spin_rate)", True, 50),
     "extension": ("Extension", "AVG(extension)", True, 50),
     "whiff_pct": ("Whiff%", "100.0 * SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END), 0)", True, 50),
@@ -687,7 +729,7 @@ def trackman_batter_detail(
     dsql, dparams = _date_clause(date_from, date_to)
     extra, params = extra + dsql, params + dparams
     if pitch_type:
-        extra += " AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) = %s"
+        extra += " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s"
         params = params + [pitch_type]
     team_sql = " AND p.batter_team = %s" if team else ""
     tparams = [team] if team else []
@@ -695,7 +737,7 @@ def trackman_batter_detail(
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"""SELECT COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+            f"""SELECT COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                        p.pitch_call, p.is_swing, p.is_whiff, p.is_contact, p.is_chase, p.is_in_zone,
                        p.plate_loc_height, p.plate_loc_side, p.balls, p.strikes,
                        p.pitcher_throws, p.exit_speed, p.launch_angle, p.distance,
@@ -969,7 +1011,7 @@ def trackman_insights(team: str | None = Query(None), owner: str = Depends(_gate
             f"""SELECT p.pitcher, p.pitcher_team, s.session_date, AVG(p.rel_speed) AS velo, COUNT(*) AS n
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL AND p.rel_speed IS NOT NULL
-                  AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IN ('Fastball','Sinker')
+                  AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IN ('Fastball','Sinker')
                   AND s.session_type <> 'bp' AND s.session_date IS NOT NULL {team_p}
                 GROUP BY p.pitcher, p.pitcher_team, s.session_date
                 HAVING COUNT(*) >= 8 ORDER BY p.pitcher, s.session_date""",
@@ -996,15 +1038,15 @@ def trackman_insights(team: str | None = Query(None), owner: str = Depends(_gate
         # 3) Usage vs whiff mismatch (vs corpus average whiff for the type)
         cur.execute(
             f"""SELECT p.pitcher, p.pitcher_team,
-                       COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+                       COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                        COUNT(*) AS n,
                        SUM(CASE WHEN p.is_swing THEN 1 ELSE 0 END) AS swings,
                        SUM(CASE WHEN p.is_whiff THEN 1 ELSE 0 END) AS whiffs
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
                   AND s.session_type <> 'bp'
-                  AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL {team_p}
-                GROUP BY p.pitcher, p.pitcher_team, COALESCE(p.tagged_pitch_type, p.auto_pitch_type)""",
+                  AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL {team_p}
+                GROUP BY p.pitcher, p.pitcher_team, COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type)""",
             [owner] + tp,
         )
         rows = [dict(r) for r in cur.fetchall()]
@@ -1064,3 +1106,30 @@ def trackman_insights(team: str | None = Query(None), owner: str = Depends(_gate
 
     flags.sort(key=lambda f: -f["severity"])
     return {"flags": flags}
+
+
+# ── Per-pitch classification override (Pitcher Lab) ──────────────
+
+from pydantic import BaseModel as _BM
+
+
+class PitchTypeOverride(_BM):
+    pitch_type: str | None = None  # null clears the override
+
+
+@router.patch("/trackman/pitches/{pitch_id}/type")
+def override_pitch_type(pitch_id: int, body: PitchTypeOverride, owner: str = Depends(_gate)):
+    """Manually re-tag one pitch. Overrides win over the auto classifier and
+    the TrackMan tags everywhere (arsenals, grades, labs, leaderboards)."""
+    if body.pitch_type is not None and body.pitch_type not in SUITE_TYPES:
+        raise HTTPException(status_code=400, detail=f"pitch_type must be one of {SUITE_TYPES} or null.")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE tm_pitches SET override_pitch_type = %s WHERE id = %s AND owner_user_id = %s",
+            (body.pitch_type, pitch_id, owner),
+        )
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="Pitch not found.")
+        conn.commit()
+    return {"status": "ok"}

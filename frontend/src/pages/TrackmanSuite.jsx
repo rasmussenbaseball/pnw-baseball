@@ -497,7 +497,8 @@ function PctlBar({ label, value, pctl, unit = '' }) {
 }
 
 // Movement plot, catcher's view: HB on x (arm-side +), IVB on y.
-function MovementPlot({ pitches }) {
+// Dots are clickable when onPick is provided (per-pitch re-tagging).
+function MovementPlot({ pitches, onPick, selectedId }) {
   const W = 300, H = 300, R = 25 // inches range
   const sx = (hb) => W / 2 + (hb / R) * (W / 2 - 16)
   const sy = (ivb) => H / 2 - (ivb / R) * (H / 2 - 16)
@@ -518,7 +519,12 @@ function MovementPlot({ pitches }) {
       <line x1="8" y1={sy(0)} x2={W - 8} y2={sy(0)} stroke="currentColor" className="text-gray-300 dark:text-gray-500" strokeWidth="1.5" />
       {Object.entries(byType).map(([t, ps]) => ps.map((p, i) => (
         <circle key={t + i} cx={sx(Math.max(-R, Math.min(R, p.horz_break)))} cy={sy(Math.max(-R, Math.min(R, p.ivb)))}
-          r="3" fill={cFor(t)} opacity="0.35" />
+          r={p.pitch_id === selectedId ? 5 : 3} fill={cFor(t)}
+          opacity={p.pitch_id === selectedId ? 1 : 0.35}
+          stroke={p.pitch_id === selectedId ? '#111' : (p.override_pitch_type ? '#111' : 'none')}
+          strokeWidth={p.pitch_id === selectedId ? 1.5 : 0.8}
+          style={onPick ? { cursor: 'pointer' } : undefined}
+          onClick={onPick ? () => onPick(p) : undefined} />
       )))}
       {Object.entries(byType).map(([t, ps]) => {
         const mx = ps.reduce((a, p) => a + p.horz_break, 0) / ps.length
@@ -559,34 +565,36 @@ function ReleasePlot({ pitches }) {
   )
 }
 
-// Location heatmap: 5x5 bins over the hitting area with the K-zone box.
+// Location plot, Rapsodo Lab style: one small dot per pitch (catcher's view)
+// with the K-zone box — not shaded bins.
 function LocationHeatmap({ pitches, title }) {
-  const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2, N = 5
-  const bins = Array.from({ length: N }, () => Array(N).fill(0))
-  let total = 0
-  pitches.forEach(p => {
-    if (p.plate_loc_side == null || p.plate_loc_height == null) return
-    const cx = Math.min(N - 1, Math.max(0, Math.floor(((p.plate_loc_side - XMIN) / (XMAX - XMIN)) * N)))
-    const cy = Math.min(N - 1, Math.max(0, Math.floor(((YMAX - p.plate_loc_height) / (YMAX - YMIN)) * N)))
-    bins[cy][cx] += 1; total += 1
-  })
-  const max = Math.max(1, ...bins.flat())
-  const W = 150, H = 150, cw = W / N, ch = H / N
-  const zx = (v) => ((v - XMIN) / (XMAX - XMIN)) * W
-  const zy = (v) => ((YMAX - v) / (YMAX - YMIN)) * H
+  const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2
+  const W = 150, H = 150
+  const zx = (v) => ((Math.max(XMIN, Math.min(XMAX, v)) - XMIN) / (XMAX - XMIN)) * W
+  const zy = (v) => ((YMAX - Math.max(YMIN, Math.min(YMAX, v))) / (YMAX - YMIN)) * H
+  const pts = pitches.filter(p => p.plate_loc_side != null && p.plate_loc_height != null)
   return (
     <div>
       <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1 flex items-center gap-1.5">
         <span className="inline-block w-2 h-2 rounded-full" style={{ background: cFor(title) }} />
-        {title} <span className="text-gray-400 font-normal">({total})</span>
+        {title} <span className="text-gray-400 font-normal">({pts.length})</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded">
-        {bins.map((row, y) => row.map((n, x) => (
-          <rect key={`${x}${y}`} x={x * cw} y={y * ch} width={cw} height={ch}
-            fill={n === 0 ? 'transparent' : '#d22d49'} opacity={n === 0 ? 0 : 0.12 + 0.75 * (n / max)} />
-        )))}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded bg-gray-50 dark:bg-gray-900/40">
         <rect x={zx(-0.83)} y={zy(3.5)} width={zx(0.83) - zx(-0.83)} height={zy(1.5) - zy(3.5)}
-          fill="none" stroke="currentColor" className="text-gray-500 dark:text-gray-300" strokeWidth="1.5" />
+          fill="none" stroke="currentColor" className="text-gray-400 dark:text-gray-500" strokeWidth="1.2" />
+        {/* 9-box guides inside the zone */}
+        {[1 / 3, 2 / 3].map(f => (
+          <g key={f}>
+            <line x1={zx(-0.83 + f * 1.66)} y1={zy(3.5)} x2={zx(-0.83 + f * 1.66)} y2={zy(1.5)}
+              stroke="currentColor" className="text-gray-200 dark:text-gray-700" strokeWidth="0.7" />
+            <line x1={zx(-0.83)} y1={zy(1.5 + f * 2.0)} x2={zx(0.83)} y2={zy(1.5 + f * 2.0)}
+              stroke="currentColor" className="text-gray-200 dark:text-gray-700" strokeWidth="0.7" />
+          </g>
+        ))}
+        {pts.map((p, i) => (
+          <circle key={i} cx={zx(p.plate_loc_side)} cy={zy(p.plate_loc_height)} r="2.6"
+            fill={cFor(title)} opacity="0.55" stroke="#fff" strokeWidth="0.5" />
+        ))}
       </svg>
     </div>
   )
@@ -703,16 +711,28 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
   const exportRef = useRef(null)
   const [context, setContext] = useState('live')
   const [dates, setDates] = useState({})
+  const [picked, setPicked] = useState(null)  // pitch selected for re-tagging
   const [team, setTeam] = useState(teamCtx.primary)
   const [conf, setConf] = useState('all')
   const { data: list } = useApi('/trackman/pitching', { context: 'all' })
   const roster = (list?.pitchers || []).filter(p => !team || p.team === team)
   const names = roster.map(p => p.pitcher)
   const active = names.includes(pitcher) ? pitcher : (names[0] || '')
-  const { data, loading, error } = useApi(
+  const { data, loading, error, refetch } = useApi(
     active ? '/trackman/pitchers/detail' : null,
     { pitcher: active, context, conf, team: team || undefined,
       date_from: dates.from, date_to: dates.to })
+
+  async function overridePitch(pitchType) {
+    if (!picked) return
+    await fetch(`/api/v1/trackman/pitches/${picked.pitch_id}/type`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({ pitch_type: pitchType }),
+    })
+    setPicked(null)
+    refetch()
+  }
 
   const byType = useMemo(() => {
     const m = {}
@@ -782,9 +802,18 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
           <ArsenalStatTable pitches={data.pitches} />
 
           <div className="grid md:grid-cols-2 gap-3">
+            <ArmProfileCard arm={data.arm} />
+            <TunnelingCard tunneling={data.tunneling} />
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-3">
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Movement (catcher's view)</div>
-              <MovementPlot pitches={data.pitches} />
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Movement (catcher's view)</span>
+                <span className="text-[10px] text-gray-400">Click a dot to re-tag a pitch</span>
+              </div>
+              <MovementPlot pitches={data.pitches} selectedId={picked?.pitch_id}
+                onPick={(p) => setPicked(picked?.pitch_id === p.pitch_id ? null : p)} />
               <div className="flex flex-wrap gap-2 mt-1">
                 {Object.keys(byType).map(t => (
                   <span key={t} className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1">
@@ -792,6 +821,37 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
                   </span>
                 ))}
               </div>
+              {picked && (
+                <div className="mt-2 rounded-lg bg-gray-50 dark:bg-gray-900/40 p-2.5">
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">
+                    Selected: <b>{picked.ptype}</b>
+                    {picked.rel_speed != null && ` · ${Number(picked.rel_speed).toFixed(1)} mph`}
+                    {picked.ivb != null && ` · ${Number(picked.ivb).toFixed(1)}" IVB`}
+                    {picked.tagged_pitch_type && picked.tagged_pitch_type !== picked.ptype &&
+                      ` · tagged ${picked.tagged_pitch_type}`}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {['Fastball', 'Sinker', 'Cutter', 'Slider', 'Sweeper', 'Curveball', 'ChangeUp', 'Splitter'].map(t => (
+                      <button key={t} onClick={() => overridePitch(t)}
+                        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${
+                          t === picked.ptype ? 'bg-portal-purple text-white ring-portal-purple'
+                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 ring-gray-200 dark:ring-gray-700 hover:ring-portal-purple'}`}>
+                        {t}
+                      </button>
+                    ))}
+                    {picked.override_pitch_type && (
+                      <button onClick={() => overridePitch(null)}
+                        className="px-2 py-0.5 rounded-full text-[11px] font-semibold text-rose-600 ring-1 ring-rose-200 dark:ring-rose-800">
+                        Clear override
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              <p className="text-[10px] text-gray-400 mt-2">
+                Types come from the site's shape classifier (each pitch judged vs this arm's own fastball),
+                not the scoreboard tagger. Overrides win everywhere.
+              </p>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Release point</div>
@@ -1435,6 +1495,97 @@ function XStatsCard({ x }) {
       <p className="text-[10px] text-gray-400 mt-2">
         Contact values from a Statcast-shaped EV/LA surface; untracked balls in play use their actual result.
         Strikeouts count as outs; walks and HBP feed xwOBA.
+      </p>
+    </div>
+  )
+}
+
+// ── Rapsodo Lab ports: arm profile + tunneling ───────────────────
+
+function ArmProfileCard({ arm }) {
+  if (!arm) return null
+  const band = arm.arm_angle != null
+    ? `${Math.round(arm.arm_angle / 5) * 5 - 5}–${Math.round(arm.arm_angle / 5) * 5 + 5}°`
+    : null
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Arm & release profile</div>
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          ['Slot', arm.slot || '–'],
+          ['Est. arm angle', band ? `~${band}` : '–'],
+          ['Release', `${arm.rel_height ?? '–'} ft high · ${arm.rel_side ?? '–'} ft side`],
+          ['Consistency', arm.consistency || '–'],
+          ['Extension', arm.extension != null ? `${arm.extension} ft` : '–'],
+          ['Approach angle', arm.vaa != null ? `${arm.vaa}°` : '–'],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-100">{value}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-400 mt-2">
+        Arm angle is a geometric estimate from release point (~10° band), same method as the Rapsodo Lab.
+        Release SD: ±{arm.rel_height_sd ?? '–'} ft height, ±{arm.rel_side_sd ?? '–'} ft side over {arm.n} pitches.
+      </p>
+    </div>
+  )
+}
+
+function TunnelingCard({ tunneling }) {
+  const anchor = tunneling?.default_anchor
+  const pairs = (tunneling?.by_anchor || {})[anchor] || []
+  if (!anchor || !pairs.length) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Tunneling</div>
+        <p className="text-xs text-gray-400">Needs 2+ established pitch types to compute tunnel pairs.</p>
+      </div>
+    )
+  }
+  const cap = (t) => t ? t[0].toUpperCase() + t.slice(1) : t
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+          Tunneling off the {cap(anchor)}
+        </span>
+        {tunneling.best_pair && (
+          <span className="text-[10px] text-gray-400">
+            Best pair: {cap(tunneling.best_pair.anchor || anchor)} + {cap(tunneling.best_pair.pitch)}
+          </span>
+        )}
+      </div>
+      <table className="w-full text-[12px]">
+        <thead>
+          <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+            <th className="py-1">Pitch</th>
+            <th className="py-1 text-right" title="Separation at the hitter's commit point (in) — smaller tunnels better">Tunnel</th>
+            <th className="py-1 text-right" title="Movement separation at the plate (in) — bigger is better">Plate</th>
+            <th className="py-1 text-right" title="Break that shows up AFTER the commit point (in)">Late</th>
+            <th className="py-1 text-right" title="Late break per inch of tunnel separation">Ratio</th>
+            <th className="py-1 text-right">Grade</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {pairs.map(pr => (
+            <tr key={pr.pitch}>
+              <td className="py-1 font-semibold">
+                <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: cFor(cap(pr.pitch) === 'Changeup' ? 'ChangeUp' : cap(pr.pitch)) }} />
+                {cap(pr.pitch)}
+              </td>
+              <td className="py-1 text-right tabular-nums">{pr.tunnel_diff}"</td>
+              <td className="py-1 text-right tabular-nums">{pr.plate_diff}"</td>
+              <td className="py-1 text-right tabular-nums font-semibold">{pr.post_break}"</td>
+              <td className="py-1 text-right tabular-nums">{pr.break_tunnel_ratio ?? '–'}</td>
+              <td className={`py-1 text-right tabular-nums font-bold ${pr.grade >= 60 ? 'text-emerald-600 dark:text-emerald-400' : pr.grade <= 40 ? 'text-rose-600 dark:text-rose-400' : ''}`}>{pr.grade}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-[10px] text-gray-400 mt-2">
+        Same tunneling math as the Rapsodo Lab: release + commit-point separation vs late break.
       </p>
     </div>
   )
