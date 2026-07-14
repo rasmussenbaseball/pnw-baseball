@@ -60,18 +60,27 @@ on every row and endpoint, coach tier gate.
   split live vs BP with the **transfer gap** (live HH% minus BP HH%) — the
   centerpiece of Trevor's outline.
 
-## Phase 2 — Leaderboards + Player Lab (Trevor's ANALYZE section)
+## Phase 2 — SHIPPED (2026-07-13): Player Lab + Leaderboards
 
-- Leaderboards: rank the roster by category (two-strike whiff%, Contact+,
-  IVB, zone contact%, chase discipline) with minimum-sample gates.
-- Player Lab: single-player deep dive — pitch movement plot (IVB × HB
-  scatter by pitch type), location heatmaps by count, velo trends across
-  sessions, per-session log.
-- Confidence filter toggle (drop Low-confidence measurements, show data
-  readiness % like the prototype).
-- Roster linking: match "Last, First" + team code to our players table
-  (reuse the Rapsodo link endpoint pattern) so suite data can surface on
-  player profiles later.
+- **Player Lab** (`/trackman/pitchers/detail`): Savant-style pitcher deep
+  dive. Percentile sliders (blue-red, dot with rank) computed against the
+  coach's OWN corpus (every arm with 50+ pitches — "your league"), across
+  velo / FB IVB / spin / extension / zone% / whiff% / chase% / CSW% / EV
+  against. Movement plot (catcher's view, per-pitch dots + type-average
+  markers), release-point plot, 5x5 location heatmaps per pitch type with
+  the K-zone box, pitch-selection-by-count matrix (12 counts, top 2 types),
+  per-session velocity trend lines. Reachable from any Pitching-tab card.
+- **Leaderboards** (`/trackman/leaderboards`): 11 pitching categories
+  (avg/max FB velo, FB IVB, spin, extension, whiff%, CSW%, zone%, chase%,
+  2K whiff%, EV against) + 8 hitting (avg/max EV, hard-hit%, sweet-spot
+  8-32°, zone contact%, whiff%, chase%, max distance), each with its own
+  minimum-sample gate, side + context filters.
+
+Still open from the original Phase 2 list (now Phase 2.5):
+- Confidence filter toggle (drop Low-confidence rows, show readiness %).
+- Roster linking to our players table (Rapsodo link-endpoint pattern).
+- Hitter Lab (batter version of the deep dive: swing decisions by zone,
+  contact heatmaps, spray from Direction/Bearing).
 
 ## Phase 3 — Session Review + Reports (Trevor's REVIEW section)
 
@@ -88,6 +97,36 @@ on every row and endpoint, coach tier gate.
   usage vs whiff mismatches), staff approve/dismiss queue, approved
   decisions attach to reports. Needs product thought before building —
   revisit with Nate + Trevor after Phases 2-3 are in coaches' hands.
+
+## Competitive reference — 6-4-3 Charts TrackMan SYNC (researched 2026-07-13)
+
+What 6-4-3 offers (600+ programs), to meet or beat feature-by-feature:
+Pitch Highlighter (location + BIP + discipline tables) · Pitcher Arsenal
+(K-zone, movement, spin direction, release, extension vs height,
+percentiles vs collegiate peers) · Zone Illustration (9-zone hitter
+tendencies, 7 layout options) · All Sprays (filterable batted-ball charts)
+· Game Replay · 3D Field Render (tunneling) · Pitch Sequencing (count
+plinko, two-pitch combos, at/through-count wOBA) · Heatmaps (3 palettes;
+swing, whiff, two-strike, batted-ball) · Catcher Defense (Framing+ on the
+shadow zone) · Umpire Reports · Team Stats tables (PDF/CSV/XLS export) ·
+Defensive Shift Model (xBA/xSLG/xwOBAcon vs configurations) · Models:
+Stuff+, Command+, xRV+, Swing Decision, Bat Speed · National leaderboards
+with split types + custom minimums · Saveable filters · Portable-unit
+interfaces · Synergy video pairing.
+
+Our edges to press: (1) their percentiles compare to national collegiate
+peers, ours can ALSO grade within the coach's own corpus and, later,
+against our PNW-wide scraped baselines per level (D1-NWAC) — a comparison
+set 6-4-3 doesn't have; (2) the suite lives NEXT TO Series Planner /
+Alignments / PBP scouting in one portal; (3) transfer-gap (BP vs game) is
+a practice-planning answer SYNC doesn't lead with; (4) price.
+
+Future tool ideas drawn from this research (post-Phase 3 candidates):
+pitch sequencing view (count plinko + two-pitch combo outcomes), Stuff+/
+Command+-style pitch grades trained on our corpus, catcher framing on the
+shadow zone (we store PopTime/loc/call already), umpire zone reports,
+spray charts from Direction/Bearing, saved-filter workspaces, PDF exports
+via ReportActions (B&W data-tone convention).
 
 ## Related but separate
 

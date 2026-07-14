@@ -336,3 +336,194 @@ def trackman_hitting(
                     "live": live, "bp": bp, "transfer_gap": gap})
     out.sort(key=lambda x: -((x["live"] or {}).get("bbe") or 0) - ((x["bp"] or {}).get("bbe") or 0))
     return {"batters": out}
+
+
+# ── Phase 2: Player Lab + Leaderboards ───────────────────────────
+# Player Lab = Savant-style single-pitcher deep dive: raw points for the
+# movement/release plots, per-session velo trend, location bins per pitch
+# type, count-state usage, and percentile ranks computed against every
+# OTHER pitcher in this coach's corpus (their own "league").
+
+_PCTL_METRICS = [
+    # (key, sql expr, higher_is_better)
+    ("velo", "AVG(rel_speed)", True),
+    ("ivb", "AVG(ivb)", True),
+    ("spin", "AVG(spin_rate)", True),
+    ("extension", "AVG(extension)", True),
+    ("zone_pct", "AVG(CASE WHEN is_in_zone THEN 1.0 WHEN is_in_zone IS FALSE THEN 0.0 END)", True),
+    ("whiff_pct", "CASE WHEN SUM(CASE WHEN is_swing THEN 1 ELSE 0 END) >= 20 THEN "
+                  "SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END),0) END", True),
+    ("chase_pct", "CASE WHEN SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END) >= 20 THEN "
+                  "SUM(CASE WHEN is_chase THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END),0) END", True),
+    ("csw_pct", "AVG(CASE WHEN pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1.0 ELSE 0.0 END)", True),
+    ("ev_against", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN AVG(exit_speed) END", False),
+]
+
+
+@router.get("/trackman/pitchers/detail")
+def trackman_pitcher_detail(
+    pitcher: str = Query(...),
+    team: str | None = Query(None),
+    context: str = Query("live"),
+    owner: str = Depends(_gate),
+):
+    """Everything the Player Lab needs for one pitcher, in one call:
+    per-pitch points (movement, release, location, velo), session velo
+    trend, count-state usage, and corpus percentiles (min 50 pitches to
+    qualify for the percentile pool)."""
+    extra, params = _context_clause(context)
+    team_sql = " AND p.pitcher_team = %s" if team else ""
+    tparams = [team] if team else []
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Raw per-pitch points (kept lean for the plots)
+        cur.execute(
+            f"""SELECT COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+                       p.rel_speed, p.ivb, p.horz_break, p.spin_rate,
+                       p.rel_height, p.rel_side, p.extension,
+                       p.plate_loc_height, p.plate_loc_side,
+                       p.balls, p.strikes, p.batter_side, p.pitch_call,
+                       p.exit_speed, p.launch_angle, p.play_result,
+                       s.session_date, s.id AS session_id
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.pitcher = %s
+                  AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
+                  {extra}{team_sql}
+                ORDER BY s.session_date, p.pitch_no""",
+            [owner, pitcher] + params + tparams,
+        )
+        pitches = [dict(r) for r in cur.fetchall()]
+        for p in pitches:
+            p["session_date"] = p["session_date"].isoformat() if p["session_date"] else None
+        if not pitches:
+            raise HTTPException(status_code=404, detail="No pitches for that pitcher in this context.")
+
+        # Percentile pool: every pitcher in this corpus with 50+ pitches
+        cols = ", ".join(f"{expr} AS {key}" for key, expr, _ in _PCTL_METRICS)
+        cur.execute(
+            f"""SELECT p.pitcher, COUNT(*) AS n, {cols}
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL {extra}
+                GROUP BY p.pitcher HAVING COUNT(*) >= 50""",
+            [owner] + params,
+        )
+        pool = [dict(r) for r in cur.fetchall()]
+
+    me = next((r for r in pool if r["pitcher"] == pitcher), None)
+    percentiles = {}
+    if me and len(pool) >= 5:
+        for key, _, higher in _PCTL_METRICS:
+            mine = me.get(key)
+            vals = [r[key] for r in pool if r.get(key) is not None]
+            if mine is None or len(vals) < 5:
+                continue
+            below = sum(1 for v in vals if (v < mine) == higher and v != mine)
+            pct = round(100 * (below + 0.5 * sum(1 for v in vals if v == mine)) / len(vals))
+            percentiles[key] = {"value": round(float(mine), 3), "pctl": max(1, min(99, pct)),
+                                "pool": len(vals)}
+
+    # Count-state usage matrix: pitch type share per (balls, strikes)
+    usage = defaultdict(lambda: defaultdict(int))
+    for p in pitches:
+        if p["balls"] is not None and p["strikes"] is not None:
+            usage[f"{p['balls']}-{p['strikes']}"][p["ptype"]] += 1
+    count_usage = {
+        c: {"total": sum(tp.values()),
+            "types": {t: round(100 * n / sum(tp.values()), 1) for t, n in tp.items()}}
+        for c, tp in usage.items()
+    }
+
+    # Session velo trend per pitch type
+    trend = defaultdict(lambda: defaultdict(list))
+    for p in pitches:
+        if p["rel_speed"] is not None and p["session_date"]:
+            trend[p["ptype"]][p["session_date"]].append(p["rel_speed"])
+    velo_trend = {
+        t: [{"date": d, "velo": round(sum(v) / len(v), 1), "n": len(v)}
+            for d, v in sorted(dates.items())]
+        for t, dates in trend.items()
+    }
+
+    return {
+        "pitcher": pitcher,
+        "pitch_count": len(pitches),
+        "pitches": pitches,
+        "percentiles": percentiles,
+        "count_usage": count_usage,
+        "velo_trend": velo_trend,
+    }
+
+
+_LB_CATS_PITCHING = {
+    "velo": ("Avg fastball velo", "AVG(rel_speed) FILTER (WHERE COALESCE(tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam','Sinker'))", True, 30),
+    "max_velo": ("Max velo", "MAX(rel_speed)", True, 30),
+    "ivb": ("Fastball IVB", "AVG(ivb) FILTER (WHERE COALESCE(tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam'))", True, 30),
+    "spin": ("Avg spin", "AVG(spin_rate)", True, 50),
+    "extension": ("Extension", "AVG(extension)", True, 50),
+    "whiff_pct": ("Whiff%", "100.0 * SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END), 0)", True, 50),
+    "csw_pct": ("CSW%", "100.0 * AVG(CASE WHEN pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1.0 ELSE 0.0 END)", True, 50),
+    "zone_pct": ("Zone%", "100.0 * AVG(CASE WHEN is_in_zone THEN 1.0 WHEN is_in_zone IS FALSE THEN 0.0 END)", True, 50),
+    "chase_pct": ("Chase%", "100.0 * SUM(CASE WHEN is_chase THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END), 0)", True, 50),
+    "two_strike_whiff": ("2K whiff%", "100.0 * SUM(CASE WHEN is_whiff AND strikes = 2 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing AND strikes = 2 THEN 1 ELSE 0 END), 0)", True, 30),
+    "ev_against": ("EV against", "AVG(exit_speed)", False, 15),
+}
+_LB_CATS_HITTING = {
+    "avg_ev": ("Avg EV", "AVG(exit_speed)", True, 15),
+    "max_ev": ("Max EV", "MAX(exit_speed)", True, 10),
+    "hard_hit_pct": ("Hard-hit%", "100.0 * SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END), 0)", True, 15),
+    "sweet_spot": ("Sweet-spot%", "100.0 * SUM(CASE WHEN exit_speed IS NOT NULL AND launch_angle BETWEEN 8 AND 32 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END), 0)", True, 15),
+    "zone_contact": ("Zone contact%", "100.0 * SUM(CASE WHEN is_contact AND is_in_zone THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing AND is_in_zone THEN 1 ELSE 0 END), 0)", True, 25),
+    "whiff_pct": ("Whiff%", "100.0 * SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END), 0)", False, 25),
+    "chase_pct": ("Chase%", "100.0 * SUM(CASE WHEN is_chase THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END), 0)", False, 25),
+    "max_dist": ("Max distance", "MAX(distance)", True, 10),
+}
+
+
+@router.get("/trackman/leaderboards")
+def trackman_leaderboards(
+    side: str = Query("pitching"),
+    context: str = Query("live"),
+    owner: str = Depends(_gate),
+):
+    """Corpus leaderboards with per-category minimum-sample gates. Each
+    category returns the full qualified ranking (the UI shows top N)."""
+    cats = _LB_CATS_PITCHING if side == "pitching" else _LB_CATS_HITTING
+    who = "pitcher" if side == "pitching" else "batter"
+    hand = "pitcher_throws" if side == "pitching" else "batter_side"
+    team = f"{who}_team"
+    extra, params = _context_clause(context)
+
+    boards = {}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for key, (label, expr, higher, min_n) in cats.items():
+            # Sample gate: pitches for rate stats, BBE for contact-quality stats
+            gate = ("SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END)"
+                    if "exit_speed" in expr or "distance" in expr else "COUNT(*)")
+            try:
+                cur.execute(
+                    f"""SELECT p.{who} AS name, p.{hand} AS hand, p.{team} AS team,
+                               COUNT(*) AS pitches, {gate} AS sample, {expr} AS val
+                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                        WHERE p.owner_user_id = %s AND p.{who} IS NOT NULL {extra}
+                        GROUP BY p.{who}, p.{hand}, p.{team}
+                        HAVING {gate} >= {min_n} AND {expr} IS NOT NULL
+                        ORDER BY {expr} {'DESC' if higher else 'ASC'}
+                        LIMIT 25""",
+                    [owner] + params,
+                )
+                boards[key] = {
+                    "label": label,
+                    "higher_is_better": higher,
+                    "min_sample": min_n,
+                    "rows": [
+                        {"name": r["name"], "hand": r["hand"], "team": r["team"],
+                         "sample": r["sample"], "value": round(float(r["val"]), 1)}
+                        for r in cur.fetchall()
+                    ],
+                }
+            except Exception:
+                conn.rollback()
+                boards[key] = {"label": label, "higher_is_better": higher,
+                               "min_sample": min_n, "rows": []}
+    return {"side": side, "boards": boards}

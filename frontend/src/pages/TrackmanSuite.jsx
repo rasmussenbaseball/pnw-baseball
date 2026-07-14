@@ -37,6 +37,7 @@ async function authHeaders() {
 
 export default function TrackmanSuite() {
   const [tab, setTab] = useState('overview')
+  const [labPitcher, setLabPitcher] = useState('')
   const { data: overview, refetch } = useApi('/trackman/overview')
   const hasData = (overview?.totals?.pitches || 0) > 0
 
@@ -53,8 +54,9 @@ export default function TrackmanSuite() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1.5 mb-4">
-        {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting']].map(([k, label]) => (
+      <div className="flex gap-1.5 mb-4 flex-wrap">
+        {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
+          ['lab', 'Player Lab'], ['leaders', 'Leaderboards']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === k
@@ -67,8 +69,10 @@ export default function TrackmanSuite() {
       </div>
 
       {tab === 'overview' && <OverviewTab overview={overview} refetch={refetch} />}
-      {tab === 'pitching' && (hasData ? <PitchingTab /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'pitching' && (hasData ? <PitchingTab onOpenLab={(name) => { setLabPitcher(name); setTab('lab') }} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'hitting' && (hasData ? <HittingTab /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'lab' && (hasData ? <PlayerLabTab pitcher={labPitcher} setPitcher={setLabPitcher} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'leaders' && (hasData ? <LeaderboardsTab /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
   )
 }
@@ -220,7 +224,7 @@ function OverviewTab({ overview, refetch }) {
 
 const CONTEXTS = [['live', 'Games + Scrimmages'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['all', 'Everything']]
 
-function PitchingTab() {
+function PitchingTab({ onOpenLab }) {
   const [context, setContext] = useState('live')
   const { data, loading } = useApi(`/trackman/pitching?context=${context}`)
   const pitchers = data?.pitchers || []
@@ -256,6 +260,10 @@ function PitchingTab() {
               </span>
               <span className="text-xs text-gray-400">{p.team}</span>
               <span className="ml-auto text-xs text-gray-400 tabular-nums">{p.pitches} pitches</span>
+              <button onClick={() => onOpenLab?.(p.pitcher)}
+                className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline whitespace-nowrap">
+                Player Lab →
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]">
@@ -376,6 +384,345 @@ function HittingTab() {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+// ── Player Lab (Savant-style pitcher deep dive) ──────────────────
+
+const cFor = (t) => PITCH_COLORS[t] || '#9ca3af'
+
+// Savant-style percentile slider: blue (low) → red (high on the GOOD end).
+function PctlBar({ label, value, pctl, unit = '' }) {
+  const good = pctl >= 50
+  const dot = good ? '#d22d49' : '#3661ad'
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="w-28 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide shrink-0">{label}</span>
+      <div className="relative flex-1 h-1.5 rounded-full bg-gradient-to-r from-[#3661ad] via-gray-200 dark:via-gray-600 to-[#d22d49] opacity-90">
+        <span className="absolute -top-[7px] w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center ring-2 ring-white dark:ring-gray-800"
+          style={{ left: `calc(${pctl}% - 10px)`, background: dot }}>
+          {pctl}
+        </span>
+      </div>
+      <span className="w-16 text-right text-[12px] font-bold tabular-nums text-gray-800 dark:text-gray-100 shrink-0">{value}{unit}</span>
+    </div>
+  )
+}
+
+// Movement plot, catcher's view: HB on x (arm-side +), IVB on y.
+function MovementPlot({ pitches }) {
+  const W = 300, H = 300, R = 25 // inches range
+  const sx = (hb) => W / 2 + (hb / R) * (W / 2 - 16)
+  const sy = (ivb) => H / 2 - (ivb / R) * (H / 2 - 16)
+  const byType = {}
+  pitches.forEach(p => {
+    if (p.horz_break == null || p.ivb == null) return
+    ;(byType[p.ptype] = byType[p.ptype] || []).push(p)
+  })
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      {[-20, -10, 10, 20].map(v => (
+        <g key={v}>
+          <line x1={sx(v)} y1="8" x2={sx(v)} y2={H - 8} stroke="currentColor" className="text-gray-100 dark:text-gray-700" strokeWidth="1" />
+          <line x1="8" y1={sy(v)} x2={W - 8} y2={sy(v)} stroke="currentColor" className="text-gray-100 dark:text-gray-700" strokeWidth="1" />
+        </g>
+      ))}
+      <line x1={sx(0)} y1="8" x2={sx(0)} y2={H - 8} stroke="currentColor" className="text-gray-300 dark:text-gray-500" strokeWidth="1.5" />
+      <line x1="8" y1={sy(0)} x2={W - 8} y2={sy(0)} stroke="currentColor" className="text-gray-300 dark:text-gray-500" strokeWidth="1.5" />
+      {Object.entries(byType).map(([t, ps]) => ps.map((p, i) => (
+        <circle key={t + i} cx={sx(Math.max(-R, Math.min(R, p.horz_break)))} cy={sy(Math.max(-R, Math.min(R, p.ivb)))}
+          r="3" fill={cFor(t)} opacity="0.35" />
+      )))}
+      {Object.entries(byType).map(([t, ps]) => {
+        const mx = ps.reduce((a, p) => a + p.horz_break, 0) / ps.length
+        const my = ps.reduce((a, p) => a + p.ivb, 0) / ps.length
+        return (
+          <g key={t}>
+            <circle cx={sx(mx)} cy={sy(my)} r="7" fill={cFor(t)} stroke="#fff" strokeWidth="2" />
+          </g>
+        )
+      })}
+      <text x={W - 10} y={sy(0) - 6} textAnchor="end" fontSize="9" fill="#9ca3af">HB (in) →</text>
+      <text x={sx(0) + 6} y="16" fontSize="9" fill="#9ca3af">IVB (in) ↑</text>
+    </svg>
+  )
+}
+
+// Release point, catcher's view.
+function ReleasePlot({ pitches }) {
+  const W = 300, H = 300
+  const sx = (side) => W / 2 + (side / 5) * (W / 2 - 16)
+  const sy = (h) => H - 20 - (h / 8) * (H - 40)
+  const pts = pitches.filter(p => p.rel_side != null && p.rel_height != null)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <line x1="8" y1={H - 20} x2={W - 8} y2={H - 20} stroke="currentColor" className="text-gray-300 dark:text-gray-500" strokeWidth="1.5" />
+      {[2, 4, 6].map(v => (
+        <g key={v}>
+          <line x1="8" y1={sy(v)} x2={W - 8} y2={sy(v)} stroke="currentColor" className="text-gray-100 dark:text-gray-700" />
+          <text x="12" y={sy(v) - 3} fontSize="8" fill="#9ca3af">{v} ft</text>
+        </g>
+      ))}
+      <line x1={sx(0)} y1="8" x2={sx(0)} y2={H - 20} stroke="currentColor" className="text-gray-200 dark:text-gray-600" strokeDasharray="3 3" />
+      {pts.map((p, i) => (
+        <circle key={i} cx={sx(Math.max(-5, Math.min(5, p.rel_side)))} cy={sy(Math.max(0, Math.min(8, p.rel_height)))}
+          r="3" fill={cFor(p.ptype)} opacity="0.4" />
+      ))}
+    </svg>
+  )
+}
+
+// Location heatmap: 5x5 bins over the hitting area with the K-zone box.
+function LocationHeatmap({ pitches, title }) {
+  const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2, N = 5
+  const bins = Array.from({ length: N }, () => Array(N).fill(0))
+  let total = 0
+  pitches.forEach(p => {
+    if (p.plate_loc_side == null || p.plate_loc_height == null) return
+    const cx = Math.min(N - 1, Math.max(0, Math.floor(((p.plate_loc_side - XMIN) / (XMAX - XMIN)) * N)))
+    const cy = Math.min(N - 1, Math.max(0, Math.floor(((YMAX - p.plate_loc_height) / (YMAX - YMIN)) * N)))
+    bins[cy][cx] += 1; total += 1
+  })
+  const max = Math.max(1, ...bins.flat())
+  const W = 150, H = 150, cw = W / N, ch = H / N
+  const zx = (v) => ((v - XMIN) / (XMAX - XMIN)) * W
+  const zy = (v) => ((YMAX - v) / (YMAX - YMIN)) * H
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1 flex items-center gap-1.5">
+        <span className="inline-block w-2 h-2 rounded-full" style={{ background: cFor(title) }} />
+        {title} <span className="text-gray-400 font-normal">({total})</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded">
+        {bins.map((row, y) => row.map((n, x) => (
+          <rect key={`${x}${y}`} x={x * cw} y={y * ch} width={cw} height={ch}
+            fill={n === 0 ? 'transparent' : '#d22d49'} opacity={n === 0 ? 0 : 0.12 + 0.75 * (n / max)} />
+        )))}
+        <rect x={zx(-0.83)} y={zy(3.5)} width={zx(0.83) - zx(-0.83)} height={zy(1.5) - zy(3.5)}
+          fill="none" stroke="currentColor" className="text-gray-500 dark:text-gray-300" strokeWidth="1.5" />
+      </svg>
+    </div>
+  )
+}
+
+const COUNTS = [['0-0','0-1','0-2'],['1-0','1-1','1-2'],['2-0','2-1','2-2'],['3-0','3-1','3-2']]
+
+function CountUsage({ usage }) {
+  return (
+    <div className="grid grid-cols-3 gap-1.5">
+      {COUNTS.flat().map(c => {
+        const cell = usage[c]
+        const top = cell ? Object.entries(cell.types).sort((a, b) => b[1] - a[1]).slice(0, 2) : []
+        return (
+          <div key={c} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-2">
+            <div className="text-[10px] font-bold text-gray-400 tabular-nums">{c} <span className="font-normal">· {cell?.total || 0}</span></div>
+            {top.map(([t, pct]) => (
+              <div key={t} className="flex items-center gap-1 mt-0.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: cFor(t) }} />
+                <span className="text-[10px] text-gray-600 dark:text-gray-300 truncate">{t}</span>
+                <span className="ml-auto text-[10px] font-semibold tabular-nums">{Math.round(pct)}%</span>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function VeloTrend({ trend }) {
+  const series = Object.entries(trend).filter(([, pts]) => pts.length >= 2)
+  if (!series.length) return <div className="text-xs text-gray-400 p-4 text-center">Need 2+ sessions for a trend.</div>
+  const dates = [...new Set(series.flatMap(([, pts]) => pts.map(p => p.date)))].sort()
+  const vals = series.flatMap(([, pts]) => pts.map(p => p.velo))
+  const vmin = Math.floor(Math.min(...vals)) - 1, vmax = Math.ceil(Math.max(...vals)) + 1
+  const W = 560, H = 170
+  const sx = (d) => 34 + (dates.indexOf(d) / Math.max(1, dates.length - 1)) * (W - 50)
+  const sy = (v) => H - 22 - ((v - vmin) / (vmax - vmin)) * (H - 40)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      {[vmin, Math.round((vmin + vmax) / 2), vmax].map(v => (
+        <g key={v}>
+          <line x1="34" y1={sy(v)} x2={W - 12} y2={sy(v)} stroke="currentColor" className="text-gray-100 dark:text-gray-700" />
+          <text x="30" y={sy(v) + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{v}</text>
+        </g>
+      ))}
+      {series.map(([t, pts]) => (
+        <g key={t}>
+          <polyline points={pts.map(p => `${sx(p.date)},${sy(p.velo)}`).join(' ')}
+            fill="none" stroke={cFor(t)} strokeWidth="2" strokeLinejoin="round" />
+          {pts.map((p, i) => <circle key={i} cx={sx(p.date)} cy={sy(p.velo)} r="3" fill={cFor(t)} />)}
+        </g>
+      ))}
+      {dates.map((d, i) => (i % Math.ceil(dates.length / 6) === 0 &&
+        <text key={d} x={sx(d)} y={H - 8} textAnchor="middle" fontSize="8" fill="#9ca3af">{d.slice(5)}</text>
+      ))}
+    </svg>
+  )
+}
+
+const PCTL_LABELS = {
+  velo: ['Velocity', ' mph', 1], ivb: ['Fastball ride (IVB)', '"', 1], spin: ['Spin rate', ' rpm', 0],
+  extension: ['Extension', ' ft', 1], zone_pct: ['Zone%', '%', 1], whiff_pct: ['Whiff%', '%', 1],
+  chase_pct: ['Chase%', '%', 1], csw_pct: ['CSW%', '%', 1], ev_against: ['EV against', ' mph', 1],
+}
+
+function PlayerLabTab({ pitcher, setPitcher }) {
+  const [context, setContext] = useState('live')
+  const { data: list } = useApi(`/trackman/pitching?context=all`)
+  const names = (list?.pitchers || []).map(p => p.pitcher)
+  const active = pitcher || names[0] || ''
+  const { data, loading, error } = useApi(
+    active ? `/trackman/pitchers/detail?pitcher=${encodeURIComponent(active)}&context=${context}` : null)
+
+  const byType = useMemo(() => {
+    const m = {}
+    ;(data?.pitches || []).forEach(p => { (m[p.ptype] = m[p.ptype] || []).push(p) })
+    return Object.fromEntries(Object.entries(m).sort((a, b) => b[1].length - a[1].length))
+  }, [data])
+
+  const pct = data?.percentiles || {}
+  const pctKeys = Object.keys(PCTL_LABELS).filter(k => pct[k])
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <select value={active} onChange={e => setPitcher(e.target.value)}
+          className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm font-semibold">
+          {names.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        {CONTEXTS.map(([k, label]) => (
+          <button key={k} onClick={() => setContext(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+              context === k ? 'bg-portal-purple text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+        {data && <span className="ml-auto text-xs text-gray-400 tabular-nums">{data.pitch_count} pitches</span>}
+      </div>
+
+      {loading && <div className="text-sm text-gray-400 p-6 text-center">Loading…</div>}
+      {error && <div className="text-sm text-gray-400 p-6 text-center">No data for this pitcher in this context.</div>}
+
+      {data && (
+        <>
+          {/* Percentiles vs the corpus */}
+          {pctKeys.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">
+                Percentile vs your data ({pct[pctKeys[0]]?.pool} qualified arms, 50+ pitches)
+              </div>
+              <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
+                {pctKeys.map(k => {
+                  const [label, unit, dec] = PCTL_LABELS[k]
+                  const v = pct[k].value
+                  const disp = k.endsWith('_pct') ? (v * 100).toFixed(dec) : v.toFixed(dec)
+                  return <PctlBar key={k} label={label} value={disp} unit={unit} pctl={pct[k].pctl} />
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Movement (catcher's view)</div>
+              <MovementPlot pitches={data.pitches} />
+              <div className="flex flex-wrap gap-2 mt-1">
+                {Object.keys(byType).map(t => (
+                  <span key={t} className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full inline-block" style={{ background: cFor(t) }} />{t}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Release point</div>
+              <ReleasePlot pitches={data.pitches} />
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Locations by pitch (K-zone box)</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {Object.entries(byType).slice(0, 6).map(([t, ps]) => (
+                  <LocationHeatmap key={t} pitches={ps} title={t} />
+                ))}
+              </div>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Pitch selection by count</div>
+              <CountUsage usage={data.count_usage} />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Velocity by session</div>
+            <VeloTrend trend={data.velo_trend} />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Leaderboards ─────────────────────────────────────────────────
+
+function LeaderboardsTab() {
+  const [side, setSide] = useState('pitching')
+  const [context, setContext] = useState('live')
+  const { data, loading } = useApi(`/trackman/leaderboards?side=${side}&context=${context}`)
+  const boards = data?.boards || {}
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        {[['pitching', 'Pitching'], ['hitting', 'Hitting']].map(([k, label]) => (
+          <button key={k} onClick={() => setSide(k)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
+              side === k ? 'bg-portal-purple text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+        {CONTEXTS.map(([k, label]) => (
+          <button key={k} onClick={() => setContext(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+              context === k ? 'bg-portal-purple text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {Object.entries(boards).map(([key, b]) => (
+            <div key={key} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
+              <div className="px-3.5 py-2 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+                <span className="text-[12px] font-bold text-gray-800 dark:text-gray-100">{b.label}</span>
+                <span className="text-[10px] text-gray-400">min {b.min_sample}</span>
+              </div>
+              {b.rows.length === 0 ? (
+                <div className="p-4 text-center text-xs text-gray-400">No qualifiers.</div>
+              ) : (
+                <ul className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                  {b.rows.slice(0, 8).map((r, i) => (
+                    <li key={r.name + r.team} className="px-3.5 py-1.5 flex items-center gap-2 text-[13px]">
+                      <span className={`w-5 text-center text-[11px] font-bold rounded ${i === 0 ? 'bg-portal-purple text-white' : 'text-gray-400'}`}>{i + 1}</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-100 truncate">{r.name}</span>
+                      <span className="text-[10px] text-gray-400">{r.team}</span>
+                      <span className="ml-auto font-bold tabular-nums">{r.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
