@@ -123,6 +123,27 @@ ZONE_SIDE = 0.83
 ZONE_BOTTOM = 1.5
 ZONE_TOP = 3.5
 
+# Tag-label normalization: taggers and TrackMan's auto classifier write the
+# same pitch under different labels (verified variants from the Hamlin
+# corpus). Without this, 'Fastball' and 'FourSeamFastBall' grade and roll up
+# as different pitches. Applied to BOTH tagged and auto types at parse.
+PITCH_TYPE_MAP = {
+    "FourSeamFastBall": "Fastball",
+    "Four-Seam": "Fastball",
+    "FourSeam": "Fastball",
+    "TwoSeamFastBall": "Sinker",
+    "Two-Seam": "Sinker",
+    "OneSeamFastBall": "Sinker",
+    "Changeup": "ChangeUp",
+    "ChangeUp": "ChangeUp",
+    "Knuckleball": "Knuckleball",
+}
+
+
+def _norm_pitch_type(v):
+    v = _clean(v)
+    return PITCH_TYPE_MAP.get(v, v) if v else None
+
 
 def _clean(v):
     v = (v or "").strip()
@@ -164,6 +185,8 @@ def parse_text(text: str, filename: str = "upload.csv") -> dict:
         p = {}
         for col, src in TEXT_COLS.items():
             p[col] = _clean(raw.get(src))
+        p["tagged_pitch_type"] = _norm_pitch_type(raw.get("TaggedPitchType"))
+        p["auto_pitch_type"] = _norm_pitch_type(raw.get("AutoPitchType"))
         for col, src in INT_COLS.items():
             p[col] = _i(raw.get(src))
         for col, src in FLOAT_COLS.items():

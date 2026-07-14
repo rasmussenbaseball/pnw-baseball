@@ -834,3 +834,178 @@ def trackman_catching(owner: str = Depends(_gate)):
             conn.rollback()
             rows = []
     return {"catchers": rows}
+
+
+# ── Staff notes + Coach Board insights ───────────────────────────
+
+from pydantic import BaseModel
+
+
+class SessionNotes(BaseModel):
+    highlights: str | None = None
+    concerns: str | None = None
+
+
+@router.patch("/trackman/sessions/{session_id}/notes")
+def save_session_notes(session_id: int, body: SessionNotes, owner: str = Depends(_gate)):
+    """Staff highlights/concerns on a session (shown in Session Review and
+    its exports)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE tm_sessions ADD COLUMN IF NOT EXISTS highlights TEXT")
+        cur.execute("ALTER TABLE tm_sessions ADD COLUMN IF NOT EXISTS concerns TEXT")
+        cur.execute(
+            "UPDATE tm_sessions SET highlights = %s, concerns = %s WHERE id = %s AND owner_user_id = %s",
+            (body.highlights, body.concerns, session_id, owner),
+        )
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        conn.commit()
+        return {"status": "ok"}
+
+
+@router.get("/trackman/insights")
+def trackman_insights(team: str | None = Query(None), owner: str = Depends(_gate)):
+    """Coach Board v1: read-only auto-flags surfaced from the data. Four
+    detectors, all with sample gates so noise can't flag:
+      - transfer_gap: live hard-hit% at least 10 pts under BP (15+ BBE each)
+      - velo_drop: latest session's FB velo 1.5+ mph under the arm's prior
+        average (3+ sessions)
+      - usage_whiff: a 20%+ usage pitch whiffing 8+ pts under the corpus
+        average for that pitch type, or a <15% usage pitch 10+ pts over it
+        (30+ pitches on the pitch)
+      - low_zone: arms with 50+ live pitches under 42% zone
+    The approve/dismiss decision queue from Trevor's outline is a later
+    phase; this ships the signal without the workflow."""
+    flags = []
+    team_b = " AND p.batter_team = %s" if team else ""
+    team_p = " AND p.pitcher_team = %s" if team else ""
+    tp = [team] if team else []
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # 1) Transfer gap
+        cur.execute(
+            f"""SELECT p.batter, p.batter_team,
+                       SUM(CASE WHEN s.session_type <> 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS live_bbe,
+                       SUM(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bp_bbe,
+                       AVG(CASE WHEN s.session_type <> 'bp' AND p.exit_speed IS NOT NULL THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS live_hh,
+                       AVG(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS bp_hh
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {team_b}
+                GROUP BY p.batter, p.batter_team
+                HAVING SUM(CASE WHEN s.session_type <> 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 15
+                   AND SUM(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 15""",
+            [owner] + tp,
+        )
+        for r in cur.fetchall():
+            gap = 100 * (float(r["live_hh"] or 0) - float(r["bp_hh"] or 0))
+            if gap <= -10:
+                flags.append({
+                    "kind": "transfer_gap", "player": r["batter"], "team": r["batter_team"],
+                    "headline": "BP swing isn't carrying into games",
+                    "detail": f"Hard-hit {100 * float(r['bp_hh']):.0f}% in BP vs {100 * float(r['live_hh']):.0f}% live "
+                              f"({gap:+.0f} pts, {r['bp_bbe']}/{r['live_bbe']} BBE). Add game-speed velo to BP blocks.",
+                    "severity": round(-gap),
+                })
+
+        # 2) Velo drop: latest session vs prior average (fastballs)
+        cur.execute(
+            f"""SELECT p.pitcher, p.pitcher_team, s.session_date, AVG(p.rel_speed) AS velo, COUNT(*) AS n
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL AND p.rel_speed IS NOT NULL
+                  AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IN ('Fastball','Sinker')
+                  AND s.session_type <> 'bp' AND s.session_date IS NOT NULL {team_p}
+                GROUP BY p.pitcher, p.pitcher_team, s.session_date
+                HAVING COUNT(*) >= 8 ORDER BY p.pitcher, s.session_date""",
+            [owner] + tp,
+        )
+        by_arm = defaultdict(list)
+        for r in cur.fetchall():
+            by_arm[(r["pitcher"], r["pitcher_team"])].append((r["session_date"], float(r["velo"])))
+        for (name, tteam), sess in by_arm.items():
+            if len(sess) < 3:
+                continue
+            prior = [v for _, v in sess[:-1]]
+            last_date, last = sess[-1]
+            drop = (sum(prior) / len(prior)) - last
+            if drop >= 1.5:
+                flags.append({
+                    "kind": "velo_drop", "player": name, "team": tteam,
+                    "headline": "Fastball velocity down in the latest session",
+                    "detail": f"{last:.1f} mph on {last_date} vs {sum(prior)/len(prior):.1f} average over the prior "
+                              f"{len(prior)} sessions ({-drop:+.1f}). Check workload before the next outing.",
+                    "severity": round(drop * 10),
+                })
+
+        # 3) Usage vs whiff mismatch (vs corpus average whiff for the type)
+        cur.execute(
+            f"""SELECT p.pitcher, p.pitcher_team,
+                       COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+                       COUNT(*) AS n,
+                       SUM(CASE WHEN p.is_swing THEN 1 ELSE 0 END) AS swings,
+                       SUM(CASE WHEN p.is_whiff THEN 1 ELSE 0 END) AS whiffs
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
+                  AND s.session_type <> 'bp'
+                  AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL {team_p}
+                GROUP BY p.pitcher, p.pitcher_team, COALESCE(p.tagged_pitch_type, p.auto_pitch_type)""",
+            [owner] + tp,
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        # corpus whiff baseline per type (unfiltered by team on purpose)
+        type_whiff = defaultdict(lambda: [0, 0])
+        for r in rows:
+            type_whiff[r["ptype"]][0] += r["whiffs"] or 0
+            type_whiff[r["ptype"]][1] += r["swings"] or 0
+        totals = defaultdict(int)
+        for r in rows:
+            totals[(r["pitcher"], r["pitcher_team"])] += r["n"]
+        for r in rows:
+            n, swings = r["n"], r["swings"] or 0
+            if n < 30 or swings < 12:
+                continue
+            usage = 100 * n / totals[(r["pitcher"], r["pitcher_team"])]
+            whiff = 100 * (r["whiffs"] or 0) / swings
+            tw = type_whiff[r["ptype"]]
+            base = 100 * tw[0] / tw[1] if tw[1] else None
+            if base is None:
+                continue
+            if usage >= 20 and whiff <= base - 8:
+                flags.append({
+                    "kind": "usage_whiff", "player": r["pitcher"], "team": r["pitcher_team"],
+                    "headline": f"Leaning on a {r['ptype']} that isn't missing bats",
+                    "detail": f"{usage:.0f}% usage but {whiff:.0f}% whiff vs {base:.0f}% corpus average for the pitch. "
+                              f"Consider re-balancing the mix.",
+                    "severity": round(base - whiff),
+                })
+            elif usage < 15 and whiff >= base + 10:
+                flags.append({
+                    "kind": "usage_whiff", "player": r["pitcher"], "team": r["pitcher_team"],
+                    "headline": f"Under-using a bat-missing {r['ptype']}",
+                    "detail": f"Only {usage:.0f}% usage at {whiff:.0f}% whiff vs {base:.0f}% corpus average. "
+                              f"There may be more outs in this pitch.",
+                    "severity": round(whiff - base),
+                })
+
+        # 4) Low zone%
+        cur.execute(
+            f"""SELECT p.pitcher, p.pitcher_team, COUNT(*) AS n,
+                       AVG(CASE WHEN p.is_in_zone THEN 1.0 WHEN p.is_in_zone IS FALSE THEN 0.0 END) AS zone
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL AND s.session_type <> 'bp' {team_p}
+                GROUP BY p.pitcher, p.pitcher_team HAVING COUNT(*) >= 50""",
+            [owner] + tp,
+        )
+        for r in cur.fetchall():
+            z = 100 * float(r["zone"] or 0)
+            if z < 42:
+                flags.append({
+                    "kind": "low_zone", "player": r["pitcher"], "team": r["pitcher_team"],
+                    "headline": "Living outside the zone",
+                    "detail": f"{z:.0f}% zone rate over {r['n']} live pitches. Get-ahead work should anchor the next pen.",
+                    "severity": round(42 - z),
+                })
+
+    flags.sort(key=lambda f: -f["severity"])
+    return {"flags": flags}

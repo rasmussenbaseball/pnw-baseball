@@ -68,7 +68,7 @@ export default function TrackmanSuite() {
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
           ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
-          ['sessions', 'Session Review'], ['catching', 'Catching']].map(([k, label]) => (
+          ['sessions', 'Session Review'], ['catching', 'Catching'], ['board', 'Coach Board']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === k
@@ -88,6 +88,7 @@ export default function TrackmanSuite() {
       {tab === 'leaders' && (hasData ? <LeaderboardsTab teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'catching' && (hasData ? <CatchingTab /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'board' && (hasData ? <CoachBoardTab teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
   )
 }
@@ -1031,6 +1032,8 @@ function SessionsTab({ overview, sessionId, setSessionId }) {
               ))}
             </div>
           )}
+          <SessionNotes key={active} sessionId={active} initial={sess} />
+
           <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
             <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
               Pitcher lines
@@ -1140,6 +1143,98 @@ function CatchingTab() {
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  )
+}
+
+// ── Staff notes (Session Review) ─────────────────────────────────
+
+function SessionNotes({ sessionId, initial }) {
+  const [highlights, setHighlights] = useState(initial?.highlights || '')
+  const [concerns, setConcerns] = useState(initial?.concerns || '')
+  const [saved, setSaved] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function save() {
+    setBusy(true)
+    try {
+      await fetch(`/api/v1/trackman/sessions/${sessionId}/notes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ highlights: highlights || null, concerns: concerns || null }),
+      })
+      setSaved(true); setTimeout(() => setSaved(false), 1800)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-3">
+      {[['Highlights', highlights, setHighlights, 'What went right (velo held late, zone command, hard contact...)'],
+        ['Concerns', concerns, setConcerns, 'What needs attention before the next session...']].map(([label, val, set, ph]) => (
+        <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Staff {label.toLowerCase()}</span>
+            {label === 'Concerns' && (
+              <button onClick={save} disabled={busy}
+                className="text-[11px] font-bold text-portal-purple dark:text-indigo-300 hover:underline disabled:opacity-50">
+                {saved ? 'Saved ✓' : busy ? 'Saving…' : 'Save notes'}
+              </button>
+            )}
+          </div>
+          <textarea value={val} onChange={e => set(e.target.value)} rows={2} placeholder={ph}
+            className="w-full text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 resize-y" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Coach Board (auto-flags) ─────────────────────────────────────
+
+const FLAG_META = {
+  transfer_gap: { label: 'Transfer gap', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+  velo_drop: { label: 'Velo watch', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' },
+  usage_whiff: { label: 'Mix', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' },
+  low_zone: { label: 'Zone', cls: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' },
+}
+
+function CoachBoardTab({ teamCtx }) {
+  const [team, setTeam] = useState(teamCtx.primary)
+  const { data, loading } = useApi('/trackman/insights', { team: team || undefined })
+  const flags = data?.flags || []
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xl">
+          Auto-surfaced from your data with sample-size gates: practice-to-game transfer gaps,
+          velocity dips, pitch-mix mismatches, and zone-command flags. Signals, not verdicts.
+        </p>
+        <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
+      </div>
+      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Reading the data…</div> :
+       flags.length === 0 ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-10 text-center text-sm text-gray-400">
+          No flags right now. That's a good board.
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {flags.map((f, i) => {
+            const m = FLAG_META[f.kind] || { label: f.kind, cls: 'bg-gray-100 text-gray-600' }
+            return (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${m.cls}`}>{m.label}</span>
+                  <span className="font-bold text-gray-900 dark:text-gray-100">{f.player}</span>
+                  <span className="text-[11px] text-gray-400">{f.team}</span>
+                </div>
+                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{f.headline}</div>
+                <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">{f.detail}</p>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

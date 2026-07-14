@@ -105,7 +105,8 @@ const TIERS = [
       'Series Planner (full pre-series game plan)',
       'Defensive Alignments + printable shift cards',
       'Custom Player Card builder (templates, bulk rosters)',
-      'Trends, Splits Explorer, Lineup Helper, Rapsodo Lab',
+      'TrackMan Suite + Rapsodo Lab (your own tracking data)',
+      'Trends, Splits Explorer, Lineup Helper, Matchup Calculator',
       'Scouting Sheets, Bullpen Sheets, Catcher Cards',
       'Every report saves as PDF or image (B&W print mode)',
       'Custom tools built on request',
@@ -225,7 +226,10 @@ const FEATURES = [
   { feat: 'Player Card PDFs + Bulk export (color or B&W print mode)',
                                                tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
   { feat: 'NWAC Tournament scouting sheet',    tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
-  { feat: 'TrackMan integration',              tiers: { none: false, free: false, premium: false, recruiting: false, coach: true }, note: 'Coming soon' },
+  { feat: 'TrackMan Suite (upload game CSVs: arsenals, labs, leaderboards, coach board)',
+                                               tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
+  { feat: 'Matchup Calculator (Log5 batter vs pitcher grades)',
+                                               tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
   { feat: 'Custom tools built on request',     tiers: { none: false, free: false, premium: false, recruiting: false, coach: true } },
 ]
 
