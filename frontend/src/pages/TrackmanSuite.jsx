@@ -349,8 +349,8 @@ function PitchingTab({ onOpenLab, teamCtx }) {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                     <th className="px-4 py-1.5">Pitch</th>
-                    <th className="px-2 py-1.5 text-right" title="Pitch quality vs every same-type pitch in your data. 100 = average, 10 pts per SD (velo, shape, spin, extension).">Stuff</th>
-                    <th className="px-2 py-1.5 text-right" title="Zone presence vs same-type pitches in your data. 100 = average.">Loc</th>
+                    <th className="px-2 py-1.5 text-right" title="Site-standard Stuff: the WCL-trained TrackMan whiff+chase model (same model as the Rapsodo Lab). 100 = average for the pitch type; not comparable across types.">Stuff</th>
+                    <th className="px-2 py-1.5 text-right" title="Site-standard Location+: edge presence + pitch-type height targets (shared with the Rapsodo Lab). 100 = average.">Loc+</th>
                     <th className="px-2 py-1.5 text-right">Use%</th>
                     <th className="px-2 py-1.5 text-right">Velo</th>
                     <th className="px-2 py-1.5 text-right">Max</th>

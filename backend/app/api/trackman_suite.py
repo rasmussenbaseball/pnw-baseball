@@ -17,6 +17,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
+from ..stats.trackman_stuff import grade_trackman, FB_FAMILY
+from ..stats.rapsodo_location import location_plus
 from .auth import require_tier
 
 router = APIRouter(tags=["trackman-suite"])
@@ -264,48 +266,49 @@ def trackman_pitching(
     for r in rows:
         by_pitcher[(r["pitcher"], r["pitcher_throws"], r["pitcher_team"])].append(r)
 
-    # Corpus baselines per pitch type (all teams, same context) for the
-    # Stuff / Location grades: 100 = corpus average, 10 points per SD.
-    # Stuff blends velo, type-signed IVB (ride is good on FBs, depth on
-    # breakers), sweep, spin, extension. Location blends zone% and shadow%
-    # (edge presence). Transparent by design — no black-box xRV claims.
-    base = defaultdict(lambda: defaultdict(list))
+    # Site-standard grades. Stuff: the WCL-trained TrackMan whiff+chase
+    # model (same model behind the Rapsodo Lab and summer TrackMan cards),
+    # applied natively — these rows ARE TrackMan, so the real separations
+    # and unadjusted measurements feed it. Location+: the shared Rapsodo
+    # command score (edge presence + pitch-type height targets); plate
+    # coordinates are device-independent, converted ft -> in.
+    fb_ref = {}
     for r in rows:
-        if (r["n"] or 0) >= 15:
-            for k in ("velo", "ivb", "hb", "spin", "ext", "zone_pct"):
-                if r.get(k) is not None:
-                    base[r["ptype"]][k].append(float(r[k]))
+        key = (r["pitcher"], r["pitcher_team"])
+        cur_best = fb_ref.get(key)
+        cand = (r["ptype"] == "Fastball", r["ptype"] in FB_FAMILY, r["n"] or 0)
+        if cur_best is None or cand > cur_best[0]:
+            fb_ref[key] = (cand, r)
 
-    def _z(vals, x):
-        if x is None or len(vals) < 6:
-            return None
-        x = float(x)  # psycopg2 AVG() yields Decimal
-        mu = sum(vals) / len(vals)
-        sd = (sum((v - mu) ** 2 for v in vals) / len(vals)) ** 0.5
-        return (x - mu) / sd if sd > 0.01 else 0.0
-
-    BREAKERS = {"Slider", "Curveball", "Sweeper", "Cutter", "Knuckleball"}
+    # Raw plate locations per pitcher x type for Location+ (same filters).
+    cur_locs = defaultdict(list)
+    with get_connection() as conn:
+        c2 = conn.cursor()
+        try:
+            c2.execute(
+                f"""SELECT p.pitcher, p.pitcher_team,
+                           COALESCE(p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
+                           p.plate_loc_side, p.plate_loc_height
+                    FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                    WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
+                      AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL
+                      AND COALESCE(p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
+                      {extra}{team_sql}""",
+                [owner] + params + ([team] if team else []),
+            )
+            for lr in c2.fetchall():
+                cur_locs[(lr["pitcher"], lr["pitcher_team"], lr["ptype"])].append(
+                    (lr["plate_loc_side"] * 12.0, lr["plate_loc_height"] * 12.0))
+        except Exception:
+            conn.rollback()
 
     def _grades(t):
-        bt = base.get(t["ptype"], {})
-        sign = -1.0 if t["ptype"] in BREAKERS else 1.0
-        parts = [
-            (_z(bt.get("velo", []), t["velo"]), 0.35),
-            (_z([sign * v for v in bt.get("ivb", [])], sign * float(t["ivb"]) if t["ivb"] is not None else None), 0.25),
-            (_z([abs(v) for v in bt.get("hb", [])], abs(float(t["hb"])) if t["hb"] is not None else None), 0.15),
-            (_z(bt.get("spin", []), t["spin"]), 0.10),
-            (_z(bt.get("ext", []), t["ext"]), 0.15),
-        ]
-        used = [(z, w) for z, w in parts if z is not None]
-        stuff = None
-        if used and t["n"] >= 15:
-            wsum = sum(w for _, w in used)
-            stuff = round(100 + 10 * sum(z * w for z, w in used) / wsum)
-            stuff = max(60, min(140, stuff))
-        loc = None
-        zl = _z(bt.get("zone_pct", []), t["zone_pct"])
-        if zl is not None and t["n"] >= 15:
-            loc = max(60, min(140, round(100 + 10 * zl)))
+        if (t["n"] or 0) < 15:
+            return None, None
+        fb = fb_ref.get((t["pitcher"], t["pitcher_team"]))
+        stuff = grade_trackman(t, fb[1] if fb else t)
+        locs = cur_locs.get((t["pitcher"], t["pitcher_team"], t["ptype"]), [])
+        loc = location_plus(t["ptype"].lower(), locs) if len(locs) >= 15 else None
         return stuff, loc
 
     out = []
