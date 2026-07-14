@@ -15,7 +15,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { supabase } from '../lib/supabase'
-import InternCredit from '../components/InternCredit'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import ReportActions from '../components/ReportActions'
 import { Link } from 'react-router-dom'
@@ -74,7 +73,6 @@ export default function TrackmanSuite() {
           quality, and practice-to-game answers. Private to your staff; re-uploads never
           double count.
         </p>
-        <InternCredit names="Trevor Kazahaya" className="mt-1" />
       </div>
 
       {/* Tabs */}
@@ -100,7 +98,7 @@ export default function TrackmanSuite() {
       {tab === 'hlab' && (hasData ? <HitterLabTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'leaders' && (hasData ? <LeaderboardsTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'catching' && (hasData ? <CatchingTab /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'catching' && (hasData ? <CatchingTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'board' && (hasData ? <CoachBoardTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
   )
@@ -349,7 +347,7 @@ function PitchingTab({ onOpenLab, teamCtx }) {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                     <th className="px-4 py-1.5">Pitch</th>
-                    <th className="px-2 py-1.5 text-right" title="Site-standard Stuff: the WCL-trained TrackMan whiff+chase model (same model as the Rapsodo Lab). 100 = average for the pitch type; not comparable across types.">Stuff</th>
+                    <th className="px-2 py-1.5 text-right" title="Site-standard Stuff (WCL-trained TrackMan model, same as the Rapsodo Lab). Inputs are PHYSICAL traits only: velo, movement, spin, extension, and separation off the fastball. Whiff+chase is what the model was trained to predict, never an input. 100 = average for the pitch type, ~25 per SD; elite shapes reach the 150s-170s; not comparable across types.">Stuff</th>
                     <th className="px-2 py-1.5 text-right" title="Site-standard Location+: edge presence + pitch-type height targets (shared with the Rapsodo Lab). 100 = average.">Loc+</th>
                     <th className="px-2 py-1.5 text-right">Use%</th>
                     <th className="px-2 py-1.5 text-right">Velo</th>
@@ -1237,10 +1235,13 @@ function SessionsTab({ overview, sessionId, setSessionId }) {
 
 // ── Catching ─────────────────────────────────────────────────────
 
-function CatchingTab() {
+function CatchingTab({ teamCtx }) {
   const { data, loading } = useApi('/trackman/catching')
-  const rows = data?.catchers || []
+  const [team, setTeam] = useState(teamCtx.primary)
+  const rows = (data?.catchers || []).filter(c => !team || c.catcher_team === team)
   return (
+    <div className="space-y-3">
+    <div className="flex justify-end"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
     <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
       <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
         <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Catcher throws (tracked steal/pickoff attempts)</span>
@@ -1274,6 +1275,7 @@ function CatchingTab() {
           </tbody>
         </table>
       )}
+    </div>
     </div>
   )
 }

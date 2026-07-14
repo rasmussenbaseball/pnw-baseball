@@ -114,8 +114,14 @@ def grade_trackman(entry, fb):
                               hb - (fb_hb if fb_hb is not None else hb)),
     }
     means, stds, coef, mx, my = m["means"], m["stds"], m["coef"], m["mx"], m["my"]
-    z = [max(-2.5, min(2.5, (feat[F[i]] - means[i]) / (stds[i] or 1.0))) for i in range(len(F))]
+    # Wider clamps than the Rapsodo adapter (its ±2.5/±2.8 guards exist for
+    # out-of-distribution device drift): TrackMan rows are in-distribution,
+    # and the tight clamps saturated everything elite to the same ~170 —
+    # calibration vs the trainer's own WCL grades showed 147s and 172s both
+    # mapping to 170. ±4 z / ±3.2 pz keeps absurd-input protection while
+    # preserving top-end separation (validated: trainer 147 -> ~155 here).
+    z = [max(-4.0, min(4.0, (feat[F[i]] - means[i]) / (stds[i] or 1.0))) for i in range(len(F))]
     pred = sum((z[i] - mx[i]) * coef[i] for i in range(len(F))) + my
-    pz = max(-2.8, min(2.8, (pred - m["pred_mean"]) / (m["pred_std"] or 1.0)))
+    pz = max(-3.2, min(3.2, (pred - m["pred_mean"]) / (m["pred_std"] or 1.0)))
     grade = model["grade_mean"] + model["grade_sd"] * m["shrink"] * pz
     return max(20, min(175, round(grade)))
