@@ -85,6 +85,8 @@ COMPED_COACH_EMAILS = {
     "raisethetridentyt@gmail.com",
     # July 3, 2026 (per Nate)
     "calensimonelic@gmail.com",
+    # July 16, 2026 (per Nate)
+    "olsonfamilydavid@gmail.com",
 }
 
 
