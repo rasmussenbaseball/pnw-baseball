@@ -98,11 +98,19 @@ export function isAdminEmail(email) {
   return ADMIN_EMAILS.includes(e) || isDeveloper(e)
 }
 
-// Article + email-broadcast authors. INTENTIONALLY does NOT include the
-// developer/intern list — writing articles and sending email blasts is
-// owner-only, separate from the dev tools devs can use. Mirror the backend
-// _DEFAULT_AUTHORS / ARTICLE_AUTHOR_EMAILS env in articles.py.
+// Article authors. INTENTIONALLY does NOT include the developer/intern
+// list — authoring is granted per-person, separate from the dev tools
+// devs can use. Mirror the backend _DEFAULT_AUTHORS / ARTICLE_AUTHOR_EMAILS
+// env in articles.py.
 export const ARTICLE_AUTHOR_EMAILS = [
+  'nate.rasmussen26@gmail.com',
+  'pnwcbr@gmail.com',
+  'olearyjoe101@gmail.com',
+]
+
+// Email broadcasts stay owner-only — a stricter list than article
+// authors. Mirror _BROADCAST_OWNER_EMAILS in email_broadcasts.py.
+export const BROADCAST_OWNER_EMAILS = [
   'nate.rasmussen26@gmail.com',
   'pnwcbr@gmail.com',
 ]

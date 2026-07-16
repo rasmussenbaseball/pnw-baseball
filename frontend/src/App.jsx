@@ -89,17 +89,33 @@ const GM_EARLY_ACCESS_EMAILS = [
 export const ARTICLE_AUTHOR_EMAILS = [
   'nate.rasmussen26@gmail.com',
   'pnwcbr@gmail.com',
+  'olearyjoe101@gmail.com',
 ]
 
-function RequireArticleAuthor({ children }) {
+// Email broadcasts stay owner-only — stricter than article authoring.
+// Mirror _BROADCAST_OWNER_EMAILS in email_broadcasts.py + lib/tiers.js.
+export const BROADCAST_OWNER_EMAILS = [
+  'nate.rasmussen26@gmail.com',
+  'pnwcbr@gmail.com',
+]
+
+function RequireEmail({ emails, children }) {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
   const email = (user.email || '').toLowerCase()
-  if (!ARTICLE_AUTHOR_EMAILS.includes(email)) {
+  if (!emails.includes(email)) {
     return <Navigate to="/news" replace />
   }
   return children
+}
+
+function RequireArticleAuthor({ children }) {
+  return <RequireEmail emails={ARTICLE_AUTHOR_EMAILS}>{children}</RequireEmail>
+}
+
+function RequireBroadcastOwner({ children }) {
+  return <RequireEmail emails={BROADCAST_OWNER_EMAILS}>{children}</RequireEmail>
 }
 
 // Loading screen shown while the lazy-loaded GM chunk is downloading.
@@ -544,7 +560,7 @@ export default function App() {
           <Route path="/articles/edit/:id" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />
 
           {/* Email broadcasts (author-allowlist only) + public unsubscribe page */}
-          <Route path="/broadcasts" element={<RequireArticleAuthor><EmailComposer /></RequireArticleAuthor>} />
+          <Route path="/broadcasts" element={<RequireBroadcastOwner><EmailComposer /></RequireBroadcastOwner>} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
 
           {/* "My Account" — auth required */}

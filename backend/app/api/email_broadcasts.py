@@ -2,8 +2,8 @@
 Email broadcasts — admin compose & send (Phase 2 of the newsletter
 pipeline). Sends through Resend (HTTPS API — DigitalOcean blocks all
 outbound SMTP, so SMTP-based providers can't reach us). Endpoints are
-gated by the same email allowlist used for Articles (ARTICLE_AUTHOR_EMAILS
-env var, default just nate.rasmussen26@gmail.com).
+gated by _BROADCAST_OWNER_EMAILS below — stricter than the Articles
+allowlist, since article authors shouldn't be able to email everyone.
 
 Flow:
   1. Author writes a subject + markdown body in the composer UI.
@@ -33,6 +33,19 @@ from ..services import email_sender
 from .articles import _resolve_author
 
 router = APIRouter()
+
+
+# Broadcasts stay owner-only even as the article-author list grows —
+# sending email to every opted-in subscriber is a stricter privilege
+# than publishing an article. Mirror BROADCAST_OWNER_EMAILS in
+# frontend lib/tiers.js + App.jsx.
+_BROADCAST_OWNER_EMAILS = {"nate.rasmussen26@gmail.com", "pnwcbr@gmail.com"}
+
+
+def _resolve_broadcast_owner(author: dict = Depends(_resolve_author)) -> dict:
+    if (author.get("email") or "").lower() not in _BROADCAST_OWNER_EMAILS:
+        raise HTTPException(status_code=403, detail="Not authorized for email broadcasts")
+    return author
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -110,7 +123,7 @@ def _author_recipient(author: dict) -> List[email_sender.Recipient]:
 # ─────────────────────────────────────────────────────────────────
 
 @router.get("/portal/broadcasts/audience-counts")
-def audience_counts(author: dict = Depends(_resolve_author)):
+def audience_counts(author: dict = Depends(_resolve_broadcast_owner)):
     """Show the author how many opted-in users each audience has, so
     they know the blast size before clicking Send."""
     with get_connection() as conn:
@@ -137,7 +150,7 @@ def audience_counts(author: dict = Depends(_resolve_author)):
 
 
 @router.post("/portal/broadcasts/preview")
-def preview_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_author)):
+def preview_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_broadcast_owner)):
     """Return the rendered HTML preview WITHOUT sending anything. The
     composer page calls this to show the author exactly what recipients
     will see."""
@@ -149,7 +162,7 @@ def preview_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_au
 
 
 @router.post("/portal/broadcasts/test")
-def send_test_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_author)):
+def send_test_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_broadcast_owner)):
     """Send the email ONLY to the author so they can verify it in their
     inbox. Doesn't write an audit row — that's reserved for real sends."""
     _validate_audience(body.audience)
@@ -167,7 +180,7 @@ def send_test_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_
 
 
 @router.post("/portal/broadcasts/send")
-def send_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_author)):
+def send_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_broadcast_owner)):
     """Actually send to everyone opted into the chosen audience. Writes
     an `email_broadcasts` row capturing audience, recipient count, and
     sent/failed counts for the audit trail."""
@@ -248,7 +261,7 @@ def send_broadcast(body: BroadcastCompose, author: dict = Depends(_resolve_autho
 
 
 @router.get("/portal/broadcasts")
-def list_broadcasts(limit: int = 25, author: dict = Depends(_resolve_author)):
+def list_broadcasts(limit: int = 25, author: dict = Depends(_resolve_broadcast_owner)):
     """Recent broadcasts (most recent first) for the audit view."""
     limit = max(1, min(int(limit), 100))
     with get_connection() as conn:

@@ -4,7 +4,7 @@ import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import { useTier } from '../hooks/useTier'
 import { usePreview, AUTHOR_EMAILS } from '../context/PreviewContext'
-import { tierMeets, TIER_META, DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, COMMITMENT_EDITOR_EMAILS } from '../lib/tiers'
+import { tierMeets, TIER_META, DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, BROADCAST_OWNER_EMAILS, COMMITMENT_EDITOR_EMAILS } from '../lib/tiers'
 import { isGmFreePlay } from '../lib/gmPromo'
 
 // During the launch-week free-play promo the NW Coaching Simulator is open
@@ -169,14 +169,14 @@ const NAV = [
         requires: 'free' },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
-      // Owner-only authoring tools — articles + email blasts are limited to
-      // ARTICLE_AUTHOR_EMAILS (NOT the dev/intern list).
+      // Authoring tools — articles are limited to ARTICLE_AUTHOR_EMAILS,
+      // email blasts to the stricter owner-only BROADCAST_OWNER_EMAILS.
       { to: '/articles', label: 'Write Articles',
         desc: 'Draft, edit, and publish site articles',
         requireEmail: ARTICLE_AUTHOR_EMAILS },
       { to: '/broadcasts', label: 'Email Broadcasts',
         desc: 'Compose and send to opted-in subscribers',
-        requireEmail: ARTICLE_AUTHOR_EMAILS },
+        requireEmail: BROADCAST_OWNER_EMAILS },
       // Dev tools — visible to site developers + interns (DEVELOPER_EMAILS).
       { to: '/commitment-editor', label: 'Commitment Editor',
         desc: 'Search an NWAC or transfer player and update / undo their commitment, live',
