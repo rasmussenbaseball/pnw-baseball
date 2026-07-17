@@ -205,6 +205,7 @@ import SummerPlayerDetail from './pages/SummerPlayerDetail'
 const WclRecapGraphic = lazyWithRetry(() => import('./pages/WclRecapGraphic'))
 const WclGameRecapGraphic = lazyWithRetry(() => import('./pages/WclGameRecapGraphic'))
 const WclLeaderboardGraphic = lazyWithRetry(() => import('./pages/WclLeaderboardGraphic'))
+const RecruitingClassRankingsGraphic = lazyWithRetry(() => import('./pages/RecruitingClassRankingsGraphic'))
 const ProjectionLeaderboardGraphic = lazyWithRetry(() => import('./pages/ProjectionLeaderboardGraphic'))
 const TransferPortalGraphic = lazyWithRetry(() => import('./pages/TransferPortalGraphic'))
 const CommitmentEditor = lazyWithRetry(() => import('./pages/CommitmentEditor'))
@@ -596,6 +597,7 @@ export default function App() {
           <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
           <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
           <Route path="/graphics/wcl-leaderboards" element={<RequireAuth><WclLeaderboardGraphic /></RequireAuth>} />
+          <Route path="/graphics/recruiting-classes" element={<RequireTier minTier="premium"><RecruitingClassRankingsGraphic /></RequireTier>} />
           <Route path="/graphics/portal-tracker" element={<RequireTier minTier="recruiting"><TransferPortalGraphic /></RequireTier>} />
           <Route path="/graphics/wcl-standings" element={<RequireAuth><WclStandingsGraphic /></RequireAuth>} />
           <Route path="/graphics-hub" element={<RequireTier minTier="free"><GraphicsHub /></RequireTier>} />
