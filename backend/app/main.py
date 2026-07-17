@@ -56,6 +56,7 @@ from .api.recruiting_boards import router as recruiting_boards_router
 from .api.recruit_finder import router as recruit_finder_router
 from .api.series_planner import router as series_planner_router
 from .api.seo import seo_router
+from .api.kangaroo_court import router as kangaroo_court_router
 from .models.database import init_db, seed_divisions_and_conferences
 
 class DecimalJSONResponse(JSONResponse):
@@ -120,6 +121,7 @@ app.include_router(recruiting_boards_router, prefix="/api/v1")
 app.include_router(recruit_finder_router, prefix="/api/v1")
 app.include_router(series_planner_router, prefix="/api/v1")
 app.include_router(seo_router, prefix="/api/v1")
+app.include_router(kangaroo_court_router, prefix="/api/v1")
 
 
 # ── Edge cache headers ───────────────────────────────────────────

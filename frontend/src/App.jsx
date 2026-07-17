@@ -209,6 +209,8 @@ const ProjectionLeaderboardGraphic = lazyWithRetry(() => import('./pages/Project
 const TransferPortalGraphic = lazyWithRetry(() => import('./pages/TransferPortalGraphic'))
 const CommitmentEditor = lazyWithRetry(() => import('./pages/CommitmentEditor'))
 const WclStandingsGraphic = lazyWithRetry(() => import('./pages/WclStandingsGraphic'))
+// Hidden page — intentionally not linked from any nav/footer.
+const KangarooCourt = lazyWithRetry(() => import('./pages/KangarooCourt'))
 import SummerStatsPage from './pages/summer/SummerStatsPage'
 import SummerScoreboardPage from './pages/summer/SummerScoreboardPage'
 import SummerStandingsPage from './pages/summer/SummerStandingsPage'
@@ -600,6 +602,7 @@ export default function App() {
           <Route path="/tournament-bracket" element={<RequireAuth><TournamentBracketGraphic /></RequireAuth>} />
           <Route path="/daily-recap" element={<RequireAuth><DailyRecapGraphic /></RequireAuth>} />
           <Route path="/feature-request" element={<FeatureRequest />} />
+          <Route path="/kcourt" element={<KangarooCourt />} />
           <Route path="/player-pages" element={<PlayerGraphic />} />
           <Route path="/conference-standings" element={<RequireAuth><ConferenceStandingsGraphic /></RequireAuth>} />
           <Route path="/all-conference-graphic" element={<RequireAuth><AllConferenceGraphic /></RequireAuth>} />
