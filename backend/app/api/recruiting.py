@@ -1564,7 +1564,7 @@ def _class_summary_rows(cur, grad_year, limit=None, level=None):
                    bbnw_state_rank, pbr_state_rank
             FROM recruits
             WHERE grad_year = %s AND committed_team_id IN ({ph})
-            ORDER BY committed_team_id, recruit_score DESC
+            ORDER BY committed_team_id, recruit_score DESC NULLS LAST
             """,
             [grad_year] + team_ids,
         )
@@ -1644,7 +1644,7 @@ def recruiting_class_detail(
         cur.execute(
             """SELECT * FROM recruits
                WHERE committed_team_id = %s AND grad_year = %s
-               ORDER BY recruit_score DESC, last_name""",
+               ORDER BY recruit_score DESC NULLS LAST, last_name""",
             (team_id, grad_year),
         )
         commits = [_recruit_row(r) for r in cur.fetchall()]
@@ -1674,7 +1674,7 @@ def team_recruits(
         cur.execute(
             """SELECT * FROM recruits
                WHERE committed_team_id = %s AND grad_year = %s
-               ORDER BY recruit_score DESC, last_name""",
+               ORDER BY recruit_score DESC NULLS LAST, last_name""",
             (team_id, grad_year),
         )
         commits = [_recruit_row(r) for r in cur.fetchall()]
