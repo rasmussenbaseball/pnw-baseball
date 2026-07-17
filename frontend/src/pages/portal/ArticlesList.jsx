@@ -6,6 +6,10 @@
 
 import { Link, useNavigate } from 'react-router-dom'
 import { useMyArticles, useArticleMutations } from '../../hooks/useArticles'
+import { useAuth } from '../../context/AuthContext'
+
+// Editors see every author's articles (mirror of _EDITOR_EMAILS in articles.py).
+const EDITOR_EMAILS = ['nate.rasmussen26@gmail.com', 'pnwcbr@gmail.com']
 
 function fmtDate(iso) {
   if (!iso) return ''
@@ -25,8 +29,10 @@ const STATUS_TONE = {
 export default function ArticlesList() {
   const { data, loading, refetch } = useMyArticles()
   const { togglePublish, archive } = useArticleMutations()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const articles = data?.articles || []
+  const isEditor = EDITOR_EMAILS.includes((user?.email || '').toLowerCase())
 
   const onTogglePublish = async (a) => {
     const wantPublish = a.status !== 'published'
@@ -45,9 +51,13 @@ export default function ArticlesList() {
     <div className="max-w-4xl mx-auto px-4 py-6">
       <div className="flex items-baseline justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-portal-purple-dark">My Articles</h1>
+          <h1 className="text-2xl font-bold text-portal-purple-dark">
+            {isEditor ? 'Articles' : 'My Articles'}
+          </h1>
           <p className="text-xs text-gray-500 mt-1">
-            Drafts and published posts you've written.
+            {isEditor
+              ? "Every author's drafts and published posts. Open any one to edit or publish it."
+              : "Drafts and published posts you've written."}
           </p>
         </div>
         <button
@@ -78,6 +88,9 @@ export default function ArticlesList() {
                 <span className="text-[11px] text-gray-500">
                   {a.status === 'published' ? `Published ${fmtDate(a.published_at)}` : `Updated ${fmtDate(a.updated_at)}`}
                 </span>
+                {a.author_name && (
+                  <span className="text-[11px] text-gray-400">· by {a.author_name}</span>
+                )}
               </div>
               <Link
                 to={`/articles/edit/${a.id}`}

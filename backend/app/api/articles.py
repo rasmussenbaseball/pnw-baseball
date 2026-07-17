@@ -81,6 +81,28 @@ def _resolve_author(request: Request) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────
+# Editors — site owners who can view / edit / publish EVERY author's
+# articles, not just their own. This is the editorial-review role: a
+# contributor (e.g. a guest writer) drafts under their own account, and
+# an editor sees it in their shelf to polish and publish. Regular authors
+# stay scoped to their own work. Mirror _EDITOR_EMAILS in the frontend
+# (App.jsx) if the UI ever needs to branch on it.
+# ─────────────────────────────────────────────────────────────────
+
+_EDITOR_EMAILS = {"nate.rasmussen26@gmail.com", "pnwcbr@gmail.com"}
+
+
+def _is_editor(author: dict) -> bool:
+    return (author.get("email") or "").lower() in _EDITOR_EMAILS
+
+
+def _can_edit(author: dict, article_author_id) -> bool:
+    """True if this user may edit/publish/archive the given article — either
+    they wrote it, or they're an editor (who can touch anyone's article)."""
+    return _is_editor(author) or str(article_author_id) == str(author["user_id"])
+
+
+# ─────────────────────────────────────────────────────────────────
 # Schemas
 # ─────────────────────────────────────────────────────────────────
 
@@ -401,20 +423,26 @@ def get_published_article(slug: str, request: Request):
 
 @router.get("/portal/articles")
 def list_my_articles(author: dict = Depends(_resolve_author)):
-    """List THIS author's articles (any status). Newest first."""
+    """List articles (any status), newest first. Editors see every author's
+    articles (for editorial review + publishing); regular authors see only
+    their own."""
+    cols = """id, slug, title, subtitle, body_md, body_html, hero_image_url,
+              author_id, author_name, status, requires_tier,
+              published_at, created_at, updated_at"""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id, slug, title, subtitle, body_md, body_html, hero_image_url,
-                   author_id, author_name, status, requires_tier,
-                   published_at, created_at, updated_at
-            FROM articles
-            WHERE author_id = %s
-            ORDER BY COALESCE(published_at, updated_at) DESC, id DESC
-            """,
-            (author["user_id"],),
-        )
+        if _is_editor(author):
+            cur.execute(
+                f"""SELECT {cols} FROM articles
+                    ORDER BY COALESCE(published_at, updated_at) DESC, id DESC"""
+            )
+        else:
+            cur.execute(
+                f"""SELECT {cols} FROM articles
+                    WHERE author_id = %s
+                    ORDER BY COALESCE(published_at, updated_at) DESC, id DESC""",
+                (author["user_id"],),
+            )
         return {"articles": [_row_to_summary(dict(r)) for r in cur.fetchall()]}
 
 
@@ -435,7 +463,7 @@ def get_my_article(article_id: int, author: dict = Depends(_resolve_author)):
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Article not found")
-        if str(row["author_id"]) != str(author["user_id"]):
+        if not _can_edit(author, row["author_id"]):
             raise HTTPException(status_code=403, detail="Not your article")
         return _row_to_full(dict(row))
 
@@ -479,7 +507,7 @@ def update_article(
         existing = cur.fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Article not found")
-        if str(existing["author_id"]) != str(author["user_id"]):
+        if not _can_edit(author, existing["author_id"]):
             raise HTTPException(status_code=403, detail="Not your article")
 
         # Build the SET clause from non-None fields. If the slug is being
@@ -548,7 +576,7 @@ def toggle_publish(
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Article not found")
-        if str(row["author_id"]) != str(author["user_id"]):
+        if not _can_edit(author, row["author_id"]):
             raise HTTPException(status_code=403, detail="Not your article")
 
         if body.publish:
@@ -651,7 +679,7 @@ def archive_article(article_id: int, author: dict = Depends(_resolve_author)):
         existing = cur.fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Article not found")
-        if str(existing["author_id"]) != str(author["user_id"]):
+        if not _can_edit(author, existing["author_id"]):
             raise HTTPException(status_code=403, detail="Not your article")
         cur.execute(
             "UPDATE articles SET status = 'archived', updated_at = NOW() WHERE id = %s",
