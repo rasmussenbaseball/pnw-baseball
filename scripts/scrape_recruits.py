@@ -218,6 +218,15 @@ RECRUIT_DEST_OVERRIDES = {
     ("luke", "van de braak", 2026): 32857,   # UOP (CA), not Pacific OR
 }
 
+# Manual removals — recruits that should NOT appear on the recruiting-classes
+# board even if a source still lists them (bad data, a decommit the source
+# hasn't dropped yet, etc.). Keyed by (norm first, norm last, grad_year) and
+# filtered out every scrape so the removal sticks. When adding a name here,
+# also delete any existing row: DELETE FROM recruits WHERE ...
+RECRUIT_EXCLUDE = {
+    ("cody", "ells", 2026),   # removed from LC State's class per Nate (2026-07-17)
+}
+
 
 def derive_bbnw_slug(school_name):
     """Derive a BBNW /schools/{slug} slug from a school_name.
@@ -724,6 +733,17 @@ def run(grad_year, state_filter, dry_run):
                         r["first_name"], r["last_name"], r["grad_year"], ov)
             r["committed_team_id"] = ov
             r["committed_raw"] = "University of the Pacific (CA)"
+
+    # Apply manual removals — drop excluded recruits so a source still listing
+    # them can't re-add them on the weekly scrape.
+    _before = len(all_recruits)
+    all_recruits = [
+        r for r in all_recruits
+        if (norm_name(r["first_name"]), norm_name(r["last_name"]), r["grad_year"])
+        not in RECRUIT_EXCLUDE
+    ]
+    if len(all_recruits) != _before:
+        logger.info("Excluded %d recruit(s) via RECRUIT_EXCLUDE", _before - len(all_recruits))
 
     # Per-school commit totals (BBNW + any PBR-only adds) for reporting.
     per_school_counts = {}
