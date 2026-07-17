@@ -51,110 +51,6 @@ function loadAuth() {
   }
 }
 
-// ── Iggy the mascot ─────────────────────────────────────────────────────
-// Cartoon kangaroo in a boxer's stance: red gloves up, Bushnell navy cap
-// with the gold B. Pure SVG so it ships with the bundle.
-function KangarooMascot({ style }) {
-  return (
-    <svg viewBox="0 0 360 400" style={style} aria-label="Iggy, the Kangaroo Court mascot">
-      <defs>
-        <linearGradient id="kc-glove" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ef5a5a" />
-          <stop offset="1" stopColor={C.red} />
-        </linearGradient>
-      </defs>
-
-      {/* tail */}
-      <path
-        d="M205 330 Q 300 352 330 290 Q 338 272 320 268 Q 280 310 200 296 Z"
-        fill={C.tan}
-        stroke={C.tanDark}
-        strokeWidth="6"
-        strokeLinejoin="round"
-      />
-
-      {/* feet */}
-      <path
-        d="M78 372 Q 74 352 108 350 L 150 356 Q 172 362 170 378 Q 168 392 138 393 L 98 392 Q 80 390 78 372 Z"
-        fill={C.tan} stroke={C.tanDark} strokeWidth="6" strokeLinejoin="round"
-      />
-      <path
-        d="M190 374 Q 188 354 220 352 L 262 358 Q 284 364 282 380 Q 280 393 250 394 L 210 393 Q 192 392 190 374 Z"
-        fill={C.tan} stroke={C.tanDark} strokeWidth="6" strokeLinejoin="round"
-      />
-
-      {/* haunches */}
-      <ellipse cx="118" cy="322" rx="44" ry="40" fill={C.tan} stroke={C.tanDark} strokeWidth="6" />
-      <ellipse cx="232" cy="324" rx="44" ry="38" fill={C.tan} stroke={C.tanDark} strokeWidth="6" />
-
-      {/* body */}
-      <ellipse cx="175" cy="262" rx="72" ry="88" fill={C.tan} stroke={C.tanDark} strokeWidth="6" />
-      {/* belly */}
-      <ellipse cx="175" cy="282" rx="46" ry="60" fill={C.tanLight} />
-
-      {/* ears (behind cap) */}
-      <ellipse cx="128" cy="82" rx="15" ry="34" fill={C.tan} stroke={C.tanDark} strokeWidth="6" transform="rotate(-22 128 82)" />
-      <ellipse cx="128" cy="86" rx="7" ry="20" fill="#e8a0a0" transform="rotate(-22 128 86)" />
-      <ellipse cx="222" cy="82" rx="15" ry="34" fill={C.tan} stroke={C.tanDark} strokeWidth="6" transform="rotate(22 222 82)" />
-      <ellipse cx="222" cy="86" rx="7" ry="20" fill="#e8a0a0" transform="rotate(22 222 86)" />
-
-      {/* head */}
-      <ellipse cx="175" cy="138" rx="52" ry="46" fill={C.tan} stroke={C.tanDark} strokeWidth="6" />
-      {/* muzzle */}
-      <ellipse cx="175" cy="158" rx="32" ry="24" fill={C.tanLight} />
-      {/* nose */}
-      <ellipse cx="175" cy="146" rx="11" ry="8" fill={C.tanDark} />
-      {/* smirk */}
-      <path d="M158 168 Q 175 182 192 168" fill="none" stroke={C.tanDark} strokeWidth="5" strokeLinecap="round" />
-      {/* eyes */}
-      <circle cx="155" cy="126" r="9" fill="#fff" stroke={C.tanDark} strokeWidth="3" />
-      <circle cx="195" cy="126" r="9" fill="#fff" stroke={C.tanDark} strokeWidth="3" />
-      <circle cx="157" cy="128" r="4" fill={C.ink} />
-      <circle cx="193" cy="128" r="4" fill={C.ink} />
-      {/* determined brows */}
-      <path d="M143 112 L 166 118" stroke={C.tanDark} strokeWidth="5" strokeLinecap="round" />
-      <path d="M207 112 L 184 118" stroke={C.tanDark} strokeWidth="5" strokeLinecap="round" />
-
-      {/* Bushnell cap */}
-      <path
-        d="M126 100 Q 128 58 175 55 Q 222 58 224 100 Q 175 86 126 100 Z"
-        fill="#1c2a55" stroke="#0d1530" strokeWidth="5" strokeLinejoin="round"
-      />
-      <path d="M175 55 L 175 88" stroke="#0d1530" strokeWidth="3" />
-      <circle cx="175" cy="55" r="5" fill={C.gold} stroke="#0d1530" strokeWidth="3" />
-      {/* brim */}
-      <path
-        d="M122 97 Q 175 114 228 97 Q 236 104 227 110 Q 175 126 123 110 Q 114 104 122 97 Z"
-        fill="#16224a" stroke="#0d1530" strokeWidth="5" strokeLinejoin="round"
-      />
-      {/* gold B + flame, like the Beacons cap */}
-      <text
-        x="175" y="92" textAnchor="middle" fill={C.gold} stroke="#0d1530" strokeWidth="1"
-        style={{ font: "900 30px 'Nunito', sans-serif" }}
-      >
-        B
-      </text>
-      <path d="M186 62 Q 191 54 187 48 Q 196 52 193 62 Q 190 67 186 62 Z" fill={C.goldLight} stroke="#0d1530" strokeWidth="2" />
-
-      {/* left arm + raised glove */}
-      <path d="M122 240 Q 90 218 84 186" fill="none" stroke={C.tanDark} strokeWidth="26" strokeLinecap="round" />
-      <path d="M122 240 Q 90 218 84 186" fill="none" stroke={C.tan} strokeWidth="18" strokeLinecap="round" />
-      <rect x="62" y="166" width="44" height="20" rx="9" fill={C.redDark} stroke="#7e1f1f" strokeWidth="4" transform="rotate(-15 84 176)" />
-      <circle cx="80" cy="142" r="30" fill="url(#kc-glove)" stroke="#7e1f1f" strokeWidth="5" />
-      <circle cx="102" cy="152" r="12" fill="url(#kc-glove)" stroke="#7e1f1f" strokeWidth="4" />
-      <path d="M66 128 Q 78 120 90 126" fill="none" stroke="#ffd9d9" strokeWidth="4" strokeLinecap="round" />
-
-      {/* right arm + jab glove */}
-      <path d="M230 244 Q 262 232 278 206" fill="none" stroke={C.tanDark} strokeWidth="26" strokeLinecap="round" />
-      <path d="M230 244 Q 262 232 278 206" fill="none" stroke={C.tan} strokeWidth="18" strokeLinecap="round" />
-      <rect x="258" y="188" width="44" height="20" rx="9" fill={C.redDark} stroke="#7e1f1f" strokeWidth="4" transform="rotate(20 280 198)" />
-      <circle cx="292" cy="172" r="32" fill="url(#kc-glove)" stroke="#7e1f1f" strokeWidth="5" />
-      <circle cx="268" cy="188" r="12" fill="url(#kc-glove)" stroke="#7e1f1f" strokeWidth="4" />
-      <path d="M282 156 Q 294 148 306 156" fill="none" stroke="#ffd9d9" strokeWidth="4" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 // ── Shared UI bits ──────────────────────────────────────────────────────
 
 const inputStyle = {
@@ -254,16 +150,7 @@ export default function KangarooCourt() {
     >
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
         {/* Hero */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <KangarooMascot
-            style={{ width: 210, height: 'auto', margin: '0 auto', display: 'block', animation: 'kc-bounce 2.4s ease-in-out infinite' }}
-          />
-          <style>{`
-            @keyframes kc-bounce {
-              0%, 100% { transform: translateY(0); }
-              50% { transform: translateY(-10px); }
-            }
-          `}</style>
+        <div style={{ textAlign: 'center', marginBottom: 28, paddingTop: 24 }}>
           <h1
             style={{
               fontFamily: FONT_DISPLAY,

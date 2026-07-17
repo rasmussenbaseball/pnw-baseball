@@ -607,15 +607,23 @@ function resolveRoute(pathname) {
       pageTitle: 'Recruiting Quiz · NW Baseball Stats',
       pageDesc: 'Answer a few questions to find the Northwest college programs that fit you best.',
     },
+    // Hidden team page — own standalone card, no NWBB branding.
+    '/kcourt': {
+      template: 'kcourt',
+      pageTitle: 'Kangaroo Court',
+      pageDesc: 'The court is always in session.',
+    },
   };
 
   if (staticRoutes[pathname]) {
     const r = staticRoutes[pathname];
+    // A route can point at its own og.tsx template (e.g. kcourt);
+    // everything else renders the branded custom card.
     const ogQs = new URLSearchParams({
-      t: 'custom',
-      title: r.title,
-      subtitle: r.subtitle,
-      kicker: r.kicker,
+      t: r.template || 'custom',
+      title: r.title || '',
+      subtitle: r.subtitle || '',
+      kicker: r.kicker || '',
     }).toString();
     return {
       ogParams: ogQs,

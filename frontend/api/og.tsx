@@ -263,6 +263,62 @@ function proxiedImageUrl(rawUrl) {
 // Card: default (homepage, leaderboards, misc)
 // ───────────────────────────────────────────────────────────────
 
+// Standalone card for the hidden Kangaroo Court page — Bushnell navy +
+// gold, deliberately NOT the NWBB-branded template (no wordmark).
+function KcourtCard() {
+  return (
+    <div
+      style={{
+        width: WIDTH,
+        height: HEIGHT,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(180deg, #24356e 0%, #101a38 70%)',
+        color: '#f2b52b',
+        fontFamily:
+          '"Inter", "Helvetica Neue", system-ui, -apple-system, sans-serif',
+        padding: 60,
+      }}
+    >
+      <div style={{ display: 'flex', fontSize: 90, marginBottom: 24 }}>⚖️</div>
+      <div
+        style={{
+          display: 'flex',
+          fontSize: 78,
+          fontWeight: 800,
+          letterSpacing: 2,
+          textTransform: 'uppercase',
+          textAlign: 'center',
+        }}
+      >
+        Kangaroo Court
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          width: 220,
+          height: 6,
+          background: '#f2b52b',
+          borderRadius: 3,
+          margin: '26px 0',
+        }}
+      />
+      <div
+        style={{
+          display: 'flex',
+          fontSize: 30,
+          fontWeight: 600,
+          color: '#aab6dd',
+        }}
+      >
+        The court is always in session.
+      </div>
+    </div>
+  );
+}
+
 function DefaultCard({ title, subtitle, kicker }) {
   return (
     <Background variant="default">
@@ -2075,6 +2131,8 @@ export default async function handler(req) {
       if (data) {
         element = <GameCard game={data} />;
       }
+    } else if (type === 'kcourt') {
+      element = <KcourtCard />;
     } else if (type === 'custom') {
       element = (
         <DefaultCard
