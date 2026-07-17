@@ -371,6 +371,8 @@ export default function App() {
   const { pathname } = useLocation()
   const isPortal = pathname.startsWith('/portal')
   const isGm = pathname.startsWith('/gm')
+  // Kangaroo Court is a hidden standalone page — no site header/footer.
+  const isKcourt = pathname.startsWith('/kcourt')
 
   return (
     <ThemeProvider>
@@ -383,11 +385,12 @@ export default function App() {
     <div className={`min-h-screen transition-colors ${
       isPortal ? 'bg-portal-cream dark:bg-gray-900'
       : isGm ? 'bg-gray-50'
+      : isKcourt ? 'bg-[#101a38]'
       : 'bg-nw-cream dark:bg-gray-900'
     }`}>
-      {!isPortal && !isGm && <Header />}
+      {!isPortal && !isGm && !isKcourt && <Header />}
       <EmailPrefsPopup />
-      <RouteContainer isPortal={isPortal} isGm={isGm}>
+      <RouteContainer isPortal={isPortal} isGm={isGm} isKcourt={isKcourt}>
         <Suspense fallback={<div className="min-h-[60vh]" />}>
         <Routes>
           {/* Homepage */}
@@ -651,7 +654,7 @@ export default function App() {
         </Suspense>
       </RouteContainer>
 
-      {!isPortal && !isGm && (
+      {!isPortal && !isGm && !isKcourt && (
       <footer className="border-t border-gray-200 mt-12 bg-nw-teal text-white">
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -744,8 +747,8 @@ function HomepageRouter() {
 }
 
 
-function RouteContainer({ isPortal, isGm, children }) {
-  if (isPortal || isGm) {
+function RouteContainer({ isPortal, isGm, isKcourt, children }) {
+  if (isPortal || isGm || isKcourt) {
     return <>{children}</>
   }
   return (
