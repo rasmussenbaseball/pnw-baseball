@@ -404,6 +404,14 @@ export function PlayerCard({ playerId, sideParam, showToolbar = true }) {
 // ───────────────────────────────────────────────────────────
 // Header
 // ───────────────────────────────────────────────────────────
+// Cross-origin images (school-site headshots) render as BLANK boxes in
+// canvas exports — the capture engine can't read their pixels. Route any
+// absolute URL through our same-origin image proxy so exports paint them.
+function exportSrc(url) {
+  if (!url) return url
+  return /^https?:\/\//i.test(url) ? `/api/v1/proxy-image?url=${encodeURIComponent(url)}` : url
+}
+
 function CardHeader({ player, side, season }) {
   const handColor = ({
     L: '#c0392b', R: '#1f4e8c', B: '#7d3c98',
@@ -412,7 +420,7 @@ function CardHeader({ player, side, season }) {
   return (
     <div className="flex items-center gap-3 border-b-2 border-portal-purple pb-2">
       {player.headshot_url ? (
-        <img src={player.headshot_url} alt=""
+        <img src={exportSrc(player.headshot_url)} alt=""
              className="w-12 h-12 rounded-md object-cover bg-gray-100" />
       ) : (
         <div className="w-12 h-12 rounded-md bg-gray-100 flex items-center justify-center text-gray-400 font-bold">
@@ -443,7 +451,7 @@ function CardHeader({ player, side, season }) {
           {sideLabel} CARD
         </div>
         {player.logo_url && (
-          <img src={player.logo_url} alt="" className="h-10 w-10 object-contain ml-auto mt-0.5" />
+          <img src={exportSrc(player.logo_url)} alt="" className="h-10 w-10 object-contain ml-auto mt-0.5" />
         )}
       </div>
     </div>
@@ -505,8 +513,8 @@ function SprayPanel({ side, hitterPbp, pitcherPbp, player, filter = 'all' }) {
       </div>
       <div className="flex-1 min-h-[180px]">
         {data ? (
-          <SprayChart data={data} bats={bats} mode={mode}
-            defaultFilter={filter} staticFilter={filter !== 'all' ? filter : null} />
+          <SprayChart data={data} bats={bats} mode={mode} hideChrome
+            defaultFilter={filter} staticFilter={filter || 'all'} />
         ) : (
           <div className="text-[10px] text-gray-400 italic">No PBP coverage yet.</div>
         )}
@@ -864,7 +872,7 @@ function VsTeamPanel({ playerId, side, portalTeam }) {
       </div>
 
       {/* Top matchups — best vs worst for the opposing coach */}
-      <div className="grid grid-cols-2 gap-1.5 flex-1 overflow-hidden">
+      <div className="grid grid-cols-2 gap-1.5 flex-1">
         <div>
           <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-0.5">
             {isPitcher ? 'Hot Hitters' : 'Best Pitchers'}
@@ -1655,7 +1663,7 @@ function FieldingDiagramPanel({ playerId, player, hitterPbp }) {
       </div>
       <div className="flex-1 min-h-[180px]">
         {spray && a?.fielders ? (
-          <SprayChart data={spray} bats={player?.bats || 'R'} mode="hitter" fielders={a.fielders} />
+          <SprayChart data={spray} bats={player?.bats || 'R'} mode="hitter" fielders={a.fielders} hideChrome />
         ) : (
           <div className="text-[9px] text-gray-400 italic">Not enough batted balls to position.</div>
         )}
@@ -1743,7 +1751,7 @@ function CountDetailPanel({ side, playerId }) {
       ) : (
         <table className="w-full text-center tabular-nums" style={{ fontSize: '8px' }}>
           <thead>
-            <tr className="text-gray-400">
+            <tr className="text-gray-500">
               <th className="py-0.5 text-left font-semibold">Ct</th>
               <th className="py-0.5 font-semibold">P</th>
               <th className="py-0.5 font-semibold">Sw%</th>

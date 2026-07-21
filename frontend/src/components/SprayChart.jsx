@@ -119,7 +119,7 @@ const PITCHER_FILTERS = [
   ['hr',     'HR'],
 ]
 
-export default function SprayChart({ data, bats, defaultFilter = 'all', mode = 'hitter', staticFilter = null, fielders = null }) {
+export default function SprayChart({ data, bats, defaultFilter = 'all', mode = 'hitter', staticFilter = null, fielders = null, hideChrome = false }) {
   const FILTERS = mode === 'pitcher' ? PITCHER_FILTERS : HITTER_FILTERS
   // staticFilter (used by the custom card builder) locks the view to one filter
   // and hides the interactive toggle chips, so you can stack several fixed sprays.
@@ -208,7 +208,10 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 p-3">
+    <div className={hideChrome ? '' : 'bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 p-3'}>
+      {/* hideChrome: the custom card prints its own panel title, so the
+          screen-only header (title + filter tabs) must not reach exports. */}
+      {!hideChrome && (
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Spray Chart</h3>
         <div className={`flex items-center flex-wrap gap-1 text-[10px] ${staticFilter ? 'hidden' : ''}`}>
@@ -227,6 +230,7 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
           ))}
         </div>
       </div>
+      )}
 
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         {/* Outfield wedges (outer ring) */}
@@ -442,13 +446,15 @@ export default function SprayChart({ data, bats, defaultFilter = 'all', mode = '
           </text>
         </g>
 
-        {/* Filter chip */}
+        {/* Filter chip (redundant when the host panel titles the chart) */}
+        {!hideChrome && (
         <g transform="translate(8, 8)">
           <rect x="0" y="0" rx="3" ry="3" width="76" height="16" fill="#1f2937" />
           <text x="38" y="11" textAnchor="middle" style={{ fontSize: '9px', fontWeight: 700, fill: '#ffffff', letterSpacing: '0.04em' }}>
             {(FILTERS.find(([k]) => k === filter) || [, 'ALL'])[1].toUpperCase()}
           </text>
         </g>
+        )}
       </svg>
 
       {/* Legend / handedness hint. For pitcher mode the pull-side

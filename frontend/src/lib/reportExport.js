@@ -26,51 +26,53 @@ const CAPTURE_OPTS = {
   backgroundColor: '#ffffff', scale: 2, useCORS: true, allowTaint: false, logging: false,
 }
 
-// Capture a node to a canvas. If the node contains a fit-to-page scaled element
-// (`[data-scale-content]`, e.g. the Custom Player Card), html2canvas would
-// mis-render it — capturing a CSS-`transform: scale()`ed element drifts text and
-// blends the color shading. So we temporarily neutralize the scale and capture
-// the content at its NATURAL 1:1 size; callers fit the resulting image to the
-// page, reproducing the on-screen scaling exactly. What saves == what's shown.
-async function captureCanvas(html2canvas, node) {
-  // Wait for web fonts (Inter) to load — html2canvas 1.4.1 otherwise measures
-  // and paints with FALLBACK font metrics, which shifts the color-shading pills
-  // off their numbers and adds phantom spacing / clips text. This is the main
-  // reason a saved card didn't match the screen.
-  if (document.fonts && document.fonts.ready) {
-    try { await document.fonts.ready } catch { /* older browsers */ }
-  }
-  const content = node && node.querySelector ? node.querySelector('[data-scale-content]') : null
-  if (!content) return html2canvas(node, CAPTURE_OPTS)
+// Capture a node to a canvas.
+//
+// Two engines, chosen by content:
+// - Plain report nodes: html2canvas (repaints the DOM itself). Proven on the
+//   simple table reports.
+// - `[data-scale-content]` nodes (the Custom Player Card): html-to-image,
+//   which serializes the DOM into an SVG foreignObject and lets the BROWSER
+//   render it. html2canvas 1.4.1 repainted the card's dense 8-9px typography
+//   with shifted glyph baselines — shading pills drifted off their numbers,
+//   the vs-team slash labels hid under their band, and table rows half-clipped
+//   (Nate's Mertlich export, July 2026). Real browser text rendering makes the
+//   capture match the screen exactly. Cross-origin images (headshots) must be
+//   same-origin for this engine — CardHeader routes them through
+//   /api/v1/proxy-image.
+async function captureCardCanvas(content, node) {
+  const { toCanvas } = await import('html-to-image')
+  // The on-screen card is fit-to-page via transform:scale(); capture at
+  // NATURAL 1:1 size instead (callers fit the image to the page), so the
+  // raster isn't a blurry upscale of a shrunken layout.
   const page = content.closest('.custom-card-page') || node
   const saved = { t: content.style.transform, h: page.style.height, o: page.style.overflow }
   content.style.transform = 'none'
   page.style.height = 'auto'
   page.style.overflow = 'visible'
   try {
-    // Pin the capture to the content's FULL natural size + matching viewport so
-    // nothing is cropped by the real window/viewport being shorter than the card.
-    const w = content.scrollWidth
-    const h = content.scrollHeight
-    return await html2canvas(content, {
-      ...CAPTURE_OPTS,
-      width: w, height: h, windowWidth: w, windowHeight: h, scrollX: 0, scrollY: 0,
-      onclone: (_doc, el) => {
-        // html2canvas 1.4.1 mis-positions glyphs under `tabular-nums`
-        // (font-variant-numeric), inserting a phantom space before "%" and
-        // nudging text within the shaded pills. Render the clone with normal
-        // numeric spacing so the capture matches the screen. The clone is
-        // off-DOM, so the on-screen card is unaffected.
-        if (!el || !el.querySelectorAll) return
-        el.style.fontVariantNumeric = 'normal'
-        el.querySelectorAll('*').forEach(n => { n.style.fontVariantNumeric = 'normal' })
-      },
+    return await toCanvas(content, {
+      backgroundColor: '#ffffff',
+      pixelRatio: 2,
+      width: content.scrollWidth,
+      height: content.scrollHeight,
     })
   } finally {
     content.style.transform = saved.t
     page.style.height = saved.h
     page.style.overflow = saved.o
   }
+}
+
+async function captureCanvas(html2canvas, node) {
+  // Wait for web fonts (Inter) to load — both engines otherwise measure with
+  // FALLBACK font metrics, which shifts text and clips lines.
+  if (document.fonts && document.fonts.ready) {
+    try { await document.fonts.ready } catch { /* older browsers */ }
+  }
+  const content = node && node.querySelector ? node.querySelector('[data-scale-content]') : null
+  if (!content) return html2canvas(node, CAPTURE_OPTS)
+  return captureCardCanvas(content, node)
 }
 
 // Render a fixed-size node to a single-page letter PDF (image-based, so it
