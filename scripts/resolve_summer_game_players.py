@@ -74,12 +74,13 @@ def sanitize_player_name(raw):
 
 
 def build_lookup(cur):
-    """Return {team_id: {match_key: player_id}} + {team_id: {last: set(player_id)}}."""
+    """Return {team_id: {match_key: pid}}, {team_id: {last: set(pid)}}, {pid: first_name}."""
     cur.execute(
         "SELECT id, team_id, first_name, last_name FROM summer_players"
     )
     exact = defaultdict(dict)
     by_last = defaultdict(lambda: defaultdict(set))
+    firsts = {}
     precise = set()      # (team_id, key) that came from a FULL name — never dropped
     ambiguous = set()    # abbreviated keys two players collide on (e.g. brothers)
 
@@ -101,6 +102,7 @@ def build_lookup(cur):
         last = (row.get("last_name") or "").strip()
         if not (first or last):
             continue
+        firsts[pid] = first
         if first and last:
             add(team_id, _norm(f"{first} {last}"), pid, True)
             add(team_id, _norm(f"{first[0]} {last}"), pid, False)  # "F. Last"
@@ -109,10 +111,10 @@ def build_lookup(cur):
             by_last[team_id][_norm(last)].add(pid)
     for (team_id, key) in ambiguous:
         exact[team_id].pop(key, None)
-    return exact, by_last
+    return exact, by_last, firsts
 
 
-def resolve_one(name, team_id, exact, by_last):
+def resolve_one(name, team_id, exact, by_last, firsts):
     if not name or team_id is None:
         return None
     key = _norm(name)
@@ -128,7 +130,20 @@ def resolve_one(name, team_id, exact, by_last):
         last_key = _norm(parts[-1])
         cands = by_last.get(team_id, {}).get(last_key, set())
         if len(cands) == 1:
-            return next(iter(cands))
+            pid = next(iter(cands))
+            # Sibling guard: when BOTH the box-score name and the roster row
+            # carry a full first name and they conflict, this is a different
+            # person who happens to share the last name (box score "Brayden
+            # Oram" vs stale roster row "Camden Oram" put Brayden's whole 2026
+            # on his brother's Seattle U-linked row). Prefix agreement still
+            # matches ("Cam" -> "Camden"); initials/abbreviations still fall
+            # through to the fallback as before.
+            bs_first = _norm(" ".join(parts[:-1]).rstrip("."))
+            cand_first = _norm(firsts.get(pid, "") or "")
+            if (len(bs_first) >= 2 and len(cand_first) >= 2
+                    and not (bs_first.startswith(cand_first) or cand_first.startswith(bs_first))):
+                return None
+            return pid
     return None
 
 
@@ -167,7 +182,7 @@ def create_stub_player(cur, team_id, player_name, position=None):
 def run(dry_run=False, create_stubs=True):
     with get_connection() as conn:
         cur = conn.cursor()
-        exact, by_last = build_lookup(cur)
+        exact, by_last, firsts = build_lookup(cur)
         logger.info(
             f"Loaded {sum(len(v) for v in exact.values())} player-name "
             f"keys across {len(exact)} teams"
@@ -206,7 +221,7 @@ def run(dry_run=False, create_stubs=True):
             # resolve so "Kolby Lukinchuk(W, 1-0)" matches an existing
             # "Kolby Lukinchuk" row instead of stubbing a new mess.
             clean = sanitize_player_name(name)
-            pid = resolve_one(clean, team_id, exact, by_last)
+            pid = resolve_one(clean, team_id, exact, by_last, firsts)
             if pid is not None:
                 return pid, False
             if not create_stubs or dry_run:
