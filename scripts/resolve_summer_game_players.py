@@ -60,6 +60,10 @@ _PREFIX_RE = re.compile(
 # Trailing pitcher decision parenthetical:
 #   "Kolby Lukinchuk(W, 1-0)" or "Player Name (W)"
 _DECISION_RE = re.compile(r"\s*\(\s*[WLSHBwlsbh][^)]*\)\s*$")
+# Trailing generational suffix: "Alexander Mendoza, Jr." / "Name Jr" / "Name III".
+# Without this, the "Last, First" comma rule parsed Jr. as a FIRST name and
+# every daily run stubbed a fresh "Jr. / Alexander Mendoza" row (8 dupes).
+_SUFFIX_RE = re.compile(r"[,\s]+(jr\.?|sr\.?|ii|iii|iv|v)\s*$", re.IGNORECASE)
 
 
 def sanitize_player_name(raw):
@@ -70,7 +74,8 @@ def sanitize_player_name(raw):
     n = raw.strip()
     n = _DECISION_RE.sub("", n)
     n = _PREFIX_RE.sub("", n)
-    return n.strip()
+    n = _SUFFIX_RE.sub("", n)
+    return n.strip().rstrip(",")
 
 
 def build_lookup(cur):
@@ -114,6 +119,29 @@ def build_lookup(cur):
     return exact, by_last, firsts
 
 
+def _edit1(a, b):
+    """True if a and b are within one edit (typo-variant first names)."""
+    if a == b:
+        return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la == lb:
+        return sum(x != y for x, y in zip(a, b)) <= 1
+    if la > lb:
+        a, b, la, lb = b, a, lb, la
+    i = j = diff = 0
+    while i < la and j < lb:
+        if a[i] == b[j]:
+            i += 1; j += 1
+        else:
+            diff += 1
+            if diff > 1:
+                return False
+            j += 1
+    return True
+
+
 def resolve_one(name, team_id, exact, by_last, firsts):
     if not name or team_id is None:
         return None
@@ -141,7 +169,8 @@ def resolve_one(name, team_id, exact, by_last, firsts):
             bs_first = _norm(" ".join(parts[:-1]).rstrip("."))
             cand_first = _norm(firsts.get(pid, "") or "")
             if (len(bs_first) >= 2 and len(cand_first) >= 2
-                    and not (bs_first.startswith(cand_first) or cand_first.startswith(bs_first))):
+                    and not (bs_first.startswith(cand_first) or cand_first.startswith(bs_first))
+                    and not _edit1(bs_first, cand_first)):
                 return None
             return pid
     return None
