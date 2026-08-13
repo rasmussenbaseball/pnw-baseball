@@ -46,6 +46,14 @@ const MEASURABLE_FIELDS = [
   ['of_velo', 'OF velo (mph)', '85'],
   ['pop_time', 'Pop time', '2.05'],
 ]
+const BLAST_MANUAL_FIELDS = [
+  ['blast_bat_speed', 'Bat speed', '68.5'],
+  ['blast_hand_speed', 'Hand speed', '21.0'],
+  ['blast_rot_accel', 'Rot. accel', '12.5'],
+  ['blast_plane', 'Plane score', '64'],
+  ['blast_connection', 'Connection', '52'],
+  ['blast_rotation', 'Rotation', '58'],
+]
 
 export default function CampReport() {
   const { team } = usePortalTeam()
@@ -86,7 +94,7 @@ export default function CampReport() {
     setReport(d)
     setSide(d.pitching && !(d.blast || d.hitting) ? 'pitching' : 'hitting')
     const f = {}
-    for (const [k] of [...BIO_FIELDS, ...MEASURABLE_FIELDS]) f[k] = d.player?.[k] || ''
+    for (const [k] of [...BIO_FIELDS, ...MEASURABLE_FIELDS, ...BLAST_MANUAL_FIELDS]) f[k] = d.player?.[k] || ''
     f.notes = d.player?.notes || ''
     setForm(f)
   }
@@ -272,6 +280,20 @@ export default function CampReport() {
             <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 pt-1">Measurables</div>
             <div className="grid grid-cols-4 gap-2">
               {MEASURABLE_FIELDS.map(([k, label, ph]) => (
+                <label key={k} className="block">
+                  <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
+                  <input value={form[k] || ''} placeholder={ph}
+                    onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-[13px]" />
+                </label>
+              ))}
+            </div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 pt-1">
+              Blast by hand
+              <span className="ml-1.5 normal-case font-normal text-gray-400">(used when no Blast file is uploaded)</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {BLAST_MANUAL_FIELDS.map(([k, label, ph]) => (
                 <label key={k} className="block">
                   <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
                   <input value={form[k] || ''} placeholder={ph}
@@ -558,7 +580,18 @@ function HitLine({ label, h }) {
 
 function HitterCard({ pageRef, report, form, teamLogo }) {
   const p = { ...report.player, ...form }
-  const b = report.blast
+  // Live preview: hand-typed Blast numbers stand in when no export exists.
+  const manualVals = [p.blast_bat_speed, p.blast_hand_speed, p.blast_rot_accel,
+                      p.blast_plane, p.blast_connection, p.blast_rotation]
+  const manual = !report.blast?.swings && manualVals.some(v => v)
+  const b = manual ? {
+    manual: true, swings: null,
+    bat_speed_avg: p.blast_bat_speed || null, bat_speed_max: null,
+    hand_speed_avg: p.blast_hand_speed || null, hand_speed_max: null,
+    rot_accel_avg: p.blast_rot_accel || null,
+    on_plane_avg: null, attack_angle_avg: null, ttc_avg: null, power_avg: null,
+    scores: { plane: p.blast_plane, connection: p.blast_connection, rotation: p.blast_rotation },
+  } : report.blast
   const hit = report.hitting
   return (
     <CardShell pageRef={pageRef}>
@@ -574,7 +607,7 @@ function HitterCard({ pageRef, report, form, teamLogo }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-2 items-stretch [&>*]:h-full">
-        <Panel title="Swing Metrics — Blast Motion" right={b ? `${b.swings} swings` : null}>
+        <Panel title="Swing Metrics — Blast Motion" right={b ? (b.manual ? 'entered by hand' : `${b.swings} swings`) : null}>
           {!b ? (
             <div className="text-[9.5px] text-gray-400 italic">No Blast Motion data uploaded for this player.</div>
           ) : (
@@ -596,7 +629,7 @@ function HitterCard({ pageRef, report, form, teamLogo }) {
                     ['Attack angle', b.attack_angle_avg != null ? `${b.attack_angle_avg}°` : null, null],
                     ['Time to contact (s)', b.ttc_avg, null],
                     ['Power (kW)', b.power_avg, null],
-                  ].map(([l, a, m]) => (
+                  ].filter(([, a]) => !b.manual || a != null).map(([l, a, m]) => (
                     <tr key={l} className="border-t border-gray-100">
                       <td className="py-0.5 text-gray-700">{l}</td>
                       <td className="py-0.5 text-right font-semibold">{a ?? '—'}</td>

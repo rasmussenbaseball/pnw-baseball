@@ -82,6 +82,11 @@ def _ensure_tables(cur):
             UNIQUE (camp_id, kind, uid)
         )""")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_camp_rows_lookup ON camp_rows(camp_id, name_key, kind)")
+    # Hand-entered Blast numbers (pen-and-paper camps where the export
+    # isn't available). Used by the report only when no blast rows exist.
+    for c in ("blast_bat_speed", "blast_hand_speed", "blast_rot_accel",
+              "blast_plane", "blast_connection", "blast_rotation"):
+        cur.execute(f"ALTER TABLE camp_players ADD COLUMN IF NOT EXISTS {c} TEXT")
     # Supabase: anon has table grants; RLS (with no policies) is the gate
     # that keeps these private-coach tables private.
     for t in ("camps", "camp_players", "camp_rows"):
@@ -350,7 +355,9 @@ async def upload_camp_files(
 
 PLAYER_FIELDS = ["display_name", "height", "weight", "school", "hometown", "state",
                  "grad_year", "bats", "throws", "position",
-                 "sixty_time", "if_velo", "of_velo", "pop_time", "notes"]
+                 "sixty_time", "if_velo", "of_velo", "pop_time", "notes",
+                 "blast_bat_speed", "blast_hand_speed", "blast_rot_accel",
+                 "blast_plane", "blast_connection", "blast_rotation"]
 
 
 @router.get("/portal/camps/{camp_id}/players")
@@ -391,6 +398,12 @@ class PlayerPatch(BaseModel):
     of_velo: str | None = None
     pop_time: str | None = None
     notes: str | None = None
+    blast_bat_speed: str | None = None
+    blast_hand_speed: str | None = None
+    blast_rot_accel: str | None = None
+    blast_plane: str | None = None
+    blast_connection: str | None = None
+    blast_rotation: str | None = None
 
 
 @router.post("/portal/camps/{camp_id}/players")
@@ -477,6 +490,21 @@ def camp_player_report(camp_id: int, name_key: str, owner: str = Depends(_gate))
     pitches = [r["data"] for r in rows if r["kind"] == "tm_pitch"]
 
     blast_summary = None
+    if not blast and any(p.get(c) for c in (
+            "blast_bat_speed", "blast_hand_speed", "blast_rot_accel",
+            "blast_plane", "blast_connection", "blast_rotation")):
+        # Hand-entered numbers stand in for the export.
+        blast_summary = {
+            "manual": True, "swings": None,
+            "bat_speed_avg": p.get("blast_bat_speed"), "bat_speed_max": None,
+            "hand_speed_avg": p.get("blast_hand_speed"), "hand_speed_max": None,
+            "rot_accel_avg": p.get("blast_rot_accel"),
+            "on_plane_avg": None, "attack_angle_avg": None,
+            "ttc_avg": None, "power_avg": None,
+            "scores": {"plane": _fnum(p.get("blast_plane")),
+                       "connection": _fnum(p.get("blast_connection")),
+                       "rotation": _fnum(p.get("blast_rotation"))},
+        }
     if blast:
         blast_summary = {
             "swings": len(blast),
