@@ -27,7 +27,7 @@ import io
 import re
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from psycopg2.extras import Json
+from psycopg2.extras import Json, execute_values
 from pydantic import BaseModel
 
 from ..models.database import get_connection
@@ -184,10 +184,11 @@ def _parse_trackman(text: str):
                 "b": batter, "side": r.get("BatterSide"), "ctx": ctx,
                 "call": r.get("PitchCall"), "ev": ev,
                 "la": _fnum(r.get("Angle")), "dist": _fnum(r.get("Distance")),
+                "dir": _fnum(r.get("Direction")),
+                "res": r.get("PlayResult"), "htype": r.get("TaggedHitType"),
                 "_uid": uid,
             }
-            # BBE (tracked contact) or, in games, any pitch (for K/BB context
-            # later if we want it). Keep storage lean: BBE only.
+            # Storage stays lean: BBE (tracked contact) only.
             if ev is not None:
                 hit.append(entry)
         pitcher = (r.get("Pitcher") or "").strip()
@@ -204,7 +205,13 @@ def _parse_trackman(text: str):
                 "ivb": _fnum(r.get("InducedVertBreak")),
                 "hb": _fnum(r.get("HorzBreak")),
                 "ext": _fnum(r.get("Extension")),
+                "rel_h": _fnum(r.get("RelHeight")),
+                "rel_s": _fnum(r.get("RelSide")),
+                "px": _fnum(r.get("PlateLocSide")),
+                "pz": _fnum(r.get("PlateLocHeight")),
+                "no": _fnum(r.get("PitchNo")),
                 "call": r.get("PitchCall"),
+                "res": r.get("PlayResult"), "kbb": r.get("KorBB"),
                 "_uid": uid,
             })
     return ctx, hit, pitch
@@ -288,13 +295,19 @@ async def upload_camp_files(
         _ensure_tables(cur)
         _own_camp(cur, owner, camp_id)
 
-        def insert_row(key, kind, uid, data):
-            cur.execute("""
+        def insert_rows(batch):
+            # One statement for the whole file (uploads were painfully slow
+            # with a round-trip per row). DO UPDATE so re-uploading a file
+            # refreshes old rows with newly-parsed fields.
+            if not batch:
+                return 0
+            execute_values(cur, """
                 INSERT INTO camp_rows (owner_user_id, camp_id, name_key, kind, uid, data)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (camp_id, kind, uid) DO NOTHING
-            """, (owner, camp_id, key, kind, uid, Json(data)))
-            return cur.rowcount
+                VALUES %s
+                ON CONFLICT (camp_id, kind, uid) DO UPDATE
+                    SET data = EXCLUDED.data, name_key = EXCLUDED.name_key
+            """, batch, page_size=500)
+            return len(batch)
 
         for f in files:
             try:
@@ -306,23 +319,25 @@ async def upload_camp_files(
                                          "type the attendee's name next to the file.")
                     key = _upsert_player(cur, owner, camp_id, display)
                     swings = _parse_blast(text)
-                    added = sum(insert_row(key, "blast", s.pop("_uid"), s) for s in swings)
+                    added = insert_rows([(owner, camp_id, key, "blast", s.pop("_uid"), Json(s))
+                                         for s in swings])
                     results.append({"file": f.filename, "kind": "blast",
                                     "player": display, "rows": len(swings), "new": added})
                 else:
                     ctx, hit, pitch = _parse_trackman(text)
-                    added = 0
-                    names = set()
+                    batch, names, keys = [], set(), {}
+                    def key_for(display):
+                        if display not in keys:
+                            keys[display] = _upsert_player(cur, owner, camp_id, display)
+                            names.add(display)
+                        return keys[display]
                     for h in hit:
-                        display = _display_name(h.pop("b"))
-                        key = _upsert_player(cur, owner, camp_id, display)
-                        names.add(display)
-                        added += insert_row(key, "tm_hit", h.pop("_uid"), h)
+                        k = key_for(_display_name(h.pop("b")))
+                        batch.append((owner, camp_id, k, "tm_hit", h.pop("_uid"), Json(h)))
                     for p in pitch:
-                        display = _display_name(p.pop("p"))
-                        key = _upsert_player(cur, owner, camp_id, display)
-                        names.add(display)
-                        added += insert_row(key, "tm_pitch", p.pop("_uid"), p)
+                        k = key_for(_display_name(p.pop("p")))
+                        batch.append((owner, camp_id, k, "tm_pitch", p.pop("_uid"), Json(p)))
+                    added = insert_rows(batch)
                     results.append({"file": f.filename, "kind": f"trackman_{ctx}",
                                     "players": len(names), "rows": len(hit) + len(pitch), "new": added})
             except Exception as e:  # noqa: BLE001 — per-file report
@@ -482,6 +497,18 @@ def camp_player_report(camp_id: int, name_key: str, owner: str = Depends(_gate))
             },
         }
 
+    def la_mix(sub):
+        las = [h.get("la") for h in sub if h.get("la") is not None]
+        if not las:
+            return None
+        n = len(las)
+        return {
+            "gb": round(sum(1 for a in las if a < 10) / n, 3),
+            "ld": round(sum(1 for a in las if 10 <= a < 25) / n, 3),
+            "fb": round(sum(1 for a in las if 25 <= a < 50) / n, 3),
+            "pu": round(sum(1 for a in las if a >= 50) / n, 3),
+        }
+
     def hit_block(ctx):
         sub = [h for h in hits if h.get("ctx") == ctx]
         evs = [h.get("ev") for h in sub if h.get("ev") is not None]
@@ -494,26 +521,47 @@ def camp_player_report(camp_id: int, name_key: str, owner: str = Depends(_gate))
             "la_avg": _avg([h.get("la") for h in sub]),
             "dist_max": _mx([h.get("dist") for h in sub]),
             "hard_hit_pct": round(hard / len(evs), 3),
+            "sweet_spot_pct": (lambda las: round(
+                sum(1 for a in las if 8 <= a <= 32) / len(las), 3) if las else None)(
+                [h.get("la") for h in sub if h.get("la") is not None]),
+            "la_mix": la_mix(sub),
         }
 
     hitting = {"bp": hit_block("bp"), "game": hit_block("game")} if hits else None
-    # per-swing points for the EV/LA scatter (game + bp tagged)
+    # per-swing points for the EV/LA scatter + spray fan
     scatter = [{"ev": h["ev"], "la": h.get("la"), "ctx": h.get("ctx")}
-               for h in hits if h.get("ev") is not None][:120]
+               for h in hits if h.get("ev") is not None][:150]
+    spray = [{"dir": h["dir"], "dist": h["dist"], "ev": h.get("ev"), "ctx": h.get("ctx")}
+             for h in hits if h.get("dir") is not None and h.get("dist")][:150]
+    top_bbe = sorted([h for h in hits if h.get("ev") is not None],
+                     key=lambda h: -h["ev"])[:5]
+    top_bbe = [{"ev": h["ev"], "la": h.get("la"), "dist": h.get("dist"),
+                "res": (h.get("res") if h.get("res") not in ("Undefined", "") else None)
+                       or ("BP" if h.get("ctx") == "bp" else None),
+                "ctx": h.get("ctx")} for h in top_bbe]
 
     pitching = None
     if pitches:
+        BALLS = ("BallCalled", "BallinDirt", "BallIntentional", "HitByPitch")
+        SWINGS = ("StrikeSwinging", "FoulBall", "FoulBallNotFieldable",
+                  "FoulBallFieldable", "InPlay")
         by_type = {}
         for x in pitches:
             by_type.setdefault(x.get("type") or "Unknown", []).append(x)
         arsenal = []
         for t, xs in sorted(by_type.items(), key=lambda kv: -len(kv[1])):
-            strikes = sum(1 for x in xs if x.get("call") not in
-                          (None, "", "Undefined", "BallCalled", "BallinDirt",
-                           "BallIntentional", "HitByPitch"))
+            n = len(xs)
             has_calls = any(x.get("call") not in (None, "", "Undefined") for x in xs)
+            strikes = sum(1 for x in xs if x.get("call") not in
+                          (None, "", "Undefined") + BALLS)
+            swings = sum(1 for x in xs if x.get("call") in SWINGS)
+            whiffs = sum(1 for x in xs if x.get("call") == "StrikeSwinging")
+            csw = sum(1 for x in xs if x.get("call") in ("StrikeCalled", "StrikeSwinging"))
+            zone_known = [x for x in xs if x.get("px") is not None and x.get("pz") is not None]
+            in_zone = sum(1 for x in zone_known
+                          if abs(x["px"]) <= 0.83 and 1.5 <= x["pz"] <= 3.5)
             arsenal.append({
-                "type": t, "n": len(xs),
+                "type": t, "n": n, "usage": round(n / len(pitches), 3),
                 "velo_avg": _avg([x.get("velo") for x in xs]),
                 "velo_max": _mx([x.get("velo") for x in xs]),
                 "spin_avg": (lambda s: round(s) if s is not None else None)(
@@ -521,10 +569,44 @@ def camp_player_report(camp_id: int, name_key: str, owner: str = Depends(_gate))
                 "ivb_avg": _avg([x.get("ivb") for x in xs]),
                 "hb_avg": _avg([x.get("hb") for x in xs]),
                 "ext_avg": _avg([x.get("ext") for x in xs]),
-                "strike_pct": round(strikes / len(xs), 3) if has_calls else None,
+                "strike_pct": round(strikes / n, 3) if has_calls else None,
+                "whiff_pct": round(whiffs / swings, 3) if has_calls and swings else None,
+                "csw_pct": round(csw / n, 3) if has_calls else None,
+                "zone_pct": round(in_zone / len(zone_known), 3) if zone_known else None,
             })
-        pitching = {"pitches": len(pitches), "arsenal": arsenal,
-                    "throws": next((x.get("throws") for x in pitches if x.get("throws")), None)}
+        # Outing line — PA enders: a K/BB verdict, a play result, or an HBP.
+        enders = [x for x in pitches if
+                  (x.get("kbb") not in (None, "", "Undefined")) or
+                  (x.get("res") not in (None, "", "Undefined")) or
+                  x.get("call") == "HitByPitch"]
+        ks = sum(1 for x in pitches if x.get("kbb") == "Strikeout")
+        bbs = sum(1 for x in pitches if x.get("kbb") == "Walk")
+        hits_allowed = sum(1 for x in pitches if x.get("res") in
+                           ("Single", "Double", "Triple", "HomeRun"))
+        all_strikes = sum(1 for x in pitches if x.get("call") not in
+                          (None, "", "Undefined") + BALLS)
+        has_any_calls = any(x.get("call") not in (None, "", "Undefined") for x in pitches)
+        ordered = sorted(pitches, key=lambda x: (x.get("no") is None, x.get("no") or 0))
+        pitching = {
+            "pitches": len(pitches), "arsenal": arsenal,
+            "throws": next((x.get("throws") for x in pitches if x.get("throws")), None),
+            "outing": {
+                "bf": len(enders) or None, "k": ks, "bb": bbs, "hits": hits_allowed,
+                "strike_pct": round(all_strikes / len(pitches), 3) if has_any_calls else None,
+                "velo_max": _mx([x.get("velo") for x in pitches]),
+            },
+            "movement": [{"ivb": x["ivb"], "hb": x["hb"], "t": x.get("type")}
+                         for x in pitches
+                         if x.get("ivb") is not None and x.get("hb") is not None][:200],
+            "locations": [{"px": x["px"], "pz": x["pz"], "t": x.get("type")}
+                          for x in pitches
+                          if x.get("px") is not None and x.get("pz") is not None][:200],
+            "velo_seq": [{"i": i + 1, "v": x["velo"], "t": x.get("type")}
+                         for i, x in enumerate(ordered) if x.get("velo") is not None][:150],
+            "release": [{"x": x["rel_s"], "y": x["rel_h"], "t": x.get("type")}
+                        for x in pitches
+                        if x.get("rel_s") is not None and x.get("rel_h") is not None][:200],
+        }
 
     player = {k: p.get(k) for k in ["name_key", "display_name"] + PLAYER_FIELDS if k in p}
     return {
@@ -534,5 +616,7 @@ def camp_player_report(camp_id: int, name_key: str, owner: str = Depends(_gate))
         "blast": blast_summary,
         "hitting": hitting,
         "scatter": scatter,
+        "spray": spray,
+        "top_bbe": top_bbe,
         "pitching": pitching,
     }
