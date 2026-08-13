@@ -356,6 +356,27 @@ function PvCustomCard() {
   )
 }
 
+function PvCampReport() {
+  return (
+    <svg viewBox="0 0 200 112" className="w-full h-full">
+      <rect x="58" y="8" width="84" height="96" rx="4" fill="#fff" stroke="#d1d5db" />
+      <rect x="64" y="14" width="72" height="8" rx="2" fill="#1d1f4d" />
+      <rect x="64" y="26" width="40" height="4" rx="1" fill="#c7cad6" />
+      {[0, 1, 2, 3].map(i => (
+        <rect key={i} x={64 + i * 19} y="34" width="16" height="12" rx="2" fill="#f5f3ef" stroke="#e5e7eb" />
+      ))}
+      <rect x="64" y="52" width="34" height="24" rx="2" fill="#f5f3ef" stroke="#e5e7eb" />
+      <rect x="102" y="52" width="34" height="24" rx="2" fill="#f5f3ef" stroke="#e5e7eb" />
+      {[0, 1, 2].map(i => (
+        <rect key={i} x="64" y={82 + i * 6} width={66 - i * 14} height="3" rx="1" fill="#d9dbe4" />
+      ))}
+      <circle cx="30" cy="34" r="12" fill="none" stroke="#8e7553" strokeWidth="2" />
+      <path d="M18 60 q12 -14 24 0" fill="none" stroke="#8e7553" strokeWidth="2" />
+      <rect x="14" y="66" width="32" height="4" rx="2" fill="#8e7553" opacity="0.5" />
+    </svg>
+  )
+}
+
 // ── Tool catalog (mirrors the portal nav) ──
 const SECTIONS = [
   {
@@ -387,6 +408,7 @@ const SECTIONS = [
     tools: [
       { to: '/portal/pdfs', label: 'All Reports', desc: 'Every report in one place — save each as a PDF or image.', Preview: PvPdfs },
       { to: '/portal/custom-card', label: 'Custom Player Card', desc: 'Build a one-page card, save templates, run a full roster in bulk.', Preview: PvCustomCard, flag: 'New' },
+      { to: '/portal/camp-report', label: 'Camp Report', desc: 'Upload camp TrackMan + Blast CSVs, add measurables and notes, print one-page player reports.', Preview: PvCampReport, flag: 'New' },
       { to: '/portal/alignments', label: 'Defensive Card', desc: 'One-page shift grid: where each fielder plays vs every hitter.', Preview: PvDefCard, flag: 'New' },
       { to: '/portal/scouting-sheet', label: 'Scouting Sheet', desc: 'Hitter + pitcher rosters with conference percentiles.', Preview: PvSheet },
       { to: '/portal/custom-sheet', label: 'Custom Sheet', desc: 'Build your own sheet — pick the filters and the stat columns.', Preview: PvSheet },

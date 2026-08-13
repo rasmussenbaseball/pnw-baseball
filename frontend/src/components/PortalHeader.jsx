@@ -62,6 +62,8 @@ const NAV_SECTIONS = [
         desc: 'Build your own sheet — pick the filters and stat columns' },
       { to: '/portal/custom-card', label: 'Custom Player Card',
         desc: 'Build a one-page card, save templates, run a full roster in bulk' },
+      { to: '/portal/camp-report', label: 'Camp Report',
+        desc: 'Upload camp TrackMan + Blast CSVs, add measurables & notes, print per-player reports' },
       { to: '/portal/bullpen-sheet', label: 'Bullpen Sheet',
         desc: 'Pitcher roster + situational leaderboards for in-game decisions' },
       { to: '/portal/catcher-cards', label: 'Catcher Cards',
