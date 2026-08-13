@@ -82,6 +82,20 @@ def _ensure_tables(cur):
             UNIQUE (camp_id, kind, uid)
         )""")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_camp_rows_lookup ON camp_rows(camp_id, name_key, kind)")
+    # Per-file registry so coaches can delete an upload. Rows cascade.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS camp_uploads (
+            id            SERIAL PRIMARY KEY,
+            owner_user_id UUID NOT NULL,
+            camp_id       INTEGER NOT NULL REFERENCES camps(id) ON DELETE CASCADE,
+            filename      TEXT NOT NULL,
+            kind          TEXT,
+            row_count     INTEGER DEFAULT 0,
+            created_at    TIMESTAMPTZ DEFAULT NOW()
+        )""")
+    cur.execute("""ALTER TABLE camp_rows ADD COLUMN IF NOT EXISTS upload_id
+                   INTEGER REFERENCES camp_uploads(id) ON DELETE CASCADE""")
+    cur.execute("ALTER TABLE camp_uploads ENABLE ROW LEVEL SECURITY")
     # Hand-entered Blast numbers (pen-and-paper camps where the export
     # isn't available). Used by the report only when no blast rows exist.
     for c in ("blast_bat_speed", "blast_hand_speed", "blast_rot_accel",
@@ -300,18 +314,29 @@ async def upload_camp_files(
         _ensure_tables(cur)
         _own_camp(cur, owner, camp_id)
 
-        def insert_rows(batch):
+        def new_upload_rec(filename, kind, n):
+            # Replacing a same-named file replaces its registry entry; the
+            # cascade clears that file's old rows before the fresh insert.
+            cur.execute("DELETE FROM camp_uploads WHERE camp_id = %s AND filename = %s",
+                        (camp_id, filename))
+            cur.execute("""INSERT INTO camp_uploads (owner_user_id, camp_id, filename, kind, row_count)
+                           VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                        (owner, camp_id, filename, kind, n))
+            return cur.fetchone()["id"]
+
+        def insert_rows(upload_id, batch):
             # One statement for the whole file (uploads were painfully slow
             # with a round-trip per row). DO UPDATE so re-uploading a file
             # refreshes old rows with newly-parsed fields.
             if not batch:
                 return 0
             execute_values(cur, """
-                INSERT INTO camp_rows (owner_user_id, camp_id, name_key, kind, uid, data)
+                INSERT INTO camp_rows (owner_user_id, camp_id, name_key, kind, uid, data, upload_id)
                 VALUES %s
                 ON CONFLICT (camp_id, kind, uid) DO UPDATE
-                    SET data = EXCLUDED.data, name_key = EXCLUDED.name_key
-            """, batch, page_size=500)
+                    SET data = EXCLUDED.data, name_key = EXCLUDED.name_key,
+                        upload_id = EXCLUDED.upload_id
+            """, [b + (upload_id,) for b in batch], page_size=500)
             return len(batch)
 
         for f in files:
@@ -324,8 +349,9 @@ async def upload_camp_files(
                                          "type the attendee's name next to the file.")
                     key = _upsert_player(cur, owner, camp_id, display)
                     swings = _parse_blast(text)
-                    added = insert_rows([(owner, camp_id, key, "blast", s.pop("_uid"), Json(s))
-                                         for s in swings])
+                    up_id = new_upload_rec(f.filename or "blast.csv", "blast", len(swings))
+                    added = insert_rows(up_id, [(owner, camp_id, key, "blast", s.pop("_uid"), Json(s))
+                                                for s in swings])
                     results.append({"file": f.filename, "kind": "blast",
                                     "player": display, "rows": len(swings), "new": added})
                 else:
@@ -342,13 +368,61 @@ async def upload_camp_files(
                     for p in pitch:
                         k = key_for(_display_name(p.pop("p")))
                         batch.append((owner, camp_id, k, "tm_pitch", p.pop("_uid"), Json(p)))
-                    added = insert_rows(batch)
+                    up_id = new_upload_rec(f.filename or "trackman.csv", f"trackman_{ctx}", len(batch))
+                    added = insert_rows(up_id, batch)
                     results.append({"file": f.filename, "kind": f"trackman_{ctx}",
                                     "players": len(names), "rows": len(hit) + len(pitch), "new": added})
             except Exception as e:  # noqa: BLE001 — per-file report
                 errors.append({"file": f.filename, "error": str(e)})
         conn.commit()
     return {"results": results, "errors": errors}
+
+
+@router.get("/portal/camps/{camp_id}/uploads")
+def camp_uploads(camp_id: int, owner: str = Depends(_gate)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        _own_camp(cur, owner, camp_id)
+        cur.execute("""
+            SELECT u.id, u.filename, u.kind, u.created_at::date AS uploaded,
+                   COUNT(r.id) AS rows
+            FROM camp_uploads u
+            LEFT JOIN camp_rows r ON r.upload_id = u.id
+            WHERE u.camp_id = %s
+            GROUP BY u.id ORDER BY u.created_at DESC
+        """, (camp_id,))
+        uploads = [{**dict(r), "uploaded": r["uploaded"].isoformat() if r["uploaded"] else None}
+                   for r in cur.fetchall()]
+        conn.commit()
+    return {"uploads": uploads}
+
+
+@router.delete("/portal/camps/{camp_id}/uploads/{upload_id}")
+def delete_camp_upload(camp_id: int, upload_id: int, owner: str = Depends(_gate)):
+    """Delete one uploaded file's rows (cascade) and prune attendees that
+    were auto-created from it and have nothing else: no remaining data
+    rows and no coach-typed info."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _own_camp(cur, owner, camp_id)
+        cur.execute("DELETE FROM camp_uploads WHERE id = %s AND camp_id = %s",
+                    (upload_id, camp_id))
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="Upload not found.")
+        manual_empty = " AND ".join(
+            f"COALESCE(cp.{c}, '') = ''"
+            for c in PLAYER_FIELDS if c != "display_name")
+        cur.execute(f"""
+            DELETE FROM camp_players cp
+            WHERE cp.camp_id = %s
+              AND NOT EXISTS (SELECT 1 FROM camp_rows r
+                              WHERE r.camp_id = cp.camp_id AND r.name_key = cp.name_key)
+              AND {manual_empty}
+        """, (camp_id,))
+        pruned = cur.rowcount
+        conn.commit()
+    return {"status": "ok", "players_pruned": pruned}
 
 
 # ── Attendees ────────────────────────────────────────────────────

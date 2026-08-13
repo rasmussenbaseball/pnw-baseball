@@ -67,6 +67,7 @@ export default function CampReport() {
   const [error, setError] = useState('')
 
   const [players, setPlayers] = useState([])
+  const [uploads, setUploads] = useState([])
   const [selKey, setSelKey] = useState('')
   const [report, setReport] = useState(null)
   const [side, setSide] = useState('hitting')
@@ -85,7 +86,21 @@ export default function CampReport() {
     const d = await api('GET', `/portal/camps/${cid}/players`)
     setPlayers(d.players || [])
   }
-  useEffect(() => { setPlayers([]); setSelKey(''); setReport(null); if (campId) loadPlayers() }, [campId])  // eslint-disable-line
+  async function loadUploads(cid = campId) {
+    if (!cid) return
+    const d = await api('GET', `/portal/camps/${cid}/uploads`)
+    setUploads(d.uploads || [])
+  }
+  async function deleteUpload(u) {
+    if (!window.confirm(`Delete "${u.filename}" and its ${u.rows} rows from this camp?`)) return
+    setBusy(true); setError('')
+    try {
+      await api('DELETE', `/portal/camps/${campId}/uploads/${u.id}`)
+      await Promise.all([loadUploads(), loadPlayers()])
+      if (selKey) await loadReport(selKey)
+    } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+  useEffect(() => { setPlayers([]); setUploads([]); setSelKey(''); setReport(null); if (campId) { loadPlayers(); loadUploads() } }, [campId])  // eslint-disable-line
 
   async function loadReport(key) {
     setSelKey(key); setReport(null); setSaved(false)
@@ -122,7 +137,7 @@ export default function CampReport() {
           ? `${r.file}: ${r.rows} swings → ${r.player}`
           : `${r.file}: ${r.kind.replace('trackman_', 'TrackMan ')} · ${r.players} players · ${r.rows} rows`),
         ...(d.errors || []).map(e => `⚠ ${e.file}: ${e.error}`), ...l].slice(0, 8))
-      await loadPlayers()
+      await Promise.all([loadPlayers(), loadUploads()])
       if (selKey) await loadReport(selKey)
     } catch (e) { setError(e.message) } finally { setUploading(false) }
   }
@@ -223,6 +238,30 @@ export default function CampReport() {
           Uploading and parsing… large files can take a moment.
         </div>
       )}
+      {uploads.length > 0 && (
+        <div className="mb-4 bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">
+            Uploaded files ({uploads.length})
+          </div>
+          <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+            {uploads.map(u => (
+              <li key={u.id} className="flex items-center justify-between py-1.5 gap-3">
+                <div className="min-w-0">
+                  <span className="text-[13px] font-mono text-gray-700 dark:text-gray-200 truncate block">{u.filename}</span>
+                  <span className="text-[11px] text-gray-400">
+                    {(u.kind || '').replace('trackman_', 'TrackMan ').replace('blast', 'Blast Motion')} · {u.rows} rows · {u.uploaded}
+                  </span>
+                </div>
+                <button onClick={() => deleteUpload(u)} disabled={busy}
+                  className="shrink-0 text-[12px] font-semibold text-rose-600 hover:text-rose-700 border border-rose-200 dark:border-rose-900 rounded-lg px-2.5 py-1 disabled:opacity-50">
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {uploadLog.length > 0 && (
         <div className="mb-4 rounded-lg bg-gray-50 dark:bg-gray-900/40 ring-1 ring-gray-200 dark:ring-gray-700 px-3 py-2">
           {uploadLog.map((l, i) => <div key={i} className="text-[12px] text-gray-600 dark:text-gray-300 font-mono">{l}</div>)}
