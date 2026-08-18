@@ -15,6 +15,7 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from psycopg2.extras import execute_values
+from pydantic import BaseModel
 
 from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
@@ -165,6 +166,32 @@ def _ingest(cur, owner, parsed, filename):
             "pitches_added": inserted, "duplicates_skipped": skipped}
 
 
+SESSION_TYPES = ("game", "scrimmage", "intrasquad", "bp")
+
+
+class SessionTypePatch(BaseModel):
+    session_type: str
+
+
+@router.patch("/trackman/sessions/{session_id}/type")
+def set_session_type(session_id: int, body: SessionTypePatch, owner: str = Depends(_gate)):
+    """Reclassify a session (the auto-detector can't tell a scrimmage vs an
+    intrasquad, and mis-coded games happen). Affects every view's context
+    filter immediately."""
+    st = (body.session_type or "").strip().lower()
+    if st not in SESSION_TYPES:
+        raise HTTPException(status_code=400,
+                            detail=f"session_type must be one of {', '.join(SESSION_TYPES)}.")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE tm_sessions SET session_type = %s WHERE id = %s AND owner_user_id = %s",
+                    (st, session_id, owner))
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        conn.commit()
+    return {"status": "ok", "session_type": st}
+
+
 # ── Reads ────────────────────────────────────────────────────────
 
 def _date_clause(date_from, date_to):
@@ -178,10 +205,10 @@ def _date_clause(date_from, date_to):
 
 def _context_clause(context):
     """WHERE fragment for the session-type filter every view shares."""
-    if context in ("game", "scrimmage", "bp"):
+    if context in ("game", "scrimmage", "intrasquad", "bp"):
         return " AND s.session_type = %s", [context]
-    if context == "live":  # game + scrimmage (anything with pitch calls)
-        return " AND s.session_type IN ('game','scrimmage')", []
+    if context == "live":  # anything with pitch calls
+        return " AND s.session_type IN ('game','scrimmage','intrasquad')", []
     return "", []
 
 
@@ -951,7 +978,6 @@ def trackman_catching(owner: str = Depends(_gate)):
 
 # ── Staff notes + Coach Board insights ───────────────────────────
 
-from pydantic import BaseModel
 
 
 class SessionNotes(BaseModel):

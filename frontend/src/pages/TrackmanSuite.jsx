@@ -29,6 +29,7 @@ const PITCH_COLORS = {
 const TYPE_META = {
   game: { label: 'Game', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
   scrimmage: { label: 'Scrimmage', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' },
+  intrasquad: { label: 'Intrasquad', cls: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300' },
   bp: { label: 'BP', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' },
 }
 
@@ -190,6 +191,15 @@ function OverviewTab({ overview, refetch, onReview }) {
     }
   }
 
+  async function reclassifySession(id, session_type) {
+    await fetch(`/api/v1/trackman/sessions/${id}/type`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({ session_type }),
+    })
+    refetch()
+  }
+
   async function removeSession(id) {
     if (!confirm('Delete this session and all its pitches?')) return
     await fetch(`/api/v1/trackman/sessions/${id}`, { method: 'DELETE', headers: await authHeaders() })
@@ -207,7 +217,7 @@ function OverviewTab({ overview, refetch, onReview }) {
           ['Sessions', totals.sessions],
           ['Tracked pitches', (totals.pitches || 0).toLocaleString()],
           ['Balls in play', (totals.bbe || 0).toLocaleString()],
-          ['Games / Scrim / BP', `${totals.by_type?.game || 0} / ${totals.by_type?.scrimmage || 0} / ${totals.by_type?.bp || 0}`],
+          ['Game / Scrim / Intra / BP', `${totals.by_type?.game || 0} / ${totals.by_type?.scrimmage || 0} / ${totals.by_type?.intrasquad || 0} / ${totals.by_type?.bp || 0}`],
         ].map(([label, value]) => (
           <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-4 py-3">
             <div className="text-2xl font-bold text-portal-purple dark:text-gray-100 tabular-nums leading-none">{value}</div>
@@ -272,7 +282,18 @@ function OverviewTab({ overview, refetch, onReview }) {
                   return (
                     <tr key={s.id}>
                       <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-gray-200">{s.session_date || '–'}</td>
-                      <td className="px-2 py-2"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${t.cls}`}>{t.label}</span></td>
+                      <td className="px-2 py-2">
+                        {/* reclassify in place: the auto-detector can't tell a
+                            scrimmage from an intrasquad */}
+                        <select value={s.session_type || 'scrimmage'}
+                          onChange={e => reclassifySession(s.id, e.target.value)}
+                          className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border-0 cursor-pointer appearance-none ${t.cls}`}>
+                          <option value="game">Game</option>
+                          <option value="scrimmage">Scrimmage</option>
+                          <option value="intrasquad">Intrasquad</option>
+                          <option value="bp">BP</option>
+                        </select>
+                      </td>
                       <td className="px-2 py-2 text-gray-500 dark:text-gray-400">
                         {s.session_type === 'bp' ? (s.stadium || 'BP') : `${s.away_team || '?'} @ ${s.home_team || '?'}`}
                       </td>
@@ -298,7 +319,7 @@ function OverviewTab({ overview, refetch, onReview }) {
 
 // ── Pitching ─────────────────────────────────────────────────────
 
-const CONTEXTS = [['live', 'Games + Scrimmages'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['all', 'Everything']]
+const CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['all', 'Everything']]
 
 function PitchingTab({ onOpenLab, teamCtx }) {
   const [context, setContext] = useState('live')
@@ -418,7 +439,7 @@ function HittingTab({ teamCtx }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Live = games + scrimmages. Transfer gap = live hard-hit% minus BP hard-hit% (negative means the BP swing isn't carrying into games).
+          Live = games, scrimmages, and intrasquads. Transfer gap = live hard-hit% minus BP hard-hit% (negative means the BP swing isn't carrying into games).
         </p>
         <select value={ptype} onChange={e => setPtype(e.target.value)}
           className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-sm">
