@@ -14,6 +14,7 @@ re-downloads is always safe. See TRACKMAN_SUITE_DESIGN.md for the roadmap.
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from psycopg2.extras import execute_values
 
 from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
@@ -103,7 +104,9 @@ async def upload_trackman(
                 text = raw.decode("utf-8-sig", errors="replace")
                 parsed = parse_text(text, f.filename or "upload.csv")
                 results.append(_ingest(cur, owner, parsed, f.filename or "upload.csv"))
+                conn.commit()   # per-file: a dropped connection keeps finished files
             except Exception as e:  # noqa: BLE001 — per-file, don't abort the batch
+                conn.rollback()
                 errors.append({"file": f.filename, "error": str(e)})
         # Auto-classify with the site's shape classifier (per pitcher, vs their
         # own fastball) so mis-tagged pitches never corrupt the Stuff grades.
@@ -133,17 +136,21 @@ def _ingest(cur, owner, parsed, filename):
         session_ids[gid] = cur.fetchone()["id"]
 
     cols = ", ".join(_PITCH_FIELDS)
-    ph = ", ".join(["%s"] * (len(_PITCH_FIELDS) + 2))
+    # One batched statement per file. The old per-pitch INSERT was a network
+    # round-trip per row — a multi-file upload ran for minutes and the proxy
+    # 504'd at 60s (Nate, 2026-08-18). RETURNING 1 counts actual inserts so
+    # the dedupe report stays accurate.
+    rows = [tuple([owner, session_ids[p["game_id"]]] + [p.get(c) for c in _PITCH_FIELDS])
+            for p in parsed["pitches"]]
     inserted = skipped = 0
-    for p in parsed["pitches"]:
-        vals = [owner, session_ids[p["game_id"]]] + [p.get(c) for c in _PITCH_FIELDS]
-        cur.execute(
+    if rows:
+        returned = execute_values(
+            cur,
             f"""INSERT INTO tm_pitches (owner_user_id, session_id, {cols})
-                VALUES ({ph}) ON CONFLICT (owner_user_id, pitch_uid) DO NOTHING""",
-            vals,
-        )
-        inserted += cur.rowcount
-        skipped += 1 - cur.rowcount
+                VALUES %s ON CONFLICT (owner_user_id, pitch_uid) DO NOTHING RETURNING 1""",
+            rows, page_size=500, fetch=True)
+        inserted = len(returned)
+        skipped = len(rows) - inserted
 
     # Refresh session counts from what's actually stored
     for gid, sid in session_ids.items():

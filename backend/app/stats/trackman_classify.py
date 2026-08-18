@@ -79,7 +79,14 @@ def reclassify_owner(cur, owner, pitchers=None):
             classified += 1 if new else 0
             if new != r["class_pitch_type"]:
                 changes.append((new, r["id"]))
-        for new, pid in changes:
-            cur.execute("UPDATE tm_pitches SET class_pitch_type = %s WHERE id = %s", (new, pid))
+        if changes:
+            # Batched: the per-row UPDATE loop was a round-trip per changed
+            # pitch and dominated large uploads.
+            from psycopg2.extras import execute_values
+            execute_values(cur, """
+                UPDATE tm_pitches AS t SET class_pitch_type = v.new
+                FROM (VALUES %s) AS v(new, id)
+                WHERE t.id = v.id
+            """, changes, page_size=500)
             updated += 1
     return classified, updated
