@@ -1299,7 +1299,7 @@ def trackman_batter_detail(
             f"""SELECT COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                        p.pitch_call, p.is_swing, p.is_whiff, p.is_contact, p.is_chase, p.is_in_zone,
                        p.plate_loc_height, p.plate_loc_side, p.balls, p.strikes,
-                       p.pitcher_throws, p.exit_speed, p.launch_angle, p.distance,
+                       p.pitcher_throws, p.batter_side, p.exit_speed, p.launch_angle, p.distance,
                        p.direction, p.bearing, p.play_result, p.tagged_hit_type,
                        p.k_or_bb, p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        s.session_type, s.session_date, s.id AS session_id
@@ -1360,6 +1360,8 @@ def trackman_batter_detail(
         else:
             o = "Other"  # PA didn't end in this filtered slice
         pas.append({"outcome": o, "ev": x["exit_speed"], "la": x["launch_angle"],
+                    "direction": x.get("direction"),
+                    "side": (x.get("batter_side") or "")[:1] or None,
                     "play_result": x["play_result"]})
     xstats = batter_xstats(pas)
 

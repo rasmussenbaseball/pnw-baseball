@@ -76,32 +76,57 @@ def _interp(grid, ev, la):
 # 2026-08-19 session notes (Newton logistic on [1, logit(grid), EV]).
 import math as _math
 
-CAL_A, CAL_B, CAL_C = 0.0484, 1.1007, -0.2190
+# v2 (spray-aware, fit 2026-08-19 on the same 1,168 BBE): Direction +
+# BatterSide add what EV/LA can't see — where the ball went. Fitted
+# effects, all physically sensible: opposite-field GROUNDERS sneak
+# through (+) while pulled grounders die at positioned infielders;
+# AIR balls into the gaps (|direction| near 22 degrees) drop (+0.65,
+# the strongest spray term); pulled air carries for damage. Pitches
+# without direction (or an unknown batter side) fall back to the
+# spray-neutral surface — the model was fit with those rows zeroed,
+# so the fallback is exact, not an approximation.
+#   z = A + B*logit(p_grid) + C*(EV-90)/10
+#       + D*gb*adj + E*gb*|dir|/45 + F*air*gap + G*air*adj
+#   adj = (direction/45) signed so PULL is negative for both sides.
+CAL_A, CAL_B, CAL_C = -0.197, 1.052, -0.204
+CAL_GB_PULL, CAL_GB_LINE, CAL_AIR_GAP, CAL_AIR_PULL = 0.221, 0.240, 0.654, -0.450
 
 
-def _calibrate(p_grid, ev):
+def _spray_terms(la, direction, side):
+    if direction is None or side not in ("R", "L"):
+        return 0.0
+    adj = (direction / 45.0) * (1.0 if side == "R" else -1.0)
+    absd = min(abs(direction), 45.0) / 45.0
+    gap = max(0.0, 1.0 - abs(absd * 45.0 - 22.5) / 22.5)
+    if la < 10:   # ground balls
+        return CAL_GB_PULL * adj + CAL_GB_LINE * absd
+    return CAL_AIR_GAP * gap + CAL_AIR_PULL * adj
+
+
+def _calibrate(p_grid, ev, la, direction=None, side=None):
     p = max(0.005, min(0.98, p_grid))
-    z = CAL_A + CAL_B * _math.log(p / (1 - p)) + CAL_C * (ev - 90) / 10.0
+    z = (CAL_A + CAL_B * _math.log(p / (1 - p)) + CAL_C * (ev - 90) / 10.0
+         + _spray_terms(la, direction, side))
     return 1.0 / (1.0 + _math.exp(-z))
 
 
-def xba(ev, la):
-    return _calibrate(_interp(XBA, ev, la), ev)
+def xba(ev, la, direction=None, side=None):
+    return _calibrate(_interp(XBA, ev, la), ev, la, direction, side)
 
 
-def xtb(ev, la):
+def xtb(ev, la, direction=None, side=None):
     raw_ba = _interp(XBA, ev, la)
     raw_tb = _interp(XTB, ev, la)
-    ratio = _calibrate(raw_ba, ev) / max(raw_ba, 1e-6)
+    ratio = _calibrate(raw_ba, ev, la, direction, side) / max(raw_ba, 1e-6)
     return raw_tb * ratio
 
 
-def xwobacon(ev, la):
+def xwobacon(ev, la, direction=None, side=None):
     """Contact wOBA from the xBA/xTB surfaces using linear weights
     (0.89 1B, 1.27 2B, 1.62 3B, 2.10 HR). Approximated from xBA and
     xTB: extra bases beyond first are valued at the marginal weights."""
-    ba = xba(ev, la)
-    tb = xtb(ev, la)
+    ba = xba(ev, la, direction, side)
+    tb = xtb(ev, la, direction, side)
     extra = max(0.0, tb - ba)  # expected bases beyond singles
     return 0.89 * ba + 0.40 * extra
 
@@ -137,7 +162,7 @@ def batter_xstats(pas):
             sf += 1
             # sac flies keep their contact value in xwOBA's denominator
             if p.get("ev") is not None and p.get("la") is not None:
-                s_xwc += xwobacon(p["ev"], p["la"])
+                s_xwc += xwobacon(p["ev"], p["la"], p.get("direction"), p.get("side"))
                 tracked += 1
             bip += 1
             continue
@@ -148,9 +173,10 @@ def batter_xstats(pas):
         bip += 1
         pr = p.get("play_result")
         if p.get("ev") is not None and p.get("la") is not None:
-            s_xba += xba(p["ev"], p["la"])
-            s_xtb += xtb(p["ev"], p["la"])
-            s_xwc += xwobacon(p["ev"], p["la"])
+            d, sd = p.get("direction"), p.get("side")
+            s_xba += xba(p["ev"], p["la"], d, sd)
+            s_xtb += xtb(p["ev"], p["la"], d, sd)
+            s_xwc += xwobacon(p["ev"], p["la"], d, sd)
             tracked += 1
         else:  # untracked: use the actual outcome so coverage gaps don't bias
             s_xba += RESULT_BA.get(pr, 0)
