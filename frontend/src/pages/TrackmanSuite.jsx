@@ -626,7 +626,7 @@ function PctlBar({ label, value, pctl, unit = '' }) {
 
 // Movement plot, catcher's view: HB on x (arm-side +), IVB on y.
 // Dots are clickable when onPick is provided (per-pitch re-tagging).
-function MovementPlot({ pitches, onPick, selectedId }) {
+function MovementPlot({ pitches, onPick, selectedId, arm }) {
   const W = 300, H = 300, R = 25 // inches range
   const sx = (hb) => W / 2 + (hb / R) * (W / 2 - 16)
   const sy = (ivb) => H / 2 - (ivb / R) * (H / 2 - 16)
@@ -635,6 +635,21 @@ function MovementPlot({ pitches, onPick, selectedId }) {
     if (p.horz_break == null || p.ivb == null) return
     ;(byType[p.ptype] = byType[p.ptype] || []).push(p)
   })
+  // Arm-slot axis: the movement direction the arm angle predicts. Over the
+  // top -> pure ride (straight up); sidearm -> pure arm-side run. Fastballs
+  // should live near this line; distance OFF it = seam/cut effects the
+  // slot alone doesn't explain.
+  let axis = null
+  if (arm?.arm_angle != null) {
+    const fbTypes = ['Fastball', 'Four-Seam', 'Sinker']
+    let fb = pitches.filter(p => fbTypes.includes(p.ptype) && p.horz_break != null)
+    if (!fb.length) fb = pitches.filter(p => p.horz_break != null)
+    if (fb.length) {
+      const sign = fb.reduce((a, p) => a + p.horz_break, 0) >= 0 ? 1 : -1
+      const th = (arm.arm_angle * Math.PI) / 180
+      axis = { x: sign * Math.cos(th), y: Math.sin(th) }
+    }
+  }
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
       {[-20, -10, 10, 20].map(v => (
@@ -645,6 +660,17 @@ function MovementPlot({ pitches, onPick, selectedId }) {
       ))}
       <line x1={sx(0)} y1="8" x2={sx(0)} y2={H - 8} stroke="currentColor" className="text-gray-300 dark:text-gray-500" strokeWidth="1.5" />
       <line x1="8" y1={sy(0)} x2={W - 8} y2={sy(0)} stroke="currentColor" className="text-gray-300 dark:text-gray-500" strokeWidth="1.5" />
+      {axis && (
+        <g>
+          <line x1={sx(-axis.x * R)} y1={sy(-axis.y * R)} x2={sx(axis.x * R)} y2={sy(axis.y * R)}
+            stroke="#8b5cf6" strokeWidth="1.5" strokeDasharray="7 5" opacity="0.55" />
+          <text x={sx(axis.x * R * 0.8)} y={sy(axis.y * R * 0.8) - 7} textAnchor="middle"
+            fontSize="8.5" fontWeight="700" fill="#8b5cf6" opacity="0.9">
+            arm slot ~{arm.arm_angle}°
+          </text>
+          <title>Expected fastball movement axis from the arm angle — distance off this line is movement the slot alone doesn't explain (seam effects, cut, sink)</title>
+        </g>
+      )}
       {Object.entries(byType).map(([t, ps]) => ps.map((p, i) => (
         <circle key={t + i} cx={sx(Math.max(-R, Math.min(R, p.horz_break)))} cy={sy(Math.max(-R, Math.min(R, p.ivb)))}
           r={p.pitch_id === selectedId ? 5 : 3} fill={cFor(t)}
@@ -1069,7 +1095,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
                 <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Movement (catcher's view)</span>
                 <span className="text-[10px] text-gray-400">Click a dot to re-tag a pitch</span>
               </div>
-              <MovementPlot pitches={data.pitches} selectedId={picked?.pitch_id}
+              <MovementPlot pitches={data.pitches} selectedId={picked?.pitch_id} arm={data.arm}
                 onPick={(p) => setPicked(picked?.pitch_id === p.pitch_id ? null : p)} />
               <div className="flex flex-wrap gap-2 mt-1">
                 {Object.keys(byType).map(t => (
@@ -1107,7 +1133,10 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
               )}
               <p className="text-[10px] text-gray-400 mt-2">
                 Types come from the site's shape classifier (each pitch judged vs this arm's own fastball),
-                not the scoreboard tagger. Overrides win everywhere.
+                then consolidated against this pitcher's own movement profile so near-identical clusters
+                read as one pitch. Overrides win everywhere. The dashed line is the arm-slot axis: where
+                the release angle says the fastball should move — distance off it is seam-and-grip movement
+                the slot alone doesn't explain.
               </p>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
