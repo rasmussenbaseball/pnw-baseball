@@ -17,7 +17,7 @@ const SECTIONS = [
     ['Shadow%', "How often a pitcher's pitches land in the shadow band — an edge-living score. Heart% is the same idea for the middle."],
   ]],
   ['Pitching', [
-    ['Stuff', 'Physical nastiness of the pitch: velo, movement, spin, extension, and separation off the fastball, graded by the site\'s WCL-trained model. 100 = average for the pitch type, about 25 points per standard deviation. Says nothing about command.'],
+    ['Stuff', 'Physical nastiness of the pitch: velo, movement, spin, extension, and separation off the fastball, graded by the site\'s trained model and re-centered on your own corpus, so 100 = the average pitch of that type in your data and every pitch type shares one scale. Says nothing about command.'],
     ['Location+', 'Command score: edge presence plus pitch-type height targets. 100 = average.'],
     ['CSW%', 'Called strikes + swinging strikes, per pitch. The quickest single pitch-quality check.'],
     ['Whiff%', 'Misses per swing. Chase% = swings at pitches outside the zone, per out-of-zone pitch.'],

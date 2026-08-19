@@ -496,7 +496,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                     <th className="px-4 py-1.5">Pitch</th>
-                    <th className="px-2 py-1.5 text-right" title="Site-standard Stuff (WCL-trained TrackMan model, same as the Rapsodo Lab). Inputs are PHYSICAL traits only: velo, movement, spin, extension, and separation off the fastball. Whiff+chase is what the model was trained to predict, never an input. 100 = average for the pitch type, ~25 per SD; elite shapes reach the 150s-170s; not comparable across types.">Stuff</th>
+                    <th className="px-2 py-1.5 text-right" title="Site-standard Stuff: PHYSICAL traits only (velo, movement, spin, extension, separation off the fastball), whiff+chase never an input. Re-centered on YOUR corpus per pitch type, so 100 = the average pitch of that type in your data and every type shares one scale.">Stuff</th>
                     <th className="px-2 py-1.5 text-right" title="Site-standard Location+: edge presence + pitch-type height targets (shared with the Rapsodo Lab). 100 = average.">Loc+</th>
                     <th className="px-2 py-1.5 text-right">Use%</th>
                     <th className="px-2 py-1.5 text-right">Velo</th>
@@ -2194,7 +2194,7 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs }) {
         <thead>
           <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
             <th className="px-4 py-1.5">Pitch</th>
-            <th className="px-2 py-1.5 text-right" title="Site-standard Stuff model: physical traits only, 100 = average for the type">Stuff</th>
+            <th className="px-2 py-1.5 text-right" title="Site-standard Stuff: physical traits only, re-centered on your corpus so 100 = the average pitch of this type in your data">Stuff</th>
             <th className="px-2 py-1.5 text-right" title="Location+ command score, 100 = average">Loc+</th>
             <th className="px-2 py-1.5 text-right">N</th>
             <th className="px-2 py-1.5 text-right">Use%</th>
