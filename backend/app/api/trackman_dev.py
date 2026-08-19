@@ -101,6 +101,7 @@ def dev_notes(
         "n": 0, "types": defaultdict(lambda: defaultdict(float)),
         "sides": defaultdict(lambda: defaultdict(float)),
         "first_n": 0, "first_k": 0, "twok_n": 0, "twok_end": 0, "twok_chase_n": 0, "twok_oz": 0,
+        "twok_fb": 0,
         "behind_n": 0, "behind_fb": 0, "behind_csw": 0,
         "rh": [], "rs": [], "throws": None,
     })
@@ -126,6 +127,11 @@ def dev_notes(
         if r["is_swing"]:
             t["sw"] += 1
             t["wh"] += 1 if r["is_whiff"] else 0
+        if r["is_in_zone"] is True:
+            t["z_in"] += 1
+            t["z_n"] += 1
+        elif r["is_in_zone"] is False:
+            t["z_n"] += 1
         if r["pitch_call"] in ("StrikeCalled", "StrikeSwinging"):
             t["csw"] += 1
         if r["exit_speed"] is not None:
@@ -153,6 +159,8 @@ def dev_notes(
                     a["first_k"] += 1
             if st == 2:
                 a["twok_n"] += 1
+                if (r["ptype"] or "") in FB_SET:
+                    a["twok_fb"] += 1
                 if r["k_or_bb"] == "Strikeout":
                     a["twok_end"] += 1
                 if r["is_in_zone"] is False:
@@ -231,6 +239,10 @@ def dev_notes(
                 if r["is_swing"]:
                     td["sw"] += 1
                     td["wh"] += 1 if r["is_whiff"] else 0
+                if r["is_in_zone"] is False:
+                    td["oz"] += 1
+                    if r["is_chase"]:
+                        td["ch"] += 1
         if r["exit_speed"] is not None:
             ev = float(r["exit_speed"])
             h["evs"].append(ev)
@@ -251,6 +263,12 @@ def dev_notes(
                     td["xw_s"] += xwobacon(ev, float(la), r["direction"] and float(r["direction"]),
                                            hand or None)
                     td["xw_n"] += 1
+                    td["la_s"] += float(la)
+                    td["la_n"] += 1
+                    if la < 10:
+                        td["gb"] += 1
+                    td["ev_s"] += ev
+                    td["ev_n"] += 1
     for r in bp:
         name = r["batter"]
         if not name or r["exit_speed"] is None:
@@ -271,6 +289,7 @@ def dev_notes(
         e_n = sum(t["ext_n"] for t in a["types"].values())
         if e_n >= 10:
             exts.append(sum(t["ext_s"] for t in a["types"].values()) / e_n)
+    swings_c = []
     for h in H.values():
         if h["seen"] < MIN_HITTER_N:
             continue
@@ -280,8 +299,10 @@ def dev_notes(
             evs_c.append(sum(h["evs"]) / len(h["evs"]))
         if h["twok_sw"] >= 10:
             c2ks.append(h["twok_ct"] / h["twok_sw"])
+        swings_c.append(h["sw"] / h["seen"])
     chase_avg = (sum(chases) / len(chases)) if chases else 0.28
     c2k_avg = (sum(c2ks) / len(c2ks)) if c2ks else 0.75
+    swing_avg = (sum(swings_c) / len(swings_c)) if swings_c else 0.46
 
     dfs = trackman_defense(context="all", team=team, date_from=None, date_to=None,
                            season=season, owner=owner)
@@ -421,6 +442,80 @@ def dev_notes(
                     f"Extension {ext:.1f} ft ({_ord(pct)} percentile) — every foot down the mound is "
                     f"~1.5 mph of perceived velo. Stride/med-ball work is free velocity.", prio=58)
 
+        # ── deeper pitch design: secondary separations ──
+        ch = next((types[k] for k in ("ChangeUp", "Splitter") if k in types and types[k]["velo_n"] >= 10), None)
+        if fb and fb["velo_n"] >= 15 and ch is not None:
+            fbv = fb["velo_s"] / fb["velo_n"]
+            chv = ch["velo_s"] / ch["velo_n"]
+            sep = fbv - chv
+            if sep < 6:
+                add(e, "Pitch design",
+                    f"Changeup is too firm — only {sep:.1f} mph off the fastball (8-12 is the window). "
+                    f"Kill velocity without changing the arm: deeper grip, deaden the wrist, let it die.", prio=71)
+            elif fb["ivb_n"] and ch["ivb_n"]:
+                ivb_sep = fb["ivb_s"] / fb["ivb_n"] - ch["ivb_s"] / ch["ivb_n"]
+                if ivb_sep < 6:
+                    add(e, "Pitch design",
+                        f"The changeup only separates by speed — its shape mirrors the fastball "
+                        f"({ivb_sep:.0f}\" of drop separation). Kill spin / turn it over so it falls "
+                        f"off the fastball plane instead of just arriving late.", prio=67)
+        cb = types.get("Curveball")
+        if fb and fb["velo_n"] >= 15 and cb is not None and cb["velo_n"] >= 10:
+            gap = fb["velo_s"] / fb["velo_n"] - cb["velo_s"] / cb["velo_n"]
+            if gap >= 16:
+                add(e, "Pitch design",
+                    f"Curveball is {gap:.0f} mph off the fastball — at that speed gap hitters ID it "
+                    f"out of the hand. Power-curve intent: throw it HARDER with the same shape, even "
+                    f"at the cost of a few inches of break.", prio=65)
+
+        # command gap: a bat-misser he can't land
+        cmd = [(k, t["wh"] / t["sw"], t["z_in"] / t["z_n"]) for k, t in types.items()
+               if t["n"] >= 25 and t["sw"] >= 12 and t["z_n"] >= 20]
+        cmd = [c for c in cmd if c[1] >= 0.32 and c[2] <= 0.38]
+        if cmd:
+            k, w, z = max(cmd, key=lambda c: c[1])
+            add(e, "Command",
+                f"The {k.lower()} misses bats ({100*w:.0f}% whiff) but he can't land it "
+                f"({100*z:.0f}% zone) — its ceiling is pure command. Dial intent back to 80%, "
+                f"glove-side targets, earn the right to bury it.", prio=73)
+
+        # 2K finishing: throwing fastballs while a breaker misses bats
+        if a["twok_n"] >= 40:
+            fb2k = a["twok_fb"] / a["twok_n"]
+            brs = [(k, t["wh"] / t["sw"]) for k, t in types.items()
+                   if k in ("Slider", "Sweeper", "Curveball") and t["sw"] >= 20]
+            if fb2k >= 0.55 and brs:
+                bk2, bw2 = max(brs, key=lambda x: x[1])
+                if bw2 >= 0.30:
+                    add(e, "Usage",
+                        f"Finishing with fastballs ({100*fb2k:.0f}% of two-strike pitches) while the "
+                        f"{bk2.lower()} misses {100*bw2:.0f}% of swings. Flip the 2K script: breaker "
+                        f"off the edge is the out pitch.", prio=69)
+
+        # arsenal additions
+        offs = sum(t["n"] for k, t in a["types"].items() if k in ("ChangeUp", "Splitter"))
+        fb_ivb = (fb["ivb_s"] / fb["ivb_n"]) if fb and fb["ivb_n"] else None
+        if a["n"] >= 150 and offs / a["n"] < 0.05:
+            add(e, "Arsenal",
+                f"No offspeed in the mix ({100*offs/a['n']:.0f}% usage) — everything he throws spins "
+                f"the same direction. A changeup is the cheapest third dimension: same slot, kill the "
+                f"hand at release, 300 flat-grounds before it sees a game.", prio=72)
+        elif len(types) == 2:
+            sugg = ("a depth breaker (curveball) that tunnels off the ride"
+                    if fb_ivb is not None and fb_ivb >= 14
+                    else "a sweeper — it pairs naturally with a sinking fastball")
+            add(e, "Arsenal",
+                f"Two-pitch mix — fine in relief, a ceiling as a starter. The shape that fits this "
+                f"fastball is {sugg}.", prio=63)
+        else:
+            brk = [t for k, t in types.items() if k in ("Slider", "Sweeper", "Curveball")]
+            if (fb_ivb is not None and fb_ivb >= 14 and brk
+                    and all(t["ivb_n"] and t["ivb_s"] / t["ivb_n"] > -4 for t in brk)):
+                add(e, "Arsenal",
+                    f"Big-ride fastball ({fb_ivb:.0f}\") with no depth pitch under it — every breaker "
+                    f"stays on plane. A true downer (curveball or harder-depth slider) doubles what "
+                    f"the ride is worth up.", prio=64)
+
     # ── hitter rules ──
     for (name, tm), h in H.items():
         if h["seen"] < MIN_HITTER_N or (team and tm != team):
@@ -527,13 +622,71 @@ def dev_notes(
                 if w >= 0.38:
                     xw = td["xw_s"] / td["xw_n"] if td["xw_n"] >= 5 else None
                     holes.append((pt, w, xw, td["n"]))
+        noted_types = set()
         if holes:
             pt, w, xw, n = max(holes, key=lambda x: x[1])
+            noted_types.add(pt)
             dmg = (f" — but he DOES damage when he connects (.{int(round(xw*1000)):03d} xwOBAcon), so "
                    f"it's pitch selection, not the swing" if xw is not None and xw >= 0.36 else
                    ". Recognition work: machine rounds, spin-ID off the hand")
             add(e, "Pitch recognition",
                 f"Whiffing {100*w:.0f}% of swings vs the {pt.lower()} ({n:.0f} seen){dmg}.", prio=74)
+
+        # ── what he hits vs what he doesn't ──
+        typed = [(pt, td) for pt, td in h["types"].items() if td["xw_n"] >= 8]
+        overall_sw = h["sw"] / h["seen"] if h["seen"] else 0
+        if typed:
+            bpt, btd = max(typed, key=lambda kv: kv[1]["xw_s"] / kv[1]["xw_n"])
+            bxw = btd["xw_s"] / btd["xw_n"]
+            if bxw >= 0.40:
+                bev = btd["ev_s"] / btd["ev_n"] if btd["ev_n"] else None
+                add(e, "Pitch plan",
+                    f"Feasts on the {bpt.lower()}: .{int(round(bxw*1000)):03d} xwOBAcon"
+                    + (f" at {bev:.0f} mph" if bev else "")
+                    + f" on {btd['xw_n']:.0f} in play. That's the pitch to hunt in plus counts.",
+                    kind="strength", prio=72)
+                b_swing = btd["sw"] / btd["n"] if btd["n"] else 0
+                if btd["n"] >= 30 and b_swing <= overall_sw - 0.08:
+                    add(e, "Pitch plan",
+                        f"Passive against his best pitch — swings at only {100*b_swing:.0f}% of "
+                        f"{bpt.lower()}s vs {100*overall_sw:.0f}% overall. He's taking the pitch he "
+                        f"crushes; green-light it, especially early.", prio=71)
+            wpt, wtd = min(typed, key=lambda kv: kv[1]["xw_s"] / kv[1]["xw_n"])
+            wxw = wtd["xw_s"] / wtd["xw_n"]
+            if wxw <= 0.28 and wpt not in noted_types and wtd["la_n"] >= 8:
+                wla = wtd["la_s"] / wtd["la_n"]
+                gbr = wtd["gb"] / wtd["la_n"]
+                if gbr >= 0.55 or wla < 5:
+                    add(e, "Pitch plan",
+                        f"Beats the {wpt.lower()} into the ground: {wla:.0f}° average launch, "
+                        f"{100*gbr:.0f}% grounders, .{int(round(wxw*1000)):03d} xwOBAcon. Either "
+                        f"elevate it (tee work catching it deeper/under) or stop offering at it "
+                        f"below the zone.", prio=70)
+                else:
+                    add(e, "Pitch plan",
+                        f"Produces just .{int(round(wxw*1000)):03d} xwOBAcon vs the {wpt.lower()} "
+                        f"({wtd['xw_n']:.0f} in play) — dedicated machine work on that shape.", prio=62)
+
+        # chase vs spin specifically
+        br_oz = sum(td["oz"] for k, td in h["types"].items() if k in ("Slider", "Sweeper", "Curveball"))
+        br_ch = sum(td["ch"] for k, td in h["types"].items() if k in ("Slider", "Sweeper", "Curveball"))
+        fb_oz = sum(td["oz"] for k, td in h["types"].items() if k in ("Fastball", "Sinker", "Cutter"))
+        fb_ch = sum(td["ch"] for k, td in h["types"].items() if k in ("Fastball", "Sinker", "Cutter"))
+        if br_oz >= 20 and fb_oz >= 15:
+            brr, fbr = br_ch / br_oz, fb_ch / fb_oz
+            if brr >= fbr + 0.12:
+                add(e, "Swing decisions",
+                    f"Expands specifically against spin: chases {100*brr:.0f}% of breaking balls off "
+                    f"the plate vs {100*fbr:.0f}% of fastballs. Spin-recognition rounds — call the "
+                    f"pitch out loud before swing/take decisions.", prio=75)
+
+        # swing rate suppressing on-base skills
+        if h["seen"] >= 80 and overall_sw >= swing_avg + 0.07 and h["oz"] >= 15 \
+                and h["ch"] / h["oz"] >= chase_avg:
+            add(e, "Approach",
+                f"The swing rate is suppressing his on-base skills: offers at {100*overall_sw:.0f}% "
+                f"of pitches (corpus {100*swing_avg:.0f}%). Walks live in the takes he isn't making — "
+                f"strike-one can be a take without costing him anything.", prio=73)
 
         # transfer gap
         if h["bp_evn"] >= 15 and bbe >= 15:
@@ -581,6 +734,23 @@ def dev_notes(
             add(e, "Defense",
                 f"Converting only {r_made}/{r_opp} routine plays — the easy ones are the leak. "
                 f"Boring-glove volume: routine reps at game tempo until they're automatic.", prio=70)
+
+    # position-vs-position: same glove, different spots (Fahland: good SS, rough 3B)
+    pos_rows = defaultdict(list)
+    for pos, lst in (dfs.get("by_position") or {}).items():
+        for row in lst:
+            if row["opps"] >= 8:
+                pos_rows[row["player"]].append((pos, row["oae"], row["opps"]))
+    for name, lst in pos_rows.items():
+        if len(lst) < 2 or name not in players:
+            continue
+        best = max(lst, key=lambda x: x[1])
+        worst = min(lst, key=lambda x: x[1])
+        if best[1] >= 0 and worst[1] <= -1.5:
+            add(players[name], "Defense",
+                f"Two different defenders depending on the spot: {best[1]:+.1f} OAE at {best[0]} "
+                f"({best[2]} chances) vs {worst[1]:+.1f} at {worst[0]} ({worst[2]}). The glove plays "
+                f"at {best[0]} — treat {worst[0]} innings as development reps, not a default.", prio=77)
 
     # ── catcher rules ──
     # per-edge corpus baselines: umpires corpus-wide call some edges tighter
@@ -634,7 +804,7 @@ def dev_notes(
             pts.append({"area": "Profile", "kind": "focus", "prio": 10,
                         "note": "Balanced profile — nothing flags hard in the tracked data. "
                                 "Development here is volume: more tracked live reps to sharpen the picture."})
-        e["points"] = pts[:6]
+        e["points"] = pts[:7]
         e["roles"] = list(dict.fromkeys(e["roles"]))
         out.append(e)
 
