@@ -1160,6 +1160,8 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
             </div>
           </div>
 
+          <PitcherZoneMaps pitches={data.pitches} />
+
           <div className="grid md:grid-cols-2 gap-3">
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Velocity by session</div>
@@ -1282,6 +1284,130 @@ function ZoneRateMap({ pitches, num, den, title }) {
         <rect x={zx(-0.83)} y={zy(3.5)} width={zx(0.83) - zx(-0.83)} height={zy(1.5) - zy(3.5)}
           fill="none" stroke="currentColor" className="text-gray-600 dark:text-gray-200" strokeWidth="1.5" />
       </svg>
+    </div>
+  )
+}
+
+// 5x5 zone map colored by an average VALUE per bin (e.g. exit velo).
+function ZoneValueMap({ pitches, value, title, lo, hi, dec = 0, minN = 3 }) {
+  const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2, N = 5
+  const sums = Array.from({ length: N }, () => Array(N).fill(0))
+  const ns = Array.from({ length: N }, () => Array(N).fill(0))
+  pitches.forEach(p => {
+    const v = value(p)
+    if (v == null || p.plate_loc_side == null || p.plate_loc_height == null) return
+    const cx = Math.min(N - 1, Math.max(0, Math.floor(((p.plate_loc_side - XMIN) / (XMAX - XMIN)) * N)))
+    const cy = Math.min(N - 1, Math.max(0, Math.floor(((YMAX - p.plate_loc_height) / (YMAX - YMIN)) * N)))
+    sums[cy][cx] += v; ns[cy][cx] += 1
+  })
+  const W = 150, H = 150, cw = W / N, ch = H / N
+  const zx = (v) => ((v - XMIN) / (XMAX - XMIN)) * W
+  const zy = (v) => ((YMAX - v) / (YMAX - YMIN)) * H
+  const mix = (t) => {  // blue #3661ad -> red #d22d49
+    const c = (a, b) => Math.round(a + (b - a) * t)
+    return `rgb(${c(54, 210)},${c(97, 45)},${c(173, 73)})`
+  }
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">{title}</div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded">
+        {ns.map((row, y) => row.map((n, x) => {
+          if (n < minN) return <rect key={`${x}${y}`} x={x * cw} y={y * ch} width={cw} height={ch} fill="currentColor" className="text-gray-100 dark:text-gray-700" opacity="0.4" />
+          const avg = sums[y][x] / n
+          const t = Math.max(0, Math.min(1, (avg - lo) / (hi - lo)))
+          return (
+            <g key={`${x}${y}`}>
+              <rect x={x * cw} y={y * ch} width={cw} height={ch} fill={mix(t)} opacity={0.25 + 0.6 * Math.abs(t - 0.5) * 2} />
+              <text x={x * cw + cw / 2} y={y * ch + ch / 2 + 3} textAnchor="middle" fontSize="9"
+                fill="#fff" fontWeight="700">{avg.toFixed(dec)}</text>
+            </g>
+          )
+        }))}
+        <rect x={zx(-0.83)} y={zy(3.5)} width={zx(0.83) - zx(-0.83)} height={zy(1.5) - zy(3.5)}
+          fill="none" stroke="currentColor" className="text-gray-600 dark:text-gray-200" strokeWidth="1.5" />
+      </svg>
+    </div>
+  )
+}
+
+// 5x5 density map: where the pitches in this slice actually go.
+function ZoneDensityMap({ pitches, title }) {
+  const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2, N = 5
+  const ns = Array.from({ length: N }, () => Array(N).fill(0))
+  let total = 0
+  pitches.forEach(p => {
+    if (p.plate_loc_side == null || p.plate_loc_height == null) return
+    const cx = Math.min(N - 1, Math.max(0, Math.floor(((p.plate_loc_side - XMIN) / (XMAX - XMIN)) * N)))
+    const cy = Math.min(N - 1, Math.max(0, Math.floor(((YMAX - p.plate_loc_height) / (YMAX - YMIN)) * N)))
+    ns[cy][cx] += 1; total += 1
+  })
+  const max = Math.max(1, ...ns.flat())
+  const W = 150, H = 150, cw = W / N, ch = H / N
+  const zx = (v) => ((v - XMIN) / (XMAX - XMIN)) * W
+  const zy = (v) => ((YMAX - v) / (YMAX - YMIN)) * H
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">{title} <span className="text-gray-400 font-normal">({total})</span></div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded">
+        {ns.map((row, y) => row.map((n, x) => (
+          <g key={`${x}${y}`}>
+            <rect x={x * cw} y={y * ch} width={cw} height={ch} fill="#7c3aed" opacity={n ? 0.08 + 0.72 * (n / max) : 0} />
+            {n > 0 && total >= 20 && (
+              <text x={x * cw + cw / 2} y={y * ch + ch / 2 + 3} textAnchor="middle" fontSize="8.5"
+                fill={n / max > 0.45 ? '#fff' : '#7c3aed'} fontWeight="700">{Math.round(100 * n / total)}</text>
+            )}
+          </g>
+        )))}
+        <rect x={zx(-0.83)} y={zy(3.5)} width={zx(0.83) - zx(-0.83)} height={zy(1.5) - zy(3.5)}
+          fill="none" stroke="currentColor" className="text-gray-600 dark:text-gray-200" strokeWidth="1.5" />
+      </svg>
+    </div>
+  )
+}
+
+// Pitcher Lab: results + intent by plate location, with a local pitch-type
+// lens. All computed from the lab's fetched pitches (filters apply).
+function PitcherZoneMaps({ pitches }) {
+  const [sel, setSel] = useState('')
+  const types = useMemo(() => {
+    const c = {}
+    pitches.forEach(p => { if (p.ptype) c[p.ptype] = (c[p.ptype] || 0) + 1 })
+    return Object.entries(c).sort((a, b) => b[1] - a[1]).map(([t]) => t)
+  }, [pitches])
+  const ps = sel ? pitches.filter(p => p.ptype === sel) : pitches
+  const called = ps.filter(p => p.pitch_call)
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Development maps — results and intent by location</span>
+        <div className="flex gap-1 flex-wrap">
+          {['', ...types].map(t => (
+            <button key={t || 'all'} onClick={() => setSel(t)}
+              className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${
+                sel === t ? 'bg-portal-purple text-white ring-portal-purple'
+                  : 'bg-white dark:bg-gray-800 text-gray-500 ring-gray-200 dark:ring-gray-700'}`}>
+              {t || 'All pitches'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <ZoneRateMap pitches={called} title="Whiff% (of swings)"
+          den={(p) => p.is_swing} num={(p) => p.is_whiff} />
+        <ZoneRateMap pitches={called} title="CSW%"
+          den={() => true} num={(p) => p.pitch_call === 'StrikeCalled' || p.pitch_call === 'StrikeSwinging'} />
+        <ZoneValueMap pitches={ps} title="EV against" lo={72} hi={95}
+          value={(p) => p.exit_speed} />
+        <ZoneDensityMap pitches={called.filter(p => p.balls === 0 && p.strikes === 0)} title="0-0 pitches" />
+        <ZoneDensityMap pitches={called.filter(p => p.balls > p.strikes)} title="Behind in count" />
+        <ZoneDensityMap pitches={called.filter(p => p.strikes === 2)} title="Two strikes" />
+      </div>
+      <p className="text-[10px] text-gray-400 mt-2">
+        Left three: what happens where (misses generated, strikes stolen + swung through, damage taken).
+        Right three: where he actually goes when getting ahead, digging out, and finishing. Use the pitch
+        chips to check one offering — a slider whose whiffs live below the zone but whose 2K map sits
+        belt-high is a location fix, not a stuff problem.
+      </p>
     </div>
   )
 }
@@ -1411,19 +1537,33 @@ function HitterLabTab({ teamCtx }) {
 
           <CountResults pitches={pitches} mode="hitter" />
 
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
+              Development maps — decisions and damage by location (min 3 per cell)
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <ZoneRateMap pitches={pitches} title="Swing%"
+                den={(p) => p.pitch_call} num={(p) => p.is_swing} />
+              <ZoneRateMap pitches={pitches} title="Whiff% (of swings)"
+                den={(p) => p.is_swing} num={(p) => p.is_whiff} />
+              <ZoneValueMap pitches={pitches} title="EV on contact" lo={72} hi={95}
+                value={(p) => p.exit_speed} />
+              <ZoneRateMap pitches={pitches} title="Hard-hit% (of BBE)"
+                den={(p) => p.exit_speed != null} num={(p) => p.exit_speed >= 90} />
+              <ZoneRateMap pitches={pitches} title="Strikes taken looking"
+                den={(p) => p.pitch_call && !p.is_swing} num={(p) => p.pitch_call === 'StrikeCalled'} />
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2">
+              The first two are approach, the middle two are damage, the last is passivity — red cells
+              INSIDE the box on "strikes taken looking" are hittable pitches watched go by. Use the
+              vs-hand chips or date range above to focus any of these.
+            </p>
+          </div>
+
           <div className="grid md:grid-cols-2 gap-3">
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Spray (colored by EV)</div>
               <SprayChart pitches={bbe} />
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Swing decisions (rate per cell, min 3)</div>
-              <div className="grid grid-cols-2 gap-3">
-                <ZoneRateMap pitches={pitches} title="Swing%"
-                  den={() => true} num={(p) => p.is_swing} />
-                <ZoneRateMap pitches={pitches} title="Whiff% (of swings)"
-                  den={(p) => p.is_swing} num={(p) => p.is_whiff} />
-              </div>
             </div>
           </div>
         </div>
