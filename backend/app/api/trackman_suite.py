@@ -31,6 +31,15 @@ from ..stats.trackman_defense import (
 )
 from ..stats.trackman_runvalue import pitch_run_value, attack_zone
 
+# Pitches flagged as mistagged-pitcher (wrong name on the TrackMan tablet,
+# caught by release-point distance in trackman_classify.flag_mistags) are
+# excluded from every PITCHER-facing view. Batter views keep them — the
+# batter on the row is real regardless of whose name is on the mound.
+_NO_MISTAG = (" AND COALESCE(p.override_pitch_type, p.class_pitch_type,"
+              " p.tagged_pitch_type, p.auto_pitch_type) IS DISTINCT FROM 'Mistag'")
+_NO_MISTAG_BARE = (" AND COALESCE(override_pitch_type, class_pitch_type,"
+                   " tagged_pitch_type, auto_pitch_type) IS DISTINCT FROM 'Mistag'")
+
 
 def _rv_baseline(cur, owner, context):
     """Mean batter-perspective run value per priced pitch across the whole
@@ -636,9 +645,9 @@ def trackman_values(
         # Tracked pitch-level run values (live sessions) — shown alongside
         # the season-FIP pitching value, never summed into the total (they
         # overlap: same innings, two lenses).
-        cur.execute("""SELECT p.pitcher AS n, p.balls, p.strikes, p.pitch_call, p.play_result
+        cur.execute(f"""SELECT p.pitcher AS n, p.balls, p.strikes, p.pitch_call, p.play_result
                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                       WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
+                       WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
                          AND s.session_type IN ('game','scrimmage','intrasquad')""", (owner,))
         trv = {}
         _gsum, _gn = 0.0, 0
@@ -873,7 +882,7 @@ def trackman_pitching(
                            SUM(CASE WHEN p.exit_speed >= 90 THEN 1 ELSE 0 END) AS hard_hit,
                            SUM(CASE WHEN p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bbe
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                    WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
+                    WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
                       AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
                       {extra}{team_sql}
                     GROUP BY p.pitcher, p.pitcher_throws, p.pitcher_team,
@@ -917,7 +926,7 @@ def trackman_pitching(
                            p.plate_loc_side, p.plate_loc_height,
                            p.balls, p.strikes, p.pitch_call, p.play_result
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                    WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
+                    WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
                       AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
                       {extra}{team_sql}""",
                 [owner] + params + ([team] if team else []),
@@ -1145,7 +1154,7 @@ def trackman_pitcher_detail(
                        p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        s.session_date, s.id AS session_id
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                WHERE p.owner_user_id = %s AND p.pitcher = %s
+                WHERE p.owner_user_id = %s AND p.pitcher = %s{_NO_MISTAG}
                   AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
                   {extra}{team_sql}{conf_sql}
                 ORDER BY s.session_date, p.pitch_no""",
@@ -1162,7 +1171,7 @@ def trackman_pitcher_detail(
         cur.execute(
             f"""SELECT p.pitcher, COUNT(*) AS n, {cols}
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL {extra}
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG} {extra}
                 GROUP BY p.pitcher HAVING COUNT(*) >= 50""",
             [owner] + params,
         )
@@ -1363,6 +1372,8 @@ def trackman_leaderboards(
     hand = "pitcher_throws" if side == "pitching" else "batter_side"
     team_col = f"{who}_team"
     extra, params = _context_clause(context)
+    if side == "pitching":
+        extra += _NO_MISTAG
     team_sql = f" AND p.{team_col} = %s" if team else ""
     tparams = [team] if team else []
 
@@ -1692,7 +1703,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             raise HTTPException(status_code=404, detail="Session not found.")
 
         cur.execute(
-            """SELECT pitcher, pitcher_throws, pitcher_team, COUNT(*) AS pitches,
+            f"""SELECT pitcher, pitcher_throws, pitcher_team, COUNT(*) AS pitches,
                       COUNT(DISTINCT (inning, top_bottom, pa_of_inning)) AS bf,
                       AVG(rel_speed) AS velo, MAX(rel_speed) AS max_velo,
                       SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) AS whiffs,
@@ -1702,7 +1713,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
                       AVG(CASE WHEN is_in_zone THEN 1.0 WHEN is_in_zone IS FALSE THEN 0.0 END) AS zone,
                       AVG(exit_speed) AS ev_against,
                       SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bbe
-               FROM tm_pitches WHERE session_id = %s AND owner_user_id = %s AND pitcher IS NOT NULL
+               FROM tm_pitches WHERE session_id = %s AND owner_user_id = %s AND pitcher IS NOT NULL{_NO_MISTAG_BARE}
                GROUP BY pitcher, pitcher_throws, pitcher_team
                ORDER BY pitcher_team, COUNT(*) DESC""",
             (session_id, owner),
@@ -2091,7 +2102,7 @@ def trackman_insights(team: str | None = Query(None), owner: str = Depends(_gate
                        SUM(CASE WHEN p.is_swing THEN 1 ELSE 0 END) AS swings,
                        SUM(CASE WHEN p.is_whiff THEN 1 ELSE 0 END) AS whiffs
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
                   AND s.session_type <> 'bp'
                   AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL {team_p}
                 GROUP BY p.pitcher, p.pitcher_team, COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type)""",
@@ -2138,7 +2149,7 @@ def trackman_insights(team: str | None = Query(None), owner: str = Depends(_gate
             f"""SELECT p.pitcher, p.pitcher_team, COUNT(*) AS n,
                        AVG(CASE WHEN p.is_in_zone THEN 1.0 WHEN p.is_in_zone IS FALSE THEN 0.0 END) AS zone
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL AND s.session_type <> 'bp' {team_p}
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG} AND s.session_type <> 'bp' {team_p}
                 GROUP BY p.pitcher, p.pitcher_team HAVING COUNT(*) >= 50""",
             [owner] + tp,
         )
