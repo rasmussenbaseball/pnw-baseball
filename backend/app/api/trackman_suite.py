@@ -27,7 +27,7 @@ from ..stats.rapsodo_tunnel import tunnel_pairs
 from .auth import require_tier
 
 from fastapi import Request as _Request
-from ._tracking_share import resolve_workspace
+from ._tracking_share import resolve_workspace, ensure_can_upload
 
 router = APIRouter(tags=["trackman-suite"])
 
@@ -38,6 +38,12 @@ def _gate(request: _Request, owner: str = Depends(_tier_gate)) -> str:
     """Coach gate + workspace resolution: staff on a coach's share list
     (with no uploads of their own) act as that coach's workspace."""
     return resolve_workspace(request, owner)
+
+
+def _write_gate(request: _Request, owner: str = Depends(_gate)) -> str:
+    """Like _gate, but 403s staff members whose can_upload is off."""
+    ensure_can_upload(request, owner)
+    return owner
 
 # All pitch columns in insert order: parser fields + derived flags.
 _DERIVED = ["is_in_zone", "is_swing", "is_whiff", "is_contact", "is_chase"]
@@ -89,7 +95,7 @@ def _ensure_tables(cur):
 @router.post("/portal/trackman/upload")
 async def upload_trackman(
     files: list[UploadFile] = File(...),
-    owner: str = Depends(_gate),
+    owner: str = Depends(_write_gate),
 ):
     """Upload one or many TrackMan game CSVs. Sessions are keyed by
     TrackMan's GameID (split files and re-downloads merge into the same
@@ -260,7 +266,7 @@ def trackman_overview(owner: str = Depends(_gate)):
 
 
 @router.delete("/trackman/sessions/{session_id}")
-def delete_trackman_session(session_id: int, owner: str = Depends(_gate)):
+def delete_trackman_session(session_id: int, owner: str = Depends(_write_gate)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM tm_sessions WHERE id = %s AND owner_user_id = %s",

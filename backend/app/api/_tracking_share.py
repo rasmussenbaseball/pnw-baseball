@@ -32,7 +32,7 @@ from .auth import _extract_token, require_tier
 router = APIRouter(tags=["tracking-share"])
 
 _gate = require_tier("coach")
-MAX_SHARE_EMAILS = 6
+MAX_SHARE_EMAILS = 8   # data-sharing cap (membership seats stay at auth.MAX_STAFF_SEATS)
 
 # email -> (effective_owner_or_None, expires_at). Keeps the per-request cost
 # of workspace resolution to ~zero on repeat calls.
@@ -40,7 +40,13 @@ _CACHE: dict = {}
 _CACHE_TTL = 60
 
 
+_TABLE_READY = False
+
+
 def _ensure_table(cur):
+    global _TABLE_READY
+    if _TABLE_READY:
+        return
     cur.execute(
         """CREATE TABLE IF NOT EXISTS tracking_workspace_shares (
              id SERIAL PRIMARY KEY,
@@ -50,6 +56,16 @@ def _ensure_table(cur):
              UNIQUE (owner_user_id, member_email)
            )"""
     )
+    # NOTE: no unconditional ALTER here — ADD COLUMN takes an ACCESS
+    # EXCLUSIVE lock even when the column exists, and running it per
+    # request self-deadlocked against resolve_workspace's second
+    # connection (2026-08-18). Check the catalog first; the ALTER only
+    # ever runs once per database.
+    cur.execute("""SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'tracking_workspace_shares' AND column_name = 'can_upload'""")
+    if not cur.fetchone():
+        cur.execute("ALTER TABLE tracking_workspace_shares ADD COLUMN can_upload BOOLEAN DEFAULT TRUE")
+    _TABLE_READY = True
 
 
 def invalidate_share_cache():
@@ -108,6 +124,46 @@ def resolve_workspace(request: Request, owner: str) -> str:
         return eff or owner
     except Exception:
         return owner
+
+
+def ensure_can_upload(request: Request, resolved_owner: str) -> None:
+    """403 when the caller is a staff MEMBER of this workspace whose share
+    has uploads switched off. The owner (no share row for their email under
+    their own workspace) and unknown callers pass — fail-open like
+    resolve_workspace; the tier gate already ran."""
+    try:
+        email = (email_for_token(_extract_token(request)) or "").strip().lower()
+        if not email:
+            return
+        key = ("up", resolved_owner, email)
+        now = time.time()
+        hit = _CACHE.get(key)
+        if hit and hit[1] > now:
+            allowed = hit[0]
+        else:
+            allowed = True
+            with get_connection() as conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        """SELECT can_upload FROM tracking_workspace_shares
+                           WHERE owner_user_id = %s AND member_email = %s""",
+                        (resolved_owner, email))
+                    row = cur.fetchone()
+                    if row is not None and row.get("can_upload") is False:
+                        allowed = False
+                except Exception:
+                    conn.rollback()
+            _CACHE[key] = (allowed, now + _CACHE_TTL)
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="The workspace owner hasn't enabled uploads for your account. "
+                       "Ask them to switch on uploads for you in My Staff.")
+    except HTTPException:
+        raise
+    except Exception:
+        return
 
 
 # ── Management endpoints (owner side) ────────────────────────────
@@ -213,20 +269,24 @@ def my_staff(request: Request, owner: str = Depends(_gate)):
             "WHERE owner_user_id = %s ORDER BY created_at", (owner,))
         for r in cur.fetchall():
             members[r["email"]] = {"email": r["email"], "seat": True, "data": True,
+                                   "can_upload": True,
                                    "added": r["added"].isoformat() if r["added"] else None}
         cur.execute(
-            "SELECT member_email AS email, created_at::date AS added FROM tracking_workspace_shares "
+            "SELECT member_email AS email, can_upload, created_at::date AS added "
+            "FROM tracking_workspace_shares "
             "WHERE owner_user_id = %s ORDER BY created_at", (owner,))
         for r in cur.fetchall():
             m = members.setdefault(r["email"], {"email": r["email"], "seat": False, "data": True,
                                                 "added": r["added"].isoformat() if r["added"] else None})
             m["data"] = True
+            m["can_upload"] = r["can_upload"] is not False
         # Is the caller viewing a workspace someone shared with THEM?
         viewing = resolve_workspace(request, owner) != owner
         conn.commit()
     return {
         "members": sorted(members.values(), key=lambda m: m["added"] or ""),
-        "max": MAX_STAFF_SEATS,
+        "max": MAX_SHARE_EMAILS,
+        "seats_max": MAX_STAFF_SEATS,
         "can_seats": ctx["can_seats"],
         "viewing_shared": viewing,
     }
@@ -250,11 +310,13 @@ def my_staff_add(body: ShareAdd, request: Request, owner: str = Depends(_gate)):
                  SELECT LOWER(member_email) AS e FROM coach_staff_seats WHERE owner_user_id = %s
                  UNION SELECT member_email FROM tracking_workspace_shares WHERE owner_user_id = %s
                ) u""", (owner, owner))
-        if (cur.fetchone()["n"] or 0) >= MAX_STAFF_SEATS:
+        if (cur.fetchone()["n"] or 0) >= MAX_SHARE_EMAILS:
             raise HTTPException(status_code=400,
-                                detail=f"Your staff list is limited to {MAX_STAFF_SEATS} coaches.")
+                                detail=f"Your staff list is limited to {MAX_SHARE_EMAILS} coaches.")
+        cur.execute("SELECT COUNT(*) AS n FROM coach_staff_seats WHERE owner_user_id = %s", (owner,))
+        seats_used = cur.fetchone()["n"] or 0
         seat = False
-        if ctx["can_seats"]:
+        if ctx["can_seats"] and seats_used < MAX_STAFF_SEATS:
             cur.execute(
                 """INSERT INTO coach_staff_seats (owner_user_id, owner_email, member_email)
                    VALUES (%s, %s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
@@ -267,6 +329,36 @@ def my_staff_add(body: ShareAdd, request: Request, owner: str = Depends(_gate)):
         conn.commit()
     invalidate_share_cache()
     return {"status": "ok", "email": email, "seat": seat}
+
+
+class SharePatch(BaseModel):
+    can_upload: bool
+
+
+@router.patch("/portal/my-staff/{member_email}")
+def my_staff_patch(member_email: str, body: SharePatch, owner: str = Depends(_gate)):
+    """Owner toggles whether a staff member may upload/delete data."""
+    email = (member_email or "").strip().lower()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_table(cur)
+        # Seat-only members (no share row yet) get one so the flag has a home.
+        cur.execute(
+            """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
+               SELECT %s, %s WHERE EXISTS (
+                 SELECT 1 FROM coach_staff_seats
+                 WHERE owner_user_id = %s AND LOWER(member_email) = %s)
+               ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
+            (owner, email, owner, email))
+        cur.execute(
+            "UPDATE tracking_workspace_shares SET can_upload = %s "
+            "WHERE owner_user_id = %s AND member_email = %s",
+            (body.can_upload, owner, email))
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="Not on your staff list.")
+        conn.commit()
+    invalidate_share_cache()
+    return {"status": "ok", "can_upload": body.can_upload}
 
 
 @router.delete("/portal/my-staff/{member_email}")

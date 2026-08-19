@@ -32,7 +32,7 @@ from pydantic import BaseModel
 
 from ..models.database import get_connection
 from ..stats.trackman_parse import PITCH_TYPE_MAP
-from ._tracking_share import resolve_workspace
+from ._tracking_share import resolve_workspace, ensure_can_upload
 from .auth import require_tier
 
 router = APIRouter(tags=["camp-report"])
@@ -45,7 +45,22 @@ def _gate(request: Request, owner: str = Depends(_tier_gate)) -> str:
     return resolve_workspace(request, owner)
 
 
+def _write_gate(request: Request, owner: str = Depends(_gate)) -> str:
+    """Like _gate, but 403s staff members whose can_upload is off."""
+    ensure_can_upload(request, owner)
+    return owner
+
+
+_TABLES_READY = False
+
+
 def _ensure_tables(cur):
+    # Once per process: every statement below (incl. ADD COLUMN IF NOT
+    # EXISTS and ENABLE ROW LEVEL SECURITY) takes an ACCESS EXCLUSIVE
+    # lock even when it's a no-op, which stalls under live traffic.
+    global _TABLES_READY
+    if _TABLES_READY:
+        return
     cur.execute("""
         CREATE TABLE IF NOT EXISTS camps (
             id            SERIAL PRIMARY KEY,
@@ -105,6 +120,7 @@ def _ensure_tables(cur):
     # that keeps these private-coach tables private.
     for t in ("camps", "camp_players", "camp_rows"):
         cur.execute(f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY")
+    _TABLES_READY = True
 
 
 def _name_key(name: str) -> str:
@@ -279,7 +295,7 @@ def create_camp(body: CampCreate, owner: str = Depends(_gate)):
 
 
 @router.delete("/portal/camps/{camp_id}")
-def delete_camp(camp_id: int, owner: str = Depends(_gate)):
+def delete_camp(camp_id: int, owner: str = Depends(_write_gate)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM camps WHERE id = %s AND owner_user_id = %s", (camp_id, owner))
@@ -302,7 +318,7 @@ async def upload_camp_files(
     camp_id: int,
     files: list[UploadFile] = File(...),
     blast_player: str = Form(None),
-    owner: str = Depends(_gate),
+    owner: str = Depends(_write_gate),
 ):
     """Upload camp CSVs. TrackMan files (BP or game) are detected and
     split per batter/pitcher automatically; Blast Motion exports carry no
@@ -399,7 +415,7 @@ def camp_uploads(camp_id: int, owner: str = Depends(_gate)):
 
 
 @router.delete("/portal/camps/{camp_id}/uploads/{upload_id}")
-def delete_camp_upload(camp_id: int, upload_id: int, owner: str = Depends(_gate)):
+def delete_camp_upload(camp_id: int, upload_id: int, owner: str = Depends(_write_gate)):
     """Delete one uploaded file's rows (cascade) and prune attendees that
     were auto-created from it and have nothing else: no remaining data
     rows and no coach-typed info."""

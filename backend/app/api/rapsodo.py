@@ -21,7 +21,7 @@ from ..stats.rapsodo_suggest import generate_suggestions
 from ..stats.rapsodo_tunnel import tunnel_pairs, ssw_flags
 from .auth import require_tier
 from fastapi import Request as _Request
-from ._tracking_share import resolve_workspace
+from ._tracking_share import resolve_workspace, ensure_can_upload
 
 router = APIRouter(tags=["rapsodo"])
 
@@ -31,6 +31,12 @@ _tier_gate = require_tier("coach")
 def _ws_gate(request: _Request, owner: str = Depends(_tier_gate)) -> str:
     """Coach gate + shared-workspace resolution (see _tracking_share)."""
     return resolve_workspace(request, owner)
+
+
+def _ws_write_gate(request: _Request, owner: str = Depends(_ws_gate)) -> str:
+    """Like _ws_gate, but 403s staff members whose can_upload is off."""
+    ensure_can_upload(request, owner)
+    return owner
 
 # pitch columns inserted per row, in order (mirrors normalize_pitch output)
 _PITCH_FIELDS = [
@@ -108,7 +114,7 @@ def _ingest(cur, owner, parsed, mode="pnw"):
 async def upload_rapsodo(
     files: list[UploadFile] = File(...),
     mode: str = Form("pnw"),
-    owner: str = Depends(_ws_gate),
+    owner: str = Depends(_ws_write_gate),
 ):
     """Upload one or many Rapsodo session CSVs. Each file is parsed, quality-
     checked, re-classified, and stored under the uploading coach. `mode` tags the
@@ -350,7 +356,7 @@ def rapsodo_session_detail(session_id: int, owner: str = Depends(_ws_gate)):
 
 
 @router.delete("/rapsodo/sessions/{session_id}")
-def delete_rapsodo_session(session_id: int, owner: str = Depends(_ws_gate)):
+def delete_rapsodo_session(session_id: int, owner: str = Depends(_ws_write_gate)):
     """Remove a session (and its pitches) the coach owns. Lets them undo a bad
     upload. Orphaned players (no sessions left) are cleaned up."""
     with get_connection() as conn:
@@ -373,7 +379,7 @@ def delete_rapsodo_session(session_id: int, owner: str = Depends(_ws_gate)):
 
 
 @router.delete("/portal/rapsodo/players/{rapsodo_player_id}")
-def delete_rapsodo_player(rapsodo_player_id: str, owner: str = Depends(_ws_gate)):
+def delete_rapsodo_player(rapsodo_player_id: str, owner: str = Depends(_ws_write_gate)):
     """Delete a player and ALL their sessions + pitches (e.g. a bugged upload, or a
     file that turned out to be a different pitcher). Owner-scoped."""
     with get_connection() as conn:
