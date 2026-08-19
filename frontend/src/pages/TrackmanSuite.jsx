@@ -1280,49 +1280,121 @@ function SessionsTab({ overview, sessionId, setSessionId }) {
 // ── Catching ─────────────────────────────────────────────────────
 
 function CatchingTab({ teamCtx }) {
-  const { data, loading } = useApi('/trackman/catching')
   const [team, setTeam] = useState(teamCtx.primary)
-  const rows = (data?.catchers || []).filter(c => !team || c.catcher_team === team)
+  const { data, loading } = useApi('/trackman/catching', team ? { team } : {}, [team])
+  const rows = data?.catchers || []
+  const pct = v => v != null ? `${Math.round(v * 100)}%` : '—'
+  const runs = v => v == null ? '—' : (
+    <span className={`font-bold ${v > 0 ? 'text-emerald-600 dark:text-emerald-400' : v < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+      {v > 0 ? `+${v}` : v}
+    </span>
+  )
   return (
     <div className="space-y-3">
-    <div className="flex justify-end"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
-    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
-      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
-        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Catcher throws (tracked steal/pickoff attempts)</span>
-        <span className="text-[10px] text-gray-400">Sorted by avg pop time</span>
-      </div>
-      {loading ? <div className="p-6 text-center text-sm text-gray-400">Loading…</div> :
-       rows.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No tracked catcher throws yet. TrackMan records pop times on steal attempts and pickoffs.</div> : (
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
-              <th className="px-4 py-2">Catcher</th><th className="px-2 py-2">Team</th>
-              <th className="px-2 py-2 text-right">Throws</th>
-              <th className="px-2 py-2 text-right">Avg pop</th><th className="px-2 py-2 text-right">Best pop</th>
-              <th className="px-2 py-2 text-right">Exchange</th>
-              <th className="px-2 py-2 text-right">Arm avg</th><th className="px-2 py-2 text-right">Arm max</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-            {rows.map(c => (
-              <tr key={c.catcher + c.catcher_team}>
-                <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{c.catcher}</td>
-                <td className="px-2 py-1.5 text-xs text-gray-400">{c.catcher_team}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{c.throws}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums font-bold">{fmt(c.avg_pop, 2)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmt(c.best_pop, 2)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.avg_exchange, 2)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.avg_throw)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.max_throw)}</td>
+      <div className="flex justify-end"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+        <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Catcher value board</span>
+          <span className="text-[10px] text-gray-400">framing + arm runs · sorted by total value</span>
+        </div>
+        {loading ? <div className="p-6 text-center text-sm text-gray-400">Loading…</div> :
+         rows.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No catcher data yet.</div> : (
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="px-4 py-2">Catcher</th><th className="px-2 py-2">Team</th>
+                <th className="px-2 py-2 text-right" title="Framing runs + arm runs">Value</th>
+                <th className="px-2 py-2 text-right" title="Strikes Above Expected x 0.125 runs">Framing</th>
+                <th className="px-2 py-2 text-right" title="Called strikes above the corpus-average expectation on edge pitches">SAE</th>
+                <th className="px-2 py-2 text-right" title="Taken pitches within ~4 inches of the zone edge">Edge takes</th>
+                <th className="px-2 py-2 text-right">Edge K%</th>
+                {['High', 'Low', 'Left', 'Right'].map(h => (
+                  <th key={h} className="px-2 py-2 text-right" title={`SAE on the ${h.toLowerCase()} edge`}>{h}</th>
+                ))}
+                <th className="px-2 py-2 text-right" title="Attempts x (est CS% - corpus avg) x 0.85 runs">Arm</th>
+                <th className="px-2 py-2 text-right" title="Estimated CS% from average pop time">est CS%</th>
+                <th className="px-2 py-2 text-right">Pop</th>
+                <th className="px-2 py-2 text-right">Best</th>
+                <th className="px-2 py-2 text-right">Exch</th>
+                <th className="px-2 py-2 text-right">Arm velo</th>
+                <th className="px-2 py-2 text-right">Throws</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {rows.map(c => (
+                <tr key={c.catcher + c.catcher_team}>
+                  <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{c.catcher}</td>
+                  <td className="px-2 py-1.5 text-xs text-gray-400">{c.catcher_team}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{runs(c.total_runs)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{runs(c.framing_runs)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.sae != null ? (c.sae > 0 ? `+${c.sae}` : c.sae) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.shadow_taken ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.shadow_strike_pct)}</td>
+                  {['high', 'low', 'left', 'right'].map(e => (
+                    <td key={e} className="px-2 py-1.5 text-right tabular-nums text-xs text-gray-500">
+                      {c.edges?.[e] ? (c.edges[e].sae > 0 ? `+${c.edges[e].sae}` : c.edges[e].sae) : '—'}
+                    </td>
+                  ))}
+                  <td className="px-2 py-1.5 text-right tabular-nums">{runs(c.arm_runs)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.est_cs_pct)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-bold">{c.avg_pop ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{c.best_pop ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_exchange ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_throw ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.throws ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+        <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Blocking workload</span>
+          <span className="text-[10px] text-gray-400">TrackMan records dirt balls, not whether they were kept in front — workload, not runs</span>
+        </div>
+        {rows.filter(c => c.pitches_caught).length ? (
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="px-4 py-2">Catcher</th><th className="px-2 py-2">Team</th>
+                <th className="px-2 py-2 text-right">Pitches caught</th>
+                <th className="px-2 py-2 text-right">Dirt balls</th>
+                <th className="px-2 py-2 text-right">Per 100</th>
+                <th className="px-2 py-2 text-right" title="Share of dirt balls that were breaking/offspeed">Offspeed%</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {[...rows].filter(c => c.pitches_caught).sort((a, b) => (b.dirt_per_100 || 0) - (a.dirt_per_100 || 0)).map(c => (
+                <tr key={c.catcher + c.catcher_team}>
+                  <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{c.catcher}</td>
+                  <td className="px-2 py-1.5 text-xs text-gray-400">{c.catcher_team}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.pitches_caught}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-bold">{c.dirt_balls}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.dirt_per_100 ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.dirt_offspeed_pct)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div className="p-6 text-center text-sm text-gray-400">No pitches tracked yet.</div>}
+      </div>
+
+      <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
+        Framing: on taken pitches within about 4 inches of the zone edge, a location model sets the
+        expected called-strike rate, calibrated so your whole corpus nets zero — SAE reads relative to
+        the average catcher and umpire in your own data, at 0.125 runs per strike. Arm: pop time maps
+        to an estimated caught-stealing rate (TrackMan doesn't record the runner's outcome, so this
+        prices the arm, not the results), valued against the corpus average per tracked throw.
+        Blocking stays workload-only for the same reason. All of it compares players within your data,
+        not to MLB numbers.
+      </p>
     </div>
   )
 }
+
 
 // ── Staff notes (Session Review) ─────────────────────────────────
 

@@ -1285,35 +1285,167 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
 
 
 @router.get("/trackman/catching")
-def trackman_catching(owner: str = Depends(_gate)):
-    """Catcher throw metrics: pop time, exchange, throw speed. TrackMan only
-    records these on tracked throws (steal attempts / pickoffs)."""
+def trackman_catching(team: str | None = Query(None), owner: str = Depends(_gate)):
+    """Advanced catcher metrics.
+
+    FRAMING: on TAKEN pitches (called strike/ball) near the zone edge, a
+    location-based strike-probability curve gives expected called strikes,
+    CALIBRATED so the whole corpus nets ~zero — Strikes Above Expected
+    reads relative to the average catcher/umpire in your own data.
+    SAE x 0.125 runs/strike = framing runs.
+
+    THROWING: pop time -> estimated CS% (college-calibrated line), and
+    arm runs = tracked attempts x (est CS% - corpus average) x 0.85
+    runs per marginal caught steal. TrackMan doesn't record the runner's
+    outcome, so this prices the ARM, not the results.
+
+    BLOCKING: TrackMan flags balls in the dirt but NOT whether the
+    catcher kept them in front, so blocking is reported as WORKLOAD
+    (dirt balls received, rate, breaking-ball share) — never runs."""
+    import math as _math
+    team_sql, team_params = ("", [])
+    if team:
+        team_sql, team_params = " AND catcher_team = %s", [team]
     with get_connection() as conn:
         cur = conn.cursor()
-        try:
-            cur.execute(
-                """SELECT catcher, catcher_team, COUNT(*) AS throws,
-                          AVG(pop_time) AS avg_pop, MIN(pop_time) AS best_pop,
-                          AVG(exchange_time) AS avg_exchange,
-                          AVG(throw_speed) AS avg_throw, MAX(throw_speed) AS max_throw
-                   FROM tm_pitches
-                   WHERE owner_user_id = %s AND catcher IS NOT NULL AND pop_time IS NOT NULL
-                   GROUP BY catcher, catcher_team
-                   ORDER BY AVG(pop_time)""",
-                (owner,),
-            )
-            rows = []
-            for r in cur.fetchall():
-                d = dict(r)
-                for k in ("avg_pop", "best_pop", "avg_exchange"):
-                    d[k] = round(d[k], 2) if d[k] is not None else None
-                for k in ("avg_throw", "max_throw"):
-                    d[k] = round(d[k], 1) if d[k] is not None else None
-                rows.append(d)
-        except Exception:
-            conn.rollback()
-            rows = []
-    return {"catchers": rows}
+        # ── throwing ──
+        cur.execute(f"""
+            SELECT catcher, catcher_team, COUNT(*) AS throws,
+                   AVG(pop_time) AS avg_pop, MIN(pop_time) AS best_pop,
+                   AVG(exchange_time) AS avg_exchange,
+                   AVG(throw_speed) AS avg_throw, MAX(throw_speed) AS max_throw
+            FROM tm_pitches
+            WHERE owner_user_id = %s AND catcher IS NOT NULL AND pop_time IS NOT NULL
+              {team_sql}
+            GROUP BY catcher, catcher_team
+        """, [owner] + team_params)
+        throw_rows = {(r["catcher"], r["catcher_team"]): dict(r) for r in cur.fetchall()}
+        # ── framing: taken pitches with locations ──
+        cur.execute(f"""
+            SELECT catcher, catcher_team, pitch_call,
+                   plate_loc_side AS px, plate_loc_height AS pz
+            FROM tm_pitches
+            WHERE owner_user_id = %s AND catcher IS NOT NULL
+              AND pitch_call IN ('StrikeCalled', 'BallCalled')
+              AND plate_loc_side IS NOT NULL AND plate_loc_height IS NOT NULL
+              {team_sql}
+        """, [owner] + team_params)
+        taken = cur.fetchall()
+        # ── blocking workload + pitches caught ──
+        cur.execute(f"""
+            SELECT catcher, catcher_team,
+                   COUNT(*) AS pitches,
+                   COUNT(*) FILTER (WHERE pitch_call = 'BallinDirt') AS dirt,
+                   COUNT(*) FILTER (WHERE pitch_call = 'BallinDirt' AND
+                       COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type)
+                       IN ('Slider', 'Curveball', 'Sweeper', 'Splitter', 'ChangeUp')) AS dirt_offspeed
+            FROM tm_pitches
+            WHERE owner_user_id = %s AND catcher IS NOT NULL
+              {team_sql}
+            GROUP BY catcher, catcher_team
+        """, [owner] + team_params)
+        block_rows = {(r["catcher"], r["catcher_team"]): dict(r) for r in cur.fetchall()}
+        conn.commit()
+
+    # framing model: signed feet beyond the nearest zone edge
+    HALF_W, Z_LO, Z_HI = 0.83, 1.5, 3.5
+    BAND = 0.35           # only pitches within ~4 in of the edge carry information
+    SCALE = 0.09          # logistic scale in feet (~1.1 in per step)
+    RUNS_PER_STRIKE = 0.125
+
+    def edge_dist(px, pz):
+        dx = abs(px) - HALF_W
+        dz = max(Z_LO - pz, pz - Z_HI)
+        out_x, out_z = max(dx, 0.0), max(dz, 0.0)
+        if out_x > 0 or out_z > 0:
+            return _math.hypot(out_x, out_z)
+        return max(dx, dz)   # inside: negative, closest edge
+
+    frames = {}
+    for r in taken:
+        px, pz = float(r["px"]), float(r["pz"])
+        d = edge_dist(px, pz)
+        if abs(d) > BAND:
+            continue
+        p_strike = 1.0 / (1.0 + _math.exp(d / SCALE))
+        key = (r["catcher"], r["catcher_team"])
+        st = frames.setdefault(key, {"taken": 0, "strikes": 0, "x_strikes": 0.0,
+                                     "edges": {"high": [0, 0.0], "low": [0, 0.0],
+                                               "left": [0, 0.0], "right": [0, 0.0]}})
+        got = 1 if r["pitch_call"] == "StrikeCalled" else 0
+        st["taken"] += 1
+        st["strikes"] += got
+        st["x_strikes"] += p_strike
+        # dominant edge for the split
+        dx = abs(px) - HALF_W
+        dz_hi, dz_lo = pz - Z_HI, Z_LO - pz
+        edge = max(("high", dz_hi), ("low", dz_lo),
+                   ("left" if px < 0 else "right", dx), key=lambda t: t[1])[0]
+        e = st["edges"][edge]
+        e[0] += got
+        e[1] += p_strike
+
+    # Calibrate expectations to THIS corpus: the location curve sets the
+    # SHAPE of strike likelihood, but the overall level is scaled so the
+    # corpus nets ~zero SAE — framing reads as strikes above the average
+    # catcher/umpire environment in your own data (same philosophy as OAE).
+    tot_s = sum(f["strikes"] for f in frames.values())
+    tot_x = sum(f["x_strikes"] for f in frames.values())
+    cal = (tot_s / tot_x) if tot_x else 1.0
+    for f in frames.values():
+        f["x_strikes"] *= cal
+        for e in f["edges"].values():
+            e[1] *= cal
+
+    # corpus-average estimated CS% (weighted by attempts) for arm runs
+    def est_cs(pop):
+        return max(0.05, min(0.65, 0.30 + (2.10 - pop) * 0.6))
+
+    tot_att = sum(r["throws"] for r in throw_rows.values())
+    corpus_cs = (sum(est_cs(float(r["avg_pop"])) * r["throws"] for r in throw_rows.values()) / tot_att
+                 if tot_att else 0.30)
+
+    catchers = {}
+    for key in set(list(throw_rows) + list(frames) + list(block_rows)):
+        name, cteam = key
+        row = {"catcher": name, "catcher_team": cteam}
+        t = throw_rows.get(key)
+        if t:
+            pop = float(t["avg_pop"])
+            cs = est_cs(pop)
+            row.update({
+                "throws": t["throws"],
+                "avg_pop": round(pop, 2), "best_pop": round(float(t["best_pop"]), 2),
+                "avg_exchange": round(float(t["avg_exchange"]), 2) if t["avg_exchange"] is not None else None,
+                "avg_throw": round(float(t["avg_throw"]), 1) if t["avg_throw"] is not None else None,
+                "max_throw": round(float(t["max_throw"]), 1) if t["max_throw"] is not None else None,
+                "est_cs_pct": round(cs, 3),
+                "arm_runs": round(t["throws"] * (cs - corpus_cs) * 0.85, 1),
+            })
+        fr = frames.get(key)
+        if fr and fr["taken"] >= 5:
+            sae = fr["strikes"] - fr["x_strikes"]
+            row.update({
+                "shadow_taken": fr["taken"], "shadow_strikes": fr["strikes"],
+                "x_strikes": round(fr["x_strikes"], 1),
+                "sae": round(sae, 1),
+                "framing_runs": round(sae * RUNS_PER_STRIKE, 1),
+                "shadow_strike_pct": round(fr["strikes"] / fr["taken"], 3),
+                "edges": {k: {"strikes": v[0], "x": round(v[1], 1), "sae": round(v[0] - v[1], 1)}
+                          for k, v in fr["edges"].items()},
+            })
+        b = block_rows.get(key)
+        if b:
+            row.update({
+                "pitches_caught": b["pitches"], "dirt_balls": b["dirt"],
+                "dirt_per_100": round(b["dirt"] / b["pitches"] * 100, 1) if b["pitches"] else None,
+                "dirt_offspeed_pct": round(b["dirt_offspeed"] / b["dirt"], 3) if b["dirt"] else None,
+            })
+        row["total_runs"] = round((row.get("framing_runs") or 0) + (row.get("arm_runs") or 0), 1)
+        catchers[key] = row
+
+    out = sorted(catchers.values(), key=lambda r: -(r.get("total_runs") or 0))
+    return {"catchers": out, "corpus_cs_pct": round(corpus_cs, 3)}
 
 
 # ── Staff notes + Coach Board insights ───────────────────────────
