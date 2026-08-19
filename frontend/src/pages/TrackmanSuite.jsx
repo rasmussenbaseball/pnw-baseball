@@ -2009,7 +2009,11 @@ function DefenseTab({ teamCtx }) {
 
 function ValuesTab({ teamCtx }) {
   const [team, setTeam] = useState(teamCtx.primary)
-  const { data, loading } = useApi('/trackman/values', team ? { team } : {}, [team])
+  const [posAdj, setPosAdj] = useState(false)
+  const [shrink, setShrink] = useState(false)
+  const { data, loading } = useApi('/trackman/values',
+    { ...(team ? { team } : {}), pos_adj: posAdj, shrink },
+    [team, posAdj, shrink])
   const rows = data?.players || []
   const rv = v => v == null ? <span className="text-gray-300 dark:text-gray-600">—</span> : (
     <span className={`font-semibold tabular-nums ${v > 0.05 ? 'text-emerald-600 dark:text-emerald-400' : v < -0.05 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500'}`}>
@@ -2034,7 +2038,23 @@ function ValuesTab({ teamCtx }) {
         <div className="text-[11px] text-gray-400">
           Every column is average-relative: 0 = an average player in the division. Season stats + tracked data combined.
         </div>
-        <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => setPosAdj(v => !v)}
+            title="WAR-style premium-position credit: C +4.5, SS +2.5, CF/2B/3B +1.0, LF/RF -2.5, 1B -4.5 runs per full season, scaled by playing time"
+            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ${posAdj
+              ? 'bg-portal-purple text-white ring-portal-purple'
+              : 'bg-white dark:bg-gray-800 text-gray-500 ring-gray-200 dark:ring-gray-700'}`}>
+            Position adjustment {posAdj ? 'on' : 'off'}
+          </button>
+          <button onClick={() => setShrink(v => !v)}
+            title="Regresses small-sample tracked values toward zero (defense by chances, framing by takes) so a hot week doesn't outrank a solid season"
+            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ${shrink
+              ? 'bg-portal-purple text-white ring-portal-purple'
+              : 'bg-white dark:bg-gray-800 text-gray-500 ring-gray-200 dark:ring-gray-700'}`}>
+            Small-sample stabilizer {shrink ? 'on' : 'off'}
+          </button>
+          <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
@@ -2067,6 +2087,7 @@ function ValuesTab({ teamCtx }) {
                 {COLS.map(([k, label, tip]) => (
                   <th key={k} className="px-2 py-2 text-right" title={tip}>{label}</th>
                 ))}
+                {posAdj && <th className="px-2 py-2 text-right" title="Positional adjustment at the player's primary tracked position">Pos adj</th>}
                 <th className="px-2 py-2 text-right font-bold" title="Sum of every component">Total</th>
               </tr>
             </thead>
@@ -2086,6 +2107,12 @@ function ValuesTab({ teamCtx }) {
                   {COLS.map(([k]) => (
                     <td key={k} className="px-2 py-1.5 text-right">{rv(r[k])}</td>
                   ))}
+                  {posAdj && (
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      {r.pos && <span className="text-[10px] text-gray-400 mr-1">{r.pos}</span>}
+                      {rv(r.pos_adj_runs ?? null)}
+                    </td>
+                  )}
                   <td className={`px-2 py-1.5 text-right tabular-nums font-bold text-[14px] ${r.total_runs > 0 ? 'text-emerald-700 dark:text-emerald-400' : r.total_runs < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>
                     {r.total_runs > 0 ? `+${r.total_runs}` : r.total_runs}
                   </td>
@@ -2102,7 +2129,10 @@ function ValuesTab({ teamCtx }) {
         stolen-base run weights. Infield, outfield, and catching come from the suite's tracked-data
         models (positioning + pitch calls + pop times), which cover only positioned games — those
         columns grow as more positioning files are uploaded. Players missing a column simply have
-        no data there yet; totals sum whatever exists.
+        no data there yet; totals sum whatever exists. The position-adjustment toggle adds the
+        WAR-style premium-spot credit (catchers and shortstops carry defensive burdens raw numbers
+        miss; first basemen give some back), scaled by playing time. The stabilizer regresses
+        small tracked samples toward zero so one hot weekend can't outrank a full season.
       </p>
     </div>
   )

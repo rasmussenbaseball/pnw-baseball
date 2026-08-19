@@ -525,7 +525,12 @@ def trackman_defense(
 
 
 @router.get("/trackman/values")
-def trackman_values(team: str | None = Query(None), owner: str = Depends(_gate)):
+def trackman_values(
+    team: str | None = Query(None),
+    pos_adj: bool = Query(False),
+    shrink: bool = Query(False),
+    owner: str = Depends(_gate),
+):
     """The Values page: one run-value ledger per player, combining the
     suite's tracked-data models with the site's real season stats.
 
@@ -536,7 +541,14 @@ def trackman_values(team: str | None = Query(None), owner: str = Depends(_gate))
     OUTFIELD  = Defense-tab OAE at OF positions x 0.80 runs per out.
     CATCHING  = framing runs + blended arm runs (Catching tab).
     PITCHING  = (division avg FIP - FIP) / 9 x IP (10+ IP qualifiers).
-    Every component is average-relative, so 0 = an average player."""
+    Every component is average-relative, so 0 = an average player.
+
+    pos_adj adds the WAR-style positional adjustment (premium spots get
+    credit: C +4.5, SS +2.5, CF/2B/3B +1.0, LF/RF -2.5, 1B -4.5 runs per
+    full college season) scaled by the player's playing time.
+    shrink regresses SMALL-SAMPLE tracked values toward zero by chance
+    count (defense: n/(n+15); framing: takes/(takes+150)). The arm value
+    already regresses via its pop-time prior, so it is left alone."""
     from ..stats.advanced import DEFAULT_WEIGHTS
 
     def ip_to_decimal(ip):
@@ -550,9 +562,35 @@ def trackman_values(team: str | None = Query(None), owner: str = Depends(_gate))
     # defensive + catching values from the existing computations
     dfs = trackman_defense(context="all", team=team, date_from=None, date_to=None, owner=owner)
     cat = trackman_catching(team=team, owner=owner)
-    if_runs = {r["player"]: round(r["oae"] * 0.70, 1) for r in dfs["infield"]}
-    of_runs = {r["player"]: round(r["oae"] * 0.80, 1) for r in dfs["outfield"]}
-    cat_runs = {c["catcher"]: c["total_runs"] for c in cat["catchers"] if c.get("total_runs") is not None}
+    def _shrunk(oae, opps, k):
+        return oae * (opps / (opps + k)) if shrink else oae
+
+    if_runs = {r["player"]: round(_shrunk(r["oae"], r["opps"], 15) * 0.70, 1) for r in dfs["infield"]}
+    of_runs = {r["player"]: round(_shrunk(r["oae"], r["opps"], 15) * 0.80, 1) for r in dfs["outfield"]}
+    cat_runs = {}
+    for c in cat["catchers"]:
+        if c.get("total_runs") is None:
+            continue
+        fr = c.get("framing_runs") or 0
+        if shrink and c.get("shadow_taken"):
+            fr = fr * (c["shadow_taken"] / (c["shadow_taken"] + 150))
+        cat_runs[c["catcher"]] = round(fr + (c.get("arm_runs") or 0), 1)
+
+    # dominant defensive station per player (for the positional adjustment)
+    prim_pos = {}
+    for pos, lst in dfs.get("by_position", {}).items():
+        for r in lst:
+            cur_best = prim_pos.get(r["player"])
+            if cur_best is None or r["opps"] > cur_best[1]:
+                prim_pos[r["player"]] = (pos, r["opps"])
+    for c in cat["catchers"]:
+        if (c.get("shadow_taken") or 0) >= 20 or (c.get("throws") or 0) >= 3:
+            prev = prim_pos.get(c["catcher"])
+            weight = (c.get("shadow_taken") or 0) // 5
+            if prev is None or weight > prev[1]:
+                prim_pos[c["catcher"]] = ("C", weight)
+    POS_ADJ = {"C": 4.5, "SS": 2.5, "CF": 1.0, "2B": 1.0, "3B": 1.0,
+               "LF": -2.5, "RF": -2.5, "1B": -4.5}
 
     # everyone the suite knows about (with their TM team for filtering)
     with get_connection() as conn:
@@ -637,8 +675,20 @@ def trackman_values(team: str | None = Query(None), owner: str = Depends(_gate))
                     if lg and ip >= 5:
                         row["pitch_runs"] = round((lg - float(pr["fip"])) / 9.0 * ip, 1)
                         row["ip"] = round(ip, 1)
+            if pos_adj:
+                pp = prim_pos.get(name)
+                if pp and pp[0] in POS_ADJ:
+                    # scale by playing time: season PA share, or tracked
+                    # chances as the fallback proxy for defense-only rows
+                    if row.get("pa"):
+                        share = min(1.0, row["pa"] / 200.0)
+                    else:
+                        share = min(1.0, pp[1] / 40.0)
+                    row["pos"] = pp[0]
+                    row["pos_adj_runs"] = round(POS_ADJ[pp[0]] * share, 1)
             vals = [row[k] for k in ("off_runs", "bsr_runs", "if_runs", "of_runs",
-                                     "catch_runs", "pitch_runs") if row[k] is not None]
+                                     "catch_runs", "pitch_runs", "pos_adj_runs")
+                    if row.get(k) is not None]
             if not vals:
                 continue
             row["total_runs"] = round(sum(vals), 1)
