@@ -1142,7 +1142,13 @@ _PCTL_METRICS = [
     ("chase_pct", "CASE WHEN SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END) >= 20 THEN "
                   "SUM(CASE WHEN is_chase THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END),0) END", True),
     ("csw_pct", "AVG(CASE WHEN pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1.0 ELSE 0.0 END)", True),
+    ("k_pct", "COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)) FILTER (WHERE k_or_bb = 'Strikeout')::float"
+              " / NULLIF(COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)), 0)", True),
+    ("bb_pct", "COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)) FILTER (WHERE k_or_bb = 'Walk')::float"
+               " / NULLIF(COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)), 0)", False),
     ("ev_against", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN AVG(exit_speed) END", False),
+    ("hard_hit_against", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN "
+                         "SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END), 0) END", False),
 ]
 
 
@@ -1215,6 +1221,24 @@ def trackman_pitcher_detail(
         pool = [dict(r) for r in cur.fetchall()]
         rv_base = _rv_baseline(cur, owner, context, season)
 
+        # corpus same-hand per-type movement averages (the Savant "vs avg"
+        # columns): what the average slider from this handedness does here
+        hand_full = pitches[0].get("pitcher_throws") or "Right"
+        bextra, bparams = _context_clause(context)
+        bssql, bsparams = _season_clause(season)
+        cur.execute(
+            f"""SELECT COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS t,
+                       AVG(p.ivb) AS ivb, AVG(p.horz_break) AS hb, AVG(p.rel_speed) AS velo
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.pitcher_throws = %s{bextra}{bssql}
+                GROUP BY 1 HAVING COUNT(*) >= 50""",
+            [owner, hand_full] + bparams + bsparams,
+        )
+        type_avgs = {r["t"]: {"ivb": round(float(r["ivb"]), 1) if r["ivb"] is not None else None,
+                              "hb": round(float(r["hb"]), 1) if r["hb"] is not None else None,
+                              "velo": round(float(r["velo"]), 1) if r["velo"] is not None else None}
+                     for r in cur.fetchall() if r["t"]}
+
     me = next((r for r in pool if r["pitcher"] == pitcher), None)
     percentiles = {}
     if me and len(pool) >= 5:
@@ -1279,6 +1303,41 @@ def trackman_pitcher_detail(
             c[k] = sum(arr) / len(arr) if arr else None
         arsenal_cents.append(c)
     tunneling = tunnel_pairs(arsenal_cents, hand)
+
+    # Site-standard Stuff + Location+ grades on THIS view's pitches (the
+    # Pitching tab computes the same; here they respect the lab's filters)
+    gcents = defaultdict(lambda: defaultdict(list))
+    glocs = defaultdict(list)
+    for x in pitches:
+        for k, v in (("velo", x["rel_speed"]), ("ivb", x["ivb"]), ("hb", x["horz_break"]),
+                     ("spin", x["spin_rate"]), ("ext", x["extension"]),
+                     ("rel_h", x["rel_height"]), ("rel_s", x["rel_side"])):
+            if v is not None:
+                gcents[x["ptype"]][k].append(float(v))
+        if x["plate_loc_side"] is not None and x["plate_loc_height"] is not None:
+            glocs[x["ptype"]].append((x["plate_loc_side"] * 12.0, x["plate_loc_height"] * 12.0))
+    gtypes = {}
+    for t, vals in gcents.items():
+        if not t:
+            continue
+        entry = {"ptype": t, "n": len(vals.get("velo", []))}
+        for k, arr in vals.items():
+            entry[k] = sum(arr) / len(arr) if arr else None
+        gtypes[t] = entry
+    gfb = None
+    for t, en in gtypes.items():
+        cand = (t == "Fastball", t in FB_FAMILY, en["n"])
+        if gfb is None or cand > gfb[0]:
+            gfb = (cand, en)
+    grades = {}
+    for t, en in gtypes.items():
+        if en["n"] < 15:
+            continue
+        stuff = grade_trackman(en, gfb[1] if gfb else en)
+        locs = glocs.get(t, [])
+        loc = location_plus(t.lower(), locs) if len(locs) >= 15 else None
+        if stuff is not None or loc is not None:
+            grades[t] = {"stuff": stuff, "loc": loc}
 
     # Run values + attack zones per pitch type (pitcher perspective:
     # positive = runs saved vs average).
@@ -1367,6 +1426,8 @@ def trackman_pitcher_detail(
         "tunneling": tunneling,
         "rv_by_type": rv_by_type,
         "session_trend": session_trend,
+        "grades": grades,
+        "type_avgs": type_avgs,
     }
 
 
@@ -1550,6 +1611,10 @@ _BATTER_PCTL = [
                   "SUM(CASE WHEN is_chase THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END),0) END", False),
     ("zone_contact_pct", "CASE WHEN SUM(CASE WHEN is_swing AND is_in_zone THEN 1 ELSE 0 END) >= 15 THEN "
                          "SUM(CASE WHEN is_contact AND is_in_zone THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_swing AND is_in_zone THEN 1 ELSE 0 END),0) END", True),
+    ("k_pct", "COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)) FILTER (WHERE k_or_bb = 'Strikeout')::float"
+              " / NULLIF(COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)), 0)", False),
+    ("bb_pct", "COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)) FILTER (WHERE k_or_bb = 'Walk')::float"
+               " / NULLIF(COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)), 0)", True),
 ]
 
 

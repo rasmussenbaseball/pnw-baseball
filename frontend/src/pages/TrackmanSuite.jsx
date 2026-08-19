@@ -764,12 +764,29 @@ function ReleasePlot({ pitches }) {
 
 // Location plot, Rapsodo Lab style: one small dot per pitch (catcher's view)
 // with the K-zone box — not shaded bins.
+// Savant-style location heat: smoothed density, blue (rare) -> red (often).
 function LocationHeatmap({ pitches, title }) {
   const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2
-  const W = 150, H = 150
+  const NX = 14, NY = 14
+  const W = 150, H = 150, cw = W / NX, ch = H / NY
   const zx = (v) => ((Math.max(XMIN, Math.min(XMAX, v)) - XMIN) / (XMAX - XMIN)) * W
   const zy = (v) => ((YMAX - Math.max(YMIN, Math.min(YMAX, v))) / (YMAX - YMIN)) * H
   const pts = pitches.filter(p => p.plate_loc_side != null && p.plate_loc_height != null)
+  const grid = Array.from({ length: NY }, () => Array(NX).fill(0))
+  pts.forEach(p => {
+    const gx = Math.min(NX - 1, Math.max(0, Math.floor(((p.plate_loc_side - XMIN) / (XMAX - XMIN)) * NX)))
+    const gy = Math.min(NY - 1, Math.max(0, Math.floor(((YMAX - p.plate_loc_height) / (YMAX - YMIN)) * NY)))
+    // gaussian-ish splat: full weight in the cell, spill into neighbors
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const x = gx + dx, y = gy + dy
+      if (x >= 0 && x < NX && y >= 0 && y < NY) grid[y][x] += (dx === 0 && dy === 0) ? 1 : 0.35
+    }
+  })
+  const max = Math.max(0.01, ...grid.flat())
+  const mix = (t) => {
+    const c = (a, b) => Math.round(a + (b - a) * t)
+    return `rgb(${c(54, 210)},${c(97, 45)},${c(173, 73)})`
+  }
   return (
     <div>
       <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1 flex items-center gap-1.5">
@@ -777,21 +794,14 @@ function LocationHeatmap({ pitches, title }) {
         {title} <span className="text-gray-400 font-normal">({pts.length})</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded bg-gray-50 dark:bg-gray-900/40">
+        {grid.map((row, y) => row.map((v, x) => {
+          if (!v) return null
+          const t = v / max
+          return <rect key={`${x}${y}`} x={x * cw} y={y * ch} width={cw + 0.5} height={ch + 0.5}
+            fill={mix(t)} opacity={0.12 + 0.72 * t} />
+        }))}
         <rect x={zx(-0.83)} y={zy(3.5)} width={zx(0.83) - zx(-0.83)} height={zy(1.5) - zy(3.5)}
-          fill="none" stroke="currentColor" className="text-gray-400 dark:text-gray-500" strokeWidth="1.2" />
-        {/* 9-box guides inside the zone */}
-        {[1 / 3, 2 / 3].map(f => (
-          <g key={f}>
-            <line x1={zx(-0.83 + f * 1.66)} y1={zy(3.5)} x2={zx(-0.83 + f * 1.66)} y2={zy(1.5)}
-              stroke="currentColor" className="text-gray-200 dark:text-gray-700" strokeWidth="0.7" />
-            <line x1={zx(-0.83)} y1={zy(1.5 + f * 2.0)} x2={zx(0.83)} y2={zy(1.5 + f * 2.0)}
-              stroke="currentColor" className="text-gray-200 dark:text-gray-700" strokeWidth="0.7" />
-          </g>
-        ))}
-        {pts.map((p, i) => (
-          <circle key={i} cx={zx(p.plate_loc_side)} cy={zy(p.plate_loc_height)} r="2.6"
-            fill={cFor(title)} opacity="0.55" stroke="#fff" strokeWidth="0.5" />
-        ))}
+          fill="none" stroke="currentColor" className="text-gray-700 dark:text-gray-200" strokeWidth="1.4" />
       </svg>
     </div>
   )
@@ -799,22 +809,55 @@ function LocationHeatmap({ pitches, title }) {
 
 const COUNTS = [['0-0','0-1','0-2'],['1-0','1-1','1-2'],['2-0','2-1','2-2'],['3-0','3-1','3-2']]
 
-function CountUsage({ usage }) {
+// Attack-zone ring in JS (mirrors backend trackman_runvalue.attack_zone)
+const zoneRing = (px, pz) => {
+  if (px == null || pz == null) return null
+  return Math.max(Math.abs(px) / 0.83, Math.abs(pz - 2.5))
+}
+
+function CountUsage({ pitches }) {
+  const cells = useMemo(() => {
+    const m = {}
+    ;(pitches || []).forEach(p => {
+      if (p.balls == null || p.strikes == null) return
+      const c = `${p.balls}-${p.strikes}`
+      const cell = (m[c] = m[c] || { total: 0, types: {}, zone_n: 0, zone_in: 0, loc_n: 0, shadow: 0 })
+      cell.total += 1
+      cell.types[p.ptype] = (cell.types[p.ptype] || 0) + 1
+      if (p.is_in_zone === true) { cell.zone_n += 1; cell.zone_in += 1 }
+      else if (p.is_in_zone === false) cell.zone_n += 1
+      const r = zoneRing(p.plate_loc_side, p.plate_loc_height)
+      if (r != null) { cell.loc_n += 1; if (r > 0.67 && r <= 1.33) cell.shadow += 1 }
+    })
+    return m
+  }, [pitches])
   return (
     <div className="grid grid-cols-3 gap-1.5">
       {COUNTS.flat().map(c => {
-        const cell = usage[c]
-        const top = cell ? Object.entries(cell.types).sort((a, b) => b[1] - a[1]).slice(0, 2) : []
+        const cell = cells[c]
+        const top = cell ? Object.entries(cell.types).sort((a, b) => b[1] - a[1]).slice(0, 3) : []
         return (
           <div key={c} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-2">
-            <div className="text-[10px] font-bold text-gray-400 tabular-nums">{c} <span className="font-normal">· {cell?.total || 0}</span></div>
-            {top.map(([t, pct]) => (
+            <div className="text-[10px] font-bold text-gray-400 tabular-nums">{c} <span className="font-normal">· {cell?.total || 0} pitches</span></div>
+            {top.map(([t, n]) => (
               <div key={t} className="flex items-center gap-1 mt-0.5">
                 <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: cFor(t) }} />
                 <span className="text-[10px] text-gray-600 dark:text-gray-300 truncate">{t}</span>
-                <span className="ml-auto text-[10px] font-semibold tabular-nums">{Math.round(pct)}%</span>
+                <span className="ml-auto text-[10px] font-semibold tabular-nums">{Math.round(100 * n / cell.total)}%</span>
               </div>
             ))}
+            {cell && cell.zone_n >= 5 && (
+              <div className="mt-1 pt-1 border-t border-gray-200/70 dark:border-gray-700/70 flex justify-between text-[9.5px] tabular-nums">
+                <span className="text-gray-500 dark:text-gray-400"
+                  title="Share of these pitches inside the strike zone">
+                  Zone <b>{Math.round(100 * cell.zone_in / cell.zone_n)}%</b>
+                </span>
+                <span className="text-gray-500 dark:text-gray-400"
+                  title="Share landing in the shadow band around the zone edges">
+                  Shdw <b>{cell.loc_n >= 5 ? Math.round(100 * cell.shadow / cell.loc_n) + '%' : '–'}</b>
+                </span>
+              </div>
+            )}
           </div>
         )
       })}
@@ -1018,7 +1061,8 @@ function SequencingTable({ pitches }) {
 const PCTL_LABELS = {
   velo: ['Fastball velo', ' mph', 1], ivb: ['Fastball ride (IVB)', '"', 1], spin: ['Spin rate', ' rpm', 0],
   extension: ['Extension', ' ft', 1], zone_pct: ['Zone%', '%', 1], whiff_pct: ['Whiff%', '%', 1],
-  chase_pct: ['Chase%', '%', 1], csw_pct: ['CSW%', '%', 1], ev_against: ['EV against', ' mph', 1],
+  chase_pct: ['Chase%', '%', 1], csw_pct: ['CSW%', '%', 1], k_pct: ['K%', '%', 1], bb_pct: ['BB%', '%', 1],
+  ev_against: ['EV against', ' mph', 1], hard_hit_against: ['Hard-hit% against', '%', 1],
 }
 
 function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
@@ -1123,7 +1167,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
             </div>
           )}
 
-          <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} />
+          <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} grades={data.grades} typeAvgs={data.type_avgs} />
 
           <CountResults pitches={data.pitches} mode="pitcher" />
 
@@ -1132,8 +1176,8 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
             <TunnelingCard tunneling={data.tunneling} />
           </div>
 
-          <div className="grid md:grid-cols-2 gap-3">
-            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+          <div className="grid md:grid-cols-3 gap-3">
+            <div className="md:col-span-2 bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
               <div className="flex items-baseline justify-between mb-1">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Movement (catcher's view)</span>
                 <span className="text-[10px] text-gray-400">Click a dot to re-tag a pitch</span>
@@ -1198,8 +1242,8 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
               </div>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Pitch selection by count</div>
-              <CountUsage usage={data.count_usage} />
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Pitch mix, zone and edge presence by count</div>
+              <CountUsage pitches={data.pitches} />
             </div>
           </div>
 
@@ -1292,10 +1336,11 @@ const HITTER_PCTL_LABELS = {
   avg_ev: ['Avg exit velo', ' mph', 1], max_ev: ['Max exit velo', ' mph', 1],
   hard_hit_pct: ['Hard-hit%', '%', 1], sweet_spot_pct: ['Sweet-spot%', '%', 1],
   whiff_pct: ['Whiff%', '%', 1], chase_pct: ['Chase%', '%', 1], zone_contact_pct: ['Zone contact%', '%', 1],
+  k_pct: ['K%', '%', 1], bb_pct: ['BB%', '%', 1],
 }
 
 // 5x5 zone map colored by a rate (swing% or contact%) per bin.
-function ZoneRateMap({ pitches, num, den, title }) {
+function ZoneRateMap({ pitches, num, den, title, sub }) {
   const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2, N = 5
   const nums = Array.from({ length: N }, () => Array(N).fill(0))
   const dens = Array.from({ length: N }, () => Array(N).fill(0))
@@ -1310,7 +1355,8 @@ function ZoneRateMap({ pitches, num, den, title }) {
   const zy = (v) => ((YMAX - v) / (YMAX - YMIN)) * H
   return (
     <div>
-      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">{title}</div>
+      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">{title}</div>
+      {sub && <div className="text-[9px] text-gray-400 mb-1 leading-tight">{sub}</div>}
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded">
         {dens.map((row, y) => row.map((d, x) => {
           if (d < 3) return <rect key={`${x}${y}`} x={x * cw} y={y * ch} width={cw} height={ch} fill="currentColor" className="text-gray-100 dark:text-gray-700" opacity="0.4" />
@@ -1332,7 +1378,7 @@ function ZoneRateMap({ pitches, num, den, title }) {
 }
 
 // 5x5 zone map colored by an average VALUE per bin (e.g. exit velo).
-function ZoneValueMap({ pitches, value, title, lo, hi, dec = 0, minN = 3 }) {
+function ZoneValueMap({ pitches, value, title, sub, lo, hi, dec = 0, minN = 3 }) {
   const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2, N = 5
   const sums = Array.from({ length: N }, () => Array(N).fill(0))
   const ns = Array.from({ length: N }, () => Array(N).fill(0))
@@ -1352,7 +1398,8 @@ function ZoneValueMap({ pitches, value, title, lo, hi, dec = 0, minN = 3 }) {
   }
   return (
     <div>
-      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">{title}</div>
+      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">{title}</div>
+      {sub && <div className="text-[9px] text-gray-400 mb-1 leading-tight">{sub}</div>}
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded">
         {ns.map((row, y) => row.map((n, x) => {
           if (n < minN) return <rect key={`${x}${y}`} x={x * cw} y={y * ch} width={cw} height={ch} fill="currentColor" className="text-gray-100 dark:text-gray-700" opacity="0.4" />
@@ -1374,7 +1421,7 @@ function ZoneValueMap({ pitches, value, title, lo, hi, dec = 0, minN = 3 }) {
 }
 
 // 5x5 density map: where the pitches in this slice actually go.
-function ZoneDensityMap({ pitches, title }) {
+function ZoneDensityMap({ pitches, title, sub }) {
   const XMIN = -1.7, XMAX = 1.7, YMIN = 0.8, YMAX = 4.2, N = 5
   const ns = Array.from({ length: N }, () => Array(N).fill(0))
   let total = 0
@@ -1390,7 +1437,8 @@ function ZoneDensityMap({ pitches, title }) {
   const zy = (v) => ((YMAX - v) / (YMAX - YMIN)) * H
   return (
     <div>
-      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">{title} <span className="text-gray-400 font-normal">({total})</span></div>
+      <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">{title} <span className="text-gray-400 font-normal">({total})</span></div>
+      {sub && <div className="text-[9px] text-gray-400 mb-1 leading-tight">{sub}</div>}
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded">
         {ns.map((row, y) => row.map((n, x) => (
           <g key={`${x}${y}`}>
@@ -1435,21 +1483,25 @@ function PitcherZoneMaps({ pitches }) {
         </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <ZoneRateMap pitches={called} title="Whiff% (of swings)"
+        <ZoneRateMap pitches={called} title="Whiffs" sub="% of swings missed, per cell"
           den={(p) => p.is_swing} num={(p) => p.is_whiff} />
-        <ZoneRateMap pitches={called} title="CSW%"
+        <ZoneRateMap pitches={called} title="Strikes earned" sub="called + swinging strike %, per cell"
           den={() => true} num={(p) => p.pitch_call === 'StrikeCalled' || p.pitch_call === 'StrikeSwinging'} />
-        <ZoneValueMap pitches={ps} title="EV against" lo={72} hi={95}
+        <ZoneValueMap pitches={ps} title="Damage taken" sub="avg exit velo (mph) allowed, per cell" lo={72} hi={95}
           value={(p) => p.exit_speed} />
-        <ZoneDensityMap pitches={called.filter(p => p.balls === 0 && p.strikes === 0)} title="0-0 pitches" />
-        <ZoneDensityMap pitches={called.filter(p => p.balls > p.strikes)} title="Behind in count" />
-        <ZoneDensityMap pitches={called.filter(p => p.strikes === 2)} title="Two strikes" />
+        <ZoneDensityMap pitches={called.filter(p => p.balls === 0 && p.strikes === 0)}
+          title="Where he starts ABs" sub="% of 0-0 pitches thrown to each cell" />
+        <ZoneDensityMap pitches={called.filter(p => p.balls > p.strikes)}
+          title="Where he goes behind" sub="% of behind-in-count pitches, per cell" />
+        <ZoneDensityMap pitches={called.filter(p => p.strikes === 2)}
+          title="Where he finishes" sub="% of two-strike pitches, per cell" />
       </div>
       <p className="text-[10px] text-gray-400 mt-2">
-        Left three: what happens where (misses generated, strikes stolen + swung through, damage taken).
-        Right three: where he actually goes when getting ahead, digging out, and finishing. Use the pitch
-        chips to check one offering — a slider whose whiffs live below the zone but whose 2K map sits
-        belt-high is a location fix, not a stuff problem.
+        How to read: the number in a cell is that cell's stat (a 40 on the Whiffs map = 40% of swings
+        there missed; an 86 on Damage = 86 mph average exit velo allowed there; a 12 on the count maps =
+        12% of those pitches went there). Gray cells have fewer than 3 pitches. Red = more of the thing,
+        blue = less. Use the pitch chips to isolate one offering — a slider whose whiffs live below the
+        zone but whose two-strike map sits belt-high is a location fix, not a stuff problem.
       </p>
     </div>
   )
@@ -1585,21 +1637,23 @@ function HitterLabTab({ teamCtx, season }) {
               Development maps — decisions and damage by location (min 3 per cell)
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              <ZoneRateMap pitches={pitches} title="Swing%"
+              <ZoneRateMap pitches={pitches} title="Swings" sub="% of pitches he offers at, per cell"
                 den={(p) => p.pitch_call} num={(p) => p.is_swing} />
-              <ZoneRateMap pitches={pitches} title="Whiff% (of swings)"
+              <ZoneRateMap pitches={pitches} title="Whiffs" sub="% of his swings that miss, per cell"
                 den={(p) => p.is_swing} num={(p) => p.is_whiff} />
-              <ZoneValueMap pitches={pitches} title="EV on contact" lo={72} hi={95}
+              <ZoneValueMap pitches={pitches} title="Damage" sub="avg exit velo (mph) on contact, per cell" lo={72} hi={95}
                 value={(p) => p.exit_speed} />
-              <ZoneRateMap pitches={pitches} title="Hard-hit% (of BBE)"
+              <ZoneRateMap pitches={pitches} title="Hard contact" sub="% of batted balls 90+ mph, per cell"
                 den={(p) => p.exit_speed != null} num={(p) => p.exit_speed >= 90} />
-              <ZoneRateMap pitches={pitches} title="Strikes taken looking"
+              <ZoneRateMap pitches={pitches} title="Called strikes on takes" sub="% of his takes called strikes, per cell"
                 den={(p) => p.pitch_call && !p.is_swing} num={(p) => p.pitch_call === 'StrikeCalled'} />
             </div>
             <p className="text-[10px] text-gray-400 mt-2">
-              The first two are approach, the middle two are damage, the last is passivity — red cells
-              INSIDE the box on "strikes taken looking" are hittable pitches watched go by. Use the
-              vs-hand chips or date range above to focus any of these.
+              How to read: the number in a cell is that cell's stat (a 44 on Swings = he offers at 44% of
+              pitches there; an 88 on Damage = 88 mph average exit velo on contact there). Gray cells have
+              fewer than 3 pitches. The first two maps are approach, the middle two are damage, the last is
+              passivity — red cells INSIDE the box on "Called strikes on takes" are hittable pitches watched
+              go by. The vs-hand chips and date range above re-cut every map.
             </p>
           </div>
 
@@ -2086,7 +2140,7 @@ function CoachBoardTab({ teamCtx, season }) {
 
 // ── Pitcher Lab: full per-pitch stat table ───────────────────────
 
-function ArsenalStatTable({ pitches, rvByType }) {
+function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs }) {
   const rows = useMemo(() => {
     const g = {}
     pitches.forEach(p => { (g[p.ptype] = g[p.ptype] || []).push(p) })
@@ -2103,6 +2157,7 @@ function ArsenalStatTable({ pitches, rvByType }) {
       const inZone = ps.filter(p => p.is_in_zone === true).length
       const csw = ps.filter(p => p.pitch_call === 'StrikeCalled' || p.pitch_call === 'StrikeSwinging').length
       const evs = ps.map(p => p.exit_speed).filter(v => v != null)
+      const las = ps.filter(p => p.exit_speed != null && p.launch_angle != null)
       return {
         t, n: ps.length, usage: 100 * ps.length / total,
         velo: avg(ps, 'rel_speed'), max: Math.max(...ps.map(p => p.rel_speed).filter(v => v != null), 0) || null,
@@ -2113,9 +2168,22 @@ function ArsenalStatTable({ pitches, rvByType }) {
         chase: outZone ? 100 * chases / outZone : null,
         csw: 100 * csw / ps.length,
         ev: evs.length ? evs.reduce((a, b) => a + b, 0) / evs.length : null,
+        gb: las.length >= 5 ? 100 * las.filter(p => p.launch_angle < 10).length / las.length : null,
       }
     }).sort((a, b) => b.n - a.n)
   }, [pitches])
+
+  // "vs avg" deltas against same-hand corpus centroids for the type
+  const Delta = ({ v, base }) => {
+    if (v == null || base == null) return null
+    const d = v - base
+    if (Math.abs(d) < 0.05) return null
+    return <span className={`ml-0.5 text-[9px] font-semibold ${Math.abs(d) >= 2 ? 'text-portal-purple dark:text-indigo-300' : 'text-gray-400'}`}
+      title="vs the average pitch of this type from this handedness in your data">
+      {d > 0 ? `+${d.toFixed(0)}` : d.toFixed(0)}
+    </span>
+  }
+  const gradeCls = (v) => v == null ? 'text-gray-300' : v >= 110 ? 'text-[#d22d49]' : v <= 90 ? 'text-[#3661ad]' : ''
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
@@ -2126,15 +2194,18 @@ function ArsenalStatTable({ pitches, rvByType }) {
         <thead>
           <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
             <th className="px-4 py-1.5">Pitch</th>
+            <th className="px-2 py-1.5 text-right" title="Site-standard Stuff model: physical traits only, 100 = average for the type">Stuff</th>
+            <th className="px-2 py-1.5 text-right" title="Location+ command score, 100 = average">Loc+</th>
             <th className="px-2 py-1.5 text-right">N</th>
             <th className="px-2 py-1.5 text-right">Use%</th>
             <th className="px-2 py-1.5 text-right">Velo</th>
             <th className="px-2 py-1.5 text-right">Max</th>
-            <th className="px-2 py-1.5 text-right">IVB</th>
-            <th className="px-2 py-1.5 text-right">HB</th>
+            <th className="px-2 py-1.5 text-right" title="Induced vertical break; the small number is vs the average pitch of this type from this handedness in your data">IVB</th>
+            <th className="px-2 py-1.5 text-right" title="Horizontal break; small number = vs same-hand type average">HB</th>
             <th className="px-2 py-1.5 text-right">Spin</th>
             <th className="px-2 py-1.5 text-right">Ext</th>
             <th className="px-2 py-1.5 text-right" title="Vertical approach angle at the plate">VAA</th>
+            <th className="px-2 py-1.5 text-right" title="Ground-ball share of batted balls against">GB%</th>
             <th className="px-2 py-1.5 text-right">Zone%</th>
             <th className="px-2 py-1.5 text-right" title="Share landing in the shadow band around the zone edges">Shdw%</th>
             <th className="px-2 py-1.5 text-right">Whiff%</th>
@@ -2152,15 +2223,18 @@ function ArsenalStatTable({ pitches, rvByType }) {
                 <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: cFor(r.t) }} />
                 {r.t}
               </td>
+              <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${gradeCls(grades?.[r.t]?.stuff)}`}>{grades?.[r.t]?.stuff ?? '–'}</td>
+              <td className={`px-2 py-1.5 text-right tabular-nums ${gradeCls(grades?.[r.t]?.loc)}`}>{grades?.[r.t]?.loc ?? '–'}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{r.n}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.usage)}</td>
-              <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(r.velo)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(r.velo)}<Delta v={r.velo} base={typeAvgs?.[r.t]?.velo} /></td>
               <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{fmt(r.max)}</td>
-              <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.ivb)}</td>
-              <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.hb)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.ivb)}<Delta v={r.ivb} base={typeAvgs?.[r.t]?.ivb} /></td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.hb)}<Delta v={r.hb} base={typeAvgs?.[r.t]?.hb} /></td>
               <td className="px-2 py-1.5 text-right tabular-nums">{r.spin ? Math.round(r.spin) : '–'}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.ext)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.vaa, 1)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.gb)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.zone)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(rvByType?.[r.t]?.shadow_pct)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(r.whiff)}</td>
