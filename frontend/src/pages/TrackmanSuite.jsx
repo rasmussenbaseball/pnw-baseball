@@ -81,7 +81,7 @@ export default function TrackmanSuite() {
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
           ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
-          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['board', 'Coach Board']].map(([k, label]) => (
+          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['values', 'Values'], ['board', 'Coach Board']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === k
@@ -102,6 +102,7 @@ export default function TrackmanSuite() {
       {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'catching' && (hasData ? <CatchingTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'defense' && (hasData ? <DefenseTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'values' && (hasData ? <ValuesTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'board' && (hasData ? <CoachBoardTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
   )
@@ -2000,6 +2001,109 @@ function DefenseTab({ teamCtx }) {
           </p>
         </>
       )}
+    </div>
+  )
+}
+
+// ── Values — one run-value ledger per player ──
+
+function ValuesTab({ teamCtx }) {
+  const [team, setTeam] = useState(teamCtx.primary)
+  const { data, loading } = useApi('/trackman/values', team ? { team } : {}, [team])
+  const rows = data?.players || []
+  const rv = v => v == null ? <span className="text-gray-300 dark:text-gray-600">—</span> : (
+    <span className={`font-semibold tabular-nums ${v > 0.05 ? 'text-emerald-600 dark:text-emerald-400' : v < -0.05 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500'}`}>
+      {v > 0 ? `+${v}` : v}
+    </span>
+  )
+  const COLS = [
+    ['off_runs', 'Offense', 'wRAA: season wOBA vs the division average, per PA'],
+    ['bsr_runs', 'Baserun', 'SB x 0.2 - CS x 0.4 from season steals'],
+    ['if_runs', 'Infield', 'Defense-tab OAE at infield positions x 0.70 runs/out'],
+    ['of_runs', 'Outfield', 'Defense-tab OAE at outfield positions x 0.80 runs/out'],
+    ['catch_runs', 'Catching', 'Framing runs + blended arm runs from the Catching tab'],
+    ['pitch_runs', 'Pitching', '(division avg FIP - FIP) / 9 x IP'],
+  ]
+  const leaders = COLS.map(([k, label]) => {
+    const best = [...rows].filter(r => r[k] != null).sort((a, b) => b[k] - a[k])[0]
+    return [label, best, k]
+  })
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-[11px] text-gray-400">
+          Every column is average-relative: 0 = an average player in the division. Season stats + tracked data combined.
+        </div>
+        <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        {leaders.map(([label, best, k]) => (
+          <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-3 py-2.5">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{label} leader</div>
+            {best ? (
+              <>
+                <div className="text-[13px] font-bold text-portal-purple dark:text-portal-accent-light truncate">{best.player}</div>
+                <div className="text-[12px] tabular-nums">{rv(best[k])} runs</div>
+              </>
+            ) : <div className="text-sm text-gray-400">—</div>}
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+        <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Player run values</span>
+          <span className="text-[10px] text-gray-400">sorted by total value</span>
+        </div>
+        {loading ? <div className="p-6 text-center text-sm text-gray-400">Loading…</div> :
+         rows.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No matched players yet.</div> : (
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="px-4 py-2"># / Player</th>
+                <th className="px-2 py-2">Team</th>
+                <th className="px-2 py-2 text-right" title="Season PA / IP behind the numbers">PA · IP</th>
+                {COLS.map(([k, label, tip]) => (
+                  <th key={k} className="px-2 py-2 text-right" title={tip}>{label}</th>
+                ))}
+                <th className="px-2 py-2 text-right font-bold" title="Sum of every component">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {rows.map((r, i) => (
+                <tr key={r.player}>
+                  <td className="px-4 py-1.5 font-semibold whitespace-nowrap">
+                    <span className="text-gray-400 font-normal tabular-nums mr-1.5">{i + 1}.</span>
+                    {r.player_id
+                      ? <Link to={`/player/${r.player_id}`} className="hover:underline text-portal-purple dark:text-indigo-300">{r.player}</Link>
+                      : r.player}
+                  </td>
+                  <td className="px-2 py-1.5 text-xs text-gray-400 whitespace-nowrap">{r.site_team || r.tm_team}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-xs text-gray-400 whitespace-nowrap">
+                    {[r.pa && `${r.pa} PA`, r.ip && `${r.ip} IP`].filter(Boolean).join(' · ') || '—'}
+                  </td>
+                  {COLS.map(([k]) => (
+                    <td key={k} className="px-2 py-1.5 text-right">{rv(r[k])}</td>
+                  ))}
+                  <td className={`px-2 py-1.5 text-right tabular-nums font-bold text-[14px] ${r.total_runs > 0 ? 'text-emerald-700 dark:text-emerald-400' : r.total_runs < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>
+                    {r.total_runs > 0 ? `+${r.total_runs}` : r.total_runs}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
+        Offense and pitching come from the site's real season stats (wOBA and FIP against
+        division averages, so a D3 bat is measured against D3, not D1). Baserunning uses standard
+        stolen-base run weights. Infield, outfield, and catching come from the suite's tracked-data
+        models (positioning + pitch calls + pop times), which cover only positioned games — those
+        columns grow as more positioning files are uploaded. Players missing a column simply have
+        no data there yet; totals sum whatever exists.
+      </p>
     </div>
   )
 }

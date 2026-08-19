@@ -524,6 +524,131 @@ def trackman_defense(
     }
 
 
+@router.get("/trackman/values")
+def trackman_values(team: str | None = Query(None), owner: str = Depends(_gate)):
+    """The Values page: one run-value ledger per player, combining the
+    suite's tracked-data models with the site's real season stats.
+
+    OFFENSE   = wRAA from season wOBA vs the division average (PA-weighted,
+                30+ PA qualifiers), divided by the division's wOBA scale.
+    BASERUN   = SB x 0.2 - CS x 0.4 run weights from season steals.
+    INFIELD   = Defense-tab OAE at IF positions x 0.70 runs per out.
+    OUTFIELD  = Defense-tab OAE at OF positions x 0.80 runs per out.
+    CATCHING  = framing runs + blended arm runs (Catching tab).
+    PITCHING  = (division avg FIP - FIP) / 9 x IP (10+ IP qualifiers).
+    Every component is average-relative, so 0 = an average player."""
+    from ..stats.advanced import DEFAULT_WEIGHTS
+
+    def ip_to_decimal(ip):
+        # baseball notation: 6.2 = 6 and 2/3
+        if ip is None:
+            return 0.0
+        whole = int(ip)
+        frac = round((float(ip) - whole) * 10)
+        return whole + frac / 3.0
+
+    # defensive + catching values from the existing computations
+    dfs = trackman_defense(context="all", team=team, date_from=None, date_to=None, owner=owner)
+    cat = trackman_catching(team=team, owner=owner)
+    if_runs = {r["player"]: round(r["oae"] * 0.70, 1) for r in dfs["infield"]}
+    of_runs = {r["player"]: round(r["oae"] * 0.80, 1) for r in dfs["outfield"]}
+    cat_runs = {c["catcher"]: c["total_runs"] for c in cat["catchers"] if c.get("total_runs") is not None}
+
+    # everyone the suite knows about (with their TM team for filtering)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        names = {}
+        for col, tcol in (("batter", "batter_team"), ("pitcher", "pitcher_team"),
+                          ("catcher", "catcher_team")):
+            cur.execute(f"""SELECT {col} AS n, {tcol} AS t, COUNT(*) AS c FROM tm_pitches
+                            WHERE owner_user_id = %s AND {col} IS NOT NULL
+                            GROUP BY {col}, {tcol}""", (owner,))
+            for r in cur.fetchall():
+                cur_best = names.get(r["n"])
+                if cur_best is None or r["c"] > cur_best[1]:
+                    names[r["n"]] = (r["t"], r["c"])
+        if team:
+            names = {n: v for n, v in names.items()
+                     if v[0] == team or n in if_runs or n in of_runs or n in cat_runs}
+
+        # division baselines: PA-weighted wOBA and IP-weighted FIP
+        cur.execute("""
+            SELECT d.level, SUM(b.woba * b.plate_appearances) / NULLIF(SUM(b.plate_appearances), 0) AS lg_woba
+            FROM batting_stats b
+            JOIN players p ON p.id = b.player_id JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
+            WHERE b.season = %s AND b.plate_appearances >= 30 AND b.woba IS NOT NULL
+            GROUP BY d.level""", (CURRENT_SEASON,))
+        lg_woba = {r["level"]: float(r["lg_woba"]) for r in cur.fetchall()}
+        cur.execute("""
+            SELECT d.level, SUM(ps.fip * ps.innings_pitched) / NULLIF(SUM(ps.innings_pitched), 0) AS lg_fip
+            FROM pitching_stats ps
+            JOIN players p ON p.id = ps.player_id JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
+            WHERE ps.season = %s AND ps.innings_pitched >= 10 AND ps.fip IS NOT NULL
+            GROUP BY d.level""", (CURRENT_SEASON,))
+        lg_fip = {r["level"]: float(r["lg_fip"]) for r in cur.fetchall()}
+
+        rows = []
+        for name, (tm_team, _) in names.items():
+            try:
+                m = _match_player(cur, name)
+            except Exception:
+                m = None
+            row = {"player": name, "tm_team": tm_team,
+                   "player_id": m["player_id"] if m else None,
+                   "site_team": m["team"] if m else None,
+                   "off_runs": None, "bsr_runs": None, "pitch_runs": None,
+                   "if_runs": if_runs.get(name), "of_runs": of_runs.get(name),
+                   "catch_runs": cat_runs.get(name)}
+            if m:
+                pid = m["player_id"]
+                cur.execute("""
+                    SELECT b.woba, b.plate_appearances, b.stolen_bases, b.caught_stealing, d.level
+                    FROM batting_stats b
+                    JOIN players p ON p.id = b.player_id JOIN teams t ON t.id = p.team_id
+                    JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
+                    WHERE b.player_id = %s AND b.season = %s
+                    ORDER BY b.plate_appearances DESC LIMIT 1""", (pid, CURRENT_SEASON))
+                b = cur.fetchone()
+                if b and b["woba"] is not None and (b["plate_appearances"] or 0) >= 10:
+                    lvl = b["level"] or "D1"
+                    w = DEFAULT_WEIGHTS.get(lvl, DEFAULT_WEIGHTS["D1"])
+                    lg = lg_woba.get(lvl)
+                    if lg:
+                        row["off_runs"] = round(
+                            (float(b["woba"]) - lg) / w.woba_scale * b["plate_appearances"], 1)
+                    sb, cs = b["stolen_bases"] or 0, b["caught_stealing"] or 0
+                    if sb or cs:
+                        row["bsr_runs"] = round(sb * 0.2 - cs * 0.4, 1)
+                    row["pa"] = b["plate_appearances"]
+                cur.execute("""
+                    SELECT ps.fip, ps.innings_pitched, d.level
+                    FROM pitching_stats ps
+                    JOIN players p ON p.id = ps.player_id JOIN teams t ON t.id = p.team_id
+                    JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
+                    WHERE ps.player_id = %s AND ps.season = %s
+                    ORDER BY ps.innings_pitched DESC LIMIT 1""", (pid, CURRENT_SEASON))
+                pr = cur.fetchone()
+                if pr and pr["fip"] is not None:
+                    ip = ip_to_decimal(pr["innings_pitched"])
+                    lvl = pr["level"] or "D1"
+                    lg = lg_fip.get(lvl)
+                    if lg and ip >= 5:
+                        row["pitch_runs"] = round((lg - float(pr["fip"])) / 9.0 * ip, 1)
+                        row["ip"] = round(ip, 1)
+            vals = [row[k] for k in ("off_runs", "bsr_runs", "if_runs", "of_runs",
+                                     "catch_runs", "pitch_runs") if row[k] is not None]
+            if not vals:
+                continue
+            row["total_runs"] = round(sum(vals), 1)
+            rows.append(row)
+        conn.commit()
+
+    rows.sort(key=lambda r: -r["total_runs"])
+    return {"players": rows, "league_woba": lg_woba, "league_fip": {k: round(v, 2) for k, v in lg_fip.items()}}
+
+
 # ── Reads ────────────────────────────────────────────────────────
 
 def _date_clause(date_from, date_to):
