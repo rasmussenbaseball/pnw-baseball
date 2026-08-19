@@ -1683,11 +1683,58 @@ def trackman_batter_detail(
             "xwobacon": round(t["xw_sum"] / t["xw_n"], 3) if t["xw_n"] else None,
         })
 
+    # Inline splits: vs pitcher hand and vs pitch type, precomputed so the
+    # lab shows the breakdown without touching a filter. Each line carries
+    # decisions (swing/whiff/chase), contact (EV/hard-hit/xwOBAcon), and
+    # corpus-centered run value.
+    def _split_line(rows_s):
+        called = [x for x in rows_s if x["pitch_call"]]
+        swings = [x for x in called if x["is_swing"]]
+        oz = [x for x in called if x["is_in_zone"] is False]
+        bbe_s = [x for x in rows_s if x["exit_speed"] is not None]
+        hh = sum(1 for x in bbe_s if x["exit_speed"] >= 90)
+        xw = [xwobacon(x["exit_speed"], x["launch_angle"], x.get("direction"),
+                       (x.get("batter_side") or "")[:1] or None)
+              for x in bbe_s if x["launch_angle"] is not None]
+        rv, rvn = 0.0, 0
+        for x in called:
+            v = pitch_run_value(x["balls"], x["strikes"], x["pitch_call"], x["play_result"])
+            if v is not None:
+                rv += v - rv_base
+                rvn += 1
+        return {
+            "pitches": len(rows_s),
+            "swing_pct": round(100 * len(swings) / len(called), 1) if called else None,
+            "whiff_pct": (round(100 * sum(1 for x in swings if x["is_whiff"]) / len(swings), 1)
+                          if swings else None),
+            "chase_pct": (round(100 * sum(1 for x in oz if x["is_chase"]) / len(oz), 1)
+                          if oz else None),
+            "bbe": len(bbe_s),
+            "avg_ev": round(sum(x["exit_speed"] for x in bbe_s) / len(bbe_s), 1) if bbe_s else None,
+            "hard_hit_pct": round(100 * hh / len(bbe_s), 1) if bbe_s else None,
+            "xwobacon": round(sum(xw) / len(xw), 3) if xw else None,
+            "rv": round(rv, 1) if rvn else None,
+        }
+
+    splits = {"hand": {}, "pitch_type": {}}
+    for hand, lbl in (("Left", "L"), ("Right", "R")):
+        rows_h = [x for x in pitches if x["pitcher_throws"] == hand]
+        if rows_h:
+            splits["hand"][lbl] = _split_line(rows_h)
+    by_pt = defaultdict(list)
+    for x in pitches:
+        if x["ptype"] and x["ptype"] != "Mistag":
+            by_pt[x["ptype"]].append(x)
+    for t, rows_t in sorted(by_pt.items(), key=lambda kv: -len(kv[1])):
+        if len(rows_t) >= 10:
+            splits["pitch_type"][t] = _split_line(rows_t)
+
     with get_connection() as conn:
         link = _match_player(conn.cursor(), batter)
     return {"batter": batter, "pitch_count": len(pitches),
             "pitches": pitches, "percentiles": percentiles, "profile": link,
-            "xstats": xstats, "swing_take": swing_take, "trend": trend}
+            "xstats": xstats, "swing_take": swing_take, "trend": trend,
+            "splits": splits}
 
 
 @router.get("/trackman/sessions/{session_id}/review")
