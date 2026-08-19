@@ -26,7 +26,7 @@ from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_tunnel import tunnel_pairs
 from ..stats.trackman_defense import (
     OF_POSITIONS, IF_POSITIONS, OUT_RESULTS, landing_xz,
-    catch_probability, gb_out_probability, difficulty_bucket,
+    catch_probability, gb_out_probability, difficulty_bucket, move_direction,
 )
 from .auth import require_tier
 
@@ -321,8 +321,10 @@ def trackman_defense(
     def bump(store, name, pos):
         st = store.setdefault(name, {
             "player": name, "positions": set(), "opps": 0, "outs": 0, "x_outs": 0.0,
+            "errors": 0, "through": 0,
             "buckets": {"routine": [0, 0], "2star": [0, 0], "3star": [0, 0],
                         "4star": [0, 0], "5star": [0, 0]},
+            "dirs": {d: [0, 0, 0.0] for d in ("in", "back", "left", "right")},
         })
         st["positions"].add(pos)
         return st
@@ -357,12 +359,17 @@ def trackman_defense(
                     st["opps"] += 1
                     st["outs"] += 1 if made else 0
                     st["x_outs"] += prob
+                    if not made:
+                        st["errors" if res == "Error" else "through"] += 1
                     bk = difficulty_bucket(prob)
                     st["buckets"][bk][0] += 1
                     st["buckets"][bk][1] += 1 if made else 0
+                    mdir = move_direction(fd["x"], fd["z"], lx, lz)
+                    dd = st["dirs"][mdir]
+                    dd[0] += 1; dd[1] += 1 if made else 0; dd[2] += prob
                     plays.append({
                         "type": "OF", "fielder": fd["name"] or pos, "pos": pos,
-                        "prob": round(prob, 3), "made": made,
+                        "prob": round(prob, 3), "made": made, "dir": mdir,
                         "dist": round(run_dist), "hang": round(hang, 1),
                         "land_x": round(lx, 1), "land_z": round(lz, 1),
                         "result": res, "batter": r["batter"],
@@ -379,19 +386,26 @@ def trackman_defense(
                     continue
                 got = gb_out_probability(fd["x"], fd["z"], direction, ev)
                 if got and (best is None or got[0] > best[2]):
-                    best = (pos, fd, got[0], got[1])
+                    best = (pos, fd, got[0], got[1], got[3])
             if best:
-                pos, fd, prob, d_perp = best
+                pos, fd, prob, d_perp, foot = best
                 st = bump(if_stats, fd["name"] or pos, pos)
                 st["opps"] += 1
                 st["outs"] += 1 if made else 0
                 st["x_outs"] += prob
+                if not made:
+                    # Error = the scorer says he REACHED it (glove or throw
+                    # failed); anything else got through = range
+                    st["errors" if res == "Error" else "through"] += 1
                 bk = difficulty_bucket(prob)
                 st["buckets"][bk][0] += 1
                 st["buckets"][bk][1] += 1 if made else 0
+                mdir = move_direction(fd["x"], fd["z"], foot[0], foot[1])
+                dd = st["dirs"][mdir]
+                dd[0] += 1; dd[1] += 1 if made else 0; dd[2] += prob
                 plays.append({
                     "type": "IF", "fielder": fd["name"] or pos, "pos": pos,
-                    "prob": round(prob, 3), "made": made,
+                    "prob": round(prob, 3), "made": made, "dir": mdir,
                     "dist": round(d_perp), "ev": round(ev),
                     "land_x": None, "land_z": None,
                     "result": res, "batter": r["batter"],
@@ -406,6 +420,9 @@ def trackman_defense(
             st["oae"] = round(st["outs"] - st["x_outs"], 1)
             st["conv_pct"] = round(st["outs"] / st["opps"], 3) if st["opps"] else None
             st["x_conv_pct"] = round(st["x_outs"] / st["opps"], 3) if st["opps"] else None
+            st["dirs"] = {d: {"opps": v[0], "outs": v[1],
+                              "oae": round(v[1] - v[2], 1)} if v[0] else None
+                          for d, v in st["dirs"].items()}
             out.append(st)
         return sorted(out, key=lambda x: -x["oae"])
 

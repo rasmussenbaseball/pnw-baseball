@@ -1665,6 +1665,16 @@ function DefenseFieldMap({ avgPositions, plays }) {
   )
 }
 
+function DirCell({ d }) {
+  if (!d) return <td className="px-2 py-1.5 text-right text-xs text-gray-300">—</td>
+  const tone = d.oae > 0 ? 'text-emerald-600 dark:text-emerald-400' : d.oae < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500'
+  return (
+    <td className={`px-2 py-1.5 text-right tabular-nums text-xs font-semibold ${tone}`}>
+      {d.oae > 0 ? `+${d.oae}` : d.oae} <span className="text-gray-400 font-normal">({d.opps})</span>
+    </td>
+  )
+}
+
 function BucketCells({ b }) {
   // conversion by difficulty: made/opps per star bucket, hardest first
   return ['5star', '4star', '3star', '2star', 'routine'].map(k => (
@@ -1700,6 +1710,11 @@ function DefenseTab({ teamCtx }) {
               <th className="px-2 py-2 text-right">OAE</th>
               <th className="px-2 py-2 text-right">Conv%</th>
               <th className="px-2 py-2 text-right">xConv%</th>
+              <th className="px-2 py-2 text-right" title="Reached the ball but no out (scored an error): glove or throw">E</th>
+              <th className="px-2 py-2 text-right" title="Ball got past without an error: range">Thru</th>
+              {['In', 'Back', 'Left', 'Right'].map(h => (
+                <th key={h} className="px-2 py-2 text-right whitespace-nowrap" title="Outs Above Expected when moving this direction (chances)">{h}</th>
+              ))}
               {['5★', '4★', '3★', '2★', 'Routine'].map(h => (
                 <th key={h} className="px-2 py-2 text-right whitespace-nowrap">{h}</th>
               ))}
@@ -1718,6 +1733,9 @@ function DefenseTab({ teamCtx }) {
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{r.conv_pct != null ? `${Math.round(r.conv_pct * 100)}%` : '—'}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{r.x_conv_pct != null ? `${Math.round(r.x_conv_pct * 100)}%` : '—'}</td>
+                <td className={`px-2 py-1.5 text-right tabular-nums ${r.errors ? 'text-rose-600 font-semibold' : 'text-gray-400'}`}>{r.errors || '—'}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{r.through || '—'}</td>
+                {['in', 'back', 'left', 'right'].map(d => <DirCell key={d} d={r.dirs?.[d]} />)}
                 <BucketCells b={r.buckets} />
               </tr>
             ))}
@@ -1731,6 +1749,8 @@ function DefenseTab({ teamCtx }) {
     <div key={i} className="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700 last:border-0 text-[12px]">
       <span className="font-semibold truncate">{p.fielder} <span className="text-gray-400 font-normal">({p.pos})</span></span>
       <span className="text-gray-500 whitespace-nowrap ml-2">
+        {p.dir && <span className="uppercase text-[9px] font-bold text-gray-400 mr-1.5">{p.dir}</span>}
+        {p.result === 'Error' && <span className="text-[9px] font-bold text-rose-500 mr-1.5">E</span>}
         {p.type === 'OF' ? `${p.dist} ft run · ${p.hang}s hang` : `${p.dist} ft range · ${p.ev} EV`}
         <span className={`ml-2 font-bold ${p.made ? 'text-emerald-600' : 'text-rose-600'}`}>
           {Math.round(p.prob * 100)}%
@@ -1800,8 +1820,13 @@ function DefenseTab({ teamCtx }) {
             How it works: every positioning CSV records each fielder's starting spot at pitch release.
             We pair that with the ball's landing point and hang time (outfield) or its path and exit
             velocity (infield) to estimate how likely an average college defender makes the play, then
-            compare to what actually happened. Physics-based estimates, best used to compare players
-            within your own data, not against MLB numbers.
+            compare to what actually happened. In / Back / Left / Right split each player's OAE by the
+            direction they had to move (left = the 1B side, right = the 3B side, from the fielder's
+            view facing the plate). E counts plays the scorer ruled an error, meaning the fielder
+            REACHED the ball and the glove or throw failed; Thru counts balls that got past cleanly,
+            which is range or positioning. The data can't separate a bobble from a bad throw within an
+            error. Physics-based estimates, best used to compare players within your own data, not
+            against MLB numbers.
           </p>
         </>
       )}

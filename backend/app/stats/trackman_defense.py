@@ -79,7 +79,7 @@ def gb_out_probability(fielder_x, fielder_z, direction_deg, exit_velo_mph):
         return None
     d_perp = abs(fielder_z * ux - fielder_x * uz)
     if d_perp > GB_MAX_RANGE_FT:
-        return (0.02, d_perp, 99.0)
+        return (0.02, d_perp, 99.0, (fielder_x, fielder_z))
     ball_fps = exit_velo_mph * 1.467 * GB_BALL_SPEED_FACTOR
     t_ball = s / ball_fps
     v_req = d_perp / max(t_ball - GB_REACTION_S, 0.12)
@@ -88,7 +88,20 @@ def gb_out_probability(fielder_x, fielder_z, direction_deg, exit_velo_mph):
     # gets harder even when the ball is reached
     if s > 130:
         p *= max(0.4, 1.0 - (s - 130) / 120.0)
-    return (max(0.0, min(1.0, p)), d_perp, v_req)
+    # intercept point = the foot of the perpendicular on the ball line
+    return (max(0.0, min(1.0, p)), d_perp, v_req, (s * ux, s * uz))
+
+
+def move_direction(fx, fz, tx, tz):
+    """Dominant movement direction in the FIELDER's frame, facing home:
+    'left' = glove-side for a righty = the 1B side (+z), 'right' = the
+    3B side (-z), 'in' = toward the plate, 'back' = away from it.
+    Classified by the larger of the radial vs lateral component."""
+    d_rad = math.hypot(tx, tz) - math.hypot(fx, fz)
+    d_lat = tz - fz
+    if abs(d_rad) >= abs(d_lat):
+        return "back" if d_rad > 0 else "in"
+    return "left" if d_lat > 0 else "right"
 
 
 def difficulty_bucket(p):
