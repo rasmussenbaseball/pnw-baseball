@@ -204,7 +204,7 @@ def comp_aware_tier(tier, provider, ends_at):
 # so the feature stays testable. Seats are managed from the Account page
 # (/me/staff-seats endpoints in account.py).
 
-MAX_STAFF_SEATS = 3
+MAX_STAFF_SEATS = 8
 
 
 def _owner_can_share(cur, owner_user_id, owner_email) -> bool:

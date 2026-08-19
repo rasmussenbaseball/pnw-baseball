@@ -17,8 +17,9 @@ widget (portal home + TrackMan Overview) is the UI.
 
 Rules:
   - Coach tier required as usual (staff-seat members qualify).
-  - A member with their OWN uploads keeps their own workspace (we never
-    silently merge two coaches' data).
+  - A member who already uploaded their own CSVs gets those FOLDED into
+    the staff pool (merge_member_data, deduped) — unless they run a
+    staff of their own, in which case they keep their own program.
 """
 import time
 
@@ -107,10 +108,8 @@ def resolve_workspace(request: Request, owner: str) -> str:
             except Exception:
                 conn.rollback()
             if owners and owners[0] != owner:
-                # Only adopt the shared workspace when the member has no
-                # uploads of their own (never merge two coaches' data).
                 has_own = False
-                for table in ("tm_sessions", "rapsodo_sessions"):
+                for table in ("tm_sessions", "rapsodo_sessions", "camps"):
                     try:
                         cur.execute(f"SELECT 1 FROM {table} WHERE owner_user_id = %s LIMIT 1", (owner,))
                         if cur.fetchone():
@@ -118,12 +117,109 @@ def resolve_workspace(request: Request, owner: str) -> str:
                             break
                     except Exception:
                         conn.rollback()
+                # A member who runs their OWN staff is a head coach — never
+                # fold their program into someone else's workspace.
+                is_head_coach = False
+                try:
+                    cur.execute(
+                        """SELECT 1 FROM tracking_workspace_shares WHERE owner_user_id = %s
+                           UNION SELECT 1 FROM coach_staff_seats WHERE owner_user_id = %s LIMIT 1""",
+                        (owner, owner))
+                    is_head_coach = bool(cur.fetchone())
+                except Exception:
+                    conn.rollback()
                 if not has_own:
                     eff = owners[0]
+                elif not is_head_coach:
+                    # Member brought their own uploads: fold them into the
+                    # staff pool (per Nate 2026-08-18), then adopt it.
+                    try:
+                        merge_member_data(cur, owner, owners[0])
+                        conn.commit()
+                        eff = owners[0]
+                    except Exception:
+                        conn.rollback()   # fail-safe: keep their own view
         _CACHE[email] = (eff, now + _CACHE_TTL)
         return eff or owner
     except Exception:
         return owner
+
+
+def _user_id_for_email(cur, email: str):
+    try:
+        cur.execute("SELECT id FROM auth.users WHERE LOWER(email) = %s LIMIT 1", (email,))
+        row = cur.fetchone()
+        return str(row["id"]) if row else None
+    except Exception:
+        return None
+
+
+def merge_member_data(cur, member: str, target: str) -> None:
+    """Fold a staff member's own uploads INTO the shared workspace so the
+    whole staff sees one combined pool (per Nate 2026-08-18: a coach who
+    already uploaded their own CSVs gets merged, not kept separate).
+    Dedupes on the same keys uploads do, so overlapping files never
+    double-count. One-way and idempotent."""
+    if not member or member == target:
+        return
+    # ── TrackMan ──
+    # 1. drop member pitches that already exist in the target pool
+    cur.execute("""DELETE FROM tm_pitches WHERE owner_user_id = %s AND pitch_uid IN
+                   (SELECT pitch_uid FROM tm_pitches WHERE owner_user_id = %s)""",
+                (member, target))
+    # 2. sessions whose game already exists at target: repoint pitches, merge filenames, drop session
+    cur.execute("""SELECT m.id AS mid, t.id AS tid, m.filenames AS mf
+                   FROM tm_sessions m JOIN tm_sessions t
+                     ON t.owner_user_id = %s AND t.game_id = m.game_id
+                   WHERE m.owner_user_id = %s""", (target, member))
+    for r in cur.fetchall():
+        cur.execute("UPDATE tm_pitches SET owner_user_id = %s, session_id = %s "
+                    "WHERE owner_user_id = %s AND session_id = %s",
+                    (target, r["tid"], member, r["mid"]))
+        cur.execute("""UPDATE tm_sessions SET filenames =
+                         (SELECT ARRAY(SELECT DISTINCT unnest(filenames || %s))) WHERE id = %s""",
+                    (r["mf"] or [], r["tid"]))
+        cur.execute("DELETE FROM tm_sessions WHERE id = %s", (r["mid"],))
+    # 3. everything else moves wholesale
+    cur.execute("UPDATE tm_pitches SET owner_user_id = %s WHERE owner_user_id = %s", (target, member))
+    cur.execute("UPDATE tm_sessions SET owner_user_id = %s WHERE owner_user_id = %s", (target, member))
+    # 4. refresh counts on target sessions
+    cur.execute("""UPDATE tm_sessions s SET
+                     pitch_count = (SELECT COUNT(*) FROM tm_pitches p WHERE p.session_id = s.id),
+                     bbe_count   = (SELECT COUNT(*) FROM tm_pitches p
+                                    WHERE p.session_id = s.id AND p.exit_speed IS NOT NULL)
+                   WHERE s.owner_user_id = %s""", (target,))
+
+    # ── Rapsodo ──
+    # players colliding on rapsodo_player_id: fold sessions/pitches into the target's row
+    cur.execute("""SELECT m.id AS mid, t.id AS tid
+                   FROM rapsodo_players m JOIN rapsodo_players t
+                     ON t.owner_user_id = %s AND t.rapsodo_player_id = m.rapsodo_player_id
+                   WHERE m.owner_user_id = %s""", (target, member))
+    for r in cur.fetchall():
+        # duplicate files for the same device player: drop the member's copy
+        cur.execute("""SELECT id FROM rapsodo_sessions ms
+                       WHERE ms.owner_user_id = %s AND ms.player_db_id = %s
+                         AND (ms.rapsodo_player_id, ms.source_file) IN
+                             (SELECT rapsodo_player_id, source_file FROM rapsodo_sessions
+                              WHERE owner_user_id = %s)""", (member, r["mid"], target))
+        dup_ids = [x["id"] for x in cur.fetchall()]
+        if dup_ids:
+            cur.execute("DELETE FROM rapsodo_pitches WHERE session_id = ANY(%s)", (dup_ids,))
+            cur.execute("DELETE FROM rapsodo_sessions WHERE id = ANY(%s)", (dup_ids,))
+        cur.execute("UPDATE rapsodo_sessions SET owner_user_id = %s, player_db_id = %s "
+                    "WHERE owner_user_id = %s AND player_db_id = %s",
+                    (target, r["tid"], member, r["mid"]))
+        cur.execute("UPDATE rapsodo_pitches SET owner_user_id = %s, player_db_id = %s "
+                    "WHERE owner_user_id = %s AND player_db_id = %s",
+                    (target, r["tid"], member, r["mid"]))
+        cur.execute("DELETE FROM rapsodo_players WHERE id = %s", (r["mid"],))
+    for t in ("rapsodo_sessions", "rapsodo_pitches", "rapsodo_players"):
+        cur.execute(f"UPDATE {t} SET owner_user_id = %s WHERE owner_user_id = %s", (target, member))
+
+    # ── Camp Report (camp-scoped uniques — a plain re-own is safe) ──
+    for t in ("camps", "camp_players", "camp_rows", "camp_uploads"):
+        cur.execute(f"UPDATE {t} SET owner_user_id = %s WHERE owner_user_id = %s", (target, member))
 
 
 def ensure_can_upload(request: Request, resolved_owner: str) -> None:
@@ -280,6 +376,19 @@ def my_staff(request: Request, owner: str = Depends(_gate)):
                                                 "added": r["added"].isoformat() if r["added"] else None})
             m["data"] = True
             m["can_upload"] = r["can_upload"] is not False
+        # Self-heal: with seats now covering the whole list, upgrade any
+        # data-only members to full seats when the owner can grant them.
+        if ctx["can_seats"]:
+            for m in members.values():
+                if not m["seat"]:
+                    cur.execute("SELECT COUNT(*) AS n FROM coach_staff_seats WHERE owner_user_id = %s", (owner,))
+                    if (cur.fetchone()["n"] or 0) >= MAX_STAFF_SEATS:
+                        break
+                    cur.execute(
+                        """INSERT INTO coach_staff_seats (owner_user_id, owner_email, member_email)
+                           VALUES (%s, %s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
+                        (owner, ctx["email"], m["email"]))
+                    m["seat"] = True
         # Is the caller viewing a workspace someone shared with THEM?
         viewing = resolve_workspace(request, owner) != owner
         conn.commit()
@@ -326,9 +435,26 @@ def my_staff_add(body: ShareAdd, request: Request, owner: str = Depends(_gate)):
             """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
                VALUES (%s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
             (owner, email))
+        # If this coach already has an account with their own uploads (and
+        # isn't a head coach with a staff of their own), fold their data
+        # into this workspace right away.
+        merged = False
+        member_id = _user_id_for_email(cur, email)
+        if member_id and member_id != owner:
+            try:
+                cur.execute(
+                    """SELECT 1 FROM tracking_workspace_shares WHERE owner_user_id = %s
+                       UNION SELECT 1 FROM coach_staff_seats WHERE owner_user_id = %s LIMIT 1""",
+                    (member_id, member_id))
+                if not cur.fetchone():
+                    merge_member_data(cur, member_id, owner)
+                    merged = True
+            except Exception:
+                conn.rollback()
+                cur = conn.cursor()
         conn.commit()
     invalidate_share_cache()
-    return {"status": "ok", "email": email, "seat": seat}
+    return {"status": "ok", "email": email, "seat": seat, "merged": merged}
 
 
 class SharePatch(BaseModel):

@@ -248,7 +248,7 @@ const FAQ = [
   },
   {
     q: "Can my whole coaching staff use one subscription?",
-    a: "Yes. Every Coach & Scout subscription includes 3 extra staff seats at no charge. Add your assistants' emails from your account page and they get full Coach & Scout access when they sign in. Need more than 4 total? Email info@nwbaseballstats.com.",
+    a: "Yes. Every Coach & Scout subscription includes staff seats for up to 8 assistant coaches at no charge. Add their emails from your account page or the My Staff card in the portal: each gets full Coach & Scout access on their own login plus your shared TrackMan, Rapsodo, and Camp Report data. Need more? Email info@nwbaseballstats.com.",
   },
   {
     q: "Will free features ever be moved behind a paywall?",

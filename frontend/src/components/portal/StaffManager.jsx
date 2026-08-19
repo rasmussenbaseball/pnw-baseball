@@ -73,11 +73,10 @@ export default function StaffManager({ variant = 'card' }) {
     )
   }
 
-  const seatsMax = data?.seats_max ?? 3
   const seatsLine = canSeats
-    ? `Add up to ${max} coaches to share your TrackMan Suite, Rapsodo Lab, and Camp Report
-       data. The first ${seatsMax} added also get a full Coach & Scout membership seat on
-       their own login. Use each coach's Uploads toggle to control who can add or delete CSVs.`
+    ? `Add up to ${max} coaches: each gets full Coach & Scout access on their own login,
+       plus your shared TrackMan Suite, Rapsodo Lab, and Camp Report data. Use each
+       coach's Uploads toggle to control who can add or delete CSVs.`
     : `Add up to ${max} coaches to share your TrackMan Suite, Rapsodo Lab, and Camp Report
        data. Use each coach's Uploads toggle to control who can add or delete CSVs. Full
        membership seats come with a paid Coach & Scout subscription.`
