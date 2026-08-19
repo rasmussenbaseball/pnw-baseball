@@ -14,7 +14,7 @@ re-downloads is always safe. See TRACKMAN_SUITE_DESIGN.md for the roadmap.
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from psycopg2.extras import execute_values
+from psycopg2.extras import execute_values, Json
 from pydantic import BaseModel
 
 from ..models.database import get_connection
@@ -24,6 +24,10 @@ from ..stats.rapsodo_location import location_plus
 from ..stats.trackman_classify import reclassify_owner, SUITE_TYPES
 from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_tunnel import tunnel_pairs
+from ..stats.trackman_defense import (
+    OF_POSITIONS, IF_POSITIONS, OUT_RESULTS, landing_xz,
+    catch_probability, gb_out_probability, difficulty_bucket,
+)
 from .auth import require_tier
 
 from fastapi import Request as _Request
@@ -90,6 +94,56 @@ def _ensure_tables(cur):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_batter ON tm_pitches(owner_user_id, batter)")
 
 
+_POS_TABLE_READY = False
+
+
+def _ensure_positioning_table(cur):
+    global _POS_TABLE_READY
+    if _POS_TABLE_READY:
+        return
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tm_positioning (
+            id            BIGSERIAL PRIMARY KEY,
+            owner_user_id UUID NOT NULL,
+            pitch_uid     TEXT NOT NULL,
+            game_id       TEXT,
+            shift         TEXT,
+            fielders      JSONB NOT NULL,   -- {"CF": {"name":..., "x":..., "z":...}, ...}
+            created_at    TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE (owner_user_id, pitch_uid)
+        )""")
+    cur.execute("""SELECT relrowsecurity FROM pg_class WHERE relname = 'tm_positioning'""")
+    row = cur.fetchone()
+    if row is not None and not row.get("relrowsecurity"):
+        cur.execute("ALTER TABLE tm_positioning ENABLE ROW LEVEL SECURITY")
+    _POS_TABLE_READY = True
+
+
+def _parse_positioning(text: str):
+    """TrackMan player-positioning CSV -> rows for tm_positioning."""
+    import csv as _csv
+    import io as _io
+    reader = _csv.DictReader(_io.StringIO(text))
+    if "1B_PositionAtReleaseX" not in (reader.fieldnames or []):
+        return None
+    out = []
+    for r in reader:
+        fielders = {}
+        for pos in OF_POSITIONS + IF_POSITIONS:
+            try:
+                x = float(r.get(f"{pos}_PositionAtReleaseX") or "")
+                z = float(r.get(f"{pos}_PositionAtReleaseZ") or "")
+            except ValueError:
+                continue
+            fielders[pos] = {"name": (r.get(f"{pos}_Name") or "").strip(), "x": x, "z": z}
+        if fielders and r.get("PitchUID"):
+            out.append({"pitch_uid": r["PitchUID"],
+                        "game_id": (r.get("GameUID") or "")[:80],
+                        "shift": r.get("DetectedShift") or None,
+                        "fielders": fielders})
+    return out
+
+
 # ── Upload ───────────────────────────────────────────────────────
 
 @router.post("/portal/trackman/upload")
@@ -109,6 +163,21 @@ async def upload_trackman(
             try:
                 raw = await f.read()
                 text = raw.decode("utf-8-sig", errors="replace")
+                pos_rows = _parse_positioning(text)
+                if pos_rows is not None:
+                    _ensure_positioning_table(cur)
+                    execute_values(cur, """
+                        INSERT INTO tm_positioning (owner_user_id, pitch_uid, game_id, shift, fielders)
+                        VALUES %s
+                        ON CONFLICT (owner_user_id, pitch_uid) DO UPDATE
+                            SET fielders = EXCLUDED.fielders, shift = EXCLUDED.shift
+                    """, [(owner, r["pitch_uid"], r["game_id"], r["shift"], Json(r["fielders"]))
+                          for r in pos_rows], page_size=500)
+                    conn.commit()
+                    results.append({"file": f.filename, "kind": "positioning",
+                                    "pitches_added": 0, "positioned": len(pos_rows),
+                                    "sessions": [], "duplicates_skipped": 0})
+                    continue
                 parsed = parse_text(text, f.filename or "upload.csv")
                 results.append(_ingest(cur, owner, parsed, f.filename or "upload.csv"))
                 conn.commit()   # per-file: a dropped connection keeps finished files
@@ -196,6 +265,171 @@ def set_session_type(session_id: int, body: SessionTypePatch, owner: str = Depen
             raise HTTPException(status_code=404, detail="Session not found.")
         conn.commit()
     return {"status": "ok", "session_type": st}
+
+
+@router.get("/trackman/defense")
+def trackman_defense(
+    context: str = Query("all"),
+    team: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    owner: str = Depends(_gate),
+):
+    """OF catch-probability / IF ground-ball range metrics from the
+    player-positioning CSVs joined to batted-ball flight by PitchUID.
+    Physics-informed estimates (see trackman_defense.py), branded Outs
+    Above Expected — comparable within the corpus, not to MLB OAA."""
+    ctx_sql, ctx_params = _context_clause(context)
+    d_sql, d_params = _date_clause(date_from, date_to)
+    team_sql, team_params = ("", [])
+    if team:
+        team_sql, team_params = " AND p.pitcher_team = %s", [team]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_positioning_table(cur)
+        cur.execute(f"""
+            SELECT p.pitch_uid, p.batter, p.pitcher_team, p.play_result,
+                   p.tagged_hit_type, p.exit_speed, p.launch_angle AS angle, p.direction,
+                   p.bearing, p.distance, p.hang_time,
+                   po.fielders, po.shift, s.session_date
+            FROM tm_pitches p
+            JOIN tm_positioning po ON po.owner_user_id = p.owner_user_id
+                                  AND po.pitch_uid = p.pitch_uid
+            JOIN tm_sessions s ON s.id = p.session_id
+            WHERE p.owner_user_id = %s AND p.exit_speed IS NOT NULL
+              {ctx_sql} {d_sql} {team_sql}
+        """, [owner] + ctx_params + d_params + team_params)
+        rows = cur.fetchall()
+        # team-level positioning: every positioned pitch (not just BBE)
+        cur.execute(f"""
+            SELECT po.fielders, po.shift
+            FROM tm_positioning po
+            JOIN tm_pitches p ON p.owner_user_id = po.owner_user_id
+                             AND p.pitch_uid = po.pitch_uid
+            JOIN tm_sessions s ON s.id = p.session_id
+            WHERE po.owner_user_id = %s {ctx_sql} {d_sql} {team_sql}
+        """, [owner] + ctx_params + d_params + team_params)
+        all_pos = cur.fetchall()
+        conn.commit()
+
+    def fnum(v):
+        return float(v) if v is not None else None
+
+    of_stats, if_stats = {}, {}
+    plays = []
+
+    def bump(store, name, pos):
+        st = store.setdefault(name, {
+            "player": name, "positions": set(), "opps": 0, "outs": 0, "x_outs": 0.0,
+            "buckets": {"routine": [0, 0], "2star": [0, 0], "3star": [0, 0],
+                        "4star": [0, 0], "5star": [0, 0]},
+        })
+        st["positions"].add(pos)
+        return st
+
+    for r in rows:
+        f = r["fielders"] or {}
+        res = r["play_result"]
+        made = res in OUT_RESULTS
+        htype = (r["tagged_hit_type"] or "")
+        angle = fnum(r["angle"])
+        ev = fnum(r["exit_speed"])
+        # ── outfield air balls ──
+        is_air = (htype in ("FlyBall", "LineDrive", "Popup")
+                  or (angle is not None and angle >= 10)) and res != "HomeRun"
+        bearing, dist, hang = fnum(r["bearing"]), fnum(r["distance"]), fnum(r["hang_time"])
+        if (is_air and bearing is not None and dist is not None and dist >= 130
+                and hang is not None and hang >= 1.3):
+            lx, lz = landing_xz(bearing, dist)
+            best = None
+            for pos in OF_POSITIONS:
+                fd = f.get(pos)
+                if not fd:
+                    continue
+                got = catch_probability(fd["x"], fd["z"], lx, lz, hang)
+                if got and (best is None or got[0] > best[2]):
+                    best = (pos, fd, got[0], got[1])
+            if best:
+                pos, fd, prob, run_dist = best
+                # uncatchable-by-anyone balls aren't opportunities
+                if prob >= 0.03:
+                    st = bump(of_stats, fd["name"] or pos, pos)
+                    st["opps"] += 1
+                    st["outs"] += 1 if made else 0
+                    st["x_outs"] += prob
+                    bk = difficulty_bucket(prob)
+                    st["buckets"][bk][0] += 1
+                    st["buckets"][bk][1] += 1 if made else 0
+                    plays.append({
+                        "type": "OF", "fielder": fd["name"] or pos, "pos": pos,
+                        "prob": round(prob, 3), "made": made,
+                        "dist": round(run_dist), "hang": round(hang, 1),
+                        "land_x": round(lx, 1), "land_z": round(lz, 1),
+                        "result": res, "batter": r["batter"],
+                        "date": r["session_date"].isoformat() if r["session_date"] else None,
+                    })
+        # ── infield ground balls ──
+        direction = fnum(r["direction"])
+        is_gb = htype == "GroundBall" or (angle is not None and angle < 10 and htype != "Bunt")
+        if is_gb and direction is not None and ev is not None and abs(direction) <= 55:
+            best = None
+            for pos in IF_POSITIONS:
+                fd = f.get(pos)
+                if not fd:
+                    continue
+                got = gb_out_probability(fd["x"], fd["z"], direction, ev)
+                if got and (best is None or got[0] > best[2]):
+                    best = (pos, fd, got[0], got[1])
+            if best:
+                pos, fd, prob, d_perp = best
+                st = bump(if_stats, fd["name"] or pos, pos)
+                st["opps"] += 1
+                st["outs"] += 1 if made else 0
+                st["x_outs"] += prob
+                bk = difficulty_bucket(prob)
+                st["buckets"][bk][0] += 1
+                st["buckets"][bk][1] += 1 if made else 0
+                plays.append({
+                    "type": "IF", "fielder": fd["name"] or pos, "pos": pos,
+                    "prob": round(prob, 3), "made": made,
+                    "dist": round(d_perp), "ev": round(ev),
+                    "land_x": None, "land_z": None,
+                    "result": res, "batter": r["batter"],
+                    "date": r["session_date"].isoformat() if r["session_date"] else None,
+                })
+
+    def finish(store):
+        out = []
+        for st in store.values():
+            st["positions"] = sorted(st["positions"])
+            st["x_outs"] = round(st["x_outs"], 1)
+            st["oae"] = round(st["outs"] - st["x_outs"], 1)
+            st["conv_pct"] = round(st["outs"] / st["opps"], 3) if st["opps"] else None
+            st["x_conv_pct"] = round(st["x_outs"] / st["opps"], 3) if st["opps"] else None
+            out.append(st)
+        return sorted(out, key=lambda x: -x["oae"])
+
+    # average start positions + shift usage
+    pos_sum, shift_counts = {}, {}
+    for r in all_pos:
+        if r["shift"]:
+            shift_counts[r["shift"]] = shift_counts.get(r["shift"], 0) + 1
+        for pos, fd in (r["fielders"] or {}).items():
+            a = pos_sum.setdefault(pos, [0.0, 0.0, 0])
+            a[0] += fd["x"]; a[1] += fd["z"]; a[2] += 1
+    avg_positions = {pos: {"x": round(a[0] / a[2], 1), "z": round(a[1] / a[2], 1), "n": a[2]}
+                     for pos, a in pos_sum.items() if a[2]}
+
+    plays.sort(key=lambda p: p["prob"])
+    return {
+        "positioned_pitches": len(all_pos),
+        "positioned_bbe": len(rows),
+        "outfield": finish(of_stats),
+        "infield": finish(if_stats),
+        "plays": plays[:120],
+        "avg_positions": avg_positions,
+        "shifts": shift_counts,
+    }
 
 
 # ── Reads ────────────────────────────────────────────────────────

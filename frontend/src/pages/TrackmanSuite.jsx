@@ -81,7 +81,7 @@ export default function TrackmanSuite() {
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
           ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
-          ['sessions', 'Session Review'], ['catching', 'Catching'], ['board', 'Coach Board']].map(([k, label]) => (
+          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['board', 'Coach Board']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === k
@@ -101,6 +101,7 @@ export default function TrackmanSuite() {
       {tab === 'leaders' && (hasData ? <LeaderboardsTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'catching' && (hasData ? <CatchingTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'defense' && (hasData ? <DefenseTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'board' && (hasData ? <CoachBoardTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
   )
@@ -1613,6 +1614,197 @@ function TunnelingCard({ tunneling }) {
       <p className="text-[10px] text-gray-400 mt-2">
         Same tunneling math as the Rapsodo Lab: release + commit-point separation vs late break.
       </p>
+    </div>
+  )
+}
+
+// ── Defense — OF catch probability + IF range from positioning CSVs ──
+
+function DefenseFieldMap({ avgPositions, plays }) {
+  const W = 460, H = 300
+  const ox = W / 2, oy = H - 16
+  const maxR = 380
+  const R = H - 40
+  const pt = (x, z) => {
+    const r = Math.hypot(x, z), a = Math.atan2(z, Math.max(x, 0.001))
+    const rr = (Math.min(r, maxR) / maxR) * R
+    return [ox + rr * Math.sin(a), oy - rr * Math.cos(a)]
+  }
+  const foul = a => {
+    const rad = (a * Math.PI) / 180
+    return [ox + R * Math.sin(rad), oy - R * Math.cos(rad)]
+  }
+  const ofPlays = (plays || []).filter(p => p.type === 'OF' && p.land_x != null)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
+      <rect x="0" y="0" width={W} height={H} rx="8" fill="#f8f7f4" />
+      <path d={`M ${ox} ${oy} L ${foul(-45)[0]} ${foul(-45)[1]} A ${R} ${R} 0 0 1 ${foul(45)[0]} ${foul(45)[1]} Z`}
+        fill="#ffffff" stroke="#d1d5db" />
+      {[150, 250, 350].map(d => {
+        const r = (d / maxR) * R
+        const [x1, y1] = [ox + r * Math.sin(-Math.PI / 4), oy - r * Math.cos(-Math.PI / 4)]
+        const [x2, y2] = [ox + r * Math.sin(Math.PI / 4), oy - r * Math.cos(Math.PI / 4)]
+        return <path key={d} d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`} fill="none" stroke="#eceef2" />
+      })}
+      {ofPlays.map((p, i) => {
+        const [cx, cy] = pt(p.land_x, p.land_z)
+        return <circle key={i} cx={cx} cy={cy} r="3.4"
+          fill={p.made ? '#059669' : '#dc2626'} opacity="0.65" />
+      })}
+      {Object.entries(avgPositions || {}).map(([pos, a]) => {
+        const [cx, cy] = pt(a.x, a.z)
+        return (
+          <g key={pos}>
+            <circle cx={cx} cy={cy} r="10" fill="#1d1f4d" />
+            <text x={cx} y={cy + 3} textAnchor="middle" style={{ fontSize: 8, fontWeight: 700, fill: '#fff' }}>{pos}</text>
+          </g>
+        )
+      })}
+      <rect x={ox - 3} y={oy - 3} width="6" height="6" transform={`rotate(45 ${ox} ${oy})`} fill="#1d1f4d" />
+    </svg>
+  )
+}
+
+function BucketCells({ b }) {
+  // conversion by difficulty: made/opps per star bucket, hardest first
+  return ['5star', '4star', '3star', '2star', 'routine'].map(k => (
+    <td key={k} className="px-2 py-1.5 text-right tabular-nums text-xs">
+      {b[k][0] ? `${b[k][1]}/${b[k][0]}` : '—'}
+    </td>
+  ))
+}
+
+function DefenseTab({ teamCtx }) {
+  const [team, setTeam] = useState(teamCtx.primary)
+  const [context, setContext] = useState('all')
+  const { data, loading } = useApi('/trackman/defense',
+    { context, ...(team ? { team } : {}) }, [context, team])
+  const d = data || {}
+  const gems = (d.plays || []).filter(p => p.made).slice(0, 8)
+  const misses = (d.plays || []).filter(p => !p.made).sort((a, b) => b.prob - a.prob).slice(0, 8)
+
+  const statTable = (title, rows, note) => (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{title}</span>
+        <span className="text-[10px] text-gray-400">{note}</span>
+      </div>
+      {rows?.length ? (
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="px-4 py-2">Player</th><th className="px-2 py-2">Pos</th>
+              <th className="px-2 py-2 text-right">Opps</th>
+              <th className="px-2 py-2 text-right">Outs</th>
+              <th className="px-2 py-2 text-right">xOuts</th>
+              <th className="px-2 py-2 text-right">OAE</th>
+              <th className="px-2 py-2 text-right">Conv%</th>
+              <th className="px-2 py-2 text-right">xConv%</th>
+              {['5★', '4★', '3★', '2★', 'Routine'].map(h => (
+                <th key={h} className="px-2 py-2 text-right whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+            {rows.map(r => (
+              <tr key={r.player}>
+                <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{r.player}</td>
+                <td className="px-2 py-1.5 text-xs text-gray-400">{r.positions.join('/')}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{r.opps}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{r.outs}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{r.x_outs}</td>
+                <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${r.oae > 0 ? 'text-emerald-600 dark:text-emerald-400' : r.oae < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                  {r.oae > 0 ? `+${r.oae}` : r.oae}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{r.conv_pct != null ? `${Math.round(r.conv_pct * 100)}%` : '—'}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{r.x_conv_pct != null ? `${Math.round(r.x_conv_pct * 100)}%` : '—'}</td>
+                <BucketCells b={r.buckets} />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <div className="p-8 text-center text-sm text-gray-400">No qualifying opportunities yet.</div>}
+    </div>
+  )
+
+  const playRow = (p, i) => (
+    <div key={i} className="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700 last:border-0 text-[12px]">
+      <span className="font-semibold truncate">{p.fielder} <span className="text-gray-400 font-normal">({p.pos})</span></span>
+      <span className="text-gray-500 whitespace-nowrap ml-2">
+        {p.type === 'OF' ? `${p.dist} ft run · ${p.hang}s hang` : `${p.dist} ft range · ${p.ev} EV`}
+        <span className={`ml-2 font-bold ${p.made ? 'text-emerald-600' : 'text-rose-600'}`}>
+          {Math.round(p.prob * 100)}%
+        </span>
+      </span>
+    </div>
+  )
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap justify-between items-center gap-2">
+        <div className="text-[11px] text-gray-400">
+          {d.positioned_pitches || 0} positioned pitches · {d.positioned_bbe || 0} batted balls with positioning
+        </div>
+        <div className="flex gap-2 items-center">
+          <select value={context} onChange={e => setContext(e.target.value)}
+            className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs">
+            {CONTEXTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+          <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+        </div>
+      </div>
+
+      {loading ? <div className="p-8 text-center text-sm text-gray-400">Loading…</div> :
+       !d.positioned_bbe ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-8 text-center text-sm text-gray-400">
+          No positioning data yet. Upload TrackMan's <span className="font-mono text-xs">playerpositioning</span> CSVs
+          (they come alongside the game export) in the Overview tab and the defensive metrics
+          build automatically from fielder starting spots + ball flight.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-3">
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Average starting spots + OF chances</span>
+                <span className="text-[10px] text-gray-400">
+                  <span className="text-emerald-600 font-bold">●</span> caught&nbsp;
+                  <span className="text-rose-600 font-bold">●</span> fell
+                </span>
+              </div>
+              <DefenseFieldMap avgPositions={d.avg_positions} plays={d.plays} />
+              {Object.keys(d.shifts || {}).length > 0 && (
+                <div className="text-[10px] text-gray-400 mt-1">
+                  Shifts detected: {Object.entries(d.shifts).map(([k, v]) => `${k} ×${v}`).join(' · ')}
+                </div>
+              )}
+            </div>
+            <div className="grid grid-rows-2 gap-3">
+              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Best plays made</div>
+                {gems.length ? gems.map(playRow) : <div className="text-xs text-gray-400 italic">None yet.</div>}
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Most catchable that fell</div>
+                {misses.length ? misses.map(playRow) : <div className="text-xs text-gray-400 italic">None yet.</div>}
+              </div>
+            </div>
+          </div>
+
+          {statTable('Outfield — catch probability', d.outfield,
+            'OAE = outs made minus expected · star buckets = made/chances by difficulty')}
+          {statTable('Infield — ground-ball range', d.infield,
+            'OAE = outs made minus expected on grounders in range')}
+
+          <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
+            How it works: every positioning CSV records each fielder's starting spot at pitch release.
+            We pair that with the ball's landing point and hang time (outfield) or its path and exit
+            velocity (infield) to estimate how likely an average college defender makes the play, then
+            compare to what actually happened. Physics-based estimates, best used to compare players
+            within your own data, not against MLB numbers.
+          </p>
+        </>
+      )}
     </div>
   )
 }
