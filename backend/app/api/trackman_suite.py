@@ -96,8 +96,12 @@ def _stuff_calibration(cur, owner, context, season):
     cal, fam_pool = {}, defaultdict(list)
     for t, gs in raws.items():
         fam_pool[_STUFF_FAMILY.get(t, "br")] += gs
-        if len(gs) >= 5:
-            cal[t] = (_st.mean(gs), max(_st.pstdev(gs), 12.0), len(gs))
+        if len(gs) >= 3:
+            # tiny type samples (3-5 arms) recenter with a wide sd floor so
+            # the spread doesn't overreact — the raw scale being off for a
+            # whole type (cutters at raw ~60) is worse than a noisy mean
+            floor = 12.0 if len(gs) >= 6 else 20.0
+            cal[t] = (_st.mean(gs), max(_st.pstdev(gs), floor), len(gs))
     fam_off = {f: _st.mean(gs) - 100 for f, gs in fam_pool.items() if len(gs) >= 5}
     return cal, fam_off
 
