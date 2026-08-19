@@ -64,6 +64,15 @@ const TYPE_META = {
   bp: { label: 'BP', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' },
 }
 
+// TrackMan seasons run July 1 - June 30: June games close the spring
+// season, July starts the next cycle (2025 = the 2025-26 season).
+const seasonOf = (d) => {
+  if (!d) return null
+  const y = +d.slice(0, 4), m = +d.slice(5, 7)
+  return m >= 7 ? y : y - 1
+}
+const seasonLabel = (y) => `${y}-${String((y + 1) % 100).padStart(2, '0')}`
+
 async function authHeaders() {
   const { data } = await supabase.auth.getSession()
   const token = data?.session?.access_token
@@ -97,6 +106,19 @@ export default function TrackmanSuite() {
   }, [teams.join(','), portalTeam?.id, overview?.primary_team])
   const teamCtx = { teams, primary }
 
+  // Season selector: seasons present in the uploads, defaulting to the
+  // NEWEST one with data — two seasons never blend unless 'All' is picked.
+  const seasonsAvail = useMemo(() => {
+    const set = new Set((overview?.sessions || []).map(s => seasonOf(s.session_date)).filter(v => v != null))
+    if (!set.size) {
+      const now = new Date()
+      set.add(now.getMonth() + 1 >= 7 ? now.getFullYear() : now.getFullYear() - 1)
+    }
+    return [...set].sort((a, b) => b - a)
+  }, [overview])
+  const [seasonSel, setSeasonSel] = useState(null)   // null = auto (latest)
+  const season = seasonSel === 'all' ? undefined : (seasonSel ?? seasonsAvail[0])
+
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -108,7 +130,28 @@ export default function TrackmanSuite() {
             double count.
           </p>
         </div>
-        <div className="pt-1.5 shrink-0"><TrackmanGlossary /></div>
+        <div className="pt-1.5 shrink-0 flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Season</span>
+            {seasonsAvail.map(y => (
+              <button key={y} onClick={() => setSeasonSel(y)}
+                className={`px-2.5 py-1 rounded-full text-[12px] font-bold ${
+                  season === y ? 'bg-portal-purple text-white'
+                    : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+                {seasonLabel(y)}
+              </button>
+            ))}
+            {seasonsAvail.length > 1 && (
+              <button onClick={() => setSeasonSel('all')}
+                className={`px-2.5 py-1 rounded-full text-[12px] font-bold ${
+                  season === undefined ? 'bg-portal-purple text-white'
+                    : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+                All
+              </button>
+            )}
+          </div>
+          <TrackmanGlossary />
+        </div>
       </div>
 
       {/* Tabs */}
@@ -127,17 +170,17 @@ export default function TrackmanSuite() {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab overview={overview} refetch={refetch} onReview={(id) => { setReviewSession(id); setTab('sessions') }} />}
-      {tab === 'pitching' && (hasData ? <PitchingTab key={teamCtx.primary} teamCtx={teamCtx} onOpenLab={(name) => { setLabPitcher(name); setTab('lab') }} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'hitting' && (hasData ? <HittingTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'lab' && (hasData ? <PlayerLabTab key={teamCtx.primary} pitcher={labPitcher} setPitcher={setLabPitcher} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'hlab' && (hasData ? <HitterLabTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'leaders' && (hasData ? <LeaderboardsTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'catching' && (hasData ? <CatchingTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'defense' && (hasData ? <DefenseTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'values' && (hasData ? <ValuesTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'board' && (hasData ? <CoachBoardTab key={teamCtx.primary} teamCtx={teamCtx} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'overview' && <OverviewTab overview={overview} refetch={refetch} season={season} onReview={(id) => { setReviewSession(id); setTab('sessions') }} />}
+      {tab === 'pitching' && (hasData ? <PitchingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} onOpenLab={(name) => { setLabPitcher(name); setTab('lab') }} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'hitting' && (hasData ? <HittingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'lab' && (hasData ? <PlayerLabTab key={`${teamCtx.primary}-${season}`} pitcher={labPitcher} setPitcher={setLabPitcher} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'hlab' && (hasData ? <HitterLabTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'leaders' && (hasData ? <LeaderboardsTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} season={season} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'catching' && (hasData ? <CatchingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'defense' && (hasData ? <DefenseTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'values' && (hasData ? <ValuesTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'board' && (hasData ? <CoachBoardTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
   )
 }
@@ -199,12 +242,12 @@ function EmptyNudge({ onGo }) {
 
 // ── Overview & Upload ────────────────────────────────────────────
 
-function OverviewTab({ overview, refetch, onReview }) {
+function OverviewTab({ overview, refetch, onReview, season }) {
   const [busy, setBusy] = useState(false)
   const [report, setReport] = useState(null)
   const inputRef = useRef(null)
   const totals = overview?.totals || { sessions: 0, pitches: 0, bbe: 0, by_type: {} }
-  const sessions = overview?.sessions || []
+  const sessions = (overview?.sessions || []).filter(x => !season || seasonOf(x.session_date) === season)
 
   async function handleFiles(fileList) {
     const files = [...fileList].filter(f => f.name.toLowerCase().endsWith('.csv'))
@@ -376,12 +419,12 @@ function OverviewTab({ overview, refetch, onReview }) {
 
 const CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['all', 'Everything']]
 
-function PitchingTab({ onOpenLab, teamCtx }) {
+function PitchingTab({ onOpenLab, teamCtx, season }) {
   const [context, setContext] = useState('live')
   const [ptype, setPtype] = useState('')
   const [vsSide, setVsSide] = useState('')
   const { data, loading } = useApi('/trackman/pitching',
-    { context, ...(vsSide ? { side: vsSide } : {}) }, [context, vsSide])
+    { context, ...(vsSide ? { side: vsSide } : {}), season }, [context, vsSide])
   const pitchers = data?.pitchers || []
   const [team, setTeam] = useState(teamCtx.primary)
   const allTypes = useMemo(() => [...new Set(pitchers.flatMap(p => p.arsenal.map(a => a.pitch_type)))].sort(), [pitchers])
@@ -517,11 +560,11 @@ function PitchingTab({ onOpenLab, teamCtx }) {
 
 const PITCH_TYPE_OPTIONS = ['Fastball', 'Sinker', 'Cutter', 'Slider', 'Sweeper', 'Curveball', 'ChangeUp', 'Splitter']
 
-function HittingTab({ teamCtx }) {
+function HittingTab({ teamCtx, season }) {
   const [ptype, setPtype] = useState('')
   const [vsThrows, setVsThrows] = useState('')
   const { data, loading } = useApi('/trackman/hitting',
-    { pitch_type: ptype || undefined, ...(vsThrows ? { throws: vsThrows } : {}) }, [ptype, vsThrows])
+    { pitch_type: ptype || undefined, ...(vsThrows ? { throws: vsThrows } : {}), season }, [ptype, vsThrows])
   const batters = data?.batters || []
   const [team, setTeam] = useState(teamCtx.primary)
   const shown = team ? batters.filter(b => b.team === team) : batters
@@ -978,7 +1021,7 @@ const PCTL_LABELS = {
   chase_pct: ['Chase%', '%', 1], csw_pct: ['CSW%', '%', 1], ev_against: ['EV against', ' mph', 1],
 }
 
-function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
+function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
   const exportRef = useRef(null)
   const [context, setContext] = useState('live')
   const [dates, setDates] = useState({})
@@ -986,14 +1029,14 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
   const [team, setTeam] = useState(teamCtx.primary)
   const [conf, setConf] = useState('all')
   const [vsSide, setVsSide] = useState('')
-  const { data: list } = useApi('/trackman/pitching', { context: 'all' })
+  const { data: list } = useApi('/trackman/pitching', { context: 'all', season })
   const roster = (list?.pitchers || []).filter(p => !team || p.team === team)
   const names = roster.map(p => p.pitcher)
   const active = names.includes(pitcher) ? pitcher : (names[0] || '')
   const { data, loading, error, refetch } = useApi(
     active ? '/trackman/pitchers/detail' : null,
     { pitcher: active, context, conf, team: team || undefined,
-      side: vsSide || undefined,
+      side: vsSide || undefined, season,
       date_from: dates.from, date_to: dates.to })
 
   async function overridePitch(pitchType) {
@@ -1184,11 +1227,11 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
 
 // ── Leaderboards ─────────────────────────────────────────────────
 
-function LeaderboardsTab({ teamCtx }) {
+function LeaderboardsTab({ teamCtx, season }) {
   const [side, setSide] = useState('pitching')
   const [context, setContext] = useState('live')
   const [team, setTeam] = useState(teamCtx.primary)
-  const { data, loading } = useApi('/trackman/leaderboards', { side, context, team: team || undefined })
+  const { data, loading } = useApi('/trackman/leaderboards', { side, context, team: team || undefined, season })
   const boards = data?.boards || {}
 
   return (
@@ -1439,7 +1482,7 @@ function SprayChart({ pitches }) {
   )
 }
 
-function HitterLabTab({ teamCtx }) {
+function HitterLabTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [dates, setDates] = useState({})
   const [team, setTeam] = useState(teamCtx.primary)
@@ -1447,14 +1490,14 @@ function HitterLabTab({ teamCtx }) {
   const [context, setContext] = useState('all')
   const [conf, setConf] = useState('all')
   const [vsThrows, setVsThrows] = useState('')
-  const { data: list } = useApi('/trackman/hitting')
+  const { data: list } = useApi('/trackman/hitting', { season })
   const roster = (list?.batters || []).filter(b => !team || b.team === team)
   const names = roster.map(b => b.batter)
   const active = names.includes(batter) ? batter : (names[0] || '')
   const { data, loading, error } = useApi(
     active ? '/trackman/batters/detail' : null,
     { batter: active, context, conf, team: team || undefined,
-      throws: vsThrows || undefined,
+      throws: vsThrows || undefined, season,
       date_from: dates.from, date_to: dates.to })
 
   const pct = data?.percentiles || {}
@@ -1574,9 +1617,9 @@ function HitterLabTab({ teamCtx }) {
 
 // ── Session Review ───────────────────────────────────────────────
 
-function SessionsTab({ overview, sessionId, setSessionId }) {
+function SessionsTab({ overview, season, sessionId, setSessionId }) {
   const exportRef = useRef(null)
-  const sessions = overview?.sessions || []
+  const sessions = (overview?.sessions || []).filter(x => !season || seasonOf(x.session_date) === season)
   const active = sessionId || sessions[0]?.id
   const { data, loading } = useApi(active ? `/trackman/sessions/${active}/review` : null, {}, [active])
   const sess = data?.session
@@ -1730,10 +1773,10 @@ function ShadowZoneMap({ c }) {
   )
 }
 
-function CatchingTab({ teamCtx }) {
+function CatchingTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
-  const { data, loading } = useApi('/trackman/catching', team ? { team } : {}, [team])
+  const { data, loading } = useApi('/trackman/catching', { ...(team ? { team } : {}), season }, [team])
   const rows = data?.catchers || []
   const pct = v => v != null ? `${Math.round(v * 100)}%` : '—'
   const runs = v => v == null ? '—' : (
@@ -1928,9 +1971,9 @@ const FLAG_META = {
   low_zone: { label: 'Zone', cls: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' },
 }
 
-function CoachBoardTab({ teamCtx }) {
+function CoachBoardTab({ teamCtx, season }) {
   const [team, setTeam] = useState(teamCtx.primary)
-  const { data, loading } = useApi('/trackman/insights', { team: team || undefined })
+  const { data, loading } = useApi('/trackman/insights', { team: team || undefined, season })
   const flags = data?.flags || []
 
   return (
@@ -2452,13 +2495,13 @@ function DirRose({ r }) {
   )
 }
 
-function DefenseTab({ teamCtx }) {
+function DefenseTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
   const [context, setContext] = useState('all')
   const [rankPos, setRankPos] = useState('SS')
   const { data, loading } = useApi('/trackman/defense',
-    { context, ...(team ? { team } : {}) }, [context, team])
+    { context, ...(team ? { team } : {}), season }, [context, team])
   const d = data || {}
   const gems = (d.plays || []).filter(p => p.made).slice(0, 8)
   const misses = (d.plays || []).filter(p => !p.made).sort((a, b) => b.prob - a.prob).slice(0, 8)
@@ -2690,13 +2733,13 @@ function DefenseTab({ teamCtx }) {
 
 // ── Values — one run-value ledger per player ──
 
-function ValuesTab({ teamCtx }) {
+function ValuesTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
   const [posAdj, setPosAdj] = useState(false)
   const [shrink, setShrink] = useState(false)
   const { data, loading } = useApi('/trackman/values',
-    { ...(team ? { team } : {}), pos_adj: posAdj, shrink },
+    { ...(team ? { team } : {}), pos_adj: posAdj, shrink, season },
     [team, posAdj, shrink])
   const rows = data?.players || []
   const rv = v => v == null ? <span className="text-gray-300 dark:text-gray-600">—</span> : (

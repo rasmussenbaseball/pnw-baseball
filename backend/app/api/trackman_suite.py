@@ -41,7 +41,23 @@ _NO_MISTAG_BARE = (" AND COALESCE(override_pitch_type, class_pitch_type,"
                    " tagged_pitch_type, auto_pitch_type) IS DISTINCT FROM 'Mistag'")
 
 
-def _rv_baseline(cur, owner, context):
+# TrackMan seasons run July 1 to June 30 (June games belong to the SPRING
+# season that just ended; anything from July on is the next fall's cycle).
+# `season` is the starting year: 2025 = the 2025-26 season.
+def _season_clause(season):
+    if not season:
+        return "", []
+    return (" AND s.session_date >= %s AND s.session_date <= %s",
+            [f"{season}-07-01", f"{season + 1}-06-30"])
+
+
+def _site_season(season):
+    """Map a TrackMan season start year to the site's spring season
+    (2025-26 TrackMan data pairs with the 2026 college season)."""
+    return (season + 1) if season else CURRENT_SEASON
+
+
+def _rv_baseline(cur, owner, context, season=None):
     """Mean batter-perspective run value per priced pitch across the whole
     corpus in this context. Subtracting it re-centers run values on THIS
     corpus (0 = the average pitch here) — the same philosophy as OAE and
@@ -49,6 +65,8 @@ def _rv_baseline(cur, owner, context):
     sets the level. Without this, a college corpus reads ~-1.5 RV/100 for
     every pitcher (more balls + walks than the MLB baseline expects)."""
     extra, params = _context_clause(context)
+    ssql, sparams = _season_clause(season)
+    extra, params = extra + ssql, params + sparams
     cur.execute(
         f"""SELECT p.balls, p.strikes, p.pitch_call, p.play_result
             FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
@@ -307,6 +325,7 @@ def trackman_defense(
     team: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    season: int | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """OF catch-probability / IF ground-ball range metrics from the
@@ -315,6 +334,8 @@ def trackman_defense(
     Above Expected — comparable within the corpus, not to MLB OAA."""
     ctx_sql, ctx_params = _context_clause(context)
     d_sql, d_params = _date_clause(date_from, date_to)
+    ssql, sparams = _season_clause(season)
+    d_sql, d_params = d_sql + ssql, d_params + sparams
     team_sql, team_params = ("", [])
     if team:
         team_sql, team_params = " AND p.pitcher_team = %s", [team]
@@ -562,6 +583,7 @@ def trackman_values(
     team: str | None = Query(None),
     pos_adj: bool = Query(False),
     shrink: bool = Query(False),
+    season: int | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """The Values page: one run-value ledger per player, combining the
@@ -593,8 +615,10 @@ def trackman_values(
         return whole + frac / 3.0
 
     # defensive + catching values from the existing computations
-    dfs = trackman_defense(context="all", team=team, date_from=None, date_to=None, owner=owner)
-    cat = trackman_catching(team=team, owner=owner)
+    dfs = trackman_defense(context="all", team=team, date_from=None, date_to=None,
+                           season=season, owner=owner)
+    cat = trackman_catching(team=team, season=season, owner=owner)
+    site_season = _site_season(season)
     def _shrunk(oae, opps, k):
         return oae * (opps / (opps + k)) if shrink else oae
 
@@ -629,11 +653,13 @@ def trackman_values(
     with get_connection() as conn:
         cur = conn.cursor()
         names = {}
+        _ssql0, _sparams0 = _season_clause(season)
         for col, tcol in (("batter", "batter_team"), ("pitcher", "pitcher_team"),
                           ("catcher", "catcher_team")):
-            cur.execute(f"""SELECT {col} AS n, {tcol} AS t, COUNT(*) AS c FROM tm_pitches
-                            WHERE owner_user_id = %s AND {col} IS NOT NULL
-                            GROUP BY {col}, {tcol}""", (owner,))
+            cur.execute(f"""SELECT p.{col} AS n, p.{tcol} AS t, COUNT(*) AS c
+                            FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                            WHERE p.owner_user_id = %s AND p.{col} IS NOT NULL{_ssql0}
+                            GROUP BY p.{col}, p.{tcol}""", [owner] + _sparams0)
             for r in cur.fetchall():
                 cur_best = names.get(r["n"])
                 if cur_best is None or r["c"] > cur_best[1]:
@@ -645,10 +671,12 @@ def trackman_values(
         # Tracked pitch-level run values (live sessions) — shown alongside
         # the season-FIP pitching value, never summed into the total (they
         # overlap: same innings, two lenses).
+        _ssql, _sparams = _season_clause(season)
         cur.execute(f"""SELECT p.pitcher AS n, p.balls, p.strikes, p.pitch_call, p.play_result
                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                        WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
-                         AND s.session_type IN ('game','scrimmage','intrasquad')""", (owner,))
+                         AND s.session_type IN ('game','scrimmage','intrasquad'){_ssql}""",
+                    [owner] + _sparams)
         trv = {}
         _gsum, _gn = 0.0, 0
         for r in cur.fetchall():
@@ -671,7 +699,7 @@ def trackman_values(
             JOIN players p ON p.id = b.player_id JOIN teams t ON t.id = p.team_id
             JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
             WHERE b.season = %s AND b.plate_appearances >= 30 AND b.woba IS NOT NULL
-            GROUP BY d.level""", (CURRENT_SEASON,))
+            GROUP BY d.level""", (site_season,))
         lg_woba = {r["level"]: float(r["lg_woba"]) for r in cur.fetchall()}
         cur.execute("""
             SELECT d.level, SUM(ps.fip * ps.innings_pitched) / NULLIF(SUM(ps.innings_pitched), 0) AS lg_fip
@@ -679,7 +707,7 @@ def trackman_values(
             JOIN players p ON p.id = ps.player_id JOIN teams t ON t.id = p.team_id
             JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
             WHERE ps.season = %s AND ps.innings_pitched >= 10 AND ps.fip IS NOT NULL
-            GROUP BY d.level""", (CURRENT_SEASON,))
+            GROUP BY d.level""", (site_season,))
         lg_fip = {r["level"]: float(r["lg_fip"]) for r in cur.fetchall()}
 
         rows = []
@@ -704,7 +732,7 @@ def trackman_values(
                     JOIN players p ON p.id = b.player_id JOIN teams t ON t.id = p.team_id
                     JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
                     WHERE b.player_id = %s AND b.season = %s
-                    ORDER BY b.plate_appearances DESC LIMIT 1""", (pid, CURRENT_SEASON))
+                    ORDER BY b.plate_appearances DESC LIMIT 1""", (pid, site_season))
                 b = cur.fetchone()
                 if b and b["woba"] is not None and (b["plate_appearances"] or 0) >= 10:
                     lvl = b["level"] or "D1"
@@ -723,7 +751,7 @@ def trackman_values(
                     JOIN players p ON p.id = ps.player_id JOIN teams t ON t.id = p.team_id
                     JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
                     WHERE ps.player_id = %s AND ps.season = %s
-                    ORDER BY ps.innings_pitched DESC LIMIT 1""", (pid, CURRENT_SEASON))
+                    ORDER BY ps.innings_pitched DESC LIMIT 1""", (pid, site_season))
                 pr = cur.fetchone()
                 if pr and pr["fip"] is not None:
                     ip = ip_to_decimal(pr["innings_pitched"])
@@ -849,14 +877,18 @@ def trackman_pitching(
     context: str = Query("live"),
     team: str | None = Query(None),
     side: str | None = Query(None),
+    season: int | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Per-pitcher arsenal rollup: every pitch type's usage, velo, shape, and
     results. Pitch type prefers the human tag, falls back to TrackMan's auto
     classification. context: all|live|game|scrimmage|bp; team filters by
     TrackMan team code (e.g. BUS_BEA); side=L|R keeps only pitches to that
-    batter handedness (the platoon split)."""
+    batter handedness (the platoon split); season = starting year of the
+    July-June cycle (2025 = 2025-26)."""
     extra, params = _context_clause(context)
+    ssql, sparams = _season_clause(season)
+    extra, params = extra + ssql, params + sparams
     if side in ("L", "R"):
         extra += " AND p.batter_side = %s"
         params = params + ["Left" if side == "L" else "Right"]
@@ -947,7 +979,7 @@ def trackman_pitching(
                 if rv is not None:
                     agg["rv"] -= rv   # pitcher perspective: positive = runs saved
                     agg["rv_n"] += 1
-            base = _rv_baseline(c2, owner, context)
+            base = _rv_baseline(c2, owner, context, season)
             for agg in rv_agg.values():
                 agg["rv"] += agg["rv_n"] * base   # center on this corpus
         except Exception:
@@ -1015,6 +1047,7 @@ def trackman_hitting(
     team: str | None = Query(None),
     pitch_type: str | None = Query(None),
     throws: str | None = Query(None),
+    season: int | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Per-batter contact quality, split live (game+scrimmage) vs BP —
@@ -1024,6 +1057,8 @@ def trackman_hitting(
     pt_sql = " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s" if pitch_type else ""
     th_sql = " AND p.pitcher_throws = %s" if throws in ("L", "R") else ""
     th_params = ["Left" if throws == "L" else "Right"] if throws in ("L", "R") else []
+    ssql, sparams = _season_clause(season)
+    th_sql, th_params = th_sql + ssql, th_params + sparams
     with get_connection() as conn:
         cur = conn.cursor()
         try:
@@ -1120,6 +1155,7 @@ def trackman_pitcher_detail(
     side: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    season: int | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Everything the Player Lab needs for one pitcher, in one call:
@@ -1129,7 +1165,8 @@ def trackman_pitcher_detail(
     handedness — the platoon view (percentiles compare same-split pools)."""
     extra, params = _context_clause(context)
     dsql, dparams = _date_clause(date_from, date_to)
-    extra, params = extra + dsql, params + dparams
+    ssql, sparams = _season_clause(season)
+    extra, params = extra + dsql + ssql, params + dparams + sparams
     if side in ("L", "R"):
         extra += " AND p.batter_side = %s"
         params = params + ["Left" if side == "L" else "Right"]
@@ -1176,7 +1213,7 @@ def trackman_pitcher_detail(
             [owner] + params,
         )
         pool = [dict(r) for r in cur.fetchall()]
-        rv_base = _rv_baseline(cur, owner, context)
+        rv_base = _rv_baseline(cur, owner, context, season)
 
     me = next((r for r in pool if r["pitcher"] == pitcher), None)
     percentiles = {}
@@ -1363,6 +1400,7 @@ def trackman_leaderboards(
     side: str = Query("pitching"),
     context: str = Query("live"),
     team: str | None = Query(None),
+    season: int | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Corpus leaderboards with per-category minimum-sample gates. Each
@@ -1372,6 +1410,8 @@ def trackman_leaderboards(
     hand = "pitcher_throws" if side == "pitching" else "batter_side"
     team_col = f"{who}_team"
     extra, params = _context_clause(context)
+    ssql, sparams = _season_clause(season)
+    extra, params = extra + ssql, params + sparams
     if side == "pitching":
         extra += _NO_MISTAG
     team_sql = f" AND p.{team_col} = %s" if team else ""
@@ -1437,7 +1477,7 @@ def trackman_leaderboards(
                         a["shadow"] += 1
             # center on the whole corpus in this context (NOT the team
             # slice) so RV matches the Pitching tab and labs exactly
-            mean = _rv_baseline(cur, owner, context)
+            mean = _rv_baseline(cur, owner, context, season)
             for a in per.values():
                 a["rv"] += a["rv_n"] * (mean if side == "pitching" else -mean)
         except Exception:
@@ -1523,6 +1563,7 @@ def trackman_batter_detail(
     date_to: str | None = Query(None),
     pitch_type: str | None = Query(None),
     throws: str | None = Query(None),
+    season: int | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Everything the Hitter Lab needs: every pitch SEEN (locations + swing
@@ -1531,7 +1572,8 @@ def trackman_batter_detail(
     throws=L|R restricts to that pitcher hand (the platoon view)."""
     extra, params = _context_clause(context)
     dsql, dparams = _date_clause(date_from, date_to)
-    extra, params = extra + dsql, params + dparams
+    ssql, sparams = _season_clause(season)
+    extra, params = extra + dsql + ssql, params + dparams + sparams
     if throws in ("L", "R"):
         extra += " AND p.pitcher_throws = %s"
         params = params + ["Left" if throws == "L" else "Right"]
@@ -1571,7 +1613,7 @@ def trackman_batter_detail(
             [owner] + params,
         )
         pool = [dict(r) for r in cur.fetchall()]
-        rv_base = _rv_baseline(cur, owner, context)
+        rv_base = _rv_baseline(cur, owner, context, season)
 
     me = next((r for r in pool if r["batter"] == batter), None)
     percentiles = {}
@@ -1828,7 +1870,9 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
 
 
 @router.get("/trackman/catching")
-def trackman_catching(team: str | None = Query(None), owner: str = Depends(_gate)):
+def trackman_catching(team: str | None = Query(None),
+                      season: int | None = Query(None),
+                      owner: str = Depends(_gate)):
     """Advanced catcher metrics.
 
     FRAMING: on TAKEN pitches (called strike/ball) near the zone edge, a
@@ -1848,44 +1892,46 @@ def trackman_catching(team: str | None = Query(None), owner: str = Depends(_gate
     import math as _math
     team_sql, team_params = ("", [])
     if team:
-        team_sql, team_params = " AND catcher_team = %s", [team]
+        team_sql, team_params = " AND p.catcher_team = %s", [team]
+    ssql, sparams = _season_clause(season)
+    team_sql, team_params = team_sql + ssql, team_params + sparams
     with get_connection() as conn:
         cur = conn.cursor()
         # ── throwing ──
         cur.execute(f"""
-            SELECT catcher, catcher_team, COUNT(*) AS throws,
-                   AVG(pop_time) AS avg_pop, MIN(pop_time) AS best_pop,
-                   AVG(exchange_time) AS avg_exchange,
-                   AVG(throw_speed) AS avg_throw, MAX(throw_speed) AS max_throw
-            FROM tm_pitches
-            WHERE owner_user_id = %s AND catcher IS NOT NULL AND pop_time IS NOT NULL
+            SELECT p.catcher, p.catcher_team, COUNT(*) AS throws,
+                   AVG(p.pop_time) AS avg_pop, MIN(p.pop_time) AS best_pop,
+                   AVG(p.exchange_time) AS avg_exchange,
+                   AVG(p.throw_speed) AS avg_throw, MAX(p.throw_speed) AS max_throw
+            FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+            WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL AND p.pop_time IS NOT NULL
               {team_sql}
-            GROUP BY catcher, catcher_team
+            GROUP BY p.catcher, p.catcher_team
         """, [owner] + team_params)
         throw_rows = {(r["catcher"], r["catcher_team"]): dict(r) for r in cur.fetchall()}
         # ── framing: taken pitches with locations ──
         cur.execute(f"""
-            SELECT catcher, catcher_team, pitch_call,
-                   plate_loc_side AS px, plate_loc_height AS pz
-            FROM tm_pitches
-            WHERE owner_user_id = %s AND catcher IS NOT NULL
-              AND pitch_call IN ('StrikeCalled', 'BallCalled')
-              AND plate_loc_side IS NOT NULL AND plate_loc_height IS NOT NULL
+            SELECT p.catcher, p.catcher_team, p.pitch_call,
+                   p.plate_loc_side AS px, p.plate_loc_height AS pz
+            FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+            WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL
+              AND p.pitch_call IN ('StrikeCalled', 'BallCalled')
+              AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL
               {team_sql}
         """, [owner] + team_params)
         taken = cur.fetchall()
         # ── blocking workload + pitches caught ──
         cur.execute(f"""
-            SELECT catcher, catcher_team,
+            SELECT p.catcher, p.catcher_team,
                    COUNT(*) AS pitches,
-                   COUNT(*) FILTER (WHERE pitch_call = 'BallinDirt') AS dirt,
-                   COUNT(*) FILTER (WHERE pitch_call = 'BallinDirt' AND
-                       COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type)
+                   COUNT(*) FILTER (WHERE p.pitch_call = 'BallinDirt') AS dirt,
+                   COUNT(*) FILTER (WHERE p.pitch_call = 'BallinDirt' AND
+                       COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type)
                        IN ('Slider', 'Curveball', 'Sweeper', 'Splitter', 'ChangeUp')) AS dirt_offspeed
-            FROM tm_pitches
-            WHERE owner_user_id = %s AND catcher IS NOT NULL
+            FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+            WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL
               {team_sql}
-            GROUP BY catcher, catcher_team
+            GROUP BY p.catcher, p.catcher_team
         """, [owner] + team_params)
         block_rows = {(r["catcher"], r["catcher_team"]): dict(r) for r in cur.fetchall()}
         conn.commit()
@@ -1946,7 +1992,7 @@ def trackman_catching(team: str | None = Query(None), owner: str = Depends(_gate
                    FROM fielding_stats
                    WHERE player_id = %s AND season = %s AND position = 'C'
                    ORDER BY (stolen_bases_against + caught_stealing_by) DESC LIMIT 1""",
-                (pid, CURRENT_SEASON))
+                (pid, _site_season(season)))
             r = cur.fetchone()
             if r:
                 sba = r["stolen_bases_against"] or 0
@@ -2068,7 +2114,9 @@ def save_session_notes(session_id: int, body: SessionNotes, owner: str = Depends
 
 
 @router.get("/trackman/insights")
-def trackman_insights(team: str | None = Query(None), owner: str = Depends(_gate)):
+def trackman_insights(team: str | None = Query(None),
+                      season: int | None = Query(None),
+                      owner: str = Depends(_gate)):
     """Coach Board v1: read-only auto-flags surfaced from the data. Four
     detectors, all with sample gates so noise can't flag:
       - transfer_gap: live hard-hit% at least 10 pts under BP (15+ BBE each)
@@ -2081,9 +2129,10 @@ def trackman_insights(team: str | None = Query(None), owner: str = Depends(_gate
     The approve/dismiss decision queue from Trevor's outline is a later
     phase; this ships the signal without the workflow."""
     flags = []
-    team_b = " AND p.batter_team = %s" if team else ""
-    team_p = " AND p.pitcher_team = %s" if team else ""
-    tp = [team] if team else []
+    _ssql, _sparams = _season_clause(season)
+    team_b = (" AND p.batter_team = %s" if team else "") + _ssql
+    team_p = (" AND p.pitcher_team = %s" if team else "") + _ssql
+    tp = ([team] if team else []) + _sparams
     with get_connection() as conn:
         cur = conn.cursor()
 
