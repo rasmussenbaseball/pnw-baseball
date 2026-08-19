@@ -1312,8 +1312,10 @@ function CatchingTab({ teamCtx }) {
                 {['High', 'Low', 'Left', 'Right'].map(h => (
                   <th key={h} className="px-2 py-2 text-right" title={`SAE on the ${h.toLowerCase()} edge`}>{h}</th>
                 ))}
-                <th className="px-2 py-2 text-right" title="Attempts x (est CS% - corpus avg) x 0.85 runs">Arm</th>
-                <th className="px-2 py-2 text-right" title="Estimated CS% from average pop time">est CS%</th>
+                <th className="px-2 py-2 text-right" title="Blended arm value: pop-time expectation as the prior, actual throw-outs update it; runs vs the corpus CS rate on real attempts">Arm</th>
+                <th className="px-2 py-2 text-right" title="Actual stolen bases against - caught stealing (site season stats)">SB-CS</th>
+                <th className="px-2 py-2 text-right" title="Blended CS%: actual record regressed toward the pop-time expectation">CS%</th>
+                <th className="px-2 py-2 text-right" title="Estimated CS% from average pop time alone">est CS%</th>
                 <th className="px-2 py-2 text-right">Pop</th>
                 <th className="px-2 py-2 text-right">Best</th>
                 <th className="px-2 py-2 text-right">Exch</th>
@@ -1336,8 +1338,16 @@ function CatchingTab({ teamCtx }) {
                       {c.edges?.[e] ? (c.edges[e].sae > 0 ? `+${c.edges[e].sae}` : c.edges[e].sae) : '—'}
                     </td>
                   ))}
-                  <td className="px-2 py-1.5 text-right tabular-nums">{runs(c.arm_runs)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.est_cs_pct)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">
+                    {runs(c.arm_runs)}
+                    {c.arm_basis === 'est' && c.arm_runs != null &&
+                      <span className="text-[9px] text-gray-400 ml-0.5" title="No season throw-out record found — pop-time estimate only">e</span>}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">
+                    {c.attempts ? `${c.sba}-${c.cs_actual}` : '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.blended_cs_pct ?? null)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{pct(c.est_cs_pct)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums font-bold">{c.avg_pop ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{c.best_pop ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_exchange ?? '—'}</td>
@@ -1364,6 +1374,7 @@ function CatchingTab({ teamCtx }) {
                 <th className="px-2 py-2 text-right">Dirt balls</th>
                 <th className="px-2 py-2 text-right">Per 100</th>
                 <th className="px-2 py-2 text-right" title="Share of dirt balls that were breaking/offspeed">Offspeed%</th>
+                <th className="px-2 py-2 text-right" title="Actual passed balls from the site's season fielding stats">PB (season)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1375,6 +1386,7 @@ function CatchingTab({ teamCtx }) {
                   <td className="px-2 py-1.5 text-right tabular-nums font-bold">{c.dirt_balls}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.dirt_per_100 ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.dirt_offspeed_pct)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.passed_balls ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -1385,11 +1397,12 @@ function CatchingTab({ teamCtx }) {
       <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
         Framing: on taken pitches within about 4 inches of the zone edge, a location model sets the
         expected called-strike rate, calibrated so your whole corpus nets zero — SAE reads relative to
-        the average catcher and umpire in your own data, at 0.125 runs per strike. Arm: pop time maps
-        to an estimated caught-stealing rate (TrackMan doesn't record the runner's outcome, so this
-        prices the arm, not the results), valued against the corpus average per tracked throw.
-        Blocking stays workload-only for the same reason. All of it compares players within your data,
-        not to MLB numbers.
+        the average catcher and umpire in your own data, at 0.125 runs per strike. Arm: the pop-time
+        expectation acts as a prior worth about 15 attempts, and the catcher's ACTUAL season throw-out
+        record (from the site's fielding stats) updates it — value accrues on real attempts against
+        the corpus CS rate. An 'e' marks catchers with no season record, priced on pop time alone.
+        Blocking stays workload-only (TrackMan doesn't record blocks), but season passed balls are
+        shown alongside. All of it compares players within your data, not to MLB numbers.
       </p>
     </div>
   )

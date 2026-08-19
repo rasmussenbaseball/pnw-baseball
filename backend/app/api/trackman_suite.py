@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from psycopg2.extras import execute_values, Json
 from pydantic import BaseModel
 
+from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
 from ..stats.trackman_stuff import grade_trackman, FB_FAMILY
@@ -1385,6 +1386,32 @@ def trackman_catching(team: str | None = Query(None), owner: str = Depends(_gate
         e[0] += got
         e[1] += p_strike
 
+    # ── actual arm results from the site's season fielding stats ──
+    # (Sidearm/NWAC fielding: SB against + CS by, at the catcher position.)
+    actuals = {}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for (name, cteam) in throw_rows:
+            try:
+                m = _match_player(cur, name)
+                pid = m["player_id"] if m else None
+            except Exception:
+                pid = None
+            if not pid:
+                continue
+            cur.execute(
+                """SELECT stolen_bases_against, caught_stealing_by, passed_balls
+                   FROM fielding_stats
+                   WHERE player_id = %s AND season = %s AND position = 'C'
+                   ORDER BY (stolen_bases_against + caught_stealing_by) DESC LIMIT 1""",
+                (pid, CURRENT_SEASON))
+            r = cur.fetchone()
+            if r:
+                sba = r["stolen_bases_against"] or 0
+                csb = r["caught_stealing_by"] or 0
+                actuals[(name, cteam)] = {"sba": sba, "cs": csb, "att": sba + csb,
+                                          "pb": r["passed_balls"] or 0, "player_id": pid}
+
     # Calibrate expectations to THIS corpus: the location curve sets the
     # SHAPE of strike likelihood, but the overall level is scaled so the
     # corpus nets ~zero SAE — framing reads as strikes above the average
@@ -1404,6 +1431,12 @@ def trackman_catching(team: str | None = Query(None), owner: str = Depends(_gate
     tot_att = sum(r["throws"] for r in throw_rows.values())
     corpus_cs = (sum(est_cs(float(r["avg_pop"])) * r["throws"] for r in throw_rows.values()) / tot_att
                  if tot_att else 0.30)
+    # baseline for the blended metric: the corpus's ACTUAL caught-stealing
+    # rate when we have enough real attempts, else the pop-based average
+    act_att = sum(a["att"] for a in actuals.values())
+    act_cs = sum(a["cs"] for a in actuals.values())
+    corpus_actual = (act_cs / act_att) if act_att >= 50 else corpus_cs
+    ARM_PRIOR_ATT = 15   # the pop-time expectation is worth ~15 attempts of evidence
 
     catchers = {}
     for key in set(list(throw_rows) + list(frames) + list(block_rows)):
@@ -1420,8 +1453,25 @@ def trackman_catching(team: str | None = Query(None), owner: str = Depends(_gate
                 "avg_throw": round(float(t["avg_throw"]), 1) if t["avg_throw"] is not None else None,
                 "max_throw": round(float(t["max_throw"]), 1) if t["max_throw"] is not None else None,
                 "est_cs_pct": round(cs, 3),
-                "arm_runs": round(t["throws"] * (cs - corpus_cs) * 0.85, 1),
             })
+            a = actuals.get(key)
+            if a and a["att"] > 0:
+                # empirical Bayes: the arm (pop time) is the prior, the real
+                # throw-out record updates it; value accrues on REAL attempts
+                blended = (a["cs"] + cs * ARM_PRIOR_ATT) / (a["att"] + ARM_PRIOR_ATT)
+                row.update({
+                    "sba": a["sba"], "cs_actual": a["cs"], "attempts": a["att"],
+                    "actual_cs_pct": round(a["cs"] / a["att"], 3),
+                    "blended_cs_pct": round(blended, 3),
+                    "passed_balls": a["pb"],
+                    "arm_basis": "blended",
+                    "arm_runs": round(a["att"] * (blended - corpus_actual) * 0.85, 1),
+                })
+            else:
+                row.update({
+                    "arm_basis": "est",
+                    "arm_runs": round(t["throws"] * (cs - corpus_cs) * 0.85, 1),
+                })
         fr = frames.get(key)
         if fr and fr["taken"] >= 5:
             sae = fr["strikes"] - fr["x_strikes"]
