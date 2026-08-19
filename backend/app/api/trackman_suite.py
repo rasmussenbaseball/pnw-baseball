@@ -543,11 +543,20 @@ def trackman_overview(owner: str = Depends(_gate)):
     with get_connection() as conn:
         cur = conn.cursor()
         try:
+            _ensure_positioning_table(cur)
             cur.execute(
-                """SELECT id, game_id, session_date, session_type, stadium,
-                          home_team, away_team, pitch_count, bbe_count, created_at::date AS uploaded
-                   FROM tm_sessions WHERE owner_user_id = %s
-                   ORDER BY session_date DESC NULLS LAST, id DESC""",
+                """SELECT s.id, s.game_id, s.session_date, s.session_type, s.stadium,
+                          s.home_team, s.away_team, s.pitch_count, s.bbe_count,
+                          s.created_at::date AS uploaded,
+                          -- positioning rows joined to this session's pitches by
+                          -- PitchUID (the positioning file's GameUID differs from
+                          -- the session GameID, so the pitch is the link)
+                          (SELECT COUNT(*) FROM tm_pitches p
+                           JOIN tm_positioning po ON po.owner_user_id = p.owner_user_id
+                                                 AND po.pitch_uid = p.pitch_uid
+                           WHERE p.session_id = s.id) AS positioned_count
+                   FROM tm_sessions s WHERE s.owner_user_id = %s
+                   ORDER BY s.session_date DESC NULLS LAST, s.id DESC""",
                 (owner,),
             )
             sessions = [dict(r) for r in cur.fetchall()]
