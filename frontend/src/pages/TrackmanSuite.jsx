@@ -18,9 +18,40 @@ import { supabase } from '../lib/supabase'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import ReportActions from '../components/ReportActions'
 import StaffManager from '../components/portal/StaffManager'
+import TrackmanGlossary from '../components/portal/TrackmanGlossary'
+import { toneAttr } from '../lib/reportExport'
 import { Link } from 'react-router-dom'
 
 const fmt = (v, d = 1) => (v === null || v === undefined ? '–' : Number(v).toFixed(d))
+
+// ── Percentile heat (Savant's color language: red hot, blue cold) ─
+// Shading is WITHIN the shown cohort; data-tone rides along so the
+// black-&-white export swaps color for bold/italic.
+function pctlOf(v, vals, higher = true) {
+  if (v == null || !vals || vals.length < 5) return null
+  const x = Number(v)
+  const below = vals.filter(o => (higher ? o < x : o > x)).length
+  const eq = vals.filter(o => o === x).length
+  return Math.round((100 * (below + 0.5 * eq)) / vals.length)
+}
+function heatCls(p) {
+  if (p == null) return ''
+  if (p >= 80) return 'bg-[#d22d49]/15 font-semibold'
+  if (p >= 65) return 'bg-[#d22d49]/[0.06]'
+  if (p <= 20) return 'bg-[#3661ad]/15 font-semibold'
+  if (p <= 35) return 'bg-[#3661ad]/[0.06]'
+  return ''
+}
+// Right-aligned table cell with within-cohort percentile shading.
+function HeatCell({ v, vals, higher = true, dec = 1, plus = false, extra = '' }) {
+  const p = pctlOf(v, vals, higher)
+  const disp = v == null ? '–' : `${plus && v > 0 ? '+' : ''}${Number(v).toFixed(dec)}`
+  return (
+    <td className={`px-2 py-1.5 text-right tabular-nums ${heatCls(p)} ${extra}`} {...toneAttr(p)}>
+      {disp}
+    </td>
+  )
+}
 const PITCH_COLORS = {
   Fastball: '#ef4444', 'Four-Seam': '#ef4444', Sinker: '#f59e0b', Cutter: '#8b5cf6',
   Slider: '#3b82f6', Sweeper: '#14b8a6', Curveball: '#22c55e', ChangeUp: '#ec4899',
@@ -68,13 +99,16 @@ export default function TrackmanSuite() {
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">TrackMan Suite</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 max-w-2xl">
-          Upload your program's TrackMan game CSVs and turn them into arsenals, contact
-          quality, and practice-to-game answers. Private to your staff; re-uploads never
-          double count.
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">TrackMan Suite</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 max-w-2xl">
+            Upload your program's TrackMan game CSVs and turn them into arsenals, contact
+            quality, and practice-to-game answers. Private to your staff; re-uploads never
+            double count.
+          </p>
+        </div>
+        <div className="pt-1.5 shrink-0"><TrackmanGlossary /></div>
       </div>
 
       {/* Tabs */}
@@ -345,13 +379,22 @@ const CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'S
 function PitchingTab({ onOpenLab, teamCtx }) {
   const [context, setContext] = useState('live')
   const [ptype, setPtype] = useState('')
-  const { data, loading } = useApi('/trackman/pitching', { context })
+  const [vsSide, setVsSide] = useState('')
+  const { data, loading } = useApi('/trackman/pitching',
+    { context, ...(vsSide ? { side: vsSide } : {}) }, [context, vsSide])
   const pitchers = data?.pitchers || []
   const [team, setTeam] = useState(teamCtx.primary)
   const allTypes = useMemo(() => [...new Set(pitchers.flatMap(p => p.arsenal.map(a => a.pitch_type)))].sort(), [pitchers])
   const shown = (team ? pitchers.filter(p => p.team === team) : pitchers)
     .map(p => ptype ? { ...p, arsenal: p.arsenal.filter(a => a.pitch_type === ptype) } : p)
     .filter(p => p.arsenal.length > 0)
+  // heat cohorts: every shown arsenal row, per column
+  const cohort = useMemo(() => {
+    const rows = shown.flatMap(p => p.arsenal)
+    const grab = k => rows.map(a => a[k]).filter(v => v != null).map(Number)
+    return { rv100: grab('rv100'), shadow: grab('shadow_pct'), whiff: grab('whiff_pct'),
+             csw: grab('csw_pct'), ev: grab('ev_against'), chase: grab('chase_pct') }
+  }, [shown])
 
   return (
     <div className="space-y-3">
@@ -360,6 +403,15 @@ function PitchingTab({ onOpenLab, teamCtx }) {
           <button key={k} onClick={() => setContext(k)}
             className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
               context === k ? 'bg-portal-purple text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+        {[['', 'All bats'], ['L', 'vs LHH'], ['R', 'vs RHH']].map(([k, label]) => (
+          <button key={k} onClick={() => setVsSide(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+              vsSide === k ? 'bg-emerald-600 text-white'
                 : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
             {label}
           </button>
@@ -381,6 +433,15 @@ function PitchingTab({ onOpenLab, teamCtx }) {
                 {p.throws === 'Left' ? 'LHP' : p.throws === 'Right' ? 'RHP' : '–'}
               </span>
               <span className="text-xs text-gray-400">{p.team}</span>
+              {p.rv != null && (
+                <span className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                  p.rv > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                    : p.rv < 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}
+                  title="Total run value: count-based runs saved vs the average pitch in your data">
+                  {p.rv > 0 ? `+${p.rv}` : p.rv} RV
+                </span>
+              )}
               <span className="ml-auto text-xs text-gray-400 tabular-nums">{p.pitches} pitches</span>
               <button onClick={() => onOpenLab?.(p.pitcher)}
                 className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline whitespace-nowrap">
@@ -402,10 +463,13 @@ function PitchingTab({ onOpenLab, teamCtx }) {
                     <th className="px-2 py-1.5 text-right">HB</th>
                     <th className="px-2 py-1.5 text-right">Ext</th>
                     <th className="px-2 py-1.5 text-right">Zone%</th>
+                    <th className="px-2 py-1.5 text-right" title="Share of this pitch landing in the shadow band around the zone edges — edge-living score">Shdw%</th>
                     <th className="px-2 py-1.5 text-right">Whiff%</th>
                     <th className="px-2 py-1.5 text-right">Chase%</th>
                     <th className="px-2 py-1.5 text-right">CSW%</th>
                     <th className="px-2 py-1.5 text-right">EV agn</th>
+                    <th className="px-2 py-1.5 text-right" title="Run value: count-based runs saved vs the average pitch in your data (positive = good)">RV</th>
+                    <th className="px-2 py-1.5 text-right" title="Run value per 100 pitches — the rate version (min 15 priced pitches)">RV/100</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
@@ -425,10 +489,16 @@ function PitchingTab({ onOpenLab, teamCtx }) {
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.hb)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.extension, 1)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.zone_pct)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(a.whiff_pct)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.chase_pct)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.csw_pct)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.ev_against)}</td>
+                      <HeatCell v={a.shadow_pct} vals={cohort.shadow} />
+                      <HeatCell v={a.whiff_pct} vals={cohort.whiff} extra="font-semibold" />
+                      <HeatCell v={a.chase_pct} vals={cohort.chase} />
+                      <HeatCell v={a.csw_pct} vals={cohort.csw} />
+                      <HeatCell v={a.ev_against} vals={cohort.ev} higher={false} />
+                      <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${
+                        a.rv == null ? 'text-gray-300' : a.rv > 0 ? 'text-emerald-600 dark:text-emerald-400' : a.rv < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                        {a.rv == null ? '–' : a.rv > 0 ? `+${a.rv}` : a.rv}
+                      </td>
+                      <HeatCell v={a.rv100} vals={cohort.rv100} dec={2} plus extra="font-semibold" />
                     </tr>
                   ))}
                 </tbody>
@@ -449,19 +519,34 @@ const PITCH_TYPE_OPTIONS = ['Fastball', 'Sinker', 'Cutter', 'Slider', 'Sweeper',
 
 function HittingTab({ teamCtx }) {
   const [ptype, setPtype] = useState('')
-  const { data, loading } = useApi('/trackman/hitting', { pitch_type: ptype || undefined })
+  const [vsThrows, setVsThrows] = useState('')
+  const { data, loading } = useApi('/trackman/hitting',
+    { pitch_type: ptype || undefined, ...(vsThrows ? { throws: vsThrows } : {}) }, [ptype, vsThrows])
   const batters = data?.batters || []
   const [team, setTeam] = useState(teamCtx.primary)
   const shown = team ? batters.filter(b => b.team === team) : batters
+  const cohort = useMemo(() => {
+    const grab = k => shown.map(b => b.live?.[k]).filter(v => v != null).map(Number)
+    return { ev: grab('avg_ev'), max: grab('max_ev'), hh: grab('hard_hit_pct'),
+             whiff: grab('whiff_pct'), chase: grab('chase_pct') }
+  }, [shown])
 
   const Cell = ({ v, suffix = '' }) => <td className="px-2 py-1.5 text-right tabular-nums">{v == null ? '–' : `${v}${suffix}`}</td>
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Live = games, scrimmages, and intrasquads. Transfer gap = live hard-hit% minus BP hard-hit% (negative means the BP swing isn't carrying into games).
         </p>
+        {[['', 'All arms'], ['L', 'vs LHP'], ['R', 'vs RHP']].map(([k, label]) => (
+          <button key={k} onClick={() => setVsThrows(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+              vsThrows === k ? 'bg-emerald-600 text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
         <select value={ptype} onChange={e => setPtype(e.target.value)}
           className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-sm">
           <option value="">All pitch types</option>
@@ -496,11 +581,11 @@ function HittingTab({ teamCtx }) {
                   <span className="text-[11px] text-gray-400 ml-1.5">{b.side === 'Left' ? 'L' : b.side === 'Right' ? 'R' : ''} · {b.team}</span>
                 </td>
                 <Cell v={b.live?.bbe} />
-                <Cell v={b.live?.avg_ev} />
-                <Cell v={b.live?.max_ev} />
-                <Cell v={b.live?.hard_hit_pct} />
-                <Cell v={b.live?.whiff_pct} />
-                <Cell v={b.live?.chase_pct} />
+                <HeatCell v={b.live?.avg_ev} vals={cohort.ev} />
+                <HeatCell v={b.live?.max_ev} vals={cohort.max} />
+                <HeatCell v={b.live?.hard_hit_pct} vals={cohort.hh} />
+                <HeatCell v={b.live?.whiff_pct} vals={cohort.whiff} higher={false} />
+                <HeatCell v={b.live?.chase_pct} vals={cohort.chase} higher={false} />
                 <td className="px-2 py-1.5 text-right tabular-nums border-l border-gray-100 dark:border-gray-700">{b.bp?.bbe ?? '–'}</td>
                 <Cell v={b.bp?.avg_ev} />
                 <Cell v={b.bp?.hard_hit_pct} />
@@ -699,6 +784,123 @@ function VeloTrend({ trend }) {
   )
 }
 
+// Generic per-session trend line with a metric toggle. trend: [{date, ...}],
+// metrics: [[key, label, decimals]] — first metric with data wins as default.
+function SessionTrendCard({ trend, metrics, title }) {
+  const [mi, setMi] = useState(0)
+  const rows = trend || []
+  const [key, label, dec] = metrics[mi] || metrics[0]
+  const pts = rows.filter(r => r[key] != null)
+  const W = 560, H = 170
+  let body
+  if (pts.length < 2) {
+    body = <div className="text-xs text-gray-400 p-4 text-center">Need 2+ sessions with this metric.</div>
+  } else {
+    const vals = pts.map(p => Number(p[key]))
+    const vmin = Math.min(...vals), vmax = Math.max(...vals)
+    const pad = Math.max((vmax - vmin) * 0.15, 0.001)
+    const lo = vmin - pad, hi = vmax + pad
+    const sx = (i) => 40 + (i / Math.max(1, pts.length - 1)) * (W - 56)
+    const sy = (v) => H - 22 - ((v - lo) / (hi - lo)) * (H - 40)
+    body = (
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        {[lo, (lo + hi) / 2, hi].map((v, i) => (
+          <g key={i}>
+            <line x1="40" y1={sy(v)} x2={W - 12} y2={sy(v)} stroke="currentColor" className="text-gray-100 dark:text-gray-700" />
+            <text x="36" y={sy(v) + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{v.toFixed(dec)}</text>
+          </g>
+        ))}
+        <polyline points={pts.map((p, i) => `${sx(i)},${sy(Number(p[key]))}`).join(' ')}
+          fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinejoin="round" />
+        {pts.map((p, i) => (
+          <g key={i}>
+            <circle cx={sx(i)} cy={sy(Number(p[key]))} r="3.5" fill="#7c3aed" />
+            <title>{p.date}: {Number(p[key]).toFixed(dec)}</title>
+          </g>
+        ))}
+        {pts.map((p, i) => (i % Math.ceil(pts.length / 6) === 0 &&
+          <text key={p.date} x={sx(i)} y={H - 8} textAnchor="middle" fontSize="8" fill="#9ca3af">{(p.date || '').slice(5)}</text>
+        ))}
+      </svg>
+    )
+  }
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{title}</span>
+        <div className="flex rounded-lg overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
+          {metrics.map(([k, l], i) => (
+            <button key={k} onClick={() => setMi(i)}
+              className={`px-2 py-0.5 text-[11px] font-bold ${mi === i
+                ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      {body}
+    </div>
+  )
+}
+
+// Count-leverage results, computed from the lab's per-pitch rows.
+function CountResults({ pitches, mode }) {
+  const tiles = useMemo(() => {
+    const ps = (pitches || []).filter(p => p.pitch_call)
+    const rate = (num, den) => den ? `${(100 * num / den).toFixed(1)}%` : null
+    const isBall = c => ['BallCalled', 'BallinDirt', 'BallIntentional', 'HitByPitch'].includes(c)
+    const first = ps.filter(p => p.balls === 0 && p.strikes === 0)
+    const twoK = ps.filter(p => p.strikes === 2)
+    const ahead = ps.filter(p => p.strikes > p.balls)      // pitcher ahead
+    const behind = ps.filter(p => p.balls > p.strikes)
+    const csw = arr => arr.filter(p => p.pitch_call === 'StrikeCalled' || p.pitch_call === 'StrikeSwinging').length
+    if (mode === 'pitcher') {
+      const threeBall = ps.filter(p => p.balls === 3)
+      return [
+        ['First-pitch strike%', rate(first.filter(p => !isBall(p.pitch_call)).length, first.length), first.length,
+         'Strike-getting on 0-0: called, swung, fouled, or put in play'],
+        ['Putaway% at 2K', rate(twoK.filter(p => p.k_or_bb === 'Strikeout').length, twoK.length), twoK.length,
+         'Two-strike pitches that finished the strikeout'],
+        ['CSW% ahead', rate(csw(ahead), ahead.length), ahead.length, 'Called + swinging strikes when ahead in the count'],
+        ['CSW% behind', rate(csw(behind), behind.length), behind.length, 'Called + swinging strikes when behind — can he win from behind?'],
+        ['Zone% at 3 balls', rate(threeBall.filter(p => p.is_in_zone).length, threeBall.filter(p => p.is_in_zone != null).length),
+         threeBall.length, 'Does he fill it up when he has to?'],
+      ]
+    }
+    // hitter: ahead/behind flip perspective
+    const hAhead = behind, hBehind = ahead
+    const evOn = arr => {
+      const evs = arr.map(p => p.exit_speed).filter(v => v != null)
+      return evs.length ? `${(evs.reduce((a, b) => a + b, 0) / evs.length).toFixed(1)} mph` : null
+    }
+    return [
+      ['First-pitch swing%', rate(first.filter(p => p.is_swing).length, first.length), first.length,
+       'How often the 0-0 pitch draws a swing'],
+      ['2K contact%', rate(twoK.filter(p => p.is_swing && !p.is_whiff).length, twoK.filter(p => p.is_swing).length),
+       twoK.filter(p => p.is_swing).length, 'Contact per swing with two strikes — the battle skill'],
+      ['Chase% behind', rate(hBehind.filter(p => p.is_chase).length, hBehind.filter(p => p.is_in_zone === false).length),
+       hBehind.length, 'Expanding the zone when the pitcher is ahead'],
+      ['EV when ahead', evOn(hAhead.filter(p => p.exit_speed != null)), hAhead.filter(p => p.exit_speed != null).length,
+       'Damage in hitter counts — is he cashing in the advantage?'],
+    ]
+  }, [pitches, mode])
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Count leverage</div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+        {tiles.map(([label, val, n, tip]) => (
+          <div key={label} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2" title={tip}>
+            <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{label}</div>
+            <div className="text-[16px] font-bold tabular-nums text-gray-900 dark:text-gray-100">{val ?? '–'}</div>
+            <div className="text-[10px] text-gray-400 tabular-nums">{n} pitches</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Two-pitch sequencing: pairs within the same PA, ordered by PitchofPA.
 function SequencingTable({ pitches }) {
   const pairs = {}
@@ -757,6 +959,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
   const [picked, setPicked] = useState(null)  // pitch selected for re-tagging
   const [team, setTeam] = useState(teamCtx.primary)
   const [conf, setConf] = useState('all')
+  const [vsSide, setVsSide] = useState('')
   const { data: list } = useApi('/trackman/pitching', { context: 'all' })
   const roster = (list?.pitchers || []).filter(p => !team || p.team === team)
   const names = roster.map(p => p.pitcher)
@@ -764,6 +967,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
   const { data, loading, error, refetch } = useApi(
     active ? '/trackman/pitchers/detail' : null,
     { pitcher: active, context, conf, team: team || undefined,
+      side: vsSide || undefined,
       date_from: dates.from, date_to: dates.to })
 
   async function overridePitch(pitchType) {
@@ -798,6 +1002,14 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
           <button key={k} onClick={() => setContext(k)}
             className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
               context === k ? 'bg-portal-purple text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+        {[['', 'All bats'], ['L', 'vs LHH'], ['R', 'vs RHH']].map(([k, label]) => (
+          <button key={k} onClick={() => setVsSide(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+              vsSide === k ? 'bg-emerald-600 text-white'
                 : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
             {label}
           </button>
@@ -842,7 +1054,9 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
             </div>
           )}
 
-          <ArsenalStatTable pitches={data.pitches} />
+          <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} />
+
+          <CountResults pitches={data.pitches} mode="pitcher" />
 
           <div className="grid md:grid-cols-2 gap-3">
             <ArmProfileCard arm={data.arm} />
@@ -922,10 +1136,14 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx }) {
               <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Velocity by session</div>
               <VeloTrend trend={data.velo_trend} />
             </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Two-pitch sequences (result on the 2nd pitch)</div>
-              <SequencingTable pitches={data.pitches} />
-            </div>
+            <SessionTrendCard trend={data.session_trend}
+              metrics={[['stuff', 'Stuff+', 0], ['rv100', 'RV/100', 2], ['fb_velo', 'FB velo', 1]]}
+              title="Session trend — is he getting better?" />
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Two-pitch sequences (result on the 2nd pitch)</div>
+            <SequencingTable pitches={data.pitches} />
           </div>
         </div>
       )}
@@ -1073,6 +1291,7 @@ function HitterLabTab({ teamCtx }) {
   const [batter, setBatter] = useState('')
   const [context, setContext] = useState('all')
   const [conf, setConf] = useState('all')
+  const [vsThrows, setVsThrows] = useState('')
   const { data: list } = useApi('/trackman/hitting')
   const roster = (list?.batters || []).filter(b => !team || b.team === team)
   const names = roster.map(b => b.batter)
@@ -1080,6 +1299,7 @@ function HitterLabTab({ teamCtx }) {
   const { data, loading, error } = useApi(
     active ? '/trackman/batters/detail' : null,
     { batter: active, context, conf, team: team || undefined,
+      throws: vsThrows || undefined,
       date_from: dates.from, date_to: dates.to })
 
   const pct = data?.percentiles || {}
@@ -1099,6 +1319,14 @@ function HitterLabTab({ teamCtx }) {
           <button key={k} onClick={() => setContext(k)}
             className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
               context === k ? 'bg-portal-purple text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+        {[['', 'All arms'], ['L', 'vs LHP'], ['R', 'vs RHP']].map(([k, label]) => (
+          <button key={k} onClick={() => setVsThrows(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+              vsThrows === k ? 'bg-emerald-600 text-white'
                 : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
             {label}
           </button>
@@ -1142,6 +1370,15 @@ function HitterLabTab({ teamCtx }) {
           )}
 
           {data.xstats && <XStatsCard x={data.xstats} />}
+
+          <div className="grid md:grid-cols-2 gap-3">
+            {data.swing_take && <SwingTakeCard st={data.swing_take} />}
+            <SessionTrendCard trend={data.trend}
+              metrics={[['xwobacon', 'xwOBAcon', 3], ['avg_ev', 'Avg EV', 1], ['hard_hit_pct', 'Hard-hit%', 1]]}
+              title="Session trend — contact quality over time" />
+          </div>
+
+          <CountResults pitches={pitches} mode="hitter" />
 
           <div className="grid md:grid-cols-2 gap-3">
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
@@ -1280,7 +1517,50 @@ function SessionsTab({ overview, sessionId, setSessionId }) {
 
 // ── Catching ─────────────────────────────────────────────────────
 
+// Mini framing map: the zone with its four shadow-edge bands colored by
+// SAE (green = stealing strikes there, red = losing them).
+function ShadowZoneMap({ c }) {
+  const e = c.edges || {}
+  const col = v => v > 0.4 ? '#059669' : v < -0.4 ? '#e11d48' : '#9ca3af'
+  const op = v => Math.min(0.75, 0.18 + Math.abs(v || 0) * 0.1)
+  const W = 120, H = 140, bx = 24, by = 26            // zone box inset
+  const zw = W - 2 * bx, zh = H - 2 * by
+  const bands = [
+    ['high', bx, 6, zw, by - 10],
+    ['low', bx, H - by + 4, zw, by - 10],
+    ['left', 4, by, bx - 8, zh],
+    ['right', W - bx + 4, by, bx - 8, zh],
+  ]
+  const lbl = { high: [W / 2, 16], low: [W / 2, H - 12], left: [12, H / 2], right: [W - 12, H / 2] }
+  return (
+    <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-2.5 text-center">
+      <div className="text-[11px] font-bold text-gray-800 dark:text-gray-100 truncate">{c.catcher}</div>
+      <div className="text-[9px] text-gray-400 mb-1">{c.sae > 0 ? `+${c.sae}` : c.sae} SAE · {c.shadow_taken} takes</div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[130px] mx-auto">
+        {bands.map(([k, x, y, w, h]) => {
+          const sae = e[k]?.sae ?? 0
+          const vertical = k === 'left' || k === 'right'
+          const [tx, ty] = lbl[k]
+          return (
+            <g key={k} {...toneAttr(sae > 0.4 ? 80 : sae < -0.4 ? 20 : 50)}>
+              <rect x={x} y={y} width={w} height={h} rx="3" fill={col(sae)} opacity={op(sae)} />
+              <text x={tx} y={ty + 3} textAnchor="middle" fontSize="8.5" fontWeight="700"
+                fill={col(sae)} transform={vertical ? `rotate(-90 ${tx} ${ty})` : undefined}>
+                {sae > 0 ? `+${sae}` : sae}
+              </text>
+              <title>{k} edge: {sae > 0 ? '+' : ''}{sae} strikes above expected</title>
+            </g>
+          )
+        })}
+        <rect x={bx} y={by} width={zw} height={zh} rx="2" fill="none" stroke="currentColor"
+          strokeWidth="1.5" className="text-gray-600 dark:text-gray-300" />
+      </svg>
+    </div>
+  )
+}
+
 function CatchingTab({ teamCtx }) {
+  const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
   const { data, loading } = useApi('/trackman/catching', team ? { team } : {}, [team])
   const rows = data?.catchers || []
@@ -1290,9 +1570,13 @@ function CatchingTab({ teamCtx }) {
       {v > 0 ? `+${v}` : v}
     </span>
   )
+  const framers = rows.filter(c => c.sae != null && (c.shadow_taken || 0) >= 20)
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
+    <div className="space-y-3" ref={exportRef}>
+      <div className="flex justify-end items-center gap-2">
+        <ReportActions targetRef={exportRef} filename="trackman_catching" />
+        <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+      </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
         <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
@@ -1360,6 +1644,18 @@ function CatchingTab({ teamCtx }) {
           </table>
         )}
       </div>
+
+      {framers.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+          <div className="flex items-baseline justify-between mb-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Framing map — where each catcher wins and loses calls</span>
+            <span className="text-[10px] text-gray-400">strikes above expected on each zone edge · 20+ edge takes</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            {framers.map(c => <ShadowZoneMap key={c.catcher + c.catcher_team} c={c} />)}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
         <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
@@ -1504,7 +1800,7 @@ function CoachBoardTab({ teamCtx }) {
 
 // ── Pitcher Lab: full per-pitch stat table ───────────────────────
 
-function ArsenalStatTable({ pitches }) {
+function ArsenalStatTable({ pitches, rvByType }) {
   const rows = useMemo(() => {
     const g = {}
     pitches.forEach(p => { (g[p.ptype] = g[p.ptype] || []).push(p) })
@@ -1554,10 +1850,13 @@ function ArsenalStatTable({ pitches }) {
             <th className="px-2 py-1.5 text-right">Ext</th>
             <th className="px-2 py-1.5 text-right" title="Vertical approach angle at the plate">VAA</th>
             <th className="px-2 py-1.5 text-right">Zone%</th>
+            <th className="px-2 py-1.5 text-right" title="Share landing in the shadow band around the zone edges">Shdw%</th>
             <th className="px-2 py-1.5 text-right">Whiff%</th>
             <th className="px-2 py-1.5 text-right">Chase%</th>
             <th className="px-2 py-1.5 text-right">CSW%</th>
             <th className="px-2 py-1.5 text-right">EV agn</th>
+            <th className="px-2 py-1.5 text-right" title="Run value: count-based runs saved vs the average pitch in your data">RV</th>
+            <th className="px-2 py-1.5 text-right" title="Run value per 100 pitches (min 15 priced)">RV/100</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
@@ -1577,14 +1876,104 @@ function ArsenalStatTable({ pitches }) {
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.ext)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.vaa, 1)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.zone)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{fmt(rvByType?.[r.t]?.shadow_pct)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(r.whiff)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.chase)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.csw)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.ev)}</td>
+              <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${
+                rvByType?.[r.t]?.rv == null ? 'text-gray-300'
+                  : rvByType[r.t].rv > 0 ? 'text-emerald-600 dark:text-emerald-400'
+                    : rvByType[r.t].rv < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                {rvByType?.[r.t]?.rv == null ? '–'
+                  : rvByType[r.t].rv > 0 ? `+${rvByType[r.t].rv}` : rvByType[r.t].rv}
+              </td>
+              <td className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                {rvByType?.[r.t]?.rv100 == null ? '–'
+                  : `${rvByType[r.t].rv100 > 0 ? '+' : ''}${rvByType[r.t].rv100}`}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ── Hitter Lab: swing/take by attack zone (Savant's regions) ─────
+
+const ZONE_META = {
+  heart: ['Heart', 'the middle two-thirds of the zone'],
+  shadow: ['Shadow', 'the edges, in and just off the plate'],
+  chase: ['Chase', 'clearly off, but close enough to tempt'],
+  waste: ['Waste', 'noncompetitive'],
+}
+
+function SwingTakeCard({ st }) {
+  const order = ['heart', 'shadow', 'chase', 'waste']
+  const rvColor = v => v > 0.05 ? '#059669' : v < -0.05 ? '#e11d48' : '#9ca3af'
+  // concentric zones, sized like the classifier (0.67 / 1.33 / 2.0 half-widths)
+  const W = 150, H = 168, cx = W / 2, cy = H / 2
+  const rects = [
+    ['waste', W, H], ['chase', W * 0.66, H * 0.66], ['shadow', W * 0.44, H * 0.44], ['heart', W * 0.22, H * 0.22],
+  ]
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Swing / take runs by attack zone</span>
+        <span className={`text-[13px] font-bold tabular-nums ${st.total_rv > 0 ? 'text-emerald-600 dark:text-emerald-400' : st.total_rv < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500'}`}
+          title="Total run value of every swing decision, centered on your corpus">
+          {st.total_rv > 0 ? `+${st.total_rv}` : st.total_rv} runs
+        </span>
+      </div>
+      <div className="flex gap-4 items-center">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-28 shrink-0">
+          {rects.map(([z, w, h]) => (
+            <g key={z}>
+              <rect x={cx - w / 2} y={cy - h / 2} width={w} height={h} rx="4"
+                fill={rvColor(st[z]?.rv ?? 0)} opacity={z === 'waste' ? 0.15 : z === 'chase' ? 0.25 : z === 'shadow' ? 0.35 : 0.5} />
+              <title>{ZONE_META[z][0]}: {st[z]?.rv > 0 ? '+' : ''}{st[z]?.rv} runs</title>
+            </g>
+          ))}
+          <rect x={cx - W * 0.33} y={cy - H * 0.33} width={W * 0.66} height={H * 0.66} rx="2"
+            fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-700 dark:text-gray-200" />
+        </svg>
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-left text-[9px] uppercase tracking-wide text-gray-400">
+              <th className="py-1">Zone</th><th className="py-1 text-right">Seen</th>
+              <th className="py-1 text-right">Swing%</th>
+              <th className="py-1 text-right" title="Run value earned on swings in this zone">Swing RV</th>
+              <th className="py-1 text-right" title="Run value earned on takes in this zone">Take RV</th>
+              <th className="py-1 text-right">Runs</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+            {order.map(z => {
+              const r = st[z] || {}
+              const rv = v => v == null ? '–' : (
+                <span className={v > 0.05 ? 'text-emerald-600 dark:text-emerald-400' : v < -0.05 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500'}>
+                  {v > 0 ? `+${v}` : v}
+                </span>
+              )
+              return (
+                <tr key={z} title={ZONE_META[z][1]}>
+                  <td className="py-1 font-semibold">{ZONE_META[z][0]}</td>
+                  <td className="py-1 text-right tabular-nums text-gray-500">{r.pitches ?? '–'}</td>
+                  <td className="py-1 text-right tabular-nums">{r.swing_pct != null ? `${r.swing_pct}%` : '–'}</td>
+                  <td className="py-1 text-right tabular-nums">{rv(r.swing_rv)}</td>
+                  <td className="py-1 text-right tabular-nums">{rv(r.take_rv)}</td>
+                  <td className="py-1 text-right tabular-nums font-bold">{rv(r.rv)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[10px] text-gray-400 mt-2">
+        Every called pitch is priced with count-based run values, split by swing vs take.
+        Good takes on chase pitches earn real runs; swings at waste give them back.
+      </p>
     </div>
   )
 }
@@ -1789,7 +2178,51 @@ function BucketCells({ b }) {
   ))
 }
 
+// Range rose: a player's OAE split by movement direction, as four petals.
+// Green petal = above expectation moving that way, red = below.
+function DirRose({ r }) {
+  const dirs = r.dirs || {}
+  const W = 120, H = 120, cx = W / 2, cy = H / 2
+  // screen positions: back = up, in = down, left (1B side) = left, right = right
+  const pts = { back: [0, -1], in: [0, 1], left: [-1, 0], right: [1, 0] }
+  const col = v => v > 0.05 ? '#059669' : v < -0.05 ? '#e11d48' : '#9ca3af'
+  const len = d => 14 + Math.min(28, Math.abs(d?.oae ?? 0) * 9 + (d?.opps ?? 0) * 0.8)
+  return (
+    <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-2.5 text-center">
+      <div className="text-[11px] font-bold text-gray-800 dark:text-gray-100 truncate">{r.player}</div>
+      <div className="text-[9px] text-gray-400 mb-0.5">
+        {(r.positions || [r.pos]).filter(Boolean).join('/')} · {r.oae > 0 ? `+${r.oae}` : r.oae} OAE · {r.opps} ch
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[110px] mx-auto">
+        {Object.entries(pts).map(([k, [dx, dy]]) => {
+          const d = dirs[k]
+          const L = d ? len(d) : 10
+          const tipX = cx + dx * L, tipY = cy + dy * L
+          const perp = 7
+          return (
+            <g key={k} {...toneAttr(d == null ? null : d.oae > 0.05 ? 80 : d.oae < -0.05 ? 20 : 50)}>
+              <polygon points={`${cx + dy * perp},${cy + dx * perp} ${cx - dy * perp},${cy - dx * perp} ${tipX},${tipY}`}
+                fill={d ? col(d.oae) : '#d1d5db'} opacity={d ? 0.75 : 0.25} />
+              {d && (
+                <text x={cx + dx * (L + 11)} y={cy + dy * (L + 11) + 3} textAnchor="middle"
+                  fontSize="8.5" fontWeight="700" fill={col(d.oae)}>
+                  {d.oae > 0 ? `+${d.oae}` : d.oae}
+                </text>
+              )}
+              <title>{k}: {d ? `${d.oae > 0 ? '+' : ''}${d.oae} OAE on ${d.opps} chances` : 'no chances'}</title>
+            </g>
+          )
+        })}
+        <circle cx={cx} cy={cy} r="4" fill="currentColor" className="text-gray-500 dark:text-gray-300" />
+        <text x={cx} y="9" textAnchor="middle" fontSize="7" fill="#9ca3af">BACK</text>
+        <text x={cx} y={H - 3} textAnchor="middle" fontSize="7" fill="#9ca3af">IN</text>
+      </svg>
+    </div>
+  )
+}
+
 function DefenseTab({ teamCtx }) {
+  const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
   const [context, setContext] = useState('all')
   const [rankPos, setRankPos] = useState('SS')
@@ -1869,12 +2302,13 @@ function DefenseTab({ teamCtx }) {
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" ref={exportRef}>
       <div className="flex flex-wrap justify-between items-center gap-2">
         <div className="text-[11px] text-gray-400">
           {d.positioned_pitches || 0} positioned pitches · {d.positioned_bbe || 0} batted balls with positioning
         </div>
         <div className="flex gap-2 items-center">
+          <ReportActions targetRef={exportRef} filename="trackman_defense" />
           <select value={context} onChange={e => setContext(e.target.value)}
             className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs">
             {CONTEXTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
@@ -1917,6 +2351,24 @@ function DefenseTab({ teamCtx }) {
               ))
             })()}
           </div>
+
+          {/* range shapes: OAE by movement direction */}
+          {(() => {
+            const shapes = [...(d.outfield || []), ...(d.infield || [])]
+              .filter(p => p.opps >= 8 && p.dirs && Object.keys(p.dirs).length)
+              .sort((a, b) => b.opps - a.opps).slice(0, 10)
+            return shapes.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+                <div className="flex items-baseline justify-between mb-2.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Range shapes — OAE by movement direction</span>
+                  <span className="text-[10px] text-gray-400">petal length = workload, color = above/below expectation · left = 1B side</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                  {shapes.map(p => <DirRose key={p.player} r={p} />)}
+                </div>
+              </div>
+            )
+          })()}
 
           {statTable('Outfield — overall (all positions combined)', d.outfield,
             'OAE = outs made minus expected · star buckets = made/chances by difficulty')}
@@ -2008,6 +2460,7 @@ function DefenseTab({ teamCtx }) {
 // ── Values — one run-value ledger per player ──
 
 function ValuesTab({ teamCtx }) {
+  const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
   const [posAdj, setPosAdj] = useState(false)
   const [shrink, setShrink] = useState(false)
@@ -2033,12 +2486,14 @@ function ValuesTab({ teamCtx }) {
     return [label, best, k]
   })
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" ref={exportRef}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-[11px] text-gray-400">
-          Every column is average-relative: 0 = an average player in the division. Season stats + tracked data combined.
+          Every column is average-relative: 0 = an average player in the division. Season stats + tracked
+          data combined. Rough rule: about 10 runs = 1 win.
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <ReportActions targetRef={exportRef} filename="trackman_values" />
           <button onClick={() => setPosAdj(v => !v)}
             title="WAR-style premium-position credit: C +4.5, SS +2.5, CF/2B/3B +1.0, LF/RF -2.5, 1B -4.5 runs per full season, scaled by playing time"
             className={`text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ${posAdj
@@ -2087,6 +2542,7 @@ function ValuesTab({ teamCtx }) {
                 {COLS.map(([k, label, tip]) => (
                   <th key={k} className="px-2 py-2 text-right" title={tip}>{label}</th>
                 ))}
+                <th className="px-2 py-2 text-right" title="Pitch-level run value from tracked TrackMan sessions (count-based, centered on your corpus). Same innings as the Pitching column, different lens — informational, never summed into Total">RV (trk)</th>
                 {posAdj && <th className="px-2 py-2 text-right" title="Positional adjustment at the player's primary tracked position">Pos adj</th>}
                 <th className="px-2 py-2 text-right font-bold" title="Sum of every component">Total</th>
               </tr>
@@ -2107,6 +2563,7 @@ function ValuesTab({ teamCtx }) {
                   {COLS.map(([k]) => (
                     <td key={k} className="px-2 py-1.5 text-right">{rv(r[k])}</td>
                   ))}
+                  <td className="px-2 py-1.5 text-right text-xs opacity-75">{rv(r.tracked_rv)}</td>
                   {posAdj && (
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
                       {r.pos && <span className="text-[10px] text-gray-400 mr-1">{r.pos}</span>}

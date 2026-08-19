@@ -29,6 +29,30 @@ from ..stats.trackman_defense import (
     OF_POSITIONS, IF_POSITIONS, OUT_RESULTS, landing_xz,
     catch_probability, gb_out_probability, difficulty_bucket, move_direction,
 )
+from ..stats.trackman_runvalue import pitch_run_value, attack_zone
+
+
+def _rv_baseline(cur, owner, context):
+    """Mean batter-perspective run value per priced pitch across the whole
+    corpus in this context. Subtracting it re-centers run values on THIS
+    corpus (0 = the average pitch here) — the same philosophy as OAE and
+    SAE: the MLB-derived count ladder sets the SHAPE, the coach's own data
+    sets the level. Without this, a college corpus reads ~-1.5 RV/100 for
+    every pitcher (more balls + walks than the MLB baseline expects)."""
+    extra, params = _context_clause(context)
+    cur.execute(
+        f"""SELECT p.balls, p.strikes, p.pitch_call, p.play_result
+            FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+            WHERE p.owner_user_id = %s {extra}""",
+        [owner] + params,
+    )
+    tot, n = 0.0, 0
+    for r in cur.fetchall():
+        v = pitch_run_value(r["balls"], r["strikes"], r["pitch_call"], r["play_result"])
+        if v is not None:
+            tot += v
+            n += 1
+    return (tot / n) if n else 0.0
 from .auth import require_tier
 
 from fastapi import Request as _Request
@@ -609,6 +633,28 @@ def trackman_values(
             names = {n: v for n, v in names.items()
                      if v[0] == team or n in if_runs or n in of_runs or n in cat_runs}
 
+        # Tracked pitch-level run values (live sessions) — shown alongside
+        # the season-FIP pitching value, never summed into the total (they
+        # overlap: same innings, two lenses).
+        cur.execute("""SELECT p.pitcher AS n, p.balls, p.strikes, p.pitch_call, p.play_result
+                       FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                       WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
+                         AND s.session_type IN ('game','scrimmage','intrasquad')""", (owner,))
+        trv = {}
+        _gsum, _gn = 0.0, 0
+        for r in cur.fetchall():
+            v = pitch_run_value(r["balls"], r["strikes"], r["pitch_call"], r["play_result"])
+            if v is not None:
+                e = trv.setdefault(r["n"], [0.0, 0])
+                e[0] -= v
+                e[1] += 1
+                _gsum += v
+                _gn += 1
+        # center on this corpus's average pitch (see _rv_baseline)
+        _mean = (_gsum / _gn) if _gn else 0.0
+        for e in trv.values():
+            e[0] += e[1] * _mean
+
         # division baselines: PA-weighted wOBA and IP-weighted FIP
         cur.execute("""
             SELECT d.level, SUM(b.woba * b.plate_appearances) / NULLIF(SUM(b.plate_appearances), 0) AS lg_woba
@@ -638,7 +684,9 @@ def trackman_values(
                    "site_team": m["team"] if m else None,
                    "off_runs": None, "bsr_runs": None, "pitch_runs": None,
                    "if_runs": if_runs.get(name), "of_runs": of_runs.get(name),
-                   "catch_runs": cat_runs.get(name)}
+                   "catch_runs": cat_runs.get(name),
+                   "tracked_rv": (round(trv[name][0], 1)
+                                  if name in trv and trv[name][1] >= 30 else None)}
             if m:
                 pid = m["player_id"]
                 cur.execute("""
@@ -791,13 +839,18 @@ def delete_trackman_session(session_id: int, owner: str = Depends(_write_gate)):
 def trackman_pitching(
     context: str = Query("live"),
     team: str | None = Query(None),
+    side: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Per-pitcher arsenal rollup: every pitch type's usage, velo, shape, and
     results. Pitch type prefers the human tag, falls back to TrackMan's auto
     classification. context: all|live|game|scrimmage|bp; team filters by
-    TrackMan team code (e.g. BUS_BEA)."""
+    TrackMan team code (e.g. BUS_BEA); side=L|R keeps only pitches to that
+    batter handedness (the platoon split)."""
     extra, params = _context_clause(context)
+    if side in ("L", "R"):
+        extra += " AND p.batter_side = %s"
+        params = params + ["Left" if side == "L" else "Right"]
     team_sql = " AND p.pitcher_team = %s" if team else ""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -851,25 +904,43 @@ def trackman_pitching(
         if cur_best is None or cand > cur_best[0]:
             fb_ref[key] = (cand, r)
 
-    # Raw plate locations per pitcher x type for Location+ (same filters).
+    # Per-pitch pass (same filters): raw plate locations for Location+,
+    # plus count-based run values and attack-zone rates per pitcher x type.
     cur_locs = defaultdict(list)
+    rv_agg = defaultdict(lambda: {"rv": 0.0, "rv_n": 0, "shadow": 0, "heart": 0, "loc_n": 0})
     with get_connection() as conn:
         c2 = conn.cursor()
         try:
             c2.execute(
                 f"""SELECT p.pitcher, p.pitcher_team,
                            COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
-                           p.plate_loc_side, p.plate_loc_height
+                           p.plate_loc_side, p.plate_loc_height,
+                           p.balls, p.strikes, p.pitch_call, p.play_result
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
-                      AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL
                       AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
                       {extra}{team_sql}""",
                 [owner] + params + ([team] if team else []),
             )
             for lr in c2.fetchall():
-                cur_locs[(lr["pitcher"], lr["pitcher_team"], lr["ptype"])].append(
-                    (lr["plate_loc_side"] * 12.0, lr["plate_loc_height"] * 12.0))
+                key = (lr["pitcher"], lr["pitcher_team"], lr["ptype"])
+                agg = rv_agg[key]
+                if lr["plate_loc_side"] is not None and lr["plate_loc_height"] is not None:
+                    cur_locs[key].append(
+                        (lr["plate_loc_side"] * 12.0, lr["plate_loc_height"] * 12.0))
+                    zone = attack_zone(lr["plate_loc_side"], lr["plate_loc_height"])
+                    agg["loc_n"] += 1
+                    if zone == "shadow":
+                        agg["shadow"] += 1
+                    elif zone == "heart":
+                        agg["heart"] += 1
+                rv = pitch_run_value(lr["balls"], lr["strikes"], lr["pitch_call"], lr["play_result"])
+                if rv is not None:
+                    agg["rv"] -= rv   # pitcher perspective: positive = runs saved
+                    agg["rv_n"] += 1
+            base = _rv_baseline(c2, owner, context)
+            for agg in rv_agg.values():
+                agg["rv"] += agg["rv_n"] * base   # center on this corpus
         except Exception:
             conn.rollback()
 
@@ -889,10 +960,16 @@ def trackman_pitching(
         for t in sorted(types, key=lambda x: -x["n"]):
             swings, out_zone = t["swings"] or 0, t["out_zone"] or 0
             stuff, loc = _grades(t)
+            agg = rv_agg.get((t["pitcher"], t["pitcher_team"], t["ptype"]),
+                             {"rv": 0.0, "rv_n": 0, "shadow": 0, "heart": 0, "loc_n": 0})
             arsenal.append({
                 "pitch_type": t["ptype"],
                 "stuff": stuff,
                 "loc": loc,
+                "rv": round(agg["rv"], 1) if agg["rv_n"] else None,
+                "rv100": round(100 * agg["rv"] / agg["rv_n"], 2) if agg["rv_n"] >= 15 else None,
+                "shadow_pct": round(100 * agg["shadow"] / agg["loc_n"], 1) if agg["loc_n"] >= 15 else None,
+                "heart_pct": round(100 * agg["heart"] / agg["loc_n"], 1) if agg["loc_n"] >= 15 else None,
                 "count": t["n"],
                 "usage_pct": round(100 * t["n"] / total, 1),
                 "velo": round(t["velo"], 1) if t["velo"] else None,
@@ -911,8 +988,15 @@ def trackman_pitching(
                 "hard_hit": t["hard_hit"] or 0,
                 "bbe": t["bbe"] or 0,
             })
+        tot_rv = sum(a["rv"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
+        tot_rv_n = sum(a["rv_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
+        tot_shadow = sum(a["shadow"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
+        tot_loc = sum(a["loc_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
         out.append({"pitcher": name, "throws": throws, "team": tteam,
-                    "pitches": total, "arsenal": arsenal})
+                    "pitches": total, "arsenal": arsenal,
+                    "rv": round(tot_rv, 1) if tot_rv_n else None,
+                    "rv100": round(100 * tot_rv / tot_rv_n, 2) if tot_rv_n >= 30 else None,
+                    "shadow_pct": round(100 * tot_shadow / tot_loc, 1) if tot_loc >= 30 else None})
     out.sort(key=lambda x: -x["pitches"])
     return {"pitchers": out}
 
@@ -921,12 +1005,16 @@ def trackman_pitching(
 def trackman_hitting(
     team: str | None = Query(None),
     pitch_type: str | None = Query(None),
+    throws: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Per-batter contact quality, split live (game+scrimmage) vs BP —
-    the game-to-practice transfer gap. Hard-hit threshold: 90+ mph EV."""
+    the game-to-practice transfer gap. Hard-hit threshold: 90+ mph EV.
+    throws=L|R keeps only pitches from that pitcher hand (platoon split)."""
     team_sql = " AND p.batter_team = %s" if team else ""
     pt_sql = " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s" if pitch_type else ""
+    th_sql = " AND p.pitcher_throws = %s" if throws in ("L", "R") else ""
+    th_params = ["Left" if throws == "L" else "Right"] if throws in ("L", "R") else []
     with get_connection() as conn:
         cur = conn.cursor()
         try:
@@ -945,10 +1033,10 @@ def trackman_hitting(
                            AVG(p.launch_angle) AS avg_la,
                            MAX(p.distance) AS max_dist
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                    WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {team_sql}{pt_sql}
+                    WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {team_sql}{pt_sql}{th_sql}
                     GROUP BY p.batter, p.batter_side, p.batter_team,
                              CASE WHEN s.session_type = 'bp' THEN 'bp' ELSE 'live' END""",
-                [owner] + ([team] if team else []) + ([pitch_type] if pitch_type else []),
+                [owner] + ([team] if team else []) + ([pitch_type] if pitch_type else []) + th_params,
             )
             rows = [dict(r) for r in cur.fetchall()]
         except Exception:
@@ -1014,6 +1102,7 @@ def trackman_pitcher_detail(
     team: str | None = Query(None),
     context: str = Query("live"),
     conf: str = Query("all"),
+    side: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     owner: str = Depends(_gate),
@@ -1021,10 +1110,14 @@ def trackman_pitcher_detail(
     """Everything the Player Lab needs for one pitcher, in one call:
     per-pitch points (movement, release, location, velo), session velo
     trend, count-state usage, and corpus percentiles (min 50 pitches to
-    qualify for the percentile pool)."""
+    qualify for the percentile pool). side=L|R restricts to that batter
+    handedness — the platoon view (percentiles compare same-split pools)."""
     extra, params = _context_clause(context)
     dsql, dparams = _date_clause(date_from, date_to)
     extra, params = extra + dsql, params + dparams
+    if side in ("L", "R"):
+        extra += " AND p.batter_side = %s"
+        params = params + ["Left" if side == "L" else "Right"]
     team_sql = " AND p.pitcher_team = %s" if team else ""
     tparams = [team] if team else []
     with get_connection() as conn:
@@ -1042,7 +1135,7 @@ def trackman_pitcher_detail(
                        p.plate_loc_height, p.plate_loc_side, p.vaa,
                        p.is_in_zone, p.is_swing, p.is_whiff, p.is_chase,
                        p.balls, p.strikes, p.batter_side, p.pitch_call,
-                       p.exit_speed, p.launch_angle, p.play_result,
+                       p.exit_speed, p.launch_angle, p.play_result, p.k_or_bb,
                        p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        s.session_date, s.id AS session_id
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
@@ -1068,6 +1161,7 @@ def trackman_pitcher_detail(
             [owner] + params,
         )
         pool = [dict(r) for r in cur.fetchall()]
+        rv_base = _rv_baseline(cur, owner, context)
 
     me = next((r for r in pool if r["pitcher"] == pitcher), None)
     percentiles = {}
@@ -1134,6 +1228,81 @@ def trackman_pitcher_detail(
         arsenal_cents.append(c)
     tunneling = tunnel_pairs(arsenal_cents, hand)
 
+    # Run values + attack zones per pitch type (pitcher perspective:
+    # positive = runs saved vs average).
+    rv_types = defaultdict(lambda: {"rv": 0.0, "n": 0, "shadow": 0, "heart": 0, "loc": 0})
+    for x in pitches:
+        a = rv_types[x["ptype"]]
+        v = pitch_run_value(x["balls"], x["strikes"], x["pitch_call"], x.get("play_result"))
+        if v is not None:
+            a["rv"] -= v
+            a["n"] += 1
+        z = attack_zone(x["plate_loc_side"], x["plate_loc_height"])
+        if z is not None:
+            a["loc"] += 1
+            if z == "shadow":
+                a["shadow"] += 1
+            elif z == "heart":
+                a["heart"] += 1
+    rv_by_type = {
+        t: {"rv": round(a["rv"] + a["n"] * rv_base, 1), "n": a["n"],
+            "rv100": (round(100 * (a["rv"] + a["n"] * rv_base) / a["n"], 2)
+                      if a["n"] >= 15 else None),
+            "shadow_pct": round(100 * a["shadow"] / a["loc"], 1) if a["loc"] >= 15 else None,
+            "heart_pct": round(100 * a["heart"] / a["loc"], 1) if a["loc"] >= 15 else None}
+        for t, a in rv_types.items() if a["n"] or a["loc"]
+    }
+
+    # Per-session trend: fastball velo, pitch-weighted Stuff+, and RV/100
+    # (the "is he getting better" chart).
+    by_sess = defaultdict(list)
+    for x in pitches:
+        if x["session_date"]:
+            by_sess[x["session_date"]].append(x)
+    session_trend = []
+    for d in sorted(by_sess):
+        rows_ = by_sess[d]
+        cents2 = defaultdict(lambda: defaultdict(list))
+        for x in rows_:
+            for k, v in (("velo", x["rel_speed"]), ("ivb", x["ivb"]), ("hb", x["horz_break"]),
+                         ("spin", x["spin_rate"]), ("ext", x["extension"]),
+                         ("rel_h", x["rel_height"]), ("rel_s", x["rel_side"])):
+                if v is not None:
+                    cents2[x["ptype"]][k].append(float(v))
+        types = {}
+        for t, vals in cents2.items():
+            entry = {"ptype": t, "n": len(vals.get("velo", []))}
+            for k, arr in vals.items():
+                entry[k] = sum(arr) / len(arr) if arr else None
+            types[t] = entry
+        fb = None
+        for t, e in types.items():
+            cand = (t == "Fastball", t in FB_FAMILY, e["n"])
+            if fb is None or cand > fb[0]:
+                fb = (cand, e)
+        stuff_w = stuff_n = 0
+        for t, e in types.items():
+            if e["n"] >= 5:
+                g = grade_trackman(e, fb[1] if fb else e)
+                if g is not None:
+                    stuff_w += g * e["n"]
+                    stuff_n += e["n"]
+        rv = rvn = 0
+        for x in rows_:
+            v = pitch_run_value(x["balls"], x["strikes"], x["pitch_call"], x.get("play_result"))
+            if v is not None:
+                rv -= v
+                rvn += 1
+        rv += rvn * rv_base
+        fbv = [x["rel_speed"] for x in rows_
+               if x["rel_speed"] is not None and x["ptype"] in FB_FAMILY]
+        session_trend.append({
+            "date": d, "n": len(rows_),
+            "fb_velo": round(sum(fbv) / len(fbv), 1) if fbv else None,
+            "stuff": round(stuff_w / stuff_n) if stuff_n else None,
+            "rv100": round(100 * rv / rvn, 2) if rvn >= 15 else None,
+        })
+
     return {
         "pitcher": pitcher,
         "pitch_count": len(pitches),
@@ -1144,6 +1313,8 @@ def trackman_pitcher_detail(
         "profile": link,
         "arm": arm,
         "tunneling": tunneling,
+        "rv_by_type": rv_by_type,
+        "session_trend": session_trend,
     }
 
 
@@ -1222,6 +1393,61 @@ def trackman_leaderboards(
                 conn.rollback()
                 boards[key] = {"label": label, "higher_is_better": higher,
                                "min_sample": min_n, "rows": []}
+
+        # Python-priced categories: run values need per-pitch count
+        # transitions, so they can't live in the SQL loop above.
+        per = {}
+        try:
+            cur.execute(
+                f"""SELECT p.{who} AS name, p.{hand} AS hand, p.{team_col} AS team,
+                           p.balls, p.strikes, p.pitch_call, p.play_result,
+                           p.plate_loc_side AS px, p.plate_loc_height AS pz
+                    FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                    WHERE p.owner_user_id = %s AND p.{who} IS NOT NULL {extra}{team_sql}""",
+                [owner] + params + tparams,
+            )
+            for r in cur.fetchall():
+                key = (r["name"], r["hand"], r["team"])
+                a = per.setdefault(key, {"rv": 0.0, "rv_n": 0, "shadow": 0, "loc": 0})
+                v = pitch_run_value(r["balls"], r["strikes"], r["pitch_call"], r["play_result"])
+                if v is not None:
+                    a["rv"] += (-v if side == "pitching" else v)
+                    a["rv_n"] += 1
+                z = attack_zone(r["px"], r["pz"])
+                if z is not None:
+                    a["loc"] += 1
+                    if z == "shadow":
+                        a["shadow"] += 1
+            # center on the whole corpus in this context (NOT the team
+            # slice) so RV matches the Pitching tab and labs exactly
+            mean = _rv_baseline(cur, owner, context)
+            for a in per.values():
+                a["rv"] += a["rv_n"] * (mean if side == "pitching" else -mean)
+        except Exception:
+            conn.rollback()
+            per = {}
+
+    def _pyboard(key, label, rows, min_n, higher=True):
+        rows.sort(key=lambda r: (-r["value"] if higher else r["value"]))
+        boards[key] = {"label": label, "higher_is_better": higher,
+                       "min_sample": min_n, "rows": rows[:25]}
+
+    if side == "pitching":
+        _pyboard("rv", "Run value", [
+            {"name": k[0], "hand": k[1], "team": k[2], "sample": a["rv_n"], "value": round(a["rv"], 1)}
+            for k, a in per.items() if a["rv_n"] >= 50], 50)
+        _pyboard("rv100", "RV per 100", [
+            {"name": k[0], "hand": k[1], "team": k[2], "sample": a["rv_n"],
+             "value": round(100 * a["rv"] / a["rv_n"], 2)}
+            for k, a in per.items() if a["rv_n"] >= 100], 100)
+        _pyboard("shadow_pct", "Shadow zone%", [
+            {"name": k[0], "hand": k[1], "team": k[2], "sample": a["loc"],
+             "value": round(100 * a["shadow"] / a["loc"], 1)}
+            for k, a in per.items() if a["loc"] >= 100], 100)
+    else:
+        _pyboard("swtk_rv", "Swing/take RV", [
+            {"name": k[0], "hand": k[1], "team": k[2], "sample": a["rv_n"], "value": round(a["rv"], 1)}
+            for k, a in per.items() if a["rv_n"] >= 50], 50)
     return {"side": side, "boards": boards}
 
 
@@ -1279,14 +1505,19 @@ def trackman_batter_detail(
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     pitch_type: str | None = Query(None),
+    throws: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Everything the Hitter Lab needs: every pitch SEEN (locations + swing
     decisions), every BBE (EV/LA/spray from Direction+Distance), and
-    percentiles vs the other bats in this corpus (30+ pitches seen)."""
+    percentiles vs the other bats in this corpus (30+ pitches seen).
+    throws=L|R restricts to that pitcher hand (the platoon view)."""
     extra, params = _context_clause(context)
     dsql, dparams = _date_clause(date_from, date_to)
     extra, params = extra + dsql, params + dparams
+    if throws in ("L", "R"):
+        extra += " AND p.pitcher_throws = %s"
+        params = params + ["Left" if throws == "L" else "Right"]
     if pitch_type:
         extra += " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s"
         params = params + [pitch_type]
@@ -1323,6 +1554,7 @@ def trackman_batter_detail(
             [owner] + params,
         )
         pool = [dict(r) for r in cur.fetchall()]
+        rv_base = _rv_baseline(cur, owner, context)
 
     me = next((r for r in pool if r["batter"] == batter), None)
     percentiles = {}
@@ -1365,11 +1597,80 @@ def trackman_batter_detail(
                     "play_result": x["play_result"]})
     xstats = batter_xstats(pas)
 
+    # Swing/take ledger by attack zone (Savant's four regions): every
+    # called pitch is priced with the count-based run values — swings and
+    # takes separately, so chase damage and good takes both show up.
+    zones = {z: {"pitches": 0, "swings": 0, "swing_rv": 0.0, "take_rv": 0.0,
+                 "swing_n": 0, "take_n": 0}
+             for z in ("heart", "shadow", "chase", "waste")}
+    for x in pitches:
+        if not x["pitch_call"]:      # BP rows carry no calls — not decisions
+            continue
+        z = attack_zone(x["plate_loc_side"], x["plate_loc_height"])
+        if z is None:
+            continue
+        zt = zones[z]
+        zt["pitches"] += 1
+        swung = bool(x["is_swing"])
+        if swung:
+            zt["swings"] += 1
+        rv = pitch_run_value(x["balls"], x["strikes"], x["pitch_call"], x["play_result"])
+        if rv is None:
+            continue
+        if swung:
+            zt["swing_rv"] += rv
+            zt["swing_n"] += 1
+        else:
+            zt["take_rv"] += rv
+            zt["take_n"] += 1
+    swing_take = {}
+    for z, zt in zones.items():
+        # center each bucket on the corpus-average pitch (see _rv_baseline)
+        s_rv = zt["swing_rv"] - zt["swing_n"] * rv_base
+        t_rv = zt["take_rv"] - zt["take_n"] * rv_base
+        swing_take[z] = {
+            "pitches": zt["pitches"],
+            "swing_pct": round(100 * zt["swings"] / zt["pitches"], 1) if zt["pitches"] else None,
+            "swing_rv": round(s_rv, 1),
+            "take_rv": round(t_rv, 1),
+            "rv": round(s_rv + t_rv, 1),
+        }
+    swing_take["total_rv"] = round(sum(swing_take[z]["rv"] for z in zones), 1)
+
+    # Per-session trend: contact quality over time (rolling-chart food).
+    from ..stats.trackman_xstats import xwobacon
+    sess_trend = {}
+    for x in pitches:
+        d = x["session_date"]
+        if not d:
+            continue
+        t = sess_trend.setdefault(d, {"date": d, "pitches": 0, "bbe": 0,
+                                      "ev_sum": 0.0, "hh": 0, "xw_sum": 0.0, "xw_n": 0})
+        t["pitches"] += 1
+        if x["exit_speed"] is not None:
+            t["bbe"] += 1
+            t["ev_sum"] += x["exit_speed"]
+            if x["exit_speed"] >= 90:
+                t["hh"] += 1
+            if x["launch_angle"] is not None:
+                t["xw_sum"] += xwobacon(x["exit_speed"], x["launch_angle"], x.get("direction"),
+                                        (x.get("batter_side") or "")[:1] or None)
+                t["xw_n"] += 1
+    trend = []
+    for d in sorted(sess_trend):
+        t = sess_trend[d]
+        trend.append({
+            "date": d, "pitches": t["pitches"], "bbe": t["bbe"],
+            "avg_ev": round(t["ev_sum"] / t["bbe"], 1) if t["bbe"] else None,
+            "hard_hit_pct": round(100 * t["hh"] / t["bbe"], 1) if t["bbe"] else None,
+            "xwobacon": round(t["xw_sum"] / t["xw_n"], 3) if t["xw_n"] else None,
+        })
+
     with get_connection() as conn:
         link = _match_player(conn.cursor(), batter)
     return {"batter": batter, "pitch_count": len(pitches),
             "pitches": pitches, "percentiles": percentiles, "profile": link,
-            "xstats": xstats}
+            "xstats": xstats, "swing_take": swing_take, "trend": trend}
 
 
 @router.get("/trackman/sessions/{session_id}/review")
