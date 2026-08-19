@@ -291,7 +291,8 @@ def trackman_defense(
             SELECT p.pitch_uid, p.batter, p.pitcher_team, p.play_result,
                    p.tagged_hit_type, p.exit_speed, p.launch_angle AS angle, p.direction,
                    p.bearing, p.distance, p.hang_time,
-                   po.fielders, po.shift, s.session_date
+                   po.fielders, po.shift, s.session_date,
+                   s.id AS session_id, s.home_team, s.away_team, s.session_type
             FROM tm_pitches p
             JOIN tm_positioning po ON po.owner_user_id = p.owner_user_id
                                   AND po.pitch_uid = p.pitch_uid
@@ -319,15 +320,40 @@ def trackman_defense(
     plays = []
 
     def bump(store, name, pos):
-        st = store.setdefault(name, {
-            "player": name, "positions": set(), "opps": 0, "outs": 0, "x_outs": 0.0,
+        # keyed (player, position): per-position ratings only ever contain
+        # chances AT that position; the overall boards merge these later.
+        st = store.setdefault((name, pos), {
+            "player": name, "pos": pos, "opps": 0, "outs": 0, "x_outs": 0.0,
             "errors": 0, "through": 0,
             "buckets": {"routine": [0, 0], "2star": [0, 0], "3star": [0, 0],
                         "4star": [0, 0], "5star": [0, 0]},
             "dirs": {d: [0, 0, 0.0] for d in ("in", "back", "left", "right")},
         })
-        st["positions"].add(pos)
         return st
+
+    games = {}
+
+    def game_bump(r):
+        g = games.setdefault(r["session_id"], {
+            "session_id": r["session_id"],
+            "date": r["session_date"].isoformat() if r["session_date"] else None,
+            "matchup": f"{r['away_team'] or '?'} @ {r['home_team'] or '?'}",
+            "session_type": r["session_type"],
+            "opps": 0, "outs": 0, "x_outs": 0.0,
+            "best_play": None, "worst_miss": None,
+        })
+        return g
+
+    def game_track(r, fielder, pos, prob, made):
+        g = game_bump(r)
+        g["opps"] += 1
+        g["outs"] += 1 if made else 0
+        g["x_outs"] += prob
+        entry = {"fielder": fielder, "pos": pos, "prob": round(prob, 3)}
+        if made and (g["best_play"] is None or prob < g["best_play"]["prob"]):
+            g["best_play"] = entry
+        if not made and (g["worst_miss"] is None or prob > g["worst_miss"]["prob"]):
+            g["worst_miss"] = entry
 
     for r in rows:
         f = r["fielders"] or {}
@@ -367,6 +393,7 @@ def trackman_defense(
                     mdir = move_direction(fd["x"], fd["z"], lx, lz)
                     dd = st["dirs"][mdir]
                     dd[0] += 1; dd[1] += 1 if made else 0; dd[2] += prob
+                    game_track(r, fd["name"] or pos, pos, prob, made)
                     plays.append({
                         "type": "OF", "fielder": fd["name"] or pos, "pos": pos,
                         "prob": round(prob, 3), "made": made, "dir": mdir,
@@ -403,6 +430,7 @@ def trackman_defense(
                 mdir = move_direction(fd["x"], fd["z"], foot[0], foot[1])
                 dd = st["dirs"][mdir]
                 dd[0] += 1; dd[1] += 1 if made else 0; dd[2] += prob
+                game_track(r, fd["name"] or pos, pos, prob, made)
                 plays.append({
                     "type": "IF", "fielder": fd["name"] or pos, "pos": pos,
                     "prob": round(prob, 3), "made": made, "dir": mdir,
@@ -412,19 +440,47 @@ def trackman_defense(
                     "date": r["session_date"].isoformat() if r["session_date"] else None,
                 })
 
+    def _rates(st):
+        st["x_outs"] = round(st["x_outs"], 1)
+        st["oae"] = round(st["outs"] - st["x_outs"], 1)
+        st["conv_pct"] = round(st["outs"] / st["opps"], 3) if st["opps"] else None
+        st["x_conv_pct"] = round(st["x_outs"] / st["opps"], 3) if st["opps"] else None
+        st["dirs"] = {d: {"opps": v[0], "outs": v[1],
+                          "oae": round(v[1] - v[2], 1)} if v[0] else None
+                      for d, v in st["dirs"].items()}
+        return st
+
     def finish(store):
-        out = []
-        for st in store.values():
-            st["positions"] = sorted(st["positions"])
-            st["x_outs"] = round(st["x_outs"], 1)
-            st["oae"] = round(st["outs"] - st["x_outs"], 1)
-            st["conv_pct"] = round(st["outs"] / st["opps"], 3) if st["opps"] else None
-            st["x_conv_pct"] = round(st["x_outs"] / st["opps"], 3) if st["opps"] else None
-            st["dirs"] = {d: {"opps": v[0], "outs": v[1],
-                              "oae": round(v[1] - v[2], 1)} if v[0] else None
-                          for d, v in st["dirs"].items()}
-            out.append(st)
-        return sorted(out, key=lambda x: -x["oae"])
+        """(player,pos) stations -> (overall merged by player, per-position)."""
+        merged = {}
+        for (name, pos), st in store.items():
+            m = merged.setdefault(name, {
+                "player": name, "positions": set(), "opps": 0, "outs": 0, "x_outs": 0.0,
+                "errors": 0, "through": 0,
+                "buckets": {k: [0, 0] for k in st["buckets"]},
+                "dirs": {d: [0, 0, 0.0] for d in ("in", "back", "left", "right")},
+            })
+            m["positions"].add(pos)
+            for k in ("opps", "outs", "x_outs", "errors", "through"):
+                m[k] += st[k]
+            for k, v in st["buckets"].items():
+                m["buckets"][k][0] += v[0]; m["buckets"][k][1] += v[1]
+            for d, v in st["dirs"].items():
+                md = m["dirs"][d]
+                md[0] += v[0]; md[1] += v[1]; md[2] += v[2]
+        overall = []
+        for m in merged.values():
+            m["positions"] = sorted(m["positions"])
+            overall.append(_rates(m))
+        by_pos = {}
+        for (name, pos), st in store.items():
+            row = dict(st)
+            row["buckets"] = {k: list(v) for k, v in st["buckets"].items()}
+            row["dirs"] = {d: list(v) for d, v in st["dirs"].items()}
+            by_pos.setdefault(pos, []).append(_rates(row))
+        for pos in by_pos:
+            by_pos[pos].sort(key=lambda x: -x["oae"])
+        return sorted(overall, key=lambda x: -x["oae"]), by_pos
 
     # average start positions + shift usage
     pos_sum, shift_counts = {}, {}
@@ -438,11 +494,20 @@ def trackman_defense(
                      for pos, a in pos_sum.items() if a[2]}
 
     plays.sort(key=lambda p: p["prob"])
+    of_overall, of_by_pos = finish(of_stats)
+    if_overall, if_by_pos = finish(if_stats)
+    game_rows = []
+    for g in sorted(games.values(), key=lambda x: (x["date"] or ""), reverse=True):
+        g["x_outs"] = round(g["x_outs"], 1)
+        g["oae"] = round(g["outs"] - g["x_outs"], 1)
+        game_rows.append(g)
     return {
         "positioned_pitches": len(all_pos),
         "positioned_bbe": len(rows),
-        "outfield": finish(of_stats),
-        "infield": finish(if_stats),
+        "outfield": of_overall,
+        "infield": if_overall,
+        "by_position": {**of_by_pos, **if_by_pos},
+        "games": game_rows,
         "plays": plays[:120],
         "avg_positions": avg_positions,
         "shifts": shift_counts,

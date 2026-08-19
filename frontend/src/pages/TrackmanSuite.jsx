@@ -1687,13 +1687,14 @@ function BucketCells({ b }) {
 function DefenseTab({ teamCtx }) {
   const [team, setTeam] = useState(teamCtx.primary)
   const [context, setContext] = useState('all')
+  const [rankPos, setRankPos] = useState('SS')
   const { data, loading } = useApi('/trackman/defense',
     { context, ...(team ? { team } : {}) }, [context, team])
   const d = data || {}
   const gems = (d.plays || []).filter(p => p.made).slice(0, 8)
   const misses = (d.plays || []).filter(p => !p.made).sort((a, b) => b.prob - a.prob).slice(0, 8)
 
-  const statTable = (title, rows, note) => (
+  const statTable = (title, rows, note, ranked = false) => (
     <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
       <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
         <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{title}</span>
@@ -1703,7 +1704,7 @@ function DefenseTab({ teamCtx }) {
         <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
-              <th className="px-4 py-2">Player</th><th className="px-2 py-2">Pos</th>
+              <th className="px-4 py-2">{ranked ? '# / Player' : 'Player'}</th><th className="px-2 py-2">Pos</th>
               <th className="px-2 py-2 text-right">Opps</th>
               <th className="px-2 py-2 text-right">Outs</th>
               <th className="px-2 py-2 text-right">xOuts</th>
@@ -1721,10 +1722,13 @@ function DefenseTab({ teamCtx }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-            {rows.map(r => (
-              <tr key={r.player}>
-                <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{r.player}</td>
-                <td className="px-2 py-1.5 text-xs text-gray-400">{r.positions.join('/')}</td>
+            {rows.map((r, i) => (
+              <tr key={r.player + (r.pos || '')}>
+                <td className="px-4 py-1.5 font-semibold whitespace-nowrap">
+                  {ranked && <span className="text-gray-400 font-normal tabular-nums mr-1.5">{i + 1}.</span>}
+                  {r.player}
+                </td>
+                <td className="px-2 py-1.5 text-xs text-gray-400">{r.positions ? r.positions.join('/') : r.pos}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{r.opps}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{r.outs}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{r.x_outs}</td>
@@ -1811,10 +1815,99 @@ function DefenseTab({ teamCtx }) {
             </div>
           </div>
 
-          {statTable('Outfield — catch probability', d.outfield,
+          {/* metric leaders */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {(() => {
+              const all = [...(d.outfield || []), ...(d.infield || [])]
+              const starMade = p => (p.buckets?.['5star']?.[1] || 0) + (p.buckets?.['4star']?.[1] || 0)
+              const minOpps = all.filter(p => p.opps >= 5)
+              const cards = [
+                ['Total OAE leader', [...all].sort((a, b) => b.oae - a.oae)[0], p => `${p.oae > 0 ? '+' : ''}${p.oae}`],
+                ['Best OF', (d.outfield || [])[0], p => `${p.oae > 0 ? '+' : ''}${p.oae} OAE`],
+                ['Best IF', (d.infield || [])[0], p => `${p.oae > 0 ? '+' : ''}${p.oae} OAE`],
+                ['Most star plays (4★+5★)', [...all].sort((a, b) => starMade(b) - starMade(a))[0], p => `${starMade(p)} made`],
+              ]
+              return cards.map(([label, p, fmt2]) => (
+                <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-3 py-2.5">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{label}</div>
+                  {p ? (
+                    <>
+                      <div className="text-[14px] font-bold text-portal-purple dark:text-portal-accent-light truncate">{p.player}</div>
+                      <div className="text-[12px] tabular-nums text-gray-500">{fmt2(p)} · {p.opps} chances</div>
+                    </>
+                  ) : <div className="text-sm text-gray-400">—</div>}
+                </div>
+              ))
+            })()}
+          </div>
+
+          {statTable('Outfield — overall (all positions combined)', d.outfield,
             'OAE = outs made minus expected · star buckets = made/chances by difficulty')}
-          {statTable('Infield — ground-ball range', d.infield,
+          {statTable('Infield — overall (all positions combined)', d.infield,
             'OAE = outs made minus expected on grounders in range')}
+
+          {/* per-position rankings: only chances AT that position */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Position rankings</span>
+              <div className="flex rounded-lg overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
+                {['SS', '2B', '3B', '1B', 'LF', 'CF', 'RF'].map(p => (
+                  <button key={p} onClick={() => setRankPos(p)}
+                    className={`px-2.5 py-1 text-xs font-bold ${rankPos === p
+                      ? 'bg-portal-purple text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-500'}`}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {statTable(`${rankPos} — ranked by OAE at ${rankPos} only`,
+              d.by_position?.[rankPos] || [],
+              'Chances at this position only; time at other spots is excluded', true)}
+          </div>
+
+          {/* game-by-game breakdown */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Game by game</span>
+              <span className="text-[10px] text-gray-400">team defensive chances per session</span>
+            </div>
+            {(d.games || []).length ? (
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                    <th className="px-4 py-2">Date</th><th className="px-2 py-2">Matchup</th>
+                    <th className="px-2 py-2 text-right">Chances</th>
+                    <th className="px-2 py-2 text-right">Outs</th>
+                    <th className="px-2 py-2 text-right">xOuts</th>
+                    <th className="px-2 py-2 text-right">Team OAE</th>
+                    <th className="px-2 py-2">Best play</th>
+                    <th className="px-2 py-2">Toughest miss</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {d.games.map(g => (
+                    <tr key={g.session_id}>
+                      <td className="px-4 py-1.5 whitespace-nowrap">{g.date || '—'}</td>
+                      <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">{g.matchup}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{g.opps}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{g.outs}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{g.x_outs}</td>
+                      <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${g.oae > 0 ? 'text-emerald-600 dark:text-emerald-400' : g.oae < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                        {g.oae > 0 ? `+${g.oae}` : g.oae}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs whitespace-nowrap">
+                        {g.best_play ? `${g.best_play.fielder} (${Math.round(g.best_play.prob * 100)}%)` : '—'}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs whitespace-nowrap text-gray-500">
+                        {g.worst_miss ? `${g.worst_miss.fielder} (${Math.round(g.worst_miss.prob * 100)}%)` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : <div className="p-6 text-center text-sm text-gray-400">No positioned games yet.</div>}
+          </div>
 
           <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
             How it works: every positioning CSV records each fielder's starting spot at pitch release.
