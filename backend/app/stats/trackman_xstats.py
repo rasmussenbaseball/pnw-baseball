@@ -60,12 +60,40 @@ def _interp(grid, ev, la):
     return a * (1 - tx) + b * tx
 
 
+# ── College calibration layer ────────────────────────────────────
+# The grids above encode the Statcast-SHAPED surface, but MLB gloves
+# turn far more batted balls into outs than college defenses do —
+# audited on 1,168 college BBE with outcomes (Bushnell corpus,
+# 2026-08): the raw grid predicted .347 on contact vs .360 actual,
+# and badly underpredicted soft contact (<80 mph: .174 predicted vs
+# .244 actual — bloops and choppers become hits in this league).
+# Fix: Platt-style logistic recalibration fit on those labeled BBE,
+#   p_college = sigmoid(A + B * logit(p_grid) + C * (EV - 90) / 10)
+# The negative EV term flattens the surface (metal bats + weaker
+# defenses compress the EV effect). xTB scales by the same hit-prob
+# ratio so the extra-base mix is preserved.
+# REFIT when much more labeled data accrues: rerun the fit in the
+# 2026-08-19 session notes (Newton logistic on [1, logit(grid), EV]).
+import math as _math
+
+CAL_A, CAL_B, CAL_C = 0.0484, 1.1007, -0.2190
+
+
+def _calibrate(p_grid, ev):
+    p = max(0.005, min(0.98, p_grid))
+    z = CAL_A + CAL_B * _math.log(p / (1 - p)) + CAL_C * (ev - 90) / 10.0
+    return 1.0 / (1.0 + _math.exp(-z))
+
+
 def xba(ev, la):
-    return _interp(XBA, ev, la)
+    return _calibrate(_interp(XBA, ev, la), ev)
 
 
 def xtb(ev, la):
-    return _interp(XTB, ev, la)
+    raw_ba = _interp(XBA, ev, la)
+    raw_tb = _interp(XTB, ev, la)
+    ratio = _calibrate(raw_ba, ev) / max(raw_ba, 1e-6)
+    return raw_tb * ratio
 
 
 def xwobacon(ev, la):
