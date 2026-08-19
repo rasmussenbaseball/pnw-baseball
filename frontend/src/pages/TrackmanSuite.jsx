@@ -1806,34 +1806,6 @@ function DefenseTab({ teamCtx }) {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-3">
-            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
-              <div className="flex items-baseline justify-between mb-1">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Average starting spots + OF chances</span>
-                <span className="text-[10px] text-gray-400">
-                  <span className="text-emerald-600 font-bold">●</span> caught&nbsp;
-                  <span className="text-rose-600 font-bold">●</span> fell
-                </span>
-              </div>
-              <DefenseFieldMap avgPositions={d.avg_positions} plays={d.plays} />
-              {Object.keys(d.shifts || {}).length > 0 && (
-                <div className="text-[10px] text-gray-400 mt-1">
-                  Shifts detected: {Object.entries(d.shifts).map(([k, v]) => `${k} ×${v}`).join(' · ')}
-                </div>
-              )}
-            </div>
-            <div className="grid grid-rows-2 gap-3">
-              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Best plays made</div>
-                {gems.length ? gems.map(playRow) : <div className="text-xs text-gray-400 italic">None yet.</div>}
-              </div>
-              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Most catchable that fell</div>
-                {misses.length ? misses.map(playRow) : <div className="text-xs text-gray-400 italic">None yet.</div>}
-              </div>
-            </div>
-          </div>
-
           {/* metric leaders */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {(() => {
@@ -1863,7 +1835,7 @@ function DefenseTab({ teamCtx }) {
           {statTable('Outfield — overall (all positions combined)', d.outfield,
             'OAE = outs made minus expected · star buckets = made/chances by difficulty')}
           {statTable('Infield — overall (all positions combined)', d.infield,
-            'OAE = outs made minus expected on grounders in range')}
+            'OAE = outs made minus expected on grounders in range plus popups and bloops')}
 
           {/* per-position rankings: only chances AT that position */}
           <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
@@ -1930,8 +1902,9 @@ function DefenseTab({ teamCtx }) {
 
           <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
             How it works: every positioning CSV records each fielder's starting spot at pitch release.
-            We pair that with the ball's landing point and hang time (outfield) or its path and exit
-            velocity (infield) to estimate how likely an average college defender makes the play, then
+            We pair that with the ball's landing point and hang time (air balls, credited to the
+            nearest fielder, infielders included) or its path and exit velocity (ground balls) to
+            estimate how likely an average college defender makes the play, then
             compare to what actually happened. In / Back / Left / Right split each player's OAE by the
             direction they had to move (left = the 1B side, right = the 3B side, from the fielder's
             view facing the plate). E counts plays the scorer ruled an error, meaning the fielder

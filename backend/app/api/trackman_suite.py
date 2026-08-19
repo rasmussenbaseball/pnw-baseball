@@ -366,11 +366,19 @@ def trackman_defense(
         is_air = (htype in ("FlyBall", "LineDrive", "Popup")
                   or (angle is not None and angle >= 10)) and res != "HomeRun"
         bearing, dist, hang = fnum(r["bearing"]), fnum(r["distance"]), fnum(r["hang_time"])
-        if (is_air and bearing is not None and dist is not None and dist >= 130
+        # Air balls: EVERY fielder is a candidate and the best catch
+        # probability wins responsibility — deep balls naturally go to the
+        # outfield (their probability dominates), popups to the infield, and
+        # bloops behind the infield to whoever truly has the best shot (which
+        # is what fills the infield 'back' column). Balls landing inside
+        # 60 ft are catcher/pitcher territory — neither is tracked in the
+        # positioning file, so they're excluded.
+        if (is_air and bearing is not None and dist is not None and dist >= 60
                 and hang is not None and hang >= 1.3):
             lx, lz = landing_xz(bearing, dist)
+            candidates = OF_POSITIONS + IF_POSITIONS
             best = None
-            for pos in OF_POSITIONS:
+            for pos in candidates:
                 fd = f.get(pos)
                 if not fd:
                     continue
@@ -381,7 +389,8 @@ def trackman_defense(
                 pos, fd, prob, run_dist = best
                 # uncatchable-by-anyone balls aren't opportunities
                 if prob >= 0.03:
-                    st = bump(of_stats, fd["name"] or pos, pos)
+                    group_of = pos in OF_POSITIONS
+                    st = bump(of_stats if group_of else if_stats, fd["name"] or pos, pos)
                     st["opps"] += 1
                     st["outs"] += 1 if made else 0
                     st["x_outs"] += prob
@@ -395,7 +404,7 @@ def trackman_defense(
                     dd[0] += 1; dd[1] += 1 if made else 0; dd[2] += prob
                     game_track(r, fd["name"] or pos, pos, prob, made)
                     plays.append({
-                        "type": "OF", "fielder": fd["name"] or pos, "pos": pos,
+                        "type": "OF" if group_of else "IF", "fielder": fd["name"] or pos, "pos": pos,
                         "prob": round(prob, 3), "made": made, "dir": mdir,
                         "dist": round(run_dist), "hang": round(hang, 1),
                         "land_x": round(lx, 1), "land_z": round(lz, 1),
