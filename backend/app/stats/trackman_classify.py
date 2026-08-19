@@ -331,6 +331,12 @@ CUTTER_FB_GAP = 4.5   # a "cutter" more than this below the fastball is a breake
 
 def _breaker_name(ivb, hb, velo=None, fb_velo=None):
     sweep = abs(hb)
+    # cutter: near-fastball velo, real ride, no sweep (Schwenk's 80.9 off
+    # an 85.2 heater with 11" of ride is a cutter, not a slider). Marshall's
+    # 83.5 off 88.7 with 7" of ride stays a slider — fails both gates.
+    if (velo is not None and fb_velo is not None
+            and velo >= fb_velo - 5.0 and ivb >= 9.0 and sweep <= 6.0):
+        return "Cutter"
     # sweepers live in the slider velo band; a breaker 13+ mph below the
     # fastball is a curveball no matter how much it sweeps (Sanchez's
     # 69.7-mph, 18-inch bender stays a curve; Keamo's 76-mph one doesn't)
@@ -454,7 +460,18 @@ def repartition_breakers(cur, owner, pitchers=None, dry_run=False):
         named = []
         for lf in leaves:
             ivb, hb, velo = _leaf_mean(lf)
-            named.append([lf, _breaker_name(ivb, hb, velo, fb), ivb, velo])
+            named.append([lf, _breaker_name(ivb, hb, velo, fb), ivb, velo, hb])
+        # a Cutter is only a Cutter when it's clearly its own pitch: within
+        # 3 JND of another breaker leaf it's the hard end of the slider's
+        # spray (Marshall's 84-mph firm leaf sits 2.5 from his slider —
+        # one pitch; Schwenk's true cutter sits 4.0 away)
+        for e in named:
+            if e[1] != "Cutter" or len(named) < 2:
+                continue
+            me = (0, e[2], e[4], e[3])
+            near = min(_row_jnd(me, (0, o[2], o[4], o[3])) for o in named if o is not e)
+            if near < 3.0:
+                e[1] = "Slider"
         # comparative disambiguation among same-named 'Slider' leaves
         sliders = [e for e in named if e[1] == "Slider"]
         if len(sliders) > 1:
@@ -464,7 +481,7 @@ def repartition_breakers(cur, owner, pitchers=None, dry_run=False):
                     e[1] = "Curveball"
 
         moved = defaultdict(int)
-        for lf, new, _, _ in named:
+        for lf, new, *_ in named:
             for r in lf:
                 if r[4] != new:
                     changes.append((new, r[0]))
