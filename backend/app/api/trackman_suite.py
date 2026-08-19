@@ -1080,10 +1080,16 @@ def trackman_hitting(
 # type, count-state usage, and percentile ranks computed against every
 # OTHER pitcher in this coach's corpus (their own "league").
 
+_EFF_TYPE = "COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type)"
+
 _PCTL_METRICS = [
     # (key, sql expr, higher_is_better)
-    ("velo", "AVG(rel_speed)", True),
-    ("ivb", "AVG(ivb)", True),
+    # velo + IVB are FASTBALL-family only (matching the leaderboards) — an
+    # arsenal-wide average punishes pitchers who throw lots of breaking
+    # balls (Keamo's 16" fastball graded 9th pctl off his curveball-heavy
+    # 7.3" blend, caught by Nate 2026-08-19).
+    ("velo", f"AVG(rel_speed) FILTER (WHERE {_EFF_TYPE} IN ('Fastball','Four-Seam','Sinker'))", True),
+    ("ivb", f"AVG(ivb) FILTER (WHERE {_EFF_TYPE} IN ('Fastball','Four-Seam'))", True),
     ("spin", "AVG(spin_rate)", True),
     ("extension", "AVG(extension)", True),
     ("zone_pct", "AVG(CASE WHEN is_in_zone THEN 1.0 WHEN is_in_zone IS FALSE THEN 0.0 END)", True),

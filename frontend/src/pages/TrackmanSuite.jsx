@@ -947,7 +947,7 @@ function SequencingTable({ pitches }) {
 }
 
 const PCTL_LABELS = {
-  velo: ['Velocity', ' mph', 1], ivb: ['Fastball ride (IVB)', '"', 1], spin: ['Spin rate', ' rpm', 0],
+  velo: ['Fastball velo', ' mph', 1], ivb: ['Fastball ride (IVB)', '"', 1], spin: ['Spin rate', ' rpm', 0],
   extension: ['Extension', ' ft', 1], zone_pct: ['Zone%', '%', 1], whiff_pct: ['Whiff%', '%', 1],
   chase_pct: ['Chase%', '%', 1], csw_pct: ['CSW%', '%', 1], ev_against: ['EV against', ' mph', 1],
 }
