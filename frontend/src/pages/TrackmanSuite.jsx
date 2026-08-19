@@ -1971,20 +1971,92 @@ const FLAG_META = {
   low_zone: { label: 'Zone', cls: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' },
 }
 
+const AREA_CLS = {
+  Identity: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  Catching: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
+  Defense: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+}
+
+function DevPlayerRow({ p }) {
+  const [open, setOpen] = useState(false)
+  const strengths = p.points.filter(x => x.kind === 'strength').length
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full px-4 py-2.5 flex items-center gap-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40">
+        <span className={`text-gray-400 text-xs transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+        <span className="font-bold text-gray-900 dark:text-gray-100">{p.player}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+          {p.roles.filter(r => r !== 'defense').join(' · ') || 'position player'}
+        </span>
+        <span className="ml-auto flex gap-1">
+          {[...new Set(p.points.map(x => x.area))].slice(0, 4).map(a => (
+            <span key={a} className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full
+              ${AREA_CLS[a] || 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300'}`}>
+              {a}
+            </span>
+          ))}
+        </span>
+        <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap">
+          {p.points.length - strengths} focus · {strengths} strength
+        </span>
+      </button>
+      {open && (
+        <div className="px-4 pb-3 pt-1 space-y-2 border-t border-gray-100 dark:border-gray-700">
+          {p.points.map((pt, i) => (
+            <div key={i} className="flex gap-2.5 items-start">
+              <span className={`shrink-0 mt-0.5 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full
+                ${pt.kind === 'strength' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : 'bg-portal-purple/10 text-portal-purple dark:bg-indigo-900/40 dark:text-indigo-300'}`}>
+                {pt.kind === 'strength' ? '★ ' : ''}{pt.area}
+              </span>
+              <p className="text-[13px] leading-snug text-gray-700 dark:text-gray-300">{pt.note}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CoachBoardTab({ teamCtx, season }) {
   const [team, setTeam] = useState(teamCtx.primary)
   const { data, loading } = useApi('/trackman/insights', { team: team || undefined, season })
+  const { data: dev, loading: devLoading } = useApi('/trackman/dev-notes', { team: team || undefined, season })
   const flags = data?.flags || []
+  const devPlayers = dev?.players || []
+  const pitchers = devPlayers.filter(p => p.roles.includes('pitcher'))
+  const hitters = devPlayers.filter(p => !p.roles.includes('pitcher'))
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xl">
-          Auto-surfaced from your data with sample-size gates: practice-to-game transfer gaps,
-          velocity dips, pitch-mix mismatches, and zone-command flags. Signals, not verdicts.
+          The development board: every tracked player with data-backed coaching points — a strength
+          to lean on plus the highest-leverage focuses. Click a player to open their plan.
+          Auto-flags (transfer gaps, velo dips, mix mismatches) follow below. Signals, not verdicts.
         </p>
         <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
       </div>
+
+      {devLoading ? <div className="text-sm text-gray-400 p-6 text-center">Building development plans…</div> : (
+        <>
+          {pitchers.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-1">Pitchers ({pitchers.length})</div>
+              {pitchers.map(p => <DevPlayerRow key={p.player} p={p} />)}
+            </div>
+          )}
+          {hitters.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-1">Position players ({hitters.length})</div>
+              {hitters.map(p => <DevPlayerRow key={p.player} p={p} />)}
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-1 pt-2">Auto-flags</div>
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Reading the data…</div> :
        flags.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-10 text-center text-sm text-gray-400">
