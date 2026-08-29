@@ -331,6 +331,7 @@ const PlayoffProjections = lazyWithRetry(() => import('./pages/PlayoffProjection
 import Percentiles from './pages/Percentiles'
 import PlayerComps from './pages/PlayerComps'
 import PlayerComparison from './pages/PlayerComparison'
+const CatcherDefense = lazyWithRetry(() => import('./pages/CatcherDefense'))
 const RecruitingBoard = lazyWithRetry(() => import('./pages/RecruitingBoard'))
 const SharedRecruitingBoard = lazyWithRetry(() => import('./pages/SharedRecruitingBoard'))  // public read-only board via share link
 import TeamQuiz from './pages/TeamQuiz'
@@ -481,6 +482,7 @@ export default function App() {
           <Route path="/coaching/transfer-portal" element={<RequireTier minTier="recruiting"><TransferPortalTracker /></RequireTier>} />
           <Route path="/coaching/wcl-portal" element={<RequireTier minTier="recruiting"><WclTransferTracker /></RequireTier>} />
           <Route path="/coaching/player-comparison" element={<RequireTier minTier="premium"><PlayerComparison /></RequireTier>} />
+          <Route path="/coaching/catcher-defense" element={<RequireTier minTier="premium"><CatcherDefense /></RequireTier>} />
           {/* Recruiting boards are FREE (any signed-in user) as of 2026-07-04;
               the Recruit Finder tab inside stays recruiting-tier. */}
           <Route path="/coaching/recruiting-board" element={<RequireTier minTier="free"><RecruitingBoard /></RequireTier>} />

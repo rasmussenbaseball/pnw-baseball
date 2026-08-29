@@ -83,6 +83,22 @@ router = APIRouter()
 # leaderboards include all events because per-PA noise averages out
 # when you sum across 50+ PAs.
 
+@router.get("/catcher-defense")
+def catcher_defense():
+    """Catcher Defense Lab payload: framing (CSAA with empirical-Bayes
+    shrinkage) + throwing + blocking model output, computed offline from the
+    season's play-by-play called pitches and baked to backend/data/
+    catcher_defense.json. The frontend (/coaching/catcher-defense) carries
+    the full methodology write-up. Regenerate by re-running the model and
+    replacing the JSON."""
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "catcher_defense.json")
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Catcher defense data not generated yet.")
+
+
 @router.get("/top-moments")
 @cached_endpoint(ttl_seconds=1800)  # WPA + game_events audit (multi-second) — cache hard
 def top_moments(

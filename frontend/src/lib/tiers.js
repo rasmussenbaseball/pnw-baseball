@@ -188,6 +188,7 @@ export const FEATURE_MIN_TIER = {
   recruiting_hometown:    'premium',
   draft_board:            'premium',
   park_factors:           'premium',
+  catcher_defense:        'premium',
   historic_matchups:      'premium',
   gm_simulator:           'premium',  // /gm/* — coaching simulator
 
@@ -278,6 +279,7 @@ export const ROUTE_FEATURE = [
   ['/draftboard/2027',            'draft_board'],
   ['/draftboard/2028',            'draft_board'],
   ['/park-factors',               'park_factors'],
+  ['/coaching/catcher-defense',   'catcher_defense'],
   ['/historic',                   'historic_matchups'],
   ['/opponent-trends',            'historic_matchups'],
   ['/gm',                         'gm_simulator'],
