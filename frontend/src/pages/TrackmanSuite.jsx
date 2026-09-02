@@ -1708,10 +1708,23 @@ function BpReviewTab({ teamCtx, season }) {
   const [dates, setDates] = useState({})
   const [team, setTeam] = useState(teamCtx.primary)
   const [sel, setSel] = useState(null)
+  const [sortK, setSortK] = useState('avg_ev')
+  const [sortD, setSortD] = useState(-1)
   const { data, loading } = useApi('/trackman/bp-review',
     { date_from: dates.from, date_to: dates.to, team: team || undefined, season },
     [dates.from, dates.to, team])
-  const batters = data?.batters || []
+  const batters = useMemo(() => {
+    const rows = (data?.batters || []).slice()
+    rows.sort((a, b) => {
+      let x = a[sortK] ?? -1e9, y = b[sortK] ?? -1e9
+      return (typeof x === 'string' ? x.localeCompare(y) : x - y) * sortD
+    })
+    return rows
+  }, [data, sortK, sortD])
+  const clickSort = (k) => {
+    if (sortK === k) setSortD(d => -d)
+    else { setSortK(k); setSortD(k === 'batter' ? 1 : -1) }
+  }
   const selRow = batters.find(b => b.batter === sel) || batters[0] || null
   const cohort = useMemo(() => {
     const grab = k => batters.map(b => b[k]).filter(v => v != null).map(Number)
@@ -1794,19 +1807,27 @@ function BpReviewTab({ teamCtx, season }) {
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
-                  <th className="px-4 py-2">Hitter</th>
-                  <th className="px-2 py-2 text-right" title="Machine pitches thrown to him">Pitches</th>
-                  <th className="px-2 py-2 text-right" title="Balls struck per pitch thrown. BP files carry no swing calls, so takes and whiffs can't be separated">Contact/pitch</th>
-                  <th className="px-2 py-2 text-right">BBE</th>
-                  <th className="px-2 py-2 text-right">Avg EV</th>
-                  <th className="px-2 py-2 text-right" title="90th percentile exit velo — the best-contact benchmark, steadier than max">90th EV</th>
-                  <th className="px-2 py-2 text-right">Max EV</th>
-                  <th className="px-2 py-2 text-right">Avg LA</th>
-                  <th className="px-2 py-2 text-right" title="Launch between 8 and 32 degrees">Sweet-spot%</th>
-                  <th className="px-2 py-2 text-right">HH%</th>
-                  <th className="px-2 py-2 text-right">GB%</th>
-                  <th className="px-2 py-2 text-right" title="Pulled share of air balls (10°+ launch)">Pull-air%</th>
-                  <th className="px-2 py-2 text-right">Max dist</th>
+                  {[
+                    ['Hitter', 'batter', null, 'px-4 py-2'],
+                    ['Pitches', 'pitches', 'Machine pitches thrown to him'],
+                    ['Contact/pitch', 'contact_pct', "Balls struck per pitch thrown. BP files carry no swing calls, so takes and whiffs can't be separated"],
+                    ['BBE', 'bbe', null],
+                    ['Avg EV', 'avg_ev', null],
+                    ['90th EV', 'p90_ev', '90th percentile exit velo — the best-contact benchmark, steadier than max'],
+                    ['Max EV', 'max_ev', null],
+                    ['Avg LA', 'avg_la', null],
+                    ['Sweet-spot%', 'sweet_spot_pct', 'Launch between 8 and 32 degrees'],
+                    ['HH%', 'hard_hit_pct', null],
+                    ['GB%', 'gb_pct', null],
+                    ['Pull-air%', 'pull_air_pct', 'Pulled share of air balls (10°+ launch)'],
+                    ['Max dist', 'max_dist', null],
+                  ].map(([label, k, tip, cls]) => (
+                    <th key={k} onClick={() => clickSort(k)} title={tip || 'Click to sort'}
+                      className={`${cls || 'px-2 py-2 text-right'} cursor-pointer select-none whitespace-nowrap ${
+                        sortK === k ? 'text-portal-purple dark:text-indigo-300' : ''}`}>
+                      {label}{sortK === k ? (sortD > 0 ? ' ▲' : ' ▼') : ''}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
