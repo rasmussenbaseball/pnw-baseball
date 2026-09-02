@@ -881,6 +881,110 @@ def _context_clause(context):
     return "", []
 
 
+@router.get("/trackman/bp-review")
+def trackman_bp_review(
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    team: str | None = Query(None),
+    season: int | None = Query(None),
+    owner: str = Depends(_gate),
+):
+    """BP Review: per-hitter contact quality for BP sessions in a date
+    range. BP files carry no pitch calls, so swings can't be separated
+    from takes — contact rate is per machine pitch (balls struck over
+    pitches thrown), stated plainly in the UI."""
+    dsql, dparams = _date_clause(date_from, date_to)
+    ssql, sparams = _season_clause(season)
+    team_sql = " AND p.batter_team = %s" if team else ""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT p.batter, p.batter_team, p.batter_side,
+                       p.exit_speed, p.launch_angle, p.direction, p.distance, p.bearing,
+                       s.id AS session_id, s.session_date
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND s.session_type = 'bp'
+                  AND p.batter IS NOT NULL{dsql}{ssql}{team_sql}""",
+            [owner] + dparams + sparams + ([team] if team else []),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+    sessions = {}
+    batters = defaultdict(lambda: {"pitches": 0, "evs": [], "points": [],
+                                   "hh": 0, "ss": 0, "gb": 0, "air": 0, "pull_air": 0,
+                                   "la_s": 0.0, "la_n": 0, "dists": [], "side": None})
+    for r in rows:
+        sid = r["session_id"]
+        d = r["session_date"].isoformat() if r["session_date"] else None
+        st = sessions.setdefault(sid, {"id": sid, "date": d, "pitches": 0, "bbe": 0})
+        st["pitches"] += 1
+        b = batters[(r["batter"], r["batter_team"])]
+        b["pitches"] += 1
+        hand = (r["batter_side"] or "")[:1] or None
+        b["side"] = hand or b["side"]
+        ev = float(r["exit_speed"]) if r["exit_speed"] is not None else None
+        if ev is None:
+            continue
+        st["bbe"] += 1
+        b["evs"].append(ev)
+        if ev >= 90:
+            b["hh"] += 1
+        la = float(r["launch_angle"]) if r["launch_angle"] is not None else None
+        dist = float(r["distance"]) if r["distance"] is not None else None
+        direc = float(r["direction"]) if r["direction"] is not None else None
+        if la is not None:
+            b["la_s"] += la
+            b["la_n"] += 1
+            if 8 <= la <= 32:
+                b["ss"] += 1
+            if la < 10:
+                b["gb"] += 1
+            else:
+                b["air"] += 1
+                if direc is not None and hand in ("L", "R"):
+                    if direc * (1.0 if hand == "L" else -1.0) >= 10:
+                        b["pull_air"] += 1
+        if dist is not None:
+            b["dists"].append(dist)
+        b["points"].append({"ev": round(ev, 1), "la": round(la, 1) if la is not None else None,
+                            "bearing": round(float(r["bearing"]), 1) if r["bearing"] is not None else None,
+                            "distance": round(dist) if dist is not None else None,
+                            "exit_speed": round(ev, 1)})
+
+    def _p90(vals):
+        if not vals:
+            return None
+        v = sorted(vals)
+        return v[min(len(v) - 1, int(0.9 * (len(v) - 1) + 0.5))]
+
+    out = []
+    for (name, tm), b in batters.items():
+        n_bbe = len(b["evs"])
+        if b["pitches"] < 5:
+            continue
+        out.append({
+            "batter": name, "team": tm, "side": b["side"],
+            "pitches": b["pitches"], "bbe": n_bbe,
+            "contact_pct": round(100 * n_bbe / b["pitches"], 1),
+            "avg_ev": round(sum(b["evs"]) / n_bbe, 1) if n_bbe else None,
+            "p90_ev": round(_p90(b["evs"]), 1) if n_bbe >= 5 else None,
+            "max_ev": round(max(b["evs"]), 1) if n_bbe else None,
+            "avg_la": round(b["la_s"] / b["la_n"], 1) if b["la_n"] else None,
+            "sweet_spot_pct": round(100 * b["ss"] / b["la_n"], 1) if b["la_n"] else None,
+            "hard_hit_pct": round(100 * b["hh"] / n_bbe, 1) if n_bbe else None,
+            "gb_pct": round(100 * b["gb"] / b["la_n"], 1) if b["la_n"] else None,
+            "pull_air_pct": round(100 * b["pull_air"] / b["air"], 1) if b["air"] >= 5 else None,
+            "avg_dist": round(sum(b["dists"]) / len(b["dists"])) if b["dists"] else None,
+            "max_dist": round(max(b["dists"])) if b["dists"] else None,
+            "points": b["points"],
+        })
+    out.sort(key=lambda r: -(r["avg_ev"] or 0))
+    sess = sorted(sessions.values(), key=lambda s: s["date"] or "")
+    return {"sessions": sess, "batters": out,
+            "totals": {"pitches": sum(s["pitches"] for s in sess),
+                       "bbe": sum(s["bbe"] for s in sess), "days": len(sess)}}
+
+
 @router.get("/trackman/overview")
 def trackman_overview(owner: str = Depends(_gate)):
     """Session list + workspace totals for the suite home. Also detects the

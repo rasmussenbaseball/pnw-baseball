@@ -157,7 +157,7 @@ export default function TrackmanSuite() {
       {/* Tabs */}
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
-          ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
+          ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['bpreview', 'BP Review'], ['leaders', 'Leaderboards'],
           ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['values', 'Values'], ['board', 'Coach Board']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
@@ -175,6 +175,7 @@ export default function TrackmanSuite() {
       {tab === 'hitting' && (hasData ? <HittingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'lab' && (hasData ? <PlayerLabTab key={`${teamCtx.primary}-${season}`} pitcher={labPitcher} setPitcher={setLabPitcher} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'hlab' && (hasData ? <HitterLabTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'bpreview' && (hasData ? <BpReviewTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'leaders' && (hasData ? <LeaderboardsTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} season={season} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'catching' && (hasData ? <CatchingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
@@ -1664,6 +1665,199 @@ function HitterLabTab({ teamCtx, season }) {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── BP Review ────────────────────────────────────────────────────
+
+// EV x LA scatter for a hitter's BP batted balls, sweet-spot band shaded.
+function EvLaScatter({ points }) {
+  const pts = (points || []).filter(p => p.ev != null && p.la != null)
+  const W = 300, H = 210, L = 36, R = 10, T = 10, B = 26
+  if (pts.length < 3) return <div className="text-xs text-gray-400 p-6 text-center">Not enough tracked contact.</div>
+  const evLo = 55, evHi = Math.max(105, ...pts.map(p => p.ev)) + 2
+  const laLo = -35, laHi = 55
+  const X = v => L + (v - evLo) / (evHi - evLo) * (W - L - R)
+  const Y = v => T + (laHi - v) / (laHi - laLo) * (H - T - B)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <rect x={L} y={Y(32)} width={W - L - R} height={Y(8) - Y(32)} fill="#059669" opacity="0.08" />
+      <text x={W - R - 3} y={Y(32) + 9} fontSize="7.5" textAnchor="end" fill="#059669">sweet spot 8-32°</text>
+      {[0, 20, 40].map(v => (
+        <g key={v}>
+          <line x1={L} x2={W - R} y1={Y(v)} y2={Y(v)} stroke="currentColor" className="text-gray-100 dark:text-gray-700" />
+          <text x={L - 4} y={Y(v) + 3} fontSize="8" textAnchor="end" fill="#9ca3af">{v}°</text>
+        </g>
+      ))}
+      {[70, 85, 100].map(v => (
+        <text key={v} x={X(v)} y={H - 8} fontSize="8" textAnchor="middle" fill="#9ca3af">{v}</text>
+      ))}
+      <text x={(L + W - R) / 2} y={H - 0.5} fontSize="7.5" textAnchor="middle" fill="#9ca3af">exit velo (mph)</text>
+      {pts.map((p, i) => (
+        <circle key={i} cx={X(p.ev)} cy={Y(Math.max(laLo, Math.min(laHi, p.la)))} r="3.2"
+          fill={p.ev >= 95 ? '#d22d49' : p.ev >= 85 ? '#f59e0b' : '#3661ad'} opacity="0.7" />
+      ))}
+    </svg>
+  )
+}
+
+function BpReviewTab({ teamCtx, season }) {
+  const exportRef = useRef(null)
+  const [dates, setDates] = useState({})
+  const [team, setTeam] = useState(teamCtx.primary)
+  const [sel, setSel] = useState(null)
+  const { data, loading } = useApi('/trackman/bp-review',
+    { date_from: dates.from, date_to: dates.to, team: team || undefined, season },
+    [dates.from, dates.to, team])
+  const batters = data?.batters || []
+  const selRow = batters.find(b => b.batter === sel) || batters[0] || null
+  const cohort = useMemo(() => {
+    const grab = k => batters.map(b => b[k]).filter(v => v != null).map(Number)
+    return { contact: grab('contact_pct'), ev: grab('avg_ev'), p90: grab('p90_ev'), max: grab('max_ev'),
+             la: grab('avg_la'), ss: grab('sweet_spot_pct'), hh: grab('hard_hit_pct'),
+             gb: grab('gb_pct'), pull: grab('pull_air_pct'), dist: grab('max_dist') }
+  }, [batters])
+  const leader = (k, fmt2) => {
+    const best = batters.filter(b => b[k] != null).sort((a, b) => b[k] - a[k])[0]
+    return best ? [best.batter, fmt2(best[k])] : null
+  }
+  const cards = [
+    ['Hardest hit', leader('max_ev', v => `${v} mph`)],
+    ['Best 90th pct EV', leader('p90_ev', v => `${v} mph`)],
+    ['Longest ball', leader('max_dist', v => `${v} ft`)],
+    ['Best sweet-spot%', leader('sweet_spot_pct', v => `${v}%`)],
+  ]
+
+  return (
+    <div className="space-y-3" ref={exportRef}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <DateRange value={dates} onChange={setDates} />
+        <div className="text-[11px] text-gray-400">
+          {data ? `${data.totals.days} BP day${data.totals.days === 1 ? '' : 's'} · ${data.totals.pitches} pitches · ${data.totals.bbe} balls struck` : ''}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <ReportActions targetRef={exportRef} filename={`bp_review_${dates.from || 'all'}`} />
+          <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+        </div>
+      </div>
+
+      {data?.sessions?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {data.sessions.map(s => (
+            <button key={s.id} onClick={() => setDates({ from: s.date, to: s.date })}
+              title="Click to focus this BP day"
+              className={`text-[11px] rounded-full px-2.5 py-1 ring-1 tabular-nums ${
+                dates.from === s.date && dates.to === s.date
+                  ? 'bg-portal-purple text-white ring-portal-purple'
+                  : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-gray-200 dark:ring-gray-700'}`}>
+              {s.date} · {s.bbe} BBE
+            </button>
+          ))}
+          {(dates.from || dates.to) && (
+            <button onClick={() => setDates({})}
+              className="text-[11px] rounded-full px-2.5 py-1 text-rose-500 ring-1 ring-rose-200 dark:ring-rose-800">
+              Clear ×
+            </button>
+          )}
+        </div>
+      )}
+
+      {loading ? <div className="p-8 text-center text-sm text-gray-400">Loading…</div> :
+       !batters.length ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-10 text-center text-sm text-gray-400">
+          No BP sessions in this range. Upload a BP TrackMan CSV (or reclassify a session as BP in the library)
+          and it shows up here.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {cards.map(([label, v]) => (
+              <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-3 py-2.5">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{label}</div>
+                {v ? (
+                  <>
+                    <div className="text-[14px] font-bold text-portal-purple dark:text-portal-accent-light truncate">{v[0]}</div>
+                    <div className="text-[12px] tabular-nums text-gray-500">{v[1]}</div>
+                  </>
+                ) : <div className="text-sm text-gray-400">—</div>}
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">BP board — click a hitter for spray and launch detail</span>
+              <span className="text-[10px] text-gray-400">shading compares the hitters shown</span>
+            </div>
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                  <th className="px-4 py-2">Hitter</th>
+                  <th className="px-2 py-2 text-right" title="Machine pitches thrown to him">Pitches</th>
+                  <th className="px-2 py-2 text-right" title="Balls struck per pitch thrown. BP files carry no swing calls, so takes and whiffs can't be separated">Contact/pitch</th>
+                  <th className="px-2 py-2 text-right">BBE</th>
+                  <th className="px-2 py-2 text-right">Avg EV</th>
+                  <th className="px-2 py-2 text-right" title="90th percentile exit velo — the best-contact benchmark, steadier than max">90th EV</th>
+                  <th className="px-2 py-2 text-right">Max EV</th>
+                  <th className="px-2 py-2 text-right">Avg LA</th>
+                  <th className="px-2 py-2 text-right" title="Launch between 8 and 32 degrees">Sweet-spot%</th>
+                  <th className="px-2 py-2 text-right">HH%</th>
+                  <th className="px-2 py-2 text-right">GB%</th>
+                  <th className="px-2 py-2 text-right" title="Pulled share of air balls (10°+ launch)">Pull-air%</th>
+                  <th className="px-2 py-2 text-right">Max dist</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {batters.map(b => (
+                  <tr key={b.batter + b.team} onClick={() => setSel(b.batter)}
+                    className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 ${selRow?.batter === b.batter ? 'bg-teal-50/60 dark:bg-teal-900/20' : ''}`}>
+                    <td className="px-4 py-1.5 font-semibold whitespace-nowrap text-gray-900 dark:text-gray-100">
+                      {b.batter}<span className="ml-1.5 text-[10px] font-normal text-gray-400">{b.side}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{b.pitches}</td>
+                    <HeatCell v={b.contact_pct} vals={cohort.contact} />
+                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{b.bbe}</td>
+                    <HeatCell v={b.avg_ev} vals={cohort.ev} />
+                    <HeatCell v={b.p90_ev} vals={cohort.p90} extra="font-semibold" />
+                    <HeatCell v={b.max_ev} vals={cohort.max} />
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(b.avg_la)}</td>
+                    <HeatCell v={b.sweet_spot_pct} vals={cohort.ss} />
+                    <HeatCell v={b.hard_hit_pct} vals={cohort.hh} />
+                    <HeatCell v={b.gb_pct} vals={cohort.gb} higher={false} />
+                    <HeatCell v={b.pull_air_pct} vals={cohort.pull} />
+                    <HeatCell v={b.max_dist} vals={cohort.dist} dec={0} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {selRow && (
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
+                  {selRow.batter} — spray (colored by EV)
+                </div>
+                <SprayChart pitches={selRow.points} />
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
+                  {selRow.batter} — exit velo vs launch angle
+                </div>
+                <EvLaScatter points={selRow.points} />
+              </div>
+            </div>
+          )}
+
+          <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
+            BP TrackMan files carry hitting metrics only, no pitch calls, so a take and a whiff look the same:
+            Contact/pitch counts balls struck per machine pitch thrown, not per swing. The 90th percentile EV is
+            the best steady read on top-end bat speed in a short round. Use the date chips to focus one BP day,
+            or a range to review a full week. Save PDF prints this whole view.
+          </p>
+        </>
       )}
     </div>
   )
