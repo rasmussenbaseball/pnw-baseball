@@ -1856,20 +1856,34 @@ function BpReviewTab({ teamCtx, season }) {
           </div>
 
           {selRow && (
-            <div className="grid md:grid-cols-2 gap-3">
-              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
-                  {selRow.batter} — spray (colored by EV)
-                </div>
-                <SprayChart pitches={selRow.points} />
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Hitter detail</span>
+                <select value={selRow.batter} onChange={e => setSel(e.target.value)}
+                  className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm font-semibold">
+                  {batters.map(b => (
+                    <option key={b.batter + b.team} value={b.batter}>
+                      {b.batter} · {b.bbe} BBE
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-gray-400">or click any row in the board above</span>
               </div>
-              <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
-                  {selRow.batter} — exit velo vs launch angle
+              <div className="grid md:grid-cols-2 gap-3">
+                <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
+                    {selRow.batter} — spray (colored by EV)
+                  </div>
+                  <SprayChart pitches={selRow.points} />
                 </div>
-                <EvLaScatter points={selRow.points} />
+                <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
+                    {selRow.batter} — exit velo vs launch angle
+                  </div>
+                  <EvLaScatter points={selRow.points} />
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
