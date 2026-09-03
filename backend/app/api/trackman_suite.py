@@ -218,6 +218,13 @@ def _ensure_tables(cur):
         )""")
     cur.execute("ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS class_pitch_type TEXT")
     cur.execute("ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS override_pitch_type TEXT")
+    # contact-position columns (added 2026-09): catalog-check first so the
+    # no-op ALTER doesn't take an ACCESS EXCLUSIVE lock on every upload
+    cur.execute("""SELECT column_name FROM information_schema.columns
+                   WHERE table_name = 'tm_pitches' AND column_name = 'contact_x'""")
+    if cur.fetchone() is None:
+        for c in ("contact_x", "contact_y", "contact_z"):
+            cur.execute(f"ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS {c} DOUBLE PRECISION")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_session ON tm_pitches(owner_user_id, session_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_pitcher ON tm_pitches(owner_user_id, pitcher)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_batter ON tm_pitches(owner_user_id, batter)")
@@ -901,6 +908,7 @@ def trackman_bp_review(
         cur.execute(
             f"""SELECT p.batter, p.batter_team, p.batter_side,
                        p.exit_speed, p.launch_angle, p.direction, p.distance, p.bearing,
+                       p.contact_x,
                        s.id AS session_id, s.session_date
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND s.session_type = 'bp'
@@ -912,7 +920,8 @@ def trackman_bp_review(
     sessions = {}
     batters = defaultdict(lambda: {"pitches": 0, "evs": [], "points": [],
                                    "hh": 0, "ss": 0, "gb": 0, "air": 0, "pull_air": 0,
-                                   "la_s": 0.0, "la_n": 0, "dists": [], "side": None})
+                                   "la_s": 0.0, "la_n": 0, "dists": [], "side": None,
+                                   "cx": []})
     for r in rows:
         sid = r["session_id"]
         d = r["session_date"].isoformat() if r["session_date"] else None
@@ -946,6 +955,8 @@ def trackman_bp_review(
                         b["pull_air"] += 1
         if dist is not None:
             b["dists"].append(dist)
+        if r["contact_x"] is not None:
+            b["cx"].append(float(r["contact_x"]))
         b["points"].append({"ev": round(ev, 1), "la": round(la, 1) if la is not None else None,
                             "bearing": round(float(r["bearing"]), 1) if r["bearing"] is not None else None,
                             "distance": round(dist) if dist is not None else None,
@@ -976,6 +987,7 @@ def trackman_bp_review(
             "pull_air_pct": round(100 * b["pull_air"] / b["air"], 1) if b["air"] >= 5 else None,
             "avg_dist": round(sum(b["dists"]) / len(b["dists"])) if b["dists"] else None,
             "max_dist": round(max(b["dists"])) if b["dists"] else None,
+            "avg_contact_x": round(sum(b["cx"]) / len(b["cx"]), 2) if len(b["cx"]) >= 3 else None,
             "points": b["points"],
         })
     out.sort(key=lambda r: -(r["avg_ev"] or 0))
@@ -1843,6 +1855,7 @@ def trackman_batter_detail(
                        p.plate_loc_height, p.plate_loc_side, p.balls, p.strikes,
                        p.pitcher_throws, p.batter_side, p.exit_speed, p.launch_angle, p.distance,
                        p.direction, p.bearing, p.play_result, p.tagged_hit_type,
+                       p.contact_x, p.contact_y,
                        p.k_or_bb, p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        s.session_type, s.session_date, s.id AS session_id
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id

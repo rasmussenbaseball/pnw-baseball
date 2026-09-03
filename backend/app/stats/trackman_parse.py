@@ -111,6 +111,11 @@ FLOAT_COLS = {
     "pop_time": "PopTime",
     "exchange_time": "ExchangeTime",
     "time_to_base": "TimeToBase",
+    # Point of contact (TrackMan's frame: X = depth toward the pitcher,
+    # Y = height above ground, Z = side). Present in game AND BP files.
+    "contact_x": "ContactPositionX",
+    "contact_y": "ContactPositionY",
+    "contact_z": "ContactPositionZ",
 }
 
 # Sanity: a real TrackMan game CSV must have at least these headers.

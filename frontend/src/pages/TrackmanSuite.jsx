@@ -1663,6 +1663,7 @@ function HitterLabTab({ teamCtx, season }) {
               <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Spray (colored by EV)</div>
               <SprayChart pitches={bbe} />
             </div>
+            <ContactPointCard pitches={pitches} />
           </div>
         </div>
       )}
@@ -1821,6 +1822,7 @@ function BpReviewTab({ teamCtx, season }) {
                     ['GB%', 'gb_pct', null],
                     ['Pull-air%', 'pull_air_pct', 'Pulled share of air balls (10°+ launch)'],
                     ['Max dist', 'max_dist', null],
+                    ['Contact depth', 'avg_contact_x', 'Average point of contact in feet toward the pitcher: 0 = back of the plate, 1.4 = front edge, bigger = meeting it further out front'],
                   ].map(([label, k, tip, cls]) => (
                     <th key={k} onClick={() => clickSort(k)} title={tip || 'Click to sort'}
                       className={`${cls || 'px-2 py-2 text-right'} cursor-pointer select-none whitespace-nowrap ${
@@ -1849,6 +1851,7 @@ function BpReviewTab({ teamCtx, season }) {
                     <HeatCell v={b.gb_pct} vals={cohort.gb} higher={false} />
                     <HeatCell v={b.pull_air_pct} vals={cohort.pull} />
                     <HeatCell v={b.max_dist} vals={cohort.dist} dec={0} />
+                    <td className="px-2 py-1.5 text-right tabular-nums">{b.avg_contact_x != null ? `${b.avg_contact_x.toFixed(2)} ft` : '–'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -2545,6 +2548,90 @@ function SplitsCard({ splits }) {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ── Hitter Lab: point of contact (depth out front vs deep) ───────
+// TrackMan ContactPosition frame: X = depth toward the pitcher in feet
+// (0 = the back point of home plate, ~1.4 = the front edge), Y = height.
+// Physics check on this corpus: pulled air averages ~2.1 ft out front,
+// oppo air ~1.0 ft (over the plate) — the textbook timing relationship.
+function ContactPointCard({ pitches }) {
+  const pts = (pitches || []).filter(p => p.contact_x != null && p.exit_speed != null)
+  if (pts.length < 5) return null
+  const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+  const depth = avg(pts.map(p => p.contact_x))
+  const hh = pts.filter(p => p.exit_speed >= 90)
+  const hhDepth = hh.length >= 3 ? avg(hh.map(p => p.contact_x)) : null
+  const pullSign = p => (p.direction != null && p.batter_side)
+    ? p.direction * (p.batter_side === 'Left' ? 1 : -1) : null
+  const pullAir = pts.filter(p => p.launch_angle >= 10 && pullSign(p) >= 10)
+  const oppoAir = pts.filter(p => p.launch_angle >= 10 && pullSign(p) <= -10)
+  const byType = {}
+  pts.forEach(p => { if (p.ptype && p.ptype !== 'Mistag') (byType[p.ptype] = byType[p.ptype] || []).push(p.contact_x) })
+  const typeRows = Object.entries(byType).filter(([, v]) => v.length >= 5)
+    .map(([t, v]) => [t, avg(v), v.length]).sort((a, b) => b[2] - a[2]).slice(0, 5)
+
+  // side-view scatter: depth (x) vs contact height (y)
+  const W = 320, H = 200, L = 30, R = 10, T = 10, B = 26
+  const xLo = -0.5, xHi = 4.5, yLo = 0.5, yHi = 4.5
+  const X = v => L + (Math.max(xLo, Math.min(xHi, v)) - xLo) / (xHi - xLo) * (W - L - R)
+  const Y = v => T + (yHi - Math.max(yLo, Math.min(yHi, v))) / (yHi - yLo) * (H - T - B)
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Point of contact — depth and height</span>
+        <span className="text-[10px] text-gray-400 tabular-nums">{pts.length} tracked</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        {[
+          ['Avg depth', depth, 'Average contact depth in feet toward the pitcher; 0 = back of the plate, 1.4 = front edge, bigger = further out front'],
+          ['On hard contact', hhDepth, 'Average depth on 90+ mph contact — where his best swings meet the ball'],
+          ['Pulled air', pullAir.length >= 3 ? avg(pullAir.map(p => p.contact_x)) : null, 'Depth on pulled balls in the air — pull power lives out front'],
+          ['Oppo air', oppoAir.length >= 3 ? avg(oppoAir.map(p => p.contact_x)) : null, 'Depth on opposite-field air — letting it travel'],
+        ].map(([lab, v, tip]) => (
+          <div key={lab} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-2.5 py-1.5" title={tip}>
+            <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{lab}</div>
+            <div className="text-[15px] font-bold tabular-nums text-gray-900 dark:text-gray-100">
+              {v == null ? '–' : `${v.toFixed(2)} ft`}
+            </div>
+          </div>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        {/* home plate slab, side view (0 to 1.42 ft deep, on the ground line) */}
+        <rect x={X(0)} y={H - B - 5} width={X(1.42) - X(0)} height={5} rx="1.5"
+          fill="currentColor" className="text-gray-300 dark:text-gray-500" />
+        <text x={(X(0) + X(1.42)) / 2} y={H - B + 10} fontSize="7.5" textAnchor="middle" fill="#9ca3af">plate</text>
+        <line x1={X(1.42)} y1={T} x2={X(1.42)} y2={H - B} stroke="currentColor"
+          strokeDasharray="4 3" className="text-gray-300 dark:text-gray-600" />
+        <text x={X(1.42) + 3} y={T + 8} fontSize="7.5" fill="#9ca3af">front edge</text>
+        <text x={X(3.2)} y={H - B + 18} fontSize="8" textAnchor="middle" fill="#9ca3af">→ out front (toward pitcher)</text>
+        {[1, 2, 3, 4].map(v => (
+          <text key={v} x={L - 4} y={Y(v) + 3} fontSize="8" textAnchor="end" fill="#9ca3af">{v}'</text>
+        ))}
+        {pts.map((p, i) => (
+          <circle key={i} cx={X(p.contact_x)} cy={Y(p.contact_y ?? 2.5)} r="3"
+            fill={p.exit_speed >= 95 ? '#d22d49' : p.exit_speed >= 85 ? '#f59e0b' : '#3661ad'} opacity="0.6" />
+        ))}
+      </svg>
+      {typeRows.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {typeRows.map(([t, v, n]) => (
+            <span key={t} className="text-[11px] rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-gray-500 dark:text-gray-400"
+              title={`Average contact depth vs the ${t.toLowerCase()} (${n} tracked)`}>
+              <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ background: cFor(t) }} />
+              {t} <b className="text-gray-900 dark:text-gray-100 tabular-nums">{v.toFixed(2)} ft</b>
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-gray-400 mt-1.5 leading-snug">
+        Side view: how far out front (horizontal) and how high (vertical) he meets the ball, colored by EV.
+        Deep contact on offspeed with weak EV = getting fooled; everything out front with rollover grounders =
+        cheating early. The per-pitch chips show timing by pitch type.
+      </p>
     </div>
   )
 }

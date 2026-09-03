@@ -25,6 +25,7 @@ const SECTIONS = [
   ]],
   ['Hitting', [
     ['EV / Hard-hit%', 'Exit velocity off the bat; hard-hit = 90+ mph. Sweet-spot% = launch angle between 8 and 32 degrees.'],
+    ['Contact depth', 'Point of contact in feet toward the pitcher: 0 = the back of the plate, about 1.4 = the front edge, bigger = meeting the ball further out front. Pull power lives out front (about 2 ft); opposite-field contact happens deeper (about 1 ft). Neither is good or bad by itself, it is a timing read.'],
     ['xAVG / xSLG / xwOBA', "What the batted-ball profile (exit velo, launch angle, and spray direction) says the hitter SHOULD be hitting, on a curve calibrated to college contact. A gap vs the actual number means luck, speed, or defense — and it usually closes."],
     ['Transfer gap', 'Live hard-hit% minus BP hard-hit%. Negative means the cage swing is not carrying into games.'],
   ]],
