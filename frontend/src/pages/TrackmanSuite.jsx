@@ -1822,7 +1822,7 @@ function BpReviewTab({ teamCtx, season }) {
                     ['GB%', 'gb_pct', null],
                     ['Pull-air%', 'pull_air_pct', 'Pulled share of air balls (10°+ launch)'],
                     ['Max dist', 'max_dist', null],
-                    ['Contact depth', 'avg_contact_x', 'Average point of contact in feet toward the pitcher: 0 = back of the plate, 1.4 = front edge, bigger = meeting it further out front'],
+                    ['Contact depth', 'avg_contact_x', 'Average point of contact in feet toward the pitcher: 0 = back of the plate, 1.4 = front edge. Measured damage window on this corpus is 1.3-2.7 ft (green); under ~1 ft is jammed, past ~3 ft is off the end'],
                   ].map(([label, k, tip, cls]) => (
                     <th key={k} onClick={() => clickSort(k)} title={tip || 'Click to sort'}
                       className={`${cls || 'px-2 py-2 text-right'} cursor-pointer select-none whitespace-nowrap ${
@@ -1851,7 +1851,10 @@ function BpReviewTab({ teamCtx, season }) {
                     <HeatCell v={b.gb_pct} vals={cohort.gb} higher={false} />
                     <HeatCell v={b.pull_air_pct} vals={cohort.pull} />
                     <HeatCell v={b.max_dist} vals={cohort.dist} dec={0} />
-                    <td className="px-2 py-1.5 text-right tabular-nums">{b.avg_contact_x != null ? `${b.avg_contact_x.toFixed(2)} ft` : '–'}</td>
+                    <td className={`px-2 py-1.5 text-right tabular-nums ${DEPTH_CLS[depthTone(b.avg_contact_x)] || ''}`}
+                      {...toneAttr(depthTone(b.avg_contact_x) === 'good' ? 80 : depthTone(b.avg_contact_x) === 'bad' ? 20 : depthTone(b.avg_contact_x) === 'mid' ? 50 : null)}>
+                      {b.avg_contact_x != null ? `${b.avg_contact_x.toFixed(2)} ft` : '–'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2552,6 +2555,24 @@ function SplitsCard({ splits }) {
   )
 }
 
+// Contact-depth damage window, MEASURED on this corpus (2,197 tracked
+// contacts): EV/xwOBAcon peak at 1.5-2.5 ft (82.6 EV, .35-.42 xwOBAcon),
+// collapse when jammed (<=0.5 ft: 76-78 EV, .23) or way out front
+// (3.5 ft: 71 EV). Green = the window, amber = fringe, red = outside.
+const DEPTH_LO = 1.3, DEPTH_HI = 2.7, DEPTH_FRINGE = 0.5
+function depthTone(v) {
+  if (v == null) return null
+  if (v >= DEPTH_LO && v <= DEPTH_HI) return 'good'
+  if (v >= DEPTH_LO - DEPTH_FRINGE && v <= DEPTH_HI + DEPTH_FRINGE) return 'mid'
+  return 'bad'
+}
+const DEPTH_CLS = {
+  good: 'text-emerald-600 dark:text-emerald-400 font-semibold',
+  mid: 'text-amber-600 dark:text-amber-400',
+  bad: 'text-rose-600 dark:text-rose-400 font-semibold',
+}
+const DEPTH_TIP = 'Measured on this corpus: damage peaks at 1.3-2.7 ft of depth (EV 82+, xwOBAcon .35-.42); under ~1 ft is jammed, past ~3 ft is off the end'
+
 // ── Hitter Lab: point of contact (depth out front vs deep) ───────
 // TrackMan ContactPosition frame: X = depth toward the pitcher in feet
 // (0 = the back point of home plate, ~1.4 = the front edge), Y = height.
@@ -2591,15 +2612,22 @@ function ContactPointCard({ pitches }) {
           ['Pulled air', pullAir.length >= 3 ? avg(pullAir.map(p => p.contact_x)) : null, 'Depth on pulled balls in the air — pull power lives out front'],
           ['Oppo air', oppoAir.length >= 3 ? avg(oppoAir.map(p => p.contact_x)) : null, 'Depth on opposite-field air — letting it travel'],
         ].map(([lab, v, tip]) => (
-          <div key={lab} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-2.5 py-1.5" title={tip}>
+          <div key={lab} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-2.5 py-1.5"
+            title={`${tip}. ${DEPTH_TIP}`}>
             <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{lab}</div>
-            <div className="text-[15px] font-bold tabular-nums text-gray-900 dark:text-gray-100">
+            <div className={`text-[15px] font-bold tabular-nums ${DEPTH_CLS[depthTone(v)] || 'text-gray-900 dark:text-gray-100'}`}
+              {...toneAttr(depthTone(v) === 'good' ? 80 : depthTone(v) === 'bad' ? 20 : 50)}>
               {v == null ? '–' : `${v.toFixed(2)} ft`}
             </div>
           </div>
         ))}
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        {/* measured damage window (1.3-2.7 ft) */}
+        <rect x={X(DEPTH_LO)} y={T} width={X(DEPTH_HI) - X(DEPTH_LO)} height={H - T - B}
+          fill="#059669" opacity="0.08" />
+        <text x={(X(DEPTH_LO) + X(DEPTH_HI)) / 2} y={T + 9} fontSize="7.5" textAnchor="middle"
+          fill="#059669">damage window</text>
         {/* home plate slab, side view (0 to 1.42 ft deep, on the ground line) */}
         <rect x={X(0)} y={H - B - 5} width={X(1.42) - X(0)} height={5} rx="1.5"
           fill="currentColor" className="text-gray-300 dark:text-gray-500" />
@@ -2620,9 +2648,9 @@ function ContactPointCard({ pitches }) {
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {typeRows.map(([t, v, n]) => (
             <span key={t} className="text-[11px] rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-gray-500 dark:text-gray-400"
-              title={`Average contact depth vs the ${t.toLowerCase()} (${n} tracked)`}>
+              title={`Average contact depth vs the ${t.toLowerCase()} (${n} tracked). ${DEPTH_TIP}`}>
               <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ background: cFor(t) }} />
-              {t} <b className="text-gray-900 dark:text-gray-100 tabular-nums">{v.toFixed(2)} ft</b>
+              {t} <b className={`tabular-nums ${DEPTH_CLS[depthTone(v)] || 'text-gray-900 dark:text-gray-100'}`}>{v.toFixed(2)} ft</b>
             </span>
           ))}
         </div>
