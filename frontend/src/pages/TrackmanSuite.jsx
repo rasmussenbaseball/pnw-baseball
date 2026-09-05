@@ -602,7 +602,7 @@ const HB_FULL = [
 ]
 const HB_BP = [
   ['Pitches', 'pitches', 'Machine pitches thrown', { plain: true, dec: 0 }],
-  ['Contact/P', 'contact_per_pitch', 'Balls struck per pitch thrown (BP files carry no swing calls)', {}],
+  ['InPlay/P', 'contact_per_pitch', 'Balls put in play per machine pitch. NOT contact%: BP files tag every pitch Undefined (no swing or take calls), so swings are unknowable and contact per swing cannot be computed', {}],
   ['BBE', 'bbe', null, { plain: true, dec: 0 }],
   ['Avg EV', 'avg_ev', null, {}],
   ['90th EV', 'p90_ev', '90th percentile exit velo', {}],
@@ -615,7 +615,7 @@ const HB_BP = [
   ['FB%', 'fb_pct', null, { plain: true }],
   ['AirPull%', 'airpull_pct', 'Pulled share of air balls', {}],
   ['Depth', 'depth', 'Avg contact depth; green = the 1.3-2.7 ft damage window', { kind: 'depth', dec: 2 }],
-  ['O-Ct%', 'oz_contact_pct', 'Share of his contact that came on pitches OUT of the zone (a chase proxy; BP has no swing calls)', { higher: false }],
+  ['O-Ct%', 'oz_contact_pct', 'Share of batted balls that came on pitches OUT of the zone. A floor on chasing, not true chase% (BP has no swing calls, so takes and whiffs are invisible)', { higher: false }],
   ['Max dist', 'max_dist', null, { dec: 0 }],
   ...HB_EV_ZONES.map(([l, k]) => [l, k, 'Avg EV on heart+shadow pitches in this part of the zone (min 3 BBE)', {}]),
 ]
@@ -837,7 +837,7 @@ function HittingTab({ teamCtx, season }) {
 
           <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
             {isBp
-              ? 'BP files carry hitting metrics only, no pitch calls: Contact/P counts balls struck per machine pitch, and O-Ct% is the share of contact that came on out-of-zone pitches (a chase proxy). '
+              ? 'BP files carry hitting metrics only: TrackMan tags every BP pitch Undefined, so swings, takes, whiffs, chase% and contact% cannot be measured. InPlay/P counts balls put in play per machine pitch, and O-Ct% is the share of batted balls that came on out-of-zone pitches (a floor on chasing). '
               : 'Decisions (swing, contact, chase, RV) come from called pitches; expected stats rebuild each plate appearance from the pitch sequence. '}
             Zone columns use heart and shadow pitches only, split up/down/in/out relative to the batter
             (RV zones for live contexts price swings AND takes there; the middle is covered by Heart RV;
