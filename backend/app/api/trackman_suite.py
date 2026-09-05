@@ -1323,7 +1323,8 @@ def trackman_hitting_board(
         "air": 0, "pull_air": 0, "cx": [], "dists": [], "xw": [],
         "oz_bbe": 0, "loc_bbe": 0,
         "rv": {"heart": 0.0, "shadow": 0.0, "chase": 0.0, "waste": 0.0}, "rv_n": 0,
-        "zev": defaultdict(list), "points": [], "side": None, "pa_map": {},
+        "zev": defaultdict(list), "zrv": defaultdict(float), "zrv_n": defaultdict(int),
+        "points": [], "side": None, "pa_map": {},
     })
     for r in rows:
         d = r["session_date"].isoformat() if r["session_date"] else None
@@ -1357,6 +1358,10 @@ def trackman_hitting_board(
             if rv is not None and z is not None:
                 b["rv"][z] += rv - rv_base
                 b["rv_n"] += 1
+                zr = _zone_region(r["px"], r["pz"], hand)
+                if zr in ("up", "down", "in", "out"):
+                    b["zrv"][zr] += rv - rv_base
+                    b["zrv_n"][zr] += 1
             # PA reconstruction for expected stats
             key = (r["session_id"], r["inning"], r["top_bottom"], r["pa_of_inning"])
             best = b["pa_map"].get(key)
@@ -1446,6 +1451,7 @@ def trackman_hitting_board(
                 "heart_rv": round(b["rv"]["heart"], 1) if b["rv_n"] else None,
                 "shadow_rv": round(b["rv"]["shadow"], 1) if b["rv_n"] else None,
                 "chase_rv": round(b["rv"]["chase"] + b["rv"]["waste"], 1) if b["rv_n"] else None,
+                "zone_rv": {k: round(v, 1) for k, v in b["zrv"].items() if b["zrv_n"][k] >= 8},
             })
             pas = []
             for x in b["pa_map"].values():

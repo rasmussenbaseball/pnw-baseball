@@ -564,8 +564,10 @@ const HB_CONTEXTS = [['live', 'All live'], ['game', 'Games'], ['scrimmage', 'Scr
   ['intrasquad', 'Intrasquads'], ['bp', 'BP']]
 
 // column defs: [label, key, tip, {higher, dec, kind}]
-const HB_ZONES = [['EV Up', 'zev_up'], ['EV Down', 'zev_down'], ['EV In', 'zev_in'],
+const HB_EV_ZONES = [['EV Up', 'zev_up'], ['EV Down', 'zev_down'], ['EV In', 'zev_in'],
   ['EV Out', 'zev_out'], ['EV Mid', 'zev_mid']]
+const HB_RV_ZONES = [['RV Up', 'zrv_up'], ['RV Down', 'zrv_down'], ['RV In', 'zrv_in'],
+  ['RV Out', 'zrv_out']]
 const HB_FULL = [
   ['Pitches', 'pitches', 'Pitches seen', { plain: true, dec: 0 }],
   ['BBE', 'bbe', 'Tracked batted balls', { plain: true, dec: 0 }],
@@ -596,7 +598,7 @@ const HB_FULL = [
   ['Shdw RV', 'shadow_rv', 'Run value on the zone edges', { plus: true }],
   ['Chase RV', 'chase_rv', 'Run value on chase + waste pitches (good takes earn here)', { plus: true }],
   ['Transfer', 'transfer', 'Live hard-hit% minus BP hard-hit% this season', { plus: true }],
-  ...HB_ZONES.map(([l, k]) => [l, k, 'Avg EV on heart+shadow pitches in this part of the zone (min 3 BBE); in/out are relative to the batter', {}]),
+  ...HB_RV_ZONES.map(([l, k]) => [l, k, 'Run value earned on heart+shadow pitches in this part of the zone (swings and takes, min 8 priced); in/out are relative to the batter. The middle is already covered by Heart RV', { plus: true }]),
 ]
 const HB_BP = [
   ['Pitches', 'pitches', 'Machine pitches thrown', { plain: true, dec: 0 }],
@@ -615,7 +617,7 @@ const HB_BP = [
   ['Depth', 'depth', 'Avg contact depth; green = the 1.3-2.7 ft damage window', { kind: 'depth', dec: 2 }],
   ['O-Ct%', 'oz_contact_pct', 'Share of his contact that came on pitches OUT of the zone (a chase proxy; BP has no swing calls)', { higher: false }],
   ['Max dist', 'max_dist', null, { dec: 0 }],
-  ...HB_ZONES.map(([l, k]) => [l, k, 'Avg EV on heart+shadow pitches in this part of the zone (min 3 BBE)', {}]),
+  ...HB_EV_ZONES.map(([l, k]) => [l, k, 'Avg EV on heart+shadow pitches in this part of the zone (min 3 BBE)', {}]),
 ]
 
 function HittingTab({ teamCtx, season }) {
@@ -642,6 +644,8 @@ function HittingTab({ teamCtx, season }) {
       zev_up: b.zone_ev?.up ?? null, zev_down: b.zone_ev?.down ?? null,
       zev_in: b.zone_ev?.in ?? null, zev_out: b.zone_ev?.out ?? null,
       zev_mid: b.zone_ev?.mid ?? null,
+      zrv_up: b.zone_rv?.up ?? null, zrv_down: b.zone_rv?.down ?? null,
+      zrv_in: b.zone_rv?.in ?? null, zrv_out: b.zone_rv?.out ?? null,
     }))
     rows.sort((a, b2) => {
       let x = a[sortK] ?? -1e9, y = b2[sortK] ?? -1e9
@@ -835,8 +839,9 @@ function HittingTab({ teamCtx, season }) {
             {isBp
               ? 'BP files carry hitting metrics only, no pitch calls: Contact/P counts balls struck per machine pitch, and O-Ct% is the share of contact that came on out-of-zone pitches (a chase proxy). '
               : 'Decisions (swing, contact, chase, RV) come from called pitches; expected stats rebuild each plate appearance from the pitch sequence. '}
-            EV-by-zone columns use heart and shadow pitches only, split up/down/in/out/middle relative to the
-            batter, minimum 3 tracked balls per zone. Save PDF exports this whole view.
+            Zone columns use heart and shadow pitches only, split up/down/in/out relative to the batter
+            (RV zones for live contexts price swings AND takes there; the middle is covered by Heart RV;
+            BP shows avg EV per zone instead since BP has no pitch calls). Save PDF exports this whole view.
           </p>
         </>
       )}
