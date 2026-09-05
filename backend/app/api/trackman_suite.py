@@ -1239,6 +1239,261 @@ def trackman_pitching(
     return {"pitchers": out}
 
 
+def _zone_region(px, pz, hand):
+    """Heart+shadow pitches only, split into up/down/in/out/middle relative
+    to the BATTER (in = toward his box; HBP-verified sign convention)."""
+    if px is None or pz is None:
+        return None
+    nx, ny = abs(px) / 0.83, abs(pz - 2.5)
+    if max(nx, ny) > 1.33:
+        return None
+    if max(nx, ny) <= 0.4:
+        return "mid"
+    if ny >= nx:
+        return "up" if pz > 2.5 else "down"
+    if hand not in ("L", "R"):
+        return None
+    return "in" if px * (1.0 if hand == "R" else -1.0) > 0 else "out"
+
+
+@router.get("/trackman/hitting-board")
+def trackman_hitting_board(
+    context: str = Query("live"),
+    team: str | None = Query(None),
+    throws: str | None = Query(None),
+    pitch_type: str | None = Query(None),
+    season: int | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    owner: str = Depends(_gate),
+):
+    """The full hitter board: every batter's complete stat battery for one
+    session context (bp / intrasquad / scrimmage / game / live). Live
+    contexts get decisions, run values by attack zone, and PA-based
+    expected stats; BP gets the contact-quality set (no pitch calls in BP
+    files, so no swing decisions there). Zone EVs cover heart+shadow
+    pitches split up/down/in/out/middle relative to the batter."""
+    from ..stats.trackman_xstats import batter_xstats, xwobacon
+    extra, params = _context_clause(context)
+    ssql, sparams = _season_clause(season)
+    dsql, dparams = _date_clause(date_from, date_to)
+    extra, params = extra + ssql + dsql, params + sparams + dparams
+    if throws in ("L", "R"):
+        extra += " AND p.pitcher_throws = %s"
+        params = params + ["Left" if throws == "L" else "Right"]
+    if pitch_type:
+        extra += " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s"
+        params = params + [pitch_type]
+    team_sql = " AND p.batter_team = %s" if team else ""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT p.batter, p.batter_team, p.batter_side, p.pitch_call,
+                       p.is_swing, p.is_whiff, p.is_contact, p.is_chase, p.is_in_zone,
+                       p.plate_loc_side AS px, p.plate_loc_height AS pz,
+                       p.balls, p.strikes, p.k_or_bb, p.play_result,
+                       p.exit_speed, p.launch_angle, p.direction, p.distance, p.bearing,
+                       p.contact_x, p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
+                       s.id AS session_id, s.session_date, s.session_type
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.batter IS NOT NULL{extra}{team_sql}""",
+            [owner] + params + ([team] if team else []),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        rv_base = _rv_baseline(cur, owner, context if context != "bp" else "live", season)
+        # BP hard-hit% per batter for the transfer column (live contexts)
+        cur.execute(
+            f"""SELECT p.batter, p.batter_team,
+                       SUM(CASE WHEN p.exit_speed >= 90 THEN 1 ELSE 0 END)::float
+                       / NULLIF(SUM(CASE WHEN p.exit_speed IS NOT NULL THEN 1 ELSE 0 END), 0) AS bp_hh
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.batter IS NOT NULL
+                  AND s.session_type = 'bp'{ssql}
+                GROUP BY p.batter, p.batter_team""",
+            [owner] + sparams,
+        )
+        bp_hh = {(r["batter"], r["batter_team"]): float(r["bp_hh"]) for r in cur.fetchall()
+                 if r["bp_hh"] is not None}
+
+    sessions = {}
+    B = defaultdict(lambda: {
+        "rows": 0, "called": 0, "sw": 0, "ct": 0, "ch": 0, "oz": 0,
+        "fp_n": 0, "fp_sw": 0, "k2_sw": 0, "k2_ct": 0,
+        "evs": [], "las": [], "hh": 0, "barrel": 0, "gb": 0, "ld": 0, "fb": 0,
+        "air": 0, "pull_air": 0, "cx": [], "dists": [], "xw": [],
+        "oz_bbe": 0, "loc_bbe": 0,
+        "rv": {"heart": 0.0, "shadow": 0.0, "chase": 0.0, "waste": 0.0}, "rv_n": 0,
+        "zev": defaultdict(list), "points": [], "side": None, "pa_map": {},
+    })
+    for r in rows:
+        d = r["session_date"].isoformat() if r["session_date"] else None
+        st = sessions.setdefault(r["session_id"], {"id": r["session_id"], "date": d,
+                                                   "type": r["session_type"], "pitches": 0, "bbe": 0})
+        st["pitches"] += 1
+        b = B[(r["batter"], r["batter_team"])]
+        b["rows"] += 1
+        hand = (r["batter_side"] or "")[:1] or None
+        b["side"] = hand or b["side"]
+        if r["pitch_call"]:
+            b["called"] += 1
+            if r["is_swing"]:
+                b["sw"] += 1
+                if r["is_contact"]:
+                    b["ct"] += 1
+            if r["is_in_zone"] is False:
+                b["oz"] += 1
+                if r["is_chase"]:
+                    b["ch"] += 1
+            if r["balls"] == 0 and r["strikes"] == 0:
+                b["fp_n"] += 1
+                if r["is_swing"]:
+                    b["fp_sw"] += 1
+            if r["strikes"] == 2 and r["is_swing"]:
+                b["k2_sw"] += 1
+                if r["is_contact"]:
+                    b["k2_ct"] += 1
+            rv = pitch_run_value(r["balls"], r["strikes"], r["pitch_call"], r["play_result"])
+            z = attack_zone(r["px"], r["pz"])
+            if rv is not None and z is not None:
+                b["rv"][z] += rv - rv_base
+                b["rv_n"] += 1
+            # PA reconstruction for expected stats
+            key = (r["session_id"], r["inning"], r["top_bottom"], r["pa_of_inning"])
+            best = b["pa_map"].get(key)
+            if best is None or (r["pitch_of_pa"] or 0) >= (best["pitch_of_pa"] or 0):
+                b["pa_map"][key] = r
+        ev = float(r["exit_speed"]) if r["exit_speed"] is not None else None
+        if ev is None:
+            continue
+        st["bbe"] += 1
+        b["evs"].append(ev)
+        if ev >= 90:
+            b["hh"] += 1
+        la = float(r["launch_angle"]) if r["launch_angle"] is not None else None
+        if la is not None:
+            b["las"].append(la)
+            if ev >= 95 and 8 <= la <= 32:
+                b["barrel"] += 1
+            if la < 10:
+                b["gb"] += 1
+            elif la < 25:
+                b["ld"] += 1
+            elif la < 50:
+                b["fb"] += 1
+            if la >= 10:
+                b["air"] += 1
+                if r["direction"] is not None and hand in ("L", "R"):
+                    if float(r["direction"]) * (1.0 if hand == "L" else -1.0) >= 10:
+                        b["pull_air"] += 1
+            b["xw"].append(xwobacon(ev, la, r["direction"] and float(r["direction"]), hand))
+        if r["px"] is not None and r["pz"] is not None:
+            b["loc_bbe"] += 1
+            if r["is_in_zone"] is False:
+                b["oz_bbe"] += 1
+            zr = _zone_region(r["px"], r["pz"], hand)
+            if zr:
+                b["zev"][zr].append(ev)
+        if r["contact_x"] is not None:
+            b["cx"].append(float(r["contact_x"]))
+        if r["distance"] is not None:
+            b["dists"].append(float(r["distance"]))
+        b["points"].append({
+            "ev": round(ev, 1), "exit_speed": round(ev, 1),
+            "la": round(la, 1) if la is not None else None,
+            "bearing": round(float(r["bearing"]), 1) if r["bearing"] is not None else None,
+            "distance": round(float(r["distance"])) if r["distance"] is not None else None,
+        })
+
+    def _p90(vals):
+        if len(vals) < 5:
+            return None
+        v = sorted(vals)
+        return v[min(len(v) - 1, int(0.9 * (len(v) - 1) + 0.5))]
+
+    live_ctx = context != "bp"
+    out = []
+    for (name, tm), b in B.items():
+        n_bbe = len(b["evs"])
+        if b["rows"] < 5:
+            continue
+        row = {
+            "batter": name, "team": tm, "side": b["side"],
+            "pitches": b["rows"], "bbe": n_bbe,
+            "avg_ev": round(sum(b["evs"]) / n_bbe, 1) if n_bbe else None,
+            "p90_ev": round(_p90(b["evs"]), 1) if _p90(b["evs"]) is not None else None,
+            "max_ev": round(max(b["evs"]), 1) if n_bbe else None,
+            "avg_la": round(sum(b["las"]) / len(b["las"]), 1) if b["las"] else None,
+            "hh_pct": _rate2(b["hh"], n_bbe),
+            "barrel_pct": _rate2(b["barrel"], n_bbe),
+            "gb_pct": _rate2(b["gb"], len(b["las"])),
+            "ld_pct": _rate2(b["ld"], len(b["las"])),
+            "fb_pct": _rate2(b["fb"], len(b["las"])),
+            "airpull_pct": _rate2(b["pull_air"], b["air"]) if b["air"] >= 5 else None,
+            "depth": round(sum(b["cx"]) / len(b["cx"]), 2) if len(b["cx"]) >= 3 else None,
+            "max_dist": round(max(b["dists"])) if b["dists"] else None,
+            "xwobacon": round(sum(b["xw"]) / len(b["xw"]), 3) if len(b["xw"]) >= 5 else None,
+            "zone_ev": {k: round(sum(v) / len(v), 1) for k, v in b["zev"].items() if len(v) >= 3},
+            "points": b["points"],
+        }
+        if live_ctx and b["called"] >= 10:
+            row.update({
+                "swing_pct": _rate2(b["sw"], b["called"]),
+                "contact_pct": _rate2(b["ct"], b["sw"]) if b["sw"] >= 10 else None,
+                "chase_pct": _rate2(b["ch"], b["oz"]) if b["oz"] >= 10 else None,
+                "fp_swing_pct": _rate2(b["fp_sw"], b["fp_n"]) if b["fp_n"] >= 8 else None,
+                "k2_contact_pct": _rate2(b["k2_ct"], b["k2_sw"]) if b["k2_sw"] >= 8 else None,
+                "rv": round(sum(b["rv"].values()), 1) if b["rv_n"] else None,
+                "heart_rv": round(b["rv"]["heart"], 1) if b["rv_n"] else None,
+                "shadow_rv": round(b["rv"]["shadow"], 1) if b["rv_n"] else None,
+                "chase_rv": round(b["rv"]["chase"] + b["rv"]["waste"], 1) if b["rv_n"] else None,
+            })
+            pas = []
+            for x in b["pa_map"].values():
+                if x["k_or_bb"] == "Strikeout":
+                    o = "K"
+                elif x["k_or_bb"] == "Walk":
+                    o = "BB"
+                elif x["pitch_call"] == "HitByPitch":
+                    o = "HBP"
+                elif x["play_result"] == "Sacrifice":
+                    o = "Sac"
+                elif x["play_result"]:
+                    o = "InPlay"
+                else:
+                    o = "Other"
+                pas.append({"outcome": o,
+                            "ev": float(x["exit_speed"]) if x["exit_speed"] is not None else None,
+                            "la": float(x["launch_angle"]) if x["launch_angle"] is not None else None,
+                            "direction": float(x["direction"]) if x["direction"] is not None else None,
+                            "side": (x["batter_side"] or "")[:1] or None,
+                            "play_result": x["play_result"]})
+            x = batter_xstats(pas)
+            if x:
+                row.update({"xavg": x.get("xavg"), "xslg": x.get("xslg"), "xwoba": x.get("xwoba"),
+                            "pa": x.get("pa")})
+            done = [p for p in pas if p["outcome"] in ("K", "BB", "HBP", "Sac", "InPlay")]
+            if len(done) >= 10:
+                row["k_pct"] = _rate2(sum(1 for p in done if p["outcome"] == "K"), len(done))
+                row["bb_pct"] = _rate2(sum(1 for p in done if p["outcome"] == "BB"), len(done))
+            hh = bp_hh.get((name, tm))
+            if hh is not None and n_bbe >= 10:
+                row["transfer"] = round(100 * (b["hh"] / n_bbe - hh), 1)
+        else:
+            # BP: contact per machine pitch + out-of-zone contact share
+            row["contact_per_pitch"] = _rate2(n_bbe, b["rows"])
+            row["oz_contact_pct"] = _rate2(b["oz_bbe"], b["loc_bbe"]) if b["loc_bbe"] >= 8 else None
+        out.append(row)
+    out.sort(key=lambda r: -(r["avg_ev"] or 0))
+    sess = sorted(sessions.values(), key=lambda s: s["date"] or "")
+    return {"context": context, "batters": out, "sessions": sess,
+            "totals": {"pitches": sum(s["pitches"] for s in sess),
+                       "bbe": sum(s["bbe"] for s in sess), "days": len(sess)}}
+
+
+def _rate2(num, den, dec=1):
+    return round(100 * num / den, dec) if den else None
+
+
 @router.get("/trackman/hitting")
 def trackman_hitting(
     team: str | None = Query(None),
