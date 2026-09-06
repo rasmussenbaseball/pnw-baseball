@@ -17,6 +17,7 @@ import { useApi } from '../hooks/useApi'
 import { supabase } from '../lib/supabase'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import ReportActions from '../components/ReportActions'
+import { saveNodeAsPdf, saveNodesAsPdf } from '../lib/reportExport'
 import StaffManager from '../components/portal/StaffManager'
 import TrackmanGlossary from '../components/portal/TrackmanGlossary'
 import { toneAttr } from '../lib/reportExport'
@@ -62,6 +63,7 @@ const TYPE_META = {
   scrimmage: { label: 'Scrimmage', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' },
   intrasquad: { label: 'Intrasquad', cls: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300' },
   bp: { label: 'BP', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' },
+  bullpen: { label: 'Bullpen', cls: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' },
 }
 
 // TrackMan seasons run July 1 - June 30: June games close the spring
@@ -377,10 +379,13 @@ function OverviewTab({ overview, refetch, onReview, season }) {
                           <option value="scrimmage">Scrimmage</option>
                           <option value="intrasquad">Intrasquad</option>
                           <option value="bp">BP</option>
+                          <option value="bullpen">Bullpen</option>
                         </select>
                       </td>
                       <td className="px-2 py-2 text-gray-500 dark:text-gray-400">
-                        {s.session_type === 'bp' ? (s.stadium || 'BP') : `${s.away_team || '?'} @ ${s.home_team || '?'}`}
+                        {s.session_type === 'bp' ? (s.stadium || 'BP')
+                          : s.session_type === 'bullpen' ? `Bullpen · ${s.stadium || '?'}`
+                          : `${s.away_team || '?'} @ ${s.home_team || '?'}`}
                       </td>
                       <td className="px-2 py-2 text-right tabular-nums">{s.pitch_count}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{s.bbe_count}</td>
@@ -390,7 +395,7 @@ function OverviewTab({ overview, refetch, onReview, season }) {
                             title={`${s.positioned_count} of ${s.pitch_count} pitches have fielder positions`}>
                             ▦ {s.positioned_count}
                           </span>
-                        ) : s.session_type !== 'bp' ? (
+                        ) : s.session_type !== 'bp' && s.session_type !== 'bullpen' ? (
                           <span className="text-[10px] text-gray-300 dark:text-gray-600"
                             title="No positioning file yet — upload this game's playerpositioning CSV to unlock the Defense tab for it">
                             none
@@ -1909,12 +1914,259 @@ function EvLaScatter({ points }) {
 
 // ── Session Review ───────────────────────────────────────────────
 
+// Plate-location dots (catcher's view) colored by pitch type, with the
+// K-zone box and its thirds.
+function LocScatter({ pitches }) {
+  const W = 300, H = 300
+  const sx = x => W / 2 + (x / 2.2) * (W / 2 - 12)
+  const sy = z => H - 16 - ((z - 0.5) / 4.0) * (H - 32)
+  const pts = (pitches || []).filter(p => p.x != null && p.z != null)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      {[-0.28, 0.28].map((gx, i) => (
+        <line key={i} x1={sx(gx)} y1={sy(3.5)} x2={sx(gx)} y2={sy(1.5)} stroke="currentColor" className="text-gray-200 dark:text-gray-600" />
+      ))}
+      {[2.17, 2.83].map((gz, i) => (
+        <line key={i} x1={sx(-0.83)} y1={sy(gz)} x2={sx(0.83)} y2={sy(gz)} stroke="currentColor" className="text-gray-200 dark:text-gray-600" />
+      ))}
+      <rect x={sx(-0.83)} y={sy(3.5)} width={sx(0.83) - sx(-0.83)} height={sy(1.5) - sy(3.5)}
+        fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-500 dark:text-gray-300" />
+      {pts.map((p, i) => (
+        <circle key={i} cx={sx(Math.max(-2.1, Math.min(2.1, p.x)))} cy={sy(Math.max(0.5, Math.min(4.4, p.z)))}
+          r="3.5" fill={cFor(p.ptype)} opacity="0.55" />
+      ))}
+      <text x={W / 2} y={H - 3} fontSize="8" textAnchor="middle" fill="#9ca3af">catcher's view</text>
+    </svg>
+  )
+}
+
+function SessionChip({ label, value }) {
+  return (
+    <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg px-2.5 py-1.5 text-center">
+      <div className="text-[15px] font-bold tabular-nums text-gray-900 dark:text-gray-100 leading-none">{value ?? '—'}</div>
+      <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mt-1">{label}</div>
+    </div>
+  )
+}
+
+function TypeLegend({ types }) {
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
+      {types.map(t => (
+        <span key={t.type} className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-500 dark:text-gray-400">
+          <span className="w-2 h-2 rounded-full inline-block" style={{ background: cFor(t.type) }} />
+          {t.type}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// One pitcher's full session sheet — sized to read as a one-page report.
+function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy }) {
+  const chips = [
+    ['Pitches', p.pitches],
+    ...(!isPen && p.bf ? [['Batters faced', p.bf]] : []),
+    ['FB velo', fmt(p.fb_velo)], ['FB max', fmt(p.fb_max)],
+    ['Strike%', fmt(p.strike_pct)], ['Zone%', fmt(p.zone_pct)],
+    ...(!isPen ? [
+      ['CSW%', fmt(p.csw_pct)], ['Whiffs', p.whiffs], ['K', p.k], ['BB', p.bb],
+      ['EV against', p.bbe ? fmt(p.ev_against) : '—'], ['Hard hit agn', p.bbe ? p.hh_against : '—'],
+    ] : []),
+  ]
+  return (
+    <div ref={innerRef} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4 space-y-3">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <div>
+          <span className="text-base font-bold text-gray-900 dark:text-gray-100">{p.pitcher}</span>
+          <span className="text-xs text-gray-400 ml-2">{p.throws || ''} · {p.team}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-gray-400">{sess?.session_date} · {isPen ? 'Bullpen' : (TYPE_META[sess?.session_type] || {}).label || ''}</span>
+          <button data-html2canvas-ignore="true" onClick={onPdf} disabled={busy}
+            className="text-[11px] font-bold px-2 py-1 rounded-lg bg-portal-purple text-portal-cream hover:opacity-90 disabled:opacity-50">
+            {busy ? '…' : 'PDF'}
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5">
+        {chips.map(([l, v]) => <SessionChip key={l} label={l} value={v} />)}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+              <th className="py-1 pr-2">Pitch</th><th className="py-1 px-1.5 text-right">N</th>
+              <th className="py-1 px-1.5 text-right">Use%</th><th className="py-1 px-1.5 text-right">Velo</th>
+              <th className="py-1 px-1.5 text-right">Max</th><th className="py-1 px-1.5 text-right">Spin</th>
+              <th className="py-1 px-1.5 text-right">IVB</th><th className="py-1 px-1.5 text-right">HB</th>
+              <th className="py-1 px-1.5 text-right">Ext</th><th className="py-1 px-1.5 text-right">RelH</th>
+              <th className="py-1 px-1.5 text-right">VAA</th><th className="py-1 px-1.5 text-right">Strike%</th>
+              <th className="py-1 px-1.5 text-right">Zone%</th>
+              {!isPen && <th className="py-1 px-1.5 text-right">CSW%</th>}
+              {!isPen && <th className="py-1 px-1.5 text-right">Whiff%</th>}
+              {!isPen && <th className="py-1 px-1.5 text-right">EV agn</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+            {(p.types || []).map(t => (
+              <tr key={t.type}>
+                <td className="py-1 pr-2 font-semibold whitespace-nowrap">
+                  <span className="w-2 h-2 rounded-full inline-block mr-1.5" style={{ background: cFor(t.type) }} />
+                  {t.type}
+                </td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{t.n}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.usage)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums font-semibold">{fmt(t.velo)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums text-gray-400">{fmt(t.max_velo)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{t.spin ?? '—'}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.ivb)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.hb)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.ext)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.rel_h)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.vaa)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.strike_pct)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.zone_pct)}</td>
+                {!isPen && <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.csw_pct)}</td>}
+                {!isPen && <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.whiff_pct)}</td>}
+                {!isPen && <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.avg_ev)}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {[['Movement', <MovementPlot key="m" pitches={p.pitches_detail || []} />],
+          ['Locations', <LocScatter key="l" pitches={p.pitches_detail || []} />],
+          ['Release', <ReleasePlot key="r" pitches={p.pitches_detail || []} />]].map(([t, el]) => (
+          <div key={t}>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1 text-center">{t}</div>
+            {el}
+          </div>
+        ))}
+      </div>
+      <TypeLegend types={p.types || []} />
+    </div>
+  )
+}
+
+// One batter's session sheet: discipline + contact quality + every batted ball.
+function BatterSessionCard({ b, sess, innerRef, onPdf, busy }) {
+  const bbePct = (x, d = b.bbe) => d ? `${Math.round(100 * x / d)}%` : '—'
+  const chips = [
+    ['PA', b.pa], ['Pitches', b.pitches], ['K', b.k], ['BB', b.bb],
+    ['Swing%', fmt(b.swing_pct)], ['Whiff%', fmt(b.whiff_pct)],
+    ['Chase%', fmt(b.chase_pct)], ['Contact%', fmt(b.contact_pct)],
+    ['BBE', b.bbe], ['Avg EV', fmt(b.avg_ev)], ['Max EV', fmt(b.max_ev)],
+    ['Hard hit', b.bbe ? b.hard_hit : '—'], ['Barrels', b.bbe ? b.barrels : '—'],
+    ['Avg LA', fmt(b.avg_la)],
+    ['GB/LD/FB', b.bbe ? `${b.gb}/${b.ld}/${b.fb}` : '—'],
+    ['RV', b.rv != null ? (b.rv > 0 ? `+${b.rv}` : b.rv) : '—'],
+  ]
+  const results = Object.entries(b.results || {}).filter(([k]) => k !== 'Undefined')
+  return (
+    <div ref={innerRef} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4 space-y-3">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <div>
+          <span className="text-base font-bold text-gray-900 dark:text-gray-100">{b.batter}</span>
+          <span className="text-xs text-gray-400 ml-2">{b.side ? `${b.side[0]}HH` : ''} · {b.team}</span>
+          {results.length > 0 && (
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 ml-3">
+              {results.map(([k, v]) => `${v} ${k}`).join(' · ')}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-gray-400">{sess?.session_date} · {(TYPE_META[sess?.session_type] || {}).label || ''}</span>
+          <button data-html2canvas-ignore="true" onClick={onPdf} disabled={busy}
+            className="text-[11px] font-bold px-2 py-1 rounded-lg bg-portal-purple text-portal-cream hover:opacity-90 disabled:opacity-50">
+            {busy ? '…' : 'PDF'}
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+        {chips.map(([l, v]) => <SessionChip key={l} label={l} value={v} />)}
+      </div>
+      {b.bbe > 0 && (
+        <div className="grid sm:grid-cols-2 gap-3 items-start">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1 text-center">Spray</div>
+            <SprayChart pitches={(b.bbe_list || []).map(x => ({ bearing: x.bearing, distance: x.dist, exit_speed: x.ev }))} />
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1 text-center">EV × Launch</div>
+            <EvLaScatter points={(b.bbe_list || []).map(x => ({ ev: x.ev, la: x.la }))} />
+          </div>
+        </div>
+      )}
+      {b.bbe > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+                <th className="py-1 pr-2 text-right">EV</th><th className="py-1 px-1.5 text-right">LA</th>
+                <th className="py-1 px-1.5 text-right">Dist</th><th className="py-1 px-1.5">Type</th>
+                <th className="py-1 px-1.5">Result</th><th className="py-1 px-1.5">Pitch</th>
+                <th className="py-1 px-1.5">vs Pitcher</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+              {(b.bbe_list || []).map((x, i) => (
+                <tr key={i}>
+                  <td className="py-1 pr-2 text-right tabular-nums font-bold">{fmt(x.ev)}</td>
+                  <td className="py-1 px-1.5 text-right tabular-nums">{fmt(x.la)}</td>
+                  <td className="py-1 px-1.5 text-right tabular-nums">{x.dist ?? '—'}</td>
+                  <td className="py-1 px-1.5 text-xs">{x.hit_type || '—'}</td>
+                  <td className="py-1 px-1.5 text-xs">{x.result || '—'}</td>
+                  <td className="py-1 px-1.5 text-xs whitespace-nowrap">
+                    <span className="w-2 h-2 rounded-full inline-block mr-1" style={{ background: cFor(x.ptype) }} />
+                    {x.ptype || '—'}
+                  </td>
+                  <td className="py-1 px-1.5 text-xs text-gray-500">{x.pitcher || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SessionsTab({ overview, season, sessionId, setSessionId }) {
-  const exportRef = useRef(null)
   const sessions = (overview?.sessions || []).filter(x => !season || seasonOf(x.session_date) === season)
   const active = sessionId || sessions[0]?.id
   const { data, loading } = useApi(active ? `/trackman/sessions/${active}/review` : null, {}, [active])
   const sess = data?.session
+  const isPen = !!data?.is_bullpen
+  const [mode, setMode] = useState('pitching')
+  const view = isPen ? 'pitching' : mode
+  const cardRefs = useRef({})
+  const [busyKey, setBusyKey] = useState(null)   // one player's PDF rendering
+  const [bulk, setBulk] = useState(null)          // "3/8" while the all-PDF renders
+
+  const players = view === 'pitching' ? (data?.pitchers || []) : (data?.batters || [])
+  const keyOf = pl => pl.pitcher || pl.batter
+  cardRefs.current = {}                            // refs re-register each render
+
+  async function onePdf(pl) {
+    const node = cardRefs.current[keyOf(pl)]
+    if (!node) return
+    setBusyKey(keyOf(pl))
+    try {
+      await saveNodeAsPdf(node, `${keyOf(pl).replace(/[^a-z0-9]+/gi, '_')}_${sess?.session_date || 'session'}`)
+    } finally { setBusyKey(null) }
+  }
+
+  async function allPdf() {
+    const nodes = players.map(pl => cardRefs.current[keyOf(pl)]).filter(Boolean)
+    if (!nodes.length) return
+    setBulk(`0/${nodes.length}`)
+    try {
+      await saveNodesAsPdf(nodes, `session_${sess?.session_date || active}_${view}`,
+        (d, t) => setBulk(`${d}/${t}`))
+    } finally { setBulk(null) }
+  }
 
   return (
     <div className="space-y-3">
@@ -1923,17 +2175,42 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
           className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm font-semibold">
           {sessions.map(s => (
             <option key={s.id} value={s.id}>
-              {s.session_date} · {(TYPE_META[s.session_type] || {}).label || s.session_type} · {s.session_type === 'bp' ? (s.stadium || 'BP') : `${s.away_team} @ ${s.home_team}`}
+              {s.session_date} · {(TYPE_META[s.session_type] || {}).label || s.session_type} · {
+                s.session_type === 'bp' ? (s.stadium || 'BP')
+                : s.session_type === 'bullpen' ? (s.stadium || 'Bullpen')
+                : `${s.away_team} @ ${s.home_team}`}
             </option>
           ))}
         </select>
-        {sess && <span className="ml-auto text-xs text-gray-400 tabular-nums">{sess.pitch_count} pitches · {sess.bbe_count} BBE</span>}
-        {data && <ReportActions targetRef={exportRef} filename={`trackman_session_${sess?.session_date || active}`} />}
+        {!isPen && (
+          <div className="flex rounded-lg ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
+            {[['pitching', 'Pitching'], ['hitting', 'Hitting']].map(([k, label]) => (
+              <button key={k} onClick={() => setMode(k)}
+                className={`px-3 py-1.5 text-sm font-semibold ${view === k
+                  ? 'bg-portal-purple text-portal-cream'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {isPen && (
+          <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+            Bullpen session · pitchers only
+          </span>
+        )}
+        {sess && <span className="ml-auto text-xs text-gray-400 tabular-nums">{sess.pitch_count} pitches{isPen ? '' : ` · ${sess.bbe_count} BBE`}</span>}
+        {players.length > 0 && (
+          <button onClick={allPdf} disabled={!!bulk}
+            className="px-3 py-1.5 rounded-lg bg-portal-purple text-portal-cream text-sm font-semibold hover:opacity-90 disabled:opacity-60">
+            {bulk ? `Rendering ${bulk}…` : `All ${view === 'pitching' ? 'pitcher' : 'hitter'} PDFs`}
+          </button>
+        )}
       </div>
 
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : data && (
-        <div ref={exportRef} className="space-y-3">
-          {data.zone_report?.called > 20 && (
+        <div className="space-y-3">
+          {view === 'pitching' && data.zone_report?.called > 20 && !isPen && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {[
                 ['Called pitches', data.zone_report.called],
@@ -1948,73 +2225,29 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
               ))}
             </div>
           )}
-          <SessionNotes key={active} sessionId={active} initial={sess} />
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
-            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
-              Pitcher lines
+          {players.length === 0 && (
+            <div className="p-8 text-center text-sm text-gray-400">
+              No {view === 'pitching' ? 'pitcher' : 'hitter'} data in this session.
             </div>
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
-                  <th className="px-4 py-1.5">Pitcher</th><th className="px-2 py-1.5">Team</th>
-                  <th className="px-2 py-1.5 text-right">Pitches</th><th className="px-2 py-1.5 text-right">BF</th>
-                  <th className="px-2 py-1.5 text-right">Velo</th><th className="px-2 py-1.5 text-right">Max</th>
-                  <th className="px-2 py-1.5 text-right">K</th><th className="px-2 py-1.5 text-right">BB</th>
-                  <th className="px-2 py-1.5 text-right">Whiffs</th><th className="px-2 py-1.5 text-right">CSW%</th>
-                  <th className="px-2 py-1.5 text-right">Zone%</th><th className="px-2 py-1.5 text-right">EV agn</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                {(data.pitcher_lines || []).map(l => (
-                  <tr key={l.pitcher + l.pitcher_team}>
-                    <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{l.pitcher}</td>
-                    <td className="px-2 py-1.5 text-xs text-gray-400">{l.pitcher_team}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{l.pitches}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{l.bf}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(l.velo)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{fmt(l.max_velo)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{l.k}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{l.bb}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{l.whiffs}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(l.csw_pct)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(l.zone_pct)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(l.ev_against)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          )}
+          {players.map(pl => view === 'pitching' ? (
+            <PitcherSessionCard key={keyOf(pl)} p={pl} sess={sess} isPen={isPen}
+              innerRef={el => { cardRefs.current[keyOf(pl)] = el }}
+              onPdf={() => onePdf(pl)} busy={busyKey === keyOf(pl)} />
+          ) : (
+            <BatterSessionCard key={keyOf(pl)} b={pl} sess={sess}
+              innerRef={el => { cardRefs.current[keyOf(pl)] = el }}
+              onPdf={() => onePdf(pl)} busy={busyKey === keyOf(pl)} />
+          ))}
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
-            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
-              Hardest-hit balls
-            </div>
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
-                  <th className="px-4 py-1.5">Batter</th><th className="px-2 py-1.5">vs Pitcher</th>
-                  <th className="px-2 py-1.5 text-right">EV</th><th className="px-2 py-1.5 text-right">LA</th>
-                  <th className="px-2 py-1.5 text-right">Dist</th><th className="px-2 py-1.5">Type</th>
-                  <th className="px-2 py-1.5">Result</th><th className="px-2 py-1.5 text-right">Inn</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                {(data.top_bbe || []).map((b, i) => (
-                  <tr key={i}>
-                    <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{b.batter} <span className="text-[10px] text-gray-400">{b.batter_team}</span></td>
-                    <td className="px-2 py-1.5 text-xs text-gray-500">{b.pitcher}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums font-bold">{fmt(b.exit_speed)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(b.launch_angle)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{b.distance ?? '–'}</td>
-                    <td className="px-2 py-1.5 text-xs">{b.tagged_hit_type || '–'}</td>
-                    <td className="px-2 py-1.5 text-xs">{b.play_result || '–'}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{b.inning ?? '–'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
+            Each card is one player's session sheet — the PDF button saves it as its own page, and the
+            All-PDFs button renders every card into one document (one player per page). Bullpen sessions
+            show pitch design only: TrackMan tags a placeholder hitter, so batter stats, whiffs and
+            results are not real there. RV on hitter cards is corpus-centered run value for this
+            session's pitches.
+          </p>
         </div>
       )}
     </div>
@@ -2211,48 +2444,6 @@ function CatchingTab({ teamCtx, season }) {
   )
 }
 
-
-// ── Staff notes (Session Review) ─────────────────────────────────
-
-function SessionNotes({ sessionId, initial }) {
-  const [highlights, setHighlights] = useState(initial?.highlights || '')
-  const [concerns, setConcerns] = useState(initial?.concerns || '')
-  const [saved, setSaved] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  async function save() {
-    setBusy(true)
-    try {
-      await fetch(`/api/v1/trackman/sessions/${sessionId}/notes`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-        body: JSON.stringify({ highlights: highlights || null, concerns: concerns || null }),
-      })
-      setSaved(true); setTimeout(() => setSaved(false), 1800)
-    } finally { setBusy(false) }
-  }
-
-  return (
-    <div className="grid sm:grid-cols-2 gap-3">
-      {[['Highlights', highlights, setHighlights, 'What went right (velo held late, zone command, hard contact...)'],
-        ['Concerns', concerns, setConcerns, 'What needs attention before the next session...']].map(([label, val, set, ph]) => (
-        <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Staff {label.toLowerCase()}</span>
-            {label === 'Concerns' && (
-              <button onClick={save} disabled={busy}
-                className="text-[11px] font-bold text-portal-purple dark:text-indigo-300 hover:underline disabled:opacity-50">
-                {saved ? 'Saved ✓' : busy ? 'Saving…' : 'Save notes'}
-              </button>
-            )}
-          </div>
-          <textarea value={val} onChange={e => set(e.target.value)} rows={2} placeholder={ph}
-            className="w-full text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 resize-y" />
-        </div>
-      ))}
-    </div>
-  )
-}
 
 // ── Coach Board (auto-flags) ─────────────────────────────────────
 

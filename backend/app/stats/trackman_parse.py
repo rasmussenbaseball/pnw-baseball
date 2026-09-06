@@ -226,13 +226,19 @@ def parse_text(text: str, filename: str = "upload.csv") -> dict:
                     teams[t] += 1
         tagged = sum(1 for p in rows if p["pitch_call"])
         team_codes = set(teams)
+        bbe = sum(1 for p in rows if p["exit_speed"] is not None)
+        pen_batters = {p["batter"] for p in rows if p["batter"]}
+        has_pa = any(p["k_or_bb"] or p["play_result"] for p in rows)
         if "-BP-" in gid or tagged / len(rows) < 0.1:
             stype = "bp"
+        elif len(pen_batters) <= 1 and bbe == 0 and not has_pa:
+            # ball/strike calls tagged but one placeholder batter, zero batted
+            # balls and zero PA outcomes: a bullpen captured in live mode
+            stype = "bullpen"
         elif "SIM_UNI" in team_codes or len(team_codes) <= 1:
             stype = "scrimmage"
         else:
             stype = "game"
-        bbe = sum(1 for p in rows if p["exit_speed"] is not None)
         sessions[gid] = {
             "game_id": gid,
             "session_date": rows[0]["date"],

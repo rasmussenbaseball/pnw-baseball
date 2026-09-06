@@ -377,7 +377,7 @@ def _ingest(cur, owner, parsed, filename):
             "pitches_added": inserted, "duplicates_skipped": skipped}
 
 
-SESSION_TYPES = ("game", "scrimmage", "intrasquad", "bp")
+SESSION_TYPES = ("game", "scrimmage", "intrasquad", "bp", "bullpen")
 
 
 class SessionTypePatch(BaseModel):
@@ -881,11 +881,13 @@ def _date_clause(date_from, date_to):
 
 def _context_clause(context):
     """WHERE fragment for the session-type filter every view shares."""
-    if context in ("game", "scrimmage", "intrasquad", "bp"):
+    if context in ("game", "scrimmage", "intrasquad", "bp", "bullpen"):
         return " AND s.session_type = %s", [context]
     if context == "live":  # anything with pitch calls
         return " AND s.session_type IN ('game','scrimmage','intrasquad')", []
-    return "", []
+    # default/all: bullpens are pitcher-only captures tagged to a placeholder
+    # batter — they surface ONLY in Session Review
+    return " AND s.session_type <> 'bullpen'", []
 
 
 @router.get("/trackman/bp-review")
@@ -1535,7 +1537,8 @@ def trackman_hitting(
                            AVG(p.launch_angle) AS avg_la,
                            MAX(p.distance) AS max_dist
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                    WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {team_sql}{pt_sql}{th_sql}
+                    WHERE p.owner_user_id = %s AND s.session_type <> 'bullpen' {team_sql}{pt_sql}{th_sql}
+                      AND p.batter IS NOT NULL
                     GROUP BY p.batter, p.batter_side, p.batter_team,
                              CASE WHEN s.session_type = 'bp' THEN 'bp' ELSE 'live' END""",
                 [owner] + ([team] if team else []) + ([pitch_type] if pitch_type else []) + th_params,
@@ -2305,10 +2308,22 @@ def trackman_batter_detail(
             "splits": splits}
 
 
+_STRIKE_CALLS = ("StrikeCalled", "StrikeSwinging", "InPlay",
+                 "FoulBall", "FoulBallFieldable", "FoulBallNotFieldable")
+
+
+def _avg(vals, dec=1):
+    vals = [v for v in vals if v is not None]
+    return round(sum(vals) / len(vals), dec) if vals else None
+
+
 @router.get("/trackman/sessions/{session_id}/review")
 def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
-    """One session's story: header, per-pitcher lines (grouped by team),
-    hardest-hit balls, and team discipline totals."""
+    """One session's full debrief: a per-pitcher pitch-design sheet (arsenal
+    table + movement/location/release points for the plots) and a per-batter
+    contact sheet (discipline, quality of contact, every batted ball) — the
+    payload behind the per-player report PDFs. Bullpen sessions carry
+    pitchers only (their batter is a placeholder tag)."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM tm_sessions WHERE id = %s AND owner_user_id = %s",
@@ -2316,83 +2331,207 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
         sess = cur.fetchone()
         if not sess:
             raise HTTPException(status_code=404, detail="Session not found.")
+        is_pen = sess["session_type"] == "bullpen"
 
         cur.execute(
-            f"""SELECT pitcher, pitcher_throws, pitcher_team, COUNT(*) AS pitches,
-                      COUNT(DISTINCT (inning, top_bottom, pa_of_inning)) AS bf,
-                      AVG(rel_speed) AS velo, MAX(rel_speed) AS max_velo,
-                      SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) AS whiffs,
-                      SUM(CASE WHEN pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1 ELSE 0 END) AS csw,
-                      SUM(CASE WHEN k_or_bb = 'Strikeout' THEN 1 ELSE 0 END) AS k,
-                      SUM(CASE WHEN k_or_bb = 'Walk' THEN 1 ELSE 0 END) AS bb,
-                      AVG(CASE WHEN is_in_zone THEN 1.0 WHEN is_in_zone IS FALSE THEN 0.0 END) AS zone,
-                      AVG(exit_speed) AS ev_against,
-                      SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bbe
-               FROM tm_pitches WHERE session_id = %s AND owner_user_id = %s AND pitcher IS NOT NULL{_NO_MISTAG_BARE}
-               GROUP BY pitcher, pitcher_throws, pitcher_team
-               ORDER BY pitcher_team, COUNT(*) DESC""",
-            (session_id, owner),
-        )
-        lines = []
-        for r in cur.fetchall():
-            d = dict(r)
-            for k in ("velo", "max_velo", "ev_against"):
-                d[k] = round(d[k], 1) if d[k] is not None else None
-            d["zone_pct"] = round(100 * d.pop("zone"), 1) if d["zone"] is not None else None
-            d["csw_pct"] = round(100 * d["csw"] / d["pitches"], 1) if d["pitches"] else None
-            lines.append(d)
-
-        cur.execute(
-            """SELECT batter, batter_team, pitcher, exit_speed, launch_angle, distance,
-                      play_result, tagged_hit_type, inning
-               FROM tm_pitches WHERE session_id = %s AND owner_user_id = %s
-                 AND exit_speed IS NOT NULL
-               ORDER BY exit_speed DESC LIMIT 10""",
-            (session_id, owner),
-        )
-        top_bbe = [dict(r) for r in cur.fetchall()]
-        for b in top_bbe:
-            for k in ("exit_speed", "launch_angle"):
-                b[k] = round(b[k], 1) if b[k] is not None else None
-            b["distance"] = round(b["distance"]) if b["distance"] is not None else None
-
-        # Zone report: how the plate was called. Shadow band = within
-        # 0.25 ft of the K-zone border (both sides). Accuracy = called
-        # strikes in the box + called balls out of it.
-        cur.execute(
-            """SELECT pitch_call, plate_loc_height AS h, plate_loc_side AS x, is_in_zone
+            """SELECT pitcher, pitcher_throws, pitcher_team, batter, batter_side, batter_team,
+                      override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type,
+                      pitch_call, k_or_bb, play_result, tagged_hit_type,
+                      balls, strikes, inning, top_bottom, pa_of_inning,
+                      rel_speed, spin_rate, rel_height, rel_side, extension,
+                      ivb, horz_break, plate_loc_height, plate_loc_side, vaa,
+                      exit_speed, launch_angle, distance, bearing, contact_x,
+                      is_swing, is_whiff, is_in_zone
                FROM tm_pitches
                WHERE session_id = %s AND owner_user_id = %s
-                 AND pitch_call IN ('StrikeCalled','BallCalled')
-                 AND plate_loc_height IS NOT NULL AND plate_loc_side IS NOT NULL""",
-            (session_id, owner),
-        )
-        called = cur.fetchall()
-        B = 0.25
-        def _shadow(r):
-            dx = abs(r["x"]) - 0.83
-            dyt = r["h"] - 3.5
-            dyb = 1.5 - r["h"]
-            return (abs(dx) <= B and r["h"] >= 1.5 - B and r["h"] <= 3.5 + B) or \
-                   (abs(dyt) <= B and abs(r["x"]) <= 0.83 + B) or \
-                   (abs(dyb) <= B and abs(r["x"]) <= 0.83 + B)
-        n_called = len(called)
-        correct = sum(1 for r in called if (r["pitch_call"] == "StrikeCalled") == bool(r["is_in_zone"]))
-        shadow = [r for r in called if _shadow(r)]
-        shadow_k = sum(1 for r in shadow if r["pitch_call"] == "StrikeCalled")
-        zone_report = {
-            "called": n_called,
-            "accuracy_pct": round(100 * correct / n_called, 1) if n_called else None,
-            "shadow_pitches": len(shadow),
-            "shadow_strike_pct": round(100 * shadow_k / len(shadow), 1) if shadow else None,
-        }
+               ORDER BY pitch_no""",
+            (session_id, owner))
+        rows = [dict(r) for r in cur.fetchall()]
 
-        sess = dict(sess)
-        for k in ("session_date", "created_at"):
-            sess[k] = sess[k].isoformat() if sess.get(k) else None
-        sess.pop("owner_user_id", None)
-    return {"session": sess, "pitcher_lines": lines, "top_bbe": top_bbe,
-            "zone_report": zone_report}
+        rv_base = 0.0
+        if not is_pen:
+            season = None
+            if sess.get("session_date"):
+                d = sess["session_date"]
+                season = d.year if d.month >= 7 else d.year - 1
+            try:
+                rv_base = _rv_baseline(cur, owner, "live", season)
+            except Exception:
+                rv_base = 0.0
+        conn.commit()
+
+    for r in rows:
+        for k in ("rel_speed", "spin_rate", "rel_height", "rel_side", "extension",
+                  "ivb", "horz_break", "plate_loc_height", "plate_loc_side", "vaa",
+                  "exit_speed", "launch_angle", "distance", "bearing", "contact_x"):
+            r[k] = float(r[k]) if r[k] is not None else None
+        cls = r["class_pitch_type"]
+        r["ptype"] = (r["override_pitch_type"]
+                      or (cls if cls and cls != "Mistag" else None)
+                      or r["tagged_pitch_type"] or r["auto_pitch_type"])
+
+    def _pct(num, den):
+        return round(100 * num / den, 1) if den else None
+
+    # ── pitchers ──
+    P = {}
+    for r in rows:
+        if not r["pitcher"] or r["class_pitch_type"] == "Mistag":
+            continue
+        P.setdefault(r["pitcher"], {"throws": r["pitcher_throws"],
+                                    "team": r["pitcher_team"], "rows": []})["rows"].append(r)
+
+    pitchers = []
+    for name, p in P.items():
+        rs = p["rows"]
+        n = len(rs)
+        zoned = [r for r in rs if r["is_in_zone"] is not None]
+        evs = [r["exit_speed"] for r in rs if r["exit_speed"] is not None]
+        fb = [r["rel_speed"] for r in rs
+              if r["ptype"] in ("Fastball", "Sinker") and r["rel_speed"] is not None]
+        T = {}
+        for r in rs:
+            t = T.setdefault(r["ptype"] or "Unknown", defaultdict(list))
+            t["rows"].append(r)
+        types = []
+        for tname, t in sorted(T.items(), key=lambda kv: -len(kv[1]["rows"])):
+            trs = t["rows"]
+            tn = len(trs)
+            sw = sum(1 for r in trs if r["is_swing"])
+            tz = [r for r in trs if r["is_in_zone"] is not None]
+            velos = [r["rel_speed"] for r in trs if r["rel_speed"] is not None]
+            types.append({
+                "type": tname, "n": tn, "usage": _pct(tn, n),
+                "velo": _avg(velos), "max_velo": round(max(velos), 1) if velos else None,
+                "spin": _avg([r["spin_rate"] for r in trs], 0),
+                "ivb": _avg([r["ivb"] for r in trs]),
+                "hb": _avg([r["horz_break"] for r in trs]),
+                "ext": _avg([r["extension"] for r in trs]),
+                "rel_h": _avg([r["rel_height"] for r in trs]),
+                "vaa": _avg([r["vaa"] for r in trs]),
+                "strike_pct": _pct(sum(1 for r in trs if r["pitch_call"] in _STRIKE_CALLS), tn),
+                "csw_pct": _pct(sum(1 for r in trs
+                                    if r["pitch_call"] in ("StrikeCalled", "StrikeSwinging")), tn),
+                "whiff_pct": _pct(sum(1 for r in trs if r["is_whiff"]), sw) if sw else None,
+                "zone_pct": _pct(sum(1 for r in tz if r["is_in_zone"]), len(tz)),
+                "avg_ev": _avg([r["exit_speed"] for r in trs]),
+            })
+        pitchers.append({
+            "pitcher": name, "throws": p["throws"], "team": p["team"], "pitches": n,
+            "bf": len({(r["inning"], r["top_bottom"], r["pa_of_inning"]) for r in rs
+                       if r["pa_of_inning"] is not None}) if not is_pen else None,
+            "fb_velo": _avg(fb), "fb_max": round(max(fb), 1) if fb else None,
+            "strike_pct": _pct(sum(1 for r in rs if r["pitch_call"] in _STRIKE_CALLS), n),
+            "csw_pct": _pct(sum(1 for r in rs
+                                if r["pitch_call"] in ("StrikeCalled", "StrikeSwinging")), n),
+            "zone_pct": _pct(sum(1 for r in zoned if r["is_in_zone"]), len(zoned)),
+            "whiffs": sum(1 for r in rs if r["is_whiff"]),
+            "k": sum(1 for r in rs if r["k_or_bb"] == "Strikeout"),
+            "bb": sum(1 for r in rs if r["k_or_bb"] == "Walk"),
+            "bbe": len(evs), "ev_against": _avg(evs),
+            "hh_against": sum(1 for v in evs if v >= 90),
+            "types": types,
+            "pitches_detail": [
+                {"ptype": r["ptype"], "horz_break": r["horz_break"], "ivb": r["ivb"],
+                 "rel_side": r["rel_side"], "rel_height": r["rel_height"],
+                 "x": r["plate_loc_side"], "z": r["plate_loc_height"],
+                 "velo": r["rel_speed"], "call": r["pitch_call"]}
+                for r in rs],
+        })
+    pitchers.sort(key=lambda x: (x["team"] or "", -x["pitches"]))
+
+    # ── batters (skipped for bullpens: the batter tag is a placeholder) ──
+    batters = []
+    if not is_pen:
+        B = {}
+        for r in rows:
+            if not r["batter"]:
+                continue
+            B.setdefault(r["batter"], {"side": r["batter_side"],
+                                       "team": r["batter_team"], "rows": []})["rows"].append(r)
+        for name, b in B.items():
+            rs = b["rows"]
+            n = len(rs)
+            swings = sum(1 for r in rs if r["is_swing"])
+            whiffs = sum(1 for r in rs if r["is_whiff"])
+            oz = [r for r in rs if r["is_in_zone"] is False]
+            evr = [r for r in rs if r["exit_speed"] is not None]
+            evs = [r["exit_speed"] for r in evr]
+            las = [r["launch_angle"] for r in evr if r["launch_angle"] is not None]
+            rv = 0.0
+            rv_n = 0
+            for r in rs:
+                v = pitch_run_value(r["balls"], r["strikes"], r["pitch_call"], r["play_result"])
+                if v is not None:
+                    rv += v - rv_base
+                    rv_n += 1
+            res = {}
+            for r in rs:
+                if r["play_result"]:
+                    res[r["play_result"]] = res.get(r["play_result"], 0) + 1
+            batters.append({
+                "batter": name, "side": b["side"], "team": b["team"],
+                "pa": len({(r["inning"], r["top_bottom"], r["pa_of_inning"]) for r in rs
+                           if r["pa_of_inning"] is not None}),
+                "pitches": n,
+                "k": sum(1 for r in rs if r["k_or_bb"] == "Strikeout"),
+                "bb": sum(1 for r in rs if r["k_or_bb"] == "Walk"),
+                "swing_pct": _pct(swings, n),
+                "whiff_pct": _pct(whiffs, swings) if swings else None,
+                "contact_pct": _pct(swings - whiffs, swings) if swings else None,
+                "chase_pct": _pct(sum(1 for r in oz if r["is_swing"]), len(oz)) if len(oz) >= 3 else None,
+                "bbe": len(evs), "avg_ev": _avg(evs),
+                "max_ev": round(max(evs), 1) if evs else None,
+                "hard_hit": sum(1 for v in evs if v >= 90),
+                "barrels": sum(1 for r in evr
+                               if r["exit_speed"] >= 95 and r["launch_angle"] is not None
+                               and 8 <= r["launch_angle"] <= 32),
+                "avg_la": _avg(las),
+                "gb": sum(1 for v in las if v < 10),
+                "ld": sum(1 for v in las if 10 <= v <= 25),
+                "fb": sum(1 for v in las if v > 25),
+                "avg_depth": _avg([r["contact_x"] for r in evr], 2),
+                "rv": round(rv, 1) if rv_n else None,
+                "results": res,
+                "bbe_list": [
+                    {"ev": round(r["exit_speed"], 1),
+                     "la": round(r["launch_angle"], 1) if r["launch_angle"] is not None else None,
+                     "dist": round(r["distance"]) if r["distance"] is not None else None,
+                     "bearing": r["bearing"],
+                     "result": r["play_result"], "hit_type": r["tagged_hit_type"],
+                     "ptype": r["ptype"], "pitcher": r["pitcher"]}
+                    for r in sorted(evr, key=lambda x: -(x["exit_speed"] or 0))],
+            })
+        batters.sort(key=lambda x: (x["team"] or "", -(x["pa"] or 0), -x["pitches"]))
+
+    # ── zone report: how the plate was called ──
+    called = [r for r in rows if r["pitch_call"] in ("StrikeCalled", "BallCalled")
+              and r["plate_loc_height"] is not None and r["plate_loc_side"] is not None]
+    BAND = 0.25
+
+    def _shadow(r):
+        x, h = r["plate_loc_side"], r["plate_loc_height"]
+        return (abs(abs(x) - 0.83) <= BAND and 1.5 - BAND <= h <= 3.5 + BAND) or \
+               (abs(h - 3.5) <= BAND and abs(x) <= 0.83 + BAND) or \
+               (abs(1.5 - h) <= BAND and abs(x) <= 0.83 + BAND)
+
+    n_called = len(called)
+    correct = sum(1 for r in called if (r["pitch_call"] == "StrikeCalled") == bool(r["is_in_zone"]))
+    shadow = [r for r in called if _shadow(r)]
+    shadow_k = sum(1 for r in shadow if r["pitch_call"] == "StrikeCalled")
+    zone_report = {
+        "called": n_called,
+        "accuracy_pct": round(100 * correct / n_called, 1) if n_called else None,
+        "shadow_pitches": len(shadow),
+        "shadow_strike_pct": round(100 * shadow_k / len(shadow), 1) if shadow else None,
+    }
+
+    sess = dict(sess)
+    for k in ("session_date", "created_at"):
+        sess[k] = sess[k].isoformat() if sess.get(k) else None
+    sess.pop("owner_user_id", None)
+    return {"session": sess, "pitchers": pitchers, "batters": batters,
+            "zone_report": zone_report, "is_bullpen": is_pen}
 
 
 @router.get("/trackman/catching")
@@ -2665,14 +2804,14 @@ def trackman_insights(team: str | None = Query(None),
         # 1) Transfer gap
         cur.execute(
             f"""SELECT p.batter, p.batter_team,
-                       SUM(CASE WHEN s.session_type <> 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS live_bbe,
+                       SUM(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS live_bbe,
                        SUM(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bp_bbe,
-                       AVG(CASE WHEN s.session_type <> 'bp' AND p.exit_speed IS NOT NULL THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS live_hh,
+                       AVG(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS live_hh,
                        AVG(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS bp_hh
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {team_b}
                 GROUP BY p.batter, p.batter_team
-                HAVING SUM(CASE WHEN s.session_type <> 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 15
+                HAVING SUM(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 15
                    AND SUM(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 15""",
             [owner] + tp,
         )
@@ -2693,7 +2832,7 @@ def trackman_insights(team: str | None = Query(None),
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL AND p.rel_speed IS NOT NULL
                   AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IN ('Fastball','Sinker')
-                  AND s.session_type <> 'bp' AND s.session_date IS NOT NULL {team_p}
+                  AND s.session_type NOT IN ('bp','bullpen') AND s.session_date IS NOT NULL {team_p}
                 GROUP BY p.pitcher, p.pitcher_team, s.session_date
                 HAVING COUNT(*) >= 8 ORDER BY p.pitcher, s.session_date""",
             [owner] + tp,
@@ -2725,7 +2864,7 @@ def trackman_insights(team: str | None = Query(None),
                        SUM(CASE WHEN p.is_whiff THEN 1 ELSE 0 END) AS whiffs
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
-                  AND s.session_type <> 'bp'
+                  AND s.session_type NOT IN ('bp','bullpen')
                   AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL {team_p}
                 GROUP BY p.pitcher, p.pitcher_team, COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type)""",
             [owner] + tp,
@@ -2771,7 +2910,7 @@ def trackman_insights(team: str | None = Query(None),
             f"""SELECT p.pitcher, p.pitcher_team, COUNT(*) AS n,
                        AVG(CASE WHEN p.is_in_zone THEN 1.0 WHEN p.is_in_zone IS FALSE THEN 0.0 END) AS zone
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG} AND s.session_type <> 'bp' {team_p}
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG} AND s.session_type NOT IN ('bp','bullpen') {team_p}
                 GROUP BY p.pitcher, p.pitcher_team HAVING COUNT(*) >= 50""",
             [owner] + tp,
         )
