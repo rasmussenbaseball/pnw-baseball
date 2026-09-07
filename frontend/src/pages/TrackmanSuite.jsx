@@ -1965,10 +1965,11 @@ function LocScatter({ pitches }) {
   )
 }
 
-function SessionChip({ label, value }) {
+function SessionChip({ label, value, pctl, vc = '' }) {
+  const hc = heatCls(pctl)
   return (
-    <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg px-2.5 py-1.5 text-center">
-      <div className="text-[15px] font-bold tabular-nums text-gray-900 dark:text-gray-100 leading-none">{value ?? '—'}</div>
+    <div className={`rounded-lg px-2.5 py-1.5 text-center ${hc || 'bg-gray-50 dark:bg-gray-900/40'}`} {...toneAttr(pctl)}>
+      <div className={`text-[15px] font-bold tabular-nums leading-none ${vc || 'text-gray-900 dark:text-gray-100'}`}>{value ?? '—'}</div>
       <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mt-1">{label}</div>
     </div>
   )
@@ -2134,17 +2135,43 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) 
 }
 
 // One batter's session sheet: discipline + contact quality + every batted ball.
-function BatterSessionCard({ b, sess, innerRef, onPdf, busy }) {
-  const bbePct = (x, d = b.bbe) => d ? `${Math.round(100 * x / d)}%` : '—'
-  const chips = [
-    ['PA', b.pa], ['Pitches', b.pitches], ['K', b.k], ['BB', b.bb],
-    ['Swing%', fmt(b.swing_pct)], ['Whiff%', fmt(b.whiff_pct)],
-    ['Chase%', fmt(b.chase_pct)], ['Contact%', fmt(b.contact_pct)],
-    ['BBE', b.bbe], ['Avg EV', fmt(b.avg_ev)], ['Max EV', fmt(b.max_ev)],
-    ['Hard hit', b.bbe ? b.hard_hit : '—'], ['Barrels', b.bbe ? b.barrels : '—'],
+function BatterSessionCard({ b, sess, innerRef, onPdf, busy, cohort, isBp }) {
+  // Within-session cohort percentiles (this session's hitters), so a coach
+  // can scan a wall of cards and see who had the good rounds.
+  const co = fn => (cohort || []).map(fn).filter(v => v != null)
+  const rate = c => (c.bbe ? 100 * c.hard_hit / c.bbe : null)
+  const brate = c => (c.bbe ? 100 * c.barrels / c.bbe : null)
+  const hhPct = b.bbe ? Math.round(100 * b.hard_hit / b.bbe) : null
+  const brPct = b.bbe ? Math.round(100 * b.barrels / b.bbe) : null
+  const P = {
+    avg_ev: pctlOf(b.avg_ev, co(c => c.avg_ev)),
+    max_ev: pctlOf(b.max_ev, co(c => c.max_ev)),
+    hh: pctlOf(hhPct, co(rate)),
+    br: pctlOf(brPct, co(brate)),
+    whiff: pctlOf(b.whiff_pct, co(c => c.whiff_pct), false),
+    chase: pctlOf(b.chase_pct, co(c => c.chase_pct), false),
+    contact: pctlOf(b.contact_pct, co(c => c.contact_pct)),
+    rv: pctlOf(b.rv, co(c => c.rv)),
+  }
+  const depthVc = DEPTH_CLS[depthTone(b.avg_depth)] || ''
+  const chips = isBp ? [
+    ['Pitches', b.pitches], ['BBE', b.bbe],
+    ['Avg EV', fmt(b.avg_ev), P.avg_ev], ['Max EV', fmt(b.max_ev), P.max_ev],
+    ['HH%', hhPct != null ? hhPct : '—', P.hh],
+    ['Barrels', b.bbe ? b.barrels : '—', P.br],
     ['Avg LA', fmt(b.avg_la)],
     ['GB/LD/FB', b.bbe ? `${b.gb}/${b.ld}/${b.fb}` : '—'],
-    ['RV', b.rv != null ? (b.rv > 0 ? `+${b.rv}` : b.rv) : '—'],
+    ['Depth', b.avg_depth != null ? b.avg_depth : '—', null, depthVc],
+  ] : [
+    ['PA', b.pa], ['Pitches', b.pitches], ['K', b.k], ['BB', b.bb],
+    ['Swing%', fmt(b.swing_pct)], ['Whiff%', fmt(b.whiff_pct), P.whiff],
+    ['Chase%', fmt(b.chase_pct), P.chase], ['Contact%', fmt(b.contact_pct), P.contact],
+    ['BBE', b.bbe], ['Avg EV', fmt(b.avg_ev), P.avg_ev], ['Max EV', fmt(b.max_ev), P.max_ev],
+    ['Hard hit', b.bbe ? b.hard_hit : '—', P.hh], ['Barrels', b.bbe ? b.barrels : '—', P.br],
+    ['Avg LA', fmt(b.avg_la)],
+    ['GB/LD/FB', b.bbe ? `${b.gb}/${b.ld}/${b.fb}` : '—'],
+    ['Depth', b.avg_depth != null ? b.avg_depth : '—', null, depthVc],
+    ['RV', b.rv != null ? (b.rv > 0 ? `+${b.rv}` : b.rv) : '—', P.rv],
   ]
   const results = Object.entries(b.results || {}).filter(([k]) => k !== 'Undefined')
   return (
@@ -2168,7 +2195,7 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy }) {
         </div>
       </div>
       <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
-        {chips.map(([l, v]) => <SessionChip key={l} label={l} value={v} />)}
+        {chips.map(([l, v, pc, vc]) => <SessionChip key={l} label={l} value={v} pctl={pc} vc={vc} />)}
       </div>
       {b.bbe > 0 && (
         <div className="grid sm:grid-cols-2 gap-3 items-start">
@@ -2182,7 +2209,7 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy }) {
           </div>
         </div>
       )}
-      {b.bbe > 0 && (
+      {!isBp && b.bbe > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead>
@@ -2222,8 +2249,10 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
   const { data, loading, refetch } = useApi(active ? `/trackman/sessions/${active}/review` : null, {}, [active])
   const sess = data?.session
   const isPen = !!data?.is_bullpen
-  const [mode, setMode] = useState('pitching')
-  const view = isPen ? 'pitching' : mode
+  const [mode, setMode] = useState('auto')   // 'auto' opens whichever side has data
+  const view = isPen ? 'pitching'
+    : mode !== 'auto' ? mode
+    : (data && !(data.pitchers || []).length && (data.batters || []).length) ? 'hitting' : 'pitching' 
   const cardRefs = useRef({})
   const [busyKey, setBusyKey] = useState(null)   // one player's PDF rendering
   const [bulk, setBulk] = useState(null)          // "3/8" while the all-PDF renders
@@ -2320,6 +2349,7 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
               onPdf={() => onePdf(pl)} busy={busyKey === keyOf(pl)} onRetag={refetch} />
           ) : (
             <BatterSessionCard key={keyOf(pl)} b={pl} sess={sess}
+              cohort={data.batters} isBp={sess?.session_type === 'bp'}
               innerRef={el => { cardRefs.current[keyOf(pl)] = el }}
               onPdf={() => onePdf(pl)} busy={busyKey === keyOf(pl)} />
           ))}
