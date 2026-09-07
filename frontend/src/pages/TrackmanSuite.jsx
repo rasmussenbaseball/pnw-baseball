@@ -2135,6 +2135,14 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) 
 }
 
 // One batter's session sheet: discipline + contact quality + every batted ball.
+const GRADE_CLS = (g) => {
+  const c = g?.[0]
+  return c === 'A' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+    : c === 'B' ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300'
+    : c === 'C' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+    : 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300'
+}
+
 function BatterSessionCard({ b, sess, innerRef, onPdf, busy, cohort, isBp }) {
   // Within-session cohort percentiles (this session's hitters), so a coach
   // can scan a wall of cards and see who had the good rounds.
@@ -2153,13 +2161,18 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy, cohort, isBp }) {
     contact: pctlOf(b.contact_pct, co(c => c.contact_pct)),
     rv: pctlOf(b.rv, co(c => c.rv)),
   }
+  P.airpull = pctlOf(b.airpull_pct, co(c => c.airpull_pct))
   const depthVc = DEPTH_CLS[depthTone(b.avg_depth)] || ''
+  const laVc = b.avg_la == null ? ''
+    : (b.avg_la >= 8 && b.avg_la <= 22) ? DEPTH_CLS.good
+    : (b.avg_la >= 2 && b.avg_la <= 28) ? DEPTH_CLS.mid : DEPTH_CLS.bad
   const chips = isBp ? [
     ['Pitches', b.pitches], ['BBE', b.bbe],
     ['Avg EV', fmt(b.avg_ev), P.avg_ev], ['Max EV', fmt(b.max_ev), P.max_ev],
     ['HH%', hhPct != null ? hhPct : '—', P.hh],
     ['Barrels', b.bbe ? b.barrels : '—', P.br],
-    ['Avg LA', fmt(b.avg_la)],
+    ['AirPull%', fmt(b.airpull_pct), P.airpull],
+    ['Avg LA', fmt(b.avg_la), null, laVc],
     ['GB/LD/FB', b.bbe ? `${b.gb}/${b.ld}/${b.fb}` : '—'],
     ['Depth', b.avg_depth != null ? b.avg_depth : '—', null, depthVc],
   ] : [
@@ -2168,7 +2181,7 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy, cohort, isBp }) {
     ['Chase%', fmt(b.chase_pct), P.chase], ['Contact%', fmt(b.contact_pct), P.contact],
     ['BBE', b.bbe], ['Avg EV', fmt(b.avg_ev), P.avg_ev], ['Max EV', fmt(b.max_ev), P.max_ev],
     ['Hard hit', b.bbe ? b.hard_hit : '—', P.hh], ['Barrels', b.bbe ? b.barrels : '—', P.br],
-    ['Avg LA', fmt(b.avg_la)],
+    ['Avg LA', fmt(b.avg_la), null, laVc],
     ['GB/LD/FB', b.bbe ? `${b.gb}/${b.ld}/${b.fb}` : '—'],
     ['Depth', b.avg_depth != null ? b.avg_depth : '—', null, depthVc],
     ['RV', b.rv != null ? (b.rv > 0 ? `+${b.rv}` : b.rv) : '—', P.rv],
@@ -2179,6 +2192,12 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy, cohort, isBp }) {
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
         <div>
           <span className="text-base font-bold text-gray-900 dark:text-gray-100">{b.batter}</span>
+          {b.bp_grade && (
+            <span className={`text-sm font-black px-2 py-0.5 rounded-lg ml-2 align-middle ${GRADE_CLS(b.bp_grade.grade)}`}
+              title={`BP round grade (score ${b.bp_grade.score}/100): avg EV 40%, hard-hit rate 30%, sweet-spot rate 30% — fixed scale, not curved within the session`}>
+              {b.bp_grade.grade}
+            </span>
+          )}
           <span className="text-xs text-gray-400 ml-2">{b.side ? `${b.side[0]}HH` : ''} · {b.team}</span>
           {results.length > 0 && (
             <span className="text-[11px] text-gray-500 dark:text-gray-400 ml-3">
@@ -2355,6 +2374,9 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
           ))}
 
           <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
+            BP round grades are on a fixed scale calibrated to this corpus (avg EV 40%, hard-hit
+            rate 30%, sweet-spot rate 30%; 5+ tracked balls required), so an A means a genuinely
+            loud round, not just the best of that day. Avg LA colors green in the 8-22 degree band.
             Click any dot on a movement plot to re-tag that pitch — overrides win everywhere (labs,
             leaderboards, grades), not just here. Each card is one player's session sheet — the PDF button saves it as its own page, and the
             All-PDFs button renders every card into one document (one player per page). Bullpen sessions

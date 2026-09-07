@@ -2308,6 +2308,23 @@ def trackman_batter_detail(
             "splits": splits}
 
 
+def _bp_grade(avg_ev, hh_pct, ss_pct):
+    """Letter grade for one BP round, calibrated on this corpus's 48 BP
+    rounds (median score 57 = C+, p90 = A). Avg EV 40%, hard-hit rate 30%,
+    sweet-spot rate 30% — absolute scales, not graded on a curve."""
+    if avg_ev is None:
+        return None
+    ev_s = max(0.0, min(100.0, (avg_ev - 68) / 26 * 100))
+    hh_s = max(0.0, min(100.0, (hh_pct or 0) * 1.6))
+    ss_s = max(0.0, min(100.0, (ss_pct or 0) * 1.8))
+    score = 0.4 * ev_s + 0.3 * hh_s + 0.3 * ss_s
+    for cut, g in ((93, "A+"), (86, "A"), (79, "A-"), (72, "B+"), (65, "B"),
+                   (58, "B-"), (50, "C+"), (42, "C"), (34, "C-"), (27, "D+"), (20, "D")):
+        if score >= cut:
+            return {"grade": g, "score": round(score)}
+    return {"grade": "D-", "score": round(score)}
+
+
 _STRIKE_CALLS = ("StrikeCalled", "StrikeSwinging", "InPlay",
                  "FoulBall", "FoulBallFieldable", "FoulBallNotFieldable")
 
@@ -2340,7 +2357,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
                       balls, strikes, inning, top_bottom, pa_of_inning,
                       rel_speed, spin_rate, rel_height, rel_side, extension,
                       ivb, horz_break, plate_loc_height, plate_loc_side, vaa,
-                      exit_speed, launch_angle, distance, bearing, contact_x,
+                      exit_speed, launch_angle, distance, bearing, direction, contact_x,
                       is_swing, is_whiff, is_in_zone
                FROM tm_pitches
                WHERE session_id = %s AND owner_user_id = %s
@@ -2363,7 +2380,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
     for r in rows:
         for k in ("rel_speed", "spin_rate", "rel_height", "rel_side", "extension",
                   "ivb", "horz_break", "plate_loc_height", "plate_loc_side", "vaa",
-                  "exit_speed", "launch_angle", "distance", "bearing", "contact_x"):
+                  "exit_speed", "launch_angle", "distance", "bearing", "direction", "contact_x"):
             r[k] = float(r[k]) if r[k] is not None else None
         cls = r["class_pitch_type"]
         r["ptype"] = (r["override_pitch_type"]
@@ -2445,6 +2462,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
 
     # ── batters (skipped for bullpens: the batter tag is a placeholder) ──
     batters = []
+    is_bp = sess["session_type"] == "bp"
     if not is_pen:
         B = {}
         for r in rows:
@@ -2472,6 +2490,22 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             for r in rs:
                 if r["play_result"]:
                     res[r["play_result"]] = res.get(r["play_result"], 0) + 1
+            hand = (b["side"] or "")[:1]
+            air = pull_air = 0
+            for r in evr:
+                la = r["launch_angle"]
+                if la is not None and la >= 10:
+                    air += 1
+                    if r["direction"] is not None and hand in ("L", "R"):
+                        if r["direction"] * (1.0 if hand == "L" else -1.0) >= 10:
+                            pull_air += 1
+            n_bbe = len(evs)
+            hh = sum(1 for v in evs if v >= 90)
+            ss = sum(1 for r in evr if r["launch_angle"] is not None
+                     and 8 <= r["launch_angle"] <= 32)
+            grade = None
+            if is_bp and n_bbe >= 5:
+                grade = _bp_grade(_avg(evs), 100 * hh / n_bbe, 100 * ss / n_bbe)
             batters.append({
                 "batter": name, "side": b["side"], "team": b["team"],
                 "pa": len({(r["inning"], r["top_bottom"], r["pa_of_inning"]) for r in rs
@@ -2485,7 +2519,10 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
                 "chase_pct": _pct(sum(1 for r in oz if r["is_swing"]), len(oz)) if len(oz) >= 3 else None,
                 "bbe": len(evs), "avg_ev": _avg(evs),
                 "max_ev": round(max(evs), 1) if evs else None,
-                "hard_hit": sum(1 for v in evs if v >= 90),
+                "hard_hit": hh,
+                "sweet_spot_pct": round(100 * ss / n_bbe, 1) if n_bbe else None,
+                "airpull_pct": round(100 * pull_air / air, 1) if air >= 5 else None,
+                "bp_grade": grade,
                 "barrels": sum(1 for r in evr
                                if r["exit_speed"] >= 95 and r["launch_angle"] is not None
                                and 8 <= r["launch_angle"] <= 32),
