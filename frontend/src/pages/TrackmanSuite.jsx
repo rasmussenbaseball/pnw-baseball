@@ -876,6 +876,26 @@ function PctlBar({ label, value, pctl, unit = '' }) {
   )
 }
 
+// Convex hull (monotone chain) of [x, y] screen points — the shaded
+// outline drawn around each pitch type's movement cluster.
+function hullOf(pts) {
+  const P = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  if (P.length < 3) return null
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+  const lower = []
+  for (const q of P) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop()
+    lower.push(q)
+  }
+  const upper = []
+  for (let i = P.length - 1; i >= 0; i--) {
+    const q = P[i]
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop()
+    upper.push(q)
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1))
+}
+
 // Movement plot, catcher's view: HB on x (arm-side +), IVB on y.
 // Dots are clickable when onPick is provided (per-pitch re-tagging).
 function MovementPlot({ pitches, onPick, selectedId, arm }) {
@@ -923,6 +943,20 @@ function MovementPlot({ pitches, onPick, selectedId, arm }) {
           <title>Expected fastball movement axis from the arm angle — distance off this line is movement the slot alone doesn't explain (seam effects, cut, sink)</title>
         </g>
       )}
+      {Object.entries(byType).map(([t, ps]) => {
+        const pts = ps.map(q => [sx(Math.max(-R, Math.min(R, q.horz_break))), sy(Math.max(-R, Math.min(R, q.ivb)))])
+        const hull = hullOf(pts)
+        if (!hull) return null
+        const cx = pts.reduce((a, q) => a + q[0], 0) / pts.length
+        const cy = pts.reduce((a, q) => a + q[1], 0) / pts.length
+        const padded = hull.map(([x, y]) => {
+          const dx = x - cx, dy = y - cy
+          const d = Math.hypot(dx, dy) || 1
+          return `${x + (dx / d) * 7},${y + (dy / d) * 7}`
+        }).join(' ')
+        return <polygon key={'hull' + t} points={padded} fill={cFor(t)} opacity="0.12"
+          stroke={cFor(t)} strokeOpacity="0.55" strokeWidth="1.5" strokeLinejoin="round" />
+      })}
       {Object.entries(byType).map(([t, ps]) => ps.map((p, i) => (
         <circle key={t + i} cx={sx(Math.max(-R, Math.min(R, p.horz_break)))} cy={sy(Math.max(-R, Math.min(R, p.ivb)))}
           r={p.pitch_id === selectedId ? 5 : 3} fill={cFor(t)}
@@ -932,15 +966,6 @@ function MovementPlot({ pitches, onPick, selectedId, arm }) {
           style={onPick ? { cursor: 'pointer' } : undefined}
           onClick={onPick ? () => onPick(p) : undefined} />
       )))}
-      {Object.entries(byType).map(([t, ps]) => {
-        const mx = ps.reduce((a, p) => a + p.horz_break, 0) / ps.length
-        const my = ps.reduce((a, p) => a + p.ivb, 0) / ps.length
-        return (
-          <g key={t}>
-            <circle cx={sx(mx)} cy={sy(my)} r="7" fill={cFor(t)} stroke="#fff" strokeWidth="2" />
-          </g>
-        )
-      })}
       <text x={W - 10} y={sy(0) - 6} textAnchor="end" fontSize="9" fill="#9ca3af">HB (in) →</text>
       <text x={sx(0) + 6} y="16" fontSize="9" fill="#9ca3af">IVB (in) ↑</text>
     </svg>
