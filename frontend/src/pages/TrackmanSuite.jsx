@@ -1963,7 +1963,23 @@ function TypeLegend({ types }) {
 }
 
 // One pitcher's full session sheet — sized to read as a one-page report.
-function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy }) {
+function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) {
+  const [typeFilter, setTypeFilter] = useState(null)
+  const [picked, setPicked] = useState(null)
+  const allDots = p.pitches_detail || []
+  const dots = typeFilter ? allDots.filter(d => d.ptype === typeFilter) : allDots
+
+  async function retag(pitchType) {
+    if (!picked) return
+    await fetch(`/api/v1/trackman/pitches/${picked.pitch_id}/type`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({ pitch_type: pitchType }),
+    })
+    setPicked(null)
+    if (onRetag) onRetag()
+  }
+
   const chips = [
     ['Pitches', p.pitches],
     ...(!isPen && p.bf ? [['Batters faced', p.bf]] : []),
@@ -2035,16 +2051,58 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy }) {
           </tbody>
         </table>
       </div>
+      <div data-html2canvas-ignore="true" className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mr-1">Filter</span>
+        {[null, ...(p.types || []).map(t => t.type)].map(t => (
+          <button key={t || 'all'} onClick={() => setTypeFilter(t)}
+            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 inline-flex items-center gap-1 ${
+              typeFilter === t ? 'bg-portal-purple text-white ring-portal-purple'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 ring-gray-200 dark:ring-gray-700 hover:ring-portal-purple'}`}>
+            {t && <span className="w-2 h-2 rounded-full inline-block" style={{ background: cFor(t) }} />}
+            {t || 'All pitches'}
+          </button>
+        ))}
+        <span className="text-[10px] text-gray-400 ml-auto">click a movement dot to re-tag</span>
+      </div>
       <div className="grid grid-cols-3 gap-3">
-        {[['Movement', <MovementPlot key="m" pitches={p.pitches_detail || []} />],
-          ['Locations', <LocScatter key="l" pitches={p.pitches_detail || []} />],
-          ['Release', <ReleasePlot key="r" pitches={p.pitches_detail || []} />]].map(([t, el]) => (
+        {[['Movement', <MovementPlot key="m" pitches={dots} selectedId={picked?.pitch_id}
+            onPick={(d) => setPicked(picked?.pitch_id === d.pitch_id ? null : d)} />],
+          ['Locations', <LocScatter key="l" pitches={dots} />],
+          ['Release', <ReleasePlot key="r" pitches={dots} />]].map(([t, el]) => (
           <div key={t}>
             <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1 text-center">{t}</div>
             {el}
           </div>
         ))}
       </div>
+      {picked && (
+        <div data-html2canvas-ignore="true" className="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-2.5">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">
+            Selected: <b>{picked.ptype || '?'}</b>
+            {picked.velo != null && ` · ${Number(picked.velo).toFixed(1)} mph`}
+            {picked.ivb != null && ` · ${Number(picked.ivb).toFixed(1)}" IVB`}
+            {picked.horz_break != null && ` · ${Number(picked.horz_break).toFixed(1)}" HB`}
+            {picked.tagged_pitch_type && picked.tagged_pitch_type !== picked.ptype &&
+              ` · tagged ${picked.tagged_pitch_type}`}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {['Fastball', 'Sinker', 'Cutter', 'Slider', 'Sweeper', 'Curveball', 'ChangeUp', 'Splitter'].map(t => (
+              <button key={t} onClick={() => retag(t)}
+                className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${
+                  t === picked.ptype ? 'bg-portal-purple text-white ring-portal-purple'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 ring-gray-200 dark:ring-gray-700 hover:ring-portal-purple'}`}>
+                {t}
+              </button>
+            ))}
+            {picked.override_pitch_type && (
+              <button onClick={() => retag(null)}
+                className="px-2 py-0.5 rounded-full text-[11px] font-semibold text-rose-600 ring-1 ring-rose-200 dark:ring-rose-800">
+                Clear override
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <TypeLegend types={p.types || []} />
     </div>
   )
@@ -2136,7 +2194,7 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy }) {
 function SessionsTab({ overview, season, sessionId, setSessionId }) {
   const sessions = (overview?.sessions || []).filter(x => !season || seasonOf(x.session_date) === season)
   const active = sessionId || sessions[0]?.id
-  const { data, loading } = useApi(active ? `/trackman/sessions/${active}/review` : null, {}, [active])
+  const { data, loading, refetch } = useApi(active ? `/trackman/sessions/${active}/review` : null, {}, [active])
   const sess = data?.session
   const isPen = !!data?.is_bullpen
   const [mode, setMode] = useState('pitching')
@@ -2234,7 +2292,7 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
           {players.map(pl => view === 'pitching' ? (
             <PitcherSessionCard key={keyOf(pl)} p={pl} sess={sess} isPen={isPen}
               innerRef={el => { cardRefs.current[keyOf(pl)] = el }}
-              onPdf={() => onePdf(pl)} busy={busyKey === keyOf(pl)} />
+              onPdf={() => onePdf(pl)} busy={busyKey === keyOf(pl)} onRetag={refetch} />
           ) : (
             <BatterSessionCard key={keyOf(pl)} b={pl} sess={sess}
               innerRef={el => { cardRefs.current[keyOf(pl)] = el }}
@@ -2242,7 +2300,8 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
           ))}
 
           <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
-            Each card is one player's session sheet — the PDF button saves it as its own page, and the
+            Click any dot on a movement plot to re-tag that pitch — overrides win everywhere (labs,
+            leaderboards, grades), not just here. Each card is one player's session sheet — the PDF button saves it as its own page, and the
             All-PDFs button renders every card into one document (one player per page). Bullpen sessions
             show pitch design only: TrackMan tags a placeholder hitter, so batter stats, whiffs and
             results are not real there. RV on hitter cards is corpus-centered run value for this

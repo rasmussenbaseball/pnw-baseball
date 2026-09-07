@@ -2334,7 +2334,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
         is_pen = sess["session_type"] == "bullpen"
 
         cur.execute(
-            """SELECT pitcher, pitcher_throws, pitcher_team, batter, batter_side, batter_team,
+            """SELECT id AS pitch_id, pitcher, pitcher_throws, pitcher_team, batter, batter_side, batter_team,
                       override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type,
                       pitch_call, k_or_bb, play_result, tagged_hit_type,
                       balls, strikes, inning, top_bottom, pa_of_inning,
@@ -2432,10 +2432,13 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             "hh_against": sum(1 for v in evs if v >= 90),
             "types": types,
             "pitches_detail": [
-                {"ptype": r["ptype"], "horz_break": r["horz_break"], "ivb": r["ivb"],
+                {"pitch_id": r["pitch_id"], "ptype": r["ptype"],
+                 "horz_break": r["horz_break"], "ivb": r["ivb"],
                  "rel_side": r["rel_side"], "rel_height": r["rel_height"],
                  "x": r["plate_loc_side"], "z": r["plate_loc_height"],
-                 "velo": r["rel_speed"], "call": r["pitch_call"]}
+                 "velo": r["rel_speed"], "call": r["pitch_call"],
+                 "tagged_pitch_type": r["tagged_pitch_type"],
+                 "override_pitch_type": r["override_pitch_type"]}
                 for r in rs],
         })
     pitchers.sort(key=lambda x: (x["team"] or "", -x["pitches"]))
