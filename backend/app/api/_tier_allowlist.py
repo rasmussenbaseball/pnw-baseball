@@ -52,6 +52,7 @@ COMMITMENT_EDITOR_EMAILS = {
 }
 
 COMPED_COACH_EMAILS = {
+    "n.g.hernandez19@tcu.edu",  # Sept 7, 2026 (per Nate)
     "ethan.stacy@gmail.com",
     "jhussey1703@gmail.com",
     "dylanthomasha@gmail.com",
