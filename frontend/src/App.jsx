@@ -316,6 +316,7 @@ const PnwGrid = lazyWithRetry(() => import('./pages/PnwGrid'))  // ~1,050 lines,
 import TopMoments from './pages/TopMoments'
 const AllConferenceGenerator = lazyWithRetry(() => import('./pages/AllConferenceGenerator'))
 import AuthPage from './pages/AuthPage'
+import ResetPassword from './pages/ResetPassword'
 import FavoritesPage from './pages/FavoritesPage'
 import FeatureRequest from './pages/FeatureRequest'
 const PlayerGraphic = lazyWithRetry(() => import('./pages/PlayerGraphic'))
@@ -653,6 +654,7 @@ export default function App() {
 
           {/* Auth & Favorites */}
           <Route path="/login" element={<AuthPage />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/favorites" element={<FavoritesPage />} />
 
           {/* Legacy route: redirect old / batting path */}

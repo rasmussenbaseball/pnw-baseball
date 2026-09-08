@@ -3,20 +3,37 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function AuthPage() {
-  const [mode, setMode] = useState('login') // 'login' | 'signup'
+  const [mode, setMode] = useState('login') // 'login' | 'signup' | 'forgot'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, resetPassword } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setMessage('')
+
+    if (mode === 'forgot') {
+      if (!email) {
+        setError('Enter the email on your account.')
+        return
+      }
+      setLoading(true)
+      try {
+        await resetPassword(email)
+        setMessage('Reset link sent. Check your email (and spam folder), then follow the link to set a new password.')
+      } catch (err) {
+        setError(err.message || 'Something went wrong.')
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
 
     if (!email || !password) {
       setError('Please fill in all fields.')
@@ -56,11 +73,13 @@ export default function AuthPage() {
     <div className="max-w-md mx-auto mt-12">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
         <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1 text-center">
-          {mode === 'login' ? 'Log In' : 'Create Account'}
+          {mode === 'login' ? 'Log In' : mode === 'forgot' ? 'Reset Password' : 'Create Account'}
         </h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 text-center mb-6">
           {mode === 'login'
             ? 'Sign in to follow teams and players.'
+            : mode === 'forgot'
+            ? 'We will email you a link to set a new password.'
             : 'Sign up to unlock favorites and more.'}
         </p>
 
@@ -91,19 +110,32 @@ export default function AuthPage() {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600
-                         bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-nw-teal/30 focus:border-nw-teal"
-              placeholder={mode === 'signup' ? 'At least 6 characters' : ''}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            />
-          </div>
+          {mode !== 'forgot' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600
+                           bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-nw-teal/30 focus:border-nw-teal"
+                placeholder={mode === 'signup' ? 'At least 6 characters' : ''}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              />
+              {mode === 'login' && (
+                <div className="text-right mt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setMode('forgot'); setError(''); setMessage('') }}
+                    className="text-xs text-nw-teal hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {mode === 'signup' && (
             <div>
@@ -130,12 +162,21 @@ export default function AuthPage() {
               ? 'Please wait...'
               : mode === 'login'
               ? 'Log In'
+              : mode === 'forgot'
+              ? 'Send Reset Link'
               : 'Create Account'}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
-          {mode === 'login' ? (
+          {mode === 'forgot' ? (
+            <button
+              onClick={() => { setMode('login'); setError(''); setMessage('') }}
+              className="text-nw-teal font-medium hover:underline"
+            >
+              Back to log in
+            </button>
+          ) : mode === 'login' ? (
             <>
               Don't have an account?{' '}
               <button

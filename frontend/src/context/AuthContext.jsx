@@ -45,9 +45,16 @@ export function AuthProvider({ children }) {
 
     // Listen for auth changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, s) => {
+      (event, s) => {
         setSession(s)
         setRealUser(s?.user ?? null)
+        // A password-recovery email link lands on the homepage with a
+        // recovery session; send the user straight to the set-a-new-password
+        // form (window.location because this provider sits above the router).
+        if (event === 'PASSWORD_RECOVERY' &&
+            window.location.pathname !== '/reset-password') {
+          window.location.assign('/reset-password')
+        }
       }
     )
 
@@ -79,6 +86,20 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
+  // Sends the Supabase recovery email. No redirectTo: the link opens the
+  // site root, where the PASSWORD_RECOVERY event above routes to the form.
+  const resetPassword = async (email) => {
+    if (!supabase) throw new Error('Auth not configured')
+    const { error } = await supabase.auth.resetPasswordForEmail(email)
+    if (error) throw error
+  }
+
+  const updatePassword = async (password) => {
+    if (!supabase) throw new Error('Auth not configured')
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) throw error
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -89,6 +110,8 @@ export function AuthProvider({ children }) {
         signUp,
         signIn,
         signOut,
+        resetPassword,
+        updatePassword,
       }}
     >
       {children}
