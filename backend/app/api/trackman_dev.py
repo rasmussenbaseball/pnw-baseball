@@ -31,8 +31,10 @@ from fastapi import APIRouter, Depends, Query
 from ..models.database import get_connection
 from ..stats.trackman_runvalue import pitch_run_value
 from ..stats.trackman_xstats import xwobacon
+from pydantic import BaseModel
+
 from .trackman_suite import (
-    _gate, _season_clause, _rv_baseline, _NO_MISTAG,
+    _gate, _write_gate, _season_clause, _rv_baseline, _NO_MISTAG,
     trackman_defense, trackman_catching, trackman_hitting_board,
 )
 
@@ -868,6 +870,14 @@ def hitter_dev(team: str | None = Query(None),
     for r in blast_rows:
         blast.setdefault(_norm_name(r["player"]), {})[r["kind"]] = dict(r)
 
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_measurables(cur)
+        cur.execute("SELECT player, height_in, weight_lb, thirty_yd FROM tm_measurables WHERE owner_user_id = %s",
+                    (owner,))
+        meas = {_norm_name(r["player"]): dict(r) for r in cur.fetchall()}
+        conn.commit()
+
     # Assemble per hitter (anything with 10+ BP or live BBE qualifies).
     hitters = []
     for name, b in bp.items():
@@ -877,7 +887,8 @@ def hitter_dev(team: str | None = Query(None),
         a, pk = bl.get("avg"), bl.get("p95")
         lv = live.get(name)
         hitters.append({"batter": name, "side": b.get("side"), "team": b.get("team"),
-                        "bp": b, "live": lv, "blast": a, "blast_p95": pk})
+                        "bp": b, "live": lv, "blast": a, "blast_p95": pk,
+                        "meas": meas.get(_norm_name(name))})
     if not hitters:
         return {"hitters": []}
 
@@ -893,6 +904,25 @@ def hitter_dev(team: str | None = Query(None),
             h["smash"] = None
     ttcs = [h["blast"]["ttc"] for h in hitters if h["blast"] and h["blast"].get("ttc") is not None]
     smash_med = sorted(smashes)[len(smashes) // 2] if smashes else None
+
+    # Bat speed expected from body weight: least-squares fit on this corpus
+    # when there are enough (weight, speed) pairs, else a college rule of
+    # thumb (~45 mph base + 0.115 mph per pound).
+    pairs = [(h["meas"]["weight_lb"], h["blast"]["bat_speed"]) for h in hitters
+             if h.get("meas") and h["meas"].get("weight_lb") and h["blast"] and h["blast"].get("bat_speed")]
+    slope, icept = 0.115, 45.0
+    if len(pairs) >= 8:
+        n = len(pairs)
+        mx = sum(w for w, _ in pairs) / n
+        my = sum(v for _, v in pairs) / n
+        den = sum((w - mx) ** 2 for w, _ in pairs)
+        if den > 0:
+            fit = sum((w - mx) * (v - my) for w, v in pairs) / den
+            if 0.03 <= fit <= 0.25:  # sanity clamp: tiny corpora fit noise
+                slope, icept = fit, my - fit * mx
+
+    def _expected_speed(wt):
+        return icept + slope * wt
 
     out = []
     for h in hitters:
@@ -933,6 +963,22 @@ def hitter_dev(team: str | None = Query(None),
                 f"Squeezes everything from the swing (smash {h['smash']}, team median {smash_med}) "
                 f"but the engine is {a['bat_speed']:.0f} mph — the ceiling is physical. "
                 "Overload/underload bat speed training + strength program is the fruit.", 3)
+
+        # 3b) Size-aware capacity: judged against his own frame
+        m = h.get("meas") or {}
+        wt = m.get("weight_lb")
+        if wt and a and a.get("bat_speed") is not None:
+            exp = _expected_speed(wt)
+            diff = a["bat_speed"] - exp
+            if diff <= -4:
+                add("Strength to size",
+                    f"At {wt:.0f} lb the frame should swing ~{exp:.0f} mph and he's at "
+                    f"{a['bat_speed']:.0f} — the body is not transferring. Force production "
+                    "(med ball, rotational power) and swing intent before anything technical.", 3)
+            elif diff >= 4 and wt <= 185:
+                add("Add good weight",
+                    f"Out-swinging a {wt:.0f} lb frame by ~{diff:.0f} mph — a great mover with a "
+                    "small chassis. Adding strength-and-mass raises the ceiling without touching the swing.", 10)
 
         # 4) On-plane efficiency
         if a and a.get("ope") is not None and a["ope"] < 60:
@@ -1027,7 +1073,70 @@ def hitter_dev(team: str | None = Query(None),
             "gb_pct": b.get("gb_pct"), "hh_pct": b.get("hh_pct"), "barrel_pct": b.get("barrel_pct"),
             "bbe": b.get("bbe"),
             "ev_pctl": ev_p, "speed_pctl": sp_p,
+            "height_in": (h.get("meas") or {}).get("height_in"),
+            "weight_lb": (h.get("meas") or {}).get("weight_lb"),
+            "thirty_yd": (h.get("meas") or {}).get("thirty_yd"),
             "points": pts[:4],
         })
     out.sort(key=lambda x: -(x["avg_ev"] or 0))
     return {"hitters": out, "smash_median": smash_med}
+
+
+# ── Physical measurables (height/weight/speed per player) ────────
+
+def _ensure_measurables(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tm_measurables (
+            id            SERIAL PRIMARY KEY,
+            owner_user_id UUID NOT NULL,
+            player        TEXT NOT NULL,
+            height_in     REAL,
+            weight_lb     REAL,
+            thirty_yd     REAL,
+            updated_at    TIMESTAMPTZ DEFAULT now(),
+            UNIQUE (owner_user_id, player)
+        )
+    """)
+    cur.execute("ALTER TABLE tm_measurables ENABLE ROW LEVEL SECURITY")
+
+
+@router.get("/trackman/measurables")
+def get_measurables(owner: str = Depends(_gate)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_measurables(cur)
+        cur.execute("SELECT player, height_in, weight_lb, thirty_yd FROM tm_measurables WHERE owner_user_id = %s",
+                    (owner,))
+        rows = {r["player"]: dict(r) for r in cur.fetchall()}
+        conn.commit()
+    return {"measurables": rows}
+
+
+class MeasurableRow(BaseModel):
+    player: str
+    height_in: float | None = None
+    weight_lb: float | None = None
+    thirty_yd: float | None = None
+
+
+class MeasurablesBody(BaseModel):
+    players: list[MeasurableRow]
+
+
+@router.post("/trackman/measurables")
+def save_measurables(body: MeasurablesBody, owner: str = Depends(_write_gate)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_measurables(cur)
+        for r in body.players:
+            if not r.player.strip():
+                continue
+            cur.execute("""
+                INSERT INTO tm_measurables (owner_user_id, player, height_in, weight_lb, thirty_yd)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (owner_user_id, player) DO UPDATE SET
+                    height_in = EXCLUDED.height_in, weight_lb = EXCLUDED.weight_lb,
+                    thirty_yd = EXCLUDED.thirty_yd, updated_at = now()
+            """, (owner, r.player.strip(), r.height_in, r.weight_lb, r.thirty_yd))
+        conn.commit()
+    return {"status": "ok", "saved": len(body.players)}

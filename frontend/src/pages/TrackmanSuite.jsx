@@ -2669,11 +2669,105 @@ const QUAD_CLS = {
   'Developing': 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
 }
 
+// "6'2", "6-2", "6 2" or plain inches -> inches; blank -> null.
+function parseHeight(v) {
+  const t = String(v || '').trim().replace(/"/g, '')
+  if (!t) return null
+  const m = t.match(/^(\d)\s*['\-\s]\s*(\d{1,2})$/)
+  if (m) return Number(m[1]) * 12 + Number(m[2])
+  const n = Number(t)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+const fmtHeight = v => v == null ? '' : `${Math.floor(v / 12)}'${Math.round(v % 12)}"`
+
+// Inline height/weight/speed editor feeding the size-aware dev rules.
+function MeasurablesEditor({ hitters, onSaved }) {
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState(null)   // {player: {ht, wt, run}} as strings
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
+
+  function start() {
+    setRows(Object.fromEntries(hitters.map(h => [h.batter, {
+      ht: h.height_in != null ? fmtHeight(h.height_in) : '',
+      wt: h.weight_lb != null ? String(Math.round(h.weight_lb)) : '',
+      run: h.thirty_yd != null ? String(h.thirty_yd) : '',
+    }])))
+    setOpen(true)
+  }
+
+  async function save() {
+    setBusy(true); setNote('')
+    try {
+      const players = Object.entries(rows).map(([player, r]) => ({
+        player,
+        height_in: parseHeight(r.ht),
+        weight_lb: r.wt ? Number(r.wt) || null : null,
+        thirty_yd: r.run ? Number(r.run) || null : null,
+      }))
+      const res = await fetch('/api/v1/trackman/measurables', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ players }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`)
+      setNote('Saved'); setOpen(false)
+      onSaved()
+    } catch (e) { setNote(e.message) } finally { setBusy(false) }
+  }
+
+  if (!open) {
+    return (
+      <button data-html2canvas-ignore="true" onClick={start}
+        className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
+        {note === 'Saved' ? 'Saved ✓ · ' : ''}Edit measurables
+      </button>
+    )
+  }
+  return (
+    <div data-html2canvas-ignore="true" className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4 w-full">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+          Physical measurables — height, weight, 30-yd
+        </span>
+        <div className="flex items-center gap-2">
+          {note && note !== 'Saved' && <span className="text-xs text-rose-600">{note}</span>}
+          <button onClick={() => setOpen(false)} className="text-[12px] font-semibold text-gray-400 hover:underline">Cancel</button>
+          <button onClick={save} disabled={busy}
+            className="px-3 py-1.5 rounded-lg bg-portal-purple text-portal-cream text-[12px] font-bold hover:opacity-90 disabled:opacity-50">
+            {busy ? 'Saving…' : 'Save all'}
+          </button>
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5">
+        {hitters.map(h => (
+          <div key={h.batter} className="flex items-center gap-1.5 text-[12px]">
+            <span className="w-32 truncate font-semibold text-gray-700 dark:text-gray-200">{h.batter}</span>
+            <input value={rows[h.batter]?.ht || ''} placeholder={'6\'2'}
+              onChange={e => setRows(r => ({ ...r, [h.batter]: { ...r[h.batter], ht: e.target.value } }))}
+              className="w-14 rounded border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-1.5 py-0.5 text-right" />
+            <input value={rows[h.batter]?.wt || ''} placeholder="195"
+              onChange={e => setRows(r => ({ ...r, [h.batter]: { ...r[h.batter], wt: e.target.value } }))}
+              className="w-14 rounded border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-1.5 py-0.5 text-right" />
+            <input value={rows[h.batter]?.run || ''} placeholder="3.9s"
+              onChange={e => setRows(r => ({ ...r, [h.batter]: { ...r[h.batter], run: e.target.value } }))}
+              className="w-14 rounded border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-1.5 py-0.5 text-right" />
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-400 mt-2">
+        Height accepts 6'2, 6-2 or plain inches; weight in pounds; 30-yd dash in seconds. Blanks are fine —
+        weight is what powers the strength-to-size rules.
+      </p>
+    </div>
+  )
+}
+
 function HitterDevTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
   const [selected, setSelected] = useState('')
-  const { data, loading } = useApi('/trackman/hitter-dev', { ...(team ? { team } : {}), season }, [team])
+  const { data, loading, refetch } = useApi('/trackman/hitter-dev', { ...(team ? { team } : {}), season }, [team])
   const hitters = data?.hitters || []
   const shown = selected ? hitters.filter(h => h.batter === selected) : hitters
 
@@ -2698,6 +2792,7 @@ function HitterDevTab({ teamCtx, season }) {
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> :
        hitters.length === 0 ? <div className="p-10 text-center text-sm text-gray-400">Needs 10+ tracked BP balls per hitter — upload BP sessions first.</div> : (
         <div ref={exportRef} className="space-y-3">
+          <div className="flex justify-end"><MeasurablesEditor hitters={hitters} onSaved={refetch} /></div>
           <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
             <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">
               Engine vs result — where each swing lives
@@ -2720,6 +2815,9 @@ function HitterDevTab({ teamCtx, season }) {
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${QUAD_CLS[h.quadrant] || ''}`}>{h.quadrant}</span>
                 )}
                 <span className="ml-auto text-[11px] text-gray-400 tabular-nums">
+                  {h.height_in != null || h.weight_lb != null
+                    ? `${h.height_in != null ? fmtHeight(h.height_in) : ''}${h.height_in != null && h.weight_lb != null ? ' / ' : ''}${h.weight_lb != null ? `${Math.round(h.weight_lb)} lb` : ''}${h.thirty_yd != null ? ` / ${h.thirty_yd}s` : ''} · `
+                    : ''}
                   {h.bat_speed != null ? `bat ${h.bat_speed}${h.peak_bat_speed ? `/${h.peak_bat_speed}` : ''} mph · ` : ''}
                   {h.smash != null ? `smash ${h.smash} · ` : ''}
                   EV {h.avg_ev ?? '–'} · LA {h.avg_la ?? '–'} · GB {h.gb_pct ?? '–'}%
