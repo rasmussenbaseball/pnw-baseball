@@ -144,3 +144,41 @@ export async function saveNodeAsImage(node, filename = 'report') {
     }, 'image/png')
   })
 }
+
+
+// ── CSV export ───────────────────────────────────────────────────
+export function downloadCsvText(text, filename = 'data') {
+  const blob = new Blob(['\ufeff' + text], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `${filename}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+// Serialize every <table> inside a node into one CSV. Multi-table views get
+// a section label per table, taken from the first text line of the table's
+// card (a board title, or a player's name on session sheets).
+export function saveNodeAsCsv(node, filename = 'data') {
+  if (!node) return
+  const tables = [...node.querySelectorAll('table')]
+  if (!tables.length) return
+  const esc = (v) => {
+    const t = String(v ?? '').replace(/\s+/g, ' ').trim()
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
+  }
+  const lines = []
+  tables.forEach((tbl, i) => {
+    if (tables.length > 1) {
+      const card = tbl.closest('.rounded-xl')
+      const label = card ? (card.innerText || '').split('\n').map(l => l.trim()).filter(Boolean)[0] : ''
+      lines.push(esc(label || `Table ${i + 1}`))
+    }
+    tbl.querySelectorAll('tr').forEach(tr => {
+      const cells = [...tr.querySelectorAll('th,td')].map(c => esc(c.innerText))
+      if (cells.some(c => c !== '')) lines.push(cells.join(','))
+    })
+    lines.push('')
+  })
+  downloadCsvText(lines.join('\n'), filename)
+}

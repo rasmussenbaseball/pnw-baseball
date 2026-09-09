@@ -17,7 +17,7 @@ import { useApi } from '../hooks/useApi'
 import { supabase } from '../lib/supabase'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import ReportActions from '../components/ReportActions'
-import { saveNodeAsPdf, saveNodesAsPdf } from '../lib/reportExport'
+import { saveNodeAsPdf, saveNodesAsPdf, saveNodeAsCsv, downloadCsvText } from '../lib/reportExport'
 import StaffManager from '../components/portal/StaffManager'
 import TrackmanGlossary from '../components/portal/TrackmanGlossary'
 import { toneAttr } from '../lib/reportExport'
@@ -245,6 +245,7 @@ function EmptyNudge({ onGo }) {
 // ── Overview & Upload ────────────────────────────────────────────
 
 function OverviewTab({ overview, refetch, onReview, season }) {
+  const libRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [report, setReport] = useState(null)
   const inputRef = useRef(null)
@@ -345,9 +346,13 @@ function OverviewTab({ overview, refetch, onReview, season }) {
       <StaffManager />
 
       {/* Session library */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
-          Session library
+      <div ref={libRef} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Session library</span>
+          <button onClick={() => saveNodeAsCsv(libRef.current, 'trackman_sessions')}
+            className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
+            Save CSV
+          </button>
         </div>
         {sessions.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">No sessions yet.</div>
@@ -425,6 +430,7 @@ function OverviewTab({ overview, refetch, onReview, season }) {
 const CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['bullpen', 'Bullpens'], ['all', 'Everything']]
 
 function PitchingTab({ onOpenLab, teamCtx, season }) {
+  const exportRef = useRef(null)
   const [context, setContext] = useState('live')
   const [ptype, setPtype] = useState('')
   const [vsSide, setVsSide] = useState('')
@@ -469,11 +475,15 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
           <option value="">All pitch types</option>
           {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
-        <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
+        <div className="ml-auto flex items-center gap-2">
+          <ReportActions csv targetRef={exportRef} filename={`trackman_pitching_${context}`} />
+          <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+        </div>
       </div>
 
-      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> :
-        shown.map(p => (
+      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : (
+        <div ref={exportRef} className="space-y-3">
+        {shown.map(p => (
           <div key={`${p.pitcher}-${p.team}`} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
             <div className="px-4 py-2.5 flex items-center gap-2 border-b border-gray-100 dark:border-gray-700">
               <span className="font-bold text-gray-900 dark:text-gray-100">{p.pitcher}</span>
@@ -558,6 +568,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
             </div>
           </div>
         ))}
+        </div>)}
       {!loading && shown.length === 0 && (
         <div className="text-sm text-gray-400 p-6 text-center">No pitching data in this context.</div>
       )}
@@ -716,7 +727,7 @@ function HittingTab({ teamCtx, season }) {
         </select>
         <DateRange value={dates} onChange={setDates} />
         <div className="ml-auto flex items-center gap-2">
-          <ReportActions targetRef={exportRef} filename={`hitting_${context}_${dates.from || 'all'}`} />
+          <ReportActions csv targetRef={exportRef} filename={`hitting_${context}_${dates.from || 'all'}`} />
           <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
         </div>
       </div>
@@ -1382,7 +1393,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
           </Link>
         )}
         {data && <span className="ml-auto text-xs text-gray-400 tabular-nums">{data.pitch_count} pitches</span>}
-        {data && <ReportActions targetRef={exportRef} filename={`trackman_${(active || 'pitcher').replace(/[^a-z]+/gi, '_').toLowerCase()}`} />}
+        {data && <ReportActions csv targetRef={exportRef} filename={`trackman_${(active || 'pitcher').replace(/[^a-z]+/gi, '_').toLowerCase()}`} />}
       </div>
 
       {loading && <div className="text-sm text-gray-400 p-6 text-center">Loading…</div>}
@@ -1518,6 +1529,18 @@ function LeaderboardsTab({ teamCtx, season }) {
   const { data, loading } = useApi('/trackman/leaderboards', { side, context, team: team || undefined, season })
   const boards = data?.boards || {}
 
+  function boardsCsv() {
+    const esc = v => /[",\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? '')
+    const lines = []
+    Object.values(boards).forEach(b => {
+      lines.push(esc(b.label))
+      lines.push('rank,name,team,value')
+      ;(b.rows || []).forEach((r, i) => lines.push([i + 1, esc(r.name), esc(r.team), r.value].join(',')))
+      lines.push('')
+    })
+    downloadCsvText(lines.join('\n'), `trackman_leaders_${side}_${context}`)
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -1538,7 +1561,13 @@ function LeaderboardsTab({ teamCtx, season }) {
             {label}
           </button>
         ))}
-        <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} /></div>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={boardsCsv}
+            className="px-3 py-2 rounded-lg border border-nw-teal text-nw-teal text-sm font-semibold hover:bg-nw-teal/10">
+            Save CSV
+          </button>
+          <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+        </div>
       </div>
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1835,7 +1864,7 @@ function HitterLabTab({ teamCtx, season }) {
           </Link>
         )}
         {data && <span className="ml-auto text-xs text-gray-400 tabular-nums">{data.pitch_count} pitches seen · {bbe.length} BBE</span>}
-        {data && <ReportActions targetRef={exportRef} filename={`trackman_${(active || 'batter').replace(/[^a-z]+/gi, '_').toLowerCase()}`} />}
+        {data && <ReportActions csv targetRef={exportRef} filename={`trackman_${(active || 'batter').replace(/[^a-z]+/gi, '_').toLowerCase()}`} />}
       </div>
 
       {loading && <div className="text-sm text-gray-400 p-6 text-center">Loading…</div>}
@@ -2279,6 +2308,7 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
     : mode !== 'auto' ? mode
     : (data && !(data.pitchers || []).length && (data.batters || []).length) ? 'hitting' : 'pitching' 
   const cardRefs = useRef({})
+  const contentRef = useRef(null)
   const [busyKey, setBusyKey] = useState(null)   // one player's PDF rendering
   const [bulk, setBulk] = useState(null)          // "3/8" while the all-PDF renders
 
@@ -2343,10 +2373,17 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
             {bulk ? `Rendering ${bulk}…` : `All ${view === 'pitching' ? 'pitcher' : 'hitter'} PDFs`}
           </button>
         )}
+        {players.length > 0 && (
+          <button onClick={() => saveNodeAsCsv(contentRef.current, `session_${sess?.session_date || active}_${view}`)}
+            className="px-3 py-1.5 rounded-lg border border-nw-teal text-nw-teal text-sm font-semibold hover:bg-nw-teal/10"
+            title="Every table on the visible player cards, one CSV">
+            Save CSV
+          </button>
+        )}
       </div>
 
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : data && (
-        <div className="space-y-3">
+        <div ref={contentRef} className="space-y-3">
           {view === 'pitching' && data.zone_report?.called > 20 && !isPen && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {[
@@ -2455,7 +2492,7 @@ function CatchingTab({ teamCtx, season }) {
   return (
     <div className="space-y-3" ref={exportRef}>
       <div className="flex justify-end items-center gap-2">
-        <ReportActions targetRef={exportRef} filename="trackman_catching" />
+        <ReportActions csv targetRef={exportRef} filename="trackman_catching" />
         <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
       </div>
 
@@ -3408,7 +3445,7 @@ function DefenseTab({ teamCtx, season }) {
           {d.positioned_pitches || 0} positioned pitches · {d.positioned_bbe || 0} batted balls with positioning
         </div>
         <div className="flex gap-2 items-center">
-          <ReportActions targetRef={exportRef} filename="trackman_defense" />
+          <ReportActions csv targetRef={exportRef} filename="trackman_defense" />
           <select value={context} onChange={e => setContext(e.target.value)}
             className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs">
             {CONTEXTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
@@ -3593,7 +3630,7 @@ function ValuesTab({ teamCtx, season }) {
           data combined. Rough rule: about 10 runs = 1 win.
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <ReportActions targetRef={exportRef} filename="trackman_values" />
+          <ReportActions csv targetRef={exportRef} filename="trackman_values" />
           <button onClick={() => setPosAdj(v => !v)}
             title="WAR-style premium-position credit: C +4.5, SS +2.5, CF/2B/3B +1.0, LF/RF -2.5, 1B -4.5 runs per full season, scaled by playing time"
             className={`text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ${posAdj

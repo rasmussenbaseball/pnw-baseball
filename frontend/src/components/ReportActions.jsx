@@ -7,7 +7,7 @@
 // by data-tone attributes on shaded cells).
 
 import { useState } from 'react'
-import { saveNodeAsImage, saveNodeAsPdf } from '../lib/reportExport'
+import { saveNodeAsImage, saveNodeAsPdf, saveNodeAsCsv } from '../lib/reportExport'
 
 // pdfFromCanvas: when true, "Save PDF" renders the target node to a single-page
 // letter PDF (via html2canvas + jsPDF) instead of the browser print dialog.
@@ -17,7 +17,7 @@ import { saveNodeAsImage, saveNodeAsPdf } from '../lib/reportExport'
 // renders the real DOM, so cross-origin headshots, the SVG spray chart, text
 // baselines and color shading all come out exactly as shown (html2canvas can't
 // do any of those faithfully).
-export default function ReportActions({ targetRef, filename = 'report', className = '', pdfFromCanvas = false, fullBleedPrint = false }) {
+export default function ReportActions({ targetRef, filename = 'report', className = '', pdfFromCanvas = false, fullBleedPrint = false, csv = false }) {
   const [busy, setBusy] = useState(false)
   const [bw, setBw] = useState(false)
 
@@ -77,6 +77,15 @@ export default function ReportActions({ targetRef, filename = 'report', classNam
       >
         {busy ? 'Rendering…' : 'Save image'}
       </button>
+      {csv && (
+        <button
+          onClick={() => { try { saveNodeAsCsv(targetRef?.current, filename) } catch (e) { console.error('csv export failed', e) } }}
+          className="px-3 py-2 rounded-lg border border-nw-teal text-nw-teal text-sm font-semibold hover:bg-nw-teal/10"
+          title="Download every table in this view as a CSV"
+        >
+          Save CSV
+        </button>
+      )}
       <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none" title="Strip color shading for mono printers (bold = good, italic = bad)">
         <input type="checkbox" checked={bw} onChange={e => setBw(e.target.checked)} className="h-3.5 w-3.5 accent-portal-purple" />
         B&amp;W

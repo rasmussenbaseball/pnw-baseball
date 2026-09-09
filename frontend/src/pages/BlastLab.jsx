@@ -256,7 +256,7 @@ export default function BlastLab() {
             {(data?.dates || []).map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         )}
-        {players.length > 0 && <ReportActions targetRef={exportRef} filename={`blast_${data?.date || 'board'}`} />}
+        {players.length > 0 && <ReportActions csv targetRef={exportRef} filename={`blast_${data?.date || 'board'}`} />}
       </div>
 
       {/* upload */}
