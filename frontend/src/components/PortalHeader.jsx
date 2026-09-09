@@ -30,6 +30,8 @@ const NAV_SECTIONS = [
         desc: 'Upload bullpen CSVs → cleaned pitch profiles & movement' },
       { to: '/portal/trackman', label: 'TrackMan Suite',
         desc: 'Upload TrackMan game CSVs: arsenals, contact quality, BP-to-game transfer' },
+      { to: '/portal/blast', label: 'Blast Lab',
+        desc: 'Upload Blast swing-sensor exports: bat speed, swing shape, connection' },
     ],
   },
   {

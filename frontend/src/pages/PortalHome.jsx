@@ -244,6 +244,22 @@ function PvSeriesPlanner() {
   )
 }
 
+function PvBlast() {
+  return (
+    <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
+      <rect width="240" height="120" fill={PAPER} />
+      {/* bat-speed bars */}
+      {[[30, 74], [70, 58], [110, 66], [150, 44], [190, 52]].map(([x, h], i) => (
+        <rect key={i} x={x} y={104 - h} width="22" height={h} rx="3"
+          fill={i === 0 ? REDP : i === 3 ? BLUEP : GOLD} opacity="0.8" />
+      ))}
+      {/* swing arc */}
+      <path d="M 24 30 Q 120 66 216 22" fill="none" stroke={BLUEP} strokeWidth="2.5" strokeDasharray="5 4" opacity="0.7" />
+      <circle cx="216" cy="22" r="4" fill={REDP} />
+    </svg>
+  )
+}
+
 function PvTrackman() {
   return (
     <svg viewBox="0 0 240 120" className={frame} preserveAspectRatio="xMidYMid slice">
@@ -387,6 +403,7 @@ const SECTIONS = [
       { to: '/portal/lineup-helper', label: 'Lineup Helper', desc: 'Optimal batting orders vs RHP / vs LHP, plus the bench.', Preview: PvLineup },
       { to: '/portal/rapsodo', label: 'Rapsodo Lab', desc: 'Upload bullpen CSVs for cleaned pitch profiles & movement.', Preview: PvRapsodo },
       { to: '/portal/trackman', label: 'TrackMan Suite', desc: 'Upload TrackMan game CSVs: arsenals, contact quality, and the BP-to-game transfer gap.', Preview: PvTrackman, flag: 'New' },
+      { to: '/portal/blast', label: 'Blast Lab', desc: 'Upload Blast swing-sensor exports: bat speed board, swing shape, connection angles, trends.', Preview: PvBlast, flag: 'New' },
     ],
   },
   {

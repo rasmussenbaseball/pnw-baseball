@@ -273,6 +273,7 @@ const SeriesPlanner = lazyWithRetry(() => import('./pages/SeriesPlanner'))
 const MatchupCalculator = lazyWithRetry(() => import('./pages/portal/MatchupCalculator'))
 const CampReport = lazyWithRetry(() => import('./pages/portal/CampReport'))
 const TrackmanSuite = lazyWithRetry(() => import('./pages/TrackmanSuite'))
+const BlastLab = lazyWithRetry(() => import('./pages/BlastLab'))
 const Alignments = lazyWithRetry(() => import('./pages/Alignments'))
 const PocketCards = lazyWithRetry(() => import('./pages/PocketCards'))
 const SplitsExplorer = lazyWithRetry(() => import('./pages/SplitsExplorer'))
@@ -530,6 +531,8 @@ export default function App() {
                  element={<RequirePortalAccess><PortalLayout><MatchupCalculator /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/trackman"
                  element={<RequirePortalAccess><PortalLayout><TrackmanSuite /></PortalLayout></RequirePortalAccess>} />
+          <Route path="/portal/blast"
+                 element={<RequirePortalAccess><PortalLayout><BlastLab /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/camp-report"
                  element={<RequirePortalAccess><PortalLayout><CampReport /></PortalLayout></RequirePortalAccess>} />
           <Route path="/portal/alignments"
