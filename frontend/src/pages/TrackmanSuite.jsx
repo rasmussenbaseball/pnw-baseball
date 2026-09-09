@@ -481,7 +481,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                 {p.throws === 'Left' ? 'LHP' : p.throws === 'Right' ? 'RHP' : '–'}
               </span>
               <span className="text-xs text-gray-400">{p.team}</span>
-              {p.rv != null && (
+              {p.rv != null && context !== 'bullpen' && (
                 <span className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
                   p.rv > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                     : p.rv < 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
@@ -511,13 +511,15 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                     <th className="px-2 py-1.5 text-right">HB</th>
                     <th className="px-2 py-1.5 text-right">Ext</th>
                     <th className="px-2 py-1.5 text-right">Zone%</th>
-                    <th className="px-2 py-1.5 text-right" title="Share of this pitch landing in the shadow band around the zone edges — edge-living score">Shdw%</th>
-                    <th className="px-2 py-1.5 text-right">Whiff%</th>
-                    <th className="px-2 py-1.5 text-right">Chase%</th>
-                    <th className="px-2 py-1.5 text-right">CSW%</th>
-                    <th className="px-2 py-1.5 text-right">EV agn</th>
-                    <th className="px-2 py-1.5 text-right" title="Run value: count-based runs saved vs the average pitch in your data (positive = good)">RV</th>
-                    <th className="px-2 py-1.5 text-right" title="Run value per 100 pitches — the rate version (min 15 priced pitches)">RV/100</th>
+                    {context !== 'bullpen' && (<>
+                      <th className="px-2 py-1.5 text-right" title="Share of this pitch landing in the shadow band around the zone edges — edge-living score">Shdw%</th>
+                      <th className="px-2 py-1.5 text-right">Whiff%</th>
+                      <th className="px-2 py-1.5 text-right">Chase%</th>
+                      <th className="px-2 py-1.5 text-right">CSW%</th>
+                      <th className="px-2 py-1.5 text-right">EV agn</th>
+                      <th className="px-2 py-1.5 text-right" title="Run value: count-based runs saved vs the average pitch in your data (positive = good)">RV</th>
+                      <th className="px-2 py-1.5 text-right" title="Run value per 100 pitches — the rate version (min 15 priced pitches)">RV/100</th>
+                    </>)}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
@@ -537,16 +539,18 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.hb)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.extension, 1)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.zone_pct)}</td>
-                      <HeatCell v={a.shadow_pct} vals={cohort.shadow} />
-                      <HeatCell v={a.whiff_pct} vals={cohort.whiff} extra="font-semibold" />
-                      <HeatCell v={a.chase_pct} vals={cohort.chase} />
-                      <HeatCell v={a.csw_pct} vals={cohort.csw} />
-                      <HeatCell v={a.ev_against} vals={cohort.ev} higher={false} />
-                      <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${
-                        a.rv == null ? 'text-gray-300' : a.rv > 0 ? 'text-emerald-600 dark:text-emerald-400' : a.rv < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
-                        {a.rv == null ? '–' : a.rv > 0 ? `+${a.rv}` : a.rv}
-                      </td>
-                      <HeatCell v={a.rv100} vals={cohort.rv100} dec={2} plus extra="font-semibold" />
+                      {context !== 'bullpen' && (<>
+                        <HeatCell v={a.shadow_pct} vals={cohort.shadow} />
+                        <HeatCell v={a.whiff_pct} vals={cohort.whiff} extra="font-semibold" />
+                        <HeatCell v={a.chase_pct} vals={cohort.chase} />
+                        <HeatCell v={a.csw_pct} vals={cohort.csw} />
+                        <HeatCell v={a.ev_against} vals={cohort.ev} higher={false} />
+                        <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${
+                          a.rv == null ? 'text-gray-300' : a.rv > 0 ? 'text-emerald-600 dark:text-emerald-400' : a.rv < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                          {a.rv == null ? '–' : a.rv > 0 ? `+${a.rv}` : a.rv}
+                        </td>
+                        <HeatCell v={a.rv100} vals={cohort.rv100} dec={2} plus extra="font-semibold" />
+                      </>)}
                     </tr>
                   ))}
                 </tbody>
@@ -1307,7 +1311,9 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
   const [team, setTeam] = useState(teamCtx.primary)
   const [conf, setConf] = useState('all')
   const [vsSide, setVsSide] = useState('')
-  const { data: list } = useApi('/trackman/pitching', { context: 'all', season })
+  // Bullpen-only arms never appear in the 'all' roster (it excludes pens),
+  // so the dropdown must follow the selected context there.
+  const { data: list } = useApi('/trackman/pitching', { context: context === 'bullpen' ? 'bullpen' : 'all', season })
   const roster = (list?.pitchers || []).filter(p => !team || p.team === team)
   const names = roster.map(p => p.pitcher)
   const active = names.includes(pitcher) ? pitcher : (names[0] || '')
