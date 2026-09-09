@@ -422,7 +422,7 @@ function OverviewTab({ overview, refetch, onReview, season }) {
 
 // ── Pitching ─────────────────────────────────────────────────────
 
-const CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['all', 'Everything']]
+const CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['bullpen', 'Bullpens'], ['all', 'Everything']]
 
 function PitchingTab({ onOpenLab, teamCtx, season }) {
   const [context, setContext] = useState('live')
