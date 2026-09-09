@@ -33,7 +33,7 @@ from ..stats.trackman_runvalue import pitch_run_value
 from ..stats.trackman_xstats import xwobacon
 from .trackman_suite import (
     _gate, _season_clause, _rv_baseline, _NO_MISTAG,
-    trackman_defense, trackman_catching,
+    trackman_defense, trackman_catching, trackman_hitting_board,
 )
 
 router = APIRouter(tags=["trackman-dev"])
@@ -811,3 +811,223 @@ def dev_notes(
     role_rank = lambda e: (0 if "pitcher" in e["roles"] else 1, -len(e["points"]))
     out.sort(key=role_rank)
     return {"players": out, "count": len(out)}
+
+
+# ── Hitter development engine (TrackMan x Blast) ─────────────────
+#
+# Joins each hitter's batted-ball data (TrackMan BP + live) with their
+# swing-sensor data (Blast) and ranks development points by LEVERAGE:
+# swing decisions and contact quality move faster than mechanics, and
+# mechanics move faster than physical capacity — so the list starts with
+# the cheapest gains. The speed-vs-smash split is the backbone: bat speed
+# is the engine (Blast), exit velo is the engine times contact quality
+# (TrackMan), and which one lags tells you where the fruit hangs.
+
+def _norm_name(name):
+    """'Matosich, Sam' and 'Sam Matosich' -> 'sam matosich'."""
+    n = (name or "").strip()
+    if "," in n:
+        last, _, first = n.partition(",")
+        n = f"{first.strip()} {last.strip()}"
+    return " ".join(n.lower().split())
+
+
+def _pctl(v, vals):
+    if v is None or not vals:
+        return None
+    return round(100 * sum(1 for o in vals if o < v) / len(vals))
+
+
+@router.get("/trackman/hitter-dev")
+def hitter_dev(team: str | None = Query(None),
+               season: int | None = Query(None),
+               owner: str = Depends(_gate)):
+    bp = {b["batter"]: b for b in trackman_hitting_board(
+        context="bp", team=team, throws=None, pitch_type=None,
+        season=season, date_from=None, date_to=None, owner=owner)["batters"]}
+    live = {b["batter"]: b for b in trackman_hitting_board(
+        context="live", team=team, throws=None, pitch_type=None,
+        season=season, date_from=None, date_to=None, owner=owner)["batters"]}
+
+    # Blast: latest testing session per player and kind.
+    with get_connection() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT DISTINCT ON (player, kind) player, kind, session_date,
+                       bat_speed, hand_speed, rot_accel, ope, attack_angle,
+                       ttc, commit_time, early_connection, connection_impact
+                FROM blast_stats WHERE owner_user_id = %s
+                ORDER BY player, kind, session_date DESC""", (owner,))
+            blast_rows = cur.fetchall()
+        except Exception:
+            conn.rollback()
+            blast_rows = []
+        conn.commit()
+    blast = {}
+    for r in blast_rows:
+        blast.setdefault(_norm_name(r["player"]), {})[r["kind"]] = dict(r)
+
+    # Assemble per hitter (anything with 10+ BP or live BBE qualifies).
+    hitters = []
+    for name, b in bp.items():
+        if (b.get("bbe") or 0) < 10:
+            continue
+        bl = blast.get(_norm_name(name), {})
+        a, pk = bl.get("avg"), bl.get("p95")
+        lv = live.get(name)
+        hitters.append({"batter": name, "side": b.get("side"), "team": b.get("team"),
+                        "bp": b, "live": lv, "blast": a, "blast_p95": pk})
+    if not hitters:
+        return {"hitters": []}
+
+    # Team distributions for percentile framing.
+    evs = [h["bp"]["avg_ev"] for h in hitters if h["bp"].get("avg_ev") is not None]
+    speeds = [h["blast"]["bat_speed"] for h in hitters if h["blast"] and h["blast"].get("bat_speed") is not None]
+    smashes = []
+    for h in hitters:
+        if h["blast"] and h["blast"].get("bat_speed") and h["bp"].get("avg_ev"):
+            h["smash"] = round(h["bp"]["avg_ev"] / h["blast"]["bat_speed"], 3)
+            smashes.append(h["smash"])
+        else:
+            h["smash"] = None
+    ttcs = [h["blast"]["ttc"] for h in hitters if h["blast"] and h["blast"].get("ttc") is not None]
+    smash_med = sorted(smashes)[len(smashes) // 2] if smashes else None
+
+    out = []
+    for h in hitters:
+        b, a, pk, lv = h["bp"], h["blast"], h["blast_p95"], h["live"]
+        ev_p = _pctl(b.get("avg_ev"), evs)
+        sp_p = _pctl(a["bat_speed"], speeds) if a and a.get("bat_speed") is not None else None
+        pts = []
+
+        def add(area, note, prio):
+            pts.append({"area": area, "note": note, "priority": prio})
+
+        la, gb, aa = b.get("avg_la"), b.get("gb_pct"), (a or {}).get("attack_angle")
+        tank = (pk["bat_speed"] - a["bat_speed"]) if a and pk and a.get("bat_speed") and pk.get("bat_speed") else None
+
+        # 1) Ground-ball power leak — the classic cheapest gain
+        if b.get("avg_ev") is not None and ev_p is not None and ev_p >= 40 and (gb or 0) >= 45:
+            if aa is not None and aa >= 8:
+                add("Contact, not swing plane",
+                    f"Hits it hard ({b['avg_ev']} EV) but {gb}% on the ground with a healthy "
+                    f"{aa:.0f}° attack angle — the bat path is fine, contact is under-center/late. "
+                    "Work contact point and pitch height selection, not a swing change.", 1)
+            else:
+                add("Swing plane",
+                    f"{b['avg_ev']} EV buried at {gb}% ground balls with a flat "
+                    f"{'%.0f' % aa + '°' if aa is not None else 'unknown'} attack angle — "
+                    "steepness is costing air. Plane work (tee height ladders, high-tee turns).", 1)
+
+        # 2) Barrel accuracy: fast bat, quiet contact
+        if sp_p is not None and ev_p is not None and sp_p >= 60 and (ev_p <= 40 or (h["smash"] and smash_med and h["smash"] < smash_med - 0.04)):
+            add("Barrel accuracy",
+                f"Top-{100 - sp_p} bat speed ({a['bat_speed']:.0f} mph) but {b['avg_ev']} EV "
+                f"(smash {h['smash']}) — the engine is there, the barrel is missing center. "
+                "Bat-to-ball work: mixed BP, offset tees, small-ball drills before any strength focus.", 2)
+
+        # 3) Physical capacity: efficient mover, small engine
+        if sp_p is not None and sp_p <= 30 and h["smash"] and smash_med and h["smash"] >= smash_med:
+            add("Bat speed (weight room)",
+                f"Squeezes everything from the swing (smash {h['smash']}, team median {smash_med}) "
+                f"but the engine is {a['bat_speed']:.0f} mph — the ceiling is physical. "
+                "Overload/underload bat speed training + strength program is the fruit.", 3)
+
+        # 4) On-plane efficiency
+        if a and a.get("ope") is not None and a["ope"] < 60:
+            add("On-plane efficiency",
+                f"Only {a['ope']:.0f}% of the swing on the pitch plane (window is 75-85) — "
+                "in-and-out path costs margin for error. Connection ball and plane drills.", 4)
+
+        # 5) In-the-tank consistency
+        if tank is not None and tank >= 6:
+            add("Swing intent consistency",
+                f"Peak bat speed {pk['bat_speed']:.0f} but averages {a['bat_speed']:.0f} "
+                f"({tank:.0f} mph in the tank) — the A-swing exists and rarely shows up. "
+                "Intent work: every cage swing at game effort.", 5)
+
+        # 6) Adjustability: slow trigger
+        if a and a.get("ttc") is not None and ttcs and a["ttc"] >= sorted(ttcs)[int(len(ttcs) * 0.75)] and a["ttc"] > 0.155:
+            add("Swing quickness",
+                f"Time to contact {a['ttc']:.3f}s (team's slow end) — long swings get beat by velo "
+                "and cannot wait on spin. Shorten the load, keep the speed.", 6)
+
+        # 7) Connection out of band
+        if a and a.get("early_connection") is not None and not (82 <= a["early_connection"] <= 108):
+            add("Early connection",
+                f"Early connection {a['early_connection']:.0f}° (want ~90-100) — the bat "
+                f"{'lays off' if a['early_connection'] > 108 else 'wraps'} at the turn. Connection-ball work.", 7)
+
+        # 8) Contact depth
+        d = b.get("depth")
+        if d is not None and (d < 1.1 or d > 2.9):
+            add("Contact depth",
+                f"Average contact {d} ft ({'deep — getting beat' if d < 1.1 else 'way out front — reaching'}); "
+                "the damage window is 1.3-2.7 ft. Timing and pitch selection work.", 8)
+
+        # 9) Zone hole
+        zev = b.get("zone_ev") or {}
+        if b.get("avg_ev") is not None and zev:
+            worst = min(zev.items(), key=lambda kv: kv[1])
+            if worst[1] <= b["avg_ev"] - 8:
+                zone_names = {"up": "up", "down": "down", "in": "inside", "out": "away", "mid": "middle"}
+                add("Zone hole",
+                    f"EV drops to {worst[1]} on {zone_names.get(worst[0], worst[0])} pitches "
+                    f"(vs {b['avg_ev']} overall) — feed that location in BP until it closes.", 9)
+
+        # 10) Air-pull conversion for strength that plays straightaway
+        if (b.get("hh_pct") or 0) >= 40 and b.get("airpull_pct") is not None and b["airpull_pct"] < 30:
+            add("Pull-side damage",
+                f"Hard-hit {b['hh_pct']}% but only {b['airpull_pct']}% of air balls pulled — "
+                "strength is playing to the big part of the park. Early-count pull-side intent turns doubles into homers.", 10)
+
+        # 11) Live-game discipline (when live data exists)
+        if lv and lv.get("chase_pct") is not None and lv["chase_pct"] >= 34:
+            add("Swing decisions",
+                f"Chasing {lv['chase_pct']}% out of the zone in live work — the swing gains are "
+                "capped until the decisions improve. Zone-recognition rounds with takes scored.", 0)
+
+        if not a:
+            add("No swing-sensor data",
+                "No Blast session on file — get a sensor on the bat at the next BP so the swing "
+                "half of this profile fills in.", 12)
+
+        pts.sort(key=lambda x: x["priority"])
+        if len([x for x in pts if x["priority"] < 12]) == 0:
+            add("Balanced profile",
+                "Nothing flags: speed, contact quality and shape all track together. "
+                "Keep the reps and re-test next block.", 11)
+        # strength to lean on
+        strength = None
+        if ev_p is not None and ev_p >= 75:
+            strength = f"Loudest contact on the roster side ({b['avg_ev']} EV, {b.get('hh_pct')}% hard-hit) — the identity to build around."
+        elif sp_p is not None and sp_p >= 75:
+            strength = f"Elite engine ({a['bat_speed']:.0f} mph bat, peak {pk['bat_speed']:.0f}) — everything else is unlock, not rebuild."
+        elif h["smash"] and smash_med and h["smash"] >= smash_med + 0.03:
+            strength = f"Best-in-class contact quality (smash {h['smash']}) — a model mover for the group."
+
+        quadrant = None
+        if sp_p is not None and ev_p is not None:
+            quadrant = ("Fast + Loud" if sp_p >= 50 and ev_p >= 50
+                        else "Fast + Quiet" if sp_p >= 50
+                        else "Slow + Loud" if ev_p >= 50 else "Developing")
+
+        out.append({
+            "batter": h["batter"], "side": h["side"], "team": h["team"],
+            "quadrant": quadrant, "strength": strength,
+            "bat_speed": round(a["bat_speed"], 1) if a and a.get("bat_speed") else None,
+            "peak_bat_speed": round(pk["bat_speed"], 1) if pk and pk.get("bat_speed") else None,
+            "tank": round(tank, 1) if tank is not None else None,
+            "smash": h["smash"],
+            "ope": round(a["ope"], 1) if a and a.get("ope") is not None else None,
+            "attack_angle": round(a["attack_angle"], 1) if a and a.get("attack_angle") is not None else None,
+            "ttc": round(a["ttc"], 3) if a and a.get("ttc") is not None else None,
+            "avg_ev": b.get("avg_ev"), "p90_ev": b.get("p90_ev"), "avg_la": b.get("avg_la"),
+            "gb_pct": b.get("gb_pct"), "hh_pct": b.get("hh_pct"), "barrel_pct": b.get("barrel_pct"),
+            "bbe": b.get("bbe"),
+            "ev_pctl": ev_p, "speed_pctl": sp_p,
+            "points": pts[:4],
+        })
+    out.sort(key=lambda x: -(x["avg_ev"] or 0))
+    return {"hitters": out, "smash_median": smash_med}

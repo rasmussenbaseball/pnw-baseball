@@ -159,7 +159,7 @@ export default function TrackmanSuite() {
       {/* Tabs */}
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
-          ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
+          ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['hdev', 'Hitter Dev'], ['leaders', 'Leaderboards'],
           ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['values', 'Values'], ['board', 'Coach Board']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
@@ -177,6 +177,7 @@ export default function TrackmanSuite() {
       {tab === 'hitting' && (hasData ? <HittingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'lab' && (hasData ? <PlayerLabTab key={`${teamCtx.primary}-${season}`} pitcher={labPitcher} setPitcher={setLabPitcher} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'hlab' && (hasData ? <HitterLabTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'hdev' && (hasData ? <HitterDevTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'leaders' && (hasData ? <LeaderboardsTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} season={season} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'catching' && (hasData ? <CatchingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
@@ -2623,6 +2624,137 @@ function CatchingTab({ teamCtx, season }) {
   )
 }
 
+
+// ── Hitter Development (TrackMan x Blast) ────────────────────────
+
+// Team quadrant map: bat speed (engine) vs exit velo (result). The gap
+// between the two percentiles is the whole development story.
+function QuadrantMap({ hitters, selected, onPick }) {
+  const W = 480, H = 300, L = 40, R = 16, T = 18, B = 30
+  const X = v => L + (v / 100) * (W - L - R)
+  const Y = v => T + ((100 - v) / 100) * (H - T - B)
+  const pts = hitters.filter(h => h.speed_pctl != null && h.ev_pctl != null)
+  if (pts.length < 3) return null
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-2xl mx-auto">
+      <rect x={X(50)} y={T} width={X(100) - X(50)} height={Y(50) - T} fill="#059669" opacity="0.05" />
+      <line x1={X(50)} y1={T} x2={X(50)} y2={H - B} stroke="currentColor" className="text-gray-200 dark:text-gray-600" />
+      <line x1={L} y1={Y(50)} x2={W - R} y2={Y(50)} stroke="currentColor" className="text-gray-200 dark:text-gray-600" />
+      {[['Fast + Loud', X(75), T + 12], ['Slow + Loud', X(22), T + 12],
+        ['Fast + Quiet', X(75), Y(4)], ['Developing', X(22), Y(4)]].map(([t, x, y]) => (
+        <text key={t} x={x} y={y} fontSize="9" fontWeight="700" fill="#9ca3af" textAnchor="middle">{t}</text>
+      ))}
+      {pts.map(h => (
+        <g key={h.batter} onClick={() => onPick(h.batter)} style={{ cursor: 'pointer' }}>
+          <circle cx={X(h.speed_pctl)} cy={Y(h.ev_pctl)} r={selected === h.batter ? 6 : 4.5}
+            fill={selected === h.batter ? '#7c3aed' : '#d22d49'} opacity={selected && selected !== h.batter ? 0.35 : 0.8}
+            stroke="#fff" strokeWidth="1" />
+          <text x={X(h.speed_pctl)} y={Y(h.ev_pctl) - 7} fontSize="8" textAnchor="middle"
+            fill="currentColor" className="text-gray-500 dark:text-gray-300"
+            opacity={selected && selected !== h.batter ? 0.4 : 1}>
+            {h.batter.split(',')[0]}
+          </text>
+        </g>
+      ))}
+      <text x={(L + W - R) / 2} y={H - 8} fontSize="9" fill="#9ca3af" textAnchor="middle">bat speed percentile (Blast) →</text>
+      <text x={12} y={(T + H - B) / 2} fontSize="9" fill="#9ca3af" textAnchor="middle" transform={`rotate(-90 12 ${(T + H - B) / 2})`}>exit velo percentile (TrackMan) →</text>
+    </svg>
+  )
+}
+
+const QUAD_CLS = {
+  'Fast + Loud': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  'Fast + Quiet': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  'Slow + Loud': 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
+  'Developing': 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+}
+
+function HitterDevTab({ teamCtx, season }) {
+  const exportRef = useRef(null)
+  const [team, setTeam] = useState(teamCtx.primary)
+  const [selected, setSelected] = useState('')
+  const { data, loading } = useApi('/trackman/hitter-dev', { ...(team ? { team } : {}), season }, [team])
+  const hitters = data?.hitters || []
+  const shown = selected ? hitters.filter(h => h.batter === selected) : hitters
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[12px] text-gray-500 dark:text-gray-400">
+          TrackMan batted balls x Blast swing sensors, ranked by cheapest gain first
+        </span>
+        {selected && (
+          <button onClick={() => setSelected('')}
+            className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
+            Show all hitters
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <ReportActions csv targetRef={exportRef} filename="hitter_development" />
+          <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
+        </div>
+      </div>
+
+      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> :
+       hitters.length === 0 ? <div className="p-10 text-center text-sm text-gray-400">Needs 10+ tracked BP balls per hitter — upload BP sessions first.</div> : (
+        <div ref={exportRef} className="space-y-3">
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">
+              Engine vs result — where each swing lives
+            </div>
+            <QuadrantMap hitters={hitters} selected={selected}
+              onPick={n => setSelected(selected === n ? '' : n)} />
+            <p className="text-[10.5px] text-gray-400 mt-1 max-w-3xl mx-auto text-center">
+              Right of the line = fast bat (Blast). Above the line = loud contact (TrackMan). Fast + Quiet
+              hitters need barrel accuracy, not strength; Slow + Loud hitters are efficient movers whose
+              ceiling is physical; Developing needs the weight room and the tee.
+            </p>
+          </div>
+
+          {shown.map(h => (
+            <div key={h.batter} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-gray-900 dark:text-gray-100">{h.batter}</span>
+                <span className="text-xs text-gray-400">{h.side ? `${h.side[0]}HH` : ''}</span>
+                {h.quadrant && (
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${QUAD_CLS[h.quadrant] || ''}`}>{h.quadrant}</span>
+                )}
+                <span className="ml-auto text-[11px] text-gray-400 tabular-nums">
+                  {h.bat_speed != null ? `bat ${h.bat_speed}${h.peak_bat_speed ? `/${h.peak_bat_speed}` : ''} mph · ` : ''}
+                  {h.smash != null ? `smash ${h.smash} · ` : ''}
+                  EV {h.avg_ev ?? '–'} · LA {h.avg_la ?? '–'} · GB {h.gb_pct ?? '–'}%
+                  {h.ope != null ? ` · OPE ${h.ope}%` : ''}{h.ttc != null ? ` · TTC ${h.ttc}s` : ''}
+                </span>
+              </div>
+              {h.strength && (
+                <div className="mt-2 text-[13px] text-emerald-700 dark:text-emerald-400">
+                  <span className="font-bold">Lean on:</span> {h.strength}
+                </div>
+              )}
+              <ol className="mt-2 space-y-1.5">
+                {(h.points || []).map((p, i) => (
+                  <li key={i} className="flex gap-2 text-[13px] leading-snug">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-portal-purple/10 text-portal-purple dark:text-indigo-300 text-[11px] font-bold flex items-center justify-center">{i + 1}</span>
+                    <span><b className="text-gray-800 dark:text-gray-100">{p.area}.</b>{' '}
+                      <span className="text-gray-600 dark:text-gray-300">{p.note}</span></span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+
+          <p className="text-[10.5px] text-gray-400 leading-snug max-w-4xl">
+            Smash = avg exit velo divided by avg bat speed, a contact-quality score (team median {data?.smash_median}) —
+            the same bat speed turns into very different exit velos depending on where the barrel meets the ball.
+            Points are ordered by leverage: decisions and contact move faster than mechanics, and mechanics move
+            faster than physical capacity. Hitters need 10+ tracked BP balls; Blast columns fill in for anyone
+            who has worn a sensor. Re-test after each training block and watch the dots migrate up and right.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Coach Board (auto-flags) ─────────────────────────────────────
 
