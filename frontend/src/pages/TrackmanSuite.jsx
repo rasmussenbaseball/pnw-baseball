@@ -855,6 +855,8 @@ function HittingTab({ teamCtx, season }) {
             </>
           )}
 
+          <VeloBandBoard rows={batters} isBp={isBp} />
+
           <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
             {isBp
               ? 'BP files carry hitting metrics only: TrackMan tags every BP pitch Undefined, so swings, takes, whiffs, chase% and contact% cannot be measured. InPlay/P counts balls put in play per machine pitch, and O-Ct% is the share of batted balls that came on out-of-zone pitches (a floor on chasing). '
@@ -1891,6 +1893,8 @@ function HitterLabTab({ teamCtx, season }) {
           {data.xstats && <XStatsCard x={data.xstats} />}
 
           {data.splits && <SplitsCard splits={data.splits} />}
+
+          {data.velo && <VeloBandCard velo={data.velo} title={`${active} — against effective velocity`} />}
 
           <div className="grid md:grid-cols-2 gap-3">
             {data.swing_take && <SwingTakeCard st={data.swing_take} />}
@@ -3072,6 +3076,154 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs }) {
 }
 
 // ── Hitter Lab: inline splits (vs hand, vs pitch type) ───────────
+
+// ── Effective-velocity bands ─────────────────────────────────────
+// TrackMan's effective velo is release speed adjusted for how far up the
+// ball is released, i.e. what it PLAYS like. That makes it the only fair
+// velo read in BP, where a slow machine pulled way in front of the rubber
+// plays like real heat.
+const VBANDS = [['soft', 'Under 79'], ['avg', '79-84'], ['firm', '84-88'], ['elite', '88+']]
+const VELO_TIP = "Effective velocity: release speed adjusted for release distance — what the pitch plays like to the hitter. In BP the machine sits well in front of the rubber, so a 57 mph feed can play like upper-80s."
+
+// One hitter's velo profile: EV bars per band with whiff% underneath.
+function VeloBandCard({ velo, title = 'Against effective velocity' }) {
+  const bands = velo?.bands || {}
+  const shown = VBANDS.filter(([k]) => bands[k]?.bbe >= 3 || bands[k]?.swings >= 5)
+  if (!shown.length) return null
+  const evs = shown.map(([k]) => bands[k].avg_ev).filter(v => v != null)
+  const lo = Math.min(70, ...evs) - 2, hi = Math.max(...evs, 95) + 2
+  const gap = velo.ev_gap
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-2 flex-wrap gap-1">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400" title={VELO_TIP}>{title}</span>
+        {gap != null && (
+          <span className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full ${
+            gap >= 1 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+              : gap <= -3 ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}
+            title="Avg EV on 84+ mph minus avg EV under 84. Negative means contact quality falls off as the ball speeds up.">
+            {gap > 0 ? `+${gap}` : gap} EV vs velo
+          </span>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        {shown.map(([k, label]) => {
+          const b = bands[k]
+          const pct = b.avg_ev != null ? Math.max(2, Math.min(100, ((b.avg_ev - lo) / (hi - lo)) * 100)) : 0
+          return (
+            <div key={k} className="flex items-center gap-2 text-[11px]">
+              <span className="w-16 shrink-0 font-semibold text-gray-600 dark:text-gray-300">{label}</span>
+              <div className="flex-1 h-4 rounded bg-gray-100 dark:bg-gray-900/50 relative overflow-hidden">
+                {b.avg_ev != null && (
+                  <div className="h-full rounded" style={{
+                    width: `${pct}%`,
+                    background: b.avg_ev >= 90 ? '#d22d49' : b.avg_ev >= 85 ? '#f59e0b' : '#3661ad',
+                    opacity: 0.75,
+                  }} />
+                )}
+                <span className="absolute inset-y-0 left-1.5 flex items-center text-[10px] font-bold text-gray-700 dark:text-gray-100">
+                  {b.avg_ev != null ? `${b.avg_ev} EV` : `${b.pitches} seen`}
+                </span>
+              </div>
+              <span className="w-12 text-right tabular-nums text-gray-400">{b.bbe ? `${b.bbe} bbe` : '–'}</span>
+              <span className="w-16 text-right tabular-nums font-semibold text-gray-600 dark:text-gray-300">
+                {b.whiff_pct != null ? `${b.whiff_pct}% wh` : ''}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-[10px] text-gray-400 mt-2 leading-snug">
+        Bands are effective velo (what the pitch plays like, not the radar reading). Bars need 3+ tracked
+        balls, whiff% needs 5+ swings.
+      </p>
+    </div>
+  )
+}
+
+// Team view: every hitter's EV (and whiff%) by band, worst velo-gap first.
+function VeloBandBoard({ rows, isBp }) {
+  const [sortKey, setSortKey] = useState('ev_gap')
+  const list = useMemo(() => {
+    const withV = (rows || []).filter(r => r.velo && Object.keys(r.velo.bands || {}).length)
+    const val = r => sortKey === 'ev_gap' ? (r.velo.ev_gap ?? 999)
+      : sortKey === 'whiff_gap' ? -(r.velo.whiff_gap ?? -999)
+        : -(r.velo.bands?.[sortKey]?.avg_ev ?? -999)
+    return [...withV].sort((a, b) => val(a) - val(b))
+  }, [rows, sortKey])
+  if (!list.length) return null
+  const anyWhiff = list.some(r => r.velo.whiff_gap != null)
+  const gapVals = list.map(r => r.velo.ev_gap).filter(v => v != null)
+  const Th = ({ k, children, tip }) => (
+    <th onClick={() => k && setSortKey(k)} title={tip}
+      className={`px-2 py-2 text-right ${k ? 'cursor-pointer hover:text-portal-purple dark:hover:text-indigo-300' : ''} ${sortKey === k ? 'text-portal-purple dark:text-indigo-300' : ''}`}>
+      {children}{sortKey === k ? ' ▾' : ''}
+    </th>
+  )
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between flex-wrap gap-1">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400" title={VELO_TIP}>
+          Who hits velocity — contact quality by effective velo band
+        </span>
+        <span className="text-[10px] text-gray-400">click a column to sort · worst velo gap first</span>
+      </div>
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+            <th className="px-4 py-2">Hitter</th>
+            {VBANDS.map(([k, label]) => <Th key={k} k={k} tip={`Avg EV when the pitch plays ${label} mph`}>{label}</Th>)}
+            <Th k="ev_gap" tip="Avg EV on 84+ minus avg EV under 84. Negative = contact quality falls off against velo.">EV Gap</Th>
+            {anyWhiff && <Th k={null} tip="Whiff% on swings at 84+ mph">Whiff 84+</Th>}
+            {anyWhiff && <Th k="whiff_gap" tip="Whiff% at 84+ minus whiff% under 84. Positive = swings and misses climb with velo.">Whiff Gap</Th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {list.map(r => {
+            const v = r.velo
+            return (
+              <tr key={r.batter + r.team}>
+                <td className="px-4 py-1.5 font-semibold whitespace-nowrap">
+                  {r.batter}{r.side ? <span className="text-[10px] text-gray-400 ml-1">{r.side[0]}</span> : null}
+                </td>
+                {VBANDS.map(([k]) => {
+                  const b = v.bands?.[k]
+                  return (
+                    <td key={k} className="px-2 py-1.5 text-right tabular-nums">
+                      {b?.avg_ev != null ? (
+                        <>
+                          <span className="font-semibold">{b.avg_ev}</span>
+                          <span className="text-[9px] text-gray-400 ml-1">{b.bbe}</span>
+                        </>
+                      ) : <span className="text-gray-300 dark:text-gray-600">–</span>}
+                    </td>
+                  )
+                })}
+                <HeatCell v={v.ev_gap} vals={gapVals} plus extra="font-bold" />
+                {anyWhiff && <td className="px-2 py-1.5 text-right tabular-nums">{v.whiff_hard != null ? `${v.whiff_hard}%` : '–'}</td>}
+                {anyWhiff && (
+                  <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${
+                    v.whiff_gap == null ? 'text-gray-300 dark:text-gray-600'
+                      : v.whiff_gap >= 6 ? 'text-rose-600 dark:text-rose-400'
+                        : v.whiff_gap <= -2 ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                    {v.whiff_gap == null ? '–' : v.whiff_gap > 0 ? `+${v.whiff_gap}` : v.whiff_gap}
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      <p className="px-4 py-2 text-[10px] text-gray-400 leading-snug">
+        Effective velo is what the pitch plays like after adjusting for release distance, so it is the
+        honest velo read in BP{isBp ? ' — the machine sits well in front of the rubber, so a 57 mph feed plays like upper-80s' : ''}.
+        Small numbers next to each EV are tracked balls in that band; a band needs 3+ to show, and the
+        gaps need 5+ balls (8+ swings) on each side of 84.
+      </p>
+    </div>
+  )
+}
 
 function SplitsCard({ splits }) {
   const hand = splits?.hand || {}

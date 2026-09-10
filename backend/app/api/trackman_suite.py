@@ -1241,6 +1241,69 @@ def trackman_pitching(
     return {"pitchers": out}
 
 
+# ── Effective-velocity bands ─────────────────────────────────────
+# TrackMan's EffectiveVelo is release speed adjusted for how far up the
+# release point is, i.e. what the pitch PLAYS like to the hitter. That makes
+# it the only fair velo read in BP, where a 57 mph machine sitting 25 feet
+# in front of the rubber plays like upper-80s heat.
+VELO_BANDS = [("soft", None, 79.0, "Under 79"),
+              ("avg", 79.0, 84.0, "79-84"),
+              ("firm", 84.0, 88.0, "84-88"),
+              ("elite", 88.0, None, "88+")]
+VELO_HARD = 84.0   # the "premium velo" split for the gap metric
+
+
+def _velo_band(v):
+    if v is None:
+        return None
+    v = float(v)
+    for key, lo, hi in ((b[0], b[1], b[2]) for b in VELO_BANDS):
+        if (lo is None or v >= lo) and (hi is None or v < hi):
+            return key
+    return None
+
+
+def _band_bucket():
+    return {"n": 0, "sw": 0, "wh": 0, "bbe": 0, "ev": [], "hh": 0, "la": []}
+
+
+def _band_out(buckets, live):
+    """Serialize per-band splits plus the headline hard-vs-soft velo gap."""
+    out = {}
+    for key, _lo, _hi, label in VELO_BANDS:
+        d = buckets.get(key)
+        if not d or not d["n"]:
+            continue
+        row = {"label": label, "pitches": d["n"], "bbe": d["bbe"]}
+        if d["bbe"] >= 3:
+            row["avg_ev"] = round(sum(d["ev"]) / d["bbe"], 1)
+            row["hh_pct"] = round(100 * d["hh"] / d["bbe"], 1)
+            if d["la"]:
+                row["avg_la"] = round(sum(d["la"]) / len(d["la"]), 1)
+        if live and d["sw"] >= 5:
+            row["swings"] = d["sw"]
+            row["whiff_pct"] = round(100 * d["wh"] / d["sw"], 1)
+        out[key] = row
+    hard = {"ev": [], "hh": 0, "bbe": 0, "sw": 0, "wh": 0}
+    softd = {"ev": [], "hh": 0, "bbe": 0, "sw": 0, "wh": 0}
+    for key, _lo, _hi, _l in VELO_BANDS:
+        d = buckets.get(key)
+        if not d:
+            continue
+        tgt = hard if key in ("firm", "elite") else softd
+        tgt["ev"] += d["ev"]; tgt["hh"] += d["hh"]
+        tgt["bbe"] += d["bbe"]; tgt["sw"] += d["sw"]; tgt["wh"] += d["wh"]
+    res = {"bands": out}
+    if hard["bbe"] >= 5 and softd["bbe"] >= 5:
+        res["ev_hard"] = round(sum(hard["ev"]) / hard["bbe"], 1)
+        res["ev_soft"] = round(sum(softd["ev"]) / softd["bbe"], 1)
+        res["ev_gap"] = round(res["ev_hard"] - res["ev_soft"], 1)
+    if live and hard["sw"] >= 8 and softd["sw"] >= 8:
+        res["whiff_hard"] = round(100 * hard["wh"] / hard["sw"], 1)
+        res["whiff_gap"] = round(100 * hard["wh"] / hard["sw"] - 100 * softd["wh"] / softd["sw"], 1)
+    return res
+
+
 def _zone_region(px, pz, hand):
     """Heart+shadow pitches only, split into up/down/in/out/middle relative
     to the BATTER (in = toward his box; HBP-verified sign convention)."""
@@ -1296,6 +1359,7 @@ def trackman_hitting_board(
                        p.balls, p.strikes, p.k_or_bb, p.play_result,
                        p.exit_speed, p.launch_angle, p.direction, p.distance, p.bearing,
                        p.contact_x, p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
+                       p.effective_velo,
                        s.id AS session_id, s.session_date, s.session_type
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter IS NOT NULL{extra}{team_sql}""",
@@ -1326,6 +1390,7 @@ def trackman_hitting_board(
         "oz_bbe": 0, "loc_bbe": 0,
         "rv": {"heart": 0.0, "shadow": 0.0, "chase": 0.0, "waste": 0.0}, "rv_n": 0,
         "zev": defaultdict(list), "zrv": defaultdict(float), "zrv_n": defaultdict(int),
+        "vb": defaultdict(_band_bucket),
         "points": [], "side": None, "pa_map": {},
     })
     for r in rows:
@@ -1337,6 +1402,22 @@ def trackman_hitting_board(
         b["rows"] += 1
         hand = (r["batter_side"] or "")[:1] or None
         b["side"] = hand or b["side"]
+        vband = _velo_band(r["effective_velo"])
+        if vband:
+            vb = b["vb"][vband]
+            vb["n"] += 1
+            if r["is_swing"]:
+                vb["sw"] += 1
+            if r["is_whiff"]:
+                vb["wh"] += 1
+            if r["exit_speed"] is not None:
+                ev_v = float(r["exit_speed"])
+                vb["bbe"] += 1
+                vb["ev"].append(ev_v)
+                if ev_v >= 90:
+                    vb["hh"] += 1
+                if r["launch_angle"] is not None:
+                    vb["la"].append(float(r["launch_angle"]))
         if r["pitch_call"]:
             b["called"] += 1
             if r["is_swing"]:
@@ -1440,6 +1521,7 @@ def trackman_hitting_board(
             "max_dist": round(max(b["dists"])) if b["dists"] else None,
             "xwobacon": round(sum(b["xw"]) / len(b["xw"]), 3) if len(b["xw"]) >= 5 else None,
             "zone_ev": {k: round(sum(v) / len(v), 1) for k, v in b["zev"].items() if len(v) >= 3},
+            "velo": _band_out(b["vb"], live_ctx),
             "points": b["points"],
         }
         if live_ctx and b["called"] >= 10:
@@ -2121,6 +2203,7 @@ def trackman_batter_detail(
                        p.direction, p.bearing, p.play_result, p.tagged_hit_type,
                        p.contact_x, p.contact_y,
                        p.k_or_bb, p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
+                       p.effective_velo,
                        s.session_type, s.session_date, s.id AS session_id
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter = %s {extra}{team_sql}{conf_sql}
@@ -2300,12 +2383,34 @@ def trackman_batter_detail(
         if len(rows_t) >= 10:
             splits["pitch_type"][t] = _split_line(rows_t)
 
+    # Effective-velocity bands: what this hitter does as the ball plays faster.
+    vb = defaultdict(_band_bucket)
+    for x in pitches:
+        key = _velo_band(x.get("effective_velo"))
+        if not key:
+            continue
+        d = vb[key]
+        d["n"] += 1
+        if x.get("is_swing"):
+            d["sw"] += 1
+        if x.get("is_whiff"):
+            d["wh"] += 1
+        if x.get("exit_speed") is not None:
+            ev_v = float(x["exit_speed"])
+            d["bbe"] += 1
+            d["ev"].append(ev_v)
+            if ev_v >= 90:
+                d["hh"] += 1
+            if x.get("launch_angle") is not None:
+                d["la"].append(float(x["launch_angle"]))
+    velo = _band_out(vb, any(x.get("pitch_call") for x in pitches))
+
     with get_connection() as conn:
         link = _match_player(conn.cursor(), batter)
     return {"batter": batter, "pitch_count": len(pitches),
             "pitches": pitches, "percentiles": percentiles, "profile": link,
             "xstats": xstats, "swing_take": swing_take, "trend": trend,
-            "splits": splits}
+            "splits": splits, "velo": velo}
 
 
 def _bp_grade(avg_ev, hh_pct, ss_pct):
