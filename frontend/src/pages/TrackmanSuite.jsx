@@ -20,6 +20,7 @@ import ReportActions from '../components/ReportActions'
 import { saveNodeAsPdf, saveNodesAsPdf, saveNodeAsCsv, downloadCsvText } from '../lib/reportExport'
 import StaffManager from '../components/portal/StaffManager'
 import TrackmanGlossary from '../components/portal/TrackmanGlossary'
+import StatTip, { StatAvgContext } from '../components/portal/StatTip'
 import { toneAttr } from '../lib/reportExport'
 import { Link } from 'react-router-dom'
 
@@ -121,7 +122,14 @@ export default function TrackmanSuite() {
   const [seasonSel, setSeasonSel] = useState(null)   // null = auto (latest)
   const season = seasonSel === 'all' ? undefined : (seasonSel ?? seasonsAvail[0])
 
+  // Corpus averages behind every hover card. One fetch for the whole suite;
+  // surfaces that show a filtered cohort pass their own average instead.
+  const { data: avgData } = useApi(hasData ? '/trackman/stat-averages' : null,
+    { context: 'all', ...(primary ? { team: primary } : {}), season }, [primary, season])
+  const statAvg = useMemo(() => ({ averages: avgData?.averages || {} }), [avgData])
+
   return (
+    <StatAvgContext.Provider value={statAvg}>
     <div className="max-w-7xl mx-auto px-3 sm:px-5 py-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
@@ -184,6 +192,7 @@ export default function TrackmanSuite() {
       {tab === 'values' && (hasData ? <ValuesTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'board' && (hasData ? <CoachBoardTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
+    </StatAvgContext.Provider>
   )
 }
 
@@ -514,24 +523,24 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                     <th className="px-4 py-1.5">Pitch</th>
-                    <th className="px-2 py-1.5 text-right" title="Site-standard Stuff: PHYSICAL traits only (velo, movement, spin, extension, separation off the fastball), whiff+chase never an input. Re-centered on YOUR corpus per pitch type, so 100 = the average pitch of that type in your data and every type shares one scale.">Stuff</th>
-                    <th className="px-2 py-1.5 text-right" title="Site-standard Location+: edge presence + pitch-type height targets (shared with the Rapsodo Lab). 100 = average.">Loc+</th>
-                    <th className="px-2 py-1.5 text-right">Use%</th>
-                    <th className="px-2 py-1.5 text-right">Velo</th>
-                    <th className="px-2 py-1.5 text-right">Max</th>
-                    <th className="px-2 py-1.5 text-right">Spin</th>
-                    <th className="px-2 py-1.5 text-right">IVB</th>
-                    <th className="px-2 py-1.5 text-right">HB</th>
-                    <th className="px-2 py-1.5 text-right">Ext</th>
-                    <th className="px-2 py-1.5 text-right">Zone%</th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="stuff" group="pitching" label="Stuff" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="loc" group="pitching" label="Loc+" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="usage_pct" group="pitching" label="Use%" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="velo" group="pitching" label="Velo" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="max_velo" group="pitching" label="Max" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="spin" group="pitching" label="Spin" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="ivb" group="pitching" label="IVB" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="hb" group="pitching" label="HB" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="extension" group="pitching" label="Ext" /></th>
+                    <th className="px-2 py-1.5 text-right"><StatTip k="zone_pct" group="pitching" label="Zone%" /></th>
                     {context !== 'bullpen' && (<>
-                      <th className="px-2 py-1.5 text-right" title="Share of this pitch landing in the shadow band around the zone edges — edge-living score">Shdw%</th>
-                      <th className="px-2 py-1.5 text-right">Whiff%</th>
-                      <th className="px-2 py-1.5 text-right">Chase%</th>
-                      <th className="px-2 py-1.5 text-right">CSW%</th>
-                      <th className="px-2 py-1.5 text-right">EV agn</th>
-                      <th className="px-2 py-1.5 text-right" title="Run value: count-based runs saved vs the average pitch in your data (positive = good)">RV</th>
-                      <th className="px-2 py-1.5 text-right" title="Run value per 100 pitches — the rate version (min 15 priced pitches)">RV/100</th>
+                      <th className="px-2 py-1.5 text-right"><StatTip k="shadow_pct" group="pitching" label="Shdw%" /></th>
+                      <th className="px-2 py-1.5 text-right"><StatTip k="whiff_pct" group="pitching" label="Whiff%" /></th>
+                      <th className="px-2 py-1.5 text-right"><StatTip k="chase_pct" group="pitching" label="Chase%" /></th>
+                      <th className="px-2 py-1.5 text-right"><StatTip k="csw_pct" group="pitching" label="CSW%" /></th>
+                      <th className="px-2 py-1.5 text-right"><StatTip k="ev_against" group="pitching" label="EV agn" /></th>
+                      <th className="px-2 py-1.5 text-right"><StatTip k="rv" group="pitching" label="RV" /></th>
+                      <th className="px-2 py-1.5 text-right"><StatTip k="rv100" group="pitching" label="RV/100" /></th>
                     </>)}
                   </tr>
                 </thead>
@@ -794,13 +803,19 @@ function HittingTab({ teamCtx, season }) {
                     onClick={() => clickSort('batter')}>
                     Batter{sortK === 'batter' ? (sortD > 0 ? ' ▲' : ' ▼') : ''}
                   </th>
-                  {COLSET.map(([label, k, tip]) => (
-                    <th key={k} onClick={() => clickSort(k)} title={tip || 'Click to sort'}
-                      className={`px-1.5 py-2 text-right cursor-pointer select-none whitespace-nowrap ${
-                        sortK === k ? 'text-portal-purple dark:text-indigo-300' : ''}`}>
-                      {label}{sortK === k ? (sortD > 0 ? ' ▲' : ' ▼') : ''}
-                    </th>
-                  ))}
+                  {COLSET.map(([label, k, tip]) => {
+                    const vals = cohort[k] || []
+                    const mean = vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null
+                    return (
+                      <th key={k} onClick={() => clickSort(k)}
+                        className={`px-1.5 py-2 text-right cursor-pointer select-none whitespace-nowrap ${
+                          sortK === k ? 'text-portal-purple dark:text-indigo-300' : ''}`}>
+                        <StatTip k={k} group="hitting" label={label} fallback={tip}
+                          avg={mean} n={vals.length} />
+                        {sortK === k ? (sortD > 0 ? ' ▲' : ' ▼') : ''}
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
@@ -2528,22 +2543,22 @@ function CatchingTab({ teamCtx, season }) {
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                 <th className="px-4 py-2">Catcher</th><th className="px-2 py-2">Team</th>
-                <th className="px-2 py-2 text-right" title="Framing runs + arm runs">Value</th>
-                <th className="px-2 py-2 text-right" title="Strikes Above Expected x 0.125 runs">Framing</th>
-                <th className="px-2 py-2 text-right" title="Called strikes above the corpus-average expectation on edge pitches">SAE</th>
+                <th className="px-2 py-2 text-right"><StatTip k="total_runs" group="catching" label="Value" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="framing_runs" group="catching" label="Framing" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="sae" group="catching" label="SAE" /></th>
                 <th className="px-2 py-2 text-right" title="Taken pitches within ~4 inches of the zone edge">Edge takes</th>
                 <th className="px-2 py-2 text-right">Edge K%</th>
                 {['High', 'Low', 'Left', 'Right'].map(h => (
                   <th key={h} className="px-2 py-2 text-right" title={`SAE on the ${h.toLowerCase()} edge`}>{h}</th>
                 ))}
-                <th className="px-2 py-2 text-right" title="Blended arm value: pop-time expectation as the prior, actual throw-outs update it; runs vs the corpus CS rate on real attempts">Arm</th>
+                <th className="px-2 py-2 text-right"><StatTip k="arm_runs" group="catching" label="Arm" /></th>
                 <th className="px-2 py-2 text-right" title="Actual stolen bases against - caught stealing (site season stats)">SB-CS</th>
-                <th className="px-2 py-2 text-right" title="Blended CS%: actual record regressed toward the pop-time expectation">CS%</th>
+                <th className="px-2 py-2 text-right"><StatTip k="blended_cs_pct" group="catching" label="CS%" /></th>
                 <th className="px-2 py-2 text-right" title="Estimated CS% from average pop time alone">est CS%</th>
-                <th className="px-2 py-2 text-right">Pop</th>
-                <th className="px-2 py-2 text-right">Best</th>
-                <th className="px-2 py-2 text-right">Exch</th>
-                <th className="px-2 py-2 text-right">Arm velo</th>
+                <th className="px-2 py-2 text-right"><StatTip k="avg_pop" group="catching" label="Pop" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="best_pop" group="catching" label="Best" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="avg_exchange" group="catching" label="Exch" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="avg_throw" group="catching" label="Arm velo" /></th>
                 <th className="px-2 py-2 text-right">Throws</th>
               </tr>
             </thead>
@@ -3026,26 +3041,26 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs }) {
         <thead>
           <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
             <th className="px-4 py-1.5">Pitch</th>
-            <th className="px-2 py-1.5 text-right" title="Site-standard Stuff: physical traits only, re-centered on your corpus so 100 = the average pitch of this type in your data">Stuff</th>
-            <th className="px-2 py-1.5 text-right" title="Location+ command score, 100 = average">Loc+</th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="stuff" group="pitching" label="Stuff" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="loc" group="pitching" label="Loc+" /></th>
             <th className="px-2 py-1.5 text-right">N</th>
-            <th className="px-2 py-1.5 text-right">Use%</th>
-            <th className="px-2 py-1.5 text-right">Velo</th>
-            <th className="px-2 py-1.5 text-right">Max</th>
-            <th className="px-2 py-1.5 text-right" title="Induced vertical break; the small number is vs the average pitch of this type from this handedness in your data">IVB</th>
-            <th className="px-2 py-1.5 text-right" title="Horizontal break; small number = vs same-hand type average">HB</th>
-            <th className="px-2 py-1.5 text-right">Spin</th>
-            <th className="px-2 py-1.5 text-right">Ext</th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="usage_pct" group="pitching" label="Use%" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="velo" group="pitching" label="Velo" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="max_velo" group="pitching" label="Max" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="ivb" group="pitching" label="IVB" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="hb" group="pitching" label="HB" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="spin" group="pitching" label="Spin" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="extension" group="pitching" label="Ext" /></th>
             <th className="px-2 py-1.5 text-right" title="Vertical approach angle at the plate">VAA</th>
             <th className="px-2 py-1.5 text-right" title="Ground-ball share of batted balls against">GB%</th>
-            <th className="px-2 py-1.5 text-right">Zone%</th>
-            <th className="px-2 py-1.5 text-right" title="Share landing in the shadow band around the zone edges">Shdw%</th>
-            <th className="px-2 py-1.5 text-right">Whiff%</th>
-            <th className="px-2 py-1.5 text-right">Chase%</th>
-            <th className="px-2 py-1.5 text-right">CSW%</th>
-            <th className="px-2 py-1.5 text-right">EV agn</th>
-            <th className="px-2 py-1.5 text-right" title="Run value: count-based runs saved vs the average pitch in your data">RV</th>
-            <th className="px-2 py-1.5 text-right" title="Run value per 100 pitches (min 15 priced)">RV/100</th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="zone_pct" group="pitching" label="Zone%" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="shadow_pct" group="pitching" label="Shdw%" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="whiff_pct" group="pitching" label="Whiff%" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="chase_pct" group="pitching" label="Chase%" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="csw_pct" group="pitching" label="CSW%" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="ev_against" group="pitching" label="EV agn" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="rv" group="pitching" label="RV" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="rv100" group="pitching" label="RV/100" /></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
@@ -3267,13 +3282,13 @@ function SplitsCard({ splits }) {
             <th className="px-4 py-1.5">Split</th>
             <th className="px-2 py-1.5 text-right">Seen</th>
             <th className="px-2 py-1.5 text-right">Swing%</th>
-            <th className="px-2 py-1.5 text-right">Whiff%</th>
-            <th className="px-2 py-1.5 text-right">Chase%</th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="whiff_pct" group="hitting" label="Whiff%" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="chase_pct" group="hitting" label="Chase%" /></th>
             <th className="px-2 py-1.5 text-right">BBE</th>
             <th className="px-2 py-1.5 text-right">EV</th>
             <th className="px-2 py-1.5 text-right">HH%</th>
             <th className="px-2 py-1.5 text-right" title="Expected wOBA on contact from EV + launch + spray, college-calibrated">xwOBAcon</th>
-            <th className="px-2 py-1.5 text-right" title="Run value earned in this split (swings and takes), centered on your corpus">RV</th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="rv" group="hitting" label="RV" /></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
@@ -3755,9 +3770,9 @@ function DefenseTab({ teamCtx, season }) {
               <th className="px-2 py-2 text-right">Opps</th>
               <th className="px-2 py-2 text-right">Outs</th>
               <th className="px-2 py-2 text-right">xOuts</th>
-              <th className="px-2 py-2 text-right">OAE</th>
-              <th className="px-2 py-2 text-right">Conv%</th>
-              <th className="px-2 py-2 text-right">xConv%</th>
+              <th className="px-2 py-2 text-right"><StatTip k="oae" group="defense" label="OAE" /></th>
+              <th className="px-2 py-2 text-right"><StatTip k="conv_pct" group="defense" label="Conv%" /></th>
+              <th className="px-2 py-2 text-right"><StatTip k="x_conv_pct" group="defense" label="xConv%" /></th>
               <th className="px-2 py-2 text-right" title="Reached the ball but no out (scored an error): glove or throw">E</th>
               <th className="px-2 py-2 text-right" title="Ball got past without an error: range">Thru</th>
               {['In', 'Back', 'Left', 'Right'].map(h => (
@@ -3915,7 +3930,7 @@ function DefenseTab({ teamCtx, season }) {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                     <th className="px-4 py-2">Date</th><th className="px-2 py-2">Matchup</th>
-                    <th className="px-2 py-2 text-right">Chances</th>
+                    <th className="px-2 py-2 text-right"><StatTip k="opps" group="defense" label="Chances" /></th>
                     <th className="px-2 py-2 text-right">Outs</th>
                     <th className="px-2 py-2 text-right">xOuts</th>
                     <th className="px-2 py-2 text-right">Team OAE</th>
@@ -4066,9 +4081,11 @@ function ValuesTab({ teamCtx, season }) {
                 <th className="px-2 py-2">Team</th>
                 <th className="px-2 py-2 text-right" title="Season PA / IP behind the numbers">PA · IP</th>
                 {COLS.map(([k, label, tip]) => (
-                  <th key={k} className="px-2 py-2 text-right" title={tip}>{label}</th>
+                  <th key={k} className="px-2 py-2 text-right">
+                    <StatTip k={k} group="values" label={label} fallback={tip} />
+                  </th>
                 ))}
-                <th className="px-2 py-2 text-right" title="Pitch-level run value from tracked TrackMan sessions (count-based, centered on your corpus). Same innings as the Pitching column, different lens — informational, never summed into Total">RV (trk)</th>
+                <th className="px-2 py-2 text-right"><StatTip k="tracked_rv" group="values" label="RV (trk)" /></th>
                 {posAdj && <th className="px-2 py-2 text-right" title="Positional adjustment at the player's primary tracked position">Pos adj</th>}
                 <th className="px-2 py-2 text-right font-bold" title="Sum of every component">Total</th>
               </tr>

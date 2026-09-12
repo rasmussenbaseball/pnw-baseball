@@ -3128,3 +3128,86 @@ def override_pitch_type(pitch_id: int, body: PitchTypeOverride, owner: str = Dep
             raise HTTPException(status_code=404, detail="Pitch not found.")
         conn.commit()
     return {"status": "ok"}
+
+
+# ── Corpus averages for the hover tooltips ───────────────────────
+
+def _avg_numeric(rows, skip=()):
+    """Mean of every numeric field across rows, ignoring nulls."""
+    acc, cnt = defaultdict(float), defaultdict(int)
+    for r in rows:
+        for k, v in (r or {}).items():
+            if k in skip or isinstance(v, bool) or not isinstance(v, (int, float)):
+                continue
+            acc[k] += float(v)
+            cnt[k] += 1
+    return {k: round(acc[k] / cnt[k], 3) for k in acc if cnt[k]}
+
+
+@router.get("/trackman/stat-averages")
+def trackman_stat_averages(
+    context: str = Query("all"),
+    team: str | None = Query(None),
+    season: int | None = Query(None),
+    owner: str = Depends(_gate),
+):
+    """Corpus averages per metric, so a hover card can say what average
+    looks like. Averages are over the OWNER's own tracked players in the
+    chosen context, matching the shading everywhere else in the suite:
+    'average' means average here, not a national number."""
+    out = {}
+
+    def section(name, fn):
+        try:
+            out[name] = fn()
+        except Exception:  # noqa: BLE001 — a thin section must not sink the rest
+            out[name] = {}
+
+    def hitting():
+        d = trackman_hitting_board(context=context, team=team, throws=None,
+                                   pitch_type=None, season=season, date_from=None,
+                                   date_to=None, owner=owner)
+        bats = d.get("batters", [])
+        base = _avg_numeric(bats, skip=("points", "velo", "zone_ev", "zone_rv"))
+        base["_n"] = len(bats)
+        return base
+
+    def pitching():
+        d = trackman_pitching(context=context, team=team, side=None,
+                              season=season, owner=owner)
+        ps = d.get("pitchers", [])
+        arsenal = [a for p in ps for a in (p.get("arsenal") or [])]
+        base = _avg_numeric(arsenal)
+        base.update({f"p_{k}": v for k, v in _avg_numeric(ps, skip=("arsenal",)).items()})
+        base["_n"] = len(arsenal)
+        return base
+
+    def catching():
+        d = trackman_catching(team=team, season=season, context=context, owner=owner)
+        cs = d.get("catchers", [])
+        base = _avg_numeric(cs, skip=("edges",))
+        base["_n"] = len(cs)
+        return base
+
+    def defense():
+        d = trackman_defense(context=context, team=team, date_from=None,
+                             date_to=None, season=season, owner=owner)
+        pl = list(d.get("infield") or []) + list(d.get("outfield") or [])
+        base = _avg_numeric(pl, skip=("buckets", "dirs", "positions"))
+        base["_n"] = len(pl)
+        return base
+
+    def values():
+        d = trackman_values(team=team, pos_adj=False, shrink=False,
+                            season=season, context=context, owner=owner)
+        pl = d.get("players", [])
+        base = _avg_numeric(pl)
+        base["_n"] = len(pl)
+        return base
+
+    section("values", values)
+    section("hitting", hitting)
+    section("pitching", pitching)
+    section("catching", catching)
+    section("defense", defense)
+    return {"context": context, "season": season, "averages": out}
