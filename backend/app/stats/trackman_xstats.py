@@ -137,7 +137,7 @@ RESULT_TB = {"Single": 1, "Double": 2, "Triple": 3, "HomeRun": 4}
 RESULT_WOBA = {"Single": 0.89, "Double": 1.27, "Triple": 1.62, "HomeRun": 2.10}
 
 
-def batter_xstats(pas):
+def batter_xstats(pas, min_pa: int = 20):
     """Fold per-PA outcomes into expected stats.
 
     Each PA dict: {outcome: 'K'|'BB'|'HBP'|'InPlay'|'Sac'|'Other',
@@ -185,7 +185,7 @@ def batter_xstats(pas):
         hits += RESULT_BA.get(pr, 0)
         tb_actual += RESULT_TB.get(pr, 0)
 
-    if pa_n < 20 or ab == 0:
+    if pa_n < min_pa or ab == 0:
         return None
     denom = ab + bb + hbp + sf
     return {

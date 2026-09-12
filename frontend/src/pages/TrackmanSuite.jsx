@@ -863,7 +863,9 @@ function HittingTab({ teamCtx, season }) {
               : 'Decisions (swing, contact, chase, RV) come from called pitches; expected stats rebuild each plate appearance from the pitch sequence. '}
             Zone columns use heart and shadow pitches only, split up/down/in/out relative to the batter
             (RV zones for live contexts price swings AND takes there; the middle is covered by Heart RV;
-            BP shows avg EV per zone instead since BP has no pitch calls). Save PDF exports this whole view.
+            BP shows avg EV per zone instead since BP has no pitch calls). Every number shows at any
+            sample size, so read the Pitches and BBE columns alongside them: a rate off three swings is
+            real arithmetic but not yet a real trend. Save PDF exports this whole view.
           </p>
         </>
       )}
@@ -3135,8 +3137,8 @@ function VeloBandCard({ velo, title = 'Against effective velocity' }) {
         })}
       </div>
       <p className="text-[10px] text-gray-400 mt-2 leading-snug">
-        Bands are effective velo (what the pitch plays like, not the radar reading). Bars need 3+ tracked
-        balls, whiff% needs 5+ swings.
+        Bands are effective velo (what the pitch plays like, not the radar reading). Counts next to each
+        bar are the sample behind it.
       </p>
     </div>
   )
@@ -3218,8 +3220,8 @@ function VeloBandBoard({ rows, isBp }) {
       <p className="px-4 py-2 text-[10px] text-gray-400 leading-snug">
         Effective velo is what the pitch plays like after adjusting for release distance, so it is the
         honest velo read in BP{isBp ? ' — the machine sits well in front of the rubber, so a 57 mph feed plays like upper-80s' : ''}.
-        Small numbers next to each EV are tracked balls in that band; a band needs 3+ to show, and the
-        gaps need 5+ balls (8+ swings) on each side of 84.
+        Small numbers next to each EV are tracked balls in that band; weigh every band by that count,
+        since a one-ball band is a single swing, not a skill.
       </p>
     </div>
   )

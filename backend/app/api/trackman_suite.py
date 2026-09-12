@@ -1275,12 +1275,12 @@ def _band_out(buckets, live):
         if not d or not d["n"]:
             continue
         row = {"label": label, "pitches": d["n"], "bbe": d["bbe"]}
-        if d["bbe"] >= 3:
+        if d["bbe"]:
             row["avg_ev"] = round(sum(d["ev"]) / d["bbe"], 1)
             row["hh_pct"] = round(100 * d["hh"] / d["bbe"], 1)
             if d["la"]:
                 row["avg_la"] = round(sum(d["la"]) / len(d["la"]), 1)
-        if live and d["sw"] >= 5:
+        if live and d["sw"]:
             row["swings"] = d["sw"]
             row["whiff_pct"] = round(100 * d["wh"] / d["sw"], 1)
         out[key] = row
@@ -1294,11 +1294,11 @@ def _band_out(buckets, live):
         tgt["ev"] += d["ev"]; tgt["hh"] += d["hh"]
         tgt["bbe"] += d["bbe"]; tgt["sw"] += d["sw"]; tgt["wh"] += d["wh"]
     res = {"bands": out}
-    if hard["bbe"] >= 5 and softd["bbe"] >= 5:
+    if hard["bbe"] and softd["bbe"]:
         res["ev_hard"] = round(sum(hard["ev"]) / hard["bbe"], 1)
         res["ev_soft"] = round(sum(softd["ev"]) / softd["bbe"], 1)
         res["ev_gap"] = round(res["ev_hard"] - res["ev_soft"], 1)
-    if live and hard["sw"] >= 8 and softd["sw"] >= 8:
+    if live and hard["sw"] and softd["sw"]:
         res["whiff_hard"] = round(100 * hard["wh"] / hard["sw"], 1)
         res["whiff_gap"] = round(100 * hard["wh"] / hard["sw"] - 100 * softd["wh"] / softd["sw"], 1)
     return res
@@ -1493,7 +1493,7 @@ def trackman_hitting_board(
         })
 
     def _p90(vals):
-        if len(vals) < 5:
+        if not vals:
             return None
         v = sorted(vals)
         return v[min(len(v) - 1, int(0.9 * (len(v) - 1) + 0.5))]
@@ -1502,7 +1502,9 @@ def trackman_hitting_board(
     out = []
     for (name, tm), b in B.items():
         n_bbe = len(b["evs"])
-        if b["rows"] < 5:
+        # No sample floors on this board: every number shows, however thin.
+        # The Pitches and BBE columns carry the sample so a coach can weigh it.
+        if not b["rows"]:
             continue
         row = {
             "batter": name, "team": tm, "side": b["side"],
@@ -1516,26 +1518,26 @@ def trackman_hitting_board(
             "gb_pct": _rate2(b["gb"], len(b["las"])),
             "ld_pct": _rate2(b["ld"], len(b["las"])),
             "fb_pct": _rate2(b["fb"], len(b["las"])),
-            "airpull_pct": _rate2(b["pull_air"], b["air"]) if b["air"] >= 5 else None,
-            "depth": round(sum(b["cx"]) / len(b["cx"]), 2) if len(b["cx"]) >= 3 else None,
+            "airpull_pct": _rate2(b["pull_air"], b["air"]),
+            "depth": round(sum(b["cx"]) / len(b["cx"]), 2) if b["cx"] else None,
             "max_dist": round(max(b["dists"])) if b["dists"] else None,
-            "xwobacon": round(sum(b["xw"]) / len(b["xw"]), 3) if len(b["xw"]) >= 5 else None,
-            "zone_ev": {k: round(sum(v) / len(v), 1) for k, v in b["zev"].items() if len(v) >= 3},
+            "xwobacon": round(sum(b["xw"]) / len(b["xw"]), 3) if b["xw"] else None,
+            "zone_ev": {k: round(sum(v) / len(v), 1) for k, v in b["zev"].items() if v},
             "velo": _band_out(b["vb"], live_ctx),
             "points": b["points"],
         }
-        if live_ctx and b["called"] >= 10:
+        if live_ctx and b["called"]:
             row.update({
                 "swing_pct": _rate2(b["sw"], b["called"]),
-                "contact_pct": _rate2(b["ct"], b["sw"]) if b["sw"] >= 10 else None,
-                "chase_pct": _rate2(b["ch"], b["oz"]) if b["oz"] >= 10 else None,
-                "fp_swing_pct": _rate2(b["fp_sw"], b["fp_n"]) if b["fp_n"] >= 8 else None,
-                "k2_contact_pct": _rate2(b["k2_ct"], b["k2_sw"]) if b["k2_sw"] >= 8 else None,
+                "contact_pct": _rate2(b["ct"], b["sw"]),
+                "chase_pct": _rate2(b["ch"], b["oz"]),
+                "fp_swing_pct": _rate2(b["fp_sw"], b["fp_n"]),
+                "k2_contact_pct": _rate2(b["k2_ct"], b["k2_sw"]),
                 "rv": round(sum(b["rv"].values()), 1) if b["rv_n"] else None,
                 "heart_rv": round(b["rv"]["heart"], 1) if b["rv_n"] else None,
                 "shadow_rv": round(b["rv"]["shadow"], 1) if b["rv_n"] else None,
                 "chase_rv": round(b["rv"]["chase"] + b["rv"]["waste"], 1) if b["rv_n"] else None,
-                "zone_rv": {k: round(v, 1) for k, v in b["zrv"].items() if b["zrv_n"][k] >= 8},
+                "zone_rv": {k: round(v, 1) for k, v in b["zrv"].items() if b["zrv_n"][k]},
             })
             pas = []
             for x in b["pa_map"].values():
@@ -1557,21 +1559,21 @@ def trackman_hitting_board(
                             "direction": float(x["direction"]) if x["direction"] is not None else None,
                             "side": (x["batter_side"] or "")[:1] or None,
                             "play_result": x["play_result"]})
-            x = batter_xstats(pas)
+            x = batter_xstats(pas, min_pa=1)
             if x:
                 row.update({"xavg": x.get("xavg"), "xslg": x.get("xslg"), "xwoba": x.get("xwoba"),
                             "pa": x.get("pa")})
             done = [p for p in pas if p["outcome"] in ("K", "BB", "HBP", "Sac", "InPlay")]
-            if len(done) >= 10:
+            if done:
                 row["k_pct"] = _rate2(sum(1 for p in done if p["outcome"] == "K"), len(done))
                 row["bb_pct"] = _rate2(sum(1 for p in done if p["outcome"] == "BB"), len(done))
             hh = bp_hh.get((name, tm))
-            if hh is not None and n_bbe >= 10:
+            if hh is not None and n_bbe:
                 row["transfer"] = round(100 * (b["hh"] / n_bbe - hh), 1)
         else:
             # BP: contact per machine pitch + out-of-zone contact share
             row["contact_per_pitch"] = _rate2(n_bbe, b["rows"])
-            row["oz_contact_pct"] = _rate2(b["oz_bbe"], b["loc_bbe"]) if b["loc_bbe"] >= 8 else None
+            row["oz_contact_pct"] = _rate2(b["oz_bbe"], b["loc_bbe"])
         out.append(row)
     out.sort(key=lambda r: -(r["avg_ev"] or 0))
     sess = sorted(sessions.values(), key=lambda s: s["date"] or "")
