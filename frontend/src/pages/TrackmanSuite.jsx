@@ -593,6 +593,8 @@ const HB_FULL = [
   ['BBE', 'bbe', 'Tracked batted balls', { plain: true, dec: 0 }],
   ['Swing%', 'swing_pct', 'Swings per pitch seen', {}],
   ['Contact%', 'contact_pct', 'Contact per swing', {}],
+  ['Z-Ct%', 'zone_contact_pct', 'Zone contact: contact per swing at pitches IN the zone. The bat-to-ball skill that matters most, since these are the pitches he should handle', {}],
+  ['O-Ct%', 'ozone_contact_pct', 'Out-of-zone contact: contact per swing at pitches OUT of the zone. High here is not always good — weak contact on pitchers\u2019 pitches turns balls into outs', {}],
   ['Chase%', 'chase_pct', 'Swings at pitches out of the zone', { higher: false }],
   ['FP Sw%', 'fp_swing_pct', 'First-pitch swing rate', { plain: true }],
   ['2K Ct%', 'k2_contact_pct', 'Contact per swing with two strikes', {}],
