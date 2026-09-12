@@ -1571,7 +1571,11 @@ def trackman_hitting_board(
                     o = "HBP"
                 elif x["play_result"] == "Sacrifice":
                     o = "Sac"
-                elif x["play_result"]:
+                # A pitch put in play ALWAYS ends the PA, so it counts even when
+                # the scorer left the result blank (routine in intrasquads).
+                # Without this the PA vanished from the K%/BB% denominator and
+                # from expected stats entirely.
+                elif x["play_result"] or x["pitch_call"] == "InPlay":
                     o = "InPlay"
                 else:
                     o = "Other"
@@ -2282,8 +2286,8 @@ def trackman_batter_detail(
             o = "HBP"
         elif x["play_result"] == "Sacrifice":
             o = "Sac"
-        elif x["play_result"]:
-            o = "InPlay"
+        elif x["play_result"] or x["pitch_call"] == "InPlay":
+            o = "InPlay"   # in play ends the PA even if the result went untagged
         else:
             o = "Other"  # PA didn't end in this filtered slice
         pas.append({"outcome": o, "ev": x["exit_speed"], "la": x["launch_angle"],
