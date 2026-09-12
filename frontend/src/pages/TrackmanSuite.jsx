@@ -58,10 +58,6 @@ const PITCH_COLORS = {
   Slider: '#3b82f6', Sweeper: '#14b8a6', Curveball: '#22c55e', ChangeUp: '#ec4899',
   Changeup: '#ec4899', Splitter: '#0891b2', Knuckleball: '#78716c',
 }
-// Session-type options for the fielding/value surfaces. Bullpens are left
-// out: no batted balls and a placeholder batter, so nothing to field or value.
-const DEF_CONTEXTS = CONTEXTS.filter(([k]) => k !== 'bullpen')
-
 const TYPE_META = {
   game: { label: 'Game', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
   scrimmage: { label: 'Scrimmage', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' },
@@ -432,6 +428,9 @@ function OverviewTab({ overview, refetch, onReview, season }) {
 // ── Pitching ─────────────────────────────────────────────────────
 
 const CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['bullpen', 'Bullpens'], ['all', 'Everything']]
+// Session-type options for the fielding/value surfaces. Bullpens are left
+// out: no batted balls and a placeholder batter, so nothing to field or value.
+const DEF_CONTEXTS = CONTEXTS.filter(([k]) => k !== 'bullpen')
 
 function PitchingTab({ onOpenLab, teamCtx, season }) {
   const exportRef = useRef(null)
