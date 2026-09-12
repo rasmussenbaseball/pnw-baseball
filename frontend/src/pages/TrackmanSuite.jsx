@@ -58,6 +58,10 @@ const PITCH_COLORS = {
   Slider: '#3b82f6', Sweeper: '#14b8a6', Curveball: '#22c55e', ChangeUp: '#ec4899',
   Changeup: '#ec4899', Splitter: '#0891b2', Knuckleball: '#78716c',
 }
+// Session-type options for the fielding/value surfaces. Bullpens are left
+// out: no batted balls and a placeholder batter, so nothing to field or value.
+const DEF_CONTEXTS = CONTEXTS.filter(([k]) => k !== 'bullpen')
+
 const TYPE_META = {
   game: { label: 'Game', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
   scrimmage: { label: 'Scrimmage', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' },
@@ -2488,7 +2492,9 @@ function ShadowZoneMap({ c }) {
 function CatchingTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
-  const { data, loading } = useApi('/trackman/catching', { ...(team ? { team } : {}), season }, [team])
+  const [context, setContext] = useState('all')
+  const { data, loading } = useApi('/trackman/catching',
+    { ...(team ? { team } : {}), season, context }, [team, context])
   const rows = data?.catchers || []
   const pct = v => v != null ? `${Math.round(v * 100)}%` : '—'
   const runs = v => v == null ? '—' : (
@@ -2499,7 +2505,15 @@ function CatchingTab({ teamCtx, season }) {
   const framers = rows.filter(c => c.sae != null && (c.shadow_taken || 0) >= 20)
   return (
     <div className="space-y-3" ref={exportRef}>
-      <div className="flex justify-end items-center gap-2">
+      <div className="flex justify-end items-center gap-2 flex-wrap">
+        {DEF_CONTEXTS.map(([k, label]) => (
+          <button key={k} onClick={() => setContext(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+              context === k ? 'bg-portal-purple text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+            {label}
+          </button>
+        ))}
         <ReportActions csv targetRef={exportRef} filename="trackman_catching" />
         <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
       </div>
@@ -3807,7 +3821,7 @@ function DefenseTab({ teamCtx, season }) {
           <ReportActions csv targetRef={exportRef} filename="trackman_defense" />
           <select value={context} onChange={e => setContext(e.target.value)}
             className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs">
-            {CONTEXTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            {DEF_CONTEXTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
           </select>
           <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
         </div>
@@ -3960,9 +3974,12 @@ function ValuesTab({ teamCtx, season }) {
   const [team, setTeam] = useState(teamCtx.primary)
   const [posAdj, setPosAdj] = useState(false)
   const [shrink, setShrink] = useState(false)
+  const [context, setContext] = useState('all')
   const { data, loading } = useApi('/trackman/values',
-    { ...(team ? { team } : {}), pos_adj: posAdj, shrink, season },
-    [team, posAdj, shrink])
+    { ...(team ? { team } : {}), pos_adj: posAdj, shrink, season, context },
+    [team, posAdj, shrink, context])
+  const seasonOnly = context !== 'all' && context !== 'game'
+
   const rows = data?.players || []
   const rv = v => v == null ? <span className="text-gray-300 dark:text-gray-600">—</span> : (
     <span className={`font-semibold tabular-nums ${v > 0.05 ? 'text-emerald-600 dark:text-emerald-400' : v < -0.05 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500'}`}>
@@ -3984,11 +4001,25 @@ function ValuesTab({ teamCtx, season }) {
   return (
     <div className="space-y-3" ref={exportRef}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-[11px] text-gray-400">
+        <div className="text-[11px] text-gray-400 max-w-xl">
           Every column is average-relative: 0 = an average player in the division. Season stats + tracked
           data combined. Rough rule: about 10 runs = 1 win.
+          {seasonOnly && (
+            <span className="block mt-0.5 text-amber-600 dark:text-amber-400">
+              Offense, baserunning and pitching come from official season stats, so they stay blank in a
+              scrimmage or intrasquad view. Fielding and catching are tracked, so they follow this filter.
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {DEF_CONTEXTS.map(([k, label]) => (
+            <button key={k} onClick={() => setContext(k)}
+              className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${
+                context === k ? 'bg-portal-purple text-white'
+                  : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>
+              {label}
+            </button>
+          ))}
           <ReportActions csv targetRef={exportRef} filename="trackman_values" />
           <button onClick={() => setPosAdj(v => !v)}
             title="WAR-style premium-position credit: C +4.5, SS +2.5, CF/2B/3B +1.0, LF/RF -2.5, 1B -4.5 runs per full season, scaled by playing time"

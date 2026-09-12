@@ -668,6 +668,7 @@ def trackman_values(
     pos_adj: bool = Query(False),
     shrink: bool = Query(False),
     season: int | None = Query(None),
+    context: str = Query("all"),
     owner: str = Depends(_gate),
 ):
     """The Values page: one run-value ledger per player, combining the
@@ -699,9 +700,13 @@ def trackman_values(
         return whole + frac / 3.0
 
     # defensive + catching values from the existing computations
-    dfs = trackman_defense(context="all", team=team, date_from=None, date_to=None,
+    # Tracked components follow the session-type filter; the season-stat
+    # components (offense, baserunning, pitching FIP) are real-game only by
+    # nature, so a scrimmage/intrasquad view leaves them blank on purpose.
+    dfs = trackman_defense(context=context, team=team, date_from=None, date_to=None,
                            season=season, owner=owner)
-    cat = trackman_catching(team=team, season=season, owner=owner)
+    cat = trackman_catching(team=team, season=season, context=context, owner=owner)
+    _vctx_sql, _vctx_params = _context_clause(context)
     site_season = _site_season(season)
     def _shrunk(oae, opps, k):
         return oae * (opps / (opps + k)) if shrink else oae
@@ -742,8 +747,8 @@ def trackman_values(
                           ("catcher", "catcher_team")):
             cur.execute(f"""SELECT p.{col} AS n, p.{tcol} AS t, COUNT(*) AS c
                             FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                            WHERE p.owner_user_id = %s AND p.{col} IS NOT NULL{_ssql0}
-                            GROUP BY p.{col}, p.{tcol}""", [owner] + _sparams0)
+                            WHERE p.owner_user_id = %s AND p.{col} IS NOT NULL{_ssql0}{_vctx_sql}
+                            GROUP BY p.{col}, p.{tcol}""", [owner] + _sparams0 + _vctx_params)
             for r in cur.fetchall():
                 cur_best = names.get(r["n"])
                 if cur_best is None or r["c"] > cur_best[1]:
@@ -756,11 +761,16 @@ def trackman_values(
         # the season-FIP pitching value, never summed into the total (they
         # overlap: same innings, two lenses).
         _ssql, _sparams = _season_clause(season)
+        # "all" here means every live type (never BP/bullpen: no pitch calls,
+        # or a placeholder batter, so run values are meaningless there).
+        _vctx_live, _vctx_live_params = (
+            _context_clause(context) if context not in ("all", "live")
+            else (" AND s.session_type IN ('game','scrimmage','intrasquad')", []))
         cur.execute(f"""SELECT p.pitcher AS n, p.balls, p.strikes, p.pitch_call, p.play_result
                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                        WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
-                         AND s.session_type IN ('game','scrimmage','intrasquad'){_ssql}""",
-                    [owner] + _sparams)
+                         {_vctx_live}{_ssql}""",
+                    [owner] + _vctx_live_params + _sparams)
         trv = {}
         _gsum, _gn = 0.0, 0
         for r in cur.fetchall():
@@ -2696,6 +2706,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
 @router.get("/trackman/catching")
 def trackman_catching(team: str | None = Query(None),
                       season: int | None = Query(None),
+                      context: str = Query("all"),
                       owner: str = Depends(_gate)):
     """Advanced catcher metrics.
 
@@ -2718,7 +2729,8 @@ def trackman_catching(team: str | None = Query(None),
     if team:
         team_sql, team_params = " AND p.catcher_team = %s", [team]
     ssql, sparams = _season_clause(season)
-    team_sql, team_params = team_sql + ssql, team_params + sparams
+    csql, cparams = _context_clause(context)
+    team_sql, team_params = team_sql + ssql + csql, team_params + sparams + cparams
     with get_connection() as conn:
         cur = conn.cursor()
         # ── throwing ──
