@@ -1122,9 +1122,17 @@ def trackman_pitching(
                            SUM(CASE WHEN p.is_chase THEN 1 ELSE 0 END) AS chases,
                            SUM(CASE WHEN p.is_in_zone IS FALSE THEN 1 ELSE 0 END) AS out_zone,
                            SUM(CASE WHEN p.pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1 ELSE 0 END) AS csw_n,
+                           SUM(CASE WHEN p.pitch_call IN ('StrikeCalled','StrikeSwinging','FoulBall','FoulBallFieldable','FoulBallNotFieldable','InPlay','AutomaticStrike') THEN 1 ELSE 0 END) AS strikes_n,
+                           SUM(CASE WHEN p.pitch_call IS NOT NULL THEN 1 ELSE 0 END) AS called_n,
+                           SUM(CASE WHEN p.is_in_zone IS NOT NULL THEN 1 ELSE 0 END) AS zone_n,
+                           SUM(CASE WHEN p.is_in_zone THEN 1 ELSE 0 END) AS in_zone,
                            AVG(p.exit_speed) AS ev_against,
                            SUM(CASE WHEN p.exit_speed >= 90 THEN 1 ELSE 0 END) AS hard_hit,
-                           SUM(CASE WHEN p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) AS bbe
+                           SUM(CASE WHEN p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) AS bbe,
+                           SUM(CASE WHEN p.exit_speed IS NOT NULL AND p.launch_angle IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) AS la_n,
+                           SUM(CASE WHEN p.exit_speed IS NOT NULL AND p.launch_angle < 10 AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) AS gb_n,
+                           SUM(CASE WHEN p.exit_speed IS NOT NULL THEN p.exit_speed ELSE 0 END) AS ev_sum,
+                           SUM(CASE WHEN p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS ev_n
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
                       AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
@@ -1198,9 +1206,12 @@ def trackman_pitching(
             base = _rv_baseline(c2, owner, context, season)
             for agg in rv_agg.values():
                 agg["rv"] += agg["rv_n"] * base   # center on this corpus
+            # FIP constant from the WHOLE live corpus, not this view: a
+            # 30-pitch fall slice makes the constant swing by runs
+            box_lg = box.league_context_from_db(c2, owner) if context != "bullpen" else None
         except Exception:
             conn.rollback()
-    box_lg = box.league_context([r for rs in line_rows.values() for r in rs]) if context != "bullpen" else None
+            box_lg = None
 
     def _grades(t):
         # Stuff grades a CENTROID (velo/shape/release), so a handful of
@@ -1258,8 +1269,34 @@ def trackman_pitching(
         tot_rv_n = sum(a["rv_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
         tot_shadow = sum(a["shadow"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
         tot_loc = sum(a["loc_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
+        # Whole-arm rollup for the team board (one row per pitcher, no types).
+        def _sum(k):
+            return sum(int(t.get(k) or 0) for t in types)
+        sw, wh, ch, oz = _sum("swings"), _sum("whiffs"), _sum("chases"), _sum("out_zone")
+        csw, strikes, called = _sum("csw_n"), _sum("strikes_n"), _sum("called_n")
+        zn, iz, bbe_t, hh, la_n, gb = _sum("zone_n"), _sum("in_zone"), _sum("bbe"), _sum("hard_hit"), _sum("la_n"), _sum("gb_n")
+        ev_sum, ev_n = sum(float(t.get("ev_sum") or 0) for t in types), _sum("ev_n")
+        fb_types = [t for t in types if t["ptype"] in FB_FAMILY and t["velo"]]
+        fb_n = sum(t["n"] for t in fb_types)
+        g_w = [(a["stuff"], a["count"]) for a in arsenal if a["stuff"] is not None]
+        l_w = [(a["loc"], a["count"]) for a in arsenal if a["loc"] is not None]
+        totals = {
+            "stuff": round(sum(g * n for g, n in g_w) / sum(n for _, n in g_w)) if g_w else None,
+            "loc": round(sum(g * n for g, n in l_w) / sum(n for _, n in l_w)) if l_w else None,
+            "fb_velo": round(sum(t["velo"] * t["n"] for t in fb_types) / fb_n, 1) if fb_n else None,
+            "fb_max": round(max(t["max_velo"] for t in fb_types if t["max_velo"]), 1) if fb_types else None,
+            "strike_pct": round(100 * strikes / called, 1) if called else None,
+            "zone_pct": round(100 * iz / zn, 1) if zn else None,
+            "whiff_pct": round(100 * wh / sw, 1) if sw else None,
+            "chase_pct": round(100 * ch / oz, 1) if oz else None,
+            "csw_pct": round(100 * csw / total, 1) if total else None,
+            "swings": sw, "bbe": bbe_t,
+            "ev_against": round(ev_sum / ev_n, 1) if ev_n else None,
+            "hh_pct": round(100 * hh / bbe_t, 1) if bbe_t else None,
+            "gb_pct": round(100 * gb / la_n, 1) if la_n else None,
+        }
         out.append({"pitcher": name, "throws": throws, "team": tteam, "slot": slot,
-                    "pitches": total, "arsenal": arsenal,
+                    "pitches": total, "arsenal": arsenal, "totals": totals,
                     "line": box.pitcher_line(line_rows.get((name, tteam), []), box_lg) if box_lg else None,
                     "rv": round(tot_rv, 1) if tot_rv_n else None,
                     "rv100": round(100 * tot_rv / tot_rv_n, 2) if tot_rv_n else None,
@@ -1394,8 +1431,9 @@ def trackman_hitting_board(
         )
         rows = [dict(r) for r in cur.fetchall()]
         rv_base = _rv_baseline(cur, owner, context if context != "bp" else "live", season)
-        # box-score league context for wRC+: the hitters in THIS view
-        box_lg = box.league_context([r for r in rows if r["session_type"] != "bp"])
+        # box-score league context for wRC+: the whole live corpus (a small
+        # view would make 100 mean "average of these 12 fall PAs")
+        box_lg = box.league_context_from_db(cur, owner)
         # BP hard-hit% per batter for the transfer column (live contexts)
         cur.execute(
             f"""SELECT p.batter, p.batter_team,

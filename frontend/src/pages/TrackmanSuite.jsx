@@ -495,6 +495,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
   const [context, setContext] = useState('live')
   const [ptype, setPtype] = useState('')
   const [vsSide, setVsSide] = useState('')
+  const [view, setView] = useState('cards')   // cards (by pitch type) | board (every arm, one table)
   const { data, loading, refetch } = useApi('/trackman/pitching',
     { context, ...(vsSide ? { side: vsSide } : {}), season }, [context, vsSide])
   const pitchers = data?.pitchers || []
@@ -537,12 +538,24 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
           {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <div className="ml-auto flex items-center gap-2">
-          <ReportActions csv targetRef={exportRef} filename={`trackman_pitching_${context}`} />
+          <div className="flex rounded-full ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden text-[12px] font-semibold">
+            {[['cards', 'By pitch type'], ['board', 'Team board']].map(([k, label]) => (
+              <button key={k} onClick={() => setView(k)}
+                className={`px-2.5 py-1 ${view === k ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <ReportActions csv targetRef={exportRef} filename={`trackman_pitching_${view}_${context}`} />
           <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
         </div>
       </div>
 
-      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : (
+      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : view === 'board' ? (
+        <div ref={exportRef}>
+          <PitcherBoard pitchers={team ? pitchers.filter(p => p.team === team) : pitchers} context={context} onOpenLab={onOpenLab} />
+        </div>
+      ) : (
         <div ref={exportRef} className="space-y-3">
         {shown.map(p => (
           <div key={`${p.pitcher}-${p.team}`} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
@@ -727,6 +740,131 @@ function PitcherLineStrip({ line, compact }) {
           <span className="font-semibold text-gray-800 dark:text-gray-100">{fmtV(k, line[k])}</span>
         </span>
       ))}
+    </div>
+  )
+}
+
+
+// ── Team pitching board: one row per arm, every pitch type combined ──
+// Mirrors the hitting board: sortable, shaded against the arms shown.
+const PB_COLS = [
+  ['Pitches', 'pitches', 'Pitches thrown in this view', { plain: true, dec: 0 }],
+  ['IP', 'ip_str', 'Innings, rebuilt from results (strikeouts, outs, fielder\u2019s choices, sacrifices; double plays and pickoffs use the recorded count). Intrasquad innings are pitch-count innings', { plain: true, str: true }],
+  ['BF', 'bf', 'Batters faced', { plain: true, dec: 0 }],
+  ['Stuff', 'stuff', 'Pitch-weighted Stuff+ across his arsenal', { dec: 0 }],
+  ['Loc+', 'loc', 'Pitch-weighted Location+ across his arsenal', { dec: 0 }],
+  ['FB velo', 'fb_velo', 'Average fastball-family velocity', {}],
+  ['FB max', 'fb_max', 'Top fastball velocity', { plain: true }],
+  ['Strike%', 'strike_pct', 'Strikes (called, swinging, foul, in play) per pitch', {}],
+  ['Zone%', 'zone_pct', 'Pitches in the strike zone', {}],
+  ['Shdw%', 'shadow_pct', 'Shadow rate: living on the edges', {}],
+  ['Whiff%', 'whiff_pct', 'Whiffs per swing, all pitches', {}],
+  ['Chase%', 'chase_pct', 'Swings induced on pitches out of the zone', {}],
+  ['CSW%', 'csw_pct', 'Called strikes plus whiffs per pitch', {}],
+  ['K%', 'k_pct', 'Strikeouts per batter faced', {}],
+  ['BB%', 'bb_pct', 'Walks per batter faced', { higher: false }],
+  ['EV agn', 'ev_against', 'Average exit velocity allowed', { higher: false }],
+  ['HH% agn', 'hh_pct', 'Hard-hit (90+) share of batted balls allowed', { higher: false }],
+  ['GB% agn', 'gb_pct', 'Ground-ball share of batted balls allowed (launch under 10)', {}],
+  ['RV', 'rv', 'Run value: runs saved vs the average pitch in your data', { plus: true }],
+  ['RV/100', 'rv100', 'Run value per 100 pitches', { plus: true, dec: 2 }],
+  ['H', 'h', 'Hits allowed', { plain: true, dec: 0 }],
+  ['R', 'r', 'Runs allowed (TrackMan does not score earned runs)', { plain: true, dec: 0 }],
+  ['HR', 'hr', 'Home runs allowed', { plain: true, dec: 0 }],
+  ['BB', 'bb', 'Walks', { plain: true, dec: 0 }],
+  ['K', 'k', 'Strikeouts', { plain: true, dec: 0 }],
+  ['HBP', 'hbp', 'Hit batters', { plain: true, dec: 0 }],
+  ['WHIP', 'whip', 'Walks plus hits per inning', { higher: false, dec: 2 }],
+  ['BAA', 'baa', 'Batting average against', { higher: false, dec: 3 }],
+  ['FIP', 'fip', 'Fielding-independent pitching on this corpus\u2019s RA/9 scale', { higher: false, dec: 2 }],
+  ['K/9', 'k9', 'Strikeouts per nine', {}],
+  ['BB/9', 'bb9', 'Walks per nine', { higher: false }],
+  ['RA/9', 'ra9', 'Runs allowed per nine (R, not ER)', { higher: false, dec: 2 }],
+]
+const PB_TIP_KEY = { h: 'h_allowed', r: 'r_allowed', hr: 'hr_allowed', bb: 'bb_allowed', k: 'k_pitched', hbp: 'hbp_allowed', ip_str: 'ip' }
+
+function PitcherBoard({ pitchers, context, onOpenLab }) {
+  const [sortK, setSortK] = useState('pitches')
+  const [sortD, setSortD] = useState(-1)
+  const rows = useMemo(() => {
+    const r = pitchers.map(p => ({
+      pitcher: p.pitcher, throws: p.throws, team: p.team, pitches: p.pitches,
+      rv: p.rv, rv100: p.rv100, shadow_pct: p.shadow_pct,
+      ...(p.totals || {}), ...(p.line || {}),
+      ip: p.line?.ip ?? null, ip_str: p.line?.ip_str ?? null,
+    }))
+    r.sort((a, b) => {
+      const key = sortK === 'ip_str' ? 'ip' : sortK
+      const x = a[key] ?? -1e9, y = b[key] ?? -1e9
+      return (typeof x === 'string' ? x.localeCompare(y) : x - y) * sortD
+    })
+    return r
+  }, [pitchers, sortK, sortD])
+  const clickSort = (k) => {
+    if (sortK === k) setSortD(d => -d)
+    else { setSortK(k); setSortD(k === 'pitcher' ? 1 : -1) }
+  }
+  const cohort = useMemo(() => {
+    const m = {}
+    PB_COLS.forEach(([, k, , o = {}]) => { m[k] = o.str ? [] : rows.map(b => b[k]).filter(v => v != null).map(Number) })
+    return m
+  }, [rows])
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+          Pitching board — {CONTEXTS.find(c => c[0] === context)?.[1]} · {rows.length} arms
+        </span>
+        <span className="text-[10px] text-gray-400">every pitch type combined · click a column to sort · click a pitcher for his lab · shading compares the arms shown</span>
+      </div>
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+            <th className="px-3 py-2 cursor-pointer whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800"
+              onClick={() => clickSort('pitcher')}>
+              Pitcher{sortK === 'pitcher' ? (sortD > 0 ? ' ▲' : ' ▼') : ''}
+            </th>
+            {PB_COLS.map(([label, k, tip]) => {
+              const vals = cohort[k] || []
+              const mean = vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null
+              return (
+                <th key={k} onClick={() => clickSort(k)}
+                  className={`px-1.5 py-2 text-right cursor-pointer select-none whitespace-nowrap ${
+                    sortK === k ? 'text-portal-purple dark:text-indigo-300' : ''}`}>
+                  <StatTip k={PB_TIP_KEY[k] || k} group="pitching" label={label} fallback={tip}
+                    avg={mean} n={vals.length} />
+                  {sortK === k ? (sortD > 0 ? ' ▲' : ' ▼') : ''}
+                </th>
+              )
+            })}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {rows.map(b => (
+            <tr key={`${b.pitcher}-${b.team}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+              <td className="px-3 py-1.5 font-semibold whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 cursor-pointer"
+                onClick={() => onOpenLab?.(b.pitcher)}>
+                {b.pitcher}
+                <span className="ml-1.5 text-[10px] font-bold text-gray-400">{b.throws === 'Left' ? 'L' : b.throws === 'Right' ? 'R' : ''}</span>
+              </td>
+              {PB_COLS.map(([, k, , opts = {}]) => {
+                if (opts.plain) return (
+                  <td key={k} className="px-1.5 py-1.5 text-right tabular-nums text-gray-500">
+                    {b[k] == null ? '–' : opts.str ? b[k] : Number(b[k]).toFixed(opts.dec ?? 1)}
+                  </td>
+                )
+                if (opts.dec === 3) return (
+                  <td key={k} className="px-1.5 py-1.5 text-right tabular-nums">
+                    {b[k] == null ? '–' : Number(b[k]).toFixed(3).replace(/^0/, '')}
+                  </td>
+                )
+                return <HeatCell key={k} v={b[k]} vals={cohort[k]}
+                  higher={opts.higher !== false} dec={opts.dec ?? 1} plus={!!opts.plus} />
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
