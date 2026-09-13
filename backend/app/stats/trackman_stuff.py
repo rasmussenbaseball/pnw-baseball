@@ -1,154 +1,52 @@
-"""Site-standard Stuff grades for TrackMan Suite arsenals.
+"""TrackMan Suite adapter for the site-wide Stuff+ model (app/stats/stuff_core).
 
-Applies the WCL-trained TrackMan pitch-grade model (whiff+chase target,
-fit by scripts/trackman/compute_pitch_grades.py, exported to
-backend/data/rapsodo_stuff_model.json) to the suite's tm_pitches
-centroids. Unlike app/stats/stuff_model.py (the Rapsodo ADAPTER, which
-bandages device drift: |HB|-3.2, spin+130, neutralized separation
-features), this scorer replicates the trainer's NATIVE feature build —
-our rows ARE TrackMan, the model's home format, so the real separations
-and unadjusted measurements apply.
+The suite's rows ARE the model's training format (TrackMan V3, signed
+HorzBreak / RelSide), so the only translation is flipping horizontal break
+to arm-side positive: TrackMan reports +HB toward the pitcher's right, so a
+right-hander's arm side is + and a left-hander's is -. Handedness comes from
+the entry's `throws` when present, else from the sign of the release side
+(a pitcher releases on his arm side).
 
-Scale matches the site standard: 100 = average for that pitch type,
-grade_sd (25) per model SD before shrink, capped 20-175. NOT comparable
-across pitch types. Location+ comes from app/stats/rapsodo_location
-(shared verbatim — plate coordinates are device-independent).
+entry / fb: dicts with ptype, velo, ivb, hb, spin, ext, rel_h, rel_s
+(+ optional throws). fb is the pitcher's primary fastball centroid (may be
+the entry itself). See stuff_core for the model and the 100-scale.
 """
-import json
-import math
-import os
+from . import stuff_core as core
 
-# Suite's normalized TaggedPitchType -> the model's TrackMan type names.
-SUITE_TO_MODEL = {
-    "Fastball": "Four Seam",
-    "Sinker": "Sinker",
-    "Cutter": "Cutter",
-    "Slider": "Slider",
-    "Sweeper": "Slider",
-    "Curveball": "Curveball",
-    "ChangeUp": "Changeup",
-    "Splitter": "Splitter",
-}
-FB_FAMILY = {"Fastball", "Sinker", "Cutter"}
-
-_Z_REF = 2.4  # must match compute_pitch_grades.Z_REF_FT
-
-_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "rapsodo_stuff_model.json")
-_model = None
-_model_mtime = None
+FB_FAMILY = core.FB_FAMILY
 
 
-# ── Monotonicity repair ──────────────────────────────────────────
-# The model is fit on a whiff+chase target, which is the wrong target for
-# pitches that earn their living on weak contact. It learned that a sinker
-# grades BETTER when it is slower (velo coef -0.28) and when it separates
-# LESS from the fastball (mov_sep -0.18) — true of whiff rate, false of
-# stuff. Gillespie's 91 mph sinker with 12 inches of separation off his
-# heater was being docked 0.37 for its velocity and another 0.38 for its
-# separation, the two things that make it a weapon.
-#
-# Two invariants hold for every pitch type: more velocity is never worse,
-# and more separation from the fastball is never worse. Anywhere the fit
-# says otherwise it is describing whiff propensity, not nastiness, so those
-# coefficients are floored at zero and the rest of the fit is left alone.
-MONOTONE_UP = ("velo", "velo_sep", "ivb_sep", "mov_sep")
-
-
-def _repair_monotonicity(model):
-    feats = model.get("features", [])
-    idx = [i for i, f in enumerate(feats) if f in MONOTONE_UP]
-    for t in model.get("types", {}).values():
-        coef = t.get("coef") or []
-        for i in idx:
-            if i < len(coef) and coef[i] < 0:
-                coef[i] = 0.0
-    return model
-
-
-def _load_model():
-    global _model, _model_mtime
+def _sign(entry):
+    t = (entry.get("throws") or "").strip().upper()[:1]
+    if t == "R":
+        return 1.0
+    if t == "L":
+        return -1.0
+    rs = entry.get("rel_s")
     try:
-        mt = os.path.getmtime(_MODEL_PATH)
-    except OSError:
-        return None
-    if _model is None or mt != _model_mtime:
-        with open(_MODEL_PATH) as f:
-            _model = _repair_monotonicity(json.load(f))
-        _model_mtime = mt
-    return _model
+        rs = float(rs) if rs is not None else None
+    except (TypeError, ValueError):
+        rs = None
+    return -1.0 if (rs is not None and rs < 0) else 1.0
 
 
-def estimate_vaa(velo, ext, rel_height, ivb):
-    """Location-neutral geometric VAA — identical to the trainer's."""
-    if None in (velo, ext, rel_height, ivb):
-        return None
-    v0 = float(velo) * 1.4667
-    if v0 <= 0:
-        return None
-    y0 = 60.5 - float(ext)
-    vy = 0.955 * v0
-    t = y0 / vy
-    a_z = -32.17 + 2.0 * (float(ivb) / 12.0) / (t * t)
-    vz0 = ((_Z_REF - float(rel_height)) - 0.5 * a_z * t * t) / t
-    return math.degrees(math.atan2(vz0 + a_z * t, 0.92 * v0))
+def _to_core(entry, sign):
+    hb = entry.get("hb")
+    return {
+        "ptype": entry.get("ptype"), "n": entry.get("n"),
+        "velo": entry.get("velo"), "ivb": entry.get("ivb"),
+        "hb_arm": (float(hb) * sign) if hb is not None else None,
+        "spin": entry.get("spin"), "ext": entry.get("ext"),
+        "rel_h": entry.get("rel_h"), "rel_s": entry.get("rel_s"),
+    }
+
+
+def grade_trackman_detail(entry, fb):
+    """-> (grade, components, xrv) for one suite arsenal centroid."""
+    sign = _sign(entry)
+    return core.score(_to_core(entry, sign), _to_core(fb, sign) if fb else None)
 
 
 def grade_trackman(entry, fb):
-    """Grade one tm arsenal centroid with the trained model.
-
-    entry/fb: dicts with suite pitch type + velo, ivb, hb, spin, ext,
-    rel_h, rel_s (floats or None). fb is the pitcher's fastball-family
-    reference centroid (may be entry itself). Returns int grade or None."""
-    model = _load_model()
-    mt = SUITE_TO_MODEL.get(entry.get("ptype"))
-    if not model or mt not in model.get("types", {}):
-        return None
-    m = model["types"][mt]
-    F = model["features"]
-
-    def f(v):
-        return float(v) if v is not None else None
-
-    velo, ivb, hb = f(entry.get("velo")), f(entry.get("ivb")), f(entry.get("hb"))
-    spin, ext = f(entry.get("spin")), f(entry.get("ext"))
-    rel_h, rel_s = f(entry.get("rel_h")), f(entry.get("rel_s"))
-    if None in (velo, ivb, hb, spin, rel_h) or not ext:
-        return None
-
-    est_vaa = estimate_vaa(velo, ext, rel_h, ivb)
-    if est_vaa is None:
-        return None
-    sc = m["slot_coef"]
-    slot_eff = sc[0] + sc[1] * rel_h + sc[2] * abs(rel_s or 0.0) - m["slot_ybar"]
-    vaa_adj = est_vaa - model.get("slot_alpha", 0.6) * slot_eff
-
-    fb_velo = f(fb.get("velo")) if fb else velo
-    fb_ivb = f(fb.get("ivb")) if fb else ivb
-    fb_hb = f(fb.get("hb")) if fb else hb
-    if fb_velo is None:
-        fb_velo, fb_ivb, fb_hb = velo, ivb, hb
-
-    feat = {
-        "velo": velo,
-        "vaa_adj": vaa_adj,
-        "hb_abs": abs(hb),
-        "spin": spin,
-        "extension": ext,
-        "rel_side_abs": abs(rel_s or 0.0),
-        "velo_sep": fb_velo - velo,
-        "ivb_sep": (fb_ivb if fb_ivb is not None else ivb) - ivb,
-        "mov_sep": math.hypot(ivb - (fb_ivb if fb_ivb is not None else ivb),
-                              hb - (fb_hb if fb_hb is not None else hb)),
-    }
-    means, stds, coef, mx, my = m["means"], m["stds"], m["coef"], m["mx"], m["my"]
-    # Wider clamps than the Rapsodo adapter (its ±2.5/±2.8 guards exist for
-    # out-of-distribution device drift): TrackMan rows are in-distribution,
-    # and the tight clamps saturated everything elite to the same ~170 —
-    # calibration vs the trainer's own WCL grades showed 147s and 172s both
-    # mapping to 170. ±4 z / ±3.2 pz keeps absurd-input protection while
-    # preserving top-end separation (validated: trainer 147 -> ~155 here).
-    z = [max(-4.0, min(4.0, (feat[F[i]] - means[i]) / (stds[i] or 1.0))) for i in range(len(F))]
-    pred = sum((z[i] - mx[i]) * coef[i] for i in range(len(F))) + my
-    pz = max(-3.2, min(3.2, (pred - m["pred_mean"]) / (m["pred_std"] or 1.0)))
-    grade = model["grade_mean"] + model["grade_sd"] * m["shrink"] * pz
-    return max(20, min(175, round(grade)))
+    """Stuff+ grade (int) for one suite arsenal centroid, or None."""
+    return grade_trackman_detail(entry, fb)[0]

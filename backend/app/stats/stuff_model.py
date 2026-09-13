@@ -1,89 +1,67 @@
-"""Apply the WCL TrackMan pitch-grade model (trained on whiff+chase) to Rapsodo
-pitches. The model is fit by scripts/trackman/compute_pitch_grades.py and exported
-to backend/data/rapsodo_stuff_model.json; here we replicate its feature build and
-score a Rapsodo arsenal centroid against the fitted per-pitch-type weights.
+"""Rapsodo adapter for the site-wide Stuff+ model (app/stats/stuff_core).
 
-The VAA estimate below is the TrackMan model's LOCATION-NEUTRAL formula (fixed
-mid-zone crossing height) — it must stay identical to estimate_vaa() in
-compute_pitch_grades.py or the transfer is biased. Rapsodo's own location-aware
-VAA (rapsodo_parse) is for display/dead-zone, NOT for this model.
+Rapsodo measures the same pitch differently from TrackMan, the device the
+model is trained on. From the feature-drift diagnostic (the same arms on
+both devices): Rapsodo's spin-based break reads ~3.2" hotter on |HB| and
+its spin ~130 rpm lower than TrackMan's trajectory-based numbers, and it
+frequently reports extension as 0. So before scoring we shrink |HB| by
+3.2" (toward zero, never across it), add 130 rpm, and let the core impute
+a missing extension with the family mean. Separation features are kept
+REAL: the fastball reference is measured on the same device as the pitch,
+so the device offset cancels inside the difference.
+
+grade_pitch(model, rap_type, entry, fb) keeps its historical signature for
+app/stats/rapsodo_stuff.py. entry = Rapsodo arsenal centroid (velo, ivb,
+arm_hb, total_spin, rel_height, rel_side, ext); fb = {velo, ivb, arm_hb}.
 """
-import math
+from . import stuff_core as core
 
-_Z_REF = 2.4   # reference plate-crossing height (must match compute_pitch_grades.Z_REF_FT)
-
-# Rapsodo re-classified labels -> the model's TrackMan pitch types.
-RAPSODO_TO_MODEL = {
-    "fastball": "Four Seam",
-    "sinker": "Sinker", "cutter": "Cutter",
-    "slider": "Slider", "sweeper": "Slider",
-    "curveball": "Curveball", "changeup": "Changeup", "splitter": "Splitter",
-}
+HB_DRIFT_IN = 3.2
+SPIN_DRIFT_RPM = 130.0
 
 
 def _f(v):
-    return float(v) if v is not None else None
+    try:
+        return None if v is None else float(v)
+    except (TypeError, ValueError):
+        return None
 
 
-def estimate_vaa(velo, ext, rel_height, ivb):
-    """Location-neutral geometric VAA (deg). Copy of compute_pitch_grades.estimate_vaa."""
-    if None in (velo, ext, rel_height, ivb):
+def _shrink_hb(hb):
+    if hb is None:
         return None
-    v0 = float(velo) * 1.4667
-    if v0 <= 0:
+    if hb >= 0:
+        return max(0.0, hb - HB_DRIFT_IN)
+    return min(0.0, hb + HB_DRIFT_IN)
+
+
+def _to_core(ptype, e, spin_key):
+    if not e:
         return None
-    y0 = 60.5 - float(ext)
-    vy = 0.955 * v0
-    t = y0 / vy
-    a_z = -32.17 + 2.0 * (float(ivb) / 12.0) / (t * t)
-    vz0 = ((_Z_REF - float(rel_height)) - 0.5 * a_z * t * t) / t
-    return math.degrees(math.atan2(vz0 + a_z * t, 0.92 * v0))
+    spin = _f(e.get(spin_key))
+    return {
+        "ptype": ptype,
+        "velo": _f(e.get("velo")), "ivb": _f(e.get("ivb")),
+        "hb_arm": _shrink_hb(_f(e.get("arm_hb"))),
+        "spin": (spin + SPIN_DRIFT_RPM) if spin is not None else None,
+        "ext": _f(e.get("ext")) or None,
+        "rel_h": _f(e.get("rel_height")), "rel_s": _f(e.get("rel_side")),
+    }
 
 
 def grade_pitch(model, rap_type, entry, fb):
-    """Grade one Rapsodo arsenal centroid with the trained model. Returns
-    (grade:int, components:dict) or (None, None) if the model can't score it."""
-    mt = RAPSODO_TO_MODEL.get(rap_type)
-    if not model or mt not in model.get("types", {}):
+    """-> (grade:int, components:dict) or (None, None)."""
+    model = model or core.load_model()
+    if not model:
         return None, None
-    m = model["types"][mt]
-    F = model["features"]
-    velo, ivb, hb = _f(entry.get("velo")), _f(entry.get("ivb")), _f(entry.get("arm_hb"))
-    spin = _f(entry.get("total_spin"))
-    rel_h, rel_s = _f(entry.get("rel_height")), _f(entry.get("rel_side"))
-    ext = _f(entry.get("ext"))
-    if velo is None or ivb is None or hb is None or spin is None or rel_h is None:
+    ptype = core.canon_type(rap_type)
+    if not ptype:
         return None, None
-    if not ext:                                   # Rapsodo often reports 0/None
-        ext = m["means"][F.index("extension")]    # impute the type's mean extension
-
-    est_vaa = estimate_vaa(velo, ext, rel_h, ivb)
-    if est_vaa is None:
+    ce = _to_core(ptype, entry, "total_spin")
+    cf = _to_core(fb.get("pitch") or "fastball", fb, "total_spin") if fb else None
+    if cf and cf.get("rel_h") is None:      # fb_from_arsenal carries only velo/ivb/arm_hb
+        cf["rel_h"], cf["rel_s"], cf["ext"], cf["spin"] = ce.get("rel_h"), ce.get("rel_s"), ce.get("ext"), ce.get("spin")
+    grade, comps, _ = core.score(ce, cf, model)
+    if grade is None:
         return None, None
-    sc = m["slot_coef"]
-    slot_eff = sc[0] + sc[1] * rel_h + sc[2] * abs(rel_s or 0.0) - m["slot_ybar"]
-    vaa_adj = est_vaa - model.get("slot_alpha", 0.6) * slot_eff
-
-    means, stds, coef, mx, my = m["means"], m["stds"], m["coef"], m["mx"], m["my"]
-    # Bandage Rapsodo's measurement gaps vs TrackMan (from the feature-drift
-    # diagnostic): Rapsodo's spin-based break reads ~3" hotter on |HB| and ~130 rpm
-    # lower on spin than TrackMan's trajectory break. The fastball-SEPARATION
-    # features don't transfer (break basis + classification + a TrackMan-side
-    # changeup quirk), so neutralize them to the model mean (z = 0).
-    feat = {
-        "velo": velo, "vaa_adj": vaa_adj, "hb_abs": max(0.0, abs(hb) - 3.2),
-        "spin": spin + 130.0, "extension": ext, "rel_side_abs": abs(rel_s or 0.0),
-        "velo_sep": means[F.index("velo_sep")], "ivb_sep": means[F.index("ivb_sep")],
-        "mov_sep": means[F.index("mov_sep")],
-    }
-    # Clamp feature z-scores: Rapsodo measures break/extension differently than
-    # the TrackMan training set, so an out-of-distribution input must not be
-    # allowed to extrapolate the linear model off a cliff.
-    z = [max(-2.5, min(2.5, (feat[F[i]] - means[i]) / (stds[i] or 1.0))) for i in range(len(F))]
-    pred = sum((z[i] - mx[i]) * coef[i] for i in range(len(F))) + my
-    pz = max(-2.8, min(2.8, (pred - m["pred_mean"]) / (m["pred_std"] or 1.0)))
-    scale = model["grade_sd"] * m["shrink"]
-    grade = model["grade_mean"] + scale * pz
-    comp = {F[i]: round((z[i] - mx[i]) * coef[i] / (m["pred_std"] or 1.0) * scale, 1)
-            for i in range(len(F)) if abs((z[i] - mx[i]) * coef[i]) >= 0.04}
-    return max(20, min(175, round(grade))), comp
+    return grade, comps

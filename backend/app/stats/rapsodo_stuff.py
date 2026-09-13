@@ -25,7 +25,7 @@ import os
 
 from .stuff_model import grade_pitch
 
-VERSION = "v2-college"   # WCL TrackMan whiff/chase model; heuristic fallback below
+VERSION = "v3-college-xrv"   # site-wide Stuff+ (stuff_core); heuristic fallback below
 
 # Per-type DEFAULT anchors: (velo mph, IVB in, arm-side HB in). College-provisional.
 _A = {
@@ -74,26 +74,10 @@ def reload_calibration():
     _calib = None
 
 
-_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "rapsodo_stuff_model.json")
-_model = None
-_model_mtime = None
-
-
 def _load_model():
-    """Load the exported WCL TrackMan model, hot-reloading when it changes."""
-    global _model, _model_mtime
-    try:
-        m = os.path.getmtime(_MODEL_PATH)
-    except OSError:
-        m = None
-    if _model is None or m != _model_mtime:
-        _model_mtime = m
-        try:
-            with open(_MODEL_PATH) as fh:
-                _model = json.load(fh)
-        except Exception:  # noqa: BLE001 — missing/bad file → heuristic fallback
-            _model = {}
-    return _model
+    """The site-wide Stuff+ model (app/stats/stuff_core), hot-reloaded on change."""
+    from . import stuff_core as core
+    return core.load_model() or {}
 
 
 def _velo_anchor(pitch):
@@ -130,9 +114,10 @@ def _cap(x, lo=-13.0, hi=13.0):
 
 
 def grade(entry, fb):
-    """Stuff for one arsenal centroid. Prefer the trained WCL TrackMan model
-    (whiff/chase); fall back to the transparent heuristic when the model can't
-    score the pitch (no artifact, missing inputs, or a type it doesn't cover)."""
+    """Stuff for one arsenal centroid. Prefer the site-wide Stuff+ model
+    (stuff_core, via the Rapsodo drift adapter); fall back to the transparent
+    heuristic when the model can't score the pitch (no artifact, missing
+    inputs, or a type it doesn't cover)."""
     g, comp = grade_pitch(_load_model(), entry.get("pitch"), entry, fb)
     if g is not None:
         return g, comp

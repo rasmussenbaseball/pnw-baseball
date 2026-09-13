@@ -76,78 +76,9 @@ _NO_MISTAG_BARE = (" AND COALESCE(override_pitch_type, class_pitch_type,"
 # (same philosophy as OAE/SAE/RV). Types with 5+ graded arsenals get a
 # full z re-center (sd floor keeps tiny spreads from exploding); sparse
 # types (2-3 real cutters) shift by their FAMILY's mean offset instead.
-_STUFF_FAMILY = {"Fastball": "fb", "Sinker": "fb",
-                 "Cutter": "br", "Slider": "br", "Sweeper": "br", "Curveball": "br",
-                 "ChangeUp": "os", "Splitter": "os"}
-
-
-def _stuff_calibration(cur, owner, context="all", season=None):
-    """Raw Stuff distribution per pitch type across the owner's WHOLE corpus.
-
-    The grades themselves come from the WCL-trained model; this anchors its
-    output so 100 = an average pitch of that type in this program. The anchor
-    is deliberately NOT recomputed per filtered view: the model is fit on WCL
-    arms (fastballs averaging 87.9 mph, changeups 82.0), so a college staff
-    sitting a couple of mph below that extrapolates off the training
-    distribution and reads changeups near 155 and fastballs near 64 raw. A
-    fixed anchor keeps one standard across every season, context and team
-    filter, instead of a 5-pitch fall slice shifting every grade at once.
-    Returns (cal {type: (mean, sd, n)}, fam_off {family: mean offset})."""
-    import statistics as _st
-    eff = "COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type)"
-    extra, params = _context_clause(context)
-    ssql, sparams = _season_clause(season)
-    cur.execute(
-        f"""SELECT p.pitcher, p.pitcher_team, {eff} AS ptype, COUNT(*) AS n,
-                   AVG(p.rel_speed) AS velo, AVG(p.ivb) AS ivb, AVG(p.horz_break) AS hb,
-                   AVG(p.spin_rate) AS spin, AVG(p.extension) AS ext,
-                   AVG(p.rel_height) AS rel_h, AVG(p.rel_side) AS rel_s
-            FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-            WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL
-              AND {eff} IS NOT NULL AND {eff} <> 'Mistag'{extra}{ssql}
-            GROUP BY p.pitcher, p.pitcher_team, {eff}
-            HAVING COUNT(*) >= 15""",
-        [owner] + params + sparams,
-    )
-    rows = [dict(r) for r in cur.fetchall()]
-    for r in rows:
-        for k in ("velo", "ivb", "hb", "spin", "ext", "rel_h", "rel_s"):
-            r[k] = float(r[k]) if r[k] is not None else None
-    fb_ref = {}
-    for r in rows:
-        key = (r["pitcher"], r["pitcher_team"])
-        cand = (r["ptype"] == "Fastball", r["ptype"] in FB_FAMILY, r["n"] or 0)
-        if key not in fb_ref or cand > fb_ref[key][0]:
-            fb_ref[key] = (cand, r)
-    raws = defaultdict(list)
-    for r in rows:
-        fb = fb_ref.get((r["pitcher"], r["pitcher_team"]))
-        g = grade_trackman(r, fb[1] if fb else r)
-        if g is not None:
-            raws[r["ptype"]].append(g)
-    cal, fam_pool = {}, defaultdict(list)
-    for t, gs in raws.items():
-        fam_pool[_STUFF_FAMILY.get(t, "br")] += gs
-        if len(gs) >= 3:
-            # tiny type samples (3-5 arms) recenter with a wide sd floor so
-            # the spread doesn't overreact — the raw scale being off for a
-            # whole type (cutters at raw ~60) is worse than a noisy mean
-            floor = 12.0 if len(gs) >= 6 else 20.0
-            cal[t] = (_st.mean(gs), max(_st.pstdev(gs), floor), len(gs))
-    fam_off = {f: _st.mean(gs) - 100 for f, gs in fam_pool.items() if len(gs) >= 5}
-    return cal, fam_off
-
-
-def _calibrate_stuff(raw, ptype, cal, fam_off):
-    if raw is None:
-        return None
-    if ptype in cal:
-        m, sd, _ = cal[ptype]
-        return int(max(20, min(180, round(100 + 25 * (raw - m) / sd))))
-    off = fam_off.get(_STUFF_FAMILY.get(ptype))
-    if off is not None:
-        return int(max(20, min(180, round(raw - off))))
-    return raw
+# Stuff+ comes straight from the site-wide model (app/stats/stuff_core):
+# it is trained on college TrackMan pitches, so 100 already means "an
+# average college pitch of that type" and no per-program anchor is needed.
 
 
 # TrackMan seasons run July 1 to June 30 (June games belong to the SPRING
@@ -1169,10 +1100,10 @@ def trackman_pitching(
     for r in rows:
         by_pitcher[(r["pitcher"], r["pitcher_throws"], r["pitcher_team"])].append(r)
 
-    # Site-standard grades. Stuff: the WCL-trained TrackMan whiff+chase
-    # model (same model behind the Rapsodo Lab and summer TrackMan cards),
-    # applied natively — these rows ARE TrackMan, so the real separations
-    # and unadjusted measurements feed it. Location+: the shared Rapsodo
+    # Site-standard grades. Stuff+: the site-wide college model (same one
+    # behind the Rapsodo Lab and the summer TrackMan cards) applied
+    # natively — these rows ARE TrackMan, so the real separations and
+    # unadjusted measurements feed it. Location+: the shared Rapsodo
     # command score (edge presence + pitch-type height targets); plate
     # coordinates are device-independent, converted ft -> in.
     fb_ref = {}
@@ -1223,9 +1154,6 @@ def trackman_pitching(
         except Exception:
             conn.rollback()
 
-    with get_connection() as conn:
-        stuff_cal, stuff_fam = _stuff_calibration(conn.cursor(), owner)
-
     def _grades(t):
         # Stuff grades a CENTROID (velo/shape/release), so a handful of
         # pitches is noisy rather than invalid — but a single pitch is not a
@@ -1233,8 +1161,7 @@ def trackman_pitching(
         if (t["n"] or 0) < 2:
             return None, None
         fb = fb_ref.get((t["pitcher"], t["pitcher_team"]))
-        stuff = _calibrate_stuff(grade_trackman(t, fb[1] if fb else t),
-                                 t["ptype"], stuff_cal, stuff_fam)
+        stuff = grade_trackman(t, fb[1] if fb else t)
         locs = cur_locs.get((t["pitcher"], t["pitcher_team"], t["ptype"]), [])
         loc = location_plus(t["ptype"].lower(), locs, min_n=1)
         return stuff, loc
@@ -1846,7 +1773,6 @@ def trackman_pitcher_detail(
                               "hb": round(float(r["hb"]), 1) if r["hb"] is not None else None,
                               "velo": round(float(r["velo"]), 1) if r["velo"] is not None else None}
                      for r in cur.fetchall() if r["t"]}
-        stuff_cal, stuff_fam = _stuff_calibration(cur, owner)
 
     me = next((r for r in pool if r["pitcher"] == pitcher), None)
     percentiles = {}
@@ -1942,8 +1868,7 @@ def trackman_pitcher_detail(
     for t, en in gtypes.items():
         if (en["n"] or 0) < 2:
             continue          # one pitch is a reading, not a pitch type
-        stuff = _calibrate_stuff(grade_trackman(en, gfb[1] if gfb else en),
-                                 t, stuff_cal, stuff_fam)
+        stuff = grade_trackman(en, gfb[1] if gfb else en)
         locs = glocs.get(t, [])
         loc = location_plus(t.lower(), locs, min_n=1)
         if stuff is not None or loc is not None:
