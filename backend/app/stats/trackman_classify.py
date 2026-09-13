@@ -35,6 +35,61 @@ CLASS_TO_SUITE = {
 SUITE_TYPES = list(CLASS_TO_SUITE.values())
 
 
+# ── Operator-tag prior ───────────────────────────────────────────
+# The person running TrackMan at the field is right most of the time. On the
+# 140 pitches Nate hand-corrected, 98 restored the operator's live tag and
+# only 5 vindicated the old shape-only classifier, yet that classifier was
+# rewriting 26% of all tagged pitches (sinkers survived 24% of the time,
+# cutters 25%). So the tag is now the PRIOR: a pitch keeps it unless the
+# shape argues clearly for another pitch THIS SAME ARM actually throws.
+# Velocity carries the most weight, because it is the cleanest separator
+# when two shapes sit close together — a cutter and a slider can look alike
+# and still be 5 mph apart.
+TAG_MIN_N = 3         # pitches before a tagged group earns a centroid
+TAG_VELO_JND = 2.0    # mph per distance unit (tighter than the merge metric)
+TAG_BREAK_JND = 3.5   # inches of IVB/HB per distance unit
+TAG_FAR = 2.2         # a pitch must be at least this far from its own tag...
+TAG_MARGIN = 1.2      # ...and this much closer to the alternative to move
+TAG_ALIASES = {"four seam": "Fastball", "fourseam": "Fastball",
+               "4-seam": "Fastball", "two seam": "Sinker", "twoseam": "Sinker",
+               "change up": "ChangeUp", "change-up": "ChangeUp", "split": "Splitter"}
+
+
+def _norm_tag(t):
+    """Operator label -> suite type, or None when it is not a real pitch."""
+    if not t:
+        return None
+    t = t.strip()
+    for suite in SUITE_TYPES:
+        if t.lower() == suite.lower():
+            return suite
+    return TAG_ALIASES.get(t.lower())
+
+
+def _tag_dist(p, c):
+    return math.sqrt(((p["velo"] - c["velo"]) / TAG_VELO_JND) ** 2
+                     + ((p["ivb"] - c["ivb"]) / TAG_BREAK_JND) ** 2
+                     + ((p["hb"] - c["hb"]) / TAG_BREAK_JND) ** 2)
+
+
+def _tag_centroids(bridged):
+    """Per-tag centroids for one pitcher, from the operator's own labels."""
+    acc = defaultdict(lambda: {"n": 0, "velo": 0.0, "ivb": 0.0, "hb": 0.0})
+    for r, b in bridged:
+        tag = _norm_tag(r.get("tagged_pitch_type"))
+        if not tag or None in (b["velo"], b["ivb"], b["arm_hb"]):
+            continue
+        a = acc[tag]
+        a["n"] += 1
+        a["velo"] += b["velo"]; a["ivb"] += b["ivb"]; a["hb"] += b["arm_hb"]
+    out = {}
+    for t, a in acc.items():
+        if a["n"] >= TAG_MIN_N:
+            out[t] = {"n": a["n"], "velo": a["velo"] / a["n"],
+                      "ivb": a["ivb"] / a["n"], "hb": a["hb"] / a["n"]}
+    return out
+
+
 def _bridge(row):
     """tm_pitches row -> classifier pitch dict (arm-side HB)."""
     hb = row.get("horz_break")
@@ -59,7 +114,8 @@ def reclassify_owner(cur, owner, pitchers=None):
     params = [owner] + ([list(pitchers)] if pitchers else [])
     cur.execute(
         f"""SELECT id, pitcher, pitcher_team, pitcher_throws,
-                   rel_speed, ivb, horz_break, spin_rate, class_pitch_type
+                   rel_speed, ivb, horz_break, spin_rate, class_pitch_type,
+                   tagged_pitch_type
             FROM tm_pitches
             WHERE owner_user_id = %s AND pitcher IS NOT NULL{extra}""",
         params,
@@ -74,10 +130,27 @@ def reclassify_owner(cur, owner, pitchers=None):
         hand = "L" if rs[0]["pitcher_throws"] == "Left" else "R"
         bridged = [(r, _bridge(r)) for r in rs]
         fb = _fastball_centroid([b for _, b in bridged])
+        cents = _tag_centroids(bridged)
         changes = []
         for r, b in bridged:
-            label = classify(b, fb, hand) if b["velo"] is not None else "unclassified"
-            new = CLASS_TO_SUITE.get(label)  # unclassified -> None (falls back to tags)
+            tag = _norm_tag(r.get("tagged_pitch_type"))
+            new = None
+            if tag and tag in cents and None not in (b["velo"], b["ivb"], b["arm_hb"]):
+                pt = {"velo": b["velo"], "ivb": b["ivb"], "hb": b["arm_hb"]}
+                d_own = _tag_dist(pt, cents[tag])
+                alts = [(t, _tag_dist(pt, c)) for t, c in cents.items() if t != tag]
+                new = tag
+                if alts:
+                    best, d_alt = min(alts, key=lambda x: x[1])
+                    # Only move a pitch that is genuinely astray from the tag
+                    # AND clearly closer to another pitch this arm throws.
+                    if d_own >= TAG_FAR and (d_own - d_alt) >= TAG_MARGIN:
+                        new = best
+            else:
+                # No usable operator tag (blank, "Other", or a one-off label):
+                # fall back to the shape classifier.
+                label = classify(b, fb, hand) if b["velo"] is not None else "unclassified"
+                new = CLASS_TO_SUITE.get(label)
             classified += 1 if new else 0
             if new != r["class_pitch_type"]:
                 changes.append((new, r["id"]))
@@ -205,6 +278,14 @@ MERGE_BREAK_JND = 3.5   # inches of IVB/HB per distance unit
 MERGE_CLOSE_D = 1.5     # twins: centroids this close always merge
 MERGE_FORCE_D = 3.0     # trace clusters absorb into anything this close
 MERGE_TRACE_N = 10      # fewer pitches than this = trace usage
+# Velocity is the separator of last resort: two clusters this far apart in
+# mph are different pitches even when the break looks alike (a cutter sits
+# 4-6 mph under the fastball and above the slider; that gap is the pitch).
+MERGE_VELO_GUARD = 3.0
+# A group the operator named consistently has to be MUCH closer before it
+# gets absorbed — this is what was eating sinkers into fastballs and
+# cutters into sliders.
+MERGE_BACKED_D = 1.0
 
 
 def _cdist(a, b):
@@ -230,8 +311,25 @@ def consolidate_owner(cur, owner, pitchers=None, dry_run=False):
             GROUP BY pitcher, pitcher_team, {eff}""",
         params,
     )
-    groups = defaultdict(dict)
+    centroid_rows = cur.fetchall()          # drain BEFORE the next query
+
+    # Which (pitcher, type) groups the operator actually named, and how often.
+    cur.execute(
+        f"""SELECT pitcher, pitcher_team, tagged_pitch_type t, COUNT(*) n
+            FROM tm_pitches
+            WHERE owner_user_id = %s AND pitcher IS NOT NULL
+              AND tagged_pitch_type IS NOT NULL{extra}
+            GROUP BY pitcher, pitcher_team, tagged_pitch_type""",
+        params,
+    )
+    backed = defaultdict(set)
     for r in cur.fetchall():
+        t = _norm_tag(r["t"])
+        if t and (r["n"] or 0) >= TAG_MIN_N:
+            backed[(r["pitcher"], r["pitcher_team"])].add(t)
+
+    groups = defaultdict(dict)
+    for r in centroid_rows:
         if r["velo"] is None or r["ivb"] is None or r["hb"] is None:
             continue
         groups[(r["pitcher"], r["pitcher_team"])][r["t"]] = {
@@ -242,14 +340,25 @@ def consolidate_owner(cur, owner, pitchers=None, dry_run=False):
     for (name, team), cl in groups.items():
         mapping = {}
         frozen = set()   # pairs ruled out (velo-family guard)
+        named = backed.get((name, team), set())   # operator-named pitches
         while len(cl) > 1:
             # best QUALIFYING pair each round (don't stop at the closest
             # pair overall — a farther pair may still qualify on trace usage)
             def _qualifies(a, b):
                 if (a, b) in frozen or (b, a) in frozen:
                     return False
+                # Velocity separates pitches that look alike: a cutter sits
+                # several mph above a slider and below the fastball, and that
+                # gap is the pitch, whatever the break says.
+                if abs(cl[a]["velo"] - cl[b]["velo"]) >= MERGE_VELO_GUARD:
+                    return False
                 d = _cdist(cl[a], cl[b])
                 small_n = min(cl[a]["n"], cl[b]["n"])
+                # A group the operator named consistently is a real pitch
+                # until proven otherwise: it only merges when the centroids
+                # are nearly on top of each other, and never as "trace".
+                if a in named or b in named:
+                    return d < MERGE_BACKED_D
                 return d < MERGE_CLOSE_D or (small_n < MERGE_TRACE_N and d < MERGE_FORCE_D)
             cands = [(a, b) for a, b in combinations(cl, 2) if _qualifies(a, b)]
             if not cands:
@@ -285,7 +394,7 @@ def consolidate_owner(cur, owner, pitchers=None, dry_run=False):
         # 1-2 pitch strays can't be a real pitch: absorb into the nearest
         # cluster, no distance limit (Mallari's lone fastball-shaped
         # "changeup" survived every threshold)
-        for t in [t for t, c in cl.items() if c["n"] < 3]:
+        for t in [t for t, c in cl.items() if c["n"] < 3 and t not in named]:
             if len(cl) < 2:
                 break
             near = min((o for o in cl if o != t), key=lambda o: _cdist(cl[t], cl[o]))
@@ -404,7 +513,8 @@ def repartition_breakers(cur, owner, pitchers=None, dry_run=False):
     extra = " AND pitcher = ANY(%s)" if pitchers else ""
     params = [owner] + ([list(pitchers)] if pitchers else [])
     cur.execute(
-        f"""SELECT id, pitcher, pitcher_team, {eff} AS t, ivb, horz_break AS hb, rel_speed
+        f"""SELECT id, pitcher, pitcher_team, {eff} AS t, ivb, horz_break AS hb, rel_speed,
+                   tagged_pitch_type
             FROM tm_pitches
             WHERE owner_user_id = %s AND pitcher IS NOT NULL
               AND override_pitch_type IS NULL
@@ -416,7 +526,8 @@ def repartition_breakers(cur, owner, pitchers=None, dry_run=False):
     arms = defaultdict(lambda: defaultdict(list))
     for r in cur.fetchall():
         arms[(r["pitcher"], r["pitcher_team"])][r["t"]].append(
-            (r["id"], float(r["ivb"]), float(r["hb"]), float(r["rel_speed"]), r["t"]))
+            (r["id"], float(r["ivb"]), float(r["hb"]), float(r["rel_speed"]), r["t"],
+             _norm_tag(r["tagged_pitch_type"])))
 
     # each pitcher's fastball velo = his top type-average velo
     cur.execute(
@@ -433,17 +544,42 @@ def repartition_breakers(cur, owner, pitchers=None, dry_run=False):
     )
     fb_velos = {(r["pitcher"], r["pitcher_team"]): float(r["fb_velo"]) for r in cur.fetchall()}
 
+    # Breaker names the operator used consistently for this arm.
+    cur.execute(
+        f"""SELECT pitcher, pitcher_team, tagged_pitch_type t, COUNT(*) n
+            FROM tm_pitches
+            WHERE owner_user_id = %s AND pitcher IS NOT NULL
+              AND tagged_pitch_type IS NOT NULL{extra}
+            GROUP BY pitcher, pitcher_team, tagged_pitch_type""",
+        params,
+    )
+    tag_named = defaultdict(set)
+    for r in cur.fetchall():
+        t = _norm_tag(r["t"])
+        if t and (r["n"] or 0) >= TAG_MIN_N:
+            tag_named[(r["pitcher"], r["pitcher_team"])].add(t)
+
     report, changes = [], []
     for (name, team), by_label in arms.items():
         fb = fb_velos.get((name, team))
+        arm_named = tag_named.get((name, team), set())
         # pool the true breakers; a "cutter" joins only when it's thrown at
         # breaker speed (a real cutter rides within ~4.5 mph of the heater)
+        velos = {label: sum(r[3] for r in rows) / len(rows)
+                 for label, rows in by_label.items() if rows}
         pool = []
         for label, rows in by_label.items():
             if label == "Cutter":
-                cv = sum(r[3] for r in rows) / len(rows)
+                cv = velos[label]
                 if fb is not None and cv > fb - CUTTER_FB_GAP:
-                    continue   # real cutter: protected
+                    continue   # real cutter: protected by fastball proximity
+            # Velocity separation protects any breaker the operator named:
+            # if his cutter sits 3+ mph off his slider, those are two
+            # pitches and pooling them just renames one into the other.
+            if label in arm_named and len(velos) > 1:
+                others = [v for l, v in velos.items() if l != label]
+                if min(abs(velos[label] - v) for v in others) >= MERGE_VELO_GUARD:
+                    continue
             pool += rows
         if len(pool) < SPLIT_MIN_N:
             continue
@@ -460,7 +596,16 @@ def repartition_breakers(cur, owner, pitchers=None, dry_run=False):
         named = []
         for lf in leaves:
             ivb, hb, velo = _leaf_mean(lf)
-            named.append([lf, _breaker_name(ivb, hb, velo, fb), ivb, velo, hb])
+            label = _breaker_name(ivb, hb, velo, fb)
+            # If every pitch in this leaf carries the same operator label and
+            # the operator used it consistently for this arm, keep his name.
+            # Renaming coherent groups is what turned sliders into sweepers.
+            leaf_tags = {r[5] for r in lf if r[5]}
+            if len(leaf_tags) == 1:
+                only = next(iter(leaf_tags))
+                if only in arm_named:
+                    label = only
+            named.append([lf, label, ivb, velo, hb])
         # a Cutter is only a Cutter when it's clearly its own pitch: within
         # 3 JND of another breaker leaf it's the hard end of the slider's
         # spray (Marshall's 84-mph firm leaf sits 2.5 from his slider —
