@@ -22,6 +22,7 @@ from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
 from ..stats.trackman_stuff import grade_trackman, FB_FAMILY
 from ..stats import pitch_shape
+from ..stats import trackman_box as box
 from ..stats.rapsodo_location import location_plus
 from ..stats.trackman_classify import reclassify_owner, SUITE_TYPES
 from ..stats.rapsodo_arm import arm_profile
@@ -1159,6 +1160,7 @@ def trackman_pitching(
     # Per-pitch pass (same filters): raw plate locations for Location+,
     # plus count-based run values and attack-zone rates per pitcher x type.
     cur_locs = defaultdict(list)
+    line_rows = defaultdict(list)   # every pitch, for the box-score line
     rv_agg = defaultdict(lambda: {"rv": 0.0, "rv_n": 0, "shadow": 0, "heart": 0, "loc_n": 0})
     with get_connection() as conn:
         c2 = conn.cursor()
@@ -1167,7 +1169,9 @@ def trackman_pitching(
                 f"""SELECT p.pitcher, p.pitcher_team,
                            COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                            p.plate_loc_side, p.plate_loc_height,
-                           p.balls, p.strikes, p.pitch_call, p.play_result
+                           p.balls, p.strikes, p.pitch_call, p.play_result,
+                           p.k_or_bb, p.outs_on_play, p.runs_scored,
+                           p.inning, p.top_bottom, p.pa_of_inning, s.id AS session_id
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
                       AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
@@ -1176,6 +1180,7 @@ def trackman_pitching(
             )
             for lr in c2.fetchall():
                 key = (lr["pitcher"], lr["pitcher_team"], lr["ptype"])
+                line_rows[(lr["pitcher"], lr["pitcher_team"])].append(lr)
                 agg = rv_agg[key]
                 if lr["plate_loc_side"] is not None and lr["plate_loc_height"] is not None:
                     cur_locs[key].append(
@@ -1195,6 +1200,7 @@ def trackman_pitching(
                 agg["rv"] += agg["rv_n"] * base   # center on this corpus
         except Exception:
             conn.rollback()
+    box_lg = box.league_context([r for rs in line_rows.values() for r in rs]) if context != "bullpen" else None
 
     def _grades(t):
         # Stuff grades a CENTROID (velo/shape/release), so a handful of
@@ -1254,6 +1260,7 @@ def trackman_pitching(
         tot_loc = sum(a["loc_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
         out.append({"pitcher": name, "throws": throws, "team": tteam, "slot": slot,
                     "pitches": total, "arsenal": arsenal,
+                    "line": box.pitcher_line(line_rows.get((name, tteam), []), box_lg) if box_lg else None,
                     "rv": round(tot_rv, 1) if tot_rv_n else None,
                     "rv100": round(100 * tot_rv / tot_rv_n, 2) if tot_rv_n else None,
                     "shadow_pct": round(100 * tot_shadow / tot_loc, 1) if tot_loc else None})
@@ -1379,7 +1386,7 @@ def trackman_hitting_board(
                        p.balls, p.strikes, p.k_or_bb, p.play_result,
                        p.exit_speed, p.launch_angle, p.direction, p.distance, p.bearing,
                        p.contact_x, p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
-                       p.effective_velo,
+                       p.effective_velo, p.outs_on_play, p.runs_scored,
                        s.id AS session_id, s.session_date, s.session_type
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter IS NOT NULL{extra}{team_sql}""",
@@ -1387,6 +1394,8 @@ def trackman_hitting_board(
         )
         rows = [dict(r) for r in cur.fetchall()]
         rv_base = _rv_baseline(cur, owner, context if context != "bp" else "live", season)
+        # box-score league context for wRC+: the hitters in THIS view
+        box_lg = box.league_context([r for r in rows if r["session_type"] != "bp"])
         # BP hard-hit% per batter for the transfer column (live contexts)
         cur.execute(
             f"""SELECT p.batter, p.batter_team,
@@ -1604,6 +1613,9 @@ def trackman_hitting_board(
             if done:
                 row["k_pct"] = _rate2(sum(1 for p in done if p["outcome"] == "K"), len(done))
                 row["bb_pct"] = _rate2(sum(1 for p in done if p["outcome"] == "BB"), len(done))
+            line = box.hitter_line(box.terminal_pas(b["pa_map"].values()), box_lg)
+            if line:
+                row.update(line)
             hh = bp_hh.get((name, tm))
             if hh is not None and n_bbe:
                 row["transfer"] = round(100 * (b["hh"] / n_bbe - hh), 1)
@@ -1777,6 +1789,7 @@ def trackman_pitcher_detail(
                        p.balls, p.strikes, p.batter_side, p.pitch_call,
                        p.exit_speed, p.launch_angle, p.play_result, p.k_or_bb,
                        p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
+                       p.outs_on_play, p.runs_scored,
                        s.session_date, s.id AS session_id
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher = %s{_NO_MISTAG}
@@ -1907,6 +1920,8 @@ def trackman_pitcher_detail(
             entry[k] = sum(arr) / len(arr) if arr else None
         gtypes[t] = entry
     lab_throws = next((x.get("pitcher_throws") for x in pitches if x.get("pitcher_throws")), None)
+    with get_connection() as conn:
+        lab_lg = box.league_context_from_db(conn.cursor(), owner)
     lab_shapes, lab_slot = _shape_annotate(list(gtypes.values()), lab_throws)
     gfb = None
     for t, en in gtypes.items():
@@ -2013,6 +2028,7 @@ def trackman_pitcher_detail(
         "grades": grades,
         "slot": lab_slot,
         "type_avgs": type_avgs,
+        "line": box.pitcher_line(pitches, lab_lg) if context != "bullpen" else None,
     }
 
 
@@ -2255,6 +2271,7 @@ def trackman_batter_detail(
             p["session_date"] = p["session_date"].isoformat() if p["session_date"] else None
         if not pitches:
             raise HTTPException(status_code=404, detail="No pitches for that batter in this context.")
+        hit_lg = box.league_context_from_db(cur, owner)   # while the cursor is open
 
         cols = ", ".join(f"{expr} AS {key}" for key, expr, _ in _BATTER_PCTL)
         cur.execute(
@@ -2451,7 +2468,8 @@ def trackman_batter_detail(
     return {"batter": batter, "pitch_count": len(pitches),
             "pitches": pitches, "percentiles": percentiles, "profile": link,
             "xstats": xstats, "swing_take": swing_take, "trend": trend,
-            "splits": splits, "velo": velo}
+            "splits": splits, "velo": velo,
+            "line": box.hitter_line(box.terminal_pas(pitches), hit_lg) if context != "bp" else None}
 
 
 def _bp_grade(avg_ev, hh_pct, ss_pct):

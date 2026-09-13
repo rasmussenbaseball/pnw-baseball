@@ -632,6 +632,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                 </tbody>
               </table>
             </div>
+            {context !== 'bullpen' && <PitcherLineStrip line={p.line} compact />}
           </div>
         ))}
         </div>)}
@@ -687,7 +688,70 @@ const HB_FULL = [
   ['Chase RV', 'chase_rv', 'Run value on chase + waste pitches (good takes earn here)', { plus: true }],
   ['Transfer', 'transfer', 'Live hard-hit% minus BP hard-hit% this season', { plus: true }],
   ...HB_RV_ZONES.map(([l, k]) => [l, k, 'Run value earned on heart+shadow pitches in this part of the zone (swings and takes, min 8 priced); in/out are relative to the batter. The middle is already covered by Heart RV', { plus: true }]),
+  // box-score line from the same CSVs (scorer result fields), least important, last
+  ['PA', 'pa', 'Plate appearances', { plain: true, dec: 0 }],
+  ['AB', 'ab', 'At-bats', { plain: true, dec: 0 }],
+  ['H', 'h', 'Hits', { plain: true, dec: 0 }],
+  ['2B', 'd2', 'Doubles', { plain: true, dec: 0 }],
+  ['3B', 'd3', 'Triples', { plain: true, dec: 0 }],
+  ['HR', 'hr', 'Home runs', { plain: true, dec: 0 }],
+  ['BB', 'bb', 'Walks', { plain: true, dec: 0 }],
+  ['K', 'k', 'Strikeouts', { plain: true, dec: 0 }],
+  ['HBP', 'hbp', 'Hit by pitch', { plain: true, dec: 0 }],
+  ['AVG', 'avg', 'Batting average', { dec: 3 }],
+  ['OBP', 'obp', 'On-base percentage', { dec: 3 }],
+  ['SLG', 'slg', 'Slugging', { dec: 3 }],
+  ['OPS', 'ops', 'OBP + SLG', { dec: 3 }],
+  ['ISO', 'iso', 'Isolated power: SLG minus AVG', { dec: 3 }],
+  ['BABIP', 'babip', 'Batting average on balls in play', { dec: 3 }],
+  ['wOBA', 'woba', 'Weighted on-base average (actual results)', { dec: 3 }],
+  ['wRC+', 'wrc_plus', 'Runs created vs the hitters in this view; 100 = average', { dec: 0 }],
 ]
+
+// ── Box-score line strip (pitchers) ──────────────────────────────
+const PITCHER_LINE = [
+  ['IP', 'ip_str', 'ip'], ['BF', 'bf', 'bf'], ['H', 'h', 'h_allowed'], ['R', 'r', 'r_allowed'],
+  ['HR', 'hr', 'hr_allowed'], ['BB', 'bb', 'bb_allowed'], ['K', 'k', 'k_pitched'], ['HBP', 'hbp', 'hbp_allowed'],
+  ['WHIP', 'whip', 'whip'], ['BAA', 'baa', 'baa'], ['FIP', 'fip', 'fip'], ['K/9', 'k9', 'k9'], ['BB/9', 'bb9', 'bb9'],
+  ['RA/9', 'ra9', 'ra9'],
+]
+function PitcherLineStrip({ line, compact }) {
+  if (!line) return null
+  const fmtV = (k, v) => v == null ? '–' : (k === 'baa' ? v.toFixed(3).replace(/^0/, '') : typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(k === 'whip' || k === 'fip' || k === 'ra9' ? 2 : 1) : v)
+  return (
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 ${compact ? 'px-4 py-2 border-t border-gray-100 dark:border-gray-700' : ''}`}>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Line</span>
+      {PITCHER_LINE.map(([label, k, tipKey]) => (
+        <span key={k} className="text-[12px] tabular-nums">
+          <span className="text-[10px] uppercase tracking-wide text-gray-400 mr-1"><StatTip k={tipKey} group="pitching" label={label} /></span>
+          <span className="font-semibold text-gray-800 dark:text-gray-100">{fmtV(k, line[k])}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+const HITTER_LINE = [
+  ['PA', 'pa'], ['AB', 'ab'], ['H', 'h'], ['2B', 'd2'], ['3B', 'd3'], ['HR', 'hr'], ['BB', 'bb'], ['K', 'k'], ['HBP', 'hbp'],
+  ['AVG', 'avg'], ['OBP', 'obp'], ['SLG', 'slg'], ['OPS', 'ops'], ['ISO', 'iso'], ['BABIP', 'babip'], ['wOBA', 'woba'], ['wRC+', 'wrc_plus'],
+]
+function HitterLineCard({ line }) {
+  if (!line) return null
+  const fmtV = (k, v) => v == null ? '–' : (['avg', 'obp', 'slg', 'ops', 'iso', 'babip', 'woba'].includes(k) ? v.toFixed(3).replace(/^0/, '') : v)
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Box line (this view's filters applied)</div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {HITTER_LINE.map(([label, k]) => (
+          <span key={k} className="text-[13px] tabular-nums">
+            <span className="text-[10px] uppercase tracking-wide text-gray-400 mr-1"><StatTip k={k} group="hitting" label={label} /></span>
+            <span className="font-semibold text-gray-800 dark:text-gray-100">{fmtV(k, line[k])}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
 const HB_BP = [
   ['Pitches', 'pitches', 'Machine pitches thrown', { plain: true, dec: 0 }],
   ['InPlay/P', 'contact_per_pitch', 'Balls put in play per machine pitch. NOT contact%: BP files tag every pitch Undefined (no swing or take calls), so swings are unknowable and contact per swing cannot be computed', {}],
@@ -1593,6 +1657,13 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
             <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Two-pitch sequences (result on the 2nd pitch)</div>
             <SequencingTable pitches={data.pitches} />
           </div>
+
+          {data.line && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Box line (this view's filters applied; R not ER, TrackMan does not score earned runs)</div>
+              <PitcherLineStrip line={data.line} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2014,6 +2085,8 @@ function HitterLabTab({ teamCtx, season }) {
             </div>
             <ContactPointCard pitches={pitches} />
           </div>
+
+          <HitterLineCard line={data.line} />
         </div>
       )}
     </div>
