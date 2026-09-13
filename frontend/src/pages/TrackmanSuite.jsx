@@ -2065,13 +2065,100 @@ function PitcherZoneMaps({ pitches }) {
 }
 
 // Spray chart from Bearing (deg from CF, +=right) + Distance.
+// ── Batted-ball hover card (spray + contact-point dots) ──────────
+// One card for every dot in the Hitter Lab: what the ball did (result, EV,
+// launch, distance, spray, contact depth) and what it was hit off (pitch
+// type, velo, spin, movement, count, pitcher, location with a mini zone).
+function fmtLoc(p) {
+  if (p.plate_loc_side == null || p.plate_loc_height == null) return null
+  const h = p.plate_loc_height, sd = p.plate_loc_side
+  const vert = h > 3.1 ? 'up' : h < 1.9 ? 'down' : 'middle'
+  const hand = (p.batter_side || '')[0]
+  const rel = hand === 'R' ? sd : hand === 'L' ? -sd : sd
+  const horiz = Math.abs(rel) < 0.28 ? 'middle' : rel > 0 ? 'in' : 'away'
+  const inZone = Math.abs(sd) <= 0.83 && h >= 1.5 && h <= 3.5
+  return `${vert === horiz ? 'middle-middle' : `${vert} and ${horiz}`}${inZone ? '' : ' (out of zone)'}`
+}
+function MiniZone({ p }) {
+  if (p.plate_loc_side == null || p.plate_loc_height == null) return null
+  // catcher's view, 3 ft wide x 3 ft tall window centered on the zone
+  const W = 42, H = 42, x = (sd) => W / 2 + sd * (W / 3), y = (h) => H - (h - 1.0) * (H / 3)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-10 h-10 shrink-0">
+      <rect x={x(-0.83)} y={y(3.5)} width={x(0.83) - x(-0.83)} height={y(1.5) - y(3.5)} fill="none" stroke="#9ca3af" strokeWidth="1" />
+      <circle cx={Math.max(2, Math.min(W - 2, x(p.plate_loc_side)))} cy={Math.max(2, Math.min(H - 2, y(p.plate_loc_height)))} r="3" fill="#d22d49" />
+    </svg>
+  )
+}
+function PitchHoverCard({ hover }) {
+  if (!hover) return null
+  const { p, x, y } = hover
+  const result = p.play_result || (p.k_or_bb) || (p.pitch_call === 'InPlay' ? 'In play' : p.pitch_call) || '–'
+  const pullSide = (() => {
+    if (p.direction == null) return null
+    const hand = (p.batter_side || '')[0]
+    const d = hand === 'L' ? -p.direction : p.direction
+    return d <= -10 ? 'pulled' : d >= 10 ? 'oppo' : 'center'
+  })()
+  const f1 = (v, d = 1) => v == null ? '–' : Number(v).toFixed(d)
+  const rows = [
+    ['EV', p.exit_speed != null ? `${f1(p.exit_speed)} mph` : '–'],
+    ['Launch', p.launch_angle != null ? `${f1(p.launch_angle)}°${p.tagged_hit_type ? ` · ${p.tagged_hit_type}` : ''}` : '–'],
+    ['Distance', p.distance != null ? `${Math.round(p.distance)} ft${pullSide ? ` · ${pullSide}` : ''}` : (pullSide || '–')],
+    ['Contact', p.contact_x != null ? `${f1(p.contact_x, 2)} ft out front${p.contact_y != null ? `, ${f1(p.contact_y, 1)} ft high` : ''}` : '–'],
+  ]
+  const pitchRows = [
+    ['Pitch', `${p.ptype || '?'}${p.rel_speed != null ? ` · ${f1(p.rel_speed)} mph` : ''}${p.effective_velo != null && p.rel_speed == null ? ` · ${f1(p.effective_velo)} eff` : ''}`],
+    ['Shape', (p.ivb != null || p.horz_break != null) ? `${f1(p.ivb)}" IVB · ${f1(p.horz_break)}" HB${p.spin_rate != null ? ` · ${Math.round(p.spin_rate)} rpm` : ''}` : '–'],
+    ['Count', p.balls != null && p.strikes != null ? `${p.balls}-${p.strikes}` : '–'],
+    ['From', p.pitcher ? `${p.pitcher}${p.pitcher_throws ? ` (${p.pitcher_throws === 'Left' ? 'LHP' : 'RHP'})` : ''}` : (p.pitcher_throws ? (p.pitcher_throws === 'Left' ? 'LHP' : 'RHP') : '–')],
+    ['Location', fmtLoc(p) || '–'],
+  ]
+  return (
+    <div className="pointer-events-none absolute z-40 w-64 rounded-lg bg-gray-900 text-gray-100 shadow-xl ring-1 ring-black/20 p-2.5 text-[11px] leading-snug"
+      style={{ left: x + 14, top: y + 14 }}>
+      <div className="flex items-center justify-between mb-1">
+        <span className="font-bold text-[12px]">{result}</span>
+        <span className="text-gray-400">{p.session_date || ''}</span>
+      </div>
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex gap-2"><span className="w-16 text-gray-400 shrink-0">{k}</span><span className="tabular-nums">{v}</span></div>
+      ))}
+      <div className="mt-1.5 pt-1.5 border-t border-gray-700 flex gap-2">
+        <div className="flex-1">
+          {pitchRows.map(([k, v]) => (
+            <div key={k} className="flex gap-2"><span className="w-16 text-gray-400 shrink-0">{k}</span><span className="tabular-nums">{v}</span></div>
+          ))}
+        </div>
+        <MiniZone p={p} />
+      </div>
+    </div>
+  )
+}
+// Hover state + handlers for a dot chart: pass the wrapper ref so the card
+// lands next to the cursor inside a position:relative container.
+function useDotHover() {
+  const wrapRef = useRef(null)
+  const [hover, setHover] = useState(null)
+  const onMove = (p) => (e) => {
+    const r = wrapRef.current?.getBoundingClientRect()
+    if (!r) return
+    setHover({ p, x: e.clientX - r.left, y: e.clientY - r.top })
+  }
+  const onLeave = () => setHover(null)
+  return { wrapRef, hover, onMove, onLeave }
+}
+
 function SprayChart({ pitches }) {
   const W = 300, H = 260, HOME_X = W / 2, HOME_Y = H - 18, MAXD = 420
   const pts = pitches.filter(p => p.bearing != null && p.distance != null && p.exit_speed != null)
   const px = (b, d) => HOME_X + (d / MAXD) * (H - 40) * Math.sin(b * Math.PI / 180)
   const py = (b, d) => HOME_Y - (d / MAXD) * (H - 40) * Math.cos(b * Math.PI / 180)
   const evColor = (ev) => ev >= 95 ? '#d22d49' : ev >= 85 ? '#f59e0b' : '#3661ad'
+  const { wrapRef, hover, onMove, onLeave } = useDotHover()
   return (
+    <div ref={wrapRef} className="relative">
+    <PitchHoverCard hover={hover} />
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
       {/* foul lines + outfield arcs */}
       <line x1={HOME_X} y1={HOME_Y} x2={px(-45, 420)} y2={py(-45, 420)} stroke="currentColor" className="text-gray-300 dark:text-gray-600" />
@@ -2084,10 +2171,12 @@ function SprayChart({ pitches }) {
       {pts.map((p, i) => (
         <circle key={i} cx={px(Math.max(-55, Math.min(55, p.bearing)), Math.min(MAXD, p.distance))}
           cy={py(Math.max(-55, Math.min(55, p.bearing)), Math.min(MAXD, p.distance))}
-          r="3.5" fill={evColor(p.exit_speed)} opacity="0.65" />
+          r={hover?.p === p ? 5 : 3.5} fill={evColor(p.exit_speed)} opacity={hover?.p === p ? 1 : 0.65}
+          className="cursor-pointer" onMouseMove={onMove(p)} onMouseLeave={onLeave} />
       ))}
-      <text x="10" y={H - 6} fontSize="8" fill="#9ca3af">EV: <tspan fill="#3661ad">&lt;85</tspan> <tspan fill="#f59e0b">85-95</tspan> <tspan fill="#d22d49">95+</tspan></text>
+      <text x="10" y={H - 6} fontSize="8" fill="#9ca3af">EV: <tspan fill="#3661ad">&lt;85</tspan> <tspan fill="#f59e0b">85-95</tspan> <tspan fill="#d22d49">95+</tspan> · hover a dot</text>
     </svg>
+    </div>
   )
 }
 
@@ -3608,6 +3697,7 @@ const DEPTH_TIP = 'Measured on this corpus: damage peaks at 1.3-2.7 ft of depth 
 // Physics check on this corpus: pulled air averages ~2.1 ft out front,
 // oppo air ~1.0 ft (over the plate) — the textbook timing relationship.
 function ContactPointCard({ pitches }) {
+  const { wrapRef, hover, onMove, onLeave } = useDotHover()
   const pts = (pitches || []).filter(p => p.contact_x != null && p.exit_speed != null)
   if (pts.length < 5) return null
   const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
@@ -3651,6 +3741,8 @@ function ContactPointCard({ pitches }) {
           </div>
         ))}
       </div>
+      <div ref={wrapRef} className="relative">
+      <PitchHoverCard hover={hover} />
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
         {/* measured damage window (1.3-2.7 ft) */}
         <rect x={X(DEPTH_LO)} y={T} width={X(DEPTH_HI) - X(DEPTH_LO)} height={H - T - B}
@@ -3669,10 +3761,12 @@ function ContactPointCard({ pitches }) {
           <text key={v} x={L - 4} y={Y(v) + 3} fontSize="8" textAnchor="end" fill="#9ca3af">{v}'</text>
         ))}
         {pts.map((p, i) => (
-          <circle key={i} cx={X(p.contact_x)} cy={Y(p.contact_y ?? 2.5)} r="3"
-            fill={p.exit_speed >= 95 ? '#d22d49' : p.exit_speed >= 85 ? '#f59e0b' : '#3661ad'} opacity="0.6" />
+          <circle key={i} cx={X(p.contact_x)} cy={Y(p.contact_y ?? 2.5)} r={hover?.p === p ? 4.5 : 3}
+            fill={p.exit_speed >= 95 ? '#d22d49' : p.exit_speed >= 85 ? '#f59e0b' : '#3661ad'} opacity={hover?.p === p ? 1 : 0.6}
+            className="cursor-pointer" onMouseMove={onMove(p)} onMouseLeave={onLeave} />
         ))}
       </svg>
+      </div>
       {typeRows.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {typeRows.map(([t, v, n]) => (

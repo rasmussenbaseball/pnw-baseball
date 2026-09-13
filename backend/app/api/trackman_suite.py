@@ -2293,6 +2293,7 @@ def trackman_batter_detail(
             f"""SELECT COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                        p.pitch_call, p.is_swing, p.is_whiff, p.is_contact, p.is_chase, p.is_in_zone,
                        p.plate_loc_height, p.plate_loc_side, p.balls, p.strikes,
+                       p.pitcher, p.rel_speed, p.spin_rate, p.ivb, p.horz_break,
                        p.pitcher_throws, p.batter_side, p.exit_speed, p.launch_angle, p.distance,
                        p.direction, p.bearing, p.play_result, p.tagged_hit_type,
                        p.contact_x, p.contact_y,
