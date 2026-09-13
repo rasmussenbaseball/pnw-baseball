@@ -49,6 +49,8 @@ SUITE_TYPES = list(CLASS_TO_SUITE.values())
 TAG_MIN_N = 3         # pitches before a tagged group earns a centroid
 TAG_VELO_JND = 2.0    # mph per distance unit (tighter than the merge metric)
 TAG_BREAK_JND = 3.5   # inches of IVB/HB per distance unit
+TAG_NEAR = 1.5        # a thin-tag pitch joins an own group only this close
+TAG_SNAP = 3.0        # an UNTAGGED pitch snaps to an own group within this
 TAG_FAR = 2.2         # a pitch must be at least this far from its own tag...
 TAG_MARGIN = 1.2      # ...and this much closer to the alternative to move
 TAG_ALIASES = {"four seam": "Fastball", "fourseam": "Fastball",
@@ -89,6 +91,21 @@ def _tag_centroids(bridged):
             out[t] = {"n": a["n"], "velo": a["velo"] / a["n"],
                       "ivb": a["ivb"] / a["n"], "hb": a["hb"] / a["n"]}
     return out
+
+
+def _shape_fallback(b, cents, fb, hand):
+    """Name an untagged pitch that sits near none of the arm's own groups:
+    slot-frame verdict against his own fastball centroid when he has one,
+    else the template classifier."""
+    ref = cents.get("Fastball") or cents.get("Sinker") if cents else None
+    if ref:
+        v = pitch_shape.shape_verdict(
+            {"velo": b["velo"], "ivb": b["ivb"], "hb_arm": b["arm_hb"], "spin": b.get("total_spin")},
+            {"velo": ref["velo"], "ivb": ref["ivb"], "hb_arm": ref["hb"], "spin": None})
+        if v:
+            return v
+    label = classify(b, fb, hand) if b["velo"] is not None else "unclassified"
+    return CLASS_TO_SUITE.get(label)
 
 
 def _bridge(row):
@@ -147,14 +164,24 @@ def reclassify_owner(cur, owner, pitchers=None):
                     # AND clearly closer to another pitch this arm throws.
                     if d_own >= TAG_FAR and (d_own - d_alt) >= TAG_MARGIN:
                         new = best
-            elif cents and None not in (b["velo"], b["ivb"], b["arm_hb"]):
-                # No usable operator tag (blank, "Other", a one-off label):
-                # it is one of the pitches THIS ARM throws, so take the nearest
-                # of his own named groups (velocity-weighted), not a template.
+            elif None not in (b["velo"], b["ivb"], b["arm_hb"]):
+                # Either a real tag too thin for a centroid (Butcher's two
+                # curveballs) or no usable tag at all (blank, "Other"). Look at
+                # his own named groups first, but only take one that is
+                # actually NEAR: a 68-mph curve is not a changeup just because
+                # the changeup is the closest thing he throws.
                 pt = {"velo": b["velo"], "ivb": b["ivb"], "hb": b["arm_hb"]}
-                new = min(cents, key=lambda t: _tag_dist(pt, cents[t]))
+                best, d_best = None, None
+                if cents:
+                    best = min(cents, key=lambda t: _tag_dist(pt, cents[t]))
+                    d_best = _tag_dist(pt, cents[best])
+                if tag:
+                    new = best if (d_best is not None and d_best < TAG_NEAR) else tag
+                elif d_best is not None and d_best <= TAG_SNAP:
+                    new = best
+                else:
+                    new = _shape_fallback(b, cents, fb, hand)
             else:
-                # Nothing tagged for this arm at all: shape classifier.
                 label = classify(b, fb, hand) if b["velo"] is not None else "unclassified"
                 new = CLASS_TO_SUITE.get(label)
             classified += 1 if new else 0
@@ -402,13 +429,15 @@ def consolidate_owner(cur, owner, pitchers=None, dry_run=False):
             for src, dst in mapping.items():
                 if dst == small:
                     mapping[src] = big
-        # 1-2 pitch strays can't be a real pitch: absorb into the nearest
-        # cluster, no distance limit (Mallari's lone fastball-shaped
-        # "changeup" survived every threshold)
+        # 1-2 pitch strays absorb into the nearest cluster when one is within
+        # reach (Mallari's lone fastball-shaped "changeup"); a stray with
+        # nothing near it (Butcher's two 68-mph curveballs) stays its own pitch
         for t in [t for t, c in cl.items() if c["n"] < 3 and t not in named]:
             if len(cl) < 2:
                 break
             near = min((o for o in cl if o != t), key=lambda o: _cdist(cl[t], cl[o]))
+            if _cdist(cl[t], cl[near]) >= MERGE_FORCE_D:
+                continue   # nothing he throws is anywhere near it: a real (rare) pitch
             s, g = cl.pop(t), cl[near]
             tot = s["n"] + g["n"]
             for k in ("velo", "ivb", "hb"):
