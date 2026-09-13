@@ -3,8 +3,9 @@
 Every live TrackMan row carries the scorer's result fields (KorBB,
 PlayResult, PitchCall, OutsOnPlay, RunsScored), so the traditional line
 falls out of the same CSVs that feed the shape stats. What TrackMan does
-NOT carry: earned vs unearned runs (we show R, never ER), sac fly vs sac
-bunt (a "Sacrifice" is treated like a sac fly: out of the AB, in the OBP
+NOT carry: outs on strikeouts (OutsOnPlay is filled only for balls in
+play, so outs are rebuilt from results, see outs_on), earned vs unearned
+runs (we show R, never ER), sac fly vs sac bunt (a "Sacrifice" is treated like a sac fly: out of the AB, in the OBP
 denominator), and errors reached on (counted as an AB, no hit).
 
 League context (wOBA, runs per PA, the FIP constant) comes from the same
@@ -40,6 +41,23 @@ def outcome(r):
     if r.get("pitch_call") == "InPlay":
         return "InPlay"
     return None
+
+
+OUT_RESULTS = {"K", "Out", "FieldersChoice", "Sac"}
+
+
+def outs_on(r):
+    """Outs a pitch produced, from the RESULT rather than the scorer's outs
+    field: TrackMan records OutsOnPlay only for balls in play (405 of 407
+    strikeouts in the corpus carry 0, a few fielder's choices and sacs too).
+    A strikeout is an out, an Out/FC/Sac is at least one; the recorded
+    number is trusted only when it says more (double play) or on a pitch
+    that did not end the PA (pickoff, caught stealing)."""
+    rec = int(r.get("outs_on_play") or 0)
+    o = outcome(r)
+    if o in OUT_RESULTS:
+        return max(rec, 1)
+    return rec
 
 
 def terminal_pas(rows):
@@ -102,7 +120,7 @@ def pitcher_line(rows, lg=None):
     pitch: pickoffs, caught stealings and foul outs count)."""
     pas = terminal_pas(rows)
     c = _counts(pas)
-    outs = sum(int(r.get("outs_on_play") or 0) for r in rows)
+    outs = sum(outs_on(r) for r in rows)
     runs = sum(int(r.get("runs_scored") or 0) for r in rows)
     if not outs and not c["PA"]:
         return None
@@ -130,7 +148,7 @@ def league_context(rows):
     """Corpus-wide wOBA, runs per PA and the FIP constant from raw rows."""
     pas = terminal_pas(rows)
     c = _counts(pas)
-    outs = sum(int(r.get("outs_on_play") or 0) for r in rows)
+    outs = sum(outs_on(r) for r in rows)
     runs = sum(int(r.get("runs_scored") or 0) for r in rows)
     woba = _woba(c)
     lg = {"pa": c["PA"], "woba": round(woba, 3) if woba is not None else None,

@@ -53,7 +53,7 @@ export const STAT_DEFS = {
   babip: ['Average on balls in play.', '(H minus HR) / (AB minus K minus HR plus sacrifices).', 3],
   woba: ['Weighted on-base average from actual results.', '(0.69 BB + 0.72 HBP + 0.89 1B + 1.27 2B + 1.62 3B + 2.10 HR) / (AB + BB + HBP + sacrifices).', 3],
   wrc_plus: ['Runs created vs the hitters in this view. 100 = average, 150 = 50% better.', '100 x ((wOBA minus view wOBA) / 1.15 + view runs per PA) / view runs per PA.', 0],
-  ip: ['Innings pitched, from outs recorded on every pitch (pickoffs and caught stealings count).', 'Sum of OutsOnPlay / 3, shown in baseball notation.', 1],
+  ip: ['Innings pitched, rebuilt from results: TrackMan only records outs on balls in play, so every strikeout, out, fielder\u2019s choice and sacrifice counts as an out (double plays, pickoffs and caught stealings use the recorded count).', 'Outs / 3, shown in baseball notation. Intrasquad innings are pitch-count innings, so IP will not match a scorebook.', 1],
   bf: ['Batters faced.', 'Plate appearances that ended against him.', 0],
   h_allowed: ['Hits allowed.', 'Singles + doubles + triples + home runs allowed.', 0],
   r_allowed: ['Runs allowed. TrackMan does not score earned runs, so this is R, not ER.', 'Sum of RunsScored on his pitches.', 0],
