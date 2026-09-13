@@ -21,6 +21,7 @@ from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
 from ..stats.trackman_stuff import grade_trackman, FB_FAMILY
+from ..stats import pitch_shape
 from ..stats.rapsodo_location import location_plus
 from ..stats.trackman_classify import reclassify_owner, SUITE_TYPES
 from ..stats.rapsodo_arm import arm_profile
@@ -95,6 +96,47 @@ def _site_season(season):
     """Map a TrackMan season start year to the site's spring season
     (2025-26 TrackMan data pairs with the 2026 college season)."""
     return (season + 1) if season else CURRENT_SEASON
+
+
+def _shape_annotate(types, throws):
+    """Slot-frame shape read for one pitcher's arsenal entries (dicts with
+    ptype, n, velo, ivb, hb (catcher-view), spin, rel_s). Returns
+    ({ptype: {shape, shape_note, suggest}}, slot) — see stats/pitch_shape."""
+    def sgn():
+        if throws == "Left":
+            return -1.0
+        if throws == "Right":
+            return 1.0
+        rs = next((t.get("rel_s") for t in types if t.get("rel_s") is not None), None)
+        return -1.0 if (rs is not None and float(rs) < 0) else 1.0
+    sign = sgn()
+
+    def vec(t):
+        if t.get("velo") is None or t.get("ivb") is None or t.get("hb") is None:
+            return None
+        return {"velo": float(t["velo"]), "ivb": float(t["ivb"]),
+                "hb_arm": float(t["hb"]) * sign, "spin": float(t["spin"]) if t.get("spin") else None}
+    fbs = [t for t in types if t.get("ptype") in ("Fastball", "Sinker") and vec(t)]
+    if not fbs:
+        return {}, None
+    fbt = max(fbs, key=lambda t: (t["ptype"] == "Fastball", t.get("n") or 0))
+    fb = vec(fbt)
+    theta = pitch_shape.slot_frame(fb)
+    out = {}
+    for t in types:
+        g = vec(t)
+        if g is None or (t.get("n") or 0) < 2:
+            continue
+        pt = t.get("ptype")
+        if t is fbt:
+            out[pt] = {"shape": pt, "shape_note": pitch_shape.descriptor(pt, g, fb, theta), "suggest": None}
+            continue
+        out[pt] = {
+            "shape": pitch_shape.shape_verdict(g, fb, theta),
+            "shape_note": pitch_shape.descriptor(pt, g, fb, theta),
+            "suggest": pitch_shape.suggest(pt, g, fb, theta) if (t.get("n") or 0) >= 3 else None,
+        }
+    return out, pitch_shape.slot_label(theta)
 
 
 def _rv_baseline(cur, owner, context, season=None):
@@ -1170,13 +1212,18 @@ def trackman_pitching(
     for (name, throws, tteam), types in by_pitcher.items():
         total = sum(t["n"] for t in types)
         arsenal = []
+        shapes, slot = _shape_annotate(types, throws)
         for t in sorted(types, key=lambda x: -x["n"]):
             swings, out_zone = t["swings"] or 0, t["out_zone"] or 0
             stuff, loc = _grades(t)
+            shp = shapes.get(t["ptype"], {})
             agg = rv_agg.get((t["pitcher"], t["pitcher_team"], t["ptype"]),
                              {"rv": 0.0, "rv_n": 0, "shadow": 0, "heart": 0, "loc_n": 0})
             arsenal.append({
                 "pitch_type": t["ptype"],
+                "shape": shp.get("shape"),
+                "shape_note": shp.get("shape_note"),
+                "suggest": shp.get("suggest"),
                 "stuff": stuff,
                 "loc": loc,
                 "rv": round(agg["rv"], 1) if agg["rv_n"] else None,
@@ -1205,7 +1252,7 @@ def trackman_pitching(
         tot_rv_n = sum(a["rv_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
         tot_shadow = sum(a["shadow"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
         tot_loc = sum(a["loc_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
-        out.append({"pitcher": name, "throws": throws, "team": tteam,
+        out.append({"pitcher": name, "throws": throws, "team": tteam, "slot": slot,
                     "pitches": total, "arsenal": arsenal,
                     "rv": round(tot_rv, 1) if tot_rv_n else None,
                     "rv100": round(100 * tot_rv / tot_rv_n, 2) if tot_rv_n else None,
@@ -1859,6 +1906,8 @@ def trackman_pitcher_detail(
         for k, arr in vals.items():
             entry[k] = sum(arr) / len(arr) if arr else None
         gtypes[t] = entry
+    lab_throws = next((x.get("pitcher_throws") for x in pitches if x.get("pitcher_throws")), None)
+    lab_shapes, lab_slot = _shape_annotate(list(gtypes.values()), lab_throws)
     gfb = None
     for t, en in gtypes.items():
         cand = (t == "Fastball", t in FB_FAMILY, en["n"])
@@ -1872,7 +1921,7 @@ def trackman_pitcher_detail(
         locs = glocs.get(t, [])
         loc = location_plus(t.lower(), locs, min_n=1)
         if stuff is not None or loc is not None:
-            grades[t] = {"stuff": stuff, "loc": loc}
+            grades[t] = {"stuff": stuff, "loc": loc, **lab_shapes.get(t, {})}
 
     # Run values + attack zones per pitch type (pitcher perspective:
     # positive = runs saved vs average).
@@ -1962,6 +2011,7 @@ def trackman_pitcher_detail(
         "rv_by_type": rv_by_type,
         "session_trend": session_trend,
         "grades": grades,
+        "slot": lab_slot,
         "type_avgs": type_avgs,
     }
 
@@ -3093,6 +3143,35 @@ def override_pitch_type(pitch_id: int, body: PitchTypeOverride, owner: str = Dep
             raise HTTPException(status_code=404, detail="Pitch not found.")
         conn.commit()
     return {"status": "ok"}
+
+
+class GroupRetag(_BM):
+    pitcher: str
+    team: str | None = None
+    from_type: str
+    to_type: str
+
+
+@router.patch("/trackman/pitchers/retag-group")
+def retag_pitch_group(body: GroupRetag, owner: str = Depends(_gate)):
+    """Rename ONE pitch type for ONE pitcher across the whole corpus — the
+    one-click answer to a shape suggestion ("his slider rides like a cutter").
+    Writes override_pitch_type on every pitch whose effective type is
+    from_type, so it wins everywhere and survives reclassification."""
+    if body.to_type not in SUITE_TYPES or body.from_type not in SUITE_TYPES:
+        raise HTTPException(status_code=400, detail=f"types must be one of {SUITE_TYPES}.")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE tm_pitches SET override_pitch_type = %s
+               WHERE owner_user_id = %s AND pitcher = %s
+                 AND (%s IS NULL OR pitcher_team = %s)
+                 AND COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type) = %s""",
+            (body.to_type, owner, body.pitcher, body.team, body.team, body.from_type),
+        )
+        n = cur.rowcount
+        conn.commit()
+    return {"status": "ok", "updated": n}
 
 
 # ── Corpus averages for the hover tooltips ───────────────────────

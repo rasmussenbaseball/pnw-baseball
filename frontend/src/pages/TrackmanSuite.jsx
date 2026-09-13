@@ -441,12 +441,61 @@ const CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'S
 // out: no batted balls and a placeholder batter, so nothing to field or value.
 const DEF_CONTEXTS = CONTEXTS.filter(([k]) => k !== 'bullpen')
 
+// ── Pitch shape read (slot-frame verdict from the backend) ─────────
+// Every arsenal row carries a shape note ("gyro", "sweepy", "kick / low-spin")
+// and, when the pitch's shape clearly argues for another name, a suggestion
+// the coach can apply with one click. The operator's tag is never renamed
+// by code; this is the human-in-the-loop half of "never mess up a pitch type".
+async function retagGroup(pitcher, team, fromType, toType) {
+  const r = await fetch('/api/v1/trackman/pitchers/retag-group', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ pitcher, team: team || null, from_type: fromType, to_type: toType }),
+  })
+  return r.ok
+}
+
+function ShapeChip({ note, suggest, pitchType, pitcher, team, onDone }) {
+  const [busy, setBusy] = useState(false)
+  if (!note && !suggest) return null
+  return (
+    <span className="ml-1.5 inline-flex items-center gap-1 align-middle font-normal">
+      {note && <span className="text-[10px] text-gray-400">{note}</span>}
+      {suggest && (
+        <button disabled={busy}
+          onClick={async (e) => {
+            e.stopPropagation()
+            if (!window.confirm(`Rename every ${pitchType} from ${pitcher} to ${suggest}? Shape says it is a ${suggest.toLowerCase()}. You can change any pitch back in the Player Lab.`)) return
+            setBusy(true)
+            const ok = await retagGroup(pitcher, team, pitchType, suggest)
+            setBusy(false)
+            if (ok && onDone) onDone()
+          }}
+          title="The shape of this pitch (velocity gap, ride and sweep relative to his fastball, spin) reads as a different type. Click to rename every one of these pitches; the operator's tag stays on file."
+          className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-200 dark:ring-amber-800">
+          shape says {suggest} · apply
+        </button>
+      )}
+    </span>
+  )
+}
+
+function SlotChip({ slot }) {
+  if (!slot) return null
+  return (
+    <span className="text-[11px] text-gray-500 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 rounded px-1.5 py-0.5"
+      title="Arm slot read from the fastball's movement direction (degrees above horizontal). Every pitch type below is judged relative to this fastball, so a sidearmer's slider is not called a sweeper just because it sweeps.">
+      {slot.label} · {slot.deg}°
+    </span>
+  )
+}
+
 function PitchingTab({ onOpenLab, teamCtx, season }) {
   const exportRef = useRef(null)
   const [context, setContext] = useState('live')
   const [ptype, setPtype] = useState('')
   const [vsSide, setVsSide] = useState('')
-  const { data, loading } = useApi('/trackman/pitching',
+  const { data, loading, refetch } = useApi('/trackman/pitching',
     { context, ...(vsSide ? { side: vsSide } : {}), season }, [context, vsSide])
   const pitchers = data?.pitchers || []
   const [team, setTeam] = useState(teamCtx.primary)
@@ -502,6 +551,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
               <span className="text-[11px] font-bold text-gray-500 bg-gray-100 dark:bg-gray-700 rounded px-1.5 py-0.5">
                 {p.throws === 'Left' ? 'LHP' : p.throws === 'Right' ? 'RHP' : '–'}
               </span>
+              <SlotChip slot={p.slot} />
               <span className="text-xs text-gray-400">{p.team}</span>
               {p.rv != null && context !== 'bullpen' && (
                 <span className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
@@ -551,6 +601,8 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                       <td className="px-4 py-1.5 font-semibold whitespace-nowrap">
                         <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: PITCH_COLORS[a.pitch_type] || '#9ca3af' }} />
                         {a.pitch_type}
+                        <ShapeChip note={a.shape_note} suggest={a.suggest} pitchType={a.pitch_type}
+                          pitcher={p.pitcher} team={p.team} onDone={refetch} />
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{a.count}</td>
                       <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${a.stuff == null ? 'text-gray-300' : a.stuff >= 110 ? 'text-[#d22d49]' : a.stuff <= 90 ? 'text-[#3661ad]' : ''}`}>{a.stuff ?? '–'}</td>
@@ -1444,7 +1496,8 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
             </div>
           )}
 
-          <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} grades={data.grades} typeAvgs={data.type_avgs} />
+          <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} grades={data.grades} typeAvgs={data.type_avgs}
+            slot={data.slot} pitcher={active} team={team || null} onRetag={refetch} />
 
           <CountResults pitches={data.pitches} mode="pitcher" />
 
@@ -2989,7 +3042,7 @@ function CoachBoardTab({ teamCtx, season }) {
 
 // ── Pitcher Lab: full per-pitch stat table ───────────────────────
 
-function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs }) {
+function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs, slot, pitcher, team, onRetag }) {
   const rows = useMemo(() => {
     const g = {}
     pitches.forEach(p => { (g[p.ptype] = g[p.ptype] || []).push(p) })
@@ -3036,8 +3089,9 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs }) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
-      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">
-        Pitch metrics (this view's filters applied)
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400 flex items-center gap-2">
+        <span>Pitch metrics (this view's filters applied)</span>
+        {slot && <span className="normal-case tracking-normal font-normal"><SlotChip slot={slot} /></span>}
       </div>
       <table className="w-full text-[13px]">
         <thead>
@@ -3071,6 +3125,8 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs }) {
               <td className="px-4 py-1.5 font-semibold whitespace-nowrap">
                 <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: cFor(r.t) }} />
                 {r.t}
+                <ShapeChip note={grades?.[r.t]?.shape_note} suggest={grades?.[r.t]?.suggest} pitchType={r.t}
+                  pitcher={pitcher} team={team} onDone={onRetag} />
               </td>
               <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${gradeCls(grades?.[r.t]?.stuff)}`}>{grades?.[r.t]?.stuff ?? '–'}</td>
               <td className={`px-2 py-1.5 text-right tabular-nums ${gradeCls(grades?.[r.t]?.loc)}`}>{grades?.[r.t]?.loc ?? '–'}</td>

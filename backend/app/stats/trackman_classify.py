@@ -20,6 +20,7 @@ from collections import defaultdict
 from itertools import combinations
 
 from .rapsodo_parse import classify, _fastball_centroid
+from . import pitch_shape
 
 # classifier's lowercase labels -> the suite's normalized type names
 CLASS_TO_SUITE = {
@@ -146,9 +147,14 @@ def reclassify_owner(cur, owner, pitchers=None):
                     # AND clearly closer to another pitch this arm throws.
                     if d_own >= TAG_FAR and (d_own - d_alt) >= TAG_MARGIN:
                         new = best
+            elif cents and None not in (b["velo"], b["ivb"], b["arm_hb"]):
+                # No usable operator tag (blank, "Other", a one-off label):
+                # it is one of the pitches THIS ARM throws, so take the nearest
+                # of his own named groups (velocity-weighted), not a template.
+                pt = {"velo": b["velo"], "ivb": b["ivb"], "hb": b["arm_hb"]}
+                new = min(cents, key=lambda t: _tag_dist(pt, cents[t]))
             else:
-                # No usable operator tag (blank, "Other", or a one-off label):
-                # fall back to the shape classifier.
+                # Nothing tagged for this arm at all: shape classifier.
                 label = classify(b, fb, hand) if b["velo"] is not None else "unclassified"
                 new = CLASS_TO_SUITE.get(label)
             classified += 1 if new else 0
@@ -354,9 +360,14 @@ def consolidate_owner(cur, owner, pitchers=None, dry_run=False):
                     return False
                 d = _cdist(cl[a], cl[b])
                 small_n = min(cl[a]["n"], cl[b]["n"])
-                # A group the operator named consistently is a real pitch
-                # until proven otherwise: it only merges when the centroids
-                # are nearly on top of each other, and never as "trace".
+                # Two groups the operator named consistently are two pitches
+                # by definition (grip and intent), even when the shapes sit on
+                # top of each other — Sanchez's sinker and fastball are the
+                # same movement and still two pitches. Never merge them.
+                if a in named and b in named:
+                    return False
+                # One named group absorbs an unnamed twin only when the
+                # centroids are nearly on top of each other, never as "trace".
                 if a in named or b in named:
                     return d < MERGE_BACKED_D
                 return d < MERGE_CLOSE_D or (small_n < MERGE_TRACE_N and d < MERGE_FORCE_D)
@@ -438,7 +449,16 @@ SPLIT_MIN_N = 8       # both halves need this many pitches
 CUTTER_FB_GAP = 4.5   # a "cutter" more than this below the fastball is a breaker
 
 
-def _breaker_name(ivb, hb, velo=None, fb_velo=None):
+def _breaker_name(ivb, hb, velo=None, fb_velo=None, fb=None, sign=1.0):
+    """Name a breaker leaf. With a fastball centroid (`fb`: velo, ivb, hb
+    catcher-view, plus `sign` for arm-side) this is the slot-frame verdict
+    from pitch_shape; the absolute rules below are the fallback."""
+    if fb is not None and velo is not None and fb.get("ivb") is not None and fb.get("hb") is not None:
+        g = {"velo": velo, "ivb": ivb, "hb_arm": hb * sign, "spin": None}
+        ref = {"velo": fb["velo"], "ivb": fb["ivb"], "hb_arm": fb["hb"] * sign, "spin": None}
+        v = pitch_shape.shape_verdict(g, ref)
+        if v in ("Cutter", "Slider", "Sweeper", "Curveball"):
+            return v
     sweep = abs(hb)
     # cutter: near-fastball velo, real ride, no sweep (Schwenk's 80.9 off
     # an 85.2 heater with 11" of ride is a cutter, not a slider). Marshall's
@@ -543,6 +563,24 @@ def repartition_breakers(cur, owner, pitchers=None, dry_run=False):
         params,
     )
     fb_velos = {(r["pitcher"], r["pitcher_team"]): float(r["fb_velo"]) for r in cur.fetchall()}
+    # primary fastball centroid vector (most-thrown Fastball/Sinker) + handedness
+    cur.execute(
+        f"""SELECT DISTINCT ON (pitcher, pitcher_team) pitcher, pitcher_team, pitcher_throws,
+                   AVG(rel_speed) AS velo, AVG(ivb) AS ivb, AVG(horz_break) AS hb, AVG(rel_side) AS rs, COUNT(*) AS n
+            FROM tm_pitches
+            WHERE owner_user_id = %s AND pitcher IS NOT NULL
+              AND {eff} IN ('Fastball', 'Sinker') AND rel_speed IS NOT NULL
+              AND ivb IS NOT NULL AND horz_break IS NOT NULL{extra}
+            GROUP BY pitcher, pitcher_team, pitcher_throws, {eff}
+            ORDER BY pitcher, pitcher_team, ({eff} = 'Fastball') DESC, COUNT(*) DESC""",
+        params,
+    )
+    fb_vecs = {}
+    for r in cur.fetchall():
+        th = r["pitcher_throws"]
+        sign = -1.0 if th == "Left" else (1.0 if th == "Right" else (-1.0 if (r["rs"] or 0) < 0 else 1.0))
+        fb_vecs[(r["pitcher"], r["pitcher_team"])] = (
+            {"velo": float(r["velo"]), "ivb": float(r["ivb"]), "hb": float(r["hb"])}, sign)
 
     # Breaker names the operator used consistently for this arm.
     cur.execute(
@@ -596,14 +634,20 @@ def repartition_breakers(cur, owner, pitchers=None, dry_run=False):
         named = []
         for lf in leaves:
             ivb, hb, velo = _leaf_mean(lf)
-            label = _breaker_name(ivb, hb, velo, fb)
+            fbv, sgn = fb_vecs.get((name, team), (None, 1.0))
+            label = _breaker_name(ivb, hb, velo, fb, fbv, sgn)
             # If every pitch in this leaf carries the same operator label and
             # the operator used it consistently for this arm, keep his name.
             # Renaming coherent groups is what turned sliders into sweepers.
-            leaf_tags = {r[5] for r in lf if r[5]}
-            if len(leaf_tags) == 1:
-                only = next(iter(leaf_tags))
-                if only in arm_named:
+            # (a clear majority counts too: a slider's sweepy tail that picked
+            # up a couple of stray "cutter" tags is still his slider)
+            tag_counts = defaultdict(int)
+            for r in lf:
+                if r[5]:
+                    tag_counts[r[5]] += 1
+            if tag_counts:
+                only, cnt = max(tag_counts.items(), key=lambda kv: kv[1])
+                if only in arm_named and cnt >= 0.8 * len(lf):
                     label = only
             named.append([lf, label, ivb, velo, hb])
         # a Cutter is only a Cutter when it's clearly its own pitch: within
