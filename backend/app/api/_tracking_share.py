@@ -187,7 +187,9 @@ def merge_member_data(cur, member: str, target: str) -> None:
     cur.execute("""UPDATE tm_sessions s SET
                      pitch_count = (SELECT COUNT(*) FROM tm_pitches p WHERE p.session_id = s.id),
                      bbe_count   = (SELECT COUNT(*) FROM tm_pitches p
-                                    WHERE p.session_id = s.id AND p.exit_speed IS NOT NULL)
+                                    WHERE p.session_id = s.id AND p.exit_speed IS NOT NULL
+                                      AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND
+                                           (p.direction IS NULL OR ABS(p.direction) <= 45))))
                    WHERE s.owner_user_id = %s""", (target,))
 
     # ── Rapsodo ──

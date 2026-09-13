@@ -14,7 +14,7 @@ export const useStatAvg = () => useContext(StatAvgContext)
 export const STAT_DEFS = {
   // ── shared / hitting ──
   pitches: ['Tracked pitches seen.', 'Count of pitches with this batter at the plate.', 0],
-  bbe: ['Batted-ball events: tracked balls off the bat.', 'Count of pitches with a measured exit velo (fouls included).', 0],
+  bbe: ['Batted-ball events: fair balls put in play.', 'Tracked contact with a measured exit velo, FOULS EXCLUDED \u2014 TrackMan measures fouls too, and they average about 12 mph slower, so they would drag every contact number down. Live uses the pitch call; BP files carry no calls, so a ball hit more than 45 degrees off centre is treated as foul.', 0],
   pa: ['Plate appearances reconstructed from the pitch sequence.', 'Terminal pitch per (session, inning, half, PA number).', 0],
   avg_ev: ['Average exit velocity off the bat.', 'Sum of exit velo / batted balls.', 1, ' mph'],
   p90_ev: ['90th-percentile exit velo: the top-end contact a hitter repeats.', '90th percentile of his batted-ball exit velos.', 1, ' mph'],

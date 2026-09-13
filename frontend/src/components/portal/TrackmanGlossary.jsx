@@ -24,7 +24,7 @@ const SECTIONS = [
     ['VAA', 'Vertical approach angle at the plate. Flatter fastballs (closer to level) play up at the top of the zone.'],
   ]],
   ['Hitting', [
-    ['EV / Hard-hit%', 'Exit velocity off the bat; hard-hit = 90+ mph. Sweet-spot% = launch angle between 8 and 32 degrees.'],
+    ['EV / Hard-hit%', 'Exit velocity off the bat; hard-hit = 90+ mph. Sweet-spot% = launch angle between 8 and 32 degrees. Every contact number counts FAIR balls only: TrackMan measures foul balls too (about 40 percent of tracked contact in games, averaging 12 mph slower and much steeper), so counting them would understate every hitter. Live sessions use the pitch call; BP files carry no calls, so contact more than 45 degrees off centre is treated as foul.'],
     ['Contact depth', 'Point of contact in feet toward the pitcher: 0 = the back of the plate, about 1.4 = the front edge. Measured on this corpus, damage peaks between 1.3 and 2.7 ft (the green window): EV 82+ and xwOBAcon up to .42 there, versus .23 when jammed under a foot and a 71 mph average past 3.5 ft (off the end). Pull power lives at the deep end of the window (about 2 ft plus); oppo contact sits near the front of the plate.'],
     ['xAVG / xSLG / xwOBA', "What the batted-ball profile (exit velo, launch angle, and spray direction) says the hitter SHOULD be hitting, on a curve calibrated to college contact. A gap vs the actual number means luck, speed, or defense — and it usually closes."],
     ['Transfer gap', 'Live hard-hit% minus BP hard-hit%. Negative means the cage swing is not carrying into games.'],

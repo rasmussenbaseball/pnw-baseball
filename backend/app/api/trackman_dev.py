@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 from .trackman_suite import (
     _gate, _write_gate, _season_clause, _rv_baseline, _NO_MISTAG,
-    trackman_defense, trackman_catching, trackman_hitting_board,
+    trackman_defense, trackman_catching, trackman_hitting_board, _is_fair,
 )
 
 router = APIRouter(tags=["trackman-dev"])
@@ -136,7 +136,7 @@ def dev_notes(
             t["z_n"] += 1
         if r["pitch_call"] in ("StrikeCalled", "StrikeSwinging"):
             t["csw"] += 1
-        if r["exit_speed"] is not None:
+        if r["exit_speed"] is not None and _is_fair(r["pitch_call"], r["direction"]):
             t["ev_s"] += float(r["exit_speed"])
             t["ev_n"] += 1
         rv = pitch_run_value(r["balls"], r["strikes"], r["pitch_call"], r["play_result"])
@@ -224,7 +224,7 @@ def dev_notes(
                     if r["is_swing"]:
                         tb["sw"] += 1
                         tb["wh"] += 1 if r["is_whiff"] else 0
-                    if r["exit_speed"] is not None:
+                    if r["exit_speed"] is not None and _is_fair(r["pitch_call"], r["direction"]):
                         tb["ev_s"] += float(r["exit_speed"])
                         tb["ev_n"] += 1
             th = (r["pitcher_throws"] or "")[:1]
@@ -245,7 +245,7 @@ def dev_notes(
                     td["oz"] += 1
                     if r["is_chase"]:
                         td["ch"] += 1
-        if r["exit_speed"] is not None:
+        if r["exit_speed"] is not None and _is_fair(r["pitch_call"], r["direction"]):
             ev = float(r["exit_speed"])
             h["evs"].append(ev)
             if ev >= 90:
@@ -259,7 +259,7 @@ def dev_notes(
                     if d is not None and hand in ("L", "R"):
                         if float(d) * (1.0 if hand == "L" else -1.0) >= 10:
                             h["pull_air"] += 1
-            if la is not None and r["exit_speed"] is not None:
+            if la is not None and r["exit_speed"] is not None and _is_fair(r["pitch_call"], r["direction"]):
                 td = h["types"].get(r["ptype"]) if r["ptype"] else None
                 if td is not None:
                     td["xw_s"] += xwobacon(ev, float(la), r["direction"] and float(r["direction"]),

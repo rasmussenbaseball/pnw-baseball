@@ -37,6 +37,30 @@ from ..stats.trackman_runvalue import pitch_run_value, attack_zone
 # batter on the row is real regardless of whose name is on the mound.
 _NO_MISTAG = (" AND COALESCE(p.override_pitch_type, p.class_pitch_type,"
               " p.tagged_pitch_type, p.auto_pitch_type) IS DISTINCT FROM 'Mistag'")
+# ── Fair-ball predicate ──────────────────────────────────────────
+# TrackMan measures exit velo on FOUL balls too. In live sessions fouls are
+# about 40% of all tracked contact and average 72.5 mph off the bat versus
+# 84.3 in play, so counting them as batted-ball events drags every
+# contact-quality metric down and pushes launch angle up. Live pitches carry
+# an authoritative call; BP files carry no pitch calls at all (pitch_call is
+# NULL), so there we fall back to launch direction — validated against the
+# live tags at roughly 87% of fair balls kept and 84% of fouls removed.
+FAIR_DIR_DEG = 45.0
+_FAIR_SQL = ("(p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND "
+             "(p.direction IS NULL OR ABS(p.direction) <= 45)))")
+
+
+def _is_fair(pitch_call, direction):
+    """True when tracked contact should count as a batted-ball event."""
+    if pitch_call == "InPlay":
+        return True
+    if pitch_call:
+        return False          # foul, HBP, or a stray reading on a take
+    if direction is None:
+        return True           # BP with no direction: keep rather than guess
+    return abs(float(direction)) <= FAIR_DIR_DEG
+
+
 _NO_MISTAG_BARE = (" AND COALESCE(override_pitch_type, class_pitch_type,"
                    " tagged_pitch_type, auto_pitch_type) IS DISTINCT FROM 'Mistag'")
 
@@ -377,7 +401,7 @@ def _ingest(cur, owner, parsed, filename):
         cur.execute(
             """UPDATE tm_sessions SET
                    pitch_count = (SELECT COUNT(*) FROM tm_pitches WHERE session_id = %s),
-                   bbe_count   = (SELECT COUNT(*) FROM tm_pitches WHERE session_id = %s AND exit_speed IS NOT NULL)
+                   bbe_count   = (SELECT COUNT(*) FROM tm_pitches WHERE session_id = %s AND exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))))
                WHERE id = %s""",
             (sid, sid, sid),
         )
@@ -444,7 +468,7 @@ def trackman_defense(
             JOIN tm_positioning po ON po.owner_user_id = p.owner_user_id
                                   AND po.pitch_uid = p.pitch_uid
             JOIN tm_sessions s ON s.id = p.session_id
-            WHERE p.owner_user_id = %s AND p.exit_speed IS NOT NULL
+            WHERE p.owner_user_id = %s AND p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45)))
               {ctx_sql} {d_sql} {team_sql}
         """, [owner] + ctx_params + d_params + team_params)
         rows = cur.fetchall()
@@ -951,7 +975,8 @@ def trackman_bp_review(
         b["pitches"] += 1
         hand = (r["batter_side"] or "")[:1] or None
         b["side"] = hand or b["side"]
-        ev = float(r["exit_speed"]) if r["exit_speed"] is not None else None
+        ev = (float(r["exit_speed"]) if r["exit_speed"] is not None
+              and _is_fair(r.get("pitch_call"), r.get("direction")) else None)
         if ev is None:
             continue
         st["bbe"] += 1
@@ -1125,7 +1150,7 @@ def trackman_pitching(
                            SUM(CASE WHEN p.pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1 ELSE 0 END) AS csw_n,
                            AVG(p.exit_speed) AS ev_against,
                            SUM(CASE WHEN p.exit_speed >= 90 THEN 1 ELSE 0 END) AS hard_hit,
-                           SUM(CASE WHEN p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bbe
+                           SUM(CASE WHEN p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) AS bbe
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
                       AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
@@ -1390,7 +1415,7 @@ def trackman_hitting_board(
         cur.execute(
             f"""SELECT p.batter, p.batter_team,
                        SUM(CASE WHEN p.exit_speed >= 90 THEN 1 ELSE 0 END)::float
-                       / NULLIF(SUM(CASE WHEN p.exit_speed IS NOT NULL THEN 1 ELSE 0 END), 0) AS bp_hh
+                       / NULLIF(SUM(CASE WHEN p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END), 0) AS bp_hh
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter IS NOT NULL
                   AND s.session_type = 'bp'{ssql}
@@ -1430,7 +1455,7 @@ def trackman_hitting_board(
                 vb["sw"] += 1
             if r["is_whiff"]:
                 vb["wh"] += 1
-            if r["exit_speed"] is not None:
+            if r["exit_speed"] is not None and _is_fair(r.get("pitch_call"), r.get("direction")):
                 ev_v = float(r["exit_speed"])
                 vb["bbe"] += 1
                 vb["ev"].append(ev_v)
@@ -1479,7 +1504,8 @@ def trackman_hitting_board(
             best = b["pa_map"].get(key)
             if best is None or (r["pitch_of_pa"] or 0) >= (best["pitch_of_pa"] or 0):
                 b["pa_map"][key] = r
-        ev = float(r["exit_speed"]) if r["exit_speed"] is not None else None
+        ev = (float(r["exit_speed"]) if r["exit_speed"] is not None
+              and _is_fair(r.get("pitch_call"), r.get("direction")) else None)
         if ev is None:
             continue
         st["bbe"] += 1
@@ -1649,7 +1675,7 @@ def trackman_hitting(
                            SUM(CASE WHEN p.is_whiff THEN 1 ELSE 0 END) AS whiffs,
                            SUM(CASE WHEN p.is_chase THEN 1 ELSE 0 END) AS chases,
                            SUM(CASE WHEN p.is_in_zone IS FALSE THEN 1 ELSE 0 END) AS out_zone,
-                           SUM(CASE WHEN p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bbe,
+                           SUM(CASE WHEN p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) AS bbe,
                            AVG(p.exit_speed) AS avg_ev,
                            MAX(p.exit_speed) AS max_ev,
                            SUM(CASE WHEN p.exit_speed >= 90 THEN 1 ELSE 0 END) AS hard_hit,
@@ -1726,9 +1752,9 @@ _PCTL_METRICS = [
               " / NULLIF(COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)), 0)", True),
     ("bb_pct", "COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)) FILTER (WHERE k_or_bb = 'Walk')::float"
                " / NULLIF(COUNT(DISTINCT (session_id, inning, top_bottom, pa_of_inning)), 0)", False),
-    ("ev_against", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN AVG(exit_speed) END", False),
-    ("hard_hit_against", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN "
-                         "SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END), 0) END", False),
+    ("ev_against", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END) >= 10 THEN AVG(exit_speed) END", False),
+    ("hard_hit_against", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END) >= 10 THEN "
+                         "SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END), 0) END", False),
 ]
 
 
@@ -2027,8 +2053,8 @@ _LB_CATS_PITCHING = {
 _LB_CATS_HITTING = {
     "avg_ev": ("Avg EV", "AVG(exit_speed)", True, 15),
     "max_ev": ("Max EV", "MAX(exit_speed)", True, 10),
-    "hard_hit_pct": ("Hard-hit%", "100.0 * SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END), 0)", True, 15),
-    "sweet_spot": ("Sweet-spot%", "100.0 * SUM(CASE WHEN exit_speed IS NOT NULL AND launch_angle BETWEEN 8 AND 32 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END), 0)", True, 15),
+    "hard_hit_pct": ("Hard-hit%", "100.0 * SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END), 0)", True, 15),
+    "sweet_spot": ("Sweet-spot%", "100.0 * SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) AND launch_angle BETWEEN 8 AND 32 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END), 0)", True, 15),
     "zone_contact": ("Zone contact%", "100.0 * SUM(CASE WHEN is_contact AND is_in_zone THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing AND is_in_zone THEN 1 ELSE 0 END), 0)", True, 25),
     "whiff_pct": ("Whiff%", "100.0 * SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END), 0)", False, 25),
     "chase_pct": ("Chase%", "100.0 * SUM(CASE WHEN is_chase THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END), 0)", False, 25),
@@ -2063,7 +2089,7 @@ def trackman_leaderboards(
         cur = conn.cursor()
         for key, (label, expr, higher, min_n) in cats.items():
             # Sample gate: pitches for rate stats, BBE for contact-quality stats
-            gate = ("SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END)"
+            gate = ("SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END)"
                     if "exit_speed" in expr or "distance" in expr else "COUNT(*)")
             try:
                 cur.execute(
@@ -2181,10 +2207,10 @@ def _match_player(cur, tm_name):
 _BATTER_PCTL = [
     ("avg_ev", "AVG(exit_speed)", True),
     ("max_ev", "MAX(exit_speed)", True),
-    ("hard_hit_pct", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN "
-                     "SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END),0) END", True),
-    ("sweet_spot_pct", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 10 THEN "
-                       "SUM(CASE WHEN exit_speed IS NOT NULL AND launch_angle BETWEEN 8 AND 32 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL THEN 1 ELSE 0 END),0) END", True),
+    ("hard_hit_pct", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END) >= 10 THEN "
+                     "SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END),0) END", True),
+    ("sweet_spot_pct", "CASE WHEN SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END) >= 10 THEN "
+                       "SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) AND launch_angle BETWEEN 8 AND 32 THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END),0) END", True),
     ("whiff_pct", "CASE WHEN SUM(CASE WHEN is_swing THEN 1 ELSE 0 END) >= 15 THEN "
                   "SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END)::float / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END),0) END", False),
     ("chase_pct", "CASE WHEN SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END) >= 15 THEN "
@@ -2353,7 +2379,7 @@ def trackman_batter_detail(
         t = sess_trend.setdefault(d, {"date": d, "pitches": 0, "bbe": 0,
                                       "ev_sum": 0.0, "hh": 0, "xw_sum": 0.0, "xw_n": 0})
         t["pitches"] += 1
-        if x["exit_speed"] is not None:
+        if x["exit_speed"] is not None and _is_fair(x.get("pitch_call"), x.get("direction")):
             t["bbe"] += 1
             t["ev_sum"] += x["exit_speed"]
             if x["exit_speed"] >= 90:
@@ -2380,7 +2406,8 @@ def trackman_batter_detail(
         called = [x for x in rows_s if x["pitch_call"]]
         swings = [x for x in called if x["is_swing"]]
         oz = [x for x in called if x["is_in_zone"] is False]
-        bbe_s = [x for x in rows_s if x["exit_speed"] is not None]
+        bbe_s = [x for x in rows_s if x["exit_speed"] is not None
+                 and _is_fair(x.get("pitch_call"), x.get("direction"))]
         hh = sum(1 for x in bbe_s if x["exit_speed"] >= 90)
         xw = [xwobacon(x["exit_speed"], x["launch_angle"], x.get("direction"),
                        (x.get("batter_side") or "")[:1] or None)
@@ -2543,7 +2570,8 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
         rs = p["rows"]
         n = len(rs)
         zoned = [r for r in rs if r["is_in_zone"] is not None]
-        evs = [r["exit_speed"] for r in rs if r["exit_speed"] is not None]
+        evs = [r["exit_speed"] for r in rs if r["exit_speed"] is not None
+               and _is_fair(r.get("pitch_call"), r.get("direction"))]
         fb = [r["rel_speed"] for r in rs
               if r["ptype"] in ("Fastball", "Sinker") and r["rel_speed"] is not None]
         T = {}
@@ -2616,7 +2644,8 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             swings = sum(1 for r in rs if r["is_swing"])
             whiffs = sum(1 for r in rs if r["is_whiff"])
             oz = [r for r in rs if r["is_in_zone"] is False]
-            evr = [r for r in rs if r["exit_speed"] is not None]
+            evr = [r for r in rs if r["exit_speed"] is not None
+                   and _is_fair(r.get("pitch_call"), r.get("direction"))]
             evs = [r["exit_speed"] for r in evr]
             las = [r["launch_angle"] for r in evr if r["launch_angle"] is not None]
             rv = 0.0
@@ -2986,15 +3015,15 @@ def trackman_insights(team: str | None = Query(None),
         # 1) Transfer gap
         cur.execute(
             f"""SELECT p.batter, p.batter_team,
-                       SUM(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS live_bbe,
-                       SUM(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bp_bbe,
-                       AVG(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS live_hh,
-                       AVG(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS bp_hh
+                       SUM(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) AS live_bbe,
+                       SUM(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) AS bp_bbe,
+                       AVG(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS live_hh,
+                       AVG(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN CASE WHEN p.exit_speed >= 90 THEN 1.0 ELSE 0.0 END END) AS bp_hh
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {team_b}
                 GROUP BY p.batter, p.batter_team
-                HAVING SUM(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 15
-                   AND SUM(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) >= 15""",
+                HAVING SUM(CASE WHEN s.session_type NOT IN ('bp','bullpen') AND p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) >= 15
+                   AND SUM(CASE WHEN s.session_type = 'bp' AND p.exit_speed IS NOT NULL AND (p.pitch_call = 'InPlay' OR (p.pitch_call IS NULL AND (p.direction IS NULL OR ABS(p.direction) <= 45))) THEN 1 ELSE 0 END) >= 15""",
             [owner] + tp,
         )
         for r in cur.fetchall():
