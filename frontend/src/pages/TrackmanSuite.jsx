@@ -523,6 +523,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                     <th className="px-4 py-1.5">Pitch</th>
+                    <th className="px-2 py-1.5 text-right" title="Tracked pitches of this type — weigh every grade by it">N</th>
                     <th className="px-2 py-1.5 text-right"><StatTip k="stuff" group="pitching" label="Stuff" /></th>
                     <th className="px-2 py-1.5 text-right"><StatTip k="loc" group="pitching" label="Loc+" /></th>
                     <th className="px-2 py-1.5 text-right"><StatTip k="usage_pct" group="pitching" label="Use%" /></th>
@@ -551,6 +552,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
                         <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: PITCH_COLORS[a.pitch_type] || '#9ca3af' }} />
                         {a.pitch_type}
                       </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{a.count}</td>
                       <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${a.stuff == null ? 'text-gray-300' : a.stuff >= 110 ? 'text-[#d22d49]' : a.stuff <= 90 ? 'text-[#3661ad]' : ''}`}>{a.stuff ?? '–'}</td>
                       <td className={`px-2 py-1.5 text-right tabular-nums ${a.loc == null ? 'text-gray-300' : a.loc >= 110 ? 'text-[#d22d49]' : a.loc <= 90 ? 'text-[#3661ad]' : ''}`}>{a.loc ?? '–'}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt(a.usage_pct)}</td>

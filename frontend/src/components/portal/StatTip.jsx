@@ -49,8 +49,8 @@ export const STAT_DEFS = {
   contact_per_pitch: ['Balls in play per machine pitch. NOT contact%: BP files carry no swing calls.', 'Batted balls / pitches x 100.', 1, '%'],
   oz_contact_pct: ['Share of BP contact that came on out-of-zone pitches: a floor on chasing.', 'Batted balls on out-of-zone pitches / located batted balls x 100.', 1, '%'],
   // ── pitching ──
-  stuff: ['Stuff: physical nastiness only (velo, movement, spin, extension, separation). Says nothing about command.', 'Model grade re-centered per pitch type on your corpus: 100 = average here.', 0],
-  loc: ['Location+: command score from edge presence and pitch-type height targets.', '100 = average in this corpus.', 0],
+  stuff: ['Stuff: physical nastiness only (velo, movement, spin, extension, separation). Says nothing about command.', 'Our WCL-trained TrackMan model, anchored so 100 = an average pitch of that type in YOUR program. One fixed anchor across every season and filter, and no pitch-count minimum \u2014 weigh thin rows by the N column.', 0],
+  loc: ['Location+: command score from edge presence and pitch-type height targets.', 'Each pitch scored by where it crossed versus that type\u2019s target zone; 100 = average. No pitch-count minimum, so read it with N.', 0],
   usage_pct: ['How often he throws this pitch.', 'Pitches of this type / his total pitches x 100.', 1, '%'],
   velo: ['Average release speed.', 'Mean velo of this pitch type.', 1, ' mph'],
   max_velo: ['Top release speed on this pitch.', 'Max velo of this pitch type.', 1, ' mph'],

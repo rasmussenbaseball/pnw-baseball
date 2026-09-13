@@ -45,10 +45,10 @@ def location_value(pitch, x, y):
     return height_fit * edge
 
 
-def location_plus(pitch, locs):
+def location_plus(pitch, locs, min_n=_MIN_N):
     """locs: list of (sz_side, sz_height) in inches. Returns a Location+ int, or None
-    if fewer than _MIN_N reliable locations."""
+    if fewer than min_n reliable locations (default _MIN_N)."""
     vals = [location_value(pitch, float(x), float(y)) for x, y in locs]
-    if len(vals) < _MIN_N:
+    if len(vals) < min_n:
         return None
     return round(max(40, min(170, 100 + _K * (mean(vals) - _REF))))

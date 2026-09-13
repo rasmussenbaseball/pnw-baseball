@@ -57,9 +57,17 @@ _STUFF_FAMILY = {"Fastball": "fb", "Sinker": "fb",
                  "ChangeUp": "os", "Splitter": "os"}
 
 
-def _stuff_calibration(cur, owner, context, season):
-    """Corpus-wide raw Stuff distribution per type (no team/side filters,
-    like _rv_baseline, so numbers match across filtered views).
+def _stuff_calibration(cur, owner, context="all", season=None):
+    """Raw Stuff distribution per pitch type across the owner's WHOLE corpus.
+
+    The grades themselves come from the WCL-trained model; this anchors its
+    output so 100 = an average pitch of that type in this program. The anchor
+    is deliberately NOT recomputed per filtered view: the model is fit on WCL
+    arms (fastballs averaging 87.9 mph, changeups 82.0), so a college staff
+    sitting a couple of mph below that extrapolates off the training
+    distribution and reads changeups near 155 and fastballs near 64 raw. A
+    fixed anchor keeps one standard across every season, context and team
+    filter, instead of a 5-pitch fall slice shifting every grade at once.
     Returns (cal {type: (mean, sd, n)}, fam_off {family: mean offset})."""
     import statistics as _st
     eff = "COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type)"
@@ -1191,16 +1199,17 @@ def trackman_pitching(
             conn.rollback()
 
     with get_connection() as conn:
-        stuff_cal, stuff_fam = _stuff_calibration(conn.cursor(), owner, context, season)
+        stuff_cal, stuff_fam = _stuff_calibration(conn.cursor(), owner)
 
     def _grades(t):
-        if (t["n"] or 0) < 15:
-            return None, None
+        # No pitch-count floor: Stuff grades a CENTROID (velo/shape/release),
+        # so it is computable off a handful of pitches — noisy, not invalid.
+        # The N column carries the sample so a coach can weigh it.
         fb = fb_ref.get((t["pitcher"], t["pitcher_team"]))
         stuff = _calibrate_stuff(grade_trackman(t, fb[1] if fb else t),
                                  t["ptype"], stuff_cal, stuff_fam)
         locs = cur_locs.get((t["pitcher"], t["pitcher_team"], t["ptype"]), [])
-        loc = location_plus(t["ptype"].lower(), locs) if len(locs) >= 15 else None
+        loc = location_plus(t["ptype"].lower(), locs, min_n=1)
         return stuff, loc
 
     out = []
@@ -1217,9 +1226,9 @@ def trackman_pitching(
                 "stuff": stuff,
                 "loc": loc,
                 "rv": round(agg["rv"], 1) if agg["rv_n"] else None,
-                "rv100": round(100 * agg["rv"] / agg["rv_n"], 2) if agg["rv_n"] >= 15 else None,
-                "shadow_pct": round(100 * agg["shadow"] / agg["loc_n"], 1) if agg["loc_n"] >= 15 else None,
-                "heart_pct": round(100 * agg["heart"] / agg["loc_n"], 1) if agg["loc_n"] >= 15 else None,
+                "rv100": round(100 * agg["rv"] / agg["rv_n"], 2) if agg["rv_n"] else None,
+                "shadow_pct": round(100 * agg["shadow"] / agg["loc_n"], 1) if agg["loc_n"] else None,
+                "heart_pct": round(100 * agg["heart"] / agg["loc_n"], 1) if agg["loc_n"] else None,
                 "count": t["n"],
                 "usage_pct": round(100 * t["n"] / total, 1),
                 "velo": round(t["velo"], 1) if t["velo"] else None,
@@ -1245,8 +1254,8 @@ def trackman_pitching(
         out.append({"pitcher": name, "throws": throws, "team": tteam,
                     "pitches": total, "arsenal": arsenal,
                     "rv": round(tot_rv, 1) if tot_rv_n else None,
-                    "rv100": round(100 * tot_rv / tot_rv_n, 2) if tot_rv_n >= 30 else None,
-                    "shadow_pct": round(100 * tot_shadow / tot_loc, 1) if tot_loc >= 30 else None})
+                    "rv100": round(100 * tot_rv / tot_rv_n, 2) if tot_rv_n else None,
+                    "shadow_pct": round(100 * tot_shadow / tot_loc, 1) if tot_loc else None})
     out.sort(key=lambda x: -x["pitches"])
     return {"pitchers": out}
 
@@ -1809,7 +1818,7 @@ def trackman_pitcher_detail(
                               "hb": round(float(r["hb"]), 1) if r["hb"] is not None else None,
                               "velo": round(float(r["velo"]), 1) if r["velo"] is not None else None}
                      for r in cur.fetchall() if r["t"]}
-        stuff_cal, stuff_fam = _stuff_calibration(cur, owner, context, season)
+        stuff_cal, stuff_fam = _stuff_calibration(cur, owner)
 
     me = next((r for r in pool if r["pitcher"] == pitcher), None)
     percentiles = {}
@@ -1903,12 +1912,10 @@ def trackman_pitcher_detail(
             gfb = (cand, en)
     grades = {}
     for t, en in gtypes.items():
-        if en["n"] < 15:
-            continue
         stuff = _calibrate_stuff(grade_trackman(en, gfb[1] if gfb else en),
                                  t, stuff_cal, stuff_fam)
         locs = glocs.get(t, [])
-        loc = location_plus(t.lower(), locs) if len(locs) >= 15 else None
+        loc = location_plus(t.lower(), locs, min_n=1)
         if stuff is not None or loc is not None:
             grades[t] = {"stuff": stuff, "loc": loc}
 
@@ -1984,7 +1991,7 @@ def trackman_pitcher_detail(
             "date": d, "n": len(rows_),
             "fb_velo": round(sum(fbv) / len(fbv), 1) if fbv else None,
             "stuff": round(stuff_w / stuff_n) if stuff_n else None,
-            "rv100": round(100 * rv / rvn, 2) if rvn >= 15 else None,
+            "rv100": round(100 * rv / rvn, 2) if rvn else None,
         })
 
     return {
