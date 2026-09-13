@@ -1227,9 +1227,11 @@ def trackman_pitching(
         stuff_cal, stuff_fam = _stuff_calibration(conn.cursor(), owner)
 
     def _grades(t):
-        # No pitch-count floor: Stuff grades a CENTROID (velo/shape/release),
-        # so it is computable off a handful of pitches — noisy, not invalid.
-        # The N column carries the sample so a coach can weigh it.
+        # Stuff grades a CENTROID (velo/shape/release), so a handful of
+        # pitches is noisy rather than invalid — but a single pitch is not a
+        # centroid at all, it is one reading, so it gets no grade.
+        if (t["n"] or 0) < 2:
+            return None, None
         fb = fb_ref.get((t["pitcher"], t["pitcher_team"]))
         stuff = _calibrate_stuff(grade_trackman(t, fb[1] if fb else t),
                                  t["ptype"], stuff_cal, stuff_fam)
@@ -1938,6 +1940,8 @@ def trackman_pitcher_detail(
             gfb = (cand, en)
     grades = {}
     for t, en in gtypes.items():
+        if (en["n"] or 0) < 2:
+            continue          # one pitch is a reading, not a pitch type
         stuff = _calibrate_stuff(grade_trackman(en, gfb[1] if gfb else en),
                                  t, stuff_cal, stuff_fam)
         locs = glocs.get(t, [])

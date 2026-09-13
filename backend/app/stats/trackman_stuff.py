@@ -38,6 +38,33 @@ _model = None
 _model_mtime = None
 
 
+# ── Monotonicity repair ──────────────────────────────────────────
+# The model is fit on a whiff+chase target, which is the wrong target for
+# pitches that earn their living on weak contact. It learned that a sinker
+# grades BETTER when it is slower (velo coef -0.28) and when it separates
+# LESS from the fastball (mov_sep -0.18) — true of whiff rate, false of
+# stuff. Gillespie's 91 mph sinker with 12 inches of separation off his
+# heater was being docked 0.37 for its velocity and another 0.38 for its
+# separation, the two things that make it a weapon.
+#
+# Two invariants hold for every pitch type: more velocity is never worse,
+# and more separation from the fastball is never worse. Anywhere the fit
+# says otherwise it is describing whiff propensity, not nastiness, so those
+# coefficients are floored at zero and the rest of the fit is left alone.
+MONOTONE_UP = ("velo", "velo_sep", "ivb_sep", "mov_sep")
+
+
+def _repair_monotonicity(model):
+    feats = model.get("features", [])
+    idx = [i for i, f in enumerate(feats) if f in MONOTONE_UP]
+    for t in model.get("types", {}).values():
+        coef = t.get("coef") or []
+        for i in idx:
+            if i < len(coef) and coef[i] < 0:
+                coef[i] = 0.0
+    return model
+
+
 def _load_model():
     global _model, _model_mtime
     try:
@@ -46,7 +73,7 @@ def _load_model():
         return None
     if _model is None or mt != _model_mtime:
         with open(_MODEL_PATH) as f:
-            _model = json.load(f)
+            _model = _repair_monotonicity(json.load(f))
         _model_mtime = mt
     return _model
 
