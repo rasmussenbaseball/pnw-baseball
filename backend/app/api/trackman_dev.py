@@ -94,6 +94,9 @@ def dev_notes(
         )
         rows = [dict(r) for r in cur.fetchall()]
         rv_base = _rv_baseline(cur, owner, "live", season)
+    for r in rows:
+        if r["session_type"] == "bp":
+            r["ptype"] = None   # BP pitch tags are not real (machine / coach fastballs)
 
     live = [r for r in rows if r["session_type"] in ("game", "scrimmage", "intrasquad")]
     bp = [r for r in rows if r["session_type"] == "bp"]

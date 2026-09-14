@@ -1411,6 +1411,7 @@ def trackman_hitting_board(
         extra += " AND p.pitcher_throws = %s"
         params = params + ["Left" if throws == "L" else "Right"]
     if pitch_type:
+        extra += " AND s.session_type <> 'bp'"   # BP pitch tags are not real
         extra += " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s"
         params = params + [pitch_type]
     team_sql = " AND p.batter_team = %s" if team else ""
@@ -1685,7 +1686,8 @@ def trackman_hitting(
     the game-to-practice transfer gap. Hard-hit threshold: 90+ mph EV.
     throws=L|R keeps only pitches from that pitcher hand (platoon split)."""
     team_sql = " AND p.batter_team = %s" if team else ""
-    pt_sql = " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s" if pitch_type else ""
+    pt_sql = (" AND s.session_type <> 'bp' AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s"
+              if pitch_type else "")   # BP pitch tags are not real
     th_sql = " AND p.pitcher_throws = %s" if throws in ("L", "R") else ""
     th_params = ["Left" if throws == "L" else "Right"] if throws in ("L", "R") else []
     ssql, sparams = _season_clause(season)
@@ -2282,6 +2284,7 @@ def trackman_batter_detail(
         extra += " AND p.pitcher_throws = %s"
         params = params + ["Left" if throws == "L" else "Right"]
     if pitch_type:
+        extra += " AND s.session_type <> 'bp'"   # BP pitch tags are not real
         extra += " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s"
         params = params + [pitch_type]
     team_sql = " AND p.batter_team = %s" if team else ""
@@ -2308,6 +2311,11 @@ def trackman_batter_detail(
         pitches = [dict(r) for r in cur.fetchall()]
         for p in pitches:
             p["session_date"] = p["session_date"].isoformat() if p["session_date"] else None
+            # BP carries no real pitch type: the machine / coach arm throws
+            # fastballs ~90% of the time and the tag is whatever the operator
+            # left selected. Splits by pitch seen and per-type notes are live only.
+            if p.get("session_type") == "bp":
+                p["ptype"] = None
         if not pitches:
             raise HTTPException(status_code=404, detail="No pitches for that batter in this context.")
         hit_lg = box.league_context_from_db(cur, owner)   # while the cursor is open

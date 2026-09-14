@@ -2108,7 +2108,7 @@ function PitchHoverCard({ hover }) {
     ['Contact', p.contact_x != null ? `${f1(p.contact_x, 2)} ft out front${p.contact_y != null ? `, ${f1(p.contact_y, 1)} ft high` : ''}` : '–'],
   ]
   const pitchRows = [
-    ['Pitch', `${p.ptype || '?'}${p.rel_speed != null ? ` · ${f1(p.rel_speed)} mph` : ''}${p.effective_velo != null && p.rel_speed == null ? ` · ${f1(p.effective_velo)} eff` : ''}`],
+    ['Pitch', `${p.session_type === 'bp' ? 'BP' : (p.ptype || '?')}${p.rel_speed != null ? ` · ${f1(p.rel_speed)} mph` : ''}${p.effective_velo != null && p.rel_speed == null ? ` · ${f1(p.effective_velo)} eff` : ''}`],
     ['Shape', (p.ivb != null || p.horz_break != null) ? `${f1(p.ivb)}" IVB · ${f1(p.horz_break)}" HB${p.spin_rate != null ? ` · ${Math.round(p.spin_rate)} rpm` : ''}` : '–'],
     ['Count', p.balls != null && p.strikes != null ? `${p.balls}-${p.strikes}` : '–'],
     ['From', p.pitcher ? `${p.pitcher}${p.pitcher_throws ? ` (${p.pitcher_throws === 'Left' ? 'LHP' : 'RHP'})` : ''}` : (p.pitcher_throws ? (p.pitcher_throws === 'Left' ? 'LHP' : 'RHP') : '–')],
