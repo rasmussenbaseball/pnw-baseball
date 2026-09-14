@@ -2423,7 +2423,7 @@ const CS_LOWER_H = new Set(['whiff_pct', 'chase_pct'])
 
 function CountStateTable({ states, mode, title }) {
   if (!states) return null
-  const rows = (mode === 'pitcher' ? CS_ROWS_P : CS_ROWS_H).map(([k, label]) => ({ k, label, ...(states[k] || {}) }))
+  const rows = (mode === 'pitcher' ? CS_ROWS_P : CS_ROWS_H).map(([k, label]) => ({ ...(states[k] || {}), k, label }))
   if (!rows.some(r => r.pitches)) return null
   const cols = mode === 'pitcher' ? CS_COLS_P : CS_COLS_H
   const lower = mode === 'pitcher' ? CS_LOWER_P : CS_LOWER_H
