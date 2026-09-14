@@ -2405,6 +2405,66 @@ function TypeLegend({ types }) {
 }
 
 // One pitcher's full session sheet — sized to read as a one-page report.
+
+// ── Count states: ahead / even / behind / 2 strikes, every number ─────
+// `states` comes from the backend (stats/trackman_counts). Labels are the
+// PITCHER's perspective in the data; the hitter view flips them so "Ahead"
+// always means the player shown is ahead.
+const CS_ROWS_P = [['ahead', 'Ahead'], ['even', 'Even'], ['behind', 'Behind'], ['two_k', '2 strikes'], ['first', 'First pitch'], ['three', '3 balls']]
+const CS_ROWS_H = [['behind', 'Ahead'], ['even', 'Even'], ['ahead', 'Behind'], ['two_k', '2 strikes'], ['first', 'First pitch'], ['three', '3 balls']]
+const CS_COLS_P = [['Pitches', 'pitches', 0], ['Share', 'share_pct', 1], ['Zone%', 'zone_pct', 1], ['Strike%', 'strike_pct', 1], ['Swing%', 'swing_pct', 1],
+  ['Whiff%', 'whiff_pct', 1], ['Chase%', 'chase_pct', 1], ['CSW%', 'csw_pct', 1], ['BBE', 'bbe', 0], ['EV agn', 'avg_ev', 1], ['HH% agn', 'hh_pct', 1],
+  ['xwOBAcon', 'xwobacon', 3], ['K', 'k', 0], ['BB', 'bb', 0], ['RV/100', 'rv100', 2, true]]
+const CS_COLS_H = [['Pitches', 'pitches', 0], ['Share', 'share_pct', 1], ['Swing%', 'swing_pct', 1], ['Contact%', 'contact_pct', 1], ['Whiff%', 'whiff_pct', 1],
+  ['Chase%', 'chase_pct', 1], ['Zone%', 'zone_pct', 1], ['BBE', 'bbe', 0], ['Avg EV', 'avg_ev', 1], ['HH%', 'hh_pct', 1], ['xwOBAcon', 'xwobacon', 3],
+  ['K', 'k', 0], ['BB', 'bb', 0], ['RV/100', 'rv100', 2, true]]
+const CS_LOWER_P = new Set(['avg_ev', 'hh_pct', 'xwobacon'])
+const CS_LOWER_H = new Set(['whiff_pct', 'chase_pct'])
+
+function CountStateTable({ states, mode, title }) {
+  if (!states) return null
+  const rows = (mode === 'pitcher' ? CS_ROWS_P : CS_ROWS_H).map(([k, label]) => ({ k, label, ...(states[k] || {}) }))
+  if (!rows.some(r => r.pitches)) return null
+  const cols = mode === 'pitcher' ? CS_COLS_P : CS_COLS_H
+  const lower = mode === 'pitcher' ? CS_LOWER_P : CS_LOWER_H
+  // rv100 in the data is batter-perspective; flip for a pitcher
+  const val = (r, k) => k === 'rv100' && r[k] != null && mode === 'pitcher' ? -r[k] : r[k]
+  const cohort = Object.fromEntries(cols.map(([, k]) => [k, rows.slice(0, 3).map(r => val(r, k)).filter(v => v != null).map(Number)]))
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{title || 'Count states'}</span>
+        <span className="text-[10px] text-gray-400">{mode === 'pitcher' ? 'ahead = more strikes than balls' : 'ahead = more balls than strikes'} · 2 strikes, first pitch and 3 balls overlap the three states · shading compares ahead / even / behind</span>
+      </div>
+      <table className="w-full text-[12px]">
+        <thead>
+          <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+            <th className="px-4 py-1.5">Count</th>
+            {cols.map(([label, k]) => <th key={k} className="px-1.5 py-1.5 text-right whitespace-nowrap">{label}</th>)}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {rows.map((r, i) => (
+            <tr key={r.k} className={i === 3 ? 'border-t-2 border-gray-200 dark:border-gray-600' : ''}>
+              <td className="px-4 py-1 font-semibold whitespace-nowrap">{r.label}</td>
+              {cols.map(([, k, dec, plus]) => {
+                const v = val(r, k)
+                if (dec === 0 || dec === 3 || k === 'share_pct') return (
+                  <td key={k} className="px-1.5 py-1 text-right tabular-nums text-gray-600 dark:text-gray-300">
+                    {v == null ? '–' : dec === 3 ? Number(v).toFixed(3).replace(/^0/, '') : k === 'share_pct' ? `${Number(v).toFixed(0)}%` : Number(v).toFixed(dec)}
+                  </td>
+                )
+                if (i >= 3) return <td key={k} className="px-1.5 py-1 text-right tabular-nums text-gray-600 dark:text-gray-300">{v == null ? '–' : `${plus && v > 0 ? '+' : ''}${Number(v).toFixed(dec)}`}</td>
+                return <HeatCell key={k} v={v} vals={cohort[k]} higher={!lower.has(k)} dec={dec} plus={!!plus} />
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) {
   const [typeFilter, setTypeFilter] = useState(null)
   const [picked, setPicked] = useState(null)
@@ -2546,6 +2606,7 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) 
         </div>
       )}
       <TypeLegend types={p.types || []} />
+      {!isPen && p.count_states && <CountStateTable states={p.count_states} mode="pitcher" title="Count states — this outing" />}
     </div>
   )
 }
@@ -2674,6 +2735,7 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy, cohort, isBp }) {
           </table>
         </div>
       )}
+      {!isBp && b.count_states && <CountStateTable states={b.count_states} mode="batter" title="Count states — this session" />}
     </div>
   )
 }
@@ -2805,8 +2867,10 @@ function TeamSummaryPanel({ ids, team, onOpenPitcher, onOpenHitter }) {
       </div>
       {data.staff ? <TeamStatStrip title="Pitching staff" defs={TS_STAFF} obj={data.staff} lineDefs={TS_STAFF_LINE} line={data.staff.line} />
         : <div className="text-xs text-gray-400 px-1">No live pitches thrown by {data.team} in this sample.</div>}
+      {data.staff?.count_states && <CountStateTable states={data.staff.count_states} mode="pitcher" title="Staff by count state" />}
       {data.lineup ? <TeamStatStrip title="Lineup" defs={TS_LINEUP} obj={data.lineup} lineDefs={TS_LINEUP_LINE} line={data.lineup.line} />
         : <div className="text-xs text-gray-400 px-1">No live pitches seen by {data.team} in this sample.</div>}
+      {data.lineup?.count_states && <CountStateTable states={data.lineup.count_states} mode="batter" title="Lineup by count state" />}
       {showPlayers === 'staff' && data.pitchers.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
           <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">Every arm over this sample · click a name for his lab</div>

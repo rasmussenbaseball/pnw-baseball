@@ -22,6 +22,7 @@ from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
 from ..stats.trackman_stuff import grade_trackman, FB_FAMILY
 from ..stats import pitch_shape
+from ..stats.trackman_counts import count_states
 from ..stats import trackman_box as box
 from ..stats.rapsodo_location import location_plus
 from ..stats.trackman_classify import reclassify_owner, SUITE_TYPES
@@ -2647,6 +2648,8 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             })
         pitchers.append({
             "pitcher": name, "throws": p["throws"], "team": p["team"], "pitches": n,
+            "count_states": (count_states(rs, lambda r: _is_fair(r["pitch_call"], r["direction"]), rv_base)
+                             if not is_pen else None),
             "bf": len({(r["inning"], r["top_bottom"], r["pa_of_inning"]) for r in rs
                        if r["pa_of_inning"] is not None}) if not is_pen else None,
             "fb_velo": _avg(fb), "fb_max": round(max(fb), 1) if fb else None,
@@ -2724,6 +2727,8 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
                 "pa": len({(r["inning"], r["top_bottom"], r["pa_of_inning"]) for r in rs
                            if r["pa_of_inning"] is not None}),
                 "pitches": n,
+                "count_states": (count_states(rs, lambda r: _is_fair(r["pitch_call"], r["direction"]), rv_base)
+                                 if not is_bp else None),
                 "k": sum(1 for r in rs if r["k_or_bb"] == "Strikeout"),
                 "bb": sum(1 for r in rs if r["k_or_bb"] == "Walk"),
                 "swing_pct": _pct(swings, n),

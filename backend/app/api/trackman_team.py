@@ -16,6 +16,7 @@ from ..stats import trackman_box as box
 from ..stats.trackman_runvalue import pitch_run_value
 from ..stats.trackman_xstats import xwobacon
 from .trackman_suite import _gate, _is_fair, _rv_baseline
+from ..stats.trackman_counts import count_states
 
 router = APIRouter()
 
@@ -76,17 +77,24 @@ def _rv(rows, base):
     return tot, n
 
 
-def _staff_block(rows, lg, base):
+_FAIR = lambda r: _is_fair(r["pitch_call"], r["direction"])  # noqa: E731
+
+
+def _staff_block(rows, lg, base, with_counts=True):
     d = _process(rows)
     line = box.pitcher_line(rows, lg)
     rv, n = _rv(rows, base)
     d.update({"line": line, "rv": round(-(rv - n * base), 1) if n else None,
               "rv100": round(-100 * (rv - n * base) / n, 2) if n else None})
+    if with_counts:
+        d["count_states"] = count_states(rows, _FAIR, base)
     return d
 
 
-def _lineup_block(rows, lg, base):
+def _lineup_block(rows, lg, base, with_counts=True):
     d = _process(rows)
+    if with_counts:
+        d["count_states"] = count_states(rows, _FAIR, base)
     pas = box.terminal_pas(rows)
     line = box.hitter_line(pas, lg)
     rv, n = _rv(rows, base)
@@ -154,7 +162,7 @@ def team_summary(ids: str = Query(..., description="comma-separated session ids"
             by_p[r["pitcher"]].append(r)
     pitchers = []
     for name, rs in by_p.items():
-        d = _staff_block(rs, lg, base)
+        d = _staff_block(rs, lg, base, with_counts=False)
         fb = [float(r["rel_speed"]) for r in rs if r["rel_speed"] is not None and r["ptype"] in ("Fastball", "Sinker", "Cutter")]
         d.update({"pitcher": name, "throws": rs[0]["pitcher_throws"],
                   "fb_velo": round(sum(fb) / len(fb), 1) if fb else None,
@@ -168,7 +176,7 @@ def team_summary(ids: str = Query(..., description="comma-separated session ids"
             by_b[r["batter"]].append(r)
     batters = []
     for name, rs in by_b.items():
-        d = _lineup_block(rs, lg, base)
+        d = _lineup_block(rs, lg, base, with_counts=False)
         d.update({"batter": name, "side": rs[0]["batter_side"]})
         batters.append(d)
     batters.sort(key=lambda d: -d["pitches"])
