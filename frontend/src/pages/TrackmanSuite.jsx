@@ -186,7 +186,7 @@ export default function TrackmanSuite() {
       {tab === 'lab' && (hasData ? <PlayerLabTab key={`${teamCtx.primary}-${season}`} pitcher={labPitcher} setPitcher={setLabPitcher} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'hlab' && (hasData ? <HitterLabTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'leaders' && (hasData ? <LeaderboardsTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
-      {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} season={season} sessionId={reviewSession} setSessionId={setReviewSession} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'sessions' && (hasData ? <SessionsTab overview={overview} season={season} sessionId={reviewSession} setSessionId={setReviewSession} teamCtx={teamCtx} onOpenLab={(name) => { setLabPitcher(name); setTab('lab') }} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'catching' && (hasData ? <CatchingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'defense' && (hasData ? <DefenseTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'values' && (hasData ? <ValuesTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
@@ -2678,7 +2678,152 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy, cohort, isBp }) {
   )
 }
 
-function SessionsTab({ overview, season, sessionId, setSessionId }) {
+
+// ── Team summary over a sample of sessions (Session Review) ───────
+// How the staff and the lineup performed as UNITS over one day or many:
+// process (strikes, zone, whiffs, chases, contact quality), value (RV) and
+// the box line, plus every player's line over the same sample.
+const TS_STAFF = [
+  ['Pitches', 'pitches', 0], ['Arms', 'arms', 0], ['FB velo', 'fb_velo', 1], ['FB max', 'fb_max', 1],
+  ['Strike%', 'strike_pct', 1], ['Zone%', 'zone_pct', 1], ['Whiff%', 'whiff_pct', 1], ['Chase%', 'chase_pct', 1], ['CSW%', 'csw_pct', 1],
+  ['BBE', 'bbe', 0], ['EV agn', 'avg_ev', 1], ['HH% agn', 'hh_pct', 1], ['GB% agn', 'gb_pct', 1], ['xwOBAcon', 'xwobacon', 3],
+  ['RV', 'rv', 1, true], ['RV/100', 'rv100', 2, true],
+]
+const TS_STAFF_LINE = [['IP', 'ip_str'], ['BF', 'bf', 0], ['H', 'h', 0], ['R', 'r', 0], ['HR', 'hr', 0], ['BB', 'bb', 0], ['K', 'k', 0], ['HBP', 'hbp', 0],
+  ['K%', 'k_pct', 1], ['BB%', 'bb_pct', 1], ['WHIP', 'whip', 2], ['BAA', 'baa', 3], ['FIP', 'fip', 2], ['RA/9', 'ra9', 2]]
+const TS_LINEUP = [
+  ['Pitches', 'pitches', 0], ['Hitters', 'hitters', 0],
+  ['Swing%', 'swing_pct', 1], ['Contact%', 'contact_pct', 1], ['Whiff%', 'whiff_pct', 1], ['Chase%', 'chase_pct', 1],
+  ['BBE', 'bbe', 0], ['Avg EV', 'avg_ev', 1], ['Max EV', 'max_ev', 1], ['HH%', 'hh_pct', 1], ['Brl%', 'barrel_pct', 1],
+  ['GB%', 'gb_pct', 1], ['LD%', 'ld_pct', 1], ['FB%', 'fb_pct', 1], ['Avg LA', 'avg_la', 1], ['xwOBAcon', 'xwobacon', 3],
+  ['RV', 'rv', 1, true], ['RV/100', 'rv100', 2, true],
+]
+const TS_LINEUP_LINE = [['PA', 'pa', 0], ['AB', 'ab', 0], ['H', 'h', 0], ['2B', 'd2', 0], ['3B', 'd3', 0], ['HR', 'hr', 0], ['BB', 'bb', 0], ['K', 'k', 0], ['HBP', 'hbp', 0],
+  ['AVG', 'avg', 3], ['OBP', 'obp', 3], ['SLG', 'slg', 3], ['OPS', 'ops', 3], ['ISO', 'iso', 3], ['BABIP', 'babip', 3], ['wOBA', 'woba', 3], ['xwOBA', 'xwoba', 3], ['wRC+', 'wrc_plus', 0]]
+// lower is better for these when the row is a pitcher / a hitter
+const TS_LOWER_PITCHER = new Set(['avg_ev', 'hh_pct', 'xwobacon'])
+const TS_LOWER_HITTER = new Set(['whiff_pct', 'chase_pct', 'gb_pct'])
+
+function tsFmt(v, dec, plus) {
+  if (v == null) return '–'
+  if (typeof v === 'string') return v
+  const n = Number(v)
+  const s = dec === 3 ? n.toFixed(3).replace(/^0/, '') : n.toFixed(dec ?? 1)
+  return plus && n > 0 ? `+${s}` : s
+}
+
+function TeamStatStrip({ title, defs, obj, lineDefs, line }) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2.5">{title}</div>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {defs.map(([label, k, dec, plus]) => (
+          <div key={k} className="min-w-[3.2rem]">
+            <div className={`text-[17px] font-bold tabular-nums leading-none ${plus && obj?.[k] != null ? (obj[k] > 0 ? 'text-emerald-600 dark:text-emerald-400' : obj[k] < 0 ? 'text-rose-600 dark:text-rose-400' : '') : 'text-portal-purple dark:text-gray-100'}`}>
+              {tsFmt(obj?.[k], dec, plus)}
+            </div>
+            <div className="text-[9.5px] font-semibold uppercase tracking-wide text-gray-400 mt-1">{label}</div>
+          </div>
+        ))}
+      </div>
+      {line && (
+        <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-x-4 gap-y-1 text-[12px] tabular-nums">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 self-center">Line</span>
+          {lineDefs.map(([label, k, dec]) => (
+            <span key={k}><span className="text-gray-400 text-[10px] mr-1">{label}</span><span className="font-semibold">{tsFmt(line[k], dec)}</span></span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TeamPlayerTable({ rows, nameKey, defs, lineDefs, onOpen }) {
+  const cols = [...defs.filter(([, k]) => !['arms', 'hitters'].includes(k)), ...lineDefs.map(([l, k, d]) => [l, `line.${k}`, d])]
+  const get = (r, k) => k.startsWith('line.') ? r.line?.[k.slice(5)] : r[k]
+  const lower = nameKey === 'pitcher' ? TS_LOWER_PITCHER : TS_LOWER_HITTER
+  const [sortK, setSortK] = useState('pitches')
+  const [sortD, setSortD] = useState(-1)
+  const sorted = useMemo(() => [...rows].sort((a, b) => {
+    const x = get(a, sortK), y = get(b, sortK)
+    const xv = x == null ? -1e9 : typeof x === 'string' ? parseFloat(x) : x
+    const yv = y == null ? -1e9 : typeof y === 'string' ? parseFloat(y) : y
+    return (xv - yv) * sortD
+  }), [rows, sortK, sortD])
+  const cohort = useMemo(() => Object.fromEntries(cols.map(([, k]) => [k, rows.map(r => get(r, k)).filter(v => v != null && typeof v !== 'string').map(Number)])), [rows])
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px]">
+        <thead>
+          <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+            <th className="px-3 py-1.5 sticky left-0 bg-white dark:bg-gray-800">Player</th>
+            {cols.map(([label, k]) => (
+              <th key={k} onClick={() => { if (sortK === k) setSortD(d => -d); else { setSortK(k); setSortD(-1) } }}
+                className={`px-1.5 py-1.5 text-right cursor-pointer select-none whitespace-nowrap ${sortK === k ? 'text-portal-purple dark:text-indigo-300' : ''}`}>
+                {label}{sortK === k ? (sortD > 0 ? ' ▲' : ' ▼') : ''}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {sorted.map(r => (
+            <tr key={r[nameKey]}>
+              <td className="px-3 py-1 font-semibold whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 cursor-pointer" onClick={() => onOpen?.(r[nameKey])}>{r[nameKey]}</td>
+              {cols.map(([, k, dec, plus]) => {
+                const v = get(r, k)
+                if (typeof v === 'string' || dec === 0 || dec === 3) return <td key={k} className="px-1.5 py-1 text-right tabular-nums text-gray-600 dark:text-gray-300">{tsFmt(v, dec, plus)}</td>
+                return <HeatCell key={k} v={v} vals={cohort[k]} higher={!lower.has(k)} dec={dec ?? 1} plus={!!plus} />
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function TeamSummaryPanel({ ids, team, onOpenPitcher, onOpenHitter }) {
+  const { data, loading } = useApi(ids.length ? '/trackman/sessions/team-summary' : null,
+    { ids: ids.join(','), team: team || undefined }, [ids.join(','), team])
+  const [showPlayers, setShowPlayers] = useState('none')  // none | staff | lineup
+  if (!ids.length) return null
+  if (loading || !data) return <div className="text-sm text-gray-400 p-4 text-center">Building the team summary…</div>
+  const label = data.sessions.length === 1
+    ? `${data.sessions[0].session_date}`
+    : `${data.sessions.length} sessions · ${data.sessions[0].session_date} to ${data.sessions[data.sessions.length - 1].session_date}`
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-400">
+        <span className="font-bold uppercase tracking-wide">Team summary — {data.team}</span>
+        <span>{label} · {data.live_pitches} live pitches{data.total_pitches !== data.live_pitches ? ` (${data.total_pitches - data.live_pitches} BP / bullpen pitches excluded)` : ''}</span>
+        <span className="ml-auto flex rounded-full ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden text-[11px] font-semibold">
+          {[['none', 'Totals'], ['staff', 'Every arm'], ['lineup', 'Every hitter']].map(([k, l]) => (
+            <button key={k} onClick={() => setShowPlayers(k)}
+              className={`px-2.5 py-1 ${showPlayers === k ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400'}`}>{l}</button>
+          ))}
+        </span>
+      </div>
+      {data.staff ? <TeamStatStrip title="Pitching staff" defs={TS_STAFF} obj={data.staff} lineDefs={TS_STAFF_LINE} line={data.staff.line} />
+        : <div className="text-xs text-gray-400 px-1">No live pitches thrown by {data.team} in this sample.</div>}
+      {data.lineup ? <TeamStatStrip title="Lineup" defs={TS_LINEUP} obj={data.lineup} lineDefs={TS_LINEUP_LINE} line={data.lineup.line} />
+        : <div className="text-xs text-gray-400 px-1">No live pitches seen by {data.team} in this sample.</div>}
+      {showPlayers === 'staff' && data.pitchers.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">Every arm over this sample · click a name for his lab</div>
+          <TeamPlayerTable rows={data.pitchers} nameKey="pitcher" defs={TS_STAFF} lineDefs={TS_STAFF_LINE} onOpen={onOpenPitcher} />
+        </div>
+      )}
+      {showPlayers === 'lineup' && data.batters.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wide text-gray-400">Every hitter over this sample · click a name for his lab</div>
+          <TeamPlayerTable rows={data.batters} nameKey="batter" defs={TS_LINEUP} lineDefs={TS_LINEUP_LINE} onOpen={onOpenHitter} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SessionsTab({ overview, season, sessionId, setSessionId, teamCtx, onOpenLab, onOpenHitterLab }) {
   const sessions = (overview?.sessions || []).filter(x => !season || seasonOf(x.session_date) === season)
   const active = sessionId || sessions[0]?.id
   const { data, loading, refetch } = useApi(active ? `/trackman/sessions/${active}/review` : null, {}, [active])
@@ -2690,6 +2835,12 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
     : (data && !(data.pitchers || []).length && (data.batters || []).length) ? 'hitting' : 'pitching' 
   const cardRefs = useRef({})
   const contentRef = useRef(null)
+  // Multi-day sample for the team summary: empty = just the open session.
+  const [sample, setSample] = useState([])
+  const [picking, setPicking] = useState(false)
+  const liveSessions = sessions.filter(x => x.session_type !== 'bp' && x.session_type !== 'bullpen')
+  const summaryIds = sample.length ? sample : (active && !isPen && sess && sess.session_type !== 'bp' ? [active] : [])
+  const toggleSample = (id) => setSample(cur => cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id])
   const [busyKey, setBusyKey] = useState(null)   // one player's PDF rendering
   const [bulk, setBulk] = useState(null)          // "3/8" while the all-PDF renders
 
@@ -2763,7 +2914,46 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
         )}
       </div>
 
-      {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : data && (
+      {/* Team summary: this session, or a hand-picked sample of days */}
+      {liveSessions.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-4 py-2.5 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Sample</span>
+          <span className="text-[12px] text-gray-500">
+            {sample.length ? `${sample.length} session${sample.length === 1 ? '' : 's'} selected` : 'this session only'}
+          </span>
+          <button onClick={() => setPicking(v => !v)}
+            className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
+            {picking ? 'Done' : 'Pick days…'}
+          </button>
+          {sample.length > 0 && (
+            <button onClick={() => setSample([])} className="text-[12px] text-rose-500 hover:underline">Clear (back to one session)</button>
+          )}
+          {sample.length === 0 && !picking && liveSessions.some(x => x.session_type === 'intrasquad') && (
+            <button onClick={() => setSample(liveSessions.filter(x => x.session_type === 'intrasquad').map(x => x.id))}
+              className="text-[11px] text-gray-400 hover:underline" title="Every intrasquad this season">all intrasquads</button>
+          )}
+          {sample.length === 0 && !picking && liveSessions.some(x => x.session_type === 'game') && (
+            <button onClick={() => setSample(liveSessions.filter(x => x.session_type === 'game').map(x => x.id))}
+              className="text-[11px] text-gray-400 hover:underline" title="Every game this season">all games</button>
+          )}
+          {picking && (
+            <div className="w-full flex flex-wrap gap-1.5 pt-1">
+              {liveSessions.map(x => (
+                <button key={x.id} onClick={() => toggleSample(x.id)}
+                  className={`text-[11px] rounded-full px-2.5 py-1 ring-1 tabular-nums ${
+                    sample.includes(x.id) ? 'bg-portal-purple text-white ring-portal-purple'
+                      : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-gray-200 dark:ring-gray-700'}`}>
+                  {x.session_date} · {(TYPE_META[x.session_type] || {}).label || x.session_type}
+                  {x.session_type !== 'intrasquad' ? ` · ${x.away_team} @ ${x.home_team}` : ''}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <TeamSummaryPanel ids={summaryIds} team={teamCtx?.primary} onOpenPitcher={onOpenLab} onOpenHitter={onOpenHitterLab} />
+
+      {sample.length === 0 && (loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : data && (
         <div ref={contentRef} className="space-y-3">
           {view === 'pitching' && data.zone_report?.called > 20 && !isPen && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -2809,7 +2999,7 @@ function SessionsTab({ overview, season, sessionId, setSessionId }) {
             session's pitches.
           </p>
         </div>
-      )}
+      ))}
     </div>
   )
 }

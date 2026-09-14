@@ -53,6 +53,7 @@ from .api.rapsodo import router as rapsodo_router
 from .api.trackman_suite import router as trackman_suite_router
 from .api.blast import router as blast_router
 from .api.catcher_log import router as catcher_log_router
+from .api.trackman_team import router as trackman_team_router
 from .api.trackman_dev import router as trackman_dev_router
 from .api._tracking_share import router as tracking_share_router
 from .api.camp_report import router as camp_report_router
@@ -122,6 +123,7 @@ app.include_router(rapsodo_router, prefix="/api/v1")
 app.include_router(trackman_suite_router, prefix="/api/v1")
 app.include_router(blast_router, prefix="/api/v1")
 app.include_router(catcher_log_router, prefix="/api/v1")
+app.include_router(trackman_team_router, prefix="/api/v1")
 app.include_router(trackman_dev_router, prefix="/api/v1")
 app.include_router(tracking_share_router, prefix="/api/v1")
 app.include_router(camp_report_router, prefix="/api/v1")
