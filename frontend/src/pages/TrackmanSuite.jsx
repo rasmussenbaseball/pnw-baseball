@@ -2858,6 +2858,162 @@ function ShadowZoneMap({ c }) {
   )
 }
 
+
+// ── Coach catcher quick log (xlsx) ────────────────────────────────
+// The hand chart a coach keeps every live game: blocks, steal attempts,
+// throwdowns with pop times, a 1-5 grade. TrackMan has none of it, so it
+// sits under the TrackMan catcher boards with block events matched back to
+// the exact pitch (same date, catcher, inning, count) where possible.
+function CatcherLogSection() {
+  const fileRef = useRef(null)
+  const [uploadDate, setUploadDate] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState(null)
+  const [showEvents, setShowEvents] = useState(false)
+  const { data, refetch } = useApi('/trackman/catcher-log', {})
+  const catchers = data?.catchers || []
+  const events = data?.events || []
+
+  async function upload() {
+    const f = fileRef.current?.files?.[0]
+    if (!f) { setNote({ err: 'Choose the quick log workbook (.xlsx).' }); return }
+    setBusy(true); setNote(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', f)
+      if (uploadDate) fd.append('session_date', uploadDate)
+      const res = await fetch('/api/v1/trackman/catcher-log/upload', { method: 'POST', body: fd, headers: await authHeaders() })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`)
+      const j = await res.json()
+      setNote({ ok: `Logged ${j.rows} events across ${j.games} game${j.games === 1 ? '' : 's'} for ${j.session_date}: ${j.catchers.join(', ')}` })
+      if (fileRef.current) fileRef.current.value = ''
+      refetch()
+    } catch (e) { setNote({ err: e.message }) } finally { setBusy(false) }
+  }
+  async function removeDate(d) {
+    if (!window.confirm(`Delete the ${d} catcher log?`)) return
+    await fetch(`/api/v1/trackman/catcher-log/${d}`, { method: 'DELETE', headers: await authHeaders() })
+    refetch()
+  }
+  const pct = v => v == null ? '—' : `${v.toFixed(0)}%`
+  const outcomeCls = (o) => o === 'Block Success' || o === 'Caught Stealing' || o === 'Caught'
+    ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300'
+    : o === 'Block Miss' || o === 'Passed Ball' || o === 'Stolen Base'
+      ? 'text-rose-700 bg-rose-50 dark:bg-rose-900/30 dark:text-rose-300'
+      : 'text-gray-600 bg-gray-100 dark:bg-gray-700 dark:text-gray-300'
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between flex-wrap gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Coach quick log — blocks, steals, throwdowns</span>
+        <span className="text-[10px] text-gray-400">hand-charted every live game · what TrackMan cannot see · block events matched to the exact pitch when the inning and count line up</span>
+      </div>
+      <div className="px-4 py-3 flex items-center gap-2 flex-wrap border-b border-gray-100 dark:border-gray-700">
+        <input ref={fileRef} type="file" accept=".xlsx" className="text-xs" />
+        <input type="date" value={uploadDate} onChange={e => setUploadDate(e.target.value)}
+          className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs" title="Game date (re-uploading a date replaces it)" />
+        <button onClick={upload} disabled={busy}
+          className="px-3 py-1 rounded-lg bg-portal-purple text-white text-xs font-semibold disabled:opacity-50">
+          {busy ? 'Uploading…' : 'Upload quick log'}
+        </button>
+        {note?.ok && <span className="text-xs text-emerald-700 dark:text-emerald-300">{note.ok}</span>}
+        {note?.err && <span className="text-xs text-rose-600">{note.err}</span>}
+        {(data?.dates || []).length > 0 && (
+          <span className="ml-auto flex items-center gap-1 flex-wrap">
+            {data.dates.map(d => (
+              <span key={d} className="text-[10px] rounded-full px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 tabular-nums">
+                {d} <button onClick={() => removeDate(d)} className="text-rose-500 ml-0.5" title="Delete this date">×</button>
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+      {catchers.length === 0 ? (
+        <div className="p-6 text-center text-sm text-gray-400">No quick logs uploaded yet. Upload the coach's .xlsx (the "Live Log" sheet) with the game date.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="px-4 py-2">Catcher</th>
+                <th className="px-2 py-2 text-right" title="Games in the log">G</th>
+                <th className="px-2 py-2 text-right" title="Block chances charted">Block opps</th>
+                <th className="px-2 py-2 text-right" title="Blocks kept in front / block chances">Block%</th>
+                <th className="px-2 py-2 text-right">Miss</th>
+                <th className="px-2 py-2 text-right" title="Passed balls">PB</th>
+                <th className="px-2 py-2 text-right" title="Stolen bases against">SB</th>
+                <th className="px-2 py-2 text-right" title="Caught stealing">CS</th>
+                <th className="px-2 py-2 text-right" title="CS / steal attempts">CS%</th>
+                <th className="px-2 py-2 text-right" title="Between-innings throwdowns charted">Throwdowns</th>
+                <th className="px-2 py-2 text-right" title="Average charted pop time (throwdowns + steal throws)">Pop</th>
+                <th className="px-2 py-2 text-right">Best</th>
+                <th className="px-2 py-2 text-right" title="Average coach grade on charted events (1-5)">Grade</th>
+                <th className="px-2 py-2">Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {catchers.map(c => (
+                <tr key={c.catcher}>
+                  <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{c.catcher}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.games}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.block_opps || '—'}</td>
+                  <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${c.block_pct == null ? 'text-gray-300' : c.block_pct >= 75 ? 'text-emerald-600' : c.block_pct < 50 ? 'text-rose-600' : ''}`}>{pct(c.block_pct)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.block_miss || '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.pb || '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.sb || '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.cs || '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.cs_pct)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.throwdowns || '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-bold">{c.avg_pop != null ? `${c.avg_pop.toFixed(2)} (${c.pops_n})` : '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{c.best_pop?.toFixed(2) ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_grade != null ? `${c.avg_grade.toFixed(1)} (${c.grades_n})` : '—'}</td>
+                  <td className="px-2 py-1.5 text-[11px] text-gray-500 max-w-xs truncate" title={c.notes.join(' · ')}>{c.notes.join(' · ') || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700">
+            <button onClick={() => setShowEvents(v => !v)} className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
+              {showEvents ? 'Hide' : 'Show'} every charted event ({events.length})
+            </button>
+          </div>
+          {showEvents && (
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                  <th className="px-4 py-1.5">Date</th><th className="px-2 py-1.5">G</th><th className="px-2 py-1.5">Inn</th>
+                  <th className="px-2 py-1.5">Catcher</th><th className="px-2 py-1.5">Count</th><th className="px-2 py-1.5">Event</th>
+                  <th className="px-2 py-1.5">Outcome</th><th className="px-2 py-1.5 text-right">Pop</th><th className="px-2 py-1.5 text-right">Grade</th>
+                  <th className="px-2 py-1.5">Note</th><th className="px-2 py-1.5">TrackMan pitch</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {events.map(e => (
+                  <tr key={e.id}>
+                    <td className="px-4 py-1 tabular-nums text-gray-500">{e.session_date}</td>
+                    <td className="px-2 py-1 tabular-nums text-gray-400">{e.game_no}</td>
+                    <td className="px-2 py-1 tabular-nums">{e.inning ?? '—'}</td>
+                    <td className="px-2 py-1 font-semibold whitespace-nowrap">{e.catcher}</td>
+                    <td className="px-2 py-1 tabular-nums">{e.count || '—'}</td>
+                    <td className="px-2 py-1">{e.event || '—'}</td>
+                    <td className="px-2 py-1"><span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${outcomeCls(e.outcome)}`}>{e.outcome || '—'}</span></td>
+                    <td className="px-2 py-1 text-right tabular-nums">{e.pop_time?.toFixed(2) ?? '—'}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{e.grade ?? '—'}</td>
+                    <td className="px-2 py-1 text-gray-500">{e.note && e.pop_time == null ? e.note : ''}</td>
+                    <td className="px-2 py-1 text-gray-500 whitespace-nowrap">
+                      {e.tm ? `${e.tm.ptype || '?'} ${e.tm.velo ?? ''} mph · ${e.tm.call} · ${e.tm.pitcher || ''}${e.tm.loc_height != null ? ` · ${e.tm.loc_height} ft` : ''}` : (e.event === 'Block' ? 'no unique match' : '')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CatchingTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
@@ -3010,6 +3166,8 @@ function CatchingTab({ teamCtx, season }) {
         Blocking stays workload-only (TrackMan doesn't record blocks), but season passed balls are
         shown alongside. All of it compares players within your data, not to MLB numbers.
       </p>
+
+      <CatcherLogSection />
     </div>
   )
 }
