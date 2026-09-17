@@ -2074,27 +2074,27 @@ def trackman_pitcher_detail(
 
 
 _LB_CATS_PITCHING = {
-    "velo": ("Avg fastball velo", "AVG(rel_speed) FILTER (WHERE COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam','Sinker'))", True, 30),
-    "max_velo": ("Max velo", "MAX(rel_speed)", True, 30),
-    "ivb": ("Fastball IVB", "AVG(ivb) FILTER (WHERE COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam'))", True, 30),
-    "spin": ("Avg spin", "AVG(spin_rate)", True, 50),
-    "extension": ("Extension", "AVG(extension)", True, 50),
-    "whiff_pct": ("Whiff%", "100.0 * SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END), 0)", True, 50),
-    "csw_pct": ("CSW%", "100.0 * AVG(CASE WHEN pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1.0 ELSE 0.0 END)", True, 50),
-    "zone_pct": ("Zone%", "100.0 * AVG(CASE WHEN is_in_zone THEN 1.0 WHEN is_in_zone IS FALSE THEN 0.0 END)", True, 50),
-    "chase_pct": ("Chase%", "100.0 * SUM(CASE WHEN is_chase THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END), 0)", True, 50),
-    "two_strike_whiff": ("2K whiff%", "100.0 * SUM(CASE WHEN is_whiff AND strikes = 2 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing AND strikes = 2 THEN 1 ELSE 0 END), 0)", True, 30),
-    "ev_against": ("EV against", "AVG(exit_speed)", False, 15),
+    "velo": ("Avg fastball velo", "AVG(rel_speed) FILTER (WHERE COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam','Sinker'))", True, 10),
+    "max_velo": ("Max velo", "MAX(rel_speed)", True, 10),
+    "ivb": ("Fastball IVB", "AVG(ivb) FILTER (WHERE COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type) IN ('Fastball','Four-Seam'))", True, 10),
+    "spin": ("Avg spin", "AVG(spin_rate)", True, 10),
+    "extension": ("Extension", "AVG(extension)", True, 10),
+    "whiff_pct": ("Whiff%", "100.0 * SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END), 0)", True, 10),
+    "csw_pct": ("CSW%", "100.0 * AVG(CASE WHEN pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1.0 ELSE 0.0 END)", True, 10),
+    "zone_pct": ("Zone%", "100.0 * AVG(CASE WHEN is_in_zone THEN 1.0 WHEN is_in_zone IS FALSE THEN 0.0 END)", True, 10),
+    "chase_pct": ("Chase%", "100.0 * SUM(CASE WHEN is_chase THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END), 0)", True, 10),
+    "two_strike_whiff": ("2K whiff%", "100.0 * SUM(CASE WHEN is_whiff AND strikes = 2 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing AND strikes = 2 THEN 1 ELSE 0 END), 0)", True, 10),
+    "ev_against": ("EV against", "AVG(exit_speed)", False, 2),
 }
 _LB_CATS_HITTING = {
-    "avg_ev": ("Avg EV", "AVG(exit_speed)", True, 15),
-    "max_ev": ("Max EV", "MAX(exit_speed)", True, 10),
-    "hard_hit_pct": ("Hard-hit%", "100.0 * SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END), 0)", True, 15),
-    "sweet_spot": ("Sweet-spot%", "100.0 * SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) AND launch_angle BETWEEN 8 AND 32 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END), 0)", True, 15),
-    "zone_contact": ("Zone contact%", "100.0 * SUM(CASE WHEN is_contact AND is_in_zone THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing AND is_in_zone THEN 1 ELSE 0 END), 0)", True, 25),
-    "whiff_pct": ("Whiff%", "100.0 * SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END), 0)", False, 25),
-    "chase_pct": ("Chase%", "100.0 * SUM(CASE WHEN is_chase THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END), 0)", False, 25),
-    "max_dist": ("Max distance", "MAX(distance)", True, 10),
+    "avg_ev": ("Avg EV", "AVG(exit_speed)", True, 2),
+    "max_ev": ("Max EV", "MAX(exit_speed)", True, 1),
+    "hard_hit_pct": ("Hard-hit%", "100.0 * SUM(CASE WHEN exit_speed >= 90 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END), 0)", True, 2),
+    "sweet_spot": ("Sweet-spot%", "100.0 * SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) AND launch_angle BETWEEN 8 AND 32 THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN exit_speed IS NOT NULL AND (pitch_call = 'InPlay' OR (pitch_call IS NULL AND (direction IS NULL OR ABS(direction) <= 45))) THEN 1 ELSE 0 END), 0)", True, 2),
+    "zone_contact": ("Zone contact%", "100.0 * SUM(CASE WHEN is_contact AND is_in_zone THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing AND is_in_zone THEN 1 ELSE 0 END), 0)", True, 10),
+    "whiff_pct": ("Whiff%", "100.0 * SUM(CASE WHEN is_whiff THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_swing THEN 1 ELSE 0 END), 0)", False, 10),
+    "chase_pct": ("Chase%", "100.0 * SUM(CASE WHEN is_chase THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN is_in_zone IS FALSE THEN 1 ELSE 0 END), 0)", False, 10),
+    "max_dist": ("Max distance", "MAX(distance)", True, 1),
 }
 
 
@@ -2106,8 +2106,12 @@ def trackman_leaderboards(
     season: int | None = Query(None),
     owner: str = Depends(_gate),
 ):
-    """Corpus leaderboards with per-category minimum-sample gates. Each
-    category returns the full qualified ranking (the UI shows top N)."""
+    """Corpus leaderboards with per-category minimum-sample gates. Gates are
+    deliberately LOW (10 pitches, 2 batted balls): a fall intrasquad gives
+    most arms ~20 pitches and hitters ~2 BBE, and the coach wants every name
+    on the board with the sample shown next to it rather than a wall of
+    "not qualified". Each category returns the full qualified ranking (the
+    UI shows top N)."""
     cats = _LB_CATS_PITCHING if side == "pitching" else _LB_CATS_HITTING
     who = "pitcher" if side == "pitching" else "batter"
     hand = "pitcher_throws" if side == "pitching" else "batter_side"
@@ -2195,19 +2199,19 @@ def trackman_leaderboards(
     if side == "pitching":
         _pyboard("rv", "Run value", [
             {"name": k[0], "hand": k[1], "team": k[2], "sample": a["rv_n"], "value": round(a["rv"], 1)}
-            for k, a in per.items() if a["rv_n"] >= 50], 50)
+            for k, a in per.items() if a["rv_n"] >= 10], 10)
         _pyboard("rv100", "RV per 100", [
             {"name": k[0], "hand": k[1], "team": k[2], "sample": a["rv_n"],
              "value": round(100 * a["rv"] / a["rv_n"], 2)}
-            for k, a in per.items() if a["rv_n"] >= 100], 100)
+            for k, a in per.items() if a["rv_n"] >= 10], 10)
         _pyboard("shadow_pct", "Shadow zone%", [
             {"name": k[0], "hand": k[1], "team": k[2], "sample": a["loc"],
              "value": round(100 * a["shadow"] / a["loc"], 1)}
-            for k, a in per.items() if a["loc"] >= 100], 100)
+            for k, a in per.items() if a["loc"] >= 10], 10)
     else:
         _pyboard("swtk_rv", "Swing/take RV", [
             {"name": k[0], "hand": k[1], "team": k[2], "sample": a["rv_n"], "value": round(a["rv"], 1)}
-            for k, a in per.items() if a["rv_n"] >= 50], 50)
+            for k, a in per.items() if a["rv_n"] >= 10], 10)
     return {"side": side, "boards": boards}
 
 
