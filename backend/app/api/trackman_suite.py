@@ -2104,6 +2104,8 @@ def trackman_pitcher_detail(
         "slot": lab_slot,
         "type_avgs": type_avgs,
         "line": box.pitcher_line([x for x in pitches if x.get("session_type") in _LIVE_TYPES], lab_lg),
+        "count_states": count_states([x for x in pitches if x.get("session_type") in _LIVE_TYPES],
+                                     lambda r: _is_fair(r["pitch_call"], r.get("direction")), rv_base),
     }
 
 
@@ -2610,7 +2612,9 @@ def trackman_batter_detail(
             "xstats": xstats, "swing_take": swing_take, "trend": trend,
             "splits": splits, "velo": velo,
             "line": box.hitter_line(box.terminal_pas(
-                [x for x in pitches if x.get("session_type") in _LIVE_TYPES]), hit_lg)}
+                [x for x in pitches if x.get("session_type") in _LIVE_TYPES]), hit_lg),
+            "count_states": count_states([x for x in pitches if x.get("session_type") in _LIVE_TYPES],
+                                         lambda r: _is_fair(r["pitch_call"], r.get("direction")), rv_base)}
 
 
 def _bp_grade(avg_ev, hh_pct, ss_pct):

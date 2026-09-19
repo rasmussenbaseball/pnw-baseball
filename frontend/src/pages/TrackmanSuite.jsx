@@ -4943,6 +4943,7 @@ const CR_BLOCKS = {
     ['zonemaps', 'Zone maps', false, 'Whiffs, damage and usage by location'],
     ['countusage', 'Pitch mix by count', true, ''],
     ['countlev', 'Count leverage', false, 'First-pitch strike, putaway, CSW ahead/behind'],
+    ['countstates', 'Count states', false, 'Ahead / even / behind / 2 strikes, every number'],
     ['velotrend', 'Velocity by session', true, ''],
     ['sessiontrend', 'Session trend', true, 'Stuff+, RV/100, FB velo over time'],
     ['arm', 'Arm / release profile', true, ''],
@@ -4963,6 +4964,7 @@ const CR_BLOCKS = {
     ['splits', 'Splits', false, 'By pitcher hand and pitch type'],
     ['velobands', 'Against velocity', false, 'Effective velo bands'],
     ['countlev', 'Count leverage', false, ''],
+    ['countstates', 'Count states', false, 'Ahead / even / behind / 2 strikes, every number'],
     ['sessiontrend', 'Session trend', true, 'Contact quality over time'],
     ['battedballs', 'Batted ball log', false, 'Every tracked ball in the sample'],
   ],
@@ -4996,6 +4998,15 @@ const CR_DEFAULT = {
 }
 // Starter layouts (role + scope + blocks); players and notes stay yours.
 const CR_STARTERS = [
+  ['Post-game recap · pitcher', { role: 'pitcher', title: 'Post-Game Recap', range: 'lastN', lastN: 1,
+    types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
+    blocks: ['keystats', 'notes', 'arsenal', 'movement', 'release', 'locations', 'countstates'],
+    keyStats: ['pitches', 'ip_str', 'bf', 'k', 'bb', 'h', 'r', 'fb_velo', 'fb_max', 'strike_pct', 'whiff_pct', 'csw_pct'],
+    arsenalCols: ['n', 'usage', 'stuff', 'loc', 'velo', 'max', 'ivb', 'hb', 'spin', 'zone', 'whiff', 'csw', 'ev'] }],
+  ['Post-game recap · hitter', { role: 'hitter', title: 'Post-Game Recap', range: 'lastN', lastN: 1,
+    types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
+    blocks: ['keystats', 'notes', 'line', 'battedballs', 'spray', 'evla', 'countstates'],
+    keyStats: ['pa', 'avg', 'ops', 'hr', 'bb', 'k', 'bbe', 'avg_ev', 'max_ev', 'hh_pct', 'contact_pct', 'chase_pct'] }],
   ['Pitcher · last outing quick sheet', { role: 'pitcher', range: 'lastN', lastN: 1, types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
     blocks: ['keystats', 'arsenal', 'movement', 'locations', 'notes'] }],
   ['Pitcher · full season profile', { role: 'pitcher', range: 'season', types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
@@ -5172,7 +5183,21 @@ function CrBattedBalls({ pitches }) {
 }
 
 // One player's report page. Fetches its own scoped detail.
-function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef }) {
+// Click-to-type text that prints as plain text. Uncontrolled while focused
+// (so the caret never jumps); saves on every input.
+function CrEditable({ value, onChange, placeholder, className = '' }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (ref.current && document.activeElement !== ref.current && ref.current.innerText !== value) ref.current.innerText = value
+  }, [value])
+  return (
+    <div ref={ref} contentEditable suppressContentEditableWarning data-placeholder={placeholder}
+      onInput={(e) => onChange(e.currentTarget.innerText.replace(/\n$/, ''))}
+      className={`cr-editable min-h-[3.2em] text-[13px] leading-relaxed whitespace-pre-wrap outline-none rounded-md px-1 -mx-1 focus:bg-amber-50/60 focus:ring-1 focus:ring-amber-200 ${className}`} />
+  )
+}
+
+function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef, exporting, onNote }) {
   const isP = role === 'pitcher'
   const { data, loading, error } = useApi(
     ids.length ? (isP ? '/trackman/pitchers/detail' : '/trackman/batters/detail') : null,
@@ -5203,7 +5228,8 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
   const render = (id) => {
     switch (id) {
       case 'keystats': {
-        const defs = CR_KEYSTATS[role].filter(([k]) => cfg.keyStats[role].includes(k))
+        // in the order they were picked, so a layout controls what leads
+        const defs = cfg.keyStats[role].map(k => CR_KEYSTATS[role].find(d => d[0] === k)).filter(Boolean)
         return (
           <CrCard>
             <div className="grid grid-cols-6 gap-x-4 gap-y-3">
@@ -5218,11 +5244,15 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
         )
       }
       case 'notes':
-        if (!cfg.notes && !myNote) return null
+        // Typed right on the page. While exporting, an empty note prints nothing.
+        if (exporting && !cfg.notes && !myNote) return null
         return (
-          <CrCard title="Coach notes">
-            {myNote && <p className="text-[13px] leading-relaxed text-gray-800 whitespace-pre-wrap">{myNote}</p>}
-            {cfg.notes && <p className={`text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap ${myNote ? 'mt-2 pt-2 border-t border-gray-100' : ''}`}>{cfg.notes}</p>}
+          <CrCard title="Coach notes" sub={exporting ? null : 'click and type'}>
+            {(!exporting || myNote) && (
+              <CrEditable value={myNote || ''} placeholder={`Write ${player.name.split(',')[0]}'s note here…`}
+                onChange={(v) => onNote(player.name, v)} className="text-gray-800" />
+            )}
+            {cfg.notes && <p className={`text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap ${myNote || !exporting ? 'mt-2 pt-2 border-t border-gray-100' : ''}`}>{cfg.notes}</p>}
           </CrCard>
         )
       case 'arsenal': return <CrCard title="Arsenal"><CrArsenalTable data={data} cols={cfg.arsenalCols} /></CrCard>
@@ -5280,6 +5310,7 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
         )
       case 'countusage': return <CrCard title="Pitch mix by count"><CountUsage pitches={pitches} /></CrCard>
       case 'countlev': return <CountResults pitches={pitches} mode={isP ? 'pitcher' : 'hitter'} />
+      case 'countstates': return data.count_states ? <CountStateTable states={data.count_states} mode={isP ? 'pitcher' : 'batter'} title="Count states" /> : null
       case 'velotrend': return <CrCard title="Velocity by session"><VeloTrend trend={data.velo_trend} /></CrCard>
       case 'sessiontrend':
         return isP
@@ -5368,6 +5399,7 @@ function CustomReportTab({ teamCtx, season }) {
   const [busy, setBusy] = useState(null)
   const [bw, setBw] = useState(false)
   const [notePlayer, setNotePlayer] = useState('')
+  const [exporting, setExporting] = useState(false)
   const pageRefs = useRef({})
   useEffect(() => { crSave(CR_STORE, cfg) }, [cfg])
   const set = (patch) => setCfg(c => ({ ...c, ...patch }))
@@ -5398,6 +5430,7 @@ function CustomReportTab({ teamCtx, season }) {
   const blockDefs = Object.fromEntries(CR_BLOCKS[role].map(b => [b[0], b]))
 
   const applyLayout = (l) => set({
+    title: l.title || cfg.title,
     role: l.role, range: l.range, lastN: l.lastN ?? cfg.lastN, types: { ...cfg.types, ...l.types },
     blocks: { ...cfg.blocks, [l.role]: l.blocks },
     keyStats: l.keyStats ? { ...cfg.keyStats, [l.role]: l.keyStats } : cfg.keyStats,
@@ -5419,6 +5452,8 @@ function CustomReportTab({ teamCtx, season }) {
     const list = nodes()
     if (!list.length) return
     setBusy(`0/${list.length}`)
+    setExporting(true)                                  // drop empty note boxes + typing hints
+    await new Promise(r => setTimeout(r, 120))
     if (bw) list.forEach(n => n.classList.add('bw-report'))
     try {
       if (kind === 'pdf') {
@@ -5433,6 +5468,7 @@ function CustomReportTab({ teamCtx, season }) {
       }
     } catch (e) { console.error('report export failed', e) } finally {
       if (bw) list.forEach(n => n.classList.remove('bw-report'))
+      setExporting(false)
       setBusy(null)
     }
   }
@@ -5446,6 +5482,18 @@ function CustomReportTab({ teamCtx, season }) {
     <div className="grid lg:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
       {/* ── builder ── */}
       <div className="space-y-2.5 lg:sticky lg:top-3 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto pr-0.5">
+        <div className="bg-portal-purple/5 dark:bg-gray-800 rounded-xl ring-1 ring-portal-purple/20 dark:ring-gray-700 px-3.5 py-2.5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-portal-purple dark:text-indigo-300 mb-1.5">Post-game recap</div>
+          <div className="flex gap-1.5">
+            <button onClick={() => applyLayout(CR_STARTERS[0][1])} className={chip(false)}>Pitchers</button>
+            <button onClick={() => applyLayout(CR_STARTERS[1][1])} className={chip(false)}>Hitters</button>
+          </div>
+          <p className="text-[10.5px] text-gray-500 dark:text-gray-400 mt-1.5 leading-snug">
+            Each player's last outing, his numbers, and a notes box you type straight into on his page.
+            For a weekend series set "Last N sessions" to 3, or use Pick days.
+          </p>
+        </div>
+
         <CrSection title="1 · Who" right={`${chosen.length} selected`}>
           <div className="flex items-center gap-1.5 mb-2">
             {[['pitcher', 'Pitchers'], ['hitter', 'Hitters']].map(([k, l]) => (
@@ -5621,6 +5669,7 @@ function CustomReportTab({ teamCtx, season }) {
             {chosen.map(p => (
               <div key={`${role}-${p.name}`} className="shadow-lg ring-1 ring-gray-200 w-fit mx-auto">
                 <CrPlayerPage player={p} role={role} cfg={cfg} team={team} season={season} sessions={sessions}
+                  exporting={exporting} onNote={(n, v) => setCfg(c => ({ ...c, playerNotes: { ...c.playerNotes, [n]: v } }))}
                   ids={crScopeIds(p, sessions, cfg, season)} innerRef={el => { pageRefs.current[p.name] = el }} />
               </div>
             ))}
