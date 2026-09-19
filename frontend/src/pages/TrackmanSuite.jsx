@@ -4937,6 +4937,7 @@ const CR_BLOCKS = {
     ['arsenal', 'Arsenal table', false, 'Per pitch type; choose the columns'],
     ['line', 'Box line', false, 'IP, K, BB, WHIP, FIP (live sessions only)'],
     ['percentiles', 'Percentile bars', false, 'Ranked against the whole staff'],
+    ['plotsnotes', 'Small plots + big notes', false, 'Movement and release shrunk to one row beside a large notes box'],
     ['movement', 'Movement plot', true, 'IVB x HB, catcher view'],
     ['release', 'Release point', true, ''],
     ['locations', 'Locations by pitch', false, 'K-zone heatmap per pitch type'],
@@ -5000,9 +5001,11 @@ const CR_DEFAULT = {
 const CR_STARTERS = [
   ['Post-game recap · pitcher', { role: 'pitcher', title: 'Post-Game Recap', range: 'lastN', lastN: 1,
     types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
-    blocks: ['keystats', 'notes', 'arsenal', 'movement', 'release', 'locations', 'countstates'],
-    keyStats: ['pitches', 'ip_str', 'bf', 'k', 'bb', 'h', 'r', 'fb_velo', 'fb_max', 'strike_pct', 'whiff_pct', 'csw_pct'],
-    arsenalCols: ['n', 'usage', 'stuff', 'loc', 'velo', 'max', 'ivb', 'hb', 'spin', 'zone', 'whiff', 'csw', 'ev'] }],
+    // Nate's own layout (2026-09-19 Butcher report), with the plots shrunk into
+    // one row so the notes box gets half the page
+    blocks: ['keystats', 'line', 'arsenal', 'plotsnotes', 'locations'],
+    keyStats: ['pitches', 'fb_velo', 'fb_max', 'stuff', 'strike_pct', 'whiff_pct', 'csw_pct', 'ev_against', 'loc', 'zone_pct', 'chase_pct', 'rv'],
+    arsenalCols: ['n', 'usage', 'stuff', 'loc', 'velo', 'max', 'ivb', 'hb', 'spin', 'ext', 'vaa', 'zone', 'whiff', 'chase', 'csw', 'ev', 'rv'] }],
   ['Post-game recap · hitter', { role: 'hitter', title: 'Post-Game Recap', range: 'lastN', lastN: 1,
     types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
     blocks: ['keystats', 'notes', 'line', 'battedballs', 'spray', 'evla', 'countstates'],
@@ -5272,6 +5275,33 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
               })}
             </div>
           </CrCard>
+        )
+      case 'plotsnotes':
+        return (
+          <div className="grid gap-3 items-stretch" style={{ gridTemplateColumns: '1.3fr 1fr 2.3fr' }}>
+            <CrCard title="Movement">
+              <MovementPlot pitches={pitches} arm={data.arm} onPick={() => {}} />
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
+                {Object.keys(byType).map(t => (
+                  <span key={t} className="text-[9.5px] text-gray-500 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: cFor(t) }} />{t}
+                  </span>
+                ))}
+              </div>
+            </CrCard>
+            <CrCard title="Release"><ReleasePlot pitches={pitches} /></CrCard>
+            <div className="bg-white rounded-xl ring-1 ring-gray-200 p-4 flex flex-col">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Coach notes</span>
+                {!exporting && <span className="text-[10px] text-gray-400">click and type</span>}
+              </div>
+              {exporting && !myNote ? <div className="flex-1" /> : (
+                <CrEditable value={myNote || ''} placeholder={`Write ${player.name.split(',')[0]}'s note here…`}
+                  onChange={(v) => onNote(player.name, v)} className="text-gray-800 flex-1" />
+              )}
+              {cfg.notes && <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap mt-2 pt-2 border-t border-gray-100">{cfg.notes}</p>}
+            </div>
+          </div>
         )
       case 'movement':
         return (
@@ -5611,7 +5641,7 @@ function CustomReportTab({ teamCtx, season }) {
               placeholder="A note only this player's page shows…"
               className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1.5 text-xs" />
           </>)}
-          {!blocks.includes('notes') && (cfg.notes || Object.values(cfg.playerNotes || {}).some(Boolean)) && (
+          {!blocks.includes('notes') && !blocks.includes('plotsnotes') && (cfg.notes || Object.values(cfg.playerNotes || {}).some(Boolean)) && (
             <button onClick={() => toggleBlock('notes')} className="text-[11px] font-semibold text-amber-700 mt-1">Notes are typed but the Coach notes block is off. Add it</button>
           )}
           <label className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-2">
