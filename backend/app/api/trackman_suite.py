@@ -896,6 +896,19 @@ def _date_clause(date_from, date_to):
     return sql, params
 
 
+def _parse_ids(sessions):
+    """'12,15,18' -> [12, 15, 18] (Custom Reporting hand-picks sessions)."""
+    out = []
+    for x in str(sessions or "").split(","):
+        x = x.strip()
+        if x.isdigit():
+            out.append(int(x))
+    return out[:400]
+
+
+_LIVE_TYPES = ("game", "scrimmage", "intrasquad")
+
+
 def _context_clause(context):
     """WHERE fragment for the session-type filter every view shares."""
     if context in ("game", "scrimmage", "intrasquad", "bp", "bullpen"):
@@ -1797,6 +1810,7 @@ def trackman_pitcher_detail(
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     season: int | None = Query(None),
+    sessions: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Everything the Player Lab needs for one pitcher, in one call:
@@ -1808,9 +1822,19 @@ def trackman_pitcher_detail(
     dsql, dparams = _date_clause(date_from, date_to)
     ssql, sparams = _season_clause(season)
     extra, params = extra + dsql + ssql, params + dparams + sparams
+    # Custom Reporting: an explicit session list replaces the context / date /
+    # season scope for THIS pitcher's rows (bullpens included when picked).
+    # The percentile pool keeps the wide scope, so a two-outing report is
+    # still ranked against the whole staff.
+    sess_ids = _parse_ids(sessions)
+    pool_extra, pool_params = extra, params
+    if sess_ids:
+        extra, params = " AND s.id = ANY(%s)", [sess_ids]
     if side in ("L", "R"):
         extra += " AND p.batter_side = %s"
         params = params + ["Left" if side == "L" else "Right"]
+        pool_extra += " AND p.batter_side = %s"
+        pool_params = pool_params + ["Left" if side == "L" else "Right"]
     team_sql = " AND p.pitcher_team = %s" if team else ""
     tparams = [team] if team else []
     with get_connection() as conn:
@@ -1830,8 +1854,8 @@ def trackman_pitcher_detail(
                        p.balls, p.strikes, p.batter_side, p.pitch_call,
                        p.exit_speed, p.launch_angle, p.play_result, p.k_or_bb,
                        p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
-                       p.outs_on_play, p.runs_scored,
-                       s.session_date, s.id AS session_id
+                       p.outs_on_play, p.runs_scored, p.direction,
+                       s.session_date, s.id AS session_id, s.session_type
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher = %s{_NO_MISTAG}
                   AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
@@ -1850,11 +1874,21 @@ def trackman_pitcher_detail(
         cur.execute(
             f"""SELECT p.pitcher, COUNT(*) AS n, {cols}
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG} {extra}
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG} {pool_extra}
                 GROUP BY p.pitcher HAVING COUNT(*) >= 50""",
-            [owner] + params,
+            [owner] + pool_params,
         )
         pool = [dict(r) for r in cur.fetchall()]
+        if sess_ids:   # his own row comes from the picked sessions, any sample
+            cur.execute(
+                f"""SELECT p.pitcher, COUNT(*) AS n, {cols}
+                    FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                    WHERE p.owner_user_id = %s AND p.pitcher = %s{_NO_MISTAG} {extra}
+                    GROUP BY p.pitcher""",
+                [owner, pitcher] + params,
+            )
+            mine_row = cur.fetchone()
+            pool = [r for r in pool if r["pitcher"] != pitcher] + ([dict(mine_row)] if mine_row else [])
         rv_base = _rv_baseline(cur, owner, context, season)
 
         # corpus same-hand per-type movement averages (the Savant "vs avg"
@@ -2069,8 +2103,45 @@ def trackman_pitcher_detail(
         "grades": grades,
         "slot": lab_slot,
         "type_avgs": type_avgs,
-        "line": box.pitcher_line(pitches, lab_lg) if context != "bullpen" else None,
+        "line": box.pitcher_line([x for x in pitches if x.get("session_type") in _LIVE_TYPES], lab_lg),
     }
+
+
+@router.get("/trackman/reports/index")
+def trackman_report_index(team: str | None = Query(None), owner: str = Depends(_gate)):
+    """Custom Reporting's picker data: every session, and for every player
+    which sessions he appears in (pitches thrown / seen, batted balls). The
+    page derives rosters, "last N outings" and date scopes from this one
+    call. Bullpens carry pitchers only (their batter is a placeholder)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""SELECT id, session_date, session_type, home_team, away_team, stadium
+                       FROM tm_sessions WHERE owner_user_id = %s ORDER BY session_date DESC, id DESC""", (owner,))
+        sessions = [dict(r) for r in cur.fetchall()]
+        for x in sessions:
+            x["session_date"] = x["session_date"].isoformat() if x["session_date"] else None
+        tp = " AND p.pitcher_team = %s" if team else ""
+        tb = " AND p.batter_team = %s" if team else ""
+        cur.execute(f"""SELECT p.pitcher AS name, p.pitcher_throws AS hand, p.session_id, COUNT(*) AS n
+                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                        WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL AND s.session_type <> 'bp'
+                          AND COALESCE(p.class_pitch_type, '') <> 'Mistag'{tp}
+                        GROUP BY 1, 2, 3""", [owner] + ([team] if team else []))
+        prow = [dict(r) for r in cur.fetchall()]
+        cur.execute(f"""SELECT p.batter AS name, p.batter_side AS hand, p.session_id, COUNT(*) AS n,
+                               SUM(CASE WHEN p.exit_speed IS NOT NULL THEN 1 ELSE 0 END) AS bbe
+                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                        WHERE p.owner_user_id = %s AND p.batter IS NOT NULL AND s.session_type <> 'bullpen'{tb}
+                        GROUP BY 1, 2, 3""", [owner] + ([team] if team else []))
+        brow = [dict(r) for r in cur.fetchall()]
+
+    def roll(rows):
+        out = {}
+        for r in rows:
+            d = out.setdefault(r["name"], {"name": r["name"], "hand": r["hand"], "sessions": {}})
+            d["sessions"][r["session_id"]] = {"n": r["n"], "bbe": r.get("bbe")}
+        return sorted(out.values(), key=lambda d: d["name"])
+    return {"sessions": sessions, "pitchers": roll(prow), "batters": roll(brow)}
 
 
 _LB_CATS_PITCHING = {
@@ -2275,6 +2346,7 @@ def trackman_batter_detail(
     pitch_type: str | None = Query(None),
     throws: str | None = Query(None),
     season: int | None = Query(None),
+    sessions: str | None = Query(None),
     owner: str = Depends(_gate),
 ):
     """Everything the Hitter Lab needs: every pitch SEEN (locations + swing
@@ -2285,9 +2357,15 @@ def trackman_batter_detail(
     dsql, dparams = _date_clause(date_from, date_to)
     ssql, sparams = _season_clause(season)
     extra, params = extra + dsql + ssql, params + dparams + sparams
+    sess_ids = _parse_ids(sessions)          # Custom Reporting scope (see pitcher detail)
+    pool_extra, pool_params = extra, params
+    if sess_ids:
+        extra, params = " AND s.id = ANY(%s) AND s.session_type <> 'bullpen'", [sess_ids]
     if throws in ("L", "R"):
         extra += " AND p.pitcher_throws = %s"
         params = params + ["Left" if throws == "L" else "Right"]
+        pool_extra += " AND p.pitcher_throws = %s"
+        pool_params = pool_params + ["Left" if throws == "L" else "Right"]
     if pitch_type:
         extra += " AND s.session_type <> 'bp'"   # BP pitch tags are not real
         extra += " AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) = %s"
@@ -2329,11 +2407,21 @@ def trackman_batter_detail(
         cur.execute(
             f"""SELECT p.batter, COUNT(*) AS n, {cols}
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {extra}{conf_sql}
+                WHERE p.owner_user_id = %s AND p.batter IS NOT NULL {pool_extra}{conf_sql}
                 GROUP BY p.batter HAVING COUNT(*) >= 30""",
-            [owner] + params,
+            [owner] + pool_params,
         )
         pool = [dict(r) for r in cur.fetchall()]
+        if sess_ids:
+            cur.execute(
+                f"""SELECT p.batter, COUNT(*) AS n, {cols}
+                    FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                    WHERE p.owner_user_id = %s AND p.batter = %s {extra}{conf_sql}
+                    GROUP BY p.batter""",
+                [owner, batter] + params,
+            )
+            mine_row = cur.fetchone()
+            pool = [r for r in pool if r["batter"] != batter] + ([dict(mine_row)] if mine_row else [])
         rv_base = _rv_baseline(cur, owner, context, season)
 
     me = next((r for r in pool if r["batter"] == batter), None)
@@ -2521,7 +2609,8 @@ def trackman_batter_detail(
             "pitches": pitches, "percentiles": percentiles, "profile": link,
             "xstats": xstats, "swing_take": swing_take, "trend": trend,
             "splits": splits, "velo": velo,
-            "line": box.hitter_line(box.terminal_pas(pitches), hit_lg) if context != "bp" else None}
+            "line": box.hitter_line(box.terminal_pas(
+                [x for x in pitches if x.get("session_type") in _LIVE_TYPES]), hit_lg)}
 
 
 def _bp_grade(avg_ev, hh_pct, ss_pct):

@@ -125,6 +125,62 @@ export async function saveNodesAsPdf(nodes, filename = 'cards', onProgress, opts
   pdf.save(`${filename}.pdf`)
 }
 
+// Render report nodes of ANY height into a multi-page letter PDF at a fixed,
+// readable scale (the single-page helpers above shrink a tall node to fit,
+// which turns a long report into an unreadable strip). Each node starts on a
+// fresh page and is cut BETWEEN its `[data-report-block]` children, so a
+// table or chart never splits across a page unless it is taller than a page
+// on its own. Used by the TrackMan Custom Reporting builder.
+export async function saveNodesAsPagedPdf(nodes, filename = 'report', onProgress, opts = {}) {
+  const list = (nodes || []).filter(Boolean)
+  if (!list.length) return
+  const { unit = 'pt', format = 'letter', orientation = 'portrait', margin = 26 } = opts
+  const [{ default: html2canvas }, jspdf] = await Promise.all([
+    import('html2canvas'), import('jspdf'),
+  ])
+  const JsPDF = jspdf.jsPDF || jspdf.default
+  const pdf = new JsPDF({ unit, format, orientation })
+  const pw = pdf.internal.pageSize.getWidth()
+  const ph = pdf.internal.pageSize.getHeight()
+  const cw = pw - 2 * margin, chPt = ph - 2 * margin
+  let first = true
+  for (let i = 0; i < list.length; i++) {
+    const node = list[i]
+    const rect = node.getBoundingClientRect()
+    const blocks = [...node.querySelectorAll('[data-report-block]')].map(b => {
+      const r = b.getBoundingClientRect()
+      return [r.top - rect.top, r.bottom - rect.top]
+    })
+    const canvas = await captureCanvas(html2canvas, node)
+    const k = canvas.width / (rect.width || 1)          // css px -> canvas px
+    const pageH = canvas.width * (chPt / cw)            // canvas px per page
+    const cuts = []
+    let start = 0
+    for (const [top, bottom] of blocks) {
+      const t = Math.max(0, top * k - 6 * k), b = bottom * k
+      if (b - start > pageH && t > start) { cuts.push([start, t]); start = t }
+      while (b - start > pageH) { cuts.push([start, start + pageH]); start += pageH }
+    }
+    if (canvas.height - start > 2) cuts.push([start, canvas.height])
+    for (const [y0, y1] of cuts) {
+      const h = Math.min(Math.round(y1 - y0), Math.round(pageH))
+      if (h <= 0) continue
+      const slice = document.createElement('canvas')
+      slice.width = canvas.width
+      slice.height = h
+      const ctx = slice.getContext('2d')
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, slice.width, slice.height)
+      ctx.drawImage(canvas, 0, Math.round(y0), canvas.width, h, 0, 0, canvas.width, h)
+      if (!first) pdf.addPage(format, orientation)
+      first = false
+      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, cw, h * (cw / canvas.width))
+    }
+    if (onProgress) onProgress(i + 1, list.length)
+  }
+  pdf.save(`${filename}.pdf`)
+}
+
 export async function saveNodeAsImage(node, filename = 'report') {
   if (!node) return
   const { default: html2canvas } = await import('html2canvas')

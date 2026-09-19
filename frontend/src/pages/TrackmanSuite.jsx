@@ -168,7 +168,7 @@ export default function TrackmanSuite() {
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
           ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
-          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['values', 'Values'], ['board', 'Coach Board']].map(([k, label]) => (
+          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['values', 'Values'], ['board', 'Coach Board'], ['reports', 'Custom Reporting']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === k
@@ -190,6 +190,7 @@ export default function TrackmanSuite() {
       {tab === 'catching' && (hasData ? <CatchingTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'defense' && (hasData ? <DefenseTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'values' && (hasData ? <ValuesTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'reports' && (hasData ? <CustomReportTab key={`${teamCtx.primary}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'board' && (hasData ? <CoachBoardTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
     </StatAvgContext.Provider>
@@ -4909,6 +4910,723 @@ function ValuesTab({ teamCtx, season }) {
         miss; first basemen give some back), scaled by playing time. The stabilizer regresses
         small tracked samples toward zero so one hot weekend can't outrank a full season.
       </p>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Custom Reporting — build-your-own player reports, export PDF / PNG
+// ══════════════════════════════════════════════════════════════════
+// Pick WHO (any set of pitchers or hitters), WHAT DATA (session types x
+// season / last N outings / date range / hand-picked days, vs-hand), WHICH
+// BLOCKS (tables, plots, sprays, maps — ordered however you like, down to
+// the individual numbers and arsenal columns) and type NOTES. Every player
+// becomes one report; export all of them as a paged PDF or one PNG each.
+// Layouts save as named presets in this browser.
+const CR_STORE = 'tmCustomReport.v1'
+const CR_PRESETS = 'tmCustomReportPresets.v1'
+const CR_TYPES = {
+  pitcher: [['game', 'Games'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['bullpen', 'Bullpens']],
+  hitter: [['game', 'Games'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['bp', 'BP']],
+}
+// [id, label, half-width?, hint]
+const CR_BLOCKS = {
+  pitcher: [
+    ['keystats', 'Key numbers', false, 'The handful of numbers you pick, as big tiles'],
+    ['notes', 'Coach notes', false, 'Your typed notes (report-wide + per player)'],
+    ['arsenal', 'Arsenal table', false, 'Per pitch type; choose the columns'],
+    ['line', 'Box line', false, 'IP, K, BB, WHIP, FIP (live sessions only)'],
+    ['percentiles', 'Percentile bars', false, 'Ranked against the whole staff'],
+    ['movement', 'Movement plot', true, 'IVB x HB, catcher view'],
+    ['release', 'Release point', true, ''],
+    ['locations', 'Locations by pitch', false, 'K-zone heatmap per pitch type'],
+    ['zonemaps', 'Zone maps', false, 'Whiffs, damage and usage by location'],
+    ['countusage', 'Pitch mix by count', true, ''],
+    ['countlev', 'Count leverage', false, 'First-pitch strike, putaway, CSW ahead/behind'],
+    ['velotrend', 'Velocity by session', true, ''],
+    ['sessiontrend', 'Session trend', true, 'Stuff+, RV/100, FB velo over time'],
+    ['arm', 'Arm / release profile', true, ''],
+    ['tunneling', 'Tunneling', true, ''],
+    ['sequencing', 'Two-pitch sequences', false, ''],
+  ],
+  hitter: [
+    ['keystats', 'Key numbers', false, 'The handful of numbers you pick, as big tiles'],
+    ['notes', 'Coach notes', false, 'Your typed notes (report-wide + per player)'],
+    ['line', 'Box line', false, 'AVG / OBP / SLG / wRC+ (live sessions only)'],
+    ['percentiles', 'Percentile bars', false, 'Ranked against the whole lineup'],
+    ['xstats', 'Expected stats', false, 'xAVG, xSLG, xwOBA vs actual'],
+    ['spray', 'Spray chart', true, 'Colored by exit velo'],
+    ['contact', 'Point of contact', true, 'Depth and height (needs 5+ tracked)'],
+    ['evla', 'EV x launch angle', true, ''],
+    ['swingtake', 'Swing / take value', true, ''],
+    ['zonemaps', 'Zone maps', false, 'Swings, whiffs, damage, hard contact, takes'],
+    ['splits', 'Splits', false, 'By pitcher hand and pitch type'],
+    ['velobands', 'Against velocity', false, 'Effective velo bands'],
+    ['countlev', 'Count leverage', false, ''],
+    ['sessiontrend', 'Session trend', true, 'Contact quality over time'],
+    ['battedballs', 'Batted ball log', false, 'Every tracked ball in the sample'],
+  ],
+}
+const CR_KEYSTATS = {
+  pitcher: [['pitches', 'Pitches', 0], ['fb_velo', 'FB velo', 1], ['fb_max', 'FB max', 1], ['stuff', 'Stuff+', 0], ['loc', 'Loc+', 0],
+    ['strike_pct', 'Strike%', 1], ['zone_pct', 'Zone%', 1], ['whiff_pct', 'Whiff%', 1], ['chase_pct', 'Chase%', 1], ['csw_pct', 'CSW%', 1],
+    ['ev_against', 'EV against', 1], ['hh_pct', 'Hard-hit% agn', 1], ['gb_pct', 'GB% agn', 1], ['rv', 'Run value', 1],
+    ['ip_str', 'IP', null], ['bf', 'BF', 0], ['k', 'K', 0], ['bb', 'BB', 0], ['h', 'H', 0], ['r', 'R', 0],
+    ['k_pct', 'K%', 1], ['bb_pct', 'BB%', 1], ['whip', 'WHIP', 2], ['baa', 'BAA', 3], ['fip', 'FIP', 2]],
+  hitter: [['pitches', 'Pitches seen', 0], ['bbe', 'Batted balls', 0], ['avg_ev', 'Avg EV', 1], ['p90_ev', '90th EV', 1], ['max_ev', 'Max EV', 1],
+    ['hh_pct', 'Hard-hit%', 1], ['barrel_pct', 'Barrel%', 1], ['sweet_pct', 'Sweet-spot%', 1], ['avg_la', 'Avg LA', 1], ['max_dist', 'Max dist', 0],
+    ['swing_pct', 'Swing%', 1], ['contact_pct', 'Contact%', 1], ['zcontact_pct', 'Z-Contact%', 1], ['whiff_pct', 'Whiff%', 1], ['chase_pct', 'Chase%', 1],
+    ['xavg', 'xAVG', 3], ['xslg', 'xSLG', 3], ['xwoba', 'xwOBA', 3],
+    ['pa', 'PA', 0], ['avg', 'AVG', 3], ['obp', 'OBP', 3], ['slg', 'SLG', 3], ['ops', 'OPS', 3], ['hr', 'HR', 0], ['bb', 'BB', 0], ['k', 'K', 0],
+    ['woba', 'wOBA', 3], ['wrc_plus', 'wRC+', 0]],
+}
+const CR_ARSENAL_COLS = [['n', 'N', 0], ['usage', 'Use%', 1], ['stuff', 'Stuff+', 0], ['loc', 'Loc+', 0], ['velo', 'Velo', 1], ['max', 'Max', 1],
+  ['ivb', 'IVB', 1], ['hb', 'HB', 1], ['spin', 'Spin', 0], ['ext', 'Ext', 1], ['vaa', 'VAA', 1], ['zone', 'Zone%', 1], ['whiff', 'Whiff%', 1],
+  ['chase', 'Chase%', 1], ['csw', 'CSW%', 1], ['ev', 'EV agn', 1], ['gb', 'GB%', 1], ['rv', 'RV', 1], ['rv100', 'RV/100', 2]]
+const CR_DEFAULT = {
+  role: 'pitcher', players: [], hand: '',
+  types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
+  range: 'season', lastN: 2, dates: {}, picked: [],
+  blocks: { pitcher: ['keystats', 'arsenal', 'movement', 'release', 'locations', 'notes'],
+            hitter: ['keystats', 'line', 'spray', 'contact', 'zonemaps', 'notes'] },
+  keyStats: { pitcher: ['pitches', 'fb_velo', 'fb_max', 'stuff', 'strike_pct', 'whiff_pct', 'csw_pct', 'ev_against'],
+              hitter: ['pitches', 'bbe', 'avg_ev', 'max_ev', 'hh_pct', 'barrel_pct', 'chase_pct', 'contact_pct'] },
+  arsenalCols: ['n', 'usage', 'stuff', 'velo', 'max', 'ivb', 'hb', 'spin', 'zone', 'whiff', 'csw', 'ev'],
+  title: 'Player Report', notes: '', playerNotes: {}, showScope: true,
+}
+// Starter layouts (role + scope + blocks); players and notes stay yours.
+const CR_STARTERS = [
+  ['Pitcher · last outing quick sheet', { role: 'pitcher', range: 'lastN', lastN: 1, types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
+    blocks: ['keystats', 'arsenal', 'movement', 'locations', 'notes'] }],
+  ['Pitcher · full season profile', { role: 'pitcher', range: 'season', types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
+    blocks: ['keystats', 'line', 'percentiles', 'arsenal', 'movement', 'release', 'locations', 'zonemaps', 'countusage', 'countlev', 'velotrend', 'sessiontrend', 'sequencing', 'notes'] }],
+  ['Pitcher · bullpen design sheet', { role: 'pitcher', range: 'lastN', lastN: 1, types: { game: false, scrimmage: false, intrasquad: false, bullpen: true, bp: false },
+    blocks: ['keystats', 'arsenal', 'movement', 'release', 'arm', 'tunneling', 'notes'],
+    keyStats: ['pitches', 'fb_velo', 'fb_max', 'stuff', 'zone_pct'], arsenalCols: ['n', 'usage', 'stuff', 'velo', 'max', 'ivb', 'hb', 'spin', 'ext', 'vaa', 'zone'] }],
+  ['Hitter · last 2 games', { role: 'hitter', range: 'lastN', lastN: 2, types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
+    blocks: ['keystats', 'line', 'spray', 'contact', 'battedballs', 'notes'] }],
+  ['Hitter · BP report', { role: 'hitter', range: 'lastN', lastN: 1, types: { game: false, scrimmage: false, intrasquad: false, bp: true, bullpen: false },
+    blocks: ['keystats', 'spray', 'evla', 'contact', 'battedballs', 'notes'],
+    keyStats: ['bbe', 'avg_ev', 'p90_ev', 'max_ev', 'hh_pct', 'barrel_pct', 'sweet_pct', 'avg_la', 'max_dist'] }],
+  ['Hitter · full season profile', { role: 'hitter', range: 'season', types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
+    blocks: ['keystats', 'line', 'percentiles', 'xstats', 'spray', 'contact', 'zonemaps', 'swingtake', 'sessiontrend', 'splits', 'velobands', 'countlev', 'notes'] }],
+]
+
+const crLoad = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fb } catch { return fb } }
+const crSave = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode */ } }
+const crFair = (p) => p.exit_speed != null && (p.pitch_call === 'InPlay' || (p.pitch_call == null && (p.direction == null || Math.abs(p.direction) <= 45)))
+const crPct = (n, d) => d ? 100 * n / d : null
+const crAvg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null
+const crFmt = (v, dec) => v == null ? '–' : dec == null ? String(v) : dec === 3 ? Number(v).toFixed(3).replace(/^0\./, '.') : Number(v).toFixed(dec)
+
+// Session ids for one player under the current scope.
+function crScopeIds(player, sessions, cfg, season) {
+  const mine = sessions.filter(s => player.sessions[s.id] && cfg.types[s.session_type])   // newest first
+  if (cfg.range === 'lastN') return mine.slice(0, Math.max(1, cfg.lastN || 1)).map(s => s.id)
+  if (cfg.range === 'pick') return mine.filter(s => cfg.picked.includes(s.id)).map(s => s.id)
+  if (cfg.range === 'dates') {
+    return mine.filter(s => (!cfg.dates?.from || s.session_date >= cfg.dates.from) && (!cfg.dates?.to || s.session_date <= cfg.dates.to)).map(s => s.id)
+  }
+  return mine.filter(s => season == null || seasonOf(s.session_date) === season).map(s => s.id)
+}
+
+function crPitcherStats(data) {
+  const ps = data.pitches || []
+  const called = ps.filter(p => p.pitch_call)
+  const sw = ps.filter(p => p.is_swing), oz = ps.filter(p => p.is_in_zone === false), zoned = ps.filter(p => p.is_in_zone != null)
+  const fb = ps.filter(p => ['Fastball', 'Sinker', 'Cutter'].includes(p.ptype) && p.rel_speed != null).map(p => p.rel_speed)
+  const bbe = ps.filter(crFair), la = bbe.filter(p => p.launch_angle != null)
+  const strikes = called.filter(p => ['StrikeCalled', 'StrikeSwinging', 'FoulBall', 'FoulBallFieldable', 'FoulBallNotFieldable', 'InPlay'].includes(p.pitch_call))
+  const byType = {}
+  ps.forEach(p => { byType[p.ptype] = (byType[p.ptype] || 0) + 1 })
+  const wavg = (k) => {
+    let num = 0, den = 0
+    Object.entries(data.grades || {}).forEach(([t, g]) => { if (g?.[k] != null && byType[t]) { num += g[k] * byType[t]; den += byType[t] } })
+    return den ? num / den : null
+  }
+  const rvs = Object.values(data.rv_by_type || {}).map(x => x.rv).filter(v => v != null)
+  return {
+    pitches: ps.length, fb_velo: crAvg(fb), fb_max: fb.length ? Math.max(...fb) : null, stuff: wavg('stuff'), loc: wavg('loc'),
+    strike_pct: crPct(strikes.length, called.length), zone_pct: crPct(zoned.filter(p => p.is_in_zone).length, zoned.length),
+    whiff_pct: crPct(sw.filter(p => p.is_whiff).length, sw.length), chase_pct: crPct(oz.filter(p => p.is_chase).length, oz.length),
+    csw_pct: crPct(called.filter(p => p.pitch_call === 'StrikeCalled' || p.pitch_call === 'StrikeSwinging').length, called.length),
+    ev_against: crAvg(bbe.map(p => p.exit_speed)), hh_pct: crPct(bbe.filter(p => p.exit_speed >= 90).length, bbe.length),
+    gb_pct: crPct(la.filter(p => p.launch_angle < 10).length, la.length), rv: rvs.length ? rvs.reduce((a, b) => a + b, 0) : null,
+    ...(data.line || {}),
+  }
+}
+
+function crHitterStats(data) {
+  const ps = data.pitches || []
+  const called = ps.filter(p => p.pitch_call)
+  const sw = called.filter(p => p.is_swing), oz = called.filter(p => p.is_in_zone === false), zsw = sw.filter(p => p.is_in_zone)
+  const bbe = ps.filter(crFair), evs = bbe.map(p => p.exit_speed).sort((a, b) => a - b), la = bbe.filter(p => p.launch_angle != null)
+  const dist = bbe.map(p => p.distance).filter(v => v != null)
+  const x = data.xstats || {}
+  return {
+    pitches: ps.length, bbe: bbe.length, avg_ev: crAvg(evs), max_ev: evs.length ? evs[evs.length - 1] : null,
+    p90_ev: evs.length >= 5 ? evs[Math.min(evs.length - 1, Math.floor(0.9 * evs.length))] : null,
+    hh_pct: crPct(bbe.filter(p => p.exit_speed >= 90).length, bbe.length),
+    barrel_pct: crPct(la.filter(p => p.exit_speed >= 95 && p.launch_angle >= 8 && p.launch_angle <= 32).length, la.length),
+    sweet_pct: crPct(la.filter(p => p.launch_angle >= 8 && p.launch_angle <= 32).length, la.length),
+    avg_la: crAvg(la.map(p => p.launch_angle)), max_dist: dist.length ? Math.max(...dist) : null,
+    swing_pct: crPct(sw.length, called.length), contact_pct: crPct(sw.filter(p => !p.is_whiff).length, sw.length),
+    zcontact_pct: crPct(zsw.filter(p => !p.is_whiff).length, zsw.length), whiff_pct: crPct(sw.filter(p => p.is_whiff).length, sw.length),
+    chase_pct: crPct(oz.filter(p => p.is_chase ?? p.is_swing).length, oz.length),
+    xavg: x.xavg, xslg: x.xslg, xwoba: x.xwoba,
+    ...(data.line || {}),
+  }
+}
+
+function CrCard({ title, sub, children }) {
+  return (
+    <div className="bg-white rounded-xl ring-1 ring-gray-200 p-4">
+      {title && (
+        <div className="flex items-baseline justify-between mb-2">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{title}</span>
+          {sub && <span className="text-[10px] text-gray-400">{sub}</span>}
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+function CrArsenalTable({ data, cols }) {
+  const rows = useMemo(() => {
+    const g = {}
+    ;(data.pitches || []).forEach(p => { (g[p.ptype] = g[p.ptype] || []).push(p) })
+    const total = (data.pitches || []).length || 1
+    const avg = (arr, k) => crAvg(arr.map(x => x[k]).filter(v => v != null))
+    return Object.entries(g).map(([t, ps]) => {
+      const called = ps.filter(p => p.pitch_call), sw = ps.filter(p => p.is_swing)
+      const oz = ps.filter(p => p.is_in_zone === false), zoned = ps.filter(p => p.is_in_zone != null)
+      const bbe = ps.filter(crFair), la = bbe.filter(p => p.launch_angle != null)
+      const velos = ps.map(p => p.rel_speed).filter(v => v != null)
+      return {
+        t, n: ps.length, usage: 100 * ps.length / total, stuff: data.grades?.[t]?.stuff, loc: data.grades?.[t]?.loc,
+        velo: crAvg(velos), max: velos.length ? Math.max(...velos) : null, ivb: avg(ps, 'ivb'), hb: avg(ps, 'horz_break'),
+        spin: avg(ps, 'spin_rate'), ext: avg(ps, 'extension'), vaa: avg(ps, 'vaa'),
+        zone: crPct(zoned.filter(p => p.is_in_zone).length, zoned.length), whiff: crPct(sw.filter(p => p.is_whiff).length, sw.length),
+        chase: crPct(oz.filter(p => p.is_chase).length, oz.length),
+        csw: crPct(called.filter(p => p.pitch_call === 'StrikeCalled' || p.pitch_call === 'StrikeSwinging').length, called.length),
+        ev: crAvg(bbe.map(p => p.exit_speed)), gb: crPct(la.filter(p => p.launch_angle < 10).length, la.length),
+        rv: data.rv_by_type?.[t]?.rv, rv100: data.rv_by_type?.[t]?.rv100,
+      }
+    }).sort((a, b) => b.n - a.n)
+  }, [data])
+  const show = CR_ARSENAL_COLS.filter(([k]) => cols.includes(k))
+  return (
+    <table className="w-full text-[12.5px]">
+      <thead>
+        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+          <th className="py-1.5 pr-2">Pitch</th>
+          {show.map(([k, l]) => <th key={k} className="px-1.5 py-1.5 text-right whitespace-nowrap">{l}</th>)}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-100">
+        {rows.map(r => (
+          <tr key={r.t}>
+            <td className="py-1.5 pr-2 font-semibold whitespace-nowrap">
+              <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: cFor(r.t) }} />{r.t}
+            </td>
+            {show.map(([k, , dec]) => (
+              <td key={k} className={`px-1.5 py-1.5 text-right tabular-nums ${k === 'stuff' || k === 'loc'
+                ? (r[k] == null ? 'text-gray-300' : r[k] >= 110 ? 'font-bold text-[#d22d49]' : r[k] <= 90 ? 'font-bold text-[#3661ad]' : 'font-bold') : ''}`}>
+                {(k === 'rv' || k === 'rv100') && r[k] > 0 ? '+' : ''}{crFmt(r[k], dec)}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function CrBattedBalls({ pitches }) {
+  const rows = pitches.filter(crFair).slice(-40).reverse()
+  if (!rows.length) return <div className="text-xs text-gray-400">No tracked batted balls in this sample.</div>
+  return (
+    <table className="w-full text-[12px]">
+      <thead>
+        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+          <th className="py-1">Date</th><th className="px-1.5 py-1 text-right">EV</th><th className="px-1.5 py-1 text-right">LA</th>
+          <th className="px-1.5 py-1 text-right">Dist</th><th className="px-1.5 py-1">Result</th><th className="px-1.5 py-1">Off</th><th className="px-1.5 py-1">Pitcher</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-100">
+        {rows.map((p, i) => (
+          <tr key={i}>
+            <td className="py-1 tabular-nums text-gray-500">{p.session_date}</td>
+            <td className={`px-1.5 py-1 text-right tabular-nums font-semibold ${p.exit_speed >= 95 ? 'text-[#d22d49]' : p.exit_speed < 80 ? 'text-[#3661ad]' : ''}`}>{crFmt(p.exit_speed, 1)}</td>
+            <td className="px-1.5 py-1 text-right tabular-nums">{crFmt(p.launch_angle, 0)}</td>
+            <td className="px-1.5 py-1 text-right tabular-nums">{crFmt(p.distance, 0)}</td>
+            <td className="px-1.5 py-1">{p.play_result || p.tagged_hit_type || '–'}</td>
+            <td className="px-1.5 py-1 text-gray-500">{p.session_type === 'bp' ? 'BP' : (p.ptype || '–')}{p.rel_speed != null ? ` ${Number(p.rel_speed).toFixed(0)}` : ''}</td>
+            <td className="px-1.5 py-1 text-gray-500">{p.session_type === 'bp' ? '' : (p.pitcher || '')}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+// One player's report page. Fetches its own scoped detail.
+function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef }) {
+  const isP = role === 'pitcher'
+  const { data, loading, error } = useApi(
+    ids.length ? (isP ? '/trackman/pitchers/detail' : '/trackman/batters/detail') : null,
+    { [isP ? 'pitcher' : 'batter']: player.name, team: team || undefined, sessions: ids.join(','),
+      context: isP ? 'live' : 'all', season, [isP ? 'side' : 'throws']: cfg.hand || undefined },
+    [ids.join(','), cfg.hand])
+  const used = sessions.filter(s => ids.includes(s.id))
+  const scope = (() => {
+    if (!used.length) return 'No sessions match this scope'
+    const dates = used.map(s => s.session_date).sort()
+    const kinds = [...new Set(used.map(s => (TYPE_META[s.session_type] || {}).label || s.session_type))].join(', ')
+    const span = dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} to ${dates[dates.length - 1]}`
+    return `${used.length} session${used.length === 1 ? '' : 's'} · ${kinds} · ${span}${cfg.hand ? ` · vs ${cfg.hand}H${isP ? 'H' : 'P'}` : ''}`
+  })()
+  const pitches = data?.pitches || []
+  const stats = useMemo(() => data ? (isP ? crPitcherStats(data) : crHitterStats(data)) : {}, [data, isP])
+  const byType = useMemo(() => {
+    const g = {}
+    pitches.forEach(p => { if (p.ptype) (g[p.ptype] = g[p.ptype] || []).push(p) })
+    return Object.fromEntries(Object.entries(g).sort((a, b) => b[1].length - a[1].length))
+  }, [pitches])
+  const bbe = pitches.filter(p => p.exit_speed != null)
+  const pct = data?.percentiles || {}
+  const labels = isP ? PCTL_LABELS : HITTER_PCTL_LABELS
+  const pctKeys = Object.keys(labels).filter(k => pct[k])
+  const myNote = cfg.playerNotes?.[player.name]
+
+  const render = (id) => {
+    switch (id) {
+      case 'keystats': {
+        const defs = CR_KEYSTATS[role].filter(([k]) => cfg.keyStats[role].includes(k))
+        return (
+          <CrCard>
+            <div className="grid grid-cols-6 gap-x-4 gap-y-3">
+              {defs.map(([k, label, dec]) => (
+                <div key={k}>
+                  <div className="text-[19px] font-bold tabular-nums leading-none text-portal-purple">{k === 'rv' && stats[k] > 0 ? '+' : ''}{crFmt(stats[k], dec)}</div>
+                  <div className="text-[9.5px] font-semibold uppercase tracking-wide text-gray-400 mt-1">{label}</div>
+                </div>
+              ))}
+            </div>
+          </CrCard>
+        )
+      }
+      case 'notes':
+        if (!cfg.notes && !myNote) return null
+        return (
+          <CrCard title="Coach notes">
+            {myNote && <p className="text-[13px] leading-relaxed text-gray-800 whitespace-pre-wrap">{myNote}</p>}
+            {cfg.notes && <p className={`text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap ${myNote ? 'mt-2 pt-2 border-t border-gray-100' : ''}`}>{cfg.notes}</p>}
+          </CrCard>
+        )
+      case 'arsenal': return <CrCard title="Arsenal"><CrArsenalTable data={data} cols={cfg.arsenalCols} /></CrCard>
+      case 'line':
+        if (!data.line) return null
+        return isP ? <CrCard title="Box line" sub="R not ER: TrackMan does not score earned runs"><PitcherLineStrip line={data.line} /></CrCard>
+          : <HitterLineCard line={data.line} />
+      case 'percentiles':
+        if (!pctKeys.length) return null
+        return (
+          <CrCard title={`Percentiles vs your ${isP ? 'staff' : 'lineup'}`} sub={`${pct[pctKeys[0]]?.pool} in the pool`}>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+              {pctKeys.map(k => {
+                const [label, unit, dec] = labels[k]
+                const v = pct[k].value
+                return <PctlBar key={k} label={label} value={k.endsWith('_pct') ? (v * 100).toFixed(dec) : v.toFixed(dec)} unit={unit} pctl={pct[k].pctl} />
+              })}
+            </div>
+          </CrCard>
+        )
+      case 'movement':
+        return (
+          <CrCard title="Movement (catcher's view)">
+            <MovementPlot pitches={pitches} arm={data.arm} onPick={() => {}} />
+            <div className="flex flex-wrap gap-2 mt-1">
+              {Object.keys(byType).map(t => (
+                <span key={t} className="text-[11px] text-gray-500 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full inline-block" style={{ background: cFor(t) }} />{t}
+                </span>
+              ))}
+            </div>
+          </CrCard>
+        )
+      case 'release': return <CrCard title="Release point"><ReleasePlot pitches={pitches} /></CrCard>
+      case 'locations':
+        return (
+          <CrCard title="Locations by pitch">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+              {Object.entries(byType).slice(0, 6).map(([t, ps]) => <LocationHeatmap key={t} pitches={ps} title={t} />)}
+            </div>
+          </CrCard>
+        )
+      case 'zonemaps':
+        if (isP) return <PitcherZoneMaps pitches={pitches} />
+        return (
+          <CrCard title="Zone maps" sub="per cell, min 3">
+            <div className="grid grid-cols-5 gap-3">
+              <ZoneRateMap pitches={pitches} title="Swings" sub="% offered at" den={(p) => p.pitch_call} num={(p) => p.is_swing} />
+              <ZoneRateMap pitches={pitches} title="Whiffs" sub="% of swings" den={(p) => p.is_swing} num={(p) => p.is_whiff} />
+              <ZoneValueMap pitches={pitches} title="Damage" sub="avg EV" lo={72} hi={95} value={(p) => p.exit_speed} />
+              <ZoneRateMap pitches={pitches} title="Hard contact" sub="% 90+ mph" den={(p) => p.exit_speed != null} num={(p) => p.exit_speed >= 90} />
+              <ZoneRateMap pitches={pitches} title="Called K on takes" sub="% of takes" den={(p) => p.pitch_call && !p.is_swing} num={(p) => p.pitch_call === 'StrikeCalled'} />
+            </div>
+          </CrCard>
+        )
+      case 'countusage': return <CrCard title="Pitch mix by count"><CountUsage pitches={pitches} /></CrCard>
+      case 'countlev': return <CountResults pitches={pitches} mode={isP ? 'pitcher' : 'hitter'} />
+      case 'velotrend': return <CrCard title="Velocity by session"><VeloTrend trend={data.velo_trend} /></CrCard>
+      case 'sessiontrend':
+        return isP
+          ? <SessionTrendCard trend={data.session_trend} metrics={[['stuff', 'Stuff+', 0], ['rv100', 'RV/100', 2], ['fb_velo', 'FB velo', 1]]} title="Session trend" />
+          : <SessionTrendCard trend={data.trend} metrics={[['xwobacon', 'xwOBAcon', 3], ['avg_ev', 'Avg EV', 1], ['hard_hit_pct', 'Hard-hit%', 1]]} title="Session trend" />
+      case 'arm': return data.arm ? <ArmProfileCard arm={data.arm} /> : null
+      case 'tunneling': return data.tunneling ? <TunnelingCard tunneling={data.tunneling} /> : null
+      case 'sequencing': return <CrCard title="Two-pitch sequences (result on the 2nd pitch)"><SequencingTable pitches={pitches} /></CrCard>
+      case 'xstats': return data.xstats ? <XStatsCard x={data.xstats} /> : null
+      case 'spray': return <CrCard title="Spray (colored by EV)"><SprayChart pitches={bbe} /></CrCard>
+      case 'contact': return <ContactPointCard pitches={pitches} />
+      case 'evla': return <CrCard title="Exit velo x launch angle"><EvLaScatter points={bbe.filter(p => p.launch_angle != null).map(p => ({ ev: p.exit_speed, la: p.launch_angle }))} /></CrCard>
+      case 'swingtake': return data.swing_take ? <SwingTakeCard st={data.swing_take} /> : null
+      case 'splits': return data.splits ? <SplitsCard splits={data.splits} /> : null
+      case 'velobands': return data.velo ? <VeloBandCard velo={data.velo} /> : null
+      case 'battedballs': return <CrCard title="Batted ball log" sub="newest first, up to 40"><CrBattedBalls pitches={pitches} /></CrCard>
+      default: return null
+    }
+  }
+
+  // consecutive half-width blocks pair up side by side
+  const halves = new Set(CR_BLOCKS[role].filter(b => b[2]).map(b => b[0]))
+  const layout = []
+  const order = cfg.blocks[role]
+  for (let i = 0; i < order.length; i++) {
+    if (halves.has(order[i]) && halves.has(order[i + 1])) { layout.push([order[i], order[i + 1]]); i++ } else layout.push([order[i]])
+  }
+
+  return (
+    <div ref={innerRef} className="bg-[#f6f5f1] text-gray-900 p-5 space-y-3" style={{ width: 880 }}>
+      <div data-report-block className="flex items-end justify-between border-b-2 border-portal-purple pb-2">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">{cfg.title || 'Player Report'}</div>
+          <div className="text-[24px] font-bold leading-tight text-gray-900">
+            {player.name}
+            <span className="ml-2 text-[12px] font-bold text-gray-500 bg-white ring-1 ring-gray-200 rounded px-1.5 py-0.5 align-middle">
+              {isP ? (player.hand === 'Left' ? 'LHP' : player.hand === 'Right' ? 'RHP' : 'P') : (player.hand === 'Left' ? 'LHH' : player.hand === 'Right' ? 'RHH' : player.hand === 'Switch' ? 'SH' : 'H')}
+            </span>
+          </div>
+          {cfg.showScope && <div className="text-[11px] text-gray-500 mt-0.5">{scope}{data ? ` · ${pitches.length} pitches` : ''}</div>}
+        </div>
+        <div className="text-right text-[10px] text-gray-400 leading-snug">
+          <div className="font-bold text-gray-500">{team || ''}</div>
+          <div>{new Date().toLocaleDateString()}</div>
+        </div>
+      </div>
+      {!ids.length && <div className="text-sm text-gray-400 p-6 text-center">No sessions for {player.name} in this scope.</div>}
+      {loading && ids.length > 0 && <div className="text-sm text-gray-400 p-6 text-center">Loading {player.name}…</div>}
+      {error && <div className="text-sm text-gray-400 p-6 text-center">No data for {player.name} in this scope.</div>}
+      {data && layout.map((grp, gi) => {
+        const cells = grp.map(id => [id, render(id)]).filter(([, el]) => el)
+        if (!cells.length) return null
+        return (
+          <div key={gi} data-report-block className={cells.length === 2 ? 'grid grid-cols-2 gap-3' : ''}>
+            {cells.map(([id, el]) => <div key={id} className="min-w-0">{el}</div>)}
+          </div>
+        )
+      })}
+      <div data-report-block className="flex justify-between text-[9px] text-gray-400 pt-1">
+        <span>NW Baseball Stats · TrackMan Suite</span><span>nwbaseballstats.com</span>
+      </div>
+    </div>
+  )
+}
+
+function CrSection({ title, right, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700">
+      <button onClick={() => setOpen(o => !o)} className="w-full px-3.5 py-2.5 flex items-center justify-between text-left">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300">{title}</span>
+        <span className="text-[11px] text-gray-400">{right} {open ? '▾' : '▸'}</span>
+      </button>
+      {open && <div className="px-3.5 pb-3.5">{children}</div>}
+    </div>
+  )
+}
+
+function CustomReportTab({ teamCtx, season }) {
+  const [team, setTeam] = useState(teamCtx.primary)
+  const { data: index, loading } = useApi('/trackman/reports/index', { team: team || undefined }, [team])
+  const [cfg, setCfg] = useState(() => ({ ...CR_DEFAULT, ...crLoad(CR_STORE, {}) }))
+  const [presets, setPresets] = useState(() => crLoad(CR_PRESETS, {}))
+  const [presetName, setPresetName] = useState('')
+  const [search, setSearch] = useState('')
+  const [busy, setBusy] = useState(null)
+  const [bw, setBw] = useState(false)
+  const [notePlayer, setNotePlayer] = useState('')
+  const pageRefs = useRef({})
+  useEffect(() => { crSave(CR_STORE, cfg) }, [cfg])
+  const set = (patch) => setCfg(c => ({ ...c, ...patch }))
+
+  const role = cfg.role
+  const sessions = index?.sessions || []
+  const roster = (role === 'pitcher' ? index?.pitchers : index?.batters) || []
+  const typeOpts = CR_TYPES[role]
+  // roster under the current type filter, busiest first
+  const eligible = useMemo(() => roster
+    .map(p => ({ ...p, total: sessions.filter(s => p.sessions[s.id] && cfg.types[s.session_type]).reduce((a, s) => a + p.sessions[s.id].n, 0) }))
+    .filter(p => p.total > 0)
+    .sort((a, b) => a.name.localeCompare(b.name)), [roster, sessions, cfg.types])
+  const chosen = eligible.filter(p => cfg.players.includes(p.name))
+  const shownRoster = eligible.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
+  const togglePlayer = (n) => setCfg(c => ({ ...c, players: c.players.includes(n) ? c.players.filter(x => x !== n) : [...c.players, n] }))
+  const pickable = sessions.filter(s => cfg.types[s.session_type] && (season == null || seasonOf(s.session_date) === season))
+
+  const blocks = cfg.blocks[role]
+  const setBlocks = (b) => set({ blocks: { ...cfg.blocks, [role]: b } })
+  const moveBlock = (i, d) => { const b = [...blocks]; const j = i + d; if (j < 0 || j >= b.length) return; [b[i], b[j]] = [b[j], b[i]]; setBlocks(b) }
+  const toggleBlock = (id) => setBlocks(blocks.includes(id) ? blocks.filter(x => x !== id) : [...blocks, id])
+  const toggleIn = (key, id, scoped) => {
+    const cur = scoped ? cfg[key][role] : cfg[key]
+    const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]
+    set({ [key]: scoped ? { ...cfg[key], [role]: next } : next })
+  }
+  const blockDefs = Object.fromEntries(CR_BLOCKS[role].map(b => [b[0], b]))
+
+  const applyLayout = (l) => set({
+    role: l.role, range: l.range, lastN: l.lastN ?? cfg.lastN, types: { ...cfg.types, ...l.types },
+    blocks: { ...cfg.blocks, [l.role]: l.blocks },
+    keyStats: l.keyStats ? { ...cfg.keyStats, [l.role]: l.keyStats } : cfg.keyStats,
+    arsenalCols: l.arsenalCols || cfg.arsenalCols,
+    players: l.role === cfg.role ? cfg.players : [],
+  })
+  const savePreset = () => {
+    const name = presetName.trim()
+    if (!name) return
+    const { players, playerNotes, notes, ...layout } = cfg   // presets are layouts, not rosters or notes
+    const next = { ...presets, [name]: layout }
+    setPresets(next); crSave(CR_PRESETS, next); setPresetName('')
+  }
+  const dropPreset = (name) => { const next = { ...presets }; delete next[name]; setPresets(next); crSave(CR_PRESETS, next) }
+
+  const nodes = () => chosen.map(p => pageRefs.current[p.name]).filter(Boolean)
+  const fileBase = `${(cfg.title || 'report').replace(/[^a-z0-9]+/gi, '_').toLowerCase()}_${new Date().toISOString().slice(0, 10)}`
+  async function exportAs(kind) {
+    const list = nodes()
+    if (!list.length) return
+    setBusy(`0/${list.length}`)
+    if (bw) list.forEach(n => n.classList.add('bw-report'))
+    try {
+      if (kind === 'pdf') {
+        const { saveNodesAsPagedPdf } = await import('../lib/reportExport')
+        await saveNodesAsPagedPdf(list, `${fileBase}${bw ? '_bw' : ''}`, (d, t) => setBusy(`${d}/${t}`))
+      } else {
+        const { saveNodeAsImage } = await import('../lib/reportExport')
+        for (let i = 0; i < list.length; i++) {
+          await saveNodeAsImage(list[i], `${chosen[i].name.replace(/[^a-z0-9]+/gi, '_')}_${fileBase}${bw ? '_bw' : ''}`)
+          setBusy(`${i + 1}/${list.length}`)
+        }
+      }
+    } catch (e) { console.error('report export failed', e) } finally {
+      if (bw) list.forEach(n => n.classList.remove('bw-report'))
+      setBusy(null)
+    }
+  }
+
+  const chip = (on) => `px-2.5 py-1 rounded-full text-[12px] font-semibold ${on ? 'bg-portal-purple text-white'
+    : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`
+  const small = (on) => `px-2 py-0.5 rounded-full text-[11px] font-semibold ${on ? 'bg-portal-purple text-white'
+    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300'}`
+
+  return (
+    <div className="grid lg:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
+      {/* ── builder ── */}
+      <div className="space-y-2.5 lg:sticky lg:top-3 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto pr-0.5">
+        <CrSection title="1 · Who" right={`${chosen.length} selected`}>
+          <div className="flex items-center gap-1.5 mb-2">
+            {[['pitcher', 'Pitchers'], ['hitter', 'Hitters']].map(([k, l]) => (
+              <button key={k} onClick={() => set({ role: k, players: [] })} className={chip(role === k)}>{l}</button>
+            ))}
+            <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={(t) => { setTeam(t); set({ players: [] }) }} /></div>
+          </div>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search players"
+              className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs" />
+            <button onClick={() => set({ players: eligible.map(p => p.name) })} className="text-[11px] font-semibold text-portal-purple dark:text-indigo-300">All</button>
+            <button onClick={() => set({ players: [] })} className="text-[11px] text-gray-400">None</button>
+          </div>
+          <div className="max-h-44 overflow-y-auto flex flex-wrap gap-1">
+            {loading && <span className="text-xs text-gray-400">Loading roster…</span>}
+            {shownRoster.map(p => (
+              <button key={p.name} onClick={() => togglePlayer(p.name)} className={small(cfg.players.includes(p.name))}
+                title={`${p.total} pitches in the selected session types`}>{p.name}</button>
+            ))}
+            {!loading && !shownRoster.length && <span className="text-xs text-gray-400">No players with data in these session types.</span>}
+          </div>
+        </CrSection>
+
+        <CrSection title="2 · Which data">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Session types</div>
+          <div className="flex flex-wrap gap-1 mb-2.5">
+            {typeOpts.map(([k, l]) => (
+              <button key={k} onClick={() => set({ types: { ...cfg.types, [k]: !cfg.types[k] } })} className={small(!!cfg.types[k])}>{l}</button>
+            ))}
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Time span</div>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {[['season', season == null ? 'All seasons' : `Season ${seasonLabel(season)}`], ['lastN', 'Last N sessions'], ['dates', 'Date range'], ['pick', 'Pick days']].map(([k, l]) => (
+              <button key={k} onClick={() => set({ range: k })} className={small(cfg.range === k)}>{l}</button>
+            ))}
+          </div>
+          {cfg.range === 'season' && <p className="text-[11px] text-gray-400">Follows the season selector at the top of the suite.</p>}
+          {cfg.range === 'lastN' && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              Each player's last
+              <input type="number" min="1" max="30" value={cfg.lastN} onChange={e => set({ lastN: Math.max(1, +e.target.value || 1) })}
+                className="w-14 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs" />
+              session{cfg.lastN === 1 ? '' : 's'} he appeared in
+            </div>
+          )}
+          {cfg.range === 'dates' && <DateRange value={cfg.dates} onChange={(d) => set({ dates: d })} />}
+          {cfg.range === 'pick' && (
+            <div className="max-h-40 overflow-y-auto flex flex-wrap gap-1">
+              {pickable.map(s => (
+                <button key={s.id} onClick={() => set({ picked: cfg.picked.includes(s.id) ? cfg.picked.filter(x => x !== s.id) : [...cfg.picked, s.id] })}
+                  className={small(cfg.picked.includes(s.id))}>
+                  {s.session_date} · {(TYPE_META[s.session_type] || {}).label}{s.session_type === 'game' || s.session_type === 'scrimmage' ? ` · ${s.away_team}@${s.home_team}` : ''}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mt-2.5 mb-1">{role === 'pitcher' ? 'Versus batter side' : 'Versus pitcher hand'}</div>
+          <div className="flex gap-1">
+            {[['', 'All'], ['L', 'vs Left'], ['R', 'vs Right']].map(([k, l]) => (
+              <button key={k} onClick={() => set({ hand: k })} className={small(cfg.hand === k)}>{l}</button>
+            ))}
+          </div>
+        </CrSection>
+
+        <CrSection title="3 · What to show" right={`${blocks.length} blocks`}>
+          <div className="space-y-1 mb-2">
+            {blocks.map((id, i) => blockDefs[id] && (
+              <div key={id} className="flex items-center gap-1.5 rounded-lg bg-gray-50 dark:bg-gray-900/40 px-2 py-1">
+                <span className="text-[10px] tabular-nums text-gray-400 w-4">{i + 1}</span>
+                <span className="text-[12px] font-semibold text-gray-700 dark:text-gray-200 flex-1">{blockDefs[id][1]}{blockDefs[id][2] ? <span className="ml-1 text-[9px] font-normal text-gray-400">half</span> : null}</span>
+                <button onClick={() => moveBlock(i, -1)} className="text-gray-400 hover:text-portal-purple text-xs px-1" title="Move up">▲</button>
+                <button onClick={() => moveBlock(i, 1)} className="text-gray-400 hover:text-portal-purple text-xs px-1" title="Move down">▼</button>
+                <button onClick={() => toggleBlock(id)} className="text-rose-400 hover:text-rose-600 text-xs px-1" title="Remove">×</button>
+              </div>
+            ))}
+            {!blocks.length && <p className="text-xs text-gray-400">Add blocks below.</p>}
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Add a block</div>
+          <div className="flex flex-wrap gap-1">
+            {CR_BLOCKS[role].filter(b => !blocks.includes(b[0])).map(([id, label, , hint]) => (
+              <button key={id} onClick={() => toggleBlock(id)} title={hint} className={small(false)}>+ {label}</button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1.5">Two "half" blocks in a row print side by side.</p>
+          {blocks.includes('keystats') && (<>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mt-3 mb-1">Key numbers to show</div>
+            <div className="flex flex-wrap gap-1">
+              {CR_KEYSTATS[role].map(([k, l]) => <button key={k} onClick={() => toggleIn('keyStats', k, true)} className={small(cfg.keyStats[role].includes(k))}>{l}</button>)}
+            </div>
+          </>)}
+          {role === 'pitcher' && blocks.includes('arsenal') && (<>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mt-3 mb-1">Arsenal columns</div>
+            <div className="flex flex-wrap gap-1">
+              {CR_ARSENAL_COLS.map(([k, l]) => <button key={k} onClick={() => toggleIn('arsenalCols', k, false)} className={small(cfg.arsenalCols.includes(k))}>{l}</button>)}
+            </div>
+          </>)}
+        </CrSection>
+
+        <CrSection title="4 · Title and notes">
+          <input value={cfg.title} onChange={e => set({ title: e.target.value })} placeholder="Report title"
+            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1.5 text-sm font-semibold mb-2" />
+          <textarea value={cfg.notes} onChange={e => set({ notes: e.target.value })} rows={4}
+            placeholder="Notes for everyone in this report (focus for the week, what the numbers mean, next steps)…"
+            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1.5 text-xs" />
+          {chosen.length > 0 && (<>
+            <div className="flex items-center gap-1.5 mt-2 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Note for</span>
+              <select value={notePlayer || chosen[0].name} onChange={e => setNotePlayer(e.target.value)}
+                className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs">
+                {chosen.map(p => <option key={p.name} value={p.name}>{p.name}{cfg.playerNotes?.[p.name] ? ' ✎' : ''}</option>)}
+              </select>
+            </div>
+            <textarea rows={3} value={cfg.playerNotes?.[notePlayer || chosen[0].name] || ''}
+              onChange={e => set({ playerNotes: { ...cfg.playerNotes, [notePlayer || chosen[0].name]: e.target.value } })}
+              placeholder="A note only this player's page shows…"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1.5 text-xs" />
+          </>)}
+          {!blocks.includes('notes') && (cfg.notes || Object.values(cfg.playerNotes || {}).some(Boolean)) && (
+            <button onClick={() => toggleBlock('notes')} className="text-[11px] font-semibold text-amber-700 mt-1">Notes are typed but the Coach notes block is off. Add it</button>
+          )}
+          <label className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-2">
+            <input type="checkbox" checked={cfg.showScope} onChange={e => set({ showScope: e.target.checked })} className="accent-portal-purple" />
+            Print the data scope line under the name
+          </label>
+        </CrSection>
+
+        <CrSection title="Layouts" defaultOpen={false} right={`${Object.keys(presets).length} saved`}>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Starters</div>
+          <div className="flex flex-wrap gap-1 mb-2.5">
+            {CR_STARTERS.map(([name, l]) => <button key={name} onClick={() => applyLayout(l)} className={small(false)}>{name}</button>)}
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Yours (saved in this browser)</div>
+          <div className="space-y-1 mb-2">
+            {Object.keys(presets).map(name => (
+              <div key={name} className="flex items-center gap-1.5">
+                <button onClick={() => setCfg(c => ({ ...c, ...presets[name], players: presets[name].role === c.role ? c.players : [] }))}
+                  className="flex-1 text-left text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline truncate">{name}</button>
+                <button onClick={() => dropPreset(name)} className="text-rose-400 text-xs">×</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <input value={presetName} onChange={e => setPresetName(e.target.value)} placeholder="Name this layout"
+              className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs" />
+            <button onClick={savePreset} className="px-2.5 py-1 rounded-lg bg-portal-purple text-white text-xs font-semibold">Save</button>
+          </div>
+        </CrSection>
+      </div>
+
+      {/* ── preview + export ── */}
+      <div className="min-w-0 space-y-3">
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-4 py-2.5 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Export</span>
+          <button onClick={() => exportAs('pdf')} disabled={!!busy || !chosen.length}
+            className="px-3 py-1.5 rounded-lg bg-portal-purple text-portal-cream text-sm font-semibold hover:opacity-90 disabled:opacity-50">
+            {busy ? `Rendering ${busy}…` : `Download PDF${chosen.length > 1 ? ` (${chosen.length} players)` : ''}`}
+          </button>
+          <button onClick={() => exportAs('png')} disabled={!!busy || !chosen.length}
+            className="px-3 py-1.5 rounded-lg border border-nw-teal text-nw-teal text-sm font-semibold hover:bg-nw-teal/10 disabled:opacity-50">
+            {chosen.length > 1 ? 'Download images (one per player)' : 'Download image'}
+          </button>
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title="Strip color shading for mono printers">
+            <input type="checkbox" checked={bw} onChange={e => setBw(e.target.checked)} className="h-3.5 w-3.5 accent-portal-purple" /> B&W
+          </label>
+          <span className="ml-auto text-[11px] text-gray-400">Each player starts on a new page; long reports flow onto more pages without splitting a block.</span>
+        </div>
+        {!chosen.length ? (
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-10 text-center text-sm text-gray-400">
+            Pick one or more {role === 'pitcher' ? 'pitchers' : 'hitters'} on the left to build the report. The preview below is exactly what exports.
+          </div>
+        ) : (
+          <div className="overflow-x-auto space-y-5 pb-4">
+            {chosen.map(p => (
+              <div key={`${role}-${p.name}`} className="shadow-lg ring-1 ring-gray-200 w-fit mx-auto">
+                <CrPlayerPage player={p} role={role} cfg={cfg} team={team} season={season} sessions={sessions}
+                  ids={crScopeIds(p, sessions, cfg, season)} innerRef={el => { pageRefs.current[p.name] = el }} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
