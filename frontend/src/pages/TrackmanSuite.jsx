@@ -5545,8 +5545,10 @@ function CustomReportTab({ teamCtx, season }) {
     if (bw) list.forEach(n => n.classList.add('bw-report'))
     try {
       if (kind === 'pdf') {
-        const { saveNodesAsPagedPdf } = await import('../lib/reportExport')
-        await saveNodesAsPagedPdf(list, `${fileBase}${bw ? '_bw' : ''}`, (d, t) => setBusy(`${d}/${t}`))
+        // one PDF per player (named for him), zipped when there is more than one
+        const { saveNodesAsPdfZip } = await import('../lib/reportExport')
+        const sfx = `${fileBase}${bw ? '_bw' : ''}`
+        await saveNodesAsPdfZip(list, chosen.map(p => `${p.name.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '')}_${sfx}`), sfx, (d, t) => setBusy(`${d}/${t}`))
       } else {
         const { saveNodeAsImage } = await import('../lib/reportExport')
         for (let i = 0; i < list.length; i++) {
@@ -5737,7 +5739,7 @@ function CustomReportTab({ teamCtx, season }) {
           <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Export</span>
           <button onClick={() => exportAs('pdf')} disabled={!!busy || !chosen.length}
             className="px-3 py-1.5 rounded-lg bg-portal-purple text-portal-cream text-sm font-semibold hover:opacity-90 disabled:opacity-50">
-            {busy ? `Rendering ${busy}…` : `Download PDF${chosen.length > 1 ? ` (${chosen.length} players)` : ''}`}
+            {busy ? `Rendering ${busy}…` : chosen.length > 1 ? `Download PDFs (ZIP, ${chosen.length} players)` : 'Download PDF'}
           </button>
           <button onClick={() => exportAs('png')} disabled={!!busy || !chosen.length}
             className="px-3 py-1.5 rounded-lg border border-nw-teal text-nw-teal text-sm font-semibold hover:bg-nw-teal/10 disabled:opacity-50">
@@ -5746,7 +5748,7 @@ function CustomReportTab({ teamCtx, season }) {
           <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title="Strip color shading for mono printers">
             <input type="checkbox" checked={bw} onChange={e => setBw(e.target.checked)} className="h-3.5 w-3.5 accent-portal-purple" /> B&W
           </label>
-          <span className="ml-auto text-[11px] text-gray-400">Each player starts on a new page; long reports flow onto more pages without splitting a block.</span>
+          <span className="ml-auto text-[11px] text-gray-400">One PDF per player, named for him (zipped when there is more than one); long reports flow onto more pages without splitting a block.</span>
         </div>
         {!chosen.length ? (
           <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-10 text-center text-sm text-gray-400">

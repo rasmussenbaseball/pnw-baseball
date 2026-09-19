@@ -131,9 +131,9 @@ export async function saveNodesAsPdf(nodes, filename = 'cards', onProgress, opts
 // fresh page and is cut BETWEEN its `[data-report-block]` children, so a
 // table or chart never splits across a page unless it is taller than a page
 // on its own. Used by the TrackMan Custom Reporting builder.
-export async function saveNodesAsPagedPdf(nodes, filename = 'report', onProgress, opts = {}) {
+async function buildPagedPdf(nodes, onProgress, opts = {}) {
   const list = (nodes || []).filter(Boolean)
-  if (!list.length) return
+  if (!list.length) return null
   const { unit = 'pt', format = 'letter', orientation = 'portrait', margin = 26 } = opts
   const [{ default: html2canvas }, jspdf] = await Promise.all([
     import('html2canvas'), import('jspdf'),
@@ -178,7 +178,87 @@ export async function saveNodesAsPagedPdf(nodes, filename = 'report', onProgress
     }
     if (onProgress) onProgress(i + 1, list.length)
   }
-  pdf.save(`${filename}.pdf`)
+  return pdf
+}
+
+export async function saveNodesAsPagedPdf(nodes, filename = 'report', onProgress, opts = {}) {
+  const pdf = await buildPagedPdf(nodes, onProgress, opts)
+  if (pdf) pdf.save(`${filename}.pdf`)
+}
+
+// ── ZIP of one PDF per node ──────────────────────────────────────
+// A minimal STORE-only zip writer (PDFs are already compressed, so deflate
+// would buy nothing) — no dependency to install on the build server.
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1
+    t[n] = c >>> 0
+  }
+  return t
+})()
+function crc32(buf) {
+  let c = 0xFFFFFFFF
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8)
+  return (c ^ 0xFFFFFFFF) >>> 0
+}
+function zipStore(files) {   // files: [{ name, data: Uint8Array }]
+  const enc = new TextEncoder()
+  const now = new Date()
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()
+  const parts = [], central = []
+  let offset = 0
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length
+    const local = new DataView(new ArrayBuffer(30))
+    local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true)
+    local.setUint16(8, 0, true); local.setUint16(10, dosTime, true); local.setUint16(12, dosDate, true)
+    local.setUint32(14, crc, true); local.setUint32(18, size, true); local.setUint32(22, size, true)
+    local.setUint16(26, name.length, true); local.setUint16(28, 0, true)
+    parts.push(new Uint8Array(local.buffer), name, f.data)
+    const cd = new DataView(new ArrayBuffer(46))
+    cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true)
+    cd.setUint16(10, 0, true); cd.setUint16(12, dosTime, true); cd.setUint16(14, dosDate, true)
+    cd.setUint32(16, crc, true); cd.setUint32(20, size, true); cd.setUint32(24, size, true)
+    cd.setUint16(28, name.length, true); cd.setUint32(42, offset, true)
+    central.push(new Uint8Array(cd.buffer), name)
+    offset += 30 + name.length + size
+  }
+  const cdSize = central.reduce((a, b) => a + b.length, 0)
+  const end = new DataView(new ArrayBuffer(22))
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true)
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true)
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' })
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 4000)
+}
+
+// One paged PDF PER node, zipped. `names[i]` is the file name (no extension)
+// for nodes[i]. A single node skips the zip and downloads its PDF directly.
+export async function saveNodesAsPdfZip(nodes, names, zipName = 'reports', onProgress, opts = {}) {
+  const list = (nodes || []).map((n, i) => [n, names?.[i] || `report_${i + 1}`]).filter(([n]) => n)
+  if (!list.length) return
+  const files = [], seen = {}
+  for (let i = 0; i < list.length; i++) {
+    const [node, raw] = list[i]
+    const pdf = await buildPagedPdf([node], null, opts)
+    let name = raw
+    if (seen[name]) name = `${raw}_${++seen[raw]}`; else seen[raw] = 1
+    files.push({ name: `${name}.pdf`, data: new Uint8Array(pdf.output('arraybuffer')) })
+    if (onProgress) onProgress(i + 1, list.length)
+  }
+  if (files.length === 1) return downloadBlob(new Blob([files[0].data], { type: 'application/pdf' }), files[0].name)
+  downloadBlob(zipStore(files), `${zipName}.zip`)
 }
 
 export async function saveNodeAsImage(node, filename = 'report') {
