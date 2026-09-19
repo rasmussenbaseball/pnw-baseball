@@ -4981,6 +4981,8 @@ const CR_BLOCKS = {
     ['movement', 'Movement plot', true, 'IVB x HB, catcher view'],
     ['release', 'Release point', true, ''],
     ['locations', 'Locations by pitch', false, 'K-zone heatmap per pitch type'],
+    ['locspray', 'Locations + opposing spray', false, 'Up to 5 pitch-type heatmaps with the spray chart of contact allowed beside them'],
+    ['oppspray', 'Opposing spray chart', true, 'Where the balls in play against him went, colored by EV'],
     ['zonemaps', 'Zone maps', false, 'Whiffs, damage and usage by location'],
     ['countusage', 'Pitch mix by count', true, ''],
     ['countlev', 'Count leverage', false, 'First-pitch strike, putaway, CSW ahead/behind'],
@@ -5043,7 +5045,7 @@ const CR_STARTERS = [
     types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
     // Nate's own layout (2026-09-19 Butcher report), with the plots shrunk into
     // one row so the notes box gets half the page
-    blocks: ['keystats', 'line', 'arsenal', 'plotsnotes', 'locations'],
+    blocks: ['keystats', 'line', 'arsenal', 'plotsnotes', 'locspray'],
     keyStats: ['pitches', 'fb_velo', 'fb_max', 'stuff', 'strike_pct', 'whiff_pct', 'csw_pct', 'ev_against', 'loc', 'zone_pct', 'chase_pct', 'rv'],
     arsenalCols: ['n', 'usage', 'stuff', 'loc', 'velo', 'max', 'ivb', 'hb', 'spin', 'ext', 'vaa', 'zone', 'whiff', 'chase', 'csw', 'ev', 'rv'] }],
   ['Post-game recap · hitter', { role: 'hitter', title: 'Post-Game Recap', range: 'lastN', lastN: 1,
@@ -5365,6 +5367,22 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
             </div>
           </CrCard>
         )
+      case 'locspray': {
+        const types = Object.entries(byType).slice(0, 5)
+        return (
+          <div className="grid gap-3 items-stretch" style={{ gridTemplateColumns: '2.5fr 1fr' }}>
+            <CrCard title="Locations by pitch">
+              <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(3, types.length)}, minmax(0, 1fr))` }}>
+                {types.map(([t, ps]) => <LocationHeatmap key={t} pitches={ps} title={t} />)}
+              </div>
+            </CrCard>
+            <CrCard title="Opposing spray" sub={`${pitches.filter(p => crFair(p) && p.bearing != null && p.distance != null).length} BIP`}>
+              <SprayChart pitches={pitches.filter(crFair)} />
+            </CrCard>
+          </div>
+        )
+      }
+      case 'oppspray': return <CrCard title="Opposing spray (colored by EV)"><SprayChart pitches={pitches.filter(crFair)} /></CrCard>
       case 'zonemaps':
         if (isP) return <PitcherZoneMaps pitches={pitches} />
         return (

@@ -1855,6 +1855,7 @@ def trackman_pitcher_detail(
                        p.exit_speed, p.launch_angle, p.play_result, p.k_or_bb,
                        p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        p.outs_on_play, p.runs_scored, p.direction,
+                       p.distance, p.bearing, p.batter, p.tagged_hit_type, p.contact_x, p.contact_y,
                        s.session_date, s.id AS session_id, s.session_type
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher = %s{_NO_MISTAG}
