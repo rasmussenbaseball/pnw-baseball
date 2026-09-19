@@ -1269,11 +1269,51 @@ function MovementPlot({ pitches, onPick, selectedId, arm }) {
 }
 
 // Release point, catcher's view.
-function ReleasePlot({ pitches }) {
+function ReleasePlot({ pitches, zoom = false }) {
   const W = 300, H = 300
+  const pts = pitches.filter(p => p.rel_side != null && p.rel_height != null)
+  // zoom: a square window fit to THIS pitcher's release cluster (min 1.5 ft
+  // across) instead of the fixed 10 x 8 ft frame, where a tight release is a
+  // single smudge. Half-foot gridlines keep the scale readable.
+  if (zoom && pts.length) {
+    const med = (a) => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)] }
+    const cx = med(pts.map(p => p.rel_side)), cy = med(pts.map(p => p.rel_height))
+    // ignore the wildest 5% when sizing the window so one mistag cannot shrink everything
+    const dev = pts.map(p => Math.max(Math.abs(p.rel_side - cx), Math.abs(p.rel_height - cy))).sort((a, b) => a - b)
+    const half = Math.max(0.75, Math.ceil((dev[Math.floor(0.95 * (dev.length - 1))] + 0.2) * 4) / 4)
+    const zx = (v) => 26 + ((v - (cx - half)) / (2 * half)) * (W - 36)
+    const zy = (v) => (H - 22) - ((v - (cy - half)) / (2 * half)) * (H - 32)
+    const ticks = (c) => { const out = []; for (let t = Math.ceil((c - half) * 2) / 2; t <= c + half + 1e-9; t += 0.5) out.push(Math.round(t * 2) / 2); return out }
+    const byType = {}
+    pts.forEach(p => { (byType[p.ptype] = byType[p.ptype] || []).push(p) })
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        {ticks(cy).map(v => (
+          <g key={`h${v}`}>
+            <line x1="26" y1={zy(v)} x2={W - 10} y2={zy(v)} stroke="#e5e7eb" strokeWidth={Number.isInteger(v) ? 1.2 : 0.6} />
+            <text x="22" y={zy(v) + 3.5} fontSize="10" fill="#9ca3af" textAnchor="end">{v.toFixed(1)}</text>
+          </g>
+        ))}
+        {ticks(cx).map(v => (
+          <g key={`v${v}`}>
+            <line x1={zx(v)} y1="10" x2={zx(v)} y2={H - 22} stroke="#e5e7eb" strokeWidth={Number.isInteger(v) ? 1.2 : 0.6} />
+            <text x={zx(v)} y={H - 9} fontSize="10" fill="#9ca3af" textAnchor="middle">{v.toFixed(1)}</text>
+          </g>
+        ))}
+        {pts.map((p, i) => (
+          <circle key={i} cx={Math.max(26, Math.min(W - 10, zx(p.rel_side)))} cy={Math.max(10, Math.min(H - 22, zy(p.rel_height)))}
+            r="4.5" fill={cFor(p.ptype)} opacity="0.45" />
+        ))}
+        {Object.entries(byType).filter(([, ps]) => ps.length >= 2).map(([t, ps]) => {
+          const mx = ps.reduce((a, p) => a + p.rel_side, 0) / ps.length, my = ps.reduce((a, p) => a + p.rel_height, 0) / ps.length
+          return <circle key={t} cx={zx(mx)} cy={zy(my)} r="6.5" fill={cFor(t)} stroke="#111827" strokeWidth="1.4"><title>{t} average release</title></circle>
+        })}
+        <text x={W - 10} y="9" fontSize="9" fill="#9ca3af" textAnchor="end">feet · outlined dot = pitch average</text>
+      </svg>
+    )
+  }
   const sx = (side) => W / 2 + (side / 5) * (W / 2 - 16)
   const sy = (h) => H - 20 - (h / 8) * (H - 40)
-  const pts = pitches.filter(p => p.rel_side != null && p.rel_height != null)
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
       <line x1="8" y1={H - 20} x2={W - 8} y2={H - 20} stroke="currentColor" className="text-gray-300 dark:text-gray-500" strokeWidth="1.5" />
@@ -5289,7 +5329,7 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
                 ))}
               </div>
             </CrCard>
-            <CrCard title="Release"><ReleasePlot pitches={pitches} /></CrCard>
+            <CrCard title="Release (zoomed)"><ReleasePlot pitches={pitches} zoom /></CrCard>
             <div className="bg-white rounded-xl ring-1 ring-gray-200 p-4 flex flex-col">
               <div className="flex items-baseline justify-between mb-2">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Coach notes</span>
@@ -5316,7 +5356,7 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
             </div>
           </CrCard>
         )
-      case 'release': return <CrCard title="Release point"><ReleasePlot pitches={pitches} /></CrCard>
+      case 'release': return <CrCard title="Release point (zoomed to his cluster)"><ReleasePlot pitches={pitches} zoom /></CrCard>
       case 'locations':
         return (
           <CrCard title="Locations by pitch">
