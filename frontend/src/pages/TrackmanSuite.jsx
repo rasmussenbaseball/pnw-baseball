@@ -2243,6 +2243,17 @@ function HitterLabTab({ teamCtx, season }) {
   const pctKeys = Object.keys(HITTER_PCTL_LABELS).filter(k => pct[k])
   const pitches = data?.pitches || []
   const bbe = pitches.filter(p => p.exit_speed != null)
+  // The same numbers the Hitting tab table shows, for THIS hitter, live only
+  // (BP context has no decisions or results), under the lab's filters.
+  const { data: board } = useApi(active && context !== 'bp' ? '/trackman/hitting-board' : null,
+    { context: 'live', team: team || undefined, throws: vsThrows || undefined, season,
+      date_from: dates.from, date_to: dates.to })
+  const boardRow = useMemo(() => (board?.batters || []).find(b => b.batter === active) || null, [board, active])
+  const boardCohort = useMemo(() => {
+    const m = {}
+    HB_FULL.forEach(([, k]) => { m[k] = (board?.batters || []).map(b => b[k]).filter(v => v != null).map(Number) })
+    return m
+  }, [board])
 
   return (
     <div className="space-y-3">
@@ -2307,6 +2318,10 @@ function HitterLabTab({ teamCtx, season }) {
           )}
 
           {data.xstats && <XStatsCard x={data.xstats} />}
+
+          {boardRow && <LiveBoardLine row={boardRow} cohort={boardCohort} pool={(board?.batters || []).length} />}
+
+          {data.pt_results && <ResultsByPitchCard results={data.pt_results} />}
 
           {data.splits && <SplitsCard splits={data.splits} />}
 
@@ -4064,6 +4079,121 @@ function VeloBandBoard({ rows, isBp }) {
         Small numbers next to each EV are tracked balls in that band; weigh every band by that count,
         since a one-ball band is a single swing, not a skill.
       </p>
+    </div>
+  )
+}
+
+// Every column of the Hitting tab's board, for one hitter, live only.
+// Shading compares him with every other hitter on the board (same filters).
+function LiveBoardLine({ row, cohort, pool }) {
+  const groups = [
+    ['Decisions', ['pitches', 'swing_pct', 'contact_pct', 'zone_contact_pct', 'ozone_contact_pct', 'chase_pct', 'fp_swing_pct', 'k2_contact_pct', 'k_pct', 'bb_pct']],
+    ['Contact', ['bbe', 'avg_ev', 'p90_ev', 'max_ev', 'avg_la', 'hh_pct', 'barrel_pct', 'gb_pct', 'ld_pct', 'fb_pct', 'airpull_pct', 'depth']],
+    ['Value', ['xavg', 'xslg', 'xwoba', 'xwobacon', 'rv', 'heart_rv', 'shadow_rv', 'chase_rv', 'transfer']],
+  ]
+  const defs = Object.fromEntries(HB_FULL.map(d => [d[1], d]))
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Live numbers — the full Hitting board line</span>
+        <span className="text-[10px] text-gray-400">games + scrimmages + intrasquads · this view's hand and date filters · shading vs the {pool} hitters on the board</span>
+      </div>
+      <div className="px-4 py-2 space-y-2">
+        {groups.map(([g, keys]) => (
+          <div key={g} className="flex items-stretch gap-0">
+            <div className="w-16 shrink-0 text-[9.5px] font-bold uppercase tracking-wide text-gray-400 self-center">{g}</div>
+            <table className="text-[12.5px]"><tbody>
+              <tr className="text-[9.5px] uppercase tracking-wide text-gray-400">
+                {keys.map(k => defs[k] && (
+                  <th key={k} className="px-1.5 pb-0.5 text-right font-semibold whitespace-nowrap">
+                    <StatTip k={k} group="hitting" label={defs[k][0]} fallback={defs[k][2]}
+                      avg={cohort[k]?.length ? cohort[k].reduce((a, v) => a + v, 0) / cohort[k].length : null} n={cohort[k]?.length} />
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {keys.map(k => {
+                  const d = defs[k]
+                  if (!d) return null
+                  const opts = d[3] || {}
+                  if (opts.kind === 'depth') return (
+                    <td key={k} className={`px-1.5 py-1 text-right tabular-nums ${DEPTH_CLS[depthTone(row[k])] || ''}`}>{row[k] != null ? row[k].toFixed(2) : '–'}</td>
+                  )
+                  if (opts.plain) return <td key={k} className="px-1.5 py-1 text-right tabular-nums text-gray-500">{row[k] != null ? Number(row[k]).toFixed(opts.dec ?? 1) : '–'}</td>
+                  return <HeatCell key={k} v={row[k]} vals={cohort[k]} higher={opts.higher !== false} dec={opts.dec ?? 1} plus={!!opts.plus} extra="font-semibold" />
+                })}
+              </tr>
+            </tbody></table>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Results vs each pitch type in live pitching: the box line of the plate
+// appearances that ENDED on that pitch, beside the process rates on every
+// pitch of that type he saw.
+function ResultsByPitchCard({ results }) {
+  const rows = Object.entries(results || {})
+  if (!rows.length) return null
+  const grab = f => rows.map(([, s]) => f(s)).filter(v => v != null).map(Number)
+  const cohort = { avg: grab(s => s.line?.avg), slg: grab(s => s.line?.slg), woba: grab(s => s.line?.woba), xw: grab(s => s.xwobacon),
+                   whiff: grab(s => s.whiff_pct), chase: grab(s => s.chase_pct), ev: grab(s => s.avg_ev), hh: grab(s => s.hard_hit_pct), rv: grab(s => s.rv) }
+  const f3 = v => v == null ? '–' : Number(v).toFixed(3).replace(/^0\./, '.')
+  const n = v => v == null ? '–' : v
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Results vs pitch type — live pitching</span>
+        <span className="text-[10px] text-gray-400">a PA counts on the pitch that ended it · 5+ seen · shading compares the pitch types</span>
+      </div>
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+            <th className="px-4 py-1.5">Pitch</th>
+            <th className="px-2 py-1.5 text-right">Seen</th><th className="px-2 py-1.5 text-right">PA</th><th className="px-2 py-1.5 text-right">AB</th>
+            <th className="px-2 py-1.5 text-right">H</th><th className="px-2 py-1.5 text-right">2B</th><th className="px-2 py-1.5 text-right">3B</th>
+            <th className="px-2 py-1.5 text-right">HR</th><th className="px-2 py-1.5 text-right">BB</th><th className="px-2 py-1.5 text-right">K</th>
+            <th className="px-2 py-1.5 text-right">AVG</th><th className="px-2 py-1.5 text-right">SLG</th><th className="px-2 py-1.5 text-right">wOBA</th>
+            <th className="px-2 py-1.5 text-right" title="Expected wOBA on contact">xwOBAcon</th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="whiff_pct" group="hitting" label="Whiff%" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="chase_pct" group="hitting" label="Chase%" /></th>
+            <th className="px-2 py-1.5 text-right">EV</th><th className="px-2 py-1.5 text-right">HH%</th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="rv" group="hitting" label="RV" /></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {rows.map(([t, s]) => {
+            const l = s.line || {}
+            return (
+              <tr key={t}>
+                <td className="px-4 py-1.5 font-semibold whitespace-nowrap">
+                  <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: cFor(t) }} />vs {t}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{s.pitches}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{n(l.pa)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{n(l.ab)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{n(l.h)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{n(l.d2)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{n(l.d3)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{n(l.hr)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{n(l.bb)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{n(l.k)}</td>
+                <HeatCell v={l.avg} vals={cohort.avg} dec={3} extra="font-semibold" />
+                <HeatCell v={l.slg} vals={cohort.slg} dec={3} />
+                <HeatCell v={l.woba} vals={cohort.woba} dec={3} extra="font-semibold" />
+                <HeatCell v={s.xwobacon} vals={cohort.xw} dec={3} />
+                <HeatCell v={s.whiff_pct} vals={cohort.whiff} higher={false} />
+                <HeatCell v={s.chase_pct} vals={cohort.chase} higher={false} />
+                <HeatCell v={s.avg_ev} vals={cohort.ev} />
+                <HeatCell v={s.hard_hit_pct} vals={cohort.hh} />
+                <HeatCell v={s.rv} vals={cohort.rv} plus extra="font-semibold" />
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

@@ -2584,6 +2584,21 @@ def trackman_batter_detail(
         if len(rows_t) >= 10:
             splits["pitch_type"][t] = _split_line(rows_t)
 
+    # Results by pitch type, LIVE only: the plate appearances that ENDED on
+    # each pitch type (box line + wOBA) alongside the process rates on every
+    # pitch of that type he saw. BP has no results and no real pitch tags.
+    live_rows = [x for x in pitches if x.get("session_type") in _LIVE_TYPES and x["ptype"] and x["ptype"] != "Mistag"]
+    pas_by_t = defaultdict(list)
+    for r in box.terminal_pas(live_rows):
+        pas_by_t[r["ptype"]].append(r)
+    pt_results = {}
+    for t, rows_t in sorted(by_pt.items(), key=lambda kv: -len(kv[1])):
+        rows_live = [x for x in rows_t if x.get("session_type") in _LIVE_TYPES]
+        if len(rows_live) < 5:
+            continue
+        line = box.hitter_line(pas_by_t.get(t, []), hit_lg) or {}
+        pt_results[t] = {**_split_line(rows_live), "line": line}
+
     # Effective-velocity bands: what this hitter does as the ball plays faster.
     vb = defaultdict(_band_bucket)
     for x in pitches:
@@ -2615,7 +2630,8 @@ def trackman_batter_detail(
             "line": box.hitter_line(box.terminal_pas(
                 [x for x in pitches if x.get("session_type") in _LIVE_TYPES]), hit_lg),
             "count_states": count_states([x for x in pitches if x.get("session_type") in _LIVE_TYPES],
-                                         lambda r: _is_fair(r["pitch_call"], r.get("direction")), rv_base)}
+                                         lambda r: _is_fair(r["pitch_call"], r.get("direction")), rv_base),
+            "pt_results": pt_results}
 
 
 def _bp_grade(avg_ev, hh_pct, ss_pct):
