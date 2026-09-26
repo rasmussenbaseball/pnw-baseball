@@ -2542,6 +2542,7 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) 
     ['Pitches', p.pitches],
     ...(!isPen && p.bf ? [['Batters faced', p.bf]] : []),
     ['FB velo', fmt(p.fb_velo)], ['FB max', fmt(p.fb_max)],
+    ['Stuff+', p.stuff ?? '—'], ['Loc+', p.loc ?? '—'],
     ['Strike%', fmt(p.strike_pct)], ['Zone%', fmt(p.zone_pct)],
     ...(!isPen ? [
       ['CSW%', fmt(p.csw_pct)], ['Whiffs', p.whiffs], ['K', p.k], ['BB', p.bb],
@@ -2571,6 +2572,8 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) 
           <thead>
             <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
               <th className="py-1 pr-2">Pitch</th><th className="py-1 px-1.5 text-right">N</th>
+              <th className="py-1 px-1.5 text-right"><StatTip k="stuff" group="pitching" label="Stuff+" /></th>
+              <th className="py-1 px-1.5 text-right"><StatTip k="loc" group="pitching" label="Loc+" /></th>
               <th className="py-1 px-1.5 text-right">Use%</th><th className="py-1 px-1.5 text-right">Velo</th>
               <th className="py-1 px-1.5 text-right">Max</th><th className="py-1 px-1.5 text-right">Spin</th>
               <th className="py-1 px-1.5 text-right">IVB</th><th className="py-1 px-1.5 text-right">HB</th>
@@ -2590,6 +2593,8 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) 
                   {t.type}
                 </td>
                 <td className="py-1 px-1.5 text-right tabular-nums">{t.n}</td>
+                <td className={`py-1 px-1.5 text-right tabular-nums font-bold ${t.stuff == null ? 'text-gray-300' : t.stuff >= 110 ? 'text-[#d22d49]' : t.stuff <= 90 ? 'text-[#3661ad]' : ''}`}>{t.stuff ?? '–'}</td>
+                <td className={`py-1 px-1.5 text-right tabular-nums ${t.loc == null ? 'text-gray-300' : t.loc >= 110 ? 'text-[#d22d49]' : t.loc <= 90 ? 'text-[#3661ad]' : ''}`}>{t.loc ?? '–'}</td>
                 <td className="py-1 px-1.5 text-right tabular-nums">{fmt(t.usage)}</td>
                 <td className="py-1 px-1.5 text-right tabular-nums font-semibold">{fmt(t.velo)}</td>
                 <td className="py-1 px-1.5 text-right tabular-nums text-gray-400">{fmt(t.max_velo)}</td>

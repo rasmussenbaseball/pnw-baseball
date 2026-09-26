@@ -2737,6 +2737,22 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
         for r in rs:
             t = T.setdefault(r["ptype"] or "Unknown", defaultdict(list))
             t["rows"].append(r)
+        # Stuff+ / Location+ per type, the same site-wide model and command
+        # score as the Pitching tab; a single pitch is a reading, not a type
+        cents = {}
+        for tname, t in T.items():
+            trs = t["rows"]
+            cents[tname] = {"ptype": tname, "n": len(trs), "throws": p["throws"],
+                            "velo": _avg([r["rel_speed"] for r in trs]), "ivb": _avg([r["ivb"] for r in trs]),
+                            "hb": _avg([r["horz_break"] for r in trs]), "spin": _avg([r["spin_rate"] for r in trs]),
+                            "ext": _avg([r["extension"] for r in trs]), "rel_h": _avg([r["rel_height"] for r in trs]),
+                            "rel_s": _avg([r["rel_side"] for r in trs])}
+        fb_ent = None
+        for tname, e in cents.items():
+            cand = (tname == "Fastball", tname in FB_FAMILY, e["n"])
+            if fb_ent is None or cand > fb_ent[0]:
+                fb_ent = (cand, e)
+        stuff_w = stuff_n = loc_w = loc_n = 0
         types = []
         for tname, t in sorted(T.items(), key=lambda kv: -len(kv[1]["rows"])):
             trs = t["rows"]
@@ -2744,8 +2760,18 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             sw = sum(1 for r in trs if r["is_swing"])
             tz = [r for r in trs if r["is_in_zone"] is not None]
             velos = [r["rel_speed"] for r in trs if r["rel_speed"] is not None]
+            stuff = loc = None
+            if tn >= 2 and tname in SUITE_TYPES:
+                stuff = grade_trackman(cents[tname], fb_ent[1] if fb_ent else cents[tname])
+                locs = [(r["plate_loc_side"] * 12.0, r["plate_loc_height"] * 12.0) for r in trs
+                        if r["plate_loc_side"] is not None and r["plate_loc_height"] is not None]
+                loc = location_plus(tname.lower(), locs, min_n=1)
+                if stuff is not None:
+                    stuff_w += stuff * tn; stuff_n += tn
+                if loc is not None:
+                    loc_w += loc * tn; loc_n += tn
             types.append({
-                "type": tname, "n": tn, "usage": _pct(tn, n),
+                "type": tname, "n": tn, "usage": _pct(tn, n), "stuff": stuff, "loc": loc,
                 "velo": _avg(velos), "max_velo": round(max(velos), 1) if velos else None,
                 "spin": _avg([r["spin_rate"] for r in trs], 0),
                 "ivb": _avg([r["ivb"] for r in trs]),
@@ -2767,6 +2793,8 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             "bf": len({(r["inning"], r["top_bottom"], r["pa_of_inning"]) for r in rs
                        if r["pa_of_inning"] is not None}) if not is_pen else None,
             "fb_velo": _avg(fb), "fb_max": round(max(fb), 1) if fb else None,
+            "stuff": round(stuff_w / stuff_n) if stuff_n else None,
+            "loc": round(loc_w / loc_n) if loc_n else None,
             "strike_pct": _pct(sum(1 for r in rs if r["pitch_call"] in _STRIKE_CALLS), n),
             "csw_pct": _pct(sum(1 for r in rs
                                 if r["pitch_call"] in ("StrikeCalled", "StrikeSwinging")), n),
