@@ -1465,7 +1465,7 @@ def trackman_hitting_board(
 
     sessions = {}
     B = defaultdict(lambda: {
-        "rows": 0, "called": 0, "sw": 0, "ct": 0, "ch": 0, "oz": 0,
+        "rows": 0, "called": 0, "sw": 0, "ct": 0, "ch": 0, "oz": 0, "iz": 0,
         "z_sw": 0, "z_ct": 0, "oz_sw": 0, "oz_ct": 0,
         "fp_n": 0, "fp_sw": 0, "k2_sw": 0, "k2_ct": 0,
         "evs": [], "las": [], "hh": 0, "barrel": 0, "gb": 0, "ld": 0, "fb": 0,
@@ -1518,6 +1518,8 @@ def trackman_hitting_board(
                         b["oz_ct"] += 1
             if r["is_in_zone"] is False:
                 b["oz"] += 1
+            elif r["is_in_zone"] is True:
+                b["iz"] += 1
                 if r["is_chase"]:
                     b["ch"] += 1
             if r["balls"] == 0 and r["strikes"] == 0:
@@ -1623,6 +1625,7 @@ def trackman_hitting_board(
             row.update({
                 "swing_pct": _rate2(b["sw"], b["called"]),
                 "contact_pct": _rate2(b["ct"], b["sw"]),
+                "zone_swing_pct": _rate2(b["z_sw"], b["iz"]),
                 "zone_contact_pct": _rate2(b["z_ct"], b["z_sw"]),
                 "ozone_contact_pct": _rate2(b["oz_ct"], b["oz_sw"]),
                 "chase_pct": _rate2(b["ch"], b["oz"]),

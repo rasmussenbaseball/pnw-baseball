@@ -673,6 +673,7 @@ const HB_FULL = [
   ['Pitches', 'pitches', 'Pitches seen', { plain: true, dec: 0 }],
   ['BBE', 'bbe', 'Tracked batted balls', { plain: true, dec: 0 }],
   ['Swing%', 'swing_pct', 'Swings per pitch seen', {}],
+  ['Z-Sw%', 'zone_swing_pct', 'Zone swing: swings per pitch IN the zone. Low here is passivity on hittable pitches', {}],
   ['Contact%', 'contact_pct', 'Contact per swing', {}],
   ['Z-Ct%', 'zone_contact_pct', 'Zone contact: contact per swing at pitches IN the zone. The bat-to-ball skill that matters most, since these are the pitches he should handle', {}],
   ['O-Ct%', 'ozone_contact_pct', 'Out-of-zone contact: contact per swing at pitches OUT of the zone. High here is not always good — weak contact on pitchers\u2019 pitches turns balls into outs', {}],
@@ -4092,7 +4093,7 @@ function VeloBandBoard({ rows, isBp }) {
 // Shading compares him with every other hitter on the board (same filters).
 function LiveBoardLine({ row, cohort, pool }) {
   const groups = [
-    ['Decisions', ['pitches', 'swing_pct', 'contact_pct', 'zone_contact_pct', 'ozone_contact_pct', 'chase_pct', 'fp_swing_pct', 'k2_contact_pct', 'k_pct', 'bb_pct']],
+    ['Decisions', ['pitches', 'swing_pct', 'zone_swing_pct', 'contact_pct', 'zone_contact_pct', 'ozone_contact_pct', 'chase_pct', 'fp_swing_pct', 'k2_contact_pct', 'k_pct', 'bb_pct']],
     ['Contact', ['bbe', 'avg_ev', 'p90_ev', 'max_ev', 'avg_la', 'hh_pct', 'barrel_pct', 'gb_pct', 'ld_pct', 'fb_pct', 'airpull_pct', 'depth']],
     ['Value', ['xavg', 'xslg', 'xwoba', 'xwobacon', 'rv', 'heart_rv', 'shadow_rv', 'chase_rv', 'transfer']],
   ]

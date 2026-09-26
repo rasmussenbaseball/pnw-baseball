@@ -30,6 +30,7 @@ export const STAT_DEFS = {
   max_dist: ['Longest tracked batted ball.', 'Max projected distance.', 0, ' ft'],
   swing_pct: ['Swing rate.', 'Swings / called pitches x 100.', 1, '%'],
   contact_pct: ['Contact rate: how often a swing finds the ball.', 'Swings with contact / total swings x 100.', 1, '%'],
+  zone_swing_pct: ['Zone swing rate: how often he offers at a strike. Pair with Chase%: high Z-Sw% and low Chase% is the goal.', 'Swings at in-zone pitches / in-zone pitches x 100.', 1, '%'],
   zone_contact_pct: ['Zone contact: bat-to-ball on pitches he should handle.', 'Contact on swings at in-zone pitches / in-zone swings x 100.', 1, '%'],
   ozone_contact_pct: ['Out-of-zone contact. High is not always good: weak contact on a pitcher’s pitch makes outs.', 'Contact on swings at out-of-zone pitches / out-of-zone swings x 100.', 1, '%'],
   chase_pct: ['Chase rate: swinging at balls.', 'Swings at out-of-zone pitches / out-of-zone pitches x 100.', 1, '%'],
