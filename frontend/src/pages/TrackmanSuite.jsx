@@ -3201,7 +3201,7 @@ function CatcherLogSection() {
       const res = await fetch('/api/v1/trackman/catcher-log/upload', { method: 'POST', body: fd, headers: await authHeaders() })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`)
       const j = await res.json()
-      setNote({ ok: `Logged ${j.rows} events across ${j.games} game${j.games === 1 ? '' : 's'} for ${j.session_date}: ${j.catchers.join(', ')}` })
+      setNote({ ok: `Logged ${j.rows} events across ${j.games} game${j.games === 1 ? '' : 's'}${j.throwdowns ? ` + ${j.throwdowns} throwdowns` : ''} for ${j.session_date}: ${j.catchers.join(', ')}` })
       if (fileRef.current) fileRef.current.value = ''
       refetch()
     } catch (e) { setNote({ err: e.message }) } finally { setBusy(false) }
@@ -3212,7 +3212,7 @@ function CatcherLogSection() {
     refetch()
   }
   const pct = v => v == null ? '—' : `${v.toFixed(0)}%`
-  const outcomeCls = (o) => o === 'Block Success' || o === 'Caught Stealing' || o === 'Caught'
+  const outcomeCls = (o) => o === 'Block Success' || o === 'Caught Stealing' || o === 'Caught' || o === 'Out'
     ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300'
     : o === 'Block Miss' || o === 'Passed Ball' || o === 'Stolen Base'
       ? 'text-rose-700 bg-rose-50 dark:bg-rose-900/30 dark:text-rose-300'
@@ -3222,7 +3222,7 @@ function CatcherLogSection() {
     <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-hidden">
       <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between flex-wrap gap-2">
         <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Coach quick log — blocks, steals, throwdowns</span>
-        <span className="text-[10px] text-gray-400">hand-charted every live game · what TrackMan cannot see · block events matched to the exact pitch when the inning and count line up</span>
+        <span className="text-[10px] text-gray-400">hand-charted every live game (Live Log + Throwdowns sheets) · what TrackMan cannot see · blocks matched to the exact pitch by catcher, pitcher, inning and count</span>
       </div>
       <div className="px-4 py-3 flex items-center gap-2 flex-wrap border-b border-gray-100 dark:border-gray-700">
         <input ref={fileRef} type="file" accept=".xlsx" className="text-xs" />
@@ -3245,7 +3245,7 @@ function CatcherLogSection() {
         )}
       </div>
       {catchers.length === 0 ? (
-        <div className="p-6 text-center text-sm text-gray-400">No quick logs uploaded yet. Upload the coach's .xlsx (the "Live Log" sheet) with the game date.</div>
+        <div className="p-6 text-center text-sm text-gray-400">No quick logs uploaded yet. Upload the coach's .xlsx (Live Log + Throwdowns sheets) with the date of the last game in it.</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
@@ -3257,13 +3257,15 @@ function CatcherLogSection() {
                 <th className="px-2 py-2 text-right" title="Blocks kept in front / block chances">Block%</th>
                 <th className="px-2 py-2 text-right">Miss</th>
                 <th className="px-2 py-2 text-right" title="Passed balls">PB</th>
+                <th className="px-2 py-2 text-right" title="Block% on two-strike chances (the ones that decide at-bats)">2K Block%</th>
                 <th className="px-2 py-2 text-right" title="Stolen bases against">SB</th>
                 <th className="px-2 py-2 text-right" title="Caught stealing">CS</th>
                 <th className="px-2 py-2 text-right" title="CS / steal attempts">CS%</th>
-                <th className="px-2 py-2 text-right" title="Between-innings throwdowns charted">Throwdowns</th>
-                <th className="px-2 py-2 text-right" title="Average charted pop time (throwdowns + steal throws)">Pop</th>
+                <th className="px-2 py-2 text-right" title="Pickoff throws charted">Picks</th>
+                <th className="px-2 py-2 text-right" title="Dropped third strikes: outs recorded / chances">D3</th>
+                <th className="px-2 py-2 text-right" title="Practice throwdowns charted (Throwdowns sheet)">Throwdowns</th>
+                <th className="px-2 py-2 text-right" title="Average charted pop time">Pop</th>
                 <th className="px-2 py-2 text-right">Best</th>
-                <th className="px-2 py-2 text-right" title="Average coach grade on charted events (1-5)">Grade</th>
                 <th className="px-2 py-2">Notes</th>
               </tr>
             </thead>
@@ -3276,18 +3278,33 @@ function CatcherLogSection() {
                   <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${c.block_pct == null ? 'text-gray-300' : c.block_pct >= 75 ? 'text-emerald-600' : c.block_pct < 50 ? 'text-rose-600' : ''}`}>{pct(c.block_pct)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.block_miss || '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.pb || '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{c.k2_block_pct != null ? `${pct(c.k2_block_pct)} (${c.k2_opps})` : '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.sb || '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.cs || '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.cs_pct)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.pickoffs || '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.drop3 ? `${c.drop3_outs}/${c.drop3}` : '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.throwdowns || '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums font-bold">{c.avg_pop != null ? `${c.avg_pop.toFixed(2)} (${c.pops_n})` : '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{c.best_pop?.toFixed(2) ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_grade != null ? `${c.avg_grade.toFixed(1)} (${c.grades_n})` : '—'}</td>
                   <td className="px-2 py-1.5 text-[11px] text-gray-500 max-w-xs truncate" title={c.notes.join(' · ')}>{c.notes.join(' · ') || ''}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {(data?.by_pitcher || []).length > 0 && (
+            <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">Block chances by pitcher · who makes the catchers work</div>
+              <div className="flex flex-wrap gap-1.5">
+                {data.by_pitcher.map(p => (
+                  <span key={p.pitcher} className="text-[11px] rounded-full px-2.5 py-1 bg-gray-50 dark:bg-gray-900/40 ring-1 ring-gray-200 dark:ring-gray-700 tabular-nums"
+                    title={`${p.success} kept in front, ${p.miss} missed, ${p.pb} passed balls`}>
+                    <span className="font-semibold">{p.pitcher}</span> {p.opps} chances · <span className={p.block_pct != null && p.block_pct < 60 ? 'text-rose-600 font-semibold' : ''}>{p.block_pct != null ? `${p.block_pct.toFixed(0)}%` : '—'}</span> blocked{p.pb ? ` · ${p.pb} PB` : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700">
             <button onClick={() => setShowEvents(v => !v)} className="text-[12px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
               {showEvents ? 'Hide' : 'Show'} every charted event ({events.length})
@@ -3298,8 +3315,9 @@ function CatcherLogSection() {
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                   <th className="px-4 py-1.5">Date</th><th className="px-2 py-1.5">G</th><th className="px-2 py-1.5">Inn</th>
-                  <th className="px-2 py-1.5">Catcher</th><th className="px-2 py-1.5">Count</th><th className="px-2 py-1.5">Event</th>
-                  <th className="px-2 py-1.5">Outcome</th><th className="px-2 py-1.5 text-right">Pop</th><th className="px-2 py-1.5 text-right">Grade</th>
+                  <th className="px-2 py-1.5">Catcher</th><th className="px-2 py-1.5">Pitcher</th><th className="px-2 py-1.5">Batter</th>
+                  <th className="px-2 py-1.5">Count</th><th className="px-2 py-1.5" title="Two-strike count">2K</th><th className="px-2 py-1.5">Event</th>
+                  <th className="px-2 py-1.5">Outcome</th><th className="px-2 py-1.5 text-right">Pop</th>
                   <th className="px-2 py-1.5">Note</th><th className="px-2 py-1.5">TrackMan pitch</th>
                 </tr>
               </thead>
@@ -3310,12 +3328,14 @@ function CatcherLogSection() {
                     <td className="px-2 py-1 tabular-nums text-gray-400">{e.game_no}</td>
                     <td className="px-2 py-1 tabular-nums">{e.inning ?? '—'}</td>
                     <td className="px-2 py-1 font-semibold whitespace-nowrap">{e.catcher}</td>
+                    <td className="px-2 py-1 whitespace-nowrap text-gray-600 dark:text-gray-300">{e.pitcher || '—'}</td>
+                    <td className="px-2 py-1 whitespace-nowrap text-gray-500">{e.batter || '—'}</td>
                     <td className="px-2 py-1 tabular-nums">{e.count || '—'}</td>
+                    <td className="px-2 py-1">{e.two_strike ? '✓' : ''}</td>
                     <td className="px-2 py-1">{e.event || '—'}</td>
                     <td className="px-2 py-1"><span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${outcomeCls(e.outcome)}`}>{e.outcome || '—'}</span></td>
                     <td className="px-2 py-1 text-right tabular-nums">{e.pop_time?.toFixed(2) ?? '—'}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{e.grade ?? '—'}</td>
-                    <td className="px-2 py-1 text-gray-500">{e.note && e.pop_time == null ? e.note : ''}</td>
+                    <td className="px-2 py-1 text-gray-500 max-w-xs truncate" title={e.note || ''}>{e.note && e.pop_time == null ? e.note : ''}</td>
                     <td className="px-2 py-1 text-gray-500 whitespace-nowrap">
                       {e.tm ? `${e.tm.ptype || '?'} ${e.tm.velo ?? ''} mph · ${e.tm.call} · ${e.tm.pitcher || ''}${e.tm.loc_height != null ? ` · ${e.tm.loc_height} ft` : ''}` : (e.event === 'Block' ? 'no unique match' : '')}
                     </td>
