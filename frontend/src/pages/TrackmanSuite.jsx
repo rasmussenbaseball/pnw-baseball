@@ -1748,12 +1748,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
           <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} grades={data.grades} typeAvgs={data.type_avgs}
             slot={data.slot} pitcher={active} team={team || null} onRetag={refetch} />
 
-          <CountResults pitches={data.pitches} mode="pitcher" />
-
-          <div className="grid md:grid-cols-2 gap-3">
-            <ArmProfileCard arm={data.arm} />
-            <TunnelingCard tunneling={data.tunneling} />
-          </div>
+          {data.platoon && <PlatoonCard platoon={data.platoon} />}
 
           <div className="grid md:grid-cols-3 gap-3">
             <div className="md:col-span-2 bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
@@ -1826,7 +1821,12 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
             </div>
           </div>
 
-          {data.platoon && <PlatoonCard platoon={data.platoon} />}
+          <CountResults pitches={data.pitches} mode="pitcher" />
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <ArmProfileCard arm={data.arm} />
+            <TunnelingCard tunneling={data.tunneling} />
+          </div>
 
           <PitcherZoneMaps pitches={data.pitches} />
 
