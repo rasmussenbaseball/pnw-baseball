@@ -54,11 +54,16 @@ function HeatCell({ v, vals, higher = true, dec = 1, plus = false, extra = '' })
     </td>
   )
 }
+// Baseball Savant's pitch-type palette, so a slider is the same yellow here,
+// on Savant and on the summer TrackMan cards.
 const PITCH_COLORS = {
-  Fastball: '#ef4444', 'Four-Seam': '#ef4444', Sinker: '#f59e0b', Cutter: '#8b5cf6',
-  Slider: '#3b82f6', Sweeper: '#14b8a6', Curveball: '#22c55e', ChangeUp: '#ec4899',
-  Changeup: '#ec4899', Splitter: '#0891b2', Knuckleball: '#78716c',
+  Fastball: '#d22d49', 'Four-Seam': '#d22d49', 'Four Seam': '#d22d49', Sinker: '#fe9d00', Cutter: '#933f2c',
+  Slider: '#eee716', Sweeper: '#ddb33a', Curveball: '#00d1ed', 'Knuckle Curve': '#6236cd', ChangeUp: '#1dbe3a',
+  Changeup: '#1dbe3a', Splitter: '#3bacac', Slurve: '#93afd4', Knuckleball: '#888888', Undefined: '#9aa0a8',
 }
+// yellow / cyan need dark text on a filled pill
+const PITCH_TEXT_DARK = new Set(['Slider', 'Sweeper', 'Curveball'])
+
 const TYPE_META = {
   game: { label: 'Game', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
   scrimmage: { label: 'Scrimmage', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' },
@@ -1820,6 +1825,8 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
               <CountUsage pitches={data.pitches} />
             </div>
           </div>
+
+          {data.platoon && <PlatoonCard platoon={data.platoon} />}
 
           <PitcherZoneMaps pitches={data.pitches} />
 
@@ -3835,6 +3842,73 @@ function CoachBoardTab({ teamCtx, season }) {
 }
 
 // ── Pitcher Lab: full per-pitch stat table ───────────────────────
+
+
+// ── Platoon card (Savant "Pitch Usage" layout) ─────────────────────
+// Usage vs LHH | RV vs LHH | pitch pill | RV vs RHH | usage vs RHH, then a
+// performance line for each side.
+function PlatoonCard({ platoon }) {
+  const L = platoon?.L, R = platoon?.R
+  if (!L && !R) return null
+  const types = [...new Set([...Object.keys(L?.types || {}), ...Object.keys(R?.types || {})])]
+    .sort((a, b) => ((R?.types?.[b]?.n || 0) + (L?.types?.[b]?.n || 0)) - ((R?.types?.[a]?.n || 0) + (L?.types?.[a]?.n || 0)))
+  const maxU = Math.max(1, ...types.flatMap(t => [L?.types?.[t]?.usage || 0, R?.types?.[t]?.usage || 0]))
+  const rvCls = v => v == null ? 'text-gray-300' : v > 0.05 ? 'text-emerald-600 dark:text-emerald-400' : v < -0.05 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400'
+  const rvTxt = v => v == null ? '–' : `${v > 0 ? '+' : ''}${v.toFixed(1)}`
+  const usage = (side, t, right) => {
+    const u = side?.types?.[t]?.usage
+    const w = u ? Math.max(6, 100 * u / maxU) : 0
+    return (
+      <div className={`flex items-center gap-2 ${right ? 'flex-row-reverse' : ''}`}>
+        <span className="w-10 text-[12px] tabular-nums text-gray-600 dark:text-gray-300 text-right">{u == null ? '–' : u < 1 ? '<1%' : `${u.toFixed(0)}%`}</span>
+        <div className={`flex-1 h-4 flex ${right ? 'justify-start' : 'justify-end'}`}>
+          <div className="h-4 rounded-full" style={{ width: `${w}%`, background: cFor(t), opacity: u ? 0.9 : 0 }} />
+        </div>
+      </div>
+    )
+  }
+  const line = (side, lbl) => side && (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] tabular-nums">
+      <span className="font-bold text-gray-700 dark:text-gray-200 w-14">vs {lbl}</span>
+      {[['Pitches', side.pitches, 0], ['PA', side.pa, 0], ['K', side.k, 0], ['BB', side.bb, 0], ['H', side.h, 0], ['HR', side.hr, 0],
+        ['BAA', side.baa, 3], ['wOBA', side.woba, 3], ['Zone%', side.zone_pct, 1], ['Whiff%', side.whiff_pct, 1], ['Chase%', side.chase_pct, 1],
+        ['CSW%', side.csw_pct, 1], ['EV agn', side.avg_ev, 1], ['HH%', side.hh_pct, 1], ['xwOBAcon', side.xwobacon, 3],
+        ['RV', side.rv, 'rv'], ['RV/100', side.rv100, 'rv2']].map(([l, v, d]) => (
+        <span key={l}><span className="text-gray-400 text-[10px] mr-1">{l}</span>
+          <span className={`font-semibold ${d === 'rv' || d === 'rv2' ? rvCls(v) : ''}`}>
+            {v == null ? '–' : d === 'rv' ? rvTxt(v) : d === 'rv2' ? `${v > 0 ? '+' : ''}${v.toFixed(2)}` : d === 3 ? Number(v).toFixed(3).replace(/^0\./, '.') : Number(v).toFixed(d)}
+          </span></span>
+      ))}
+    </div>
+  )
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Platoon — usage and run value by batter side</span>
+        <span className="text-[10px] text-gray-400">run value is runs saved vs the average pitch in your data · this view's filters</span>
+      </div>
+      <div className="grid items-center gap-x-3" style={{ gridTemplateColumns: '1fr 3rem 8rem 3rem 1fr' }}>
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-right pr-1">Usage vs LHH</div>
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-center col-span-3">Pitch run value</div>
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 pl-1">Usage vs RHH</div>
+        {types.map(t => (
+          <div key={t} className="contents">
+            {usage(L, t, false)}
+            <div className={`text-right text-[13px] font-bold tabular-nums ${rvCls(L?.types?.[t]?.rv)}`}>{rvTxt(L?.types?.[t]?.rv)}</div>
+            <div className="mx-auto px-2.5 py-0.5 rounded-md text-[12px] font-bold text-center whitespace-nowrap"
+              style={{ background: cFor(t), color: PITCH_TEXT_DARK.has(t) ? '#1f2937' : '#fff', minWidth: '6.5rem' }}>{t}</div>
+            <div className={`text-left text-[13px] font-bold tabular-nums ${rvCls(R?.types?.[t]?.rv)}`}>{rvTxt(R?.types?.[t]?.rv)}</div>
+            {usage(R, t, true)}
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700 space-y-1.5">
+        {line(L, 'LHH')}
+        {line(R, 'RHH')}
+      </div>
+    </div>
+  )
+}
 
 function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs, slot, pitcher, team, onRetag }) {
   const rows = useMemo(() => {

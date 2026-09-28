@@ -16,16 +16,16 @@ import { usePlayerProfileTheme, SectionCard } from './shared'
 
 // Pitch-type color + short code, roughly matching TrackMan's own palette.
 const PITCH_META = {
-  'Four Seam':     { c: '#e8556e', code: 'FF' },
-  'Sinker':        { c: '#f0a05a', code: 'SI' },
-  'Cutter':        { c: '#9b7d4e', code: 'FC' },
-  'Slider':        { c: '#e0c84a', code: 'SL' },
-  'Sweeper':       { c: '#b07bd0', code: 'SW' },
-  'Curveball':     { c: '#5d99c6', code: 'CU' },
-  'Knuckle Curve': { c: '#3f6fa0', code: 'KC' },
-  'Changeup':      { c: '#8cb84f', code: 'CH' },
-  'Splitter':      { c: '#4aa6a6', code: 'FS' },
-  'Knuckleball':   { c: '#7a8a99', code: 'KN' },
+  'Four Seam':     { c: '#d22d49', code: 'FF' },
+  'Sinker':        { c: '#fe9d00', code: 'SI' },
+  'Cutter':        { c: '#933f2c', code: 'FC' },
+  'Slider':        { c: '#eee716', code: 'SL' },
+  'Sweeper':       { c: '#ddb33a', code: 'SW' },
+  'Curveball':     { c: '#00d1ed', code: 'CU' },
+  'Knuckle Curve': { c: '#6236cd', code: 'KC' },
+  'Changeup':      { c: '#1dbe3a', code: 'CH' },
+  'Splitter':      { c: '#3bacac', code: 'FS' },
+  'Knuckleball':   { c: '#888888', code: 'KN' },
   'Undefined':     { c: '#9aa0a8', code: '?' },
 }
 const meta = (pt) => PITCH_META[pt] || { c: '#9aa0a8', code: pt?.slice(0, 2) || '?' }

@@ -390,9 +390,9 @@ export default function CampReport() {
 // ═══════════════════════ shared card pieces ═══════════════════════
 
 const PITCH_COLORS = {
-  Fastball: '#b91c1c', Sinker: '#ea580c', Cutter: '#a16207', Slider: '#2563eb',
-  Sweeper: '#0891b2', Curveball: '#7c3aed', ChangeUp: '#16a34a', Splitter: '#db2777',
-  Knuckleball: '#64748b', Unknown: '#6b7280',
+  Fastball: '#d22d49', Sinker: '#fe9d00', Cutter: '#933f2c', Slider: '#eee716',
+  Sweeper: '#ddb33a', Curveball: '#00d1ed', ChangeUp: '#1dbe3a', Splitter: '#3bacac',
+  Knuckleball: '#888888', Unknown: '#6b7280',
 }
 const pColor = t => PITCH_COLORS[t] || PITCH_COLORS.Unknown
 const evColor = ev => ev >= 95 ? '#b91c1c' : ev >= 90 ? '#1d1f4d' : ev >= 80 ? '#8e7553' : '#9ca3af'

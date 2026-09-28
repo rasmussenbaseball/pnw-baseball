@@ -23,6 +23,7 @@ from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
 from ..stats.trackman_stuff import grade_trackman, FB_FAMILY
 from ..stats import pitch_shape
 from ..stats.trackman_counts import count_states
+from ..stats.trackman_xstats import xwobacon
 from ..stats import trackman_box as box
 from ..stats.rapsodo_location import location_plus
 from ..stats.trackman_classify import reclassify_owner, SUITE_TYPES
@@ -2041,6 +2042,48 @@ def trackman_pitcher_detail(
                 a["shadow"] += 1
             elif z == "heart":
                 a["heart"] += 1
+    # Platoon: how he does against each batter side, and how his arsenal
+    # usage and per-pitch run value split by hand (the Savant pitch-usage card).
+    platoon = {}
+    for hand, lbl in (("Left", "L"), ("Right", "R")):
+        hx = [x for x in pitches if x.get("batter_side") == hand]
+        if not hx:
+            continue
+        called = [x for x in hx if x["pitch_call"]]
+        sw = [x for x in hx if x["is_swing"]]
+        oz = [x for x in hx if x["is_in_zone"] is False]
+        bbe_h = [x for x in hx if x["exit_speed"] is not None and _is_fair(x["pitch_call"], x.get("direction"))]
+        xw = [xwobacon(float(x["exit_speed"]), float(x["launch_angle"]), x.get("direction"), lbl)
+              for x in bbe_h if x.get("launch_angle") is not None]
+        rv_h = n_h = 0.0
+        per_t = defaultdict(lambda: {"n": 0, "rv": 0.0, "rv_n": 0})
+        for x in hx:
+            v = pitch_run_value(x["balls"], x["strikes"], x["pitch_call"], x.get("play_result"))
+            per_t[x["ptype"]]["n"] += 1
+            if v is not None:
+                rv_h -= v; n_h += 1
+                per_t[x["ptype"]]["rv"] -= v; per_t[x["ptype"]]["rv_n"] += 1
+        pas_h = box.terminal_pas([x for x in hx if x.get("session_type") in _LIVE_TYPES])
+        line_h = box.hitter_line(pas_h, None) or {}
+        platoon[lbl] = {
+            "pitches": len(hx), "pa": line_h.get("pa"), "k": line_h.get("k"), "bb": line_h.get("bb"),
+            "h": line_h.get("h"), "hr": line_h.get("hr"),
+            "baa": line_h.get("avg"), "woba": line_h.get("woba"),
+            "whiff_pct": round(100 * sum(1 for x in sw if x["is_whiff"]) / len(sw), 1) if sw else None,
+            "chase_pct": round(100 * sum(1 for x in oz if x["is_chase"]) / len(oz), 1) if oz else None,
+            "csw_pct": round(100 * sum(1 for x in called if x["pitch_call"] in ("StrikeCalled", "StrikeSwinging")) / len(called), 1) if called else None,
+            "zone_pct": (round(100 * sum(1 for x in hx if x["is_in_zone"]) / sum(1 for x in hx if x["is_in_zone"] is not None), 1)
+                         if any(x["is_in_zone"] is not None for x in hx) else None),
+            "bbe": len(bbe_h), "avg_ev": round(sum(float(x["exit_speed"]) for x in bbe_h) / len(bbe_h), 1) if bbe_h else None,
+            "hh_pct": round(100 * sum(1 for x in bbe_h if x["exit_speed"] >= 90) / len(bbe_h), 1) if bbe_h else None,
+            "xwobacon": round(sum(xw) / len(xw), 3) if xw else None,
+            "rv": round(rv_h + n_h * rv_base, 1) if n_h else None,
+            "rv100": round(100 * (rv_h + n_h * rv_base) / n_h, 2) if n_h else None,
+            "types": {t: {"n": a["n"], "usage": round(100 * a["n"] / len(hx), 1),
+                          "rv": round(a["rv"] + a["rv_n"] * rv_base, 1) if a["rv_n"] else None}
+                      for t, a in per_t.items() if t},
+        }
+
     rv_by_type = {
         t: {"rv": round(a["rv"] + a["n"] * rv_base, 1), "n": a["n"],
             "rv100": (round(100 * (a["rv"] + a["n"] * rv_base) / a["n"], 2)
@@ -2113,6 +2156,7 @@ def trackman_pitcher_detail(
         "rv_by_type": rv_by_type,
         "session_trend": session_trend,
         "grades": grades,
+        "platoon": platoon,
         "slot": lab_slot,
         "type_avgs": type_avgs,
         "line": box.pitcher_line([x for x in pitches if x.get("session_type") in _LIVE_TYPES], lab_lg),

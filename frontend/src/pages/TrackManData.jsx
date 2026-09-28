@@ -7,10 +7,10 @@ import { useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 
 const PITCH_COLOR = {
-  'Four Seam': '#e8556e', 'Sinker': '#f0a05a', 'Cutter': '#9b7d4e',
-  'Slider': '#e0c84a', 'Sweeper': '#b07bd0', 'Curveball': '#5d99c6',
-  'Knuckle Curve': '#3f6fa0', 'Changeup': '#8cb84f', 'Splitter': '#4aa6a6',
-  'Knuckleball': '#7a8a99', 'Undefined': '#9aa0a8',
+  'Four Seam': '#d22d49', 'Sinker': '#fe9d00', 'Cutter': '#933f2c',
+  'Slider': '#eee716', 'Sweeper': '#ddb33a', 'Curveball': '#00d1ed',
+  'Knuckle Curve': '#6236cd', 'Changeup': '#1dbe3a', 'Splitter': '#3bacac',
+  'Knuckleball': '#888888', 'Undefined': '#9aa0a8',
 }
 const dot = (pt) => PITCH_COLOR[pt] || '#9aa0a8'
 

@@ -15,15 +15,8 @@ import { supabase } from '../lib/supabase'
 import { downloadReportPDF, downloadReportPNG } from './rapsodoReport'
 
 const PITCH_COLORS = {
-  'fastball': '#ef4444',
-  'sinker': '#f59e0b',
-  'cutter': '#8b5cf6',
-  'slider': '#3b82f6',
-  'sweeper': '#14b8a6',
-  'curveball': '#22c55e',
-  'changeup': '#ec4899',
-  'splitter': '#0891b2',
-  'unclassified': '#9ca3af',
+  'fastball': '#d22d49', 'sinker': '#fe9d00', 'cutter': '#933f2c', 'slider': '#eee716', 'sweeper': '#ddb33a',
+  'curveball': '#00d1ed', 'changeup': '#1dbe3a', 'splitter': '#3bacac', 'knuckleball': '#888888', 'other': '#9aa0a8',
 }
 const colorFor = (p) => PITCH_COLORS[p] || '#9ca3af'
 const fmt = (v, d = 1) => (v === null || v === undefined ? '–' : Number(v).toFixed(d))
