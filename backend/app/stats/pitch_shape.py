@@ -49,18 +49,49 @@ def rotate(ivb, hb_arm, theta):
     return hb_arm * ux + ivb * uy, -hb_arm * uy + ivb * ux
 
 
-def slot_label(theta, rel_h=None, rel_s=None):
-    """Coach-facing arm slot from the fastball direction (deg above horizontal)."""
-    if theta is None:
+# ── Arm angle: ONE estimate used everywhere ──────────────────────
+# Two independent proxies for the arm angle exist in the data and they
+# disagree by ~10 degrees for a typical arm: the release point (geometric,
+# off an anchored shoulder) and the fastball's movement direction (the
+# Magnus vector points along the arm). Each alone is wrong in a known
+# way — the release point cannot see the shoulder, the movement carries
+# seam effects — so the site uses their average. The shoulder anchor
+# (height 3.8 ft, 0.15 ft toward the arm side) is the least-squares fit of
+# the geometric angle to the movement angle over 47 arms with 30+
+# fastballs (median gap 9.5 deg, bias 1 deg), so the two halves of the
+# blend agree on average and neither is the odd one out.
+SHOULDER_H, SHOULDER_SIDE = 3.8, 0.15
+
+
+def geo_arm_angle(rel_h, rel_s_abs):
+    if rel_h is None or rel_s_abs is None:
         return None
-    deg = math.degrees(theta)
-    if deg >= 72:
+    dy = float(rel_h) - SHOULDER_H
+    dx = max(0.05, abs(float(rel_s_abs)) - SHOULDER_SIDE)
+    return max(-30.0, min(95.0, math.degrees(math.atan2(dy, dx))))
+
+
+def arm_angle(rel_h=None, rel_s_abs=None, ivb=None, hb_arm=None):
+    """Blended arm angle in degrees above horizontal, or None."""
+    geo = geo_arm_angle(rel_h, rel_s_abs)
+    mv = None
+    if ivb is not None and hb_arm is not None and (abs(float(ivb)) + abs(float(hb_arm))) > 2:
+        mv = max(-30.0, min(95.0, math.degrees(math.atan2(float(ivb), float(hb_arm)))))
+    vals = [v for v in (geo, mv) if v is not None]
+    return sum(vals) / len(vals) if vals else None
+
+
+def slot_label(deg):
+    """Coach-facing arm slot from the blended arm angle."""
+    if deg is None:
+        return None
+    if deg >= 65:
         name = "over the top"
-    elif deg >= 58:
+    elif deg >= 50:
         name = "high 3/4"
-    elif deg >= 44:
+    elif deg >= 37:
         name = "3/4"
-    elif deg >= 30:
+    elif deg >= 25:
         name = "low 3/4"
     elif deg >= 12:
         name = "sidearm"

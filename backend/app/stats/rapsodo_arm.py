@@ -24,29 +24,20 @@ _SHOULDER_H = 4.6
 
 
 def _arm_angle(rel_height, rel_side):
-    """Approximate arm angle (deg from horizontal): ~vertical = over-the-top,
-    ~0 = sidearm, negative = submarine. Geometric estimate off an anchored shoulder."""
-    if rel_height is None or rel_side is None:
-        return None
-    dy = rel_height - _SHOULDER_H
-    dx = max(0.05, abs(rel_side))
-    return round(max(-30.0, min(90.0, math.degrees(math.atan2(dy, dx)))))
+    """Geometric arm angle off the site's calibrated shoulder anchor (see
+    stats/pitch_shape.arm_angle; the TrackMan lab blends this with the
+    fastball's movement direction, Rapsodo has only the release point)."""
+    from .pitch_shape import geo_arm_angle
+    v = geo_arm_angle(rel_height, abs(rel_side) if rel_side is not None else None)
+    return round(v) if v is not None else None
 
 
-def _slot_label(rel_height):
-    """Coarse arm-slot bucket from release height (ft). Approximate — true slot
-    also depends on the pitcher's stature and side; this is a useful shorthand."""
-    if rel_height is None:
-        return None
-    if rel_height >= 6.2:
-        return "over the top"
-    if rel_height >= 5.7:
-        return "high three-quarter"
-    if rel_height >= 5.2:
-        return "three-quarter"
-    if rel_height >= 4.7:
-        return "low three-quarter"
-    return "sidearm"
+def _slot_label(rel_height, rel_side=None):
+    """Arm-slot bucket from the geometric arm angle (same bands as the
+    TrackMan suite's slot chip)."""
+    from .pitch_shape import geo_arm_angle, slot_label
+    lab = slot_label(geo_arm_angle(rel_height, abs(rel_side) if rel_side is not None else None))
+    return lab["label"] if lab else None
 
 
 def _consistency_label(h_sd, s_sd):
@@ -82,7 +73,7 @@ def arm_profile(pitches):
         "rel_side_sd": round(s_sd, 2),
         "extension": round(mean(exts), 2) if exts else None,
         "vaa": round(mean(vaas), 2) if vaas else None,
-        "slot": _slot_label(rh),
+        "slot": _slot_label(rh, rs),
         "arm_angle": _arm_angle(rh, rs),
         "consistency": _consistency_label(h_sd, s_sd),
         "n": len(pts),

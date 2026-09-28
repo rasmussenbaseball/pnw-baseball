@@ -121,9 +121,14 @@ def _shape_annotate(types, throws):
     fbs = [t for t in types if t.get("ptype") in ("Fastball", "Sinker") and vec(t)]
     if not fbs:
         return {}, None
-    fbt = max(fbs, key=lambda t: (t["ptype"] == "Fastball", t.get("n") or 0))
+    # the primary fastball is the one he throws most (Sanchez: 30 sinkers vs
+    # 8 four-seams) — it sets both the shape frame and the arm-angle read
+    fbt = max(fbs, key=lambda t: (t.get("n") or 0, t["ptype"] == "Fastball"))
     fb = vec(fbt)
     theta = pitch_shape.slot_frame(fb)
+    rel_s = fbt.get("rel_s")
+    slot = pitch_shape.slot_label(pitch_shape.arm_angle(
+        fbt.get("rel_h"), abs(float(rel_s)) if rel_s is not None else None, fb["ivb"], fb["hb_arm"]))
     out = {}
     for t in types:
         g = vec(t)
@@ -138,7 +143,7 @@ def _shape_annotate(types, throws):
             "shape_note": pitch_shape.descriptor(pt, g, fb, theta),
             "suggest": pitch_shape.suggest(pt, g, fb, theta) if (t.get("n") or 0) >= 3 else None,
         }
-    return out, pitch_shape.slot_label(theta)
+    return out, slot
 
 
 def _rv_baseline(cur, owner, context, season=None):
@@ -2002,6 +2007,9 @@ def trackman_pitcher_detail(
     with get_connection() as conn:
         lab_lg = box.league_context_from_db(conn.cursor(), owner)
     lab_shapes, lab_slot = _shape_annotate(list(gtypes.values()), lab_throws)
+    if lab_slot and arm:   # one arm angle everywhere: chip, profile card, movement-plot axis
+        arm["arm_angle"] = lab_slot["deg"]
+        arm["slot"] = lab_slot["label"]
     gfb = None
     for t, en in gtypes.items():
         cand = (t == "Fastball", t in FB_FAMILY, en["n"])

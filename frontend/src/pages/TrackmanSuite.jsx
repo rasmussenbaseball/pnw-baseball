@@ -4521,16 +4521,14 @@ function XStatsCard({ x }) {
 
 function ArmProfileCard({ arm }) {
   if (!arm) return null
-  const band = arm.arm_angle != null
-    ? `${Math.round(arm.arm_angle / 5) * 5 - 5}–${Math.round(arm.arm_angle / 5) * 5 + 5}°`
-    : null
+  const band = arm.arm_angle != null ? `${Math.round(arm.arm_angle)}°` : null
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
       <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Arm & release profile</div>
       <div className="grid grid-cols-2 gap-2">
         {[
           ['Slot', arm.slot || '–'],
-          ['Est. arm angle', band ? `~${band}` : '–'],
+          ['Arm angle', band ? `~${band}` : '–'],
           ['Release', `${arm.rel_height ?? '–'} ft high · ${arm.rel_side ?? '–'} ft side`],
           ['Consistency', arm.consistency || '–'],
           ['Extension', arm.extension != null ? `${arm.extension} ft` : '–'],
@@ -4543,7 +4541,7 @@ function ArmProfileCard({ arm }) {
         ))}
       </div>
       <p className="text-[10px] text-gray-400 mt-2">
-        Arm angle is a geometric estimate from release point (~10° band), same method as the Rapsodo Lab.
+        Arm angle blends two reads: the release point (geometry off a calibrated shoulder anchor) and the fastball's movement direction. One number everywhere: this card, the slot chip, the movement-plot axis.
         Release SD: ±{arm.rel_height_sd ?? '–'} ft height, ±{arm.rel_side_sd ?? '–'} ft side over {arm.n} pitches.
       </p>
     </div>
