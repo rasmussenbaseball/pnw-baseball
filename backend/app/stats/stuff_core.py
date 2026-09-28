@@ -90,6 +90,7 @@ GROUP_OF = {
     "velo_diff": "separation", "ivb_diff": "separation", "hb_diff": "separation",
     "mov_dist": "separation", "rel_h_diff": "separation", "rel_s_diff": "separation",
     "velo_diff2": "separation", "mov_dist2": "separation", "ivb_diff_x_velo_diff": "separation",
+    "platoon": "platoon",
 }
 
 _model = None
@@ -216,7 +217,45 @@ def build_features(entry, fb, impute=None):
     }
 
 
-def predict_xrv(entry, fb=None, model=None):
+# ── Platoon: how a shape plays against same- vs opposite-side hitters ──
+# The neutral model holds batter side at its mean. The literature on platoon
+# splits (FanGraphs 2021-23 on sinkers, cutters, sweepers, changeups) is
+# consistent about the mechanism: VERTICAL movement is platoon-neutral,
+# HORIZONTAL movement is not, and velocity decides which way it cuts.
+#   glove-side sweep moves away from a same-side hitter and into an
+#     opposite-side hitter's barrel: sweepers ran ~0.9 RV/100 better vs same
+#     side (-0.94 vs -0.05), tight sliders ~0.1, cutters neutral
+#   arm-side run at fastball speed jams the same-side hitter and finds the
+#     opposite hitter's barrel: sinkers ~0.7 RV/100 better vs same side
+#     (.341 vs .390 wOBAcon, .693 vs .767 OPS); four-seam ride ~0.2
+#   arm-side run at changeup speed REVERSES: the slower the pitch the more
+#     the fade running away from an opposite-side hitter is worth
+# So the split scales with inches of horizontal break, weighted by how
+# horizontal the shape is (|HB| / (|HB| + |IVB|)) and, for arm-side run, by
+# a velocity factor that goes from +1 at fastball speed to -1 at 9 mph off.
+# Half the split is added for a same-side hitter and subtracted for an
+# opposite-side one, so the two grades average to the neutral Stuff+.
+# Our own corpus is too thin and too intrasquad-shaped to fit this (the
+# same 20 arms face the same 20 bats), so the coefficients are the
+# published MLB magnitudes, not a local fit.
+GLOVE_SPLIT_PER_IN = 0.07     # runs/100 per inch of glove-side break (x horizontality)
+ARM_SPLIT_PER_IN = 0.065      # runs/100 per inch of arm-side run (x horizontality x velocity factor)
+ARM_VELO_FLIP_MPH = 4.5       # velocity factor = 1 - velo_diff / this, clipped to [-1, 1]
+PLATOON_PTS_PER_RUN = 10.0    # Stuff+ points per run/100 of platoon shift (the fastball/breaking scale)
+
+
+def platoon_split(feats):
+    """Runs/100 by which the pitch is better vs a SAME-side hitter than vs
+    an opposite-side one (negative = a reverse-platoon pitch)."""
+    hb, ivb, vd = feats["hb_arm"], feats["ivb"], feats.get("velo_diff", 0.0)
+    horiz = abs(hb) / (abs(hb) + abs(ivb) + 1e-6)
+    if hb < 0:      # glove side
+        return GLOVE_SPLIT_PER_IN * (-hb) * horiz
+    velo_factor = max(-1.0, min(1.0, 1.0 - vd / ARM_VELO_FLIP_MPH))
+    return ARM_SPLIT_PER_IN * hb * horiz * velo_factor
+
+
+def predict_xrv(entry, fb=None, model=None, side=None):
     """Model xRV (runs saved per 100 pitches vs the family's average pitch)
     plus per-feature contributions, or (None, None, None). Raw units — use
     score() for the 100-scale grade."""
@@ -242,13 +281,21 @@ def predict_xrv(entry, fb=None, model=None):
         pred += c
     # type intercept (fit as a dummy inside the family)
     pred += (fm.get("type_offsets") or {}).get(pt, 0.0)
+    if side in ("same", "opp"):
+        # kept OUT of pred: the grade applies it at a fixed points-per-run so
+        # a type with a thin scale (prior-only changeups, sd 0.47) does not
+        # turn a half-run split into 14 points
+        half = 0.5 * platoon_split(feats)
+        contrib["platoon"] = half if side == "same" else -half
     return pred, contrib, pt
 
 
-def score(entry, fb=None, model=None):
-    """-> (grade:int|None, components:{group: grade points}|None, xrv:float|None)."""
+def score(entry, fb=None, model=None, side=None):
+    """-> (grade:int|None, components:{group: grade points}|None, xrv:float|None).
+    side='same'|'opp' grades the pitch against that batter side (see
+    platoon_split); None is the neutral grade shown everywhere else."""
     model = model or load_model()
-    pred, contrib, pt = predict_xrv(entry, fb, model)
+    pred, contrib, pt = predict_xrv(entry, fb, model, side)
     if pred is None:
         return None, None, None
     sc = (model.get("type_scale") or {}).get(pt)
@@ -256,11 +303,12 @@ def score(entry, fb=None, model=None):
         return None, None, None
     sd = sc["sd"] or 1.0
     z = max(-Z_CLAMP, min(Z_CLAMP, (pred - sc["mean"]) / sd))
-    grade = int(max(GRADE_LO, min(GRADE_HI, round(GRADE_MEAN + GRADE_SD * z))))
-    pts = GRADE_SD / sd
+    shift = PLATOON_PTS_PER_RUN * contrib.get("platoon", 0.0)
+    grade = int(max(GRADE_LO, min(GRADE_HI, round(GRADE_MEAN + GRADE_SD * z + shift))))
+    pts = min(12.0, GRADE_SD / sd)   # cap so a thin type scale cannot blow a half-run split into 20 points
     comps = {}
     for name, c in contrib.items():
         g = GROUP_OF.get(name, "other")
-        comps[g] = comps.get(g, 0.0) + c * pts
+        comps[g] = comps.get(g, 0.0) + c * (PLATOON_PTS_PER_RUN if name == "platoon" else pts)
     comps = {k: round(v, 1) for k, v in comps.items()}
-    return grade, comps, round(pred, 3)
+    return grade, comps, round(pred + contrib.get("platoon", 0.0), 3)

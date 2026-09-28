@@ -1851,6 +1851,8 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
               <PitcherLineStrip line={data.line} />
             </div>
           )}
+
+          {data.usage_plan && <UsagePlanCard plan={data.usage_plan} />}
         </div>
       )}
     </div>
@@ -3855,6 +3857,7 @@ function PlatoonCard({ platoon }) {
   const maxU = Math.max(1, ...types.flatMap(t => [L?.types?.[t]?.usage || 0, R?.types?.[t]?.usage || 0]))
   const rvCls = v => v == null ? 'text-gray-300' : v > 0.05 ? 'text-emerald-600 dark:text-emerald-400' : v < -0.05 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400'
   const rvTxt = v => v == null ? '–' : `${v > 0 ? '+' : ''}${v.toFixed(1)}`
+  const stuffCls = v => v == null ? 'text-gray-300' : v >= 110 ? 'text-[#d22d49]' : v <= 90 ? 'text-[#3661ad]' : 'text-gray-800 dark:text-gray-100'
   const usage = (side, t, right) => {
     const u = side?.types?.[t]?.usage
     const w = u ? Math.max(6, 100 * u / maxU) : 0
@@ -3887,25 +3890,86 @@ function PlatoonCard({ platoon }) {
         <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Platoon — usage and run value by batter side</span>
         <span className="text-[10px] text-gray-400">run value is runs saved vs the average pitch in your data · this view's filters</span>
       </div>
-      <div className="grid items-center gap-x-3" style={{ gridTemplateColumns: '1fr 3rem 8rem 3rem 1fr' }}>
+      <div className="grid items-center gap-x-3" style={{ gridTemplateColumns: '1fr 3rem 3rem 8rem 3rem 3rem 1fr' }}>
         <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-right pr-1">Usage vs LHH</div>
-        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-center col-span-3">Pitch run value</div>
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-right" title="Stuff+ graded against left-handed hitters">Stuff+</div>
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-right">RV</div>
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-center">Pitch</div>
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-left">RV</div>
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 text-left" title="Stuff+ graded against right-handed hitters">Stuff+</div>
         <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 pl-1">Usage vs RHH</div>
         {types.map(t => (
           <div key={t} className="contents">
             {usage(L, t, false)}
+            <div className={`text-right text-[13px] font-bold tabular-nums ${stuffCls(L?.types?.[t]?.stuff_hand)}`}>{L?.types?.[t]?.stuff_hand ?? '–'}</div>
             <div className={`text-right text-[13px] font-bold tabular-nums ${rvCls(L?.types?.[t]?.rv)}`}>{rvTxt(L?.types?.[t]?.rv)}</div>
             <div className="mx-auto px-2.5 py-0.5 rounded-md text-[12px] font-bold text-center whitespace-nowrap"
               style={{ background: cFor(t), color: PITCH_TEXT_DARK.has(t) ? '#1f2937' : '#fff', minWidth: '6.5rem' }}>{t}</div>
             <div className={`text-left text-[13px] font-bold tabular-nums ${rvCls(R?.types?.[t]?.rv)}`}>{rvTxt(R?.types?.[t]?.rv)}</div>
+            <div className={`text-left text-[13px] font-bold tabular-nums ${stuffCls(R?.types?.[t]?.stuff_hand)}`}>{R?.types?.[t]?.stuff_hand ?? '–'}</div>
             {usage(R, t, true)}
           </div>
         ))}
       </div>
+      <p className="text-[10px] text-gray-400 mt-2">
+        Stuff+ by side: the neutral grade shifted for the hitter's side. Vertical movement is platoon-neutral; glove-side sweep and hard arm-side run play up
+        against same-side hitters, slow arm-side fade (changeups) plays up against opposite-side hitters. Sized from published MLB platoon splits.
+      </p>
       <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700 space-y-1.5">
         {line(L, 'LHH')}
         {line(R, 'RHH')}
       </div>
+    </div>
+  )
+}
+
+// ── Recommended pitch mix by batter side ──────────────────────────
+function UsagePlanCard({ plan }) {
+  const sides = Object.entries(plan || {})
+  if (!sides.length) return null
+  const bar = (v, color, faded) => (
+    <div className="h-2.5 rounded-full bg-gray-100 dark:bg-gray-700 flex-1 overflow-hidden">
+      <div className="h-full rounded-full" style={{ width: `${Math.min(100, v / 60 * 100)}%`, background: color, opacity: faded ? 0.35 : 0.9 }} />
+    </div>
+  )
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Recommended mix by batter side</span>
+        <span className="text-[10px] text-gray-400">a nudge from the current mix, not a rewrite · this view's filters</span>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {sides.map(([lbl, rows]) => (
+          <div key={lbl}>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-300 mb-1.5">vs {lbl}HH</div>
+            <div className="space-y-1.5">
+              {rows.map(r => (
+                <div key={r.type} className="text-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-20 font-semibold whitespace-nowrap flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ background: cFor(r.type) }} />{r.type}
+                    </span>
+                    <span className="w-10 text-right tabular-nums text-gray-400" title="Current usage vs this side">{r.usage.toFixed(0)}%</span>
+                    {bar(r.usage, cFor(r.type), true)}
+                    <span className="w-6 text-center text-gray-300">→</span>
+                    {bar(r.rec, cFor(r.type), false)}
+                    <span className="w-10 tabular-nums font-bold" title="Recommended usage">{r.rec.toFixed(0)}%</span>
+                    <span className={`w-12 text-right tabular-nums text-[11px] font-semibold ${r.delta >= 3 ? 'text-emerald-600 dark:text-emerald-400' : r.delta <= -3 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400'}`}>
+                      {r.delta > 0 ? '+' : ''}{r.delta.toFixed(0)}
+                    </span>
+                  </div>
+                  <div className="pl-[5.5rem] text-[10px] text-gray-400">{r.why}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-400 mt-3">
+        How it is built: each pitch is scored against that batter side by its hand-specific Stuff+ (model expected run value), blended with what it has
+        actually done against that side (counting fully at ~40 pitches). Better scores earn more usage, the result is averaged half-and-half with the
+        current mix, and every pitch stays between 5% and 55%. It says which way to lean, not the exact number; sequencing and count are not in it.
+      </p>
     </div>
   )
 }

@@ -41,10 +41,11 @@ def _to_core(entry, sign):
     }
 
 
-def grade_trackman_detail(entry, fb):
-    """-> (grade, components, xrv) for one suite arsenal centroid."""
+def grade_trackman_detail(entry, fb, side=None):
+    """-> (grade, components, xrv) for one suite arsenal centroid.
+    side='same'|'opp' grades it against that batter side."""
     sign = _sign(entry)
-    return core.score(_to_core(entry, sign), _to_core(fb, sign) if fb else None)
+    return core.score(_to_core(entry, sign), _to_core(fb, sign) if fb else None, side=side)
 
 
 def grade_trackman(entry, fb):

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ..stats.trackman_parse import parse_text, TEXT_COLS, INT_COLS, FLOAT_COLS
-from ..stats.trackman_stuff import grade_trackman, FB_FAMILY
+from ..stats.trackman_stuff import grade_trackman, grade_trackman_detail, FB_FAMILY
 from ..stats import pitch_shape
 from ..stats.trackman_counts import count_states
 from ..stats.trackman_xstats import xwobacon
@@ -1809,6 +1809,81 @@ _PCTL_METRICS = [
 ]
 
 
+def _hand_stuff(entry, fb, side):
+    """{stuff_hand, xrv_hand} for one arsenal centroid vs one batter side."""
+    if not entry or (entry.get("n") or 0) < 2:
+        return {"stuff_hand": None, "xrv_hand": None}
+    g, _, xrv = grade_trackman_detail(entry, fb or entry, side=side)
+    return {"stuff_hand": g, "xrv_hand": xrv}
+
+
+USAGE_TEMP = 1.5        # runs/100 per e-fold of preference in the softmax
+USAGE_KEEP = 0.6        # share of the CURRENT mix kept (a nudge, not a rewrite)
+USAGE_SHRINK_N = 60     # observed RV vs that side counts half at this many pitches
+USAGE_MAX = 0.55        # a fastball-family pitch
+USAGE_MAX_SEC = 0.40    # any secondary
+USAGE_MIN = 0.05
+USAGE_FB_FLOOR = 0.35   # fastball family combined: the heater still sets up everything
+
+
+def _usage_plan(platoon, gtypes):
+    """Recommended pitch mix vs each batter side. Score = hand-specific model
+    xRV blended with observed RV/100 vs that side (weighted by sample), turned
+    into shares by a softmax and averaged with the current mix; clamped to
+    5-55% per pitch. Pitches thrown fewer than 3 times to that side are left
+    out of the plan (nothing to judge)."""
+    import math as _m
+    out = {}
+    for lbl, side in platoon.items():
+        types = {t: a for t, a in side["types"].items() if (gtypes.get(t, {}).get("n") or 0) >= 3 and t in SUITE_TYPES}
+        if len(types) < 2:
+            continue
+        rows = []
+        for t, a in types.items():
+            model = a.get("xrv_hand")
+            obs = a.get("rv100")
+            n = a["n"]
+            w = n / (n + USAGE_SHRINK_N) if obs is not None else 0.0
+            if model is None and obs is None:
+                continue
+            base = model if model is not None else obs
+            sc = (1 - w) * base + w * obs if obs is not None else base
+            rows.append({"type": t, "usage": a["usage"], "n": n, "stuff_hand": a.get("stuff_hand"),
+                         "rv100": obs, "score": sc})
+        if len(rows) < 2:
+            continue
+        top = max(r["score"] for r in rows)
+        wts = [_m.exp((r["score"] - top) / USAGE_TEMP) for r in rows]
+        tot = sum(wts)
+        for r, w in zip(rows, wts):
+            r["rec"] = USAGE_KEEP * r["usage"] / 100.0 + (1 - USAGE_KEEP) * w / tot
+        # clamp + fastball floor + renormalize
+        fbs = [r for r in rows if r["type"] in FB_FAMILY]
+        for _ in range(4):
+            for r in rows:
+                cap = USAGE_MAX if r["type"] in FB_FAMILY else USAGE_MAX_SEC
+                r["rec"] = max(USAGE_MIN, min(cap, r["rec"]))
+            fb_tot = sum(r["rec"] for r in fbs)
+            if fbs and fb_tot < USAGE_FB_FLOOR:
+                for r in fbs:
+                    r["rec"] *= USAGE_FB_FLOOR / fb_tot
+            z = sum(r["rec"] for r in rows)
+            for r in rows:
+                r["rec"] /= z
+        for r in rows:
+            r["rec"] = round(100 * r["rec"], 1)
+            r["delta"] = round(r["rec"] - r["usage"], 1)
+            why = []
+            if r["stuff_hand"] is not None:
+                why.append(f"Stuff+ {r['stuff_hand']} vs this side")
+            if r["rv100"] is not None:
+                why.append(f"{'+' if r['rv100'] > 0 else ''}{r['rv100']:.1f} RV/100 on {r['n']} pitches")
+            r["why"] = " · ".join(why)
+        rows.sort(key=lambda r: -r["rec"])
+        out[lbl] = rows
+    return out or None
+
+
 @router.get("/trackman/pitchers/detail")
 def trackman_pitcher_detail(
     pitcher: str = Query(...),
@@ -2044,6 +2119,8 @@ def trackman_pitcher_detail(
                 a["heart"] += 1
     # Platoon: how he does against each batter side, and how his arsenal
     # usage and per-pitch run value split by hand (the Savant pitch-usage card).
+    # Each type also gets a hand-specific Stuff+ (stuff_core.platoon_split).
+    pitcher_hand = (pitches[0].get("pitcher_throws") or "Right")
     platoon = {}
     for hand, lbl in (("Left", "L"), ("Right", "R")):
         hx = [x for x in pitches if x.get("batter_side") == hand]
@@ -2080,9 +2157,12 @@ def trackman_pitcher_detail(
             "rv": round(rv_h + n_h * rv_base, 1) if n_h else None,
             "rv100": round(100 * (rv_h + n_h * rv_base) / n_h, 2) if n_h else None,
             "types": {t: {"n": a["n"], "usage": round(100 * a["n"] / len(hx), 1),
-                          "rv": round(a["rv"] + a["rv_n"] * rv_base, 1) if a["rv_n"] else None}
+                          "rv": round(a["rv"] + a["rv_n"] * rv_base, 1) if a["rv_n"] else None,
+                          "rv100": round(100 * (a["rv"] + a["rv_n"] * rv_base) / a["rv_n"], 2) if a["rv_n"] >= 5 else None,
+                          **_hand_stuff(gtypes.get(t), gfb[1] if gfb else None, "same" if hand == pitcher_hand else "opp")}
                       for t, a in per_t.items() if t},
         }
+    usage_plan = _usage_plan(platoon, gtypes) if platoon else None
 
     rv_by_type = {
         t: {"rv": round(a["rv"] + a["n"] * rv_base, 1), "n": a["n"],
@@ -2157,6 +2237,7 @@ def trackman_pitcher_detail(
         "session_trend": session_trend,
         "grades": grades,
         "platoon": platoon,
+        "usage_plan": usage_plan,
         "slot": lab_slot,
         "type_avgs": type_avgs,
         "line": box.pitcher_line([x for x in pitches if x.get("session_type") in _LIVE_TYPES], lab_lg),
