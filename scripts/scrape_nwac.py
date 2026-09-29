@@ -892,12 +892,15 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                     if ip == 0 and g == 0:
                         continue
 
-                    # Estimate batters faced
+                    # Estimate batters faced. The NWAC composite template publishes
+                    # neither BF nor HBP, so BF = outs + H + BB here; the upsert below
+                    # refreshes it every run (plus any HBP the post-scrape box-score
+                    # reconciliation has recovered) so it can never go stale.
                     if ip > 0:
                         outs = int(ip) * 3 + int(round((ip - int(ip)) * 10))
                         bf = outs + h_allowed + bb
                     else:
-                        bf = 0
+                        bf = h_allowed + bb
 
                     line = PitchingLine(
                         ip=ip, hits=h_allowed, er=er, runs=runs, bb=bb, ibb=0,
@@ -925,6 +928,10 @@ def process_all_data(season_str, season_year, skip_rosters=False):
                             runs_allowed=excluded.runs_allowed,
                             earned_runs=excluded.earned_runs, walks=excluded.walks,
                             strikeouts=excluded.strikeouts, home_runs_allowed=excluded.home_runs_allowed,
+                            -- BF is an estimate (outs + H + BB) rebuilt from the fresh
+                            -- composite line every run; add back the HBP the box-score
+                            -- reconciliation has already recovered for this row.
+                            batters_faced=excluded.batters_faced + COALESCE(pitching_stats.hit_batters, 0),
                             era=excluded.era, whip=excluded.whip, k_per_9=excluded.k_per_9,
                             bb_per_9=excluded.bb_per_9, h_per_9=excluded.h_per_9,
                             hr_per_9=excluded.hr_per_9, k_bb_ratio=excluded.k_bb_ratio,
@@ -1212,7 +1219,7 @@ def process_willamette(season_str, season_year, skip_rosters=False):
                     outs = int(ip) * 3 + int(round((ip - int(ip)) * 10))
                     bf = outs + h_allowed + bb
                 else:
-                    bf = 0
+                    bf = h_allowed + bb
 
                 line = PitchingLine(
                     ip=ip, hits=h_allowed, er=er, runs=runs, bb=bb, ibb=0,
@@ -1240,6 +1247,10 @@ def process_willamette(season_str, season_year, skip_rosters=False):
                         runs_allowed=excluded.runs_allowed,
                         earned_runs=excluded.earned_runs, walks=excluded.walks,
                         strikeouts=excluded.strikeouts, home_runs_allowed=excluded.home_runs_allowed,
+                            -- BF is an estimate (outs + H + BB) rebuilt from the fresh
+                            -- composite line every run; add back the HBP the box-score
+                            -- reconciliation has already recovered for this row.
+                            batters_faced=excluded.batters_faced + COALESCE(pitching_stats.hit_batters, 0),
                         era=excluded.era, whip=excluded.whip, k_per_9=excluded.k_per_9,
                         bb_per_9=excluded.bb_per_9, h_per_9=excluded.h_per_9,
                         hr_per_9=excluded.hr_per_9, k_bb_ratio=excluded.k_bb_ratio,
@@ -1638,12 +1649,15 @@ def main():
     # -------------------------------------------------------------
     # Post-scrape reconciliation
     # -------------------------------------------------------------
-    # The NWAC composite pitching template (pos=p) does NOT publish Hit Batters,
-    # and its BF estimate (outs + H + BB) undercounts BF whenever a pitcher has
-    # hit a batter. Above, we write hbp=0 and an estimated BF as a placeholder.
-    # Now we pull the truth from game_pitching (populated by scrape_boxscores.py)
-    # and reconcile hit_batters + batters_faced in pitching_stats so downstream
-    # advanced stats (BABIP against, FIP, etc.) recompute correctly.
+    # The NWAC composite pitching template (pos=p) does NOT publish Hit Batters
+    # or Batters Faced, so above we write hbp=0 and BF = outs + H + BB (+ the
+    # HBP already on the row) as a placeholder. Now we pull the truth from
+    # game_pitching (populated by scrape_boxscores.py) and reconcile
+    # hit_batters + batters_faced in pitching_stats so downstream advanced
+    # stats (BABIP against, FIP, K%, BB%) recompute correctly. The repair only
+    # accepts box-score BF sums that are consistent with the season line, so a
+    # duplicated game or a ghost row can no longer inflate BF (see the
+    # 2026 NWAC incident: Pevny 282 BF on 13 IP).
     try:
         from fix_pitching_hbp_from_boxscores import repair as _reconcile_hbp_bf
         logger.info("Reconciling hit_batters and batters_faced from box scores...")

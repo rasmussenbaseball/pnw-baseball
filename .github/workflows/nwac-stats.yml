@@ -39,6 +39,16 @@ jobs:
         run: |
           pip install requests beautifulsoup4 psycopg2-binary python-dotenv
 
+      # Runs BEFORE the scrape: scrape_nwac.py ends by reconciling pitching_stats
+      # against game_pitching sums, and duplicate game rows would inflate those
+      # sums (this is how 2026 batters_faced got corrupted).
+      - name: Deduplicate games
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          PYTHONPATH=backend python3 scripts/dedup_games.py --season 2026
+
       - name: Scrape stats
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
@@ -51,13 +61,6 @@ jobs:
           else
             PYTHONPATH=backend python3 scripts/scrape_nwac.py --season 2025-26 --skip-rosters
           fi
-
-      - name: Deduplicate games
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          cd $GITHUB_WORKSPACE
-          PYTHONPATH=backend python3 scripts/dedup_games.py --season 2026
 
       - name: Recalculate league-adjusted stats
         env:
