@@ -203,7 +203,9 @@ def main():
     out = []
     for side in ("bat", "pit"):
         out.append(run_side(side, bat, pit, sbat, spit, pbp_b, pbp_p, bat_v1, pit_v1).assign(side=side))
-    pd.concat(out).to_csv(Path(__file__).resolve().parent / "backtest_v2_results.csv", index=False)
+    import os
+    dest = os.getenv("V2_OUT") or str(Path(__file__).resolve().parent / "backtest_v2_results.csv")
+    pd.concat(out).to_csv(dest, index=False)
 
 
 if __name__ == "__main__":

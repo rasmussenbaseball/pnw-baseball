@@ -82,6 +82,20 @@ import os as _os
 RECENCY = {1: 5.0, 2: 4.0, 3: 3.0}
 TRANSLATED_DISCOUNT = float(_os.getenv("V2_TRANS_DISCOUNT", "0.80"))   # a translated season counts this much
 OFFSET_SCALE = float(_os.getenv("V2_OFFSET_SCALE", "1.0"))            # scale on level offsets (tuning knob)
+PRIOR_MODE = _os.getenv("V2_PRIOR", "normal")                           # "normal" | "mixture" (elite / regular)
+PT_COVARIATE = _os.getenv("V2_PT", "0") == "1"                          # playing-time term in the prior (backtest-neutral; off)
+CALIBRATE = _os.getenv("V2_CALIB", "0") == "1"                          # piecewise (above/below prior) slope calibration (off: no gain)
+AGE_PER_ROW = _os.getenv("V2_AGEROW", "1") == "1"
+# Reliability curve steepness. The backtest shows hitters with <150 PA of
+# history are over-trusted (calibration slope ~0.83) and 150-600 PA hitters
+# under-trusted (~1.2): the constant-M curve n/(n+M) is too flat in n. The
+# ballast becomes M * (M_REF/n)^gamma, so thin samples shrink harder and
+# established ones less. gamma=0 is the plain empirical-Bayes curve.
+M_GAMMA = {"bat": float(_os.getenv("V2_MEXP_BAT", "0.6")), "pit": float(_os.getenv("V2_MEXP_PIT", "0"))}
+M_REF = 150.0
+M_SCALE = {"bat": float(_os.getenv("V2_MSCALE_BAT", "1")), "pit": float(_os.getenv("V2_MSCALE_PIT", "1"))}                       # age every history season from ITS class to the target class
+_rw = [float(x) for x in _os.getenv("V2_RECENCY", "5,4,3").split(",")]
+RECENCY = {i + 1: w for i, w in enumerate(_rw)}
 SUMMER_DISCOUNT = 0.55         # a WCL season (short, wood bat) vs a spring season
 CLASS_NEXT = {"Fr": "So", "So": "Jr", "Jr": "Sr", "Sr": "Sr+", "Sr+": "Sr+"}
 CLASS_ORDER = ["Fr", "So", "Jr", "Sr", "Sr+"]
@@ -322,6 +336,8 @@ def fit_constants(bat, pit, summer_bat, summer_pit, target):
             "team": _team_offsets(q, stats, target, side),
             "aging": _aging(q, stats, side),
             "pt_slope": _pt_slopes(tc, stats, side),
+            "mixture": _mixture_priors(q, stats, side),
+            "calib": _calibration(q, stats, side),
         }
         C[side]["offsets"] = _level_offsets(q, sc, stats, C[side]["aging"], side)
     return C
@@ -357,30 +373,122 @@ def ballast(C, side, level, stat):
     return (b.get((level, stat)) or b.get(("ALL", stat)) or {"M": 200, "var_true": 1e-4, "sd_true": 0.01})
 
 
+def _mixture_priors(q, stats, side):
+    """Two-component talent prior per stat (pooled across levels, centered
+    space), fit by a deconvolution EM that knows each season's sampling
+    noise. Elite players are not just the tail of one bell curve: the
+    backtest shows one-mean shrinkage over-regresses the top decile
+    (Jensen, McShane & Wyner 2009 found the same for MLB HR rates). Each
+    component k has mean mu_k, talent sd tau_k and weight pi_k; the
+    projection then shrinks toward a responsibility-weighted blend.
+    Returns {stat: [(pi, mu, tau2), (pi, mu, tau2)]} sorted regular first."""
+    out = {}
+    for s in stats:
+        sub = q.dropna(subset=[f"{s}_c"])
+        if len(sub) < 200:
+            continue
+        x = sub[f"{s}_c"].to_numpy(float)
+        n = sub[dn(side, s)].to_numpy(float).clip(min=1)
+        ev = np.array([samp_var(r, s) for _, r in sub.iterrows()], dtype=float)
+        ok = ~np.isnan(ev)
+        x, n, ev = x[ok], n[ok], ev[ok]
+        v = ev / n                                   # per-season noise variance
+        w = n / n.mean()
+        # init: regular = bulk, elite = the good tail (sign-aware: lower is better for some)
+        better_high = s not in ("k_pct", "er_rate", "whip_rate", "hr_bf", "bb_pct", "babip_against") if side == "bat" else s in ()
+        if side == "pit":
+            better_high = s in ("k_pct",)
+        if side == "bat" and s in ("k_pct",):
+            better_high = False
+        q80 = np.quantile(x, 0.8 if better_high else 0.2)
+        mu = np.array([np.average(x, weights=w), q80]); tau2 = np.array([np.var(x) * 0.5, np.var(x) * 0.5]); pi = np.array([0.85, 0.15])
+        for _ in range(60):
+            # E-step
+            dens = np.stack([pi[k] * np.exp(-0.5 * (x - mu[k]) ** 2 / (tau2[k] + v)) / np.sqrt(tau2[k] + v) for k in range(2)])
+            dens = dens / np.maximum(dens.sum(axis=0, keepdims=True), 1e-300)
+            # M-step (weighted by sample size)
+            for k in range(2):
+                r = dens[k] * w
+                sr = r.sum()
+                if sr <= 1e-9:
+                    continue
+                mu[k] = (r * x).sum() / sr
+                tau2[k] = max(((r * ((x - mu[k]) ** 2 - v)).sum() / sr), 0.10 * np.var(x))
+            pi = np.maximum(dens.mean(axis=1), 0.02); pi = pi / pi.sum()
+        comps = sorted(zip(pi, mu, tau2), key=lambda t: -t[0])   # regular (bigger weight) first
+        out[s] = [(float(a), float(b), float(c)) for a, b, c in comps]
+    return out
+
+
+def _calibration(q, stats, side):
+    """Asymmetric calibration of the shrunk estimate. The talent distribution
+    is not a symmetric bell: the backtest shows the top decile beats its
+    projection by ~.015 wOBA while the bottom decile is on target, i.e. one
+    ballast over-regresses the good tail. Fit, on consecutive same-level
+    seasons, next season's centered rate on the one-season shrunk estimate
+    with separate slopes above and below zero; slopes are shrunk toward 1.
+    Returns {stat: (slope_below, slope_above)}."""
+    out = {}
+    p = _pairs(q)
+    p = p[p["level_1"] == p["level_2"]]
+    for s in stats:
+        sub = p.dropna(subset=[f"{s}_c_1", f"{s}_c_2"])
+        if len(sub) < 200:
+            continue
+        n1 = sub[f"{dn(side, s)}_1"].to_numpy(float).clip(min=1)
+        n2 = sub[f"{dn(side, s)}_2"].to_numpy(float).clip(min=1)
+        ev = np.array([samp_var({s: v}, s) for v in sub[f"{s}_1"].to_numpy(float)])
+        c1 = sub[f"{s}_c_1"].to_numpy(float); c2 = sub[f"{s}_c_2"].to_numpy(float)
+        var_obs = np.average((c1 - np.average(c1, weights=n1)) ** 2, weights=n1)
+        noise = np.average(ev / n1, weights=n1)
+        M = np.average(ev, weights=n1) / max(var_obs - noise, 0.15 * var_obs)
+        est = c1 * n1 / (n1 + M)
+        w = 2 / (1 / n1 + 1 / n2)
+        X = np.column_stack([np.ones_like(est), np.minimum(est, 0), np.maximum(est, 0)])
+        W = np.sqrt(w)
+        coef, *_ = np.linalg.lstsq(X * W[:, None], c2 * W, rcond=None)
+        k = len(sub) / (len(sub) + 300)
+        lo = 1 + k * (float(coef[1]) - 1); hi = 1 + k * (float(coef[2]) - 1)
+        out[s] = (float(np.clip(lo, 0.6, 1.6)), float(np.clip(hi, 0.6, 1.6)))
+    return out
+
+
 def _pt_slopes(tc, stats, side):
     """Playing time is confounded with talent: the players a coach gives 40 PA
-    are worse than the ones he gives 200. Fit centered rate ~ log(n) within
-    level-season on everyone with 10+ events, and use the slope to lower the
-    prior mean for thin samples (never to raise it for big ones). Returns
-    {(level, stat): (slope, log_ref)} with log_ref = mean log n of regulars."""
+    are worse than the ones he gives 200. Fit PREDICTIVELY on consecutive
+    same-level seasons: next season's centered rate minus this season's
+    one-season shrunk estimate, regressed on log(n this season). A slope fit
+    within one season would pick up in-season selection (hot hitters get more
+    at-bats) and over-penalize thin samples, which the backtest showed.
+    Returns {(level, stat): (slope, log_ref)}; level 'ALL' is the pooled fit."""
     out = {}
-    for lv, g in tc.groupby("level"):
+    p = _pairs(tc[tc["wt_n"] >= 10])
+    p = p[p["level_1"] == p["level_2"]]
+    if p.empty:
+        return out
+    groups = [("ALL", p)] + [(lv, g) for lv, g in p.groupby("level_1")]
+    for lv, g in groups:
         for s in stats:
-            sub = g.dropna(subset=[f"{s}_c"])
-            n = sub[dn(side, s)].to_numpy(float)
-            ok = n >= 10
-            sub, n = sub[ok], n[ok]
-            if len(sub) < 80:
+            sub = g.dropna(subset=[f"{s}_c_1", f"{s}_c_2"])
+            if len(sub) < 150:
                 continue
-            x = np.log(n); y = sub[f"{s}_c"].to_numpy(float); w = n
-            mx, my = np.average(x, weights=w), np.average(y, weights=w)
+            n1 = sub[f"{dn(side, s)}_1"].to_numpy(float).clip(min=1)
+            n2 = sub[f"{dn(side, s)}_2"].to_numpy(float).clip(min=1)
+            ev = np.array([samp_var({s: v}, s) for v in sub[f"{s}_1"].to_numpy(float)])
+            c1 = sub[f"{s}_c_1"].to_numpy(float); c2 = sub[f"{s}_c_2"].to_numpy(float)
+            # one-season shrunk estimate with the pooled ballast
+            var_obs = np.average((c1 - np.average(c1, weights=n1)) ** 2, weights=n1)
+            noise = np.average(ev / n1, weights=n1)
+            M = np.average(ev, weights=n1) / max(var_obs - noise, 0.15 * var_obs)
+            est1 = c1 * n1 / (n1 + M)
+            resid = c2 - est1
+            x = np.log(n1); w = 2 / (1 / n1 + 1 / n2)
+            mx, my = np.average(x, weights=w), np.average(resid, weights=w)
             vx = np.average((x - mx) ** 2, weights=w)
             if vx <= 0:
                 continue
-            slope = float(np.average((x - mx) * (y - my), weights=w) / vx)
-            reg = sub[sub[dn(side, s)] >= MIN_N_STAT]
-            log_ref = float(np.average(np.log(reg[dn(side, s)].to_numpy(float)), weights=reg[dn(side, s)])) if len(reg) else mx
-            out[(lv, s)] = (slope, log_ref)
+            slope = float(np.average((x - mx) * (resid - my), weights=w) / vx)
+            out[(lv, s)] = (slope * (len(sub) / (len(sub) + 200)), float(mx))
     return out
 
 
@@ -463,6 +571,17 @@ def aging_delta(C, side, level, cls_now, stat):
     grp = "JUCO" if level == "JUCO" else "4YR"
     a = C[side]["aging"]
     return a.get((grp, tr, stat), a.get(("ALL", tr, stat), 0.0))
+
+
+_CLASS_ORD = {"Fr": 0, "So": 1, "Jr": 2, "Sr": 3, "Sr+": 4}
+
+
+def _class_steps(cls_from, cls_to):
+    """Number of class transitions from cls_from up to cls_to (0 if unknown/behind)."""
+    a, b = _CLASS_ORD.get(cls_from), _CLASS_ORD.get(cls_to)
+    if a is None or b is None:
+        return 0
+    return max(b - a, 0)
 
 
 def _class_path_delta(C, side, level, cls, gap, stat):
@@ -645,6 +764,13 @@ def project(C, side, hist, summer_hist, pbp_last, target_level, target_season,
             if n <= 0:
                 continue
             v = v + translate(C, side, r["level"], target_level, s)
+            if AGE_PER_ROW:
+                # a senior-to-be's freshman season needs three class steps of
+                # development, not one: age each row from its own class
+                rc = r.get("cls")
+                rc = rc if isinstance(rc, str) else cls_last
+                steps = _class_steps(rc, cls_last)
+                v = v + _class_path_delta(C, side, target_level, rc, steps + 1, s) if rc else v
             w = RECENCY[back] * n * (TRANSLATED_DISCOUNT if r["level"] != target_level else 1.0)
             num += w * v; den += w
         if summer_hist is not None:
@@ -662,6 +788,9 @@ def project(C, side, hist, summer_hist, pbp_last, target_level, target_season,
         b = ballast(C, side, target_level, s)
         M = b["M"]
         n_eff = den / RECENCY[1]
+        M = M * M_SCALE[side]
+        if M_GAMMA[side] and n_eff > 0:
+            M = M * (M_REF / n_eff) ** M_GAMMA[side]
         prior = 0.0
         tcls = next_cls or cls_last
         if tcls:
@@ -670,20 +799,45 @@ def project(C, side, hist, summer_hist, pbp_last, target_level, target_season,
             prior += team.get((int(dest_team_id), s), 0.0)
         # thin-sample players are worse than the class mean (playing time
         # is earned): shift the prior down by the fitted log(n) slope
-        sl = C[side]["pt_slope"].get((target_level, s))
-        if sl and len(hist):
+        sl = C[side]["pt_slope"].get((target_level, s)) or C[side]["pt_slope"].get(("ALL", s))
+        if PT_COVARIATE and sl and len(hist):
             last = hist.sort_values("season").iloc[-1]
             n_last = float(max(last.get(dn(side, s), 0) or 0, 1))
             slope, log_ref = sl
-            gap = math.log(n_last) - log_ref
-            if gap < 0:
-                prior += slope * gap
-        est = (num / RECENCY[1] + M * prior) / (n_eff + M) if (n_eff + M) > 0 else prior
-        rel = n_eff / (n_eff + M) if (n_eff + M) > 0 else 0.0
+            prior += slope * (math.log(n_last) - log_ref)
+        mix = C[side].get("mixture", {}).get(s) if PRIOR_MODE == "mixture" else None
+        if mix and n_eff > 0:
+            # responsibility-weighted shrinkage toward each component
+            xbar = num / den
+            ev = float(np.average(b["var_true"] * b["M"], weights=None))  # E[per-event var] = M * var_true
+            v = ev / n_eff
+            post_m, post_w, post_v = [], [], []
+            for pi_k, mu_k, tau2_k in mix:
+                m_k = mu_k + prior
+                lik = pi_k * math.exp(-0.5 * (xbar - m_k) ** 2 / (tau2_k + v)) / math.sqrt(tau2_k + v)
+                shrink = tau2_k / (tau2_k + v)
+                post_m.append(m_k + shrink * (xbar - m_k)); post_w.append(lik); post_v.append(tau2_k * v / (tau2_k + v))
+            tw = sum(post_w) or 1.0
+            wts = [x / tw for x in post_w]
+            est = sum(wt * m for wt, m in zip(wts, post_m))
+            rel = sum(wt * (1 - pv / t2) for wt, pv, (pi_k, mu_k, t2) in zip(wts, post_v, mix))
+            rel = max(0.0, min(1.0, rel))
+            var_post = sum(wt * (pv + (m - est) ** 2) for wt, pv, m in zip(wts, post_v, post_m))
+        else:
+            est = (num / RECENCY[1] + M * prior) / (n_eff + M) if (n_eff + M) > 0 else prior
+            rel = n_eff / (n_eff + M) if (n_eff + M) > 0 else 0.0
+            var_post = max(b["var_true"], 1e-8) * (1 - rel)
+        # asymmetric calibration around the prior (good tail regresses less)
+        if CALIBRATE:
+            cal = C[side].get("calib", {}).get(s)
+            if cal:
+                d = est - prior
+                est = prior + d * (cal[1] if d > 0 else cal[0])
         # aging: the player's own history is at his old class; move it forward
-        est += aging_delta(C, side, target_level, cls_last, s) * rel
-        out[s] = {"c": est, "rel": rel, "n_eff": n_eff,
-                  "sd": math.sqrt(max(b["var_true"], 1e-8) * (1 - rel))}
+        # (already folded into each row when AGE_PER_ROW)
+        if not AGE_PER_ROW:
+            est += aging_delta(C, side, target_level, cls_last, s) * rel
+        out[s] = {"c": est, "rel": rel, "n_eff": n_eff, "sd": math.sqrt(max(var_post, 1e-10))}
     # peripheral refinement
     if refine and pbp_last:
         for (stat, f), (beta, _n) in refine.items():
