@@ -1,4 +1,4 @@
-// Privacy Policy tailored to NW Baseball Stats (Supabase auth, Stripe
+// Privacy Policy tailored to NW Baseball Stats (Supabase auth,
 // payments, Vercel/DigitalOcean hosting). Starter template — have a
 // professional review before relying on it.
 
@@ -35,12 +35,6 @@ export default function Privacy() {
               provider). Authentication is handled by Supabase.
             </li>
             <li>
-              <span className="font-semibold">Payment information.</span> Paid subscriptions are processed
-              by Stripe. Stripe collects and stores your payment details directly; we do not receive or
-              store your full card number. We retain limited records such as your subscription status and
-              billing history.
-            </li>
-            <li>
               <span className="font-semibold">Usage and device data.</span> Like most websites, our
               servers and hosting providers automatically log basic technical information such as IP
               address, browser type, pages viewed, and timestamps.
@@ -57,7 +51,6 @@ export default function Privacy() {
           <ul className="list-disc pl-5 space-y-1">
             <li>to provide, maintain, and improve the Service;</li>
             <li>to create and manage your account and authenticate you;</li>
-            <li>to process subscriptions and payments and provide premium features;</li>
             <li>to respond to your messages and support requests; and</li>
             <li>to monitor usage, prevent abuse, and keep the Service secure.</li>
           </ul>
@@ -67,7 +60,6 @@ export default function Privacy() {
           <p>We share limited information with trusted providers that help us run the Service:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li><span className="font-semibold">Supabase</span> — accounts, authentication, and database;</li>
-            <li><span className="font-semibold">Stripe</span> — subscription payments and billing;</li>
             <li><span className="font-semibold">Vercel and DigitalOcean</span> — website and API hosting.</li>
           </ul>
           <p>These providers process data on our behalf under their own privacy and security terms.</p>
@@ -106,7 +98,7 @@ export default function Privacy() {
 
         <Section title="Your choices and rights">
           <p>
-            You can review or update your account information, cancel your subscription, or request that
+            You can review or update your account information, or request that
             we delete your account at any time. To make a request, email{' '}
             <a href={`mailto:${CONTACT}`} className="text-nw-teal dark:text-teal-400 font-semibold hover:underline">{CONTACT}</a>.
             Depending on where you live, you may have additional rights over your personal information.

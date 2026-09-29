@@ -302,19 +302,6 @@ export default function PnwGrid() {
     return ''
   }
 
-  if (authLoading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
-  if (!user) return (
-    <div className="text-center py-12 text-gray-400">
-      <p className="text-lg font-medium mb-2">Log in to play PNW Grid</p>
-      <p className="text-sm mb-4">Create a free account or log in to access this game.</p>
-      <button
-        onClick={() => navigate('/login')}
-        className="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-      >
-        Log In / Sign Up
-      </button>
-    </div>
-  )
 
   if (loading) return <div className="text-center py-12 text-gray-400">Loading PNW Grid...</div>
 

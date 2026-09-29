@@ -21,7 +21,7 @@ from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
-from .auth import require_admin, require_tier
+from .auth import require_admin
 from .leverage import compute_li
 from .lineup_helper import (
     compute_team_lineup_helper,

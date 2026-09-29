@@ -25,7 +25,7 @@ from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
-from .auth import require_admin, require_tier
+from .auth import require_admin
 from .leverage import compute_li
 from .lineup_helper import (
     compute_team_lineup_helper,
@@ -751,7 +751,6 @@ def stats_last_updated_top(season: int = CURRENT_SEASON):
 @router.get("/hometown-search")
 def hometown_search(
     q: str = Query("", min_length=0),
-    _user: str = Depends(require_tier("premium")),
 ):
     """Search players by hometown. Returns players whose hometown contains the query string.
     Premium-gated (soft mode = auth-only)."""
@@ -9442,7 +9441,6 @@ def compare_players(
     ids: str = Query(..., description="Comma-separated player ids (1-5)"),
     mode: str = Query("season", description="'season' or 'career'"),
     season: int = Query(CURRENT_SEASON),
-    _user: str = Depends(require_tier("premium")),
 ):
     """Side-by-side stat comparison for up to 5 players (season or career)."""
     pid_list = [int(t) for t in (ids or "").split(",") if t.strip().isdigit()][:5]
@@ -10241,7 +10239,6 @@ def uncommitted_juco_players(
     bats: Optional[str] = Query(None, description="Filter by batting hand: L, R, or S"),
     throws: Optional[str] = Query(None, description="Filter by throwing hand: L or R"),
     limit: int = Query(500),
-    _user: str = Depends(require_tier("recruiting")),
 ):
     """
     Find uncommitted JUCO players - the primary recruiting tool.
@@ -10360,7 +10357,6 @@ def uncommitted_juco_players(
 @router.get("/players/juco/recruit-conferences")
 def juco_recruit_conferences(
     season: int = Query(...),
-    _user: str = Depends(require_tier("recruiting")),
 ):
     """List the out-of-region JUCO conferences that have data for `season`,
     for the tracker's conference dropdown."""
@@ -10398,7 +10394,6 @@ def uncommitted_juco_recruit_ext(
     bats: Optional[str] = None,
     throws: Optional[str] = None,
     limit: int = Query(500),
-    _user: str = Depends(require_tier("recruiting")),
 ):
     """Out-of-region JUCO players (California / Scenic West) for the tracker.
 
@@ -10504,7 +10499,6 @@ def transfer_portal_players(
     sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
     bats: Optional[str] = Query(None),
     throws: Optional[str] = Query(None),
-    _user: str = Depends(require_tier("recruiting")),
 ):
     """
     Transfer Portal Tracker — PNW four-year (non-JUCO) players who have
@@ -10714,8 +10708,7 @@ def team_incoming_transfers(team_id: int):
 
 @router.get("/projections/teams")
 @cached_endpoint(ttl_seconds=1800)
-def projections_teams(season: int = Query(2027),
-                      _user: str = Depends(require_tier("premium"))):
+def projections_teams(season: int = Query(2027)):
     """Teams that have projections for the season, for the page's team picker."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -10964,8 +10957,7 @@ def _all_team_projection_totals(cur, season):
 
 @router.get("/teams/{team_id}/projections")
 @cached_endpoint(ttl_seconds=1800)
-def team_projections(team_id: int, season: int = Query(2027),
-                     _user: str = Depends(require_tier("premium"))):
+def team_projections(team_id: int, season: int = Query(2027)):
     """2027 projected hitters + pitchers for a team (returning + incoming
     transfers). Each row's `proj` holds the full projected stat line."""
     with get_connection() as conn:
@@ -11063,8 +11055,7 @@ def team_projections(team_id: int, season: int = Query(2027),
 
 @router.get("/projections/team-leaders")
 @cached_endpoint(ttl_seconds=1800)
-def projection_team_leaders(season: int = Query(2027),
-                            _user: str = Depends(require_tier("premium"))):
+def projection_team_leaders(season: int = Query(2027)):
     """Every PNW team's projected hitting + pitching totals (with within-level
     ranks), for the team-leaderboard view."""
     with get_connection() as conn:
@@ -11081,8 +11072,7 @@ def projection_team_leaders(season: int = Query(2027),
 
 @router.get("/projections/player-leaders")
 @cached_endpoint(ttl_seconds=1800)
-def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027),
-                              _user: str = Depends(require_tier("premium"))):
+def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027)):
     """All projected players for a side (bat|pit) with team + level, for the
     individual-player projection leaderboard. Same departing/portal filtering as the
     team pages; pool + no-data rows excluded."""
@@ -11197,8 +11187,6 @@ def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027
 # everyone else gets a teaser (one headline stat) + locked=true. Gating is
 # server-side (the full numbers never reach a sub-premium client), mirroring the
 # article paywall. NOT @cached_endpoint — the payload varies by viewer tier.
-_PROJ_TIER_RANK = {"none": 0, "free": 1, "premium": 2, "recruiting": 3, "coach": 4, "dev": 99}
-_PROJ_UNLOCK = "premium"
 _YOUNG_CLASSES = {"Fr", "R-Fr", "So", "R-So", "Freshman", "Sophomore"}
 
 
@@ -11394,20 +11382,12 @@ def player_projection(player_id: int, request: Request,
         preview = {"key": "ERA", "value": proj.get("ERA")}
     base = {"available": True, "season": season, "side": side,
             "class": proj.get("class_2027"), "level": proj.get("level"),
-            "preview": preview, "required_tier": _PROJ_UNLOCK}
+            "preview": preview}
 
-    # Tier gate (server-side, mirrors the article paywall).
-    try:
-        from .articles import _viewer_context
-        tier = (_viewer_context(request) or {}).get("tier", "none")
-    except Exception:
-        tier = "none"
-    if _PROJ_TIER_RANK.get(tier, 0) >= _PROJ_TIER_RANK[_PROJ_UNLOCK]:
-        base["locked"] = False
-        base["projection"] = _projection_payload(proj, side)
-        base["writeup"] = _projection_writeup(proj, side, actual)
-    else:
-        base["locked"] = True
+    # Projections are open to everyone (no paid tiers since September 2026).
+    base["locked"] = False
+    base["projection"] = _projection_payload(proj, side)
+    base["writeup"] = _projection_writeup(proj, side, actual)
     return base
 
 
@@ -12206,7 +12186,6 @@ def get_park_factors(
     division_id: Optional[int] = Query(None),
     conference_id: Optional[int] = Query(None),
     league: str = Query("spring"),
-    _user: str = Depends(require_tier("free")),
 ):
     """
     Return park factor data. league=spring (default) -> PNW college parks (enriched

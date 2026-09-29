@@ -45,7 +45,6 @@ from .api.articles import router as articles_router
 from .api.email_prefs import router as email_prefs_router
 from .api.email_broadcasts import router as email_broadcasts_router
 from .api.account import router as account_router
-from .api.billing import router as billing_router
 from .api.summer import router as summer_router
 from .api.player_comps import router as player_comps_router
 from .api.admin_tools import router as admin_tools_router
@@ -115,7 +114,6 @@ app.include_router(articles_router, prefix="/api/v1")
 app.include_router(email_prefs_router, prefix="/api/v1")
 app.include_router(email_broadcasts_router, prefix="/api/v1")
 app.include_router(account_router, prefix="/api/v1")
-app.include_router(billing_router, prefix="/api/v1")
 app.include_router(summer_router, prefix="/api/v1")
 app.include_router(player_comps_router, prefix="/api/v1")
 app.include_router(admin_tools_router, prefix="/api/v1")
@@ -203,21 +201,6 @@ def startup():
     import logging
     init_db()
     seed_divisions_and_conferences()
-    # Surface billing-config drift (a sellable tier missing its Stripe price,
-    # or the DB tier constraint rejecting a tier the app can assign) at deploy
-    # time rather than at a customer's first purchase.
-    try:
-        from .api.billing import verify_billing_config
-        problems = verify_billing_config()
-        blog = logging.getLogger("nwbb.billing")
-        if problems:
-            for p in problems:
-                blog.critical("BILLING CONFIG: %s", p)
-        else:
-            blog.info("billing config OK")
-    except Exception:
-        logging.getLogger("nwbb.billing").exception("billing config self-check failed")
-
     # Warm the player-comparison pools in the background so the first /comps
     # request after a restart isn't a cold ~5s load. Runs off-thread so it never
     # delays the server accepting traffic; failures are logged, not fatal.

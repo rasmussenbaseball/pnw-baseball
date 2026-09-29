@@ -33,11 +33,11 @@ from pydantic import BaseModel
 from ..models.database import get_connection
 from ..stats.trackman_parse import PITCH_TYPE_MAP
 from ._tracking_share import resolve_workspace, ensure_can_upload
-from .auth import require_tier
+from .auth import get_current_user
 
 router = APIRouter(tags=["camp-report"])
 
-_tier_gate = require_tier("coach")
+_tier_gate = get_current_user   # sign-in only: workspaces are per-user data
 
 
 def _gate(request: Request, owner: str = Depends(_tier_gate)) -> str:

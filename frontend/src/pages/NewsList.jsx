@@ -72,16 +72,6 @@ export default function NewsList() {
               </div>
             )}
             <div className="p-4">
-              {a.requires_tier && a.requires_tier !== 'free' && (
-                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider
-                                  px-2 py-0.5 rounded mb-1.5 ${
-                  a.requires_tier === 'coach'
-                    ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300'
-                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                }`}>
-                  {a.requires_tier === 'coach' ? 'Coach & Scout' : 'Premium'}
-                </span>
-              )}
               <h2 className="text-base font-bold text-gray-900 dark:text-gray-100
                              group-hover:text-nw-teal leading-snug line-clamp-2">
                 {a.title}

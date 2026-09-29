@@ -1,18 +1,17 @@
-// AddToBoardButton — shown on player pages for recruiting-tier (or higher)
-// users. Opens a modal to pick which recruiting board to add this player to,
+// AddToBoardButton — shown on player pages for signed-in users (boards are
+// per-user lists). Opens a modal to pick which recruiting board to add this player to,
 // or to spin up a new board on the spot.
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { useTier } from '../hooks/useTier'
-import { tierMeets } from '../lib/tiers'
+import { useAuth } from '../context/AuthContext'
 import { listBoards, createBoard, addPlayer } from '../lib/recruitingBoards'
 
 export default function AddToBoardButton({ player, className = '' }) {
-  const { tier, user } = useTier()
+  const { user } = useAuth()
   const [open, setOpen] = useState(false)
 
-  // Only recruiting tier and up; never for signed-out visitors.
-  if (!user || !tierMeets(tier, 'recruiting')) return null
+  // Boards belong to an account, so signed-out visitors don't see the button.
+  if (!user) return null
 
   return (
     <>

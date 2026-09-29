@@ -25,7 +25,6 @@ import json as _json
 from fastapi import APIRouter, Query, Depends
 from app.models.database import get_connection
 from app.config import CURRENT_SEASON
-from app.api.auth import require_tier
 
 router = APIRouter()
 
@@ -1405,7 +1404,6 @@ def series_planner(
     own_team_id: int = Query(..., description="The coach's team (our side)"),
     opp_team_id: int = Query(..., description="The opponent to plan for"),
     season: int = Query(CURRENT_SEASON),
-    _user: str = Depends(require_tier("coach")),
 ):
     """
     Pre-series opponent game plan for (own team vs opponent). Runs the ported
@@ -1452,7 +1450,7 @@ def series_planner(
 
 
 @router.get("/portal/series-planner/teams")
-def series_planner_teams(_user: str = Depends(require_tier("coach"))):
+def series_planner_teams():
     """List teams that have Series Planner data (for the own/opponent pickers)."""
     data = _load_records()
     if not data:
@@ -1767,7 +1765,6 @@ def build_alignment_for_hitter(hitter, spray):
 def alignments(
     team_id: int = Query(..., description="Opponent team to build alignments for"),
     season: int = Query(CURRENT_SEASON),
-    _user: str = Depends(require_tier("coach")),
 ):
     """Per-hitter defensive alignments for an opponent, from the fine (5 infield
     + 5 outfield) spray zones. Sourced from the daily Series Planner records."""

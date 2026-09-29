@@ -1,7 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { useTier } from '../hooks/useTier'
-import { tierMeets } from '../lib/tiers'
+import { useState } from 'react'
 
 /**
  * ExportCSVButton — small tier-gated button that exports a stat table
@@ -24,12 +21,7 @@ import { tierMeets } from '../lib/tiers'
  *   filename   base filename (no extension). YYYY-MM-DD.csv appended.
  *   label      optional override for the button text. Default "Export CSV".
  *
- * Access:
- *   coach + dev tiers → button enabled
- *   everyone else     → button rendered as a locked pill with an
- *                       on-click upsell popover. Useful as advertising;
- *                       free users see the feature exists without being
- *                       able to use it.
+ * Open to everyone.
  *
  * CSV is RFC 4180 compliant (CRLF line endings, fields containing
  * commas/quotes/newlines wrapped in double quotes with internal quotes
@@ -43,34 +35,14 @@ export default function ExportCSVButton({
   label = 'Export CSV',
   className = '',
 }) {
-  const { tier } = useTier()
-  const [showLocked, setShowLocked] = useState(false)
   const [busy, setBusy] = useState(false)
-  const lockedRef = useRef(null)
 
-  // Click-away to close the locked popover
-  useEffect(() => {
-    if (!showLocked) return
-    const onDown = (e) => {
-      if (lockedRef.current && !lockedRef.current.contains(e.target)) {
-        setShowLocked(false)
-      }
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [showLocked])
-
-  const unlocked = tierMeets(tier, 'coach') // coach or dev
   const noLocalData = !data || data.length === 0
   // We allow the button when fetchAll exists even if local `data` is
   // empty — paginated pages may want to export the full set ad-hoc.
   const empty = noLocalData && !fetchAll
 
   const handleExport = async () => {
-    if (!unlocked) {
-      setShowLocked(true)
-      return
-    }
     if (busy) return
     try {
       setBusy(true)
@@ -97,59 +69,18 @@ export default function ExportCSVButton({
   }
 
   return (
-    <div className={`relative inline-block ${className}`} ref={lockedRef}>
+    <div className={`relative inline-block ${className}`}>
       <button
         type="button"
         onClick={handleExport}
-        disabled={(empty && unlocked) || busy}
-        title={
-          !unlocked
-            ? 'Coach & Scout tier required'
-            : busy
-              ? 'Preparing download…'
-              : empty
-                ? 'No rows to export'
-                : 'Download as CSV'
-        }
-        className={
-          'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition ' +
-          (unlocked
-            ? 'border-teal-700 bg-teal-50 text-teal-800 hover:bg-teal-100 hover:border-teal-800 dark:border-teal-600 dark:bg-teal-950 dark:text-teal-200 dark:hover:bg-teal-900 disabled:opacity-50 disabled:cursor-not-allowed'
-            : 'border-gray-300 bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400')
-        }
+        disabled={empty || busy}
+        title={busy ? 'Preparing download…' : empty ? 'No rows to export' : 'Download as CSV'}
+        className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition border-teal-700 bg-teal-50 text-teal-800 hover:bg-teal-100 hover:border-teal-800 dark:border-teal-600 dark:bg-teal-950 dark:text-teal-200 dark:hover:bg-teal-900 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {unlocked ? <DownloadIcon /> : <LockIcon />}
+        <DownloadIcon />
         {busy ? 'Exporting…' : label}
       </button>
 
-      {showLocked && !unlocked && (
-        <div className="absolute right-0 z-30 mt-2 w-72 rounded-lg border border-gray-200 bg-white p-3 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-900">
-          <div className="mb-1 font-semibold text-gray-900 dark:text-gray-100">
-            Coach & Scout feature
-          </div>
-          <p className="mb-3 text-gray-600 dark:text-gray-400">
-            Data exports (CSV downloads of any stat table) are part of
-            the Coach & Scout tier — built for analysts, scouts, and
-            coaches who want to slice the numbers their own way.
-          </p>
-          <div className="flex items-center justify-between gap-2">
-            <Link
-              to="/pricing"
-              className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800"
-              onClick={() => setShowLocked(false)}
-            >
-              See plans
-            </Link>
-            <button
-              type="button"
-              onClick={() => setShowLocked(false)}
-              className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -251,31 +182,3 @@ function DownloadIcon() {
   )
 }
 
-function LockIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <rect
-        x="3"
-        y="7"
-        width="10"
-        height="7"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M5 7V5a3 3 0 016 0v2"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}

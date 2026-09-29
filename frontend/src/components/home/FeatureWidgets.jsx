@@ -161,14 +161,6 @@ export function GridPreviewWidget() {
 export function ArticlesWidget({ wide = false }) {
   const { data, loading, error } = useApi('/articles', { limit: wide ? 6 : 4 })
   const articles = data?.articles || []
-  const gated = (t) => ['premium', 'recruiting', 'coach'].includes(t)
-  const PremiumTag = () => (
-    <span className="ml-1.5 inline-block align-middle text-[8px] font-bold uppercase tracking-wider
-                     px-1 py-px rounded bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
-      Premium
-    </span>
-  )
-
   return (
     <WidgetCard title="Latest Articles" to="/news" linkLabel="All articles">
       {loading ? (
@@ -196,7 +188,7 @@ export function ArticlesWidget({ wide = false }) {
               )}
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-gray-800 dark:text-gray-100 leading-snug line-clamp-2">
-                  {a.title}{gated(a.requires_tier) && <PremiumTag />}
+                  {a.title}
                 </span>
                 {(a.subtitle || a.excerpt) && (
                   <span className="block text-xs text-gray-500 dark:text-gray-400 leading-snug mt-1 line-clamp-2">
@@ -229,7 +221,7 @@ export function ArticlesWidget({ wide = false }) {
               )}
               <span className="flex-1 min-w-0">
                 <span className="block text-xs font-semibold text-gray-800 dark:text-gray-100 leading-tight line-clamp-2">
-                  {a.title}{gated(a.requires_tier) && <PremiumTag />}
+                  {a.title}
                 </span>
                 <span className="block text-[10px] text-gray-400 leading-tight mt-0.5">
                   {fmtShortDate(a.published_at)}
@@ -762,68 +754,6 @@ export function ComparablesWidget() {
   return (
     <WidgetCard title="Player Comps" to="/player-comps" linkLabel="Comp tool" accent="indigo">
       <Carousel slides={slides} ariaLabel="Player comparables" />
-    </WidgetCard>
-  )
-}
-
-// ─── 9. Choose Your Tier ────────────────────────────────────────
-
-// Mirrors the real tier data in pages/Pricing.jsx — keep in sync.
-const TIER_STRIP = [
-  {
-    name: 'Free', price: '$0',
-    features: ['PNW Grid + Team Quiz', 'Percentiles, Records & more'],
-  },
-  {
-    name: 'Premium', price: '$5/mo', popular: true,
-    features: ['NW Coaching Simulator', 'Recruiting guides + Draft Board'],
-  },
-  {
-    name: 'Recruiting', price: '$10/mo',
-    features: ['JUCO + Transfer Portal trackers', 'Commitments tracker'],
-  },
-  {
-    name: 'Coach & Scout', price: '$25/mo',
-    features: ['Full scouting portal', 'Printable PDFs + CSV exports'],
-  },
-]
-
-export function TiersWidget({ className = '' }) {
-  return (
-    <WidgetCard title="Choose Your Tier" to="/pricing" linkLabel="Compare plans" accent="gold" className={className}>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        {TIER_STRIP.map(t => (
-          <div
-            key={t.name}
-            className={`relative rounded-lg border p-2.5 ${
-              t.popular
-                ? 'border-nw-teal ring-1 ring-nw-teal/40'
-                : 'border-gray-200 dark:border-gray-700'
-            }`}
-          >
-            {t.popular && (
-              <span className="absolute -top-2 right-2 px-1.5 py-px rounded-full text-[8px] font-bold uppercase
-                               tracking-wider bg-nw-teal text-white">
-                Popular
-              </span>
-            )}
-            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-              {t.name}
-            </div>
-            <div className="text-sm font-extrabold text-gray-900 dark:text-gray-100 tabular-nums mb-1">
-              {t.price}
-            </div>
-            <ul className="space-y-0.5">
-              {t.features.map(f => (
-                <li key={f} className="flex items-start gap-1 text-[10px] text-gray-600 dark:text-gray-300 leading-snug">
-                  <span className="text-nw-teal mt-px">✓</span>
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
     </WidgetCard>
   )
 }

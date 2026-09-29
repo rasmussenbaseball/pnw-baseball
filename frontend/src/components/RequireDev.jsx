@@ -1,8 +1,7 @@
 // <RequireDev>…</RequireDev>
 //
-// Strict dev-only route gate. Unlike <RequireTier>, this one is NOT
-// subject to soft-mode pre-launch behavior — it always blocks non-dev
-// emails, signed in or not. Use it to hide work-in-progress pages
+// Strict dev-only route gate. Always blocks non-developer emails, signed
+// in or not. Use it to hide work-in-progress pages
 // (Summer Hub during pre-launch, internal tools, etc.).
 //
 // Pass-through condition: useTier() returns tier === 'dev', which

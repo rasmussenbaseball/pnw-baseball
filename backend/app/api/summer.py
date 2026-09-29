@@ -27,7 +27,7 @@ from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ..stats.cpi import compute_cpi
-from .auth import require_tier
+from .auth import require_developer
 from .leverage import compute_li
 from ._positions import normalize_position
 
@@ -1239,7 +1239,7 @@ def _trackman_payload(cur, summer_player_id, season):
 
 
 @router.get("/trackman/pitches")
-def trackman_all_pitches(_user: str = Depends(require_tier("dev"))):
+def trackman_all_pitches(_dev: str = Depends(require_developer)):
     """Private (dev-tier only) flat dump of EVERY trackman_pitches row joined
     with player + team, for the TrackMan Data table hub. Small dataset, so the
     frontend filters/sorts client-side. Also returns distinct teams + pitch
@@ -1304,7 +1304,7 @@ def trackman_all_pitches(_user: str = Depends(require_tier("dev"))):
 def summer_player_trackman(
     player_id: int,
     season: Optional[int] = Query(None),
-    _user: str = Depends(require_tier("dev")),
+    _dev: str = Depends(require_developer),
 ):
     """Private (dev-tier only) TrackMan per-pitch-type averages for a SUMMER
     player. Ordered by pitch usage so the arsenal reads top-down. The movement
@@ -1317,7 +1317,7 @@ def summer_player_trackman(
 def spring_player_trackman(
     player_id: int,
     season: Optional[int] = Query(None),
-    _user: str = Depends(require_tier("dev")),
+    _dev: str = Depends(require_developer),
 ):
     """Same TrackMan payload, addressed by the COLLEGE (spring) player id —
     resolves the linked summer player via summer_player_links. Linked players
@@ -3697,7 +3697,6 @@ def wcl_portal_players(
     sort_dir: str = Query("desc"),
     bats: Optional[str] = None,
     throws: Optional[str] = None,
-    _user: str = Depends(require_tier("recruiting")),
 ):
     with get_connection() as _mc:
         # Portal membership = manual members + auto-included uncommitted JUCO

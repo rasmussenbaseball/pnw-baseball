@@ -243,50 +243,12 @@ def _row_to_full(r: dict) -> dict:
             "body_html": r.get("body_html") or ""}
 
 
-def _tier_meets(actual: str, required: str) -> bool:
-    """Mirror of frontend lib/tiers.js tierMeets — true if `actual` is
-    at-or-above `required` on the tier ladder."""
-    # Ladder: free < premium < recruiting < coach (recruiting was missing here,
-    # which wrongly locked recruiting-tier subscribers out of premium articles).
-    rank = {"none": 0, "free": 1, "premium": 2, "recruiting": 3, "coach": 4, "dev": 99}
-    return rank.get(actual, 0) >= rank.get(required, 0)
-
-
-def _viewer_context(request) -> dict:
-    """Resolve the request's viewer: their user_id (if any) and tier.
-
-    Honors TIER_GATING_ENABLED — when gating is off, returns 'coach'
-    (max access) so paywalls are inert in soft mode.
-
-    Returns {'user_id': str|None, 'tier': str}. Tier is one of
-    'none' / 'free' / 'premium' / 'coach'."""
-    if os.getenv("TIER_GATING_ENABLED", "").strip().lower() != "true":
-        # Soft mode: we still want user_id so the author-bypass works
-        # for unpublished article previews, but tier is effectively max.
-        token = _extract_token(request)
-        if not token:
-            return {"user_id": None, "tier": "coach"}
-        supabase_url = _get_supabase_url()
-        try:
-            resp = httpx.get(
-                f"{supabase_url}/auth/v1/user",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "apikey": os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
-                },
-                timeout=5.0,
-            )
-        except httpx.RequestError:
-            return {"user_id": None, "tier": "coach"}
-        if resp.status_code != 200:
-            return {"user_id": None, "tier": "coach"}
-        uid = (resp.json() or {}).get("id")
-        return {"user_id": uid, "tier": "coach"}
-
-    # Hard mode
+def _viewer_user_id(request) -> str | None:
+    """Resolve the signed-in user's id (or None). Only used so authors can
+    preview their own unpublished drafts; there is no paywall any more."""
     token = _extract_token(request)
     if not token:
-        return {"user_id": None, "tier": "none"}
+        return None
     supabase_url = _get_supabase_url()
     try:
         resp = httpx.get(
@@ -298,38 +260,10 @@ def _viewer_context(request) -> dict:
             timeout=5.0,
         )
     except httpx.RequestError:
-        return {"user_id": None, "tier": "none"}
+        return None
     if resp.status_code != 200:
-        return {"user_id": None, "tier": "none"}
-    body = resp.json() or {}
-    uid = body.get("id")
-    email = body.get("email")
-    if not uid:
-        return {"user_id": None, "tier": "none"}
-    # Developers / comped emails (interns, staff) are granted a tier via
-    # the allowlist regardless of their subscription row, so they can see
-    # every article. This mirrors require_tier() in auth.py.
-    comped = None
-    try:
-        from ._tier_allowlist import resolve_comped_tier
-        comped = resolve_comped_tier(email) if email else None
-    except Exception:
-        comped = None
-    if comped:
-        return {"user_id": uid, "tier": comped}
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT tier, provider, ends_at FROM user_subscriptions WHERE user_id = %s", (uid,))
-        row = cur.fetchone()
-    from .auth import comp_aware_tier
-    tier = comp_aware_tier((row or {}).get("tier"), (row or {}).get("provider"),
-                           (row or {}).get("ends_at")) if row else "free"
-    return {"user_id": uid, "tier": tier}
-
-
-# Kept for back-compat — call sites that only need the tier still work.
-def _viewer_tier(request) -> str:
-    return _viewer_context(request).get("tier", "none")
+        return None
+    return (resp.json() or {}).get("id")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -359,11 +293,8 @@ def list_published_articles(limit: int = 50):
 
 @router.get("/articles/{slug}")
 def get_published_article(slug: str, request: Request):
-    """Fetch one published article by slug. Public, but the body_md is
-    only returned if the viewer's tier meets the article's requires_tier
-    (which defaults to 'free'). For paywalled articles, lower-tier
-    viewers get back metadata + excerpt + locked=true; the frontend
-    renders the paywall card."""
+    """Fetch one published article by slug. Public; the full body is
+    returned to every viewer."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -380,36 +311,18 @@ def get_published_article(slug: str, request: Request):
         if not row:
             raise HTTPException(status_code=404, detail="Article not found")
         r = dict(row)
-        required = r.get("requires_tier") or "free"
-        ctx = _viewer_context(request)
-        actual = ctx["tier"]
-        viewer_user_id = ctx["user_id"]
-        is_author = bool(viewer_user_id) and str(r.get("author_id")) == str(viewer_user_id)
         full = _row_to_full(r)
         raw_body = full.get("body_md") or ""
         raw_html = full.get("body_html") or ""
         has_marker = PAYWALL_MARKER in raw_body
         has_marker_html = bool(PAYWALL_MARKER_HTML_RE.search(raw_html))
-
-        # Authors always see their own articles unlocked — even paywalled
-        # ones — so they can preview the rendered output. The published
-        # version still locks for everyone else.
-        if is_author or _tier_meets(actual, required):
-            # Unlocked viewer: strip the break marker so the body reads
-            # continuously (works for both markdown and rich-HTML bodies).
-            full["body_md"] = raw_body.replace(PAYWALL_MARKER, "").strip()
-            full["body_html"] = PAYWALL_MARKER_HTML_RE.sub("", raw_html)
-            full["locked"] = False
-            full["has_preview_break"] = has_marker or has_marker_html
-        else:
-            # Locked viewer: send only the free preview (everything before
-            # the break). No marker → body fully hidden (frontend shows the
-            # excerpt + paywall card).
-            full["body_md"] = raw_body.split(PAYWALL_MARKER, 1)[0].rstrip() if has_marker else ""
-            full["body_html"] = PAYWALL_MARKER_HTML_RE.split(raw_html, 1)[0] if has_marker_html else ""
-            full["has_preview_break"] = has_marker or has_marker_html
-            full["locked"] = True
-            full["viewer_tier"] = actual
+        # Articles are free for everyone (September 2026). Older bodies may
+        # still carry a preview-break marker; strip it so the body reads
+        # continuously.
+        full["body_md"] = raw_body.replace(PAYWALL_MARKER, "").strip()
+        full["body_html"] = PAYWALL_MARKER_HTML_RE.sub("", raw_html)
+        full["locked"] = False
+        full["has_preview_break"] = has_marker or has_marker_html
         return full
 
 

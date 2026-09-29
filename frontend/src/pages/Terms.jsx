@@ -1,5 +1,5 @@
 // Terms of Service. Plain-language terms tailored to NW Baseball Stats
-// (subscriptions via Stripe, accounts via Supabase, stats from public
+// (accounts via Supabase, stats from public
 // sources, no league/school affiliation). Starter template — have a
 // professional review before relying on it.
 
@@ -32,8 +32,8 @@ export default function Terms() {
         <Section title="1. The Service">
           <p>
             NW Baseball Stats provides statistics, analytics, graphics, and related tools covering
-            Pacific Northwest college baseball and select summer leagues. Some features are free and
-            others require a paid subscription. We may add, change, or remove features at any time.
+            Pacific Northwest college baseball and select summer leagues. The Service is free to use.
+            We may add, change, or remove features at any time.
           </p>
         </Section>
 
@@ -45,33 +45,17 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="3. Subscriptions, billing, and refunds">
-          <p>
-            Paid subscriptions are billed through our payment processor, Stripe. By subscribing, you
-            authorize us (via Stripe) to charge your payment method on a recurring basis at the price
-            and interval shown at checkout, until you cancel.
-          </p>
-          <p>
-            Subscriptions renew automatically. You can cancel anytime from your account or by emailing
-            us; cancellation stops future renewals and your access continues through the end of the
-            current paid period. Except where required by law, payments are non-refundable and we do
-            not provide refunds or credits for partial periods. Prices may change, with notice for
-            renewals.
-          </p>
-        </Section>
-
-        <Section title="4. Acceptable use">
+        <Section title="3. Acceptable use">
           <p>You agree not to:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li>scrape, crawl, or use automated means to access or copy the Service or its data;</li>
             <li>resell, redistribute, or publicly republish data, analytics, or content from the Service;</li>
-            <li>share, resell, or circumvent access to paid features, or share a paid account;</li>
             <li>reverse engineer, disrupt, or attempt to gain unauthorized access to the Service; or</li>
             <li>use the Service in any unlawful way or in violation of others&rsquo; rights.</li>
           </ul>
         </Section>
 
-        <Section title="5. Intellectual property">
+        <Section title="4. Intellectual property">
           <p>
             The underlying box-score and game statistics are facts compiled from public sources and are
             not owned by us. Our original analytics, metrics, compilations, graphics, written content,
@@ -81,7 +65,7 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="6. Data sources and no affiliation">
+        <Section title="5. Data sources and no affiliation">
           <p>
             NW Baseball Stats is an independent project. It is not affiliated with, endorsed by, or
             sponsored by the NCAA, NAIA, NWAC, any conference, league, school, or team. Team names,
@@ -90,7 +74,7 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="7. Disclaimers">
+        <Section title="6. Disclaimers">
           <p>
             The Service is provided &ldquo;as is&rdquo; and &ldquo;as available,&rdquo; without
             warranties of any kind, express or implied. We do not warrant that the data is accurate,
@@ -100,16 +84,16 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="8. Limitation of liability">
+        <Section title="7. Limitation of liability">
           <p>
             To the fullest extent permitted by law, we will not be liable for any indirect, incidental,
             special, consequential, or punitive damages, or for any loss arising from your use of (or
             inability to use) the Service. Our total liability for any claim relating to the Service
-            will not exceed the amount you paid us in the twelve months before the claim.
+            will not exceed one hundred US dollars.
           </p>
         </Section>
 
-        <Section title="9. Termination">
+        <Section title="8. Termination">
           <p>
             You may stop using the Service at any time. We may suspend or terminate your access if you
             violate these Terms or use the Service in a way that could harm us or others. Sections that
@@ -117,7 +101,7 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="10. Changes to these Terms">
+        <Section title="9. Changes to these Terms">
           <p>
             We may update these Terms from time to time. When we do, we will revise the &ldquo;Last
             updated&rdquo; date above. Your continued use of the Service after changes take effect means
@@ -125,7 +109,7 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="11. Governing law and disputes">
+        <Section title="10. Governing law and disputes">
           <p>
             NW Baseball Stats is operated from Washington State. These Terms are governed by the laws of
             the State of Washington, without regard to its conflict-of-laws rules. You agree that any
@@ -135,7 +119,7 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="12. Contact">
+        <Section title="11. Contact">
           <p>
             Questions about these Terms? Email{' '}
             <a href={`mailto:${CONTACT}`} className="text-nw-teal dark:text-teal-400 font-semibold hover:underline">{CONTACT}</a>.

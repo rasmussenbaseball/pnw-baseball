@@ -62,7 +62,7 @@ function resolveRoute(pathname) {
       ogParams: 't=gm',
       title: 'NW Coaching Simulator · NW Baseball Stats',
       description:
-        'Build your dynasty. Recruit. Manage budgets. Win championships. Premium feature on NW Baseball Stats.',
+        'Build your dynasty. Recruit. Manage budgets. Win championships. Free on NW Baseball Stats.',
     };
   }
 
@@ -129,7 +129,7 @@ function resolveRoute(pathname) {
       ogParams: 't=gm',
       title: 'NW Coaching Simulator · NW Baseball Stats',
       description:
-        'Build your dynasty. Recruit. Manage budgets. Win championships. Premium feature on NW Baseball Stats.',
+        'Build your dynasty. Recruit. Manage budgets. Win championships. Free on NW Baseball Stats.',
     };
   }
 
@@ -198,14 +198,6 @@ function resolveRoute(pathname) {
       pageTitle: 'News · NW Baseball Stats',
       pageDesc:
         'Articles on Northwest college baseball — recruiting, season recaps, and analytics deep-dives.',
-    },
-    '/pricing': {
-      kicker: 'Subscriptions',
-      title: 'Pricing',
-      subtitle: 'Free, Premium, and Coach & Scout tiers.',
-      pageTitle: 'Subscriptions · NW Baseball Stats',
-      pageDesc:
-        'Free, Premium, and Coach & Scout subscription tiers for Northwest college baseball analytics.',
     },
     '/about': {
       kicker: 'About',
@@ -413,7 +405,7 @@ function resolveRoute(pathname) {
         'Scouting reports, JUCO tracker, lineup helper, advance reports.',
       pageTitle: 'Coaching Portal · NW Baseball Stats',
       pageDesc:
-        'Coach & Scout subscriber portal — scouting reports, JUCO tracker, lineup helper, and more.',
+        'Coaching portal, free for everyone: scouting reports, lineup helper, series planner, and more.',
     },
     '/trackman-data': {
       kicker: 'Pitch Lab',

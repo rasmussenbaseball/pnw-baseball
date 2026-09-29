@@ -1,8 +1,6 @@
-// Recruiting Hub — the public, all-tiers landing page for the Recruiting tab.
-// This is the page Nate sends to prospective subscribers: it explains every
+// Recruiting Hub — the public landing page for the Recruiting tab. It explains every
 // recruiting tool on the site, who each one is for, and what unlocks it, then
-// funnels to the Matchmaker and the pricing page. It is intentionally NOT gated
-// (open to anonymous + every tier) so it can do its job as the top of the funnel.
+// funnels to the Matchmaker. Everything here is free.
 // The tools it links to ARE gated; clicking one while signed out shows the upsell.
 // Brand rule: no em-dashes in displayed copy.
 import { Link } from 'react-router-dom'
@@ -28,59 +26,51 @@ const ICONS = {
   rise: ic(<><path d="M3 17l6-6 4 4 7-7" /><path d="M17 7h4v4" /></>),
 }
 
-// ── tools (recruit-facing unlock at Premium $5/mo) ────────────────
+// ── tools (all free) ─────────────────────────────────────────────
 const RECRUIT_TOOLS = [
-  { to: '/recruiting/quiz', icon: 'target', tier: 'free', name: 'Recruit Matchmaker',
-    blurb: 'Answer a handful of honest questions about your level, academics, budget, and what you want out of college, and get your best-fit PNW program. Free to take, no account needed; Premium unlocks your full ranked list.',
+  { to: '/recruiting/quiz', icon: 'target', name: 'Recruit Matchmaker',
+    blurb: 'Answer a handful of honest questions about your level, academics, budget, and what you want out of college, and get your best-fit PNW program. Free to take, no account needed.',
     why: 'Set hard dealbreakers (cost, division, distance) and the list rebuilds around them, so you only see schools that actually make sense for you.' },
-  { to: '/recruiting/guide', icon: 'book', tier: 'premium', name: 'Recruiting Guide',
+  { to: '/recruiting/guide', icon: 'book', name: 'Recruiting Guide',
     blurb: 'A complete profile on all 57 PNW programs: coaching staff and contacts, academics, cost and aid, facilities, campus and location, plus on-field analytics.',
     why: 'The off-field research that usually takes weeks of digging through 57 different athletic sites, gathered and kept current in one place.' },
-  { to: '/recruiting/program-guide', icon: 'pdf', tier: 'premium', name: 'Program Guide (book)',
+  { to: '/recruiting/program-guide', icon: 'pdf', name: 'Program Guide (book)',
     blurb: 'The entire program guide as a clean, page-by-page book covering every Pacific Northwest college baseball program.',
     why: 'Read it like a recruiting handbook. One document, every program, no jumping between tabs.' },
-  { to: '/recruiting/tips', icon: 'bulb', tier: 'premium', name: 'Recruiting Tips',
+  { to: '/recruiting/tips', icon: 'bulb', name: 'Recruiting Tips',
     blurb: 'A straight-talk guide to how recruiting really works: how to reach coaches, a copy-paste email template, video and measurables advice, camps, and showcases.',
     why: 'Paired with freshman production by level, so you can see how much players actually play as freshmen at D1, D2, NAIA, D3, and the NWAC before you choose a level.' },
-  { to: '/recruiting/advancement', icon: 'rise', tier: 'premium', name: 'NWAC Advancement',
+  { to: '/recruiting/advancement', icon: 'rise', name: 'NWAC Advancement',
     blurb: 'See which NWAC programs move players up to four-year schools, where those players land, and who just committed to a Division I program for 2026.',
     why: 'The JUCO pipeline laid bare: the NWAC teams that send the most players and the best players, built from our transfer history.' },
-  { to: '/recruiting/breakdown', icon: 'chart', tier: 'premium', name: 'Recruiting Breakdown',
+  { to: '/recruiting/breakdown', icon: 'chart', name: 'Recruiting Breakdown',
     blurb: 'Team-level recruiting metrics and trends: how programs build their rosters, where their production comes from, and how much they lean on transfers.',
     why: 'Know whether a program develops freshmen or reloads through the portal before you commit four years to it.' },
-  { to: '/recruiting/hometown', icon: 'pin', tier: 'premium', name: 'Hometown Search',
+  { to: '/recruiting/hometown', icon: 'pin', name: 'Hometown Search',
     blurb: 'Search for players by hometown to see which PNW programs recruit your area, and which players from your city have gone where.',
     why: 'Recruiting pipelines are real. Find the programs that already trust players from where you are from.' },
-  { to: '/recruiting/map', icon: 'map', tier: 'premium', name: 'Program Map',
+  { to: '/recruiting/map', icon: 'map', name: 'Program Map',
     blurb: 'Every PNW college baseball program on one map, by division.',
     why: 'See your options by geography and figure out how far from home you are willing to go.' },
-  { to: '/recruiting-classes', icon: 'users', tier: 'premium', name: 'Recruiting Classes',
+  { to: '/recruiting-classes', icon: 'users', name: 'Recruiting Classes',
     blurb: 'Incoming high school class breakdowns for every PNW program, graded and ranked by state rankings.',
     why: 'See who each program is bringing in and how your class stacks up against the rest of the region.' },
 ]
 
 // ── tools (coach-facing unlock at Recruiting $10/mo) ──────────────
 const COACH_TOOLS = [
-  { to: '/coaching/juco-tracker', icon: 'swap', tier: 'recruiting', name: 'JUCO Tracker',
+  { to: '/coaching/juco-tracker', icon: 'swap', name: 'JUCO Tracker',
     blurb: 'NWAC players who are available to move up to a four-year program, with the stats to evaluate them.',
     why: 'A live board of junior college transfer targets across the Pacific Northwest.' },
-  { to: '/coaching/transfer-portal', icon: 'portal', tier: 'recruiting', name: 'Transfer Portal Tracker',
+  { to: '/coaching/transfer-portal', icon: 'portal', name: 'Transfer Portal Tracker',
     blurb: 'PNW four-year players who have entered the transfer portal, split by hitters and pitchers, with commitments noted.',
     why: 'Track who is on the move and where they land, without refreshing a dozen Twitter accounts.' },
-  { to: '/news/commitments', icon: 'check', tier: 'recruiting', name: 'Commitments',
+  { to: '/news/commitments', icon: 'check', name: 'Commitments',
     blurb: 'A running list of new commitments, starting with NWAC players committing to four-year programs.',
     why: 'Stay on top of who is coming and going across the region as it happens.' },
 ]
 
-const TIER_PILL = {
-  free: { label: 'Free', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  premium: { label: 'Premium', cls: 'bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300' },
-  recruiting: { label: 'Recruiting plan', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
-  soon: { label: 'Coming soon', cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400' },
-}
-
 function ToolCard({ tool }) {
-  const pill = TIER_PILL[tool.tier]
   const soon = tool.tier === 'soon'
   const Inner = (
     <>
@@ -88,7 +78,7 @@ function ToolCard({ tool }) {
         <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 shrink-0">
           {ICONS[tool.icon]}
         </span>
-        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${pill.cls}`}>{pill.label}</span>
+        {soon && <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">Coming soon</span>}
       </div>
       <h3 className="text-base font-extrabold text-nw-teal dark:text-gray-100 flex items-center gap-1.5">
         {tool.name}
@@ -112,30 +102,6 @@ function Stat({ big, label }) {
   )
 }
 
-function PlanCard({ name, price, per, note, points, highlight, cta, to }) {
-  return (
-    <div className={`rounded-2xl p-5 ring-1 ${highlight ? 'ring-2 ring-nw-teal bg-teal-50/40 dark:bg-teal-900/20' : 'ring-gray-200 dark:ring-gray-700 bg-white dark:bg-gray-800'}`}>
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-lg font-black text-nw-teal dark:text-gray-100">{name}</h3>
-        {highlight && <span className="text-[10px] font-bold uppercase tracking-wide text-nw-teal bg-white dark:bg-gray-900 px-2 py-0.5 rounded-full">Best for recruits</span>}
-      </div>
-      <div className="mt-1 mb-1">
-        <span className="text-3xl font-black text-nw-teal dark:text-gray-100">${price}</span>
-        <span className="text-sm text-gray-500 dark:text-gray-400">/{per}</span>
-      </div>
-      {note && <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">{note}</p>}
-      <ul className="space-y-1.5 mb-4">
-        {points.map((p, i) => (
-          <li key={i} className="flex gap-2 text-[13px] text-gray-700 dark:text-gray-300">
-            <span className="text-nw-teal mt-0.5">{ICONS.check}</span><span>{p}</span>
-          </li>
-        ))}
-      </ul>
-      <Link to={to} className={`block text-center text-sm font-bold rounded-lg py-2.5 transition-colors ${highlight ? 'bg-nw-teal text-white hover:bg-teal-700' : 'border border-nw-teal text-nw-teal hover:bg-teal-50 dark:hover:bg-teal-900/30'}`}>{cta}</Link>
-    </div>
-  )
-}
-
 export default function RecruitingHub() {
   return (
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6">
@@ -155,8 +121,8 @@ export default function RecruitingHub() {
           <Link to="/recruiting/quiz" className="px-5 py-2.5 rounded-lg bg-nw-teal text-white text-sm font-bold hover:bg-teal-700 transition-colors">
             Find your best-fit programs
           </Link>
-          <Link to="/pricing" className="px-5 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold hover:border-nw-teal hover:text-nw-teal transition-colors">
-            See plans and pricing
+          <Link to="/recruiting/guide" className="px-5 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold hover:border-nw-teal hover:text-nw-teal transition-colors">
+            Open the Recruiting Guide
           </Link>
         </div>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-y-4 divide-x divide-gray-200 dark:divide-gray-700">
@@ -187,7 +153,7 @@ export default function RecruitingHub() {
       <section className="mb-10">
         <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">For recruits and families</div>
         <h2 className="text-xl sm:text-2xl font-black text-nw-teal dark:text-gray-100">Everything you need to get recruited</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-5">These tools unlock with Premium. Click any one to open it.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-5">All free, no account needed. Click any one to open it.</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {RECRUIT_TOOLS.map((t) => <ToolCard key={t.name} tool={t} />)}
         </div>
@@ -259,53 +225,6 @@ export default function RecruitingHub() {
             </div>
           ))}
         </div>
-      </section>
-
-      {/* Plans */}
-      <section className="mb-10">
-        <div className="text-center mb-5">
-          <h2 className="text-xl sm:text-2xl font-black text-nw-teal dark:text-gray-100">Pick a plan and get started</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Cancel anytime. See the <Link to="/pricing" className="text-nw-teal font-semibold hover:underline">full plan comparison</Link> for everything included.</p>
-        </div>
-        <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
-          <PlanCard
-            name="Premium" price="5" per="mo" highlight
-            note="Or $50/year."
-            cta="Start with Premium" to="/pricing"
-            points={[
-              'Full Matchmaker results (your best fit at every level)',
-              'Recruiting Guide, the program book, Tips, Breakdown, Hometown Search, and Map',
-              'Plus the full site: player pages, advanced stats, and the coaching sim',
-            ]}
-          />
-          <PlanCard
-            name="Recruiting" price="10" per="mo"
-            note="Or $100/year. Built for college coaches and recruiters."
-            cta="Go with Recruiting" to="/pricing"
-            points={[
-              'Everything in Premium',
-              'JUCO Tracker and Transfer Portal Tracker',
-              'Commitments tracker and advanced discipline stats',
-            ]}
-          />
-        </div>
-      </section>
-
-      {/* Group rates */}
-      <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
-        <span className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 shrink-0">
-          {ICONS.users}
-        </span>
-        <div className="flex-1">
-          <h3 className="text-base sm:text-lg font-extrabold text-nw-teal dark:text-gray-100">Coaching a team or running a facility?</h3>
-          <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
-            High school programs, travel organizations, and baseball facilities can get group rates for their players and families. Email us to set it up.
-          </p>
-        </div>
-        <a href="mailto:info@nwbaseballstats.com?subject=Group%20rates%20inquiry"
-           className="shrink-0 px-5 py-2.5 rounded-lg bg-nw-teal text-white text-sm font-bold hover:bg-teal-700 transition-colors whitespace-nowrap">
-          Email about group rates
-        </a>
       </section>
 
       {/* Final CTA */}

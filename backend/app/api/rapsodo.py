@@ -19,13 +19,13 @@ from ..stats.rapsodo_hand import platoon_profile, pronation_profile
 from ..stats.rapsodo_parse import derive, parse_text, aggregate_arsenal, EXCLUDE
 from ..stats.rapsodo_suggest import generate_suggestions
 from ..stats.rapsodo_tunnel import tunnel_pairs, ssw_flags
-from .auth import require_tier
+from .auth import get_current_user
 from fastapi import Request as _Request
 from ._tracking_share import resolve_workspace, ensure_can_upload
 
 router = APIRouter(tags=["rapsodo"])
 
-_tier_gate = require_tier("coach")
+_tier_gate = get_current_user   # sign-in only: workspaces are per-user data
 
 
 def _ws_gate(request: _Request, owner: str = Depends(_tier_gate)) -> str:

@@ -1,14 +1,11 @@
-// Unified "My Staff" widget — ONE list that shares a Coach & Scout
-// subscription with the rest of the staff. Adding an email grants:
-//   - a full membership seat (their own login gets coach-tier access),
-//     when the owner has a paying Coach & Scout sub (or dev account)
-//   - the shared TrackMan Suite + Rapsodo Lab data workspaces (always)
-// Backed by /portal/my-staff (see backend _tracking_share.py). Shown as
-// a banner on the portal home and a card on the TrackMan Overview tab;
-// the Account page's staff section manages the same list.
+// "My Staff" widget — one list of coaches who share this account's TrackMan
+// Suite, Rapsodo Lab, and Camp Report data. Backed by /portal/my-staff (see
+// backend _tracking_share.py). Shown as a banner on the portal home and a
+// card on the TrackMan Overview tab.
 import { useState } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 
 async function authHeaders() {
   const { data } = await supabase.auth.getSession()
@@ -17,13 +14,13 @@ async function authHeaders() {
 }
 
 export default function StaffManager({ variant = 'card' }) {
-  const { data, refetch } = useApi('/portal/my-staff')
+  const { user } = useAuth()
+  const { data, refetch } = useApi(user ? '/portal/my-staff' : null)
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const members = data?.members || []
-  const max = data?.max ?? 3
-  const canSeats = !!data?.can_seats
+  const max = data?.max ?? 8
 
   async function add() {
     const e = email.trim().toLowerCase()
@@ -57,6 +54,8 @@ export default function StaffManager({ variant = 'card' }) {
     refetch()
   }
 
+  if (!user) return null
+
   if (data?.viewing_shared) {
     return (
       <div className={variant === 'banner'
@@ -66,20 +65,15 @@ export default function StaffManager({ variant = 'card' }) {
           You're on a coach's staff list
         </div>
         <p className="mt-0.5 text-[12px] text-indigo-800/80 dark:text-indigo-300/80">
-          Your access and the TrackMan / Rapsodo data you see are shared by your head coach.
+          The TrackMan / Rapsodo data you see is shared by your head coach.
           Uploads and edits you make go to the staff's shared data pool.
         </p>
       </div>
     )
   }
 
-  const seatsLine = canSeats
-    ? `Add up to ${max} coaches: each gets full Coach & Scout access on their own login,
-       plus your shared TrackMan Suite, Rapsodo Lab, and Camp Report data. Use each
-       coach's Uploads toggle to control who can add or delete CSVs.`
-    : `Add up to ${max} coaches to share your TrackMan Suite, Rapsodo Lab, and Camp Report
-       data. Use each coach's Uploads toggle to control who can add or delete CSVs. Full
-       membership seats come with a paid Coach & Scout subscription.`
+  const seatsLine = `Add up to ${max} coaches to share your TrackMan Suite, Rapsodo Lab, and Camp Report
+       data. Use each coach's Uploads toggle to control who can add or delete CSVs.`
 
   const inner = (
     <>
@@ -87,7 +81,7 @@ export default function StaffManager({ variant = 'card' }) {
         <div className={variant === 'banner'
           ? 'text-[15px] font-bold text-portal-purple dark:text-portal-accent-light'
           : 'text-[11px] font-bold uppercase tracking-wide text-gray-400'}>
-          {variant === 'banner' ? 'Your staff is included' : 'My staff'}
+          {variant === 'banner' ? 'Share with your staff' : 'My staff'}
         </div>
         <span className="text-[10px] text-gray-400 whitespace-nowrap">{members.length}/{max} coaches</span>
       </div>
@@ -102,12 +96,6 @@ export default function StaffManager({ variant = 'card' }) {
                 className="flex items-center gap-2 rounded-full bg-gray-50 dark:bg-gray-900/40
                            ring-1 ring-gray-200 dark:ring-gray-700 pl-3 pr-2 py-1">
               <span className="text-[12px] font-mono text-gray-700 dark:text-gray-200">{m.email}</span>
-              <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full
-                ${m.seat
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                  : 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300'}`}>
-                {m.seat ? 'Membership + data' : 'Data sharing'}
-              </span>
               <button onClick={() => toggleUpload(m)}
                 title={m.can_upload !== false
                   ? 'Can upload and delete CSVs — click to make view-only'

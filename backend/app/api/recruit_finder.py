@@ -21,10 +21,8 @@ from pydantic import BaseModel
 
 from ..models.database import get_connection
 from ..config import CURRENT_SEASON
-from .auth import require_tier
 
 router = APIRouter(prefix="/recruit-finder", tags=["recruit-finder"])
-_gate = require_tier("recruiting")
 
 # stat key -> (source column | 'pbp' | '__kbb', label, higher_is_better)
 HITTER_STATS = {
@@ -133,7 +131,7 @@ def _pct(sorted_vals, v):
 
 
 @router.post("/search")
-def search(body: FinderQuery, _uid: str = Depends(_gate)):
+def search(body: FinderQuery):
     side = "pit" if body.side == "pit" else "bat"
     STATS = PITCHER_STATS if side == "pit" else HITTER_STATS
     ARCHE = PITCHER_ARCHETYPES if side == "pit" else HITTER_ARCHETYPES
@@ -370,7 +368,7 @@ def _meta_for(stats, arches, positions):
 
 
 @router.get("/meta")
-def meta(_uid: str = Depends(_gate)):
+def meta():
     return {
         "bat": _meta_for(HITTER_STATS, HITTER_ARCHETYPES, HITTER_POSITIONS),
         "pit": _meta_for(PITCHER_STATS, PITCHER_ARCHETYPES, PITCHER_POSITIONS),

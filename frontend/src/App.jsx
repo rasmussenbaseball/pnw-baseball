@@ -4,42 +4,42 @@ import { lazyWithRetry } from './lib/lazyWithRetry'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { AffiliationProvider } from './context/AffiliationContext'
 import { ThemeProvider } from './context/ThemeContext'
-import { PreviewProvider } from './context/PreviewContext'
-import PreviewBanner from './components/PreviewBanner'
 import MaintenanceLockout from './components/MaintenanceLockout'
 import GlobalRouteLoader from './components/GlobalRouteLoader'
 import { isDeveloper, COMMITMENT_EDITOR_EMAILS } from './lib/tiers'
 import Header from './components/Header'
 import EmailPrefsPopup from './components/EmailPrefsPopup'
 
-// Auth guard - shows blurred teaser with signup prompt if not signed in
-function RequireAuth({ children }) {
+// Sign-in guard for tools that store YOUR OWN data (TrackMan / Rapsodo /
+// Blast / Camp uploads, recruiting boards, favorites). Everything built on
+// public data is open without an account; these need an identity so the
+// site knows whose workspace to show. Renders a blurred teaser + prompt.
+function RequireSignIn({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return (
     <div className="relative">
-      {/* Blurred teaser of the page */}
       <div className="filter blur-sm opacity-60 pointer-events-none select-none" aria-hidden="true">
         {children}
       </div>
-      {/* Overlay prompt */}
       <div className="absolute inset-0 flex items-start justify-center pt-24 bg-white/40 dark:bg-gray-900/40">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 sm:p-8 max-w-sm w-full text-center mx-4">
           <div className="inline-flex items-center justify-center w-12 h-12 bg-nw-teal/10 dark:bg-nw-teal/20 rounded-full mb-3">
             <svg className="w-6 h-6 text-nw-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100 mb-1">Free Account Required</h2>
+          <h2 className="text-lg font-bold text-nw-teal dark:text-gray-100 mb-1">Sign in to use this tool</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-            Sign up for a free account to access this feature. It only takes a few seconds.
+            This tool saves your own uploads and lists, so it needs an account to know whose data to show.
+            Accounts are free and take a few seconds. Everything else on the site is open without one.
           </p>
           <div className="space-y-2">
             <a
               href="/login?tab=signup"
               className="block w-full px-4 py-2.5 bg-nw-teal text-white text-sm font-semibold rounded-lg hover:bg-nw-teal-dark transition-colors"
             >
-              Sign Up Free
+              Create a free account
             </a>
             <a
               href="/login"
@@ -68,18 +68,6 @@ function RequireAdmin({ children }) {
   }
   return children
 }
-
-// GM early-access guard — locks the GM game to a single user during private alpha.
-// Site devs (DEVELOPER_EMAILS) also get in automatically, regardless of allowlist.
-const GM_EARLY_ACCESS_EMAILS = [
-  'nate.rasmussen26@gmail.com',
-  'jawomack@bushnell.edu',
-  'ethan.stacy@gmail.com',
-  'jhussey1703@gmail.com',
-  'dylanthomasha@gmail.com',
-  'miyazawajoshua@gmail.com',
-  'maxo2326@gmail.com',
-]
 
 // Article-author allowlist — only these emails see the "Articles" item
 // in the Misc dropdown and reach /articles management routes. Public
@@ -135,62 +123,10 @@ function GmChunkLoading() {
   )
 }
 
-function RequireGmEarlyAccess({ children }) {
-  // GM access — who gets into /gm/*:
-  //   1. Beta allowlist (GM_EARLY_ACCESS_EMAILS) — original private-alpha
-  //      testers, grandfathered in regardless of subscription.
-  //   2. Any PAID subscription tier — Premium, Coach & Scout, or Dev.
-  //      useTier() resolves the backend /me/subscription row: a paid sub
-  //      ('paid'/'premium') → 'premium', a coach sub → 'coach', and site
-  //      devs (DEVELOPER_EMAILS) → 'dev'. All three pass. Even if the
-  //      backend only distinguishes free/paid today, every paid user maps
-  //      to 'premium' and gets in.
-  // Blocked: signed-out + Free-tier users → the upsell card below.
-  const { user, loading } = useAuth()
-  const { tier, loading: tierLoading } = useTier()
-  if (loading || tierLoading) return null
-  if (!user) return <Navigate to="/login" replace />
-
-  const onAllowlist = GM_EARLY_ACCESS_EMAILS.includes(user.email)
-  // Premium, Coach & Scout, and Dev tiers all include the GM game.
-  const hasPaidTier = tier === 'premium' || tier === 'recruiting' || tier === 'coach' || tier === 'dev'
-  // Launch-week promo: free to play for every signed-in user until the
-  // cutoff in lib/gmPromo.js, after which this gate auto-reverts.
-  const freePlay = isGmFreePlay()
-
-  if (!onAllowlist && !hasPaidTier && !freePlay) {
-    return (
-      <div className="max-w-xl mx-auto py-16 text-center">
-        <h1 className="text-3xl font-bold text-nw-teal dark:text-gray-100 mb-4">NW Coaching Simulator</h1>
-        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-6">
-          <p className="text-sm text-amber-900 dark:text-amber-200 mb-2">🔒 <strong>Premium feature</strong></p>
-          <p className="text-sm text-gray-700 dark:text-gray-300">
-            The NW Coaching Simulator is included with any Premium or Coach &amp; Scout subscription.
-            Upgrade to start running your own dynasty.
-          </p>
-          <Link to="/pricing"
-                className="mt-4 inline-block px-4 py-2 text-xs font-bold uppercase tracking-wider rounded
-                           bg-nw-teal hover:bg-nw-teal-dark text-white transition-colors">
-            See plans →
-          </Link>
-        </div>
-        <a href="/" className="mt-6 inline-block text-sm text-nw-teal hover:underline">← Back to NW Baseball Stats</a>
-      </div>
-    )
-  }
-  // Suspense boundary so lazy-loaded GM pages don't crash. The fallback
-  // shows a themed loading screen during the (one-time) chunk download.
+function GmRoute({ children }) {
+  // The NW Coaching Simulator is open to everyone. Suspense boundary so the
+  // lazy-loaded GM chunk shows a themed loading screen on first visit.
   return <Suspense fallback={<GmChunkLoading />}>{children}</Suspense>
-}
-
-// Portal access — Coach & Scout tier only. The portal is the
-// dedicated coaching workspace (lineup helpers, scouting sheets,
-// catcher cards, PDFs) and is the headline justification for the
-// top-tier subscription. Anonymous / Free / Premium → upsell card
-// pointing to /pricing.
-const PORTAL_OWNERS = ['nate.rasmussen26@gmail.com']  // legacy / reference
-function RequirePortalAccess({ children }) {
-  return <RequireTier minTier="coach">{children}</RequireTier>
 }
 
 // ─── Existing pages ───
@@ -234,7 +170,7 @@ import JucoTracker from './pages/JucoTracker'
 import TransferPortalTracker from './pages/TransferPortalTracker'
 import WclTransferTracker from './pages/WclTransferTracker'
 import PlayerDetail from './pages/PlayerDetail'
-// Social-graphic generators: admin/author tools (RequireAuth), never on a
+// Social-graphic generators: admin/author tools, never on a
 // visitor's path — lazy so their ~8k lines stay out of the main bundle.
 const SocialGraphics = lazyWithRetry(() => import('./pages/SocialGraphics'))
 const DailyScoresGraphic = lazyWithRetry(() => import('./pages/DailyScoresGraphic'))
@@ -294,12 +230,8 @@ const ArticleEditor = lazyWithRetry(() => import('./pages/portal/ArticleEditor')
 const EmailComposer = lazyWithRetry(() => import('./pages/portal/EmailComposer'))  // author-only, react-markdown
 import Unsubscribe from './pages/Unsubscribe'
 import Account from './pages/Account'
-import Pricing from './pages/Pricing'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
-import RequireTier from './components/RequireTier'
-import { useTier } from './hooks/useTier'
-import { isGmFreePlay } from './lib/gmPromo'
 const OpponentTrends = lazyWithRetry(() => import('./pages/OpponentTrends'))  // big coach-portal page
 const HistoricMatchups = lazyWithRetry(() => import('./pages/HistoricMatchups'))
 const LineupHelper = lazyWithRetry(() => import('./pages/LineupHelper'))  // ~1,150 lines, coach-only
@@ -381,11 +313,9 @@ export default function App() {
 
   return (
     <ThemeProvider>
-    <PreviewProvider>
     <AuthProvider>
     <AffiliationProvider>
     <MaintenanceLockout>
-    <PreviewBanner />
     <GlobalRouteLoader />
     <div className={`min-h-screen transition-colors ${
       isPortal ? 'bg-portal-cream dark:bg-gray-900'
@@ -407,38 +337,38 @@ export default function App() {
           <Route path="/fielding" element={<FieldingLeaderboard />} />
           <Route path="/relievers" element={<RelieverLeaderboard />} />
           <Route path="/war" element={<WarLeaderboard />} />
-          <Route path="/team-stats" element={<RequireTier minTier="free"><TeamStatsPage /></RequireTier>} />
+          <Route path="/team-stats" element={<TeamStatsPage />} />
           <Route path="/scatter" element={<ScatterPlot />} />
           {/* /summerball moved into the Summer tab as /summer/stats.
               Keep this redirect so old bookmarks + share links still land
               on the new page. Drop when we're confident no one's linking. */}
           <Route path="/summerball" element={<Navigate to="/summer/stats" replace />} />
           {/* Summer is locked to devs while we wrap up phase-2 polish.
-              Drop the RequireDev wrappers when ready to ship publicly. */}
-          <Route path="/summer" element={<RequireAuth><SummerHub /></RequireAuth>} />
-          <Route path="/summer/stats" element={<RequireAuth><SummerStatsPage /></RequireAuth>} />
+              Open to everyone. */}
+          <Route path="/summer" element={<SummerHub />} />
+          <Route path="/summer/stats" element={<SummerStatsPage />} />
           {/* Power Index merged into the Standings page (2026-06) */}
           <Route path="/summer/cpi" element={<Navigate to="/summer/standings" replace />} />
-          <Route path="/summer/scoreboard" element={<RequireAuth><SummerScoreboardPage /></RequireAuth>} />
-          <Route path="/summer/standings" element={<RequireAuth><SummerStandingsPage /></RequireAuth>} />
-          <Route path="/summer/teams" element={<RequireAuth><SummerTeamsPage /></RequireAuth>} />
-          <Route path="/summer/teams/:id" element={<RequireAuth><SummerTeamDetail /></RequireAuth>} />
-          <Route path="/summer/players/:id" element={<RequireAuth><SummerPlayerDetail /></RequireAuth>} />
-          <Route path="/summer/games/:id" element={<RequireAuth><SummerGameDetail /></RequireAuth>} />
-          <Route path="/summer/pnw-alumni" element={<RequireAuth><SummerPnwAlumniPage /></RequireAuth>} />
-          <Route path="/summer/college-mix" element={<RequireAuth><SummerCollegeMixPage /></RequireAuth>} />
-          <Route path="/summer/recap" element={<RequireAuth><WclRecapGraphic /></RequireAuth>} />
-          <Route path="/summer/game-recap" element={<RequireAuth><WclGameRecapGraphic /></RequireAuth>} />
+          <Route path="/summer/scoreboard" element={<SummerScoreboardPage />} />
+          <Route path="/summer/standings" element={<SummerStandingsPage />} />
+          <Route path="/summer/teams" element={<SummerTeamsPage />} />
+          <Route path="/summer/teams/:id" element={<SummerTeamDetail />} />
+          <Route path="/summer/players/:id" element={<SummerPlayerDetail />} />
+          <Route path="/summer/games/:id" element={<SummerGameDetail />} />
+          <Route path="/summer/pnw-alumni" element={<SummerPnwAlumniPage />} />
+          <Route path="/summer/college-mix" element={<SummerCollegeMixPage />} />
+          <Route path="/summer/recap" element={<WclRecapGraphic />} />
+          <Route path="/summer/game-recap" element={<WclGameRecapGraphic />} />
           <Route path="/stat-leaders" element={<StatLeaders />} />
-          <Route path="/percentiles" element={<RequireTier minTier="free"><Percentiles /></RequireTier>} />
-          <Route path="/player-comps" element={<RequireTier minTier="free"><PlayerComps /></RequireTier>} />
-          <Route path="/records" element={<RequireTier minTier="free"><RecordsPage /></RequireTier>} />
-          <Route path="/playoff-projections" element={<RequireTier minTier="free"><PlayoffProjections /></RequireTier>} />
+          <Route path="/percentiles" element={<Percentiles />} />
+          <Route path="/player-comps" element={<PlayerComps />} />
+          <Route path="/records" element={<RecordsPage />} />
+          <Route path="/playoff-projections" element={<PlayoffProjections />} />
 
           {/* Teams */}
           <Route path="/teams" element={<TeamsPage />} />
-          <Route path="/projections" element={<RequireTier minTier="premium"><TeamProjections /></RequireTier>} />
-          <Route path="/projections/graphic" element={<RequireTier minTier="premium"><ProjectionLeaderboardGraphic /></RequireTier>} />
+          <Route path="/projections" element={<TeamProjections />} />
+          <Route path="/projections/graphic" element={<ProjectionLeaderboardGraphic />} />
           <Route path="/trackman-data" element={<RequireDev><TrackManData /></RequireDev>} />
           <Route path="/commitment-editor" element={<RequireDev emails={COMMITMENT_EDITOR_EMAILS}><CommitmentEditor /></RequireDev>} />
           <Route path="/pro-tracker" element={<ProTracker />} />
@@ -451,49 +381,44 @@ export default function App() {
           <Route path="/team/:teamId" element={<TeamDetail />} />
           <Route path="/team-ratings" element={<TeamRatings />} />
           <Route path="/national-rankings" element={<NationalRankings />} />
-          <Route path="/team-history" element={<RequireTier minTier="free"><TeamHistory /></RequireTier>} />
+          <Route path="/team-history" element={<TeamHistory />} />
           {/* Public landing page for the whole Recruiting tab (all tiers, no gate) */}
           <Route path="/recruiting" element={<RecruitingHub />} />
           {/* Matchmaker is open to EVERYONE (anonymous included) as a funnel:
               non-paid users only see their #1 fit — the full ranked list is
               gated inside RecruitQuiz.jsx at premium. */}
           <Route path="/recruiting/quiz" element={<RecruitQuiz />} />
-          <Route path="/recruiting-classes" element={<RequireTier minTier="premium"><RecruitingClasses /></RequireTier>} />
-          <Route path="/recruiting/breakdown" element={<RequireTier minTier="premium"><RecruitingBreakdown /></RequireTier>} />
-          <Route path="/recruiting/hometown" element={<RequireTier minTier="premium"><HometownSearch /></RequireTier>} />
+          <Route path="/recruiting-classes" element={<RecruitingClasses />} />
+          <Route path="/recruiting/breakdown" element={<RecruitingBreakdown />} />
+          <Route path="/recruiting/hometown" element={<HometownSearch />} />
 
-          {/* Recruiting (admin only) */}
-          {/* Read-only for premium recruits (the matchmaker links here); the
-              in-page editor stays admin-only (gated inside RecruitingGuide + admin PUT). */}
-          {/* Read-only for premium recruits (the matchmaker links here); the
-              in-page editor stays admin-only (gated inside RecruitingGuide + admin PUT). */}
-          <Route path="/recruiting/guide" element={<RequireTier minTier="premium"><RecruitingGuide /></RequireTier>} />
-          <Route path="/recruiting/program-guide" element={<RequireTier minTier="premium"><RecruitingProgramGuide /></RequireTier>} />
-          <Route path="/recruiting/tips" element={<RequireTier minTier="premium"><RecruitingTips /></RequireTier>} />
-          <Route path="/recruiting/advancement" element={<RequireTier minTier="premium"><NwacAdvancement /></RequireTier>} />
+          {/* Recruiting guides are public; the in-page editor stays admin-only
+              (gated inside RecruitingGuide + admin PUT). */}
+          <Route path="/recruiting/guide" element={<RecruitingGuide />} />
+          <Route path="/recruiting/program-guide" element={<RecruitingProgramGuide />} />
+          <Route path="/recruiting/tips" element={<RecruitingTips />} />
+          <Route path="/recruiting/advancement" element={<NwacAdvancement />} />
           <Route path="/recruiting/rankings" element={<RequireAdmin><RecruitingRankings /></RequireAdmin>} />
-          <Route path="/recruiting/map" element={<RequireTier minTier="premium"><RecruitingMap /></RequireTier>} />
+          <Route path="/recruiting/map" element={<RecruitingMap />} />
           <Route path="/recruiting/breakdowns" element={<RequireAdmin><AdminRecruitingPlaceholder /></RequireAdmin>} />
           <Route path="/recruiting/history" element={<RequireAdmin><RecruitingHistory /></RequireAdmin>} />
           <Route path="/recruiting/field" element={<RequireAdmin><RecruitingField /></RequireAdmin>} />
 
-          {/* Coaching (auth required) */}
-          {/* JUCO + Transfer Portal trackers live in the main-site Coaching
-              tab (premium). Old standalone + portal URLs redirect here. */}
-          <Route path="/coaching/juco-tracker" element={<RequireTier minTier="recruiting"><JucoTracker /></RequireTier>} />
-          <Route path="/coaching/transfer-portal" element={<RequireTier minTier="recruiting"><TransferPortalTracker /></RequireTier>} />
-          <Route path="/coaching/wcl-portal" element={<RequireTier minTier="recruiting"><WclTransferTracker /></RequireTier>} />
-          <Route path="/coaching/player-comparison" element={<RequireTier minTier="premium"><PlayerComparison /></RequireTier>} />
-          <Route path="/coaching/catcher-defense" element={<RequireTier minTier="premium"><CatcherDefense /></RequireTier>} />
-          {/* Recruiting boards are FREE (any signed-in user) as of 2026-07-04;
-              the Recruit Finder tab inside stays recruiting-tier. */}
-          <Route path="/coaching/recruiting-board" element={<RequireTier minTier="free"><RecruitingBoard /></RequireTier>} />
+          {/* Coaching tools. JUCO + Transfer Portal trackers live in the
+              main-site Coaching tab; old standalone + portal URLs redirect here. */}
+          <Route path="/coaching/juco-tracker" element={<JucoTracker />} />
+          <Route path="/coaching/transfer-portal" element={<TransferPortalTracker />} />
+          <Route path="/coaching/wcl-portal" element={<WclTransferTracker />} />
+          <Route path="/coaching/player-comparison" element={<PlayerComparison />} />
+          <Route path="/coaching/catcher-defense" element={<CatcherDefense />} />
+          {/* Recruiting boards store per-user lists, so they need a sign-in. */}
+          <Route path="/coaching/recruiting-board" element={<RequireSignIn><RecruitingBoard /></RequireSignIn>} />
           {/* Public read-only board view via share link — no auth. */}
           <Route path="/recruiting-board/shared/:token" element={<SharedRecruitingBoard />} />
           <Route path="/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
           <Route path="/portal/juco-tracker" element={<Navigate to="/coaching/juco-tracker" replace />} />
-          <Route path="/compare" element={<RequireAuth><TeamComparison /></RequireAuth>} />
-          <Route path="/park-factors" element={<RequireTier minTier="free"><ParkFactors /></RequireTier>} />
+          <Route path="/compare" element={<TeamComparison />} />
+          <Route path="/park-factors" element={<ParkFactors />} />
 
           {/* Team Scouting + Enhanced Scouting moved into the portal; redirect
               old top-level URLs so any external links and bookmarks still work. */}
@@ -508,67 +433,67 @@ export default function App() {
           <Route path="/player-scouting"
                  element={<Navigate to="/portal/player-scouting" replace />} />
 
-          {/* Coach & Scouting Portal — locked to PORTAL_OWNERS only.
-              Anyone else (including signed-in non-owners) gets bounced
-              to the main-site homepage. */}
+          {/* Coach & Scouting Portal — open to everyone. The upload tools
+              inside (TrackMan, Rapsodo, Blast, Camp) ask for a sign-in because
+              they store per-user data. */}
           <Route path="/portal"
-                 element={<RequirePortalAccess><PortalLayout noGate><PortalHome /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout noGate><PortalHome /></PortalLayout>} />
           <Route path="/portal/trends"
-                 element={<RequirePortalAccess><PortalLayout><OpponentTrends /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><OpponentTrends /></PortalLayout>} />
           <Route path="/portal/historic"
-                 element={<RequirePortalAccess><PortalLayout><HistoricMatchups /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><HistoricMatchups /></PortalLayout>} />
           <Route path="/portal/player-scouting"
-                 element={<RequirePortalAccess><PortalLayout><PlayerScouting /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><PlayerScouting /></PortalLayout>} />
           <Route path="/portal/rapsodo"
-                 element={<RequirePortalAccess><PortalLayout><RapsodoAnalyzer /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><RequireSignIn><RapsodoAnalyzer /></RequireSignIn></PortalLayout>} />
           <Route path="/portal/lineup-helper"
-                 element={<RequirePortalAccess><PortalLayout><LineupHelper /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><LineupHelper /></PortalLayout>} />
           <Route path="/portal/team-scouting"
-                 element={<RequirePortalAccess><PortalLayout><TeamScouting /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><TeamScouting /></PortalLayout>} />
           <Route path="/portal/series-planner"
-                 element={<RequirePortalAccess><PortalLayout><SeriesPlanner /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><SeriesPlanner /></PortalLayout>} />
           <Route path="/portal/matchup-calculator"
-                 element={<RequirePortalAccess><PortalLayout><MatchupCalculator /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><MatchupCalculator /></PortalLayout>} />
           <Route path="/portal/trackman"
-                 element={<RequirePortalAccess><PortalLayout><TrackmanSuite /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><RequireSignIn><TrackmanSuite /></RequireSignIn></PortalLayout>} />
           <Route path="/portal/blast"
-                 element={<RequirePortalAccess><PortalLayout><BlastLab /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><RequireSignIn><BlastLab /></RequireSignIn></PortalLayout>} />
           <Route path="/portal/camp-report"
-                 element={<RequirePortalAccess><PortalLayout><CampReport /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><RequireSignIn><CampReport /></RequireSignIn></PortalLayout>} />
           <Route path="/portal/alignments"
-                 element={<RequirePortalAccess><PortalLayout><Alignments /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><Alignments /></PortalLayout>} />
           <Route path="/portal/alignments/cards"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><PocketCards /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><PocketCards /></PortalLayout>} />
           {/* Retired Advance Report → Series Planner (keeps old deep links alive via ?team_id fallback) */}
           <Route path="/portal/advance-report"
-                 element={<RequirePortalAccess><PortalLayout><SeriesPlanner /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><SeriesPlanner /></PortalLayout>} />
           <Route path="/portal/splits"
-                 element={<RequirePortalAccess><PortalLayout><SplitsExplorer /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><SplitsExplorer /></PortalLayout>} />
           <Route path="/portal/custom-sheet"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><CustomSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><CustomSheet /></PortalLayout>} />
           <Route path="/portal/custom-card"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><CustomPlayerCard /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><CustomPlayerCard /></PortalLayout>} />
           <Route path="/portal/scouting-sheet"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><ScoutingSheet /></PortalLayout>} />
           <Route path="/portal/scouting-sheet/:teamId"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><ScoutingSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><ScoutingSheet /></PortalLayout>} />
           <Route path="/portal/pdfs"
-                 element={<RequirePortalAccess><PortalLayout><PortalPDFs /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout><PortalPDFs /></PortalLayout>} />
           <Route path="/portal/pdfs/player-card/:playerId"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><PlayerCardPDF /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><PlayerCardPDF /></PortalLayout>} />
           <Route path="/portal/pdfs/bulk-player-cards"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><BulkPlayerCards /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><BulkPlayerCards /></PortalLayout>} />
           <Route path="/portal/bullpen-sheet"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><BullpenSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><BullpenSheet /></PortalLayout>} />
           <Route path="/portal/bullpen-sheet/:teamId"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><BullpenSheet /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><BullpenSheet /></PortalLayout>} />
           <Route path="/portal/catcher-cards"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><CatcherCards /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><CatcherCards /></PortalLayout>} />
           <Route path="/portal/catcher-cards/:teamId"
-                 element={<RequirePortalAccess><PortalLayout lightOnly><CatcherCards /></PortalLayout></RequirePortalAccess>} />
+                 element={<PortalLayout lightOnly><CatcherCards /></PortalLayout>} />
           {/* News (public) + Articles (author-allowlist only) */}
           <Route path="/news" element={<NewsList />} />
-          <Route path="/news/commitments" element={<RequireTier minTier="recruiting"><NewsCommitments /></RequireTier>} />
+          <Route path="/news/commitments" element={<NewsCommitments />} />
           <Route path="/news/:slug" element={<NewsArticle />} />
           <Route path="/articles" element={<RequireArticleAuthor><ArticlesList /></RequireArticleAuthor>} />
           <Route path="/articles/new" element={<RequireArticleAuthor><ArticleEditor /></RequireArticleAuthor>} />
@@ -578,78 +503,78 @@ export default function App() {
           <Route path="/broadcasts" element={<RequireBroadcastOwner><EmailComposer /></RequireBroadcastOwner>} />
           <Route path="/unsubscribe" element={<Unsubscribe />} />
 
-          {/* "My Account" — auth required */}
-          <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
-          {/* Pricing / tier comparison — public so anyone can see what each tier gets */}
-          <Route path="/pricing" element={<Pricing />} />
+          {/* "My Account" — sign-in required */}
+          <Route path="/account" element={<RequireSignIn><Account /></RequireSignIn>} />
+          {/* The site is free; old pricing links land on About. */}
+          <Route path="/pricing" element={<Navigate to="/about" replace />} />
 
           {/* Legal */}
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
 
           {/* MLB Draft Board (auth required). Lives at /draftboard; /draft is the 56-0 game. */}
-          <Route path="/draftboard" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
-          <Route path="/draftboard/2026" element={<RequireTier minTier="premium"><DraftBoard year="26" /></RequireTier>} />
-          <Route path="/draftboard/2027" element={<RequireTier minTier="premium"><DraftBoard year="27" /></RequireTier>} />
-          <Route path="/draftboard/2028" element={<RequireTier minTier="premium"><DraftBoard year="28" /></RequireTier>} />
+          <Route path="/draftboard" element={<DraftBoard year="26" />} />
+          <Route path="/draftboard/2026" element={<DraftBoard year="26" />} />
+          <Route path="/draftboard/2027" element={<DraftBoard year="27" />} />
+          <Route path="/draftboard/2028" element={<DraftBoard year="28" />} />
           {/* Old /draft/* draft-board links redirect to the new path */}
           <Route path="/draft/2026" element={<Navigate to="/draftboard/2026" replace />} />
           <Route path="/draft/2027" element={<Navigate to="/draftboard/2027" replace />} />
           <Route path="/draft/2028" element={<Navigate to="/draftboard/2028" replace />} />
 
           {/* Misc (auth required) */}
-          <Route path="/top-moments" element={<RequireAuth><TopMoments /></RequireAuth>} />
-          <Route path="/pnw-grid" element={<RequireAuth><PnwGrid /></RequireAuth>} />
-          <Route path="/team-quiz" element={<RequireAuth><TeamQuiz /></RequireAuth>} />
-          <Route path="/fieldguessr" element={<RequireAuth><FieldGuessr /></RequireAuth>} />
-          <Route path="/pnw-pickle" element={<RequireAuth><PnwPickle /></RequireAuth>} />
-          <Route path="/all-conference" element={<RequireAuth><AllConferenceGenerator /></RequireAuth>} />
-          <Route path="/graphics" element={<RequireAuth><SocialGraphics /></RequireAuth>} />
-          <Route path="/graphics/wcl-leaderboards" element={<RequireAuth><WclLeaderboardGraphic /></RequireAuth>} />
-          <Route path="/graphics/recruiting-classes" element={<RequireTier minTier="premium"><RecruitingClassRankingsGraphic /></RequireTier>} />
-          <Route path="/graphics/portal-tracker" element={<RequireTier minTier="recruiting"><TransferPortalGraphic /></RequireTier>} />
-          <Route path="/graphics/wcl-standings" element={<RequireAuth><WclStandingsGraphic /></RequireAuth>} />
-          <Route path="/graphics-hub" element={<RequireTier minTier="free"><GraphicsHub /></RequireTier>} />
-          <Route path="/daily-scores" element={<RequireAuth><DailyScoresGraphic /></RequireAuth>} />
-          <Route path="/key-matchup" element={<RequireAuth><KeyMatchupGraphic /></RequireAuth>} />
-          <Route path="/series-recap" element={<RequireAuth><SeriesRecapGraphic /></RequireAuth>} />
-          <Route path="/tournament-bracket" element={<RequireAuth><TournamentBracketGraphic /></RequireAuth>} />
-          <Route path="/daily-recap" element={<RequireAuth><DailyRecapGraphic /></RequireAuth>} />
+          <Route path="/top-moments" element={<TopMoments />} />
+          <Route path="/pnw-grid" element={<PnwGrid />} />
+          <Route path="/team-quiz" element={<TeamQuiz />} />
+          <Route path="/fieldguessr" element={<FieldGuessr />} />
+          <Route path="/pnw-pickle" element={<PnwPickle />} />
+          <Route path="/all-conference" element={<AllConferenceGenerator />} />
+          <Route path="/graphics" element={<SocialGraphics />} />
+          <Route path="/graphics/wcl-leaderboards" element={<WclLeaderboardGraphic />} />
+          <Route path="/graphics/recruiting-classes" element={<RecruitingClassRankingsGraphic />} />
+          <Route path="/graphics/portal-tracker" element={<TransferPortalGraphic />} />
+          <Route path="/graphics/wcl-standings" element={<WclStandingsGraphic />} />
+          <Route path="/graphics-hub" element={<GraphicsHub />} />
+          <Route path="/daily-scores" element={<DailyScoresGraphic />} />
+          <Route path="/key-matchup" element={<KeyMatchupGraphic />} />
+          <Route path="/series-recap" element={<SeriesRecapGraphic />} />
+          <Route path="/tournament-bracket" element={<TournamentBracketGraphic />} />
+          <Route path="/daily-recap" element={<DailyRecapGraphic />} />
           <Route path="/feature-request" element={<FeatureRequest />} />
           <Route path="/kcourt" element={<KangarooCourt />} />
           <Route path="/player-pages" element={<PlayerGraphic />} />
-          <Route path="/conference-standings" element={<RequireAuth><ConferenceStandingsGraphic /></RequireAuth>} />
-          <Route path="/all-conference-graphic" element={<RequireAuth><AllConferenceGraphic /></RequireAuth>} />
-          <Route path="/top-performers-graphic" element={<RequireAuth><TopPerformersGraphic /></RequireAuth>} />
-          <Route path="/wcl-top-performers-graphic" element={<RequireAuth><TopPerformersGraphic variant="summer" /></RequireAuth>} />
-          <Route path="/draft-board-graphic" element={<RequireAuth><DraftBoardGraphic /></RequireAuth>} />
-          <Route path="/team-info-graphic" element={<RequireAuth><TeamInfoGraphic /></RequireAuth>} />
-          <Route path="/team-season-recap" element={<RequireAuth><TeamSeasonRecapGraphic /></RequireAuth>} />
+          <Route path="/conference-standings" element={<ConferenceStandingsGraphic />} />
+          <Route path="/all-conference-graphic" element={<AllConferenceGraphic />} />
+          <Route path="/top-performers-graphic" element={<TopPerformersGraphic />} />
+          <Route path="/wcl-top-performers-graphic" element={<TopPerformersGraphic variant="summer" />} />
+          <Route path="/draft-board-graphic" element={<DraftBoardGraphic />} />
+          <Route path="/team-info-graphic" element={<TeamInfoGraphic />} />
+          <Route path="/team-season-recap" element={<TeamSeasonRecapGraphic />} />
           <Route path="/players" element={<PlayerSearch />} />
 
           {/* GM (NW Coaching Simulator — private alpha, locked to dev only) */}
-          <Route path="/gm" element={<RequireGmEarlyAccess><GMHome /></RequireGmEarlyAccess>} />
-          <Route path="/gm/new" element={<RequireGmEarlyAccess><NewDynasty /></RequireGmEarlyAccess>} />
-          <Route path="/gm/dashboard" element={<RequireGmEarlyAccess><Dashboard /></RequireGmEarlyAccess>} />
-          <Route path="/gm/roster" element={<RequireGmEarlyAccess><Roster /></RequireGmEarlyAccess>} />
-          <Route path="/gm/schedule" element={<RequireGmEarlyAccess><Schedule /></RequireGmEarlyAccess>} />
-          <Route path="/gm/standings" element={<RequireGmEarlyAccess><Standings /></RequireGmEarlyAccess>} />
-          <Route path="/gm/rankings" element={<RequireGmEarlyAccess><Rankings /></RequireGmEarlyAccess>} />
-          <Route path="/gm/budget" element={<RequireGmEarlyAccess><Budget /></RequireGmEarlyAccess>} />
-          <Route path="/gm/postseason" element={<RequireGmEarlyAccess><Postseason /></RequireGmEarlyAccess>} />
-          <Route path="/gm/recruiting" element={<RequireGmEarlyAccess><Recruiting /></RequireGmEarlyAccess>} />
-          <Route path="/gm/career" element={<RequireGmEarlyAccess><Career /></RequireGmEarlyAccess>} />
-          <Route path="/gm/coaches" element={<RequireGmEarlyAccess><Coaches /></RequireGmEarlyAccess>} />
-          <Route path="/gm/weekly" element={<RequireGmEarlyAccess><WeeklyActions /></RequireGmEarlyAccess>} />
-          <Route path="/gm/depth" element={<RequireGmEarlyAccess><DepthChart /></RequireGmEarlyAccess>} />
-          <Route path="/gm/play" element={<RequireGmEarlyAccess><Play /></RequireGmEarlyAccess>} />
-          <Route path="/gm/calendar" element={<RequireGmEarlyAccess><GMCalendar /></RequireGmEarlyAccess>} />
-          <Route path="/gm/summer" element={<RequireGmEarlyAccess><SummerBall /></RequireGmEarlyAccess>} />
-          <Route path="/gm/stats" element={<RequireGmEarlyAccess><GMStats /></RequireGmEarlyAccess>} />
-          <Route path="/gm/records" element={<RequireGmEarlyAccess><Records /></RequireGmEarlyAccess>} />
-          <Route path="/gm/academics" element={<RequireGmEarlyAccess><Academics /></RequireGmEarlyAccess>} />
-          <Route path="/gm/teamstats" element={<RequireGmEarlyAccess><TeamStats /></RequireGmEarlyAccess>} />
-          <Route path="/gm/player/:playerId" element={<RequireGmEarlyAccess><GMPlayerDetail /></RequireGmEarlyAccess>} />
+          <Route path="/gm" element={<GmRoute><GMHome /></GmRoute>} />
+          <Route path="/gm/new" element={<GmRoute><NewDynasty /></GmRoute>} />
+          <Route path="/gm/dashboard" element={<GmRoute><Dashboard /></GmRoute>} />
+          <Route path="/gm/roster" element={<GmRoute><Roster /></GmRoute>} />
+          <Route path="/gm/schedule" element={<GmRoute><Schedule /></GmRoute>} />
+          <Route path="/gm/standings" element={<GmRoute><Standings /></GmRoute>} />
+          <Route path="/gm/rankings" element={<GmRoute><Rankings /></GmRoute>} />
+          <Route path="/gm/budget" element={<GmRoute><Budget /></GmRoute>} />
+          <Route path="/gm/postseason" element={<GmRoute><Postseason /></GmRoute>} />
+          <Route path="/gm/recruiting" element={<GmRoute><Recruiting /></GmRoute>} />
+          <Route path="/gm/career" element={<GmRoute><Career /></GmRoute>} />
+          <Route path="/gm/coaches" element={<GmRoute><Coaches /></GmRoute>} />
+          <Route path="/gm/weekly" element={<GmRoute><WeeklyActions /></GmRoute>} />
+          <Route path="/gm/depth" element={<GmRoute><DepthChart /></GmRoute>} />
+          <Route path="/gm/play" element={<GmRoute><Play /></GmRoute>} />
+          <Route path="/gm/calendar" element={<GmRoute><GMCalendar /></GmRoute>} />
+          <Route path="/gm/summer" element={<GmRoute><SummerBall /></GmRoute>} />
+          <Route path="/gm/stats" element={<GmRoute><GMStats /></GmRoute>} />
+          <Route path="/gm/records" element={<GmRoute><Records /></GmRoute>} />
+          <Route path="/gm/academics" element={<GmRoute><Academics /></GmRoute>} />
+          <Route path="/gm/teamstats" element={<GmRoute><TeamStats /></GmRoute>} />
+          <Route path="/gm/player/:playerId" element={<GmRoute><GMPlayerDetail /></GmRoute>} />
 
           {/* About */}
           <Route path="/about" element={<About />} />
@@ -658,7 +583,7 @@ export default function App() {
           {/* Auth & Favorites */}
           <Route path="/login" element={<AuthPage />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="/favorites" element={<RequireSignIn><FavoritesPage /></RequireSignIn>} />
 
           {/* Legacy route: redirect old / batting path */}
           <Route path="/player/:playerId" element={<PlayerDetail />} />
@@ -702,7 +627,6 @@ export default function App() {
                 <Link to="/about" className="block text-xs text-white/80 hover:text-white transition-colors">About & The Team</Link>
                 <a href="/about#behind" className="block text-xs text-white/80 hover:text-white transition-colors">Behind the Curtain</a>
                 <a href="/about#glossary" className="block text-xs text-white/80 hover:text-white transition-colors">Stat Glossary</a>
-                <Link to="/pricing" className="block text-xs text-white/80 hover:text-white transition-colors">Pricing</Link>
                 <Link to="/feature-request" className="block text-xs text-white/80 hover:text-white transition-colors">Feedback</Link>
               </div>
             </div>
@@ -742,7 +666,6 @@ export default function App() {
     </MaintenanceLockout>
     </AffiliationProvider>
     </AuthProvider>
-    </PreviewProvider>
     </ThemeProvider>
   )
 }

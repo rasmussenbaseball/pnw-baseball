@@ -18,7 +18,6 @@ from fastapi import APIRouter, Query, Request
 from ..config import CURRENT_SEASON
 from ..models.database import get_connection
 from ._team_narrative import team_narrative, hitter_returner_note, pitcher_returner_note
-from .articles import _viewer_tier, _tier_meets
 
 team_profile_router = APIRouter(prefix="/teams")
 
@@ -610,7 +609,7 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
 
 @team_profile_router.get("/{team_id}/returning")
 def team_returning(team_id: int, request: Request, season: int = Query(CURRENT_SEASON)):
-    unlocked = _tier_meets(_viewer_tier(request), "premium")
+    unlocked = True   # projections are open to everyone (no paid tiers)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(

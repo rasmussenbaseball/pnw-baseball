@@ -593,7 +593,6 @@ If you need deeper history on a specific subsystem, the original session memory 
 - Social media automation plan
 - Series recap graphic generator
 - Recruiting guide research and methodology
-- Monetization tier plan (4 tiers from free anonymous to paid recruiting)
 - Future feature roadmap (alumni tracker, projections, articles, etc.)
 
 Ask Nate, or read the corresponding source file, before designing around any of these.
@@ -608,3 +607,14 @@ Ask Nate, or read the corresponding source file, before designing around any of 
 - **Owner:** Nate Rasmussen, nate.rasmussen26@gmail.com
 
 When in doubt, ask Nate before changing anything load-bearing. He prefers one step at a time and clear Mac-vs-server instructions.
+
+## Access model (September 2026)
+
+There are NO paid tiers and NO Stripe. Everything built on public data is open to
+every visitor, signed in or not. The only access grant is the developer allowlist
+(`backend/app/api/_tier_allowlist.py` DEVELOPER_EMAILS, mirrored in
+`frontend/src/lib/tiers.js`), which unlocks internal tools via `require_developer`
+/ `<RequireDev>`. Tools that store per-user data (TrackMan Suite, Rapsodo Lab,
+Blast Lab, Camp Report, recruiting boards, favorites, account settings) require a
+plain sign-in (`get_current_user` / `<RequireSignIn>` in App.jsx), never a tier.
+Do not reintroduce `require_tier`, pricing pages, or subscription copy.

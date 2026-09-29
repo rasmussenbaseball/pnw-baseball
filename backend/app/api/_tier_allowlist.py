@@ -1,19 +1,13 @@
 """
-Tier allowlists — emails that are granted access tiers OUTSIDE the
-normal Stripe-billed subscription system. Two non-paying categories:
+Developer allowlist plus token-to-email resolution.
 
-  DEVELOPER_EMAILS   → tier='dev'   (site builders + interns).
-                       Bypasses every gate. Hidden from /pricing
-                       and the signup popup.
+DEVELOPER_EMAILS is the ONLY access grant left on the site (September
+2026): everything built on public data is open to everyone, and the dev
+list unlocks internal tools (commitment editor, in-progress pages, raw
+TrackMan tables). Nate adds and removes emails here; mirror the list in
+frontend/src/lib/tiers.js.
 
-  COMPED_COACH_EMAILS → tier='coach' (free Coach & Scout forever).
-                       Friends-of-the-site grant: complimentary
-                       lifetime access, no payment, no expiration.
-
-Both lists are case-insensitive (we lowercase on compare). They live
-here as Python constants so updates don't require a DB migration.
-Mirror DEVELOPER_EMAILS in frontend/src/lib/tiers.js if you change
-that list.
+Case-insensitive (we lowercase on compare).
 """
 
 from __future__ import annotations
@@ -51,57 +45,9 @@ COMMITMENT_EDITOR_EMAILS = {
     "pnwcbr@gmail.com",
 }
 
-COMPED_COACH_EMAILS = {
-    "n.g.hernandez19@tcu.edu",  # Sept 7, 2026 (per Nate)
-    "ethan.stacy@gmail.com",
-    "jhussey1703@gmail.com",
-    "dylanthomasha@gmail.com",
-    "miyazawajoshua@gmail.com",
-    "maxo2326@gmail.com",
-    "jawomack@bushnell.edu",
-    "pnwcbr@gmail.com",
-    "tommy.richards@wsu.edu",
-    "deven@drivelinebaseball.com",
-    # June 12, 2026 batch (per Nate)
-    "eryxawaya@gmail.com",
-    "tdubgreen1024@gmail.com",
-    "broderickbuhr1@gmail.com",
-    "manaheff@gmail.com",
-    "cameronkundig@gmail.com",
-    "aswolfe44@gmail.com",
-    "jtcourt2@centurylink.net",
-    "tyler.baseball2026@gmail.com",
-    # June 14, 2026 (per Nate)
-    "blake.stavros24@gmail.com",
-    "marshallchaser@gmail.com",
-    # June 17, 2026 (per Nate)
-    "taylorp4546@gmail.com",
-    # June 20, 2026 (per Nate)
-    "ebutcher07.19@gmail.com",
-    # June 23, 2026 (per Nate) — Stealth Batting Gloves
-    "hunter.stealthbattinggloves@gmail.com",
-    "luke.stealthbattinggloves@gmail.com",
-    "ryan.stealthbattinggloves@gmail.com",
-    # June 25, 2026 (per Nate)
-    "raisethetridentyt@gmail.com",
-    # July 3, 2026 (per Nate)
-    "calensimonelic@gmail.com",
-    # July 16, 2026 (per Nate)
-    "olsonfamilydavid@gmail.com",
-}
-
-
-def resolve_comped_tier(email: Optional[str]) -> Optional[str]:
-    """Map an email to a granted tier ('dev' or 'coach'), or None if
-    the email is not on either allowlist. Case-insensitive."""
-    if not email:
-        return None
-    e = email.lower()
-    if e in DEVELOPER_EMAILS:
-        return "dev"
-    if e in COMPED_COACH_EMAILS:
-        return "coach"
-    return None
+def is_developer_email(email: Optional[str]) -> bool:
+    """True when the email is on the developer allowlist."""
+    return bool(email) and email.lower() in DEVELOPER_EMAILS
 
 
 # ──────────────────────────────────────────────────────────────

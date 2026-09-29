@@ -1,15 +1,11 @@
 /**
- * Unified homepage (June 2026 redesign) — ONE homepage for every tier.
- *
- * Replaces the five per-tier homepages (Anonymous/Free/Premium/Recruiting/
- * Coach). Dense masonry-style columns of compact widgets, each linking
+ * Unified homepage (June 2026 redesign). Dense masonry-style columns of compact widgets, each linking
  * deeper into the site; nothing dominates the page.
  *
  * Layout: TRUE stacked columns (per Nate — widgets snap to the bottom of
  * the one above, no row-band gaps). Column membership is hand-balanced
  * per breakpoint in COLUMN_LAYOUTS below; the marquee widgets (standings,
- * WAR, stat leaders) always sit at the column tops. The pricing strip
- * spans full width underneath.
+ * WAR, stat leaders) always sit at the column tops.
  *
  * Widgets live in components/home/ — StatWidgets (data-heavy) and
  * FeatureWidgets (product/marketing). All share WidgetShell for one look.
@@ -26,7 +22,7 @@ import {
   DraftBoardWidget, GridPreviewWidget, ArticlesWidget,
   RecentMovesWidget, GmPreviewWidget, PortalPreviewWidget,
   NewFeaturesWidget, GamesWidget, ComparablesWidget,
-  TiersWidget, StealthPartnerWidget,
+  StealthPartnerWidget,
 } from '../components/home/FeatureWidgets'
 
 export default function Homepage() {
@@ -38,11 +34,6 @@ export default function Homepage() {
       </div>
 
       <WidgetColumns />
-
-      {/* pricing strip — always full width below the columns */}
-      <div className="mt-4">
-        <TiersWidget />
-      </div>
 
       <p className="text-center text-[10px] text-gray-400 mt-6 mb-2">
         Covering the {CURRENT_SEASON} season across Washington, Oregon, Idaho, Montana, and British Columbia.

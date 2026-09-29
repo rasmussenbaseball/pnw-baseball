@@ -1,5 +1,5 @@
-// NWBB Program Guide — premium, view-only PDF of all 57 PNW program profiles.
-// The bytes come from a premium-gated backend endpoint (the raw URL 401s without
+// NWBB Program Guide — view-only PDF of all 57 PNW program profiles.
+// The bytes come from the backend endpoint (fetched as a blob so the file can't
 // a token), and we render page-by-page to canvas with no text layer, no
 // download/print UI, and right-click disabled — so there's no easy way to pull
 // the file down.
@@ -29,7 +29,7 @@ export default function RecruitingProgramGuide() {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!resp.ok) {
-          throw new Error(resp.status === 401 || resp.status === 403 ? 'premium' : resp.status === 404 ? 'missing' : `HTTP ${resp.status}`)
+          throw new Error(resp.status === 404 ? 'missing' : `HTTP ${resp.status}`)
         }
         const buf = await resp.arrayBuffer()
         if (!cancelled) setFile({ data: new Uint8Array(buf) })
@@ -88,7 +88,7 @@ export default function RecruitingProgramGuide() {
     <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6">
       <div className="text-center mb-4">
         <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-nw-teal bg-teal-50 dark:bg-teal-900/30 px-3 py-1 rounded-full mb-2">
-          Premium · Program Guide
+          Program Guide
         </div>
         <h1 className="text-2xl sm:text-3xl font-black text-nw-teal dark:text-gray-100">NWBB Program Guide</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -102,11 +102,7 @@ export default function RecruitingProgramGuide() {
         className="rounded-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700 bg-gray-100 dark:bg-gray-800 select-none"
         style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
       >
-        {error === 'premium' ? (
-          <div className="p-10 text-center text-sm text-gray-600 dark:text-gray-300">
-            The Program Guide is a premium feature. <a href="/pricing" className="text-nw-teal font-semibold hover:underline">View plans →</a>
-          </div>
-        ) : error ? (
+        {error ? (
           <div className="p-10 text-center text-sm text-gray-500 dark:text-gray-400">
             The Program Guide couldn't be loaded right now. Please try again later.
           </div>

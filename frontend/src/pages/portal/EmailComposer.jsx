@@ -25,7 +25,7 @@ const API_BASE = '/api/v1'
 const AUDIENCES = [
   { value: 'news',    label: 'Newsletter',         short: 'News',          desc: 'Content drops, articles, recaps' },
   { value: 'updates', label: 'Site announcements', short: 'Announcements', desc: 'New features, big additions' },
-  { value: 'promos',  label: 'Promotions',         short: 'Promotions',    desc: 'Paid-tier offers, limited-time deals' },
+  { value: 'promos',  label: 'Promotions',         short: 'Promotions',    desc: 'New tools, partner offers' },
 ]
 
 function authHeaders(session) {

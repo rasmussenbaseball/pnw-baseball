@@ -701,14 +701,14 @@ export function useRecruitingBreakdown(season = CURRENT_SEASON) {
 
 /**
  * Recruiting Classes leaderboard - per-school HS commit class summaries
- * for a grad year (PREMIUM-gated). Sorted by class_score desc.
+ * for a grad year. Sorted by class_score desc.
  */
 export function useRecruitingClasses(gradYear = 2026) {
   return useApi('/recruiting/classes', { grad_year: gradYear }, [gradYear])
 }
 
 /**
- * One school's full HS commit list for a grad year (PREMIUM-gated). Pass
+ * One school's full HS commit list for a grad year. Pass
  * null teamId to skip the fetch (used when no leaderboard row is expanded).
  */
 export function useRecruitingClassDetail(teamId, gradYear = 2026) {
@@ -721,7 +721,7 @@ export function useRecruitingClassDetail(teamId, gradYear = 2026) {
 
 /**
  * Transfer commits (JUCO + portal) grouped by destination PNW program
- * (PREMIUM-gated). Powers the "Transfers" and "Combined" views on the
+ *. Powers the "Transfers" and "Combined" views on the
  * Recruiting Classes page. Transfers are unrated for now (listed only).
  */
 export function useRecruitingTransfers(gradYear = 2026) {

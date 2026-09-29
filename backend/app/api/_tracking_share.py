@@ -1,22 +1,20 @@
-"""Staff workspace sharing for the TrackMan Suite + Rapsodo Lab.
+"""Staff workspace sharing for the TrackMan Suite, Rapsodo Lab and Camp Report.
 
-Both tools are private per-coach workspaces keyed by owner_user_id. A
+These tools are private per-coach workspaces keyed by owner_user_id. A
 staff member whose email is on the coach's staff list, and who has no
 uploads of their own, transparently acts AS the coach's workspace: reads,
 uploads, and overrides all resolve to the shared pool. No per-query
 changes and no double counting; only the owner id that every endpoint
 already scopes by gets remapped at the gate.
 
-UNIFIED with Coach & Scout staff seats (July 2026): `coach_staff_seats`
-(the subscription-sharing list in account.py/auth.py) is the primary
-staff list — a seat grants the coach-tier membership AND both data
-workspaces. `tracking_workspace_shares` remains as the data-only layer
-for owners who can't grant seats (comped coaches; see _owner_can_share).
-The /portal/my-staff endpoints manage both as one list; the StaffManager
-widget (portal home + TrackMan Overview) is the UI.
+`tracking_workspace_shares` is the staff list. (`coach_staff_seats`, the
+old subscription-sharing table from the paid-tier era, is still READ by
+resolve_workspace so lists built before September 2026 keep working, but
+nothing writes to it any more.) The /portal/my-staff endpoints manage the
+list; the StaffManager widget (portal home + TrackMan Overview) is the UI.
 
 Rules:
-  - Coach tier required as usual (staff-seat members qualify).
+  - Signed-in account required (workspaces are per-user data).
   - A member who already uploaded their own CSVs gets those FOLDED into
     the staff pool (merge_member_data, deduped) — unless they run a
     staff of their own, in which case they keep their own program.
@@ -28,12 +26,12 @@ from pydantic import BaseModel
 
 from ..models.database import get_connection
 from ._tier_allowlist import email_for_token
-from .auth import _extract_token, require_tier
+from .auth import _extract_token, get_current_user
 
 router = APIRouter(tags=["tracking-share"])
 
-_gate = require_tier("coach")
-MAX_SHARE_EMAILS = 8   # data-sharing cap (membership seats stay at auth.MAX_STAFF_SEATS)
+_gate = get_current_user   # sign-in only: workspaces are per-user data
+MAX_SHARE_EMAILS = 8   # staff list cap
 
 # email -> (effective_owner_or_None, expires_at). Keeps the per-request cost
 # of workspace resolution to ~zero on repeat calls.
@@ -333,106 +331,74 @@ def remove_share(share_id: int, owner: str = Depends(_gate)):
     return {"status": "ok"}
 
 
-# ── Unified "My Staff" (seats + data sharing as ONE list) ────────
+# ── "My Staff" ───────────────────────────────────────────────────
 # GET/POST/DELETE /portal/my-staff — the StaffManager widget's API.
-# POST adds a membership seat when the owner can grant them (paying
-# Coach & Scout sub or dev; auth._owner_can_share) and always shares
-# the TrackMan + Rapsodo workspaces. DELETE removes both.
+# One list: every email on it shares the owner's TrackMan, Rapsodo and
+# Camp Report workspaces. Legacy coach_staff_seats rows are folded into
+# the view (and migrated into tracking_workspace_shares on first read)
+# so staff lists from before September 2026 carry over.
 
-def _my_staff_ctx(request: Request, owner: str) -> dict:
-    from .auth import _owner_can_share
-    email = (email_for_token(_extract_token(request)) or "").strip().lower()
-    can_seats = False
-    if email:
-        with get_connection() as conn:
-            cur = conn.cursor()
-            try:
-                can_seats = bool(_owner_can_share(cur, owner, email))
-            except Exception:
-                conn.rollback()
-    return {"email": email, "can_seats": can_seats}
+def _caller_email(request: Request) -> str:
+    return (email_for_token(_extract_token(request)) or "").strip().lower()
+
+
+def _legacy_seat_emails(cur, owner: str) -> list:
+    try:
+        cur.execute(
+            "SELECT LOWER(member_email) AS email FROM coach_staff_seats WHERE owner_user_id = %s",
+            (owner,))
+        return [r["email"] for r in cur.fetchall()]
+    except Exception:
+        cur.connection.rollback()
+        return []
 
 
 @router.get("/portal/my-staff")
 def my_staff(request: Request, owner: str = Depends(_gate)):
-    from .auth import MAX_STAFF_SEATS, _ensure_staff_seats_table
-    ctx = _my_staff_ctx(request, owner)
     members: dict = {}
     with get_connection() as conn:
         cur = conn.cursor()
-        _ensure_staff_seats_table(cur)
         _ensure_table(cur)
-        cur.execute(
-            "SELECT LOWER(member_email) AS email, created_at::date AS added FROM coach_staff_seats "
-            "WHERE owner_user_id = %s ORDER BY created_at", (owner,))
-        for r in cur.fetchall():
-            members[r["email"]] = {"email": r["email"], "seat": True, "data": True,
-                                   "can_upload": True,
-                                   "added": r["added"].isoformat() if r["added"] else None}
+        # Migrate any legacy seat rows into the share table so the list
+        # has one source of truth going forward.
+        for e in _legacy_seat_emails(cur, owner):
+            cur.execute(
+                """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
+                   VALUES (%s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
+                (owner, e))
         cur.execute(
             "SELECT member_email AS email, can_upload, created_at::date AS added "
             "FROM tracking_workspace_shares "
             "WHERE owner_user_id = %s ORDER BY created_at", (owner,))
         for r in cur.fetchall():
-            m = members.setdefault(r["email"], {"email": r["email"], "seat": False, "data": True,
-                                                "added": r["added"].isoformat() if r["added"] else None})
-            m["data"] = True
-            m["can_upload"] = r["can_upload"] is not False
-        # Self-heal: with seats now covering the whole list, upgrade any
-        # data-only members to full seats when the owner can grant them.
-        if ctx["can_seats"]:
-            for m in members.values():
-                if not m["seat"]:
-                    cur.execute("SELECT COUNT(*) AS n FROM coach_staff_seats WHERE owner_user_id = %s", (owner,))
-                    if (cur.fetchone()["n"] or 0) >= MAX_STAFF_SEATS:
-                        break
-                    cur.execute(
-                        """INSERT INTO coach_staff_seats (owner_user_id, owner_email, member_email)
-                           VALUES (%s, %s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
-                        (owner, ctx["email"], m["email"]))
-                    m["seat"] = True
+            members[r["email"]] = {"email": r["email"], "data": True,
+                                   "can_upload": r["can_upload"] is not False,
+                                   "added": r["added"].isoformat() if r["added"] else None}
         # Is the caller viewing a workspace someone shared with THEM?
         viewing = resolve_workspace(request, owner) != owner
         conn.commit()
     return {
         "members": sorted(members.values(), key=lambda m: m["added"] or ""),
         "max": MAX_SHARE_EMAILS,
-        "seats_max": MAX_STAFF_SEATS,
-        "can_seats": ctx["can_seats"],
         "viewing_shared": viewing,
     }
 
 
 @router.post("/portal/my-staff")
 def my_staff_add(body: ShareAdd, request: Request, owner: str = Depends(_gate)):
-    from .auth import MAX_STAFF_SEATS, _ensure_staff_seats_table
-    ctx = _my_staff_ctx(request, owner)
+    self_email = _caller_email(request)
     email = (body.email or "").strip().lower()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="A valid email is required.")
-    if email == ctx["email"]:
+    if email == self_email:
         raise HTTPException(status_code=400, detail="That's your own account email.")
     with get_connection() as conn:
         cur = conn.cursor()
-        _ensure_staff_seats_table(cur)
         _ensure_table(cur)
-        cur.execute(
-            """SELECT COUNT(DISTINCT e) AS n FROM (
-                 SELECT LOWER(member_email) AS e FROM coach_staff_seats WHERE owner_user_id = %s
-                 UNION SELECT member_email FROM tracking_workspace_shares WHERE owner_user_id = %s
-               ) u""", (owner, owner))
+        cur.execute("SELECT COUNT(*) AS n FROM tracking_workspace_shares WHERE owner_user_id = %s", (owner,))
         if (cur.fetchone()["n"] or 0) >= MAX_SHARE_EMAILS:
             raise HTTPException(status_code=400,
                                 detail=f"Your staff list is limited to {MAX_SHARE_EMAILS} coaches.")
-        cur.execute("SELECT COUNT(*) AS n FROM coach_staff_seats WHERE owner_user_id = %s", (owner,))
-        seats_used = cur.fetchone()["n"] or 0
-        seat = False
-        if ctx["can_seats"] and seats_used < MAX_STAFF_SEATS:
-            cur.execute(
-                """INSERT INTO coach_staff_seats (owner_user_id, owner_email, member_email)
-                   VALUES (%s, %s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
-                (owner, ctx["email"], email))
-            seat = True
         cur.execute(
             """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
                VALUES (%s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
@@ -456,7 +422,7 @@ def my_staff_add(body: ShareAdd, request: Request, owner: str = Depends(_gate)):
                 cur = conn.cursor()
         conn.commit()
     invalidate_share_cache()
-    return {"status": "ok", "email": email, "seat": seat, "merged": merged}
+    return {"status": "ok", "email": email, "merged": merged}
 
 
 class SharePatch(BaseModel):
@@ -470,14 +436,6 @@ def my_staff_patch(member_email: str, body: SharePatch, owner: str = Depends(_ga
     with get_connection() as conn:
         cur = conn.cursor()
         _ensure_table(cur)
-        # Seat-only members (no share row yet) get one so the flag has a home.
-        cur.execute(
-            """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
-               SELECT %s, %s WHERE EXISTS (
-                 SELECT 1 FROM coach_staff_seats
-                 WHERE owner_user_id = %s AND LOWER(member_email) = %s)
-               ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
-            (owner, email, owner, email))
         cur.execute(
             "UPDATE tracking_workspace_shares SET can_upload = %s "
             "WHERE owner_user_id = %s AND member_email = %s",

@@ -4,7 +4,8 @@
 // headings, lists, quotes, links, images (uploaded), tables (incl. paste from
 // Google Docs, since TipTap parses pasted HTML), a bubble menu on text
 // selection, and a "+" block menu on empty lines for inserting blocks — plus a
-// "Free preview ends here" paywall break. Emits HTML via onChange.
+// Emits HTML via onChange. (A legacy paywall-break node is kept so older
+// articles still parse; there is no way to insert a new one.)
 import { useRef, useState, useEffect } from 'react'
 import { Node } from '@tiptap/core'
 import { useEditor, EditorContent } from '@tiptap/react'
@@ -50,7 +51,7 @@ export default function RichEditor({ value = '', onChange, uploadImage }) {
       StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
       Highlight,
       Image.configure({ inline: false, allowBase64: false }),
-      Placeholder.configure({ placeholder: "Write your article… select text to format, or click the + on an empty line to add images, tables, links, or the paywall break." }),
+      Placeholder.configure({ placeholder: "Write your article… select text to format, or click the + on an empty line to add images, tables, or links." }),
       Table.configure({ resizable: true }),
       TableRow, TableHeader, TableCell,
       PaywallBreak,
@@ -109,11 +110,6 @@ export default function RichEditor({ value = '', onChange, uploadImage }) {
   }
 
   const insertTable = () => { setPlusOpen(false); editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() }
-  const insertPaywall = () => {
-    setPlusOpen(false)
-    if (editor.getHTML().includes('data-paywall')) { window.alert('This article already has a free-preview break.'); return }
-    editor.chain().focus().insertContent({ type: 'paywallBreak' }).run()
-  }
 
   return (
     <div className="rich-editor border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
@@ -158,9 +154,6 @@ export default function RichEditor({ value = '', onChange, uploadImage }) {
                 <button key={label} type="button" onMouseDown={(e) => e.preventDefault()} onClick={fn}
                   className="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">{label}</button>
               ))}
-              <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={insertPaywall}
-                className="w-full text-left px-3 py-1.5 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400 font-semibold">🔒  Paywall break</button>
             </div>
           )}
         </div>

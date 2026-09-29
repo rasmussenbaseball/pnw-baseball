@@ -7,7 +7,7 @@
 //  • Boards are shareable by email — the owner adds coworker emails; anyone on
 //    the board can add players to it.
 //
-// Lives on the main site under /coaching (teal theme), gated to recruiting tier+.
+// Lives on the main site under /coaching (teal theme); needs a sign-in (per-user lists).
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -16,36 +16,8 @@ import {
   createShareLink, revokeShareLink,
 } from '../lib/recruitingBoards'
 import RecruitFinder from '../components/RecruitFinder'
-import { Link as RouterLink } from 'react-router-dom'
-import { useTier } from '../hooks/useTier'
-import { tierMeets } from '../lib/tiers'
-
-// The Recruit Finder surfaces the paid JUCO / transfer-portal / WCL-portal
-// tracker data, so it stays recruiting-tier even though boards are free.
-function FinderUpsell() {
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Recruit Finder is a Recruiting-tier tool</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-md mx-auto">
-        Search uncommitted NWAC, transfer-portal, and WCL-portal players by position,
-        archetype, and custom stat filters. Boards are free for everyone; the Finder
-        comes with the Recruiting plan.
-      </p>
-      <RouterLink to="/pricing" className="inline-block rounded-lg bg-nw-teal text-white text-sm font-semibold px-4 py-2 hover:bg-nw-teal-dark">
-        See plans
-      </RouterLink>
-    </div>
-  )
-}
-
-// Mirrors RequireTier's soft/hard mode: pre-launch (flag off) every signed-in
-// user passes; once VITE_TIER_GATING_ENABLED=true the tier ladder is enforced.
-const GATING_ENABLED = (import.meta.env.VITE_TIER_GATING_ENABLED || '')
-  .toString().toLowerCase() === 'true'
 
 export default function RecruitingBoard() {
-  const { tier } = useTier()
-  const canUseFinder = !GATING_ENABLED || tierMeets(tier, 'recruiting')
   const [view, setView] = useState('board')   // 'board' | 'finder'
   const [boards, setBoards] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -103,7 +75,7 @@ export default function RecruitingBoard() {
 
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded px-3 py-2">{error}</div>}
 
-      {view === 'finder' ? (canUseFinder ? <RecruitFinder /> : <FinderUpsell />) : (
+      {view === 'finder' ? <RecruitFinder /> : (
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
         {/* Left rail: boards */}
         <aside>

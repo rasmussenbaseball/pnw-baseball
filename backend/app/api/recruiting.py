@@ -21,7 +21,7 @@ from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
-from .auth import require_admin, require_tier
+from .auth import require_admin
 from .leverage import compute_li
 from .lineup_helper import (
     compute_team_lineup_helper,
@@ -824,7 +824,7 @@ FRESHMAN_ROSTERED = {
 
 
 @router.get("/recruiting/freshman-by-division")
-def recruiting_freshman_by_division(season: int = CURRENT_SEASON, _user: str = Depends(require_tier("premium"))):
+def recruiting_freshman_by_division(season: int = CURRENT_SEASON):
     """Average freshman batting + pitching line per division (D1/D2/NAIA/D3/JUCO).
     Freshman = true Fr/R-Fr class from player_seasons at four-year schools; for
     NWAC (JUCO, where we lack reliable class data) a freshman is a player whose
@@ -1047,7 +1047,7 @@ def _resolve_committed_levels(cur, names):
 
 
 @router.get("/recruiting/nwac-advancement")
-def recruiting_nwac_advancement(season: int = CURRENT_SEASON, _user: str = Depends(require_tier("premium"))):
+def recruiting_nwac_advancement(season: int = CURRENT_SEASON):
     """Where NWAC (JUCO) players advance to, derived from cross-team player_links.
 
     Captures transfers to the PNW 4-year programs we track: a Bellevue -> Bushnell
@@ -1242,7 +1242,7 @@ def recruiting_nwac_advancement(season: int = CURRENT_SEASON, _user: str = Depen
 
 
 @router.get("/recruiting/program-guide")
-def recruiting_program_guide(_user: str = Depends(require_tier("premium"))):
+def recruiting_program_guide():
     if not os.path.exists(PROGRAM_GUIDE_PATH):
         raise HTTPException(status_code=404, detail="Program guide not available")
     return FileResponse(
@@ -1263,7 +1263,6 @@ def recruiting_program_guide(_user: str = Depends(require_tier("premium"))):
 @cached_endpoint(ttl_seconds=3600)  # keyed per-user via the tier dependency arg; data changes daily at most
 def recruiting_breakdown(
     season: int = CURRENT_SEASON,
-    _user: str = Depends(require_tier("premium")),
 ):
     """
     Team-level recruiting breakdown table.
@@ -1595,7 +1594,6 @@ def _class_summary_rows(cur, grad_year, limit=None, level=None):
 @cached_endpoint(ttl_seconds=3600)
 def recruiting_classes(
     grad_year: int = Query(2026, description="Recruiting class year"),
-    _user: str = Depends(require_tier("premium")),
 ):
     """Per-school incoming-class leaderboard ranked by class_score."""
     with get_connection() as conn:
@@ -1625,7 +1623,6 @@ def recruiting_classes_top(
 def recruiting_class_detail(
     team_id: int,
     grad_year: int = Query(2026, description="Recruiting class year"),
-    _user: str = Depends(require_tier("premium")),
 ):
     """One school's full incoming class: every commit with ranks + score."""
     with get_connection() as conn:
@@ -1921,7 +1918,6 @@ def _enrich_transfer_war(cur, commits, season):
 @cached_endpoint(ttl_seconds=300)
 def recruiting_transfers(
     grad_year: int = Query(2026, description="Cycle year (transfers are the current incoming class)"),
-    _user: str = Depends(require_tier("premium")),
 ):
     """Transfer commits (JUCO + portal) grouped by destination PNW program, for the
     Recruiting Classes "Transfers" / "Combined" views. Each transfer carries its

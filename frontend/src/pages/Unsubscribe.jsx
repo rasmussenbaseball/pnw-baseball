@@ -128,7 +128,7 @@ export default function Unsubscribe() {
                 checked={promos}
                 onChange={setPromos}
                 title="Promotions"
-                desc="Heads-ups about upcoming paid-tier features and any limited-time offers."
+                desc="Occasional heads-ups about new tools and partner offers."
               />
             </div>
 

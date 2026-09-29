@@ -857,7 +857,7 @@ function GmCard() {
             textTransform: 'uppercase',
           }}
         >
-          New • Premium feature
+          New • Free to play
         </div>
         <div
           style={{

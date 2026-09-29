@@ -2,26 +2,12 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
-import { useTier } from '../hooks/useTier'
-import { usePreview, AUTHOR_EMAILS } from '../context/PreviewContext'
-import { tierMeets, TIER_META, DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, BROADCAST_OWNER_EMAILS, COMMITMENT_EDITOR_EMAILS } from '../lib/tiers'
-import { isGmFreePlay } from '../lib/gmPromo'
-
-// During the launch-week free-play promo the NW Coaching Simulator is open
-// to everyone, so we drop its nav lock badge. Reverts automatically after
-// the cutoff in lib/gmPromo.js.
-function effectiveRequires(item) {
-  if (item.to === '/gm' && isGmFreePlay()) return undefined
-  return item.requires
-}
+import { DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, BROADCAST_OWNER_EMAILS, COMMITMENT_EDITOR_EMAILS } from '../lib/tiers'
 
 // ─── Navigation structure ───
 const NAV = [
   {
-    // Visibility model: main tabs are always open so anonymous visitors
-    // can SEE what's available. Individual items carry `requires: 'free'`
-    // to show a lock icon for anonymous users and route-level gates
-    // (RequireTier minTier="free") handle the actual block.
+    // Every item here is open to everyone; no tiers, no locks.
     label: 'Stats',
     items: [
       { to: '/stat-leaders', label: 'Stat Leaders', desc: 'Top 10 in key categories' },
@@ -29,12 +15,12 @@ const NAV = [
       { to: '/pitching', label: 'Pitching', desc: 'Pitching leaderboards & stats' },
       { to: '/relievers', label: 'Relievers', desc: 'Goose Eggs, reliever WPA & bullpen leaders' },
       { to: '/fielding', label: 'Fielding', desc: 'Defensive leaderboards, filterable by position' },
-      { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats', requires: 'free' },
+      { to: '/team-stats', label: 'Team Stats', desc: 'Team-level hitting & pitching stats' },
       { to: '/war', label: 'WAR Leaderboard', desc: 'Wins Above Replacement rankings' },
-      { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings', requires: 'free' },
-      { to: '/player-comps', label: 'Player Comps', desc: "Each player's closest statistical comparables (NW + MLB)", requires: 'free' },
-      { to: '/records', label: 'Records', desc: 'Single-season & career record holders', requires: 'free' },
-      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards", requires: 'free' },
+      { to: '/percentiles', label: 'Percentiles', desc: 'Baseball Savant-style percentile rankings' },
+      { to: '/player-comps', label: 'Player Comps', desc: "Each player's closest statistical comparables (NW + MLB)" },
+      { to: '/records', label: 'Records', desc: 'Single-season & career record holders' },
+      { to: '/top-moments', label: 'Top Moments', desc: "The season's biggest WPA swings and clutch leaderboards" },
     ],
   },
   {
@@ -46,25 +32,22 @@ const NAV = [
       { to: '/standings', label: 'Standings', desc: 'Conference & overall rankings' },
       { to: '/team-ratings', label: 'Team Ratings (CPI)', desc: 'Within-division power rankings' },
       { to: '/national-rankings', label: 'National Rankings', desc: 'Where PNW teams rank nationally' },
-      { to: '/team-history', label: 'History', desc: 'Historical team performance', requires: 'free' },
+      { to: '/team-history', label: 'History', desc: 'Historical team performance' },
     ],
   },
   {
-    // Tab itself is open so anonymous visitors can see what recruiting
-    // tools exist. Each item carries requires:'premium' so the lock
-    // clicking sends them to the upsell card.
     label: 'Recruiting',
     items: [
       { to: '/recruiting', label: 'Recruiting Hub', desc: 'Start here: every recruiting tool, explained. Free to browse.' },
-      { to: '/recruiting/tips', label: 'Recruiting Tips', desc: 'How to get recruited + freshman production by level', requires: 'premium' },
-      { to: '/recruiting/advancement', label: 'NWAC Advancement', desc: 'Where NWAC teams send players + 2026 D1 commits', requires: 'premium' },
+      { to: '/recruiting/tips', label: 'Recruiting Tips', desc: 'How to get recruited + freshman production by level' },
+      { to: '/recruiting/advancement', label: 'NWAC Advancement', desc: 'Where NWAC teams send players + 2026 D1 commits' },
       { to: '/recruiting/quiz', label: 'Recruit Matchmaker', desc: 'Match yourself to your best-fit NW program (free; full list Premium)' },
-      { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends', requires: 'premium' },
-      { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city', requires: 'premium' },
-      { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis', requires: 'premium' },
-      { to: '/recruiting/program-guide', label: 'Program Guide (PDF)', desc: 'In-depth PDF book on all 57 PNW programs', requires: 'premium' },
-      { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations', requires: 'premium' },
-      { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns', requires: 'premium' },
+      { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends' },
+      { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city' },
+      { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis' },
+      { to: '/recruiting/program-guide', label: 'Program Guide (PDF)', desc: 'In-depth PDF book on all 57 PNW programs' },
+      { to: '/recruiting/map', label: 'Map', desc: 'PNW program locations' },
+      { to: '/recruiting-classes', label: 'Recruiting Classes', desc: 'Incoming class breakdowns' },
     ],
   },
   // News splits into Articles (the original /news list) and Commitments
@@ -75,101 +58,72 @@ const NAV = [
       { to: '/news', label: 'Articles',
         desc: 'Stories, recaps, and notes from around PNW college baseball' },
       { to: '/news/commitments', label: 'Commitments',
-        desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)',
-        requires: 'recruiting' },
+        desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)' },
     ],
   },
   // Summer baseball — currently WCL, more leagues later. The tab is
-  // visible to everyone; items carry requires:'free' so anonymous
-  // visitors see a lock (prompting signup) while every signed-in tier
+  // visible to everyone.
   // has full access (routes use RequireAuth in App.jsx).
   {
     label: 'Summer',
     items: [
-      { to: '/summer',             label: 'WCL Hub',        desc: 'Overview: today\'s games, leaders, standings + links to every section', requires: 'free' },
-      { to: '/summer/scoreboard',  label: 'Scoreboard',     desc: 'Recent + upcoming WCL games, list and calendar views', requires: 'free' },
-      { to: '/summer/standings',   label: 'Standings',      desc: 'Division standings (L10, streaks) plus the Composite Power Index', requires: 'free' },
-      { to: '/summer/stats',       label: 'Stats',          desc: 'Batting, pitching, fielding leaderboards. Multi-year picker.', requires: 'free' },
-      { to: '/summer/teams',       label: 'Teams',          desc: 'Browse every WCL club, grouped by division', requires: 'free' },
-      { to: '/summer/pnw-alumni',  label: 'PNW Alumni',     desc: 'PNW college players on WCL rosters this summer', requires: 'free' },
-      { to: '/summer/college-mix', label: 'College Mix',    desc: 'Most-represented schools in the WCL', requires: 'free' },
+      { to: '/summer',             label: 'WCL Hub',        desc: 'Overview: today\'s games, leaders, standings + links to every section' },
+      { to: '/summer/scoreboard',  label: 'Scoreboard',     desc: 'Recent + upcoming WCL games, list and calendar views' },
+      { to: '/summer/standings',   label: 'Standings',      desc: 'Division standings (L10, streaks) plus the Composite Power Index' },
+      { to: '/summer/stats',       label: 'Stats',          desc: 'Batting, pitching, fielding leaderboards. Multi-year picker.' },
+      { to: '/summer/teams',       label: 'Teams',          desc: 'Browse every WCL club, grouped by division' },
+      { to: '/summer/pnw-alumni',  label: 'PNW Alumni',     desc: 'PNW college players on WCL rosters this summer' },
+      { to: '/summer/college-mix', label: 'College Mix',    desc: 'Most-represented schools in the WCL' },
     ],
   },
-  // Tab is open so anonymous can browse; each item enforces its own
-  // gate (free account minimum for Grid/Quiz, premium for the Sim).
   {
     label: 'Games',
     items: [
       { to: '/gm', label: 'NW Coaching Simulator',
-        desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)',
-        requires: 'premium' },
+        desc: 'Coach any Pacific Northwest college baseball program — D1 through NWAC, dynasty or career mode (alpha)' },
       { to: '/pnw-grid', label: 'PNW Grid',
-        desc: 'Immaculate Grid for PNW baseball',
-        requires: 'free' },
+        desc: 'Immaculate Grid for PNW baseball' },
       { to: '/team-quiz', label: 'Team Quiz',
-        desc: 'Test your knowledge of a PNW team across one or more seasons',
-        requires: 'free' },
+        desc: 'Test your knowledge of a PNW team across one or more seasons' },
       { to: '/fieldguessr', label: 'FieldGuessr',
-        desc: 'Guess the PNW ballpark from a photo of the field',
-        requires: 'free' },
+        desc: 'Guess the PNW ballpark from a photo of the field' },
       { to: '/pnw-pickle', label: 'PNW Pickle',
-        desc: 'Guess the mystery PNW player from clues',
-        requires: 'free' },
+        desc: 'Guess the mystery PNW player from clues' },
       { to: '/draft', label: '56-0',
         desc: 'Draft the best PNW roster and chase a perfect 56-0 season' },
     ],
   },
   {
-    // Tab is open. Every item inside is premium-gated at the route
-    // level; the lock icon here signals that for anonymous browsers.
     label: 'Coaching',
     items: [
       { to: '/portal', label: 'Coach & Scouting Portal',
-        desc: 'Trends, opponent scouting, and PDFs in one workspace',
-        requires: 'coach' },
+        desc: 'Trends, opponent scouting, and PDFs in one workspace' },
       { to: '/projections', label: 'Projections',
-        desc: '2027 projected rosters (returners, transfers & freshmen)',
-        requires: 'premium' },
-      { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons',
-        requires: 'free' },
+        desc: '2027 projected rosters (returners, transfers & freshmen)' },
+      { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons' },
       { to: '/coaching/player-comparison', label: 'Player Comparison',
-        desc: 'Compare up to 5 players side by side (hitting, pitching, fielding)',
-        requires: 'premium' },
+        desc: 'Compare up to 5 players side by side (hitting, pitching, fielding)' },
       { to: '/coaching/catcher-defense', label: 'Catcher Defense',
-        desc: 'Framing, throwing & blocking runs for every PNW catcher',
-        requires: 'premium' },
+        desc: 'Framing, throwing & blocking runs for every PNW catcher' },
       { to: '/coaching/recruiting-board', label: 'Recruiting Board',
-        desc: 'Build & share recruiting boards: add any player, notes & more',
-        requires: 'free' },
-      { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats',
-        requires: 'free' },
-      { to: '/draftboard', label: 'Draft Board', desc: 'PNW college baseball MLB draft board',
-        requires: 'premium' },
+        desc: 'Build & share recruiting boards: add any player, notes & more' },
+      { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats' },
+      { to: '/draftboard', label: 'Draft Board', desc: 'PNW college baseball MLB draft board' },
       { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
-        desc: 'NWAC players available for transfer to 4-year programs',
-        requires: 'recruiting' },
+        desc: 'NWAC players available for transfer to 4-year programs' },
       { to: '/coaching/transfer-portal', label: 'Transfer Portal Tracker',
-        desc: 'PNW four-year players who have entered the transfer portal',
-        requires: 'recruiting' },
+        desc: 'PNW four-year players who have entered the transfer portal' },
       { to: '/coaching/wcl-portal', label: 'WCL Portal Tracker',
-        desc: 'West Coast League players in the portal, with summer stats',
-        requires: 'recruiting' },
+        desc: 'West Coast League players in the portal, with summer stats' },
     ],
   },
   {
     label: 'Misc',
-    // Public: anonymous users need to be able to read About and the
-    // Subscriptions/pricing page (otherwise they can't convert!).
-    // Individual items inside (Graphics, Feature Request) can enforce
-    // their own gate at the route level when needed.
     items: [
       { to: '/about', label: 'About',
         desc: 'The team, the build, the stat glossary, the run environments' },
-      { to: '/pricing', label: 'Subscriptions',
-        desc: 'Compare Free, Premium, and Coach & Scout tiers' },
       { to: '/graphics-hub', label: 'Graphics',
-        desc: 'Pick from every social-media graphic generator on the site',
-        requires: 'free' },
+        desc: 'Pick from every social-media graphic generator on the site' },
       { to: '/feature-request', label: 'Request a Feature',
         desc: 'Submit ideas and feedback' },
       // Authoring tools — articles are limited to ARTICLE_AUTHOR_EMAILS,
@@ -191,11 +145,9 @@ const NAV = [
       // are no longer the active tools used regularly.
       { heading: 'Archived' },
       { to: '/all-conference', label: 'All-Conference Generator',
-        desc: 'Build mock first, second, and HM teams from season stats',
-        requires: 'free' },
+        desc: 'Build mock first, second, and HM teams from season stats' },
       { to: '/playoff-projections', label: 'Playoff Projections',
-        desc: 'Projected standings & playoff fields',
-        requires: 'free' },
+        desc: 'Projected standings & playoff fields' },
     ],
   },
 ]
@@ -554,37 +506,22 @@ function SearchBar({ mobile = false }) {
 
 // Visibility filtering on dropdown items:
 //   - requireEmail: ['...']  → only render for matching emails (case-insensitive).
-//   - requires: 'dev'        → hide from non-devs entirely (in-progress /
-//                              internal tools). The lock-icon model in the
-//                              other `requires` values doesn't apply here
-//                              because non-devs have no upgrade path.
-// Other requires values ('free' | 'premium' | 'coach') leave the item
-// visible and let the dropdown render decide whether to show a lock.
-function filterItemsForUser(items, userEmail, tier) {
+// Everything else is open to every visitor.
+function filterItemsForUser(items, userEmail) {
   const email = (userEmail || '').toLowerCase()
-  const isDev = tier === 'dev'
   return items.filter(i => {
     if (i.requireEmail && !i.requireEmail.map(e => e.toLowerCase()).includes(email)) {
       return false
     }
-    if (i.requires === 'dev' && !isDev) return false
     return true
   })
 }
 
 // ─── Dropdown panel component ───
-// Three states a sub-item can be in:
-//   - locked: true        → "Coming soon", always opaque + locked icon
-//   - requires: '<tier>'  → lock icon when the viewer's tier is below
-//                           the item's required tier. So requires='free'
-//                           locks for anonymous; requires='premium' locks
-//                           for anonymous and free; requires='coach'
-//                           locks for everyone below Coach & Scout.
-//   - (default)           → fully open
+// `locked: true` items render as "Coming soon"; everything else is open.
 function DropdownPanel({ items, onClose }) {
   const { user } = useAuth()
-  const { tier } = useTier()
-  const visible = filterItemsForUser(items, user?.email, tier)
+  const visible = filterItemsForUser(items, user?.email)
   return (
     <div className="grid gap-0.5 p-2" style={{ minWidth: 240 }}>
       {visible.map((item, i) => {
@@ -597,25 +534,15 @@ function DropdownPanel({ items, onClose }) {
             </div>
           )
         }
-        const req = effectiveRequires(item)
-        const needsUpgrade = req && !tierMeets(tier, req)
-        const showLock = item.locked || needsUpgrade
-        const subtext = item.locked
-          ? 'Coming soon'
-          : (needsUpgrade
-              ? `${TIER_META[req]?.label || req} required`
-              : item.desc)
-        // Visual treatment for locked rows: knock down opacity so they
-        // read as clearly inaccessible without removing them from the
-        // menu (the whole point of showing them is discoverability).
-        const dimmed = item.locked || needsUpgrade
+        const showLock = !!item.locked
+        const subtext = item.locked ? 'Coming soon' : item.desc
         return (
           <Link
             key={item.to}
             to={item.to}
             onClick={onClose}
             className={`flex flex-col px-2.5 py-1.5 rounded-md transition-colors group ${
-              dimmed ? 'opacity-55 hover:opacity-90 hover:bg-white/5' : 'hover:bg-white/10'
+              item.locked ? 'opacity-55 hover:opacity-90 hover:bg-white/5' : 'hover:bg-white/10'
             }`}
           >
             <span className="text-[13px] font-semibold text-white group-hover:text-teal-200 transition-colors flex items-center gap-1.5 leading-tight">
@@ -728,80 +655,6 @@ function NavTab({ section, isActive, user }) {
   )
 }
 
-// ─── Dev-only "View site as tier" toggle (every page) ───
-// Lets the owner/devs preview the site as any tier. "Dev (You)" clears the
-// override and falls back to the real dev view. Only renders for AUTHOR_EMAILS.
-const PREVIEW_TIERS = [
-  { id: null,         label: 'Dev (You)',  hint: 'Your real dev tier — full access' },
-  { id: 'anonymous',  label: 'Anonymous',  hint: 'Signed-out visitor' },
-  { id: 'free',       label: 'Free',       hint: 'Free account' },
-  { id: 'premium',    label: 'Premium',    hint: '$5/mo subscriber' },
-  { id: 'recruiting', label: 'Recruiting', hint: '$10/mo college coach' },
-  { id: 'coach',      label: 'Coach',      hint: '$25/mo Coach & Scout' },
-]
-
-function HeaderTierToggle() {
-  const { realUser } = useAuth()
-  const { previewTier, setPreviewTier } = usePreview()
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const isAuthor = !!realUser?.email && AUTHOR_EMAILS.includes(realUser.email)
-  if (!isAuthor) return null
-
-  const current = PREVIEW_TIERS.find(t => t.id === (previewTier || null)) || PREVIEW_TIERS[0]
-  const previewing = !!previewTier
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(o => !o)}
-        title="Preview the site as a different tier (dev only)"
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
-          previewing ? 'bg-amber-400 text-amber-950 hover:bg-amber-300' : 'bg-white/10 text-teal-100 hover:bg-white/20'}`}
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z" />
-          <circle cx="12" cy="12" r="2.5" />
-        </svg>
-        <span>{previewing ? `As: ${current.label}` : 'View as'}</span>
-        <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 py-1 z-[60]">
-          <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-700">
-            View site as
-          </div>
-          {PREVIEW_TIERS.map(t => {
-            const sel = (previewTier || null) === t.id
-            return (
-              <button
-                key={t.id || 'dev'}
-                onClick={() => { setPreviewTier(t.id); setOpen(false) }}
-                className={`w-full text-left px-3 py-2 flex flex-col transition-colors ${
-                  sel ? 'bg-nw-teal/10 text-nw-teal dark:text-nw-teal-light font-semibold'
-                      : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
-              >
-                <span className="text-sm">{t.label}{sel ? ' ✓' : ''}</span>
-                <span className="text-[10px] text-gray-400 dark:text-gray-500 font-normal">{t.hint}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ─── Main Header ───
 export default function Header() {
   const location = useLocation()
@@ -809,7 +662,6 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mobileExpanded, setMobileExpanded] = useState(null)
   const { user, signOut } = useAuth()
-  const { tier } = useTier()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef(null)
 
@@ -874,7 +726,6 @@ export default function Header() {
                 />
               ))}
             </nav>
-            <HeaderTierToggle />
             <div className="ml-2 border-l border-white/15 pl-2">
               <SearchBar />
             </div>
@@ -945,7 +796,6 @@ export default function Header() {
 
           {/* Mobile: search + menu button */}
           <div className="lg:hidden flex items-center gap-1">
-            <HeaderTierToggle />
             <SearchBar mobile />
             <button
               className="p-2 rounded hover:bg-white/10 transition-colors"
@@ -1022,7 +872,7 @@ export default function Header() {
                   </button>
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-0.5 border-l border-white/10 pl-3">
-                      {filterItemsForUser(section.items, user?.email, tier).map((item, i) => (
+                      {filterItemsForUser(section.items, user?.email).map((item, i) => (
                         item.heading ? (
                           <div key={`mh-${i}`} className="px-3 pt-2 pb-1 mt-1 border-t border-white/10">
                             <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-teal-300/60">
@@ -1031,10 +881,8 @@ export default function Header() {
                           </div>
                         ) : (
                           (() => {
-                            const req = effectiveRequires(item)
-                            const needsUpgrade = req && !tierMeets(tier, req)
-                            const showLock = item.locked || needsUpgrade
-                            const dimmed = item.locked || needsUpgrade
+                            const showLock = !!item.locked
+                            const dimmed = !!item.locked
                             return (
                               <Link
                                 key={item.to}

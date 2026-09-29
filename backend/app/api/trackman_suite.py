@@ -170,14 +170,14 @@ def _rv_baseline(cur, owner, context, season=None):
             tot += v
             n += 1
     return (tot / n) if n else 0.0
-from .auth import require_tier
+from .auth import get_current_user
 
 from fastapi import Request as _Request
 from ._tracking_share import resolve_workspace, ensure_can_upload
 
 router = APIRouter(tags=["trackman-suite"])
 
-_tier_gate = require_tier("coach")
+_tier_gate = get_current_user   # sign-in only: workspaces are per-user data
 
 
 def _gate(request: _Request, owner: str = Depends(_tier_gate)) -> str:

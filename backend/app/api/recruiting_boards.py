@@ -31,20 +31,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..models.database import get_connection
-from .auth import _extract_token, require_tier
+from .auth import _extract_token, get_current_user
 from ._tier_allowlist import email_for_token
 
 router = APIRouter(prefix="/recruiting-boards", tags=["recruiting-boards"])
 
-# Free tier = any signed-in account. (Was recruiting tier; opened up so every
-# coach can keep boards, while the Recruit Finder stays paid.)
-_boards_gate = require_tier("free")
+# Boards are per-user data, so they need a signed-in account (no tier).
+_boards_gate = get_current_user
 
 
 def current_member(request: Request) -> dict:
     """Require a signed-in user and resolve {user_id, email} in one place.
 
-    require_tier verifies the token and returns the user_id;
+    get_current_user verifies the token and returns the user_id;
     email_for_token reads the email (cached) for sharing + attribution."""
     user_id = _boards_gate(request)
     token = _extract_token(request)

@@ -1,7 +1,6 @@
 // Account-page "Your Team" picker.
 //
-// Visible only to Coach + Dev tiers. Lets a user designate a team
-// they're affiliated with; that team's players get highlighted on
+// Lets a signed-in user designate a team they're affiliated with; that team's players get highlighted on
 // leaderboards across the site, and the Portal pre-fills its team
 // selector with this choice.
 //
@@ -10,21 +9,13 @@
 // no other obvious way to go back to "show all players neutrally".
 
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useAffiliatedTeam } from '../context/AffiliationContext'
-import { useTier } from '../hooks/useTier'
-import { tierMeets } from '../lib/tiers'
 
 const API_BASE = '/api/v1'
 
 
 export default function YourTeamSection() {
-  const { tier } = useTier()
   const { team: affiliated, setAffiliation, loading } = useAffiliatedTeam()
-
-  // Hide entirely for non-Coach tiers, but keep a teaser visible to
-  // Premium/Free users so they know the feature exists.
-  const canSet = tierMeets(tier, 'coach')
 
   // Build a complete teams list. We cache the response since /teams
   // is small and changes rarely.
@@ -101,20 +92,7 @@ export default function YourTeamSection() {
         neutral.
       </p>
 
-      {!canSet ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-900/20 p-4">
-          <div className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">
-            Coach &amp; Scout feature
-          </div>
-          <p className="text-sm text-amber-800/85 dark:text-amber-200/80">
-            Designating a team is part of the Coach &amp; Scout tier — see{' '}
-            <Link to="/pricing" className="underline-offset-4 hover:underline font-semibold">
-              plans
-            </Link>{' '}
-            for details.
-          </p>
-        </div>
-      ) : (
+      {(
         <div className="flex flex-col sm:flex-row sm:items-end gap-3">
           <div className="flex-1 min-w-0">
             <label

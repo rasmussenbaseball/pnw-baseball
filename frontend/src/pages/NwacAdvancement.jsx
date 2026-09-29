@@ -1,7 +1,7 @@
 // NWAC Advancement — where NWAC (JUCO) players move on to, built from our
 // cross-team player links. Shows 2026 D1 arrivals, a per-team leaderboard of who
 // sends the most / best, each team's destination breakdown + committed players,
-// and the top landing spots league-wide. Premium page in the Recruiting dropdown.
+// and the top landing spots league-wide. Lives in the Recruiting dropdown.
 // Scope note: only transfers to PNW programs we track are visible (Bellevue ->
 // Bushnell shows; Bellevue -> UCLA does not). Brand rule: no em-dashes.
 import { useState, useEffect } from 'react'
@@ -44,7 +44,7 @@ export default function NwacAdvancement() {
         const r = await fetch(`/api/v1/recruiting/nwac-advancement?season=${CURRENT_SEASON}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
-        if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'premium' : `HTTP ${r.status}`)
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const j = await r.json()
         if (!cancel) setData(j)
       } catch (e) { if (!cancel) setErr(e.message || 'load') }
@@ -55,11 +55,6 @@ export default function NwacAdvancement() {
   const teams = (data?.teams || []).slice().sort((a, b) => (b[sortKey] - a[sortKey]) || (b.total - a.total))
   const t = data?.totals
 
-  if (err === 'premium') return (
-    <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-600 dark:text-gray-300">
-      NWAC Advancement is a premium feature. <a href="/pricing" className="text-nw-teal font-semibold hover:underline">View plans</a>
-    </div>
-  )
 
   return (
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-6">
@@ -84,7 +79,7 @@ export default function NwacAdvancement() {
         )}
       </section>
 
-      {err && err !== 'premium' && <div className="text-sm text-rose-600 dark:text-rose-400 mb-4">Couldn't load advancement data.</div>}
+      {err && <div className="text-sm text-rose-600 dark:text-rose-400 mb-4">Couldn't load advancement data.</div>}
       {!data && !err && <div className="text-sm text-gray-400 py-10 text-center">Loading…</div>}
 
       {data && (

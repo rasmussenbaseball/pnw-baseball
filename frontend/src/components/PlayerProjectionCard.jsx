@@ -1,25 +1,13 @@
 // 2027 projection card for the player profile pages, placed under the PBP data.
 //
-// Tiered: premium+ (and the author's preview tier) see the full projected line,
-// the 10th-90th percentile range of outcomes, and a short scouting writeup of
-// WHY the model lands where it does. Free / anonymous viewers get a one-stat
-// teaser (projected AVG for hitters, ERA for pitchers) with the rest blurred
-// behind a subscribe CTA. Players the model can't project (too few stats) show
-// "no projection available".
-//
-// Gating is frontend-side via useTier() so the paywall preview is live now even
-// in pre-launch soft mode (matches RequireTier/article behavior); the backend
-// also trims the payload by tier once TIER_GATING_ENABLED flips on.
+// Everyone sees the full projected line, the 10th-90th percentile range of
+// outcomes, and a short scouting writeup of WHY the model lands where it does.
+// Players the model can't project (too few stats) show "no projection available".
 //
 // Powered by the "College Marcel" projection model.
 
-import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import { useTier } from '../hooks/useTier'
-import { tierMeets } from '../lib/tiers'
 import { usePlayerProfileTheme, pctColor } from './playerProfile/shared'
-
-const REQUIRED_TIER = 'premium'
 
 // ── formatters ──
 const f3 = (v) => v == null ? '—' : (v >= 1 ? Number(v).toFixed(3) : Number(v).toFixed(3).replace(/^0/, ''))
@@ -62,7 +50,6 @@ function HeaderBar({ T, season, proj }) {
 
 export default function PlayerProjectionCard({ playerId, side = 'hitter' }) {
   const T = usePlayerProfileTheme()
-  const { tier, loading: tierLoading } = useTier()
   const sideKey = side === 'pitcher' ? 'pit' : 'bat'
   const { data, loading } = useApi(
     playerId ? `/players/${playerId}/projection` : null,
@@ -80,54 +67,6 @@ export default function PlayerProjectionCard({ playerId, side = 'hitter' }) {
         <HeaderBar T={T} season={season} proj={null} />
         <div className="text-[12px] py-2 text-center" style={{ color: T.textMuted }}>
           No {season} projection available for this player.
-        </div>
-      </div>
-    )
-  }
-
-  const unlocked = !tierLoading && tierMeets(tier, REQUIRED_TIER)
-  const previewVal = data.preview?.value
-  const previewLabel = data.preview?.key || (sideKey === 'bat' ? 'AVG' : 'ERA')
-  const previewText = sideKey === 'bat' ? f3(previewVal) : f2(previewVal)
-
-  // ── LOCKED: teaser stat + blurred grid + subscribe CTA ──
-  if (!unlocked) {
-    return (
-      <div className="rounded-md p-5 mb-4" style={{ background: T.card, border: `1px solid ${T.border}` }}>
-        <HeaderBar T={T} season={season} proj={{ class: data.class, level: data.level }} />
-        <div className="flex items-baseline gap-2 mb-3">
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: T.textLight }}>Projected {previewLabel}</span>
-          <span className="text-[26px] font-black leading-none tabular-nums" style={{ color: T.accent }}>{previewText}</span>
-        </div>
-        <div className="relative">
-          {/* Blurred placeholder content sells what's behind the wall */}
-          <div className="select-none pointer-events-none" style={{ filter: 'blur(6px)', opacity: 0.7 }} aria-hidden="true">
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mb-3">
-              {(sideKey === 'bat'
-                ? ['OBP', 'SLG', 'wOBA', 'HR', 'K%', 'BB%']
-                : ['FIP', 'WHIP', 'K%', 'BB%', 'HR/9', 'IP']).map((l, i) => (
-                <StatTile key={l} label={l} value={['.3XX', '.4XX', '.3XX', 'X.X', 'XX%', 'X.X'][i % 6]} T={T} />
-              ))}
-            </div>
-            <div className="text-[12px] leading-relaxed" style={{ color: T.textMuted }}>
-              Range of outcomes and a full scouting writeup explaining the projection live here for subscribers.
-            </div>
-          </div>
-          {/* CTA overlay */}
-          <div className="absolute inset-0 flex items-center justify-center p-2">
-            <div className="text-center rounded-lg px-4 py-3 max-w-xs" style={{ background: T.card, border: `1px solid ${T.border}`, boxShadow: '0 6px 24px rgba(0,0,0,0.18)' }}>
-              <div className="text-[12px] font-semibold mb-1" style={{ color: T.text }}>
-                🔒 Unlock the full {season} projection
-              </div>
-              <div className="text-[11px] mb-2.5" style={{ color: T.textMuted }}>
-                Every projected stat, the 10th–90th percentile range, and the scouting writeup.
-              </div>
-              <Link to="/pricing" className="inline-block text-[12px] font-bold px-3.5 py-1.5 rounded-md text-white"
-                style={{ background: T.accent }}>
-                Subscribe to unlock
-              </Link>
-            </div>
-          </div>
         </div>
       </div>
     )

@@ -30,9 +30,8 @@ export function usePublishedArticles(limit = 50) {
 }
 
 export function usePublishedArticle(slug) {
-  // Send the Bearer token so the backend can resolve the viewer's tier.
-  // Without it every viewer looks anonymous and the paywall locks even
-  // free articles for signed-in free/premium/coach users.
+  // Send the Bearer token when signed in so authors can preview their own
+  // unpublished drafts. Published articles are open to everyone.
   const { session } = useAuth()
   const token = session?.access_token || null
   const [data, setData] = useState(null)

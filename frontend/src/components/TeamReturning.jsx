@@ -279,13 +279,6 @@ export default function TeamReturning({ teamId, season }) {
               </div>
             </div>
 
-            {rr.locked && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-950/30 px-3 py-2">
-                <span className="text-xs text-indigo-800 dark:text-indigo-300">🔒 Projected stats are a premium feature.</span>
-                <Link to="/pricing" className="text-xs font-bold px-2.5 py-1 rounded-md text-white bg-nw-teal hover:bg-nw-teal/90">Subscribe to unlock</Link>
-              </div>
-            )}
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               <div>
                 <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">Hitters ({rr.counts.hitters})</h4>

@@ -21,7 +21,7 @@ from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
-from .auth import require_admin, require_tier
+from .auth import require_admin
 from .leverage import compute_li
 from .lineup_helper import (
     compute_team_lineup_helper,
@@ -1240,7 +1240,6 @@ class BuildLineupRequest(BaseModel):
 def portal_team_scouting(
     team_id: int = Query(..., description="Team to scout"),
     season: int = Query(CURRENT_SEASON, description="Season year"),
-    _user: str = Depends(require_tier("coach")),
 ):
     """Comprehensive team scouting page data: team-level stats with conference
     percentiles, per-player breakdowns, auto-generated writeup, last-10 form."""
@@ -1256,7 +1255,6 @@ def portal_team_scouting(
 def portal_advance_report(
     team_id: int = Query(..., description="Opponent team to scout"),
     season: int = Query(CURRENT_SEASON, description="Season year"),
-    _user: str = Depends(require_tier("coach")),
 ):
     """Opponent Advance Report: the full Team Scouting payload PLUS an
     auto-generated, coach-ready game plan and per-key-player attack bullets
@@ -1283,7 +1281,6 @@ def portal_splits(
     count: str = Query("all"),
     entry: str = Query("all"),
     min_pa: int = Query(1, ge=1),
-    _user: str = Depends(require_tier("coach")),
 ):
     """Splits Explorer: a deeply filterable per-player PBP stat table. Stack
     game-state, handedness, home/away, timing, and count filters to dig into
@@ -1306,7 +1303,6 @@ def portal_count_grid(
     venue: str = Query("all"),
     timing: str = Query("all"),
     entry: str = Query("all"),
-    _user: str = Depends(require_tier("coach")),
 ):
     """True per-count discipline grid (swing/contact/whiff/strike% measured at
     each ball-strike count via pitch-sequence walking)."""
@@ -1321,7 +1317,6 @@ def portal_count_grid(
 def portal_bullpen_sheet(
     team_id: int,
     season: int = Query(CURRENT_SEASON, description="Season year"),
-    _user: str = Depends(require_tier("coach")),
 ):
     """Printable Bullpen Sheet for one team — coaching tool for in-game
     bullpen decisions. Returns full pitcher roster with situational
@@ -1513,7 +1508,6 @@ def list_commitments(
 def portal_scouting_sheet(
     team_id: int,
     season: int = Query(CURRENT_SEASON, description="Season year"),
-    _user: str = Depends(require_tier("coach")),
 ):
     """Printable per-team scouting sheet — every hitter on one page,
     every pitcher on another. Returns full roster with the 13 hitter
@@ -1532,7 +1526,6 @@ def portal_scouting_sheet(
 @cached_endpoint(ttl_seconds=1800)
 def portal_nwac_tournament_sheet(
     season: int = Query(CURRENT_SEASON, description="Season year"),
-    _user: str = Depends(require_tier("coach")),
 ):
     """Cross-team scouting board for the 8 NWAC Championship teams.
     Two ranked-by-WAR boards (pitchers, then hitters) pooling every
