@@ -278,14 +278,6 @@ function resolveRoute(pathname) {
       pageDesc:
         'Spin a team, draft a player, build the best roster in Northwest college baseball. Chase a perfect 56-0 season.',
     },
-    '/draftboard': {
-      kicker: 'MLB Draft',
-      title: 'Draft Board',
-      subtitle: 'Northwest college prospects on every MLB draft board.',
-      pageTitle: 'Draft Board · NW Baseball Stats',
-      pageDesc:
-        'Northwest college baseball prospects tracked across every MLB draft cycle.',
-    },
     '/relievers': {
       kicker: 'Leaderboards',
       title: 'Reliever Leaders',

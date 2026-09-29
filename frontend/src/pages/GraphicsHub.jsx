@@ -18,7 +18,6 @@ const GRAPHICS = [
   { to: '/top-performers-graphic',  label: 'Top Performers',        desc: 'Weekly top 10 hitters and pitchers.' },
   { to: '/projections/graphic',     label: 'Projection Leaders',    desc: '2027 projected stat leaders, best-in-every-stat, and biggest breakout gains.' },
   { to: '/wcl-top-performers-graphic', label: 'WCL Top Performers', desc: 'Top 10 WCL hitters and pitchers over any date range.' },
-  { to: '/draft-board-graphic', label: 'Draft Board', desc: 'Ranked PNW MLB Draft Board with trends and commits.' },
   { to: '/graphics/recruiting-classes', label: 'Recruiting Class Rankings', desc: 'Top 5 to 50 PNW recruiting classes ranked by class rating.' },
   { to: '/team-info-graphic',       label: 'Team Info',             desc: 'Full team overview graphic.' },
   { to: '/team-season-recap',       label: 'Team Season Recap',     desc: 'End-of-year highlights: record, WAR leaders, clutch moment.' },

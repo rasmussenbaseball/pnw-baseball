@@ -240,7 +240,6 @@ import ParkFactors from './pages/ParkFactors'
 import PortalLayout from './components/PortalLayout'
 const PortalHome = lazyWithRetry(() => import('./pages/PortalHome'))  // recharts, coach portal
 const RapsodoAnalyzer = lazyWithRetry(() => import('./pages/RapsodoAnalyzer'))  // coach Rapsodo lab
-import DraftBoard from './pages/DraftBoard'
 import NationalRankings from './pages/NationalRankings'
 import Scoreboard from './pages/Scoreboard'
 const About = lazyWithRetry(() => import('./pages/About'))  // recharts run-environment chart
@@ -256,7 +255,6 @@ const PlayerGraphic = lazyWithRetry(() => import('./pages/PlayerGraphic'))
 const ConferenceStandingsGraphic = lazyWithRetry(() => import('./pages/ConferenceStandingsGraphic'))
 const AllConferenceGraphic = lazyWithRetry(() => import('./pages/AllConferenceGraphic'))
 const TopPerformersGraphic = lazyWithRetry(() => import('./pages/TopPerformersGraphic'))
-const DraftBoardGraphic = lazyWithRetry(() => import('./pages/DraftBoardGraphic'))
 const TeamInfoGraphic = lazyWithRetry(() => import('./pages/TeamInfoGraphic'))
 const TeamSeasonRecapGraphic = lazyWithRetry(() => import('./pages/TeamSeasonRecapGraphic'))
 import HometownSearch from './pages/HometownSearch'
@@ -512,15 +510,11 @@ export default function App() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
 
-          {/* MLB Draft Board (auth required). Lives at /draftboard; /draft is the 56-0 game. */}
-          <Route path="/draftboard" element={<DraftBoard year="26" />} />
-          <Route path="/draftboard/2026" element={<DraftBoard year="26" />} />
-          <Route path="/draftboard/2027" element={<DraftBoard year="27" />} />
-          <Route path="/draftboard/2028" element={<DraftBoard year="28" />} />
-          {/* Old /draft/* draft-board links redirect to the new path */}
-          <Route path="/draft/2026" element={<Navigate to="/draftboard/2026" replace />} />
-          <Route path="/draft/2027" element={<Navigate to="/draftboard/2027" replace />} />
-          <Route path="/draft/2028" element={<Navigate to="/draftboard/2028" replace />} />
+          {/* The MLB draft board was removed in September 2026; old links land on the homepage. */}
+          <Route path="/draftboard/*" element={<Navigate to="/" replace />} />
+          <Route path="/draft/2026" element={<Navigate to="/" replace />} />
+          <Route path="/draft/2027" element={<Navigate to="/" replace />} />
+          <Route path="/draft/2028" element={<Navigate to="/" replace />} />
 
           {/* Misc (auth required) */}
           <Route path="/top-moments" element={<TopMoments />} />
@@ -547,7 +541,6 @@ export default function App() {
           <Route path="/all-conference-graphic" element={<AllConferenceGraphic />} />
           <Route path="/top-performers-graphic" element={<TopPerformersGraphic />} />
           <Route path="/wcl-top-performers-graphic" element={<TopPerformersGraphic variant="summer" />} />
-          <Route path="/draft-board-graphic" element={<DraftBoardGraphic />} />
           <Route path="/team-info-graphic" element={<TeamInfoGraphic />} />
           <Route path="/team-season-recap" element={<TeamSeasonRecapGraphic />} />
           <Route path="/players" element={<PlayerSearch />} />

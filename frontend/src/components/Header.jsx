@@ -108,7 +108,6 @@ const NAV = [
       { to: '/coaching/recruiting-board', label: 'Recruiting Board',
         desc: 'Build & share recruiting boards: add any player, notes & more' },
       { to: '/park-factors', label: 'Park Factors', desc: 'Ballpark effects on stats' },
-      { to: '/draftboard', label: 'Draft Board', desc: 'PNW college baseball MLB draft board' },
       { to: '/coaching/juco-tracker', label: 'JUCO Tracker',
         desc: 'NWAC players available for transfer to 4-year programs' },
       { to: '/coaching/transfer-portal', label: 'Transfer Portal Tracker',

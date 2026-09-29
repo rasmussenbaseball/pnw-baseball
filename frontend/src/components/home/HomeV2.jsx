@@ -864,7 +864,7 @@ const TOOLS = [
   ['Portal', 'Coach & Scouting Portal', 'Series planner, scouting sheets, lineup helper, printable PDFs', '/portal'],
   ['Players', 'Player Comps', 'Closest NW and MLB comparables for every player', '/player-comps'],
   ['Transfers', 'Transfer Portal Tracker', 'Every PNW player in the portal with full stat lines', '/coaching/transfer-portal'],
-  ['Draft', 'Draft Board', 'MLB draft prospects across the region', '/draftboard'],
+  ['Recruiting', 'Recruiting Classes', 'Every PNW program\'s incoming class, rated', '/recruiting-classes'],
   ['Game', 'Coaching Simulator', 'Run a PNW program, D1 through NWAC', '/gm'],
   ['Games', 'PNW Grid', 'A new puzzle every day, built on the database', '/pnw-grid'],
 ]

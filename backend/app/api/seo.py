@@ -72,7 +72,7 @@ def sitemap_pages():
     pages = [("", "daily", "1.0"), ("standings", "daily", "0.9"), ("teams", "weekly", "0.8"),
              ("leaderboards", "daily", "0.8"), ("players", "weekly", "0.6"),
              ("recruiting", "weekly", "0.7"), ("articles", "daily", "0.7"),
-             ("draft-board", "weekly", "0.6"), ("percentiles", "weekly", "0.6"),
+             ("percentiles", "weekly", "0.6"),
              ("about", "monthly", "0.4")]
     return _xml_response(_urlset([(f"{SITE}/{p}".rstrip("/"), f, pr) for p, f, pr in pages]))
 

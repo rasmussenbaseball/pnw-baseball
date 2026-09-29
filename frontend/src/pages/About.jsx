@@ -258,7 +258,7 @@ function BehindTheCurtainSection() {
           The entire site (frontend, backend, database, scrapers, advanced-stats engine) was built collaboratively by one person and Claude, Anthropic's AI coding assistant. Claude handles implementation; the human drives vision, design, data validation, and quality control. Every formula, every UI choice, every scraper edge case was reviewed by someone who has spent years around the players these stats are measuring.
         </P>
         <P>
-          The site went from zero to a working leaderboard on March 30, 2026. Since then it has added per-plate-appearance play-by-play, Baseball Savant-style percentiles, a draft board, a coaching/scouting portal, an article system, a JUCO transfer tracker, full email broadcasts, and dozens of other features. All while staying a one-person operation.
+          The site went from zero to a working leaderboard on March 30, 2026. Since then it has added per-plate-appearance play-by-play, Baseball Savant-style percentiles, a coaching/scouting portal, an article system, a JUCO transfer tracker, full email broadcasts, and dozens of other features. All while staying a one-person operation.
         </P>
       </Card>
 

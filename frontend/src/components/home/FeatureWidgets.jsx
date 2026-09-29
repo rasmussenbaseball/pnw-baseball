@@ -17,7 +17,6 @@ import {
   WidgetCard, Carousel, PillToggle, GroupLabel, WidgetSkeleton, WidgetNote,
 } from './WidgetShell'
 import { useApi } from '../../hooks/useApi'
-import { DRAFT_DATA, DRAFT_YEARS, getSchoolLogo } from '../../data/draftData'
 
 // "Jun 9" style short date for article / commitment rows.
 function fmtShortDate(iso) {
@@ -38,69 +37,6 @@ function LinkChip({ to, children }) {
     >
       {children} →
     </Link>
-  )
-}
-
-// ─── 1. MLB Draft Board ─────────────────────────────────────────
-
-export function DraftBoardWidget() {
-  const [year, setYear] = useState(DRAFT_YEARS[0])
-  const board = DRAFT_DATA[year]
-  const prospects = (board?.prospects || []).slice(0, 10)
-
-  return (
-    <WidgetCard
-      title="MLB Draft Board"
-      to="/draftboard"
-      linkLabel="Full board"
-      controls={
-        <PillToggle
-          light
-          options={DRAFT_YEARS.map(y => ({ value: y, label: `'${y}` }))}
-          value={year}
-          onChange={setYear}
-        />
-      }
-    >
-      {prospects.length === 0 ? (
-        <WidgetNote>Rankings for the '{year} class are coming soon.</WidgetNote>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-          {prospects.map(p => {
-            const inner = (
-              <>
-                <span className="w-4 text-[10px] font-bold text-gray-400 tabular-nums shrink-0">{p.rank}</span>
-                <img
-                  src={getSchoolLogo(p.school)} alt="" loading="lazy"
-                  className="w-5 h-5 object-contain shrink-0"
-                  onError={(e) => { e.target.style.visibility = 'hidden' }}
-                />
-                <span className="flex-1 min-w-0">
-                  <span className="block text-xs font-semibold text-gray-800 dark:text-gray-100 truncate leading-tight">
-                    {p.name}
-                  </span>
-                  <span className="block text-[10px] text-gray-400 truncate leading-tight">
-                    {p.pos} · {p.school}
-                  </span>
-                </span>
-              </>
-            )
-            const cls = 'flex items-center gap-2 py-0.5'
-            return p.playerId ? (
-              <Link
-                key={`${year}-${p.rank}`}
-                to={`/player/${p.playerId}`}
-                className={`${cls} hover:bg-nw-cream dark:hover:bg-gray-700/50 rounded px-1 -mx-1`}
-              >
-                {inner}
-              </Link>
-            ) : (
-              <div key={`${year}-${p.rank}`} className={cls}>{inner}</div>
-            )
-          })}
-        </div>
-      )}
-    </WidgetCard>
   )
 }
 
