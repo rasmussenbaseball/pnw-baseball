@@ -1,0 +1,27 @@
+# Log rotation for the NWBB Stats cron jobs on the DigitalOcean server.
+#
+# Why: the live-score scraper runs every 10 minutes all year and appends to
+# /var/log/nwbb-live.log with no rotation (112 MB by Sept 2026). The other
+# cron logs grow the same way, just slower. This keeps two weeks of each,
+# compressed, so /var/log never fills the 50 GB disk.
+#
+# Install ONCE on the server (root):
+#   cp /opt/pnw-baseball/deploy/logrotate-nwbb /etc/logrotate.d/nwbb
+#   logrotate -d /etc/logrotate.d/nwbb      # dry run, should print no errors
+#
+# logrotate runs daily from /etc/cron.daily on Ubuntu; nothing else to schedule.
+/var/log/nwbb-live.log
+/var/log/nwbb-scrape.log
+/var/log/nwbb-pbp.log
+/var/log/nwbb-pbp-backfill.log
+/var/log/boxscores_morning_rescrape.log
+{
+    daily
+    rotate 14
+    size 20M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

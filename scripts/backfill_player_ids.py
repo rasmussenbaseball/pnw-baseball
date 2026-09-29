@@ -238,7 +238,7 @@ def backfill_game_batting(cur):
         FROM players pl
         WHERE gb.player_id IS NULL
           AND gb.team_id = pl.team_id
-          AND gb.player_name ~ '^[A-Z]\. '
+          AND gb.player_name ~ '^[A-Z]\\. '
           AND LOWER(SUBSTRING(gb.player_name FROM 1 FOR 1)) = LOWER(SUBSTRING(pl.first_name FROM 1 FOR 1))
           AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = LOWER(TRIM(pl.last_name))
     """)

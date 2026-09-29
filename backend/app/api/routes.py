@@ -261,6 +261,7 @@ CONF_BATTING_CTE = """
         WHERE g.season = %s
           AND g.is_conference_game = true
           AND g.status = 'final'
+          AND gb.team_id IN (g.home_team_id, g.away_team_id)
           AND gb.player_id IS NOT NULL
         GROUP BY gb.player_id, gb.team_id, g.season
     )
@@ -336,6 +337,7 @@ CONF_PITCHING_CTE = """
         WHERE g.season = %s
           AND g.is_conference_game = true
           AND g.status = 'final'
+          AND gp.team_id IN (g.home_team_id, g.away_team_id)
           AND gp.player_id IS NOT NULL
         GROUP BY gp.player_id, gp.team_id, g.season
     )
@@ -781,7 +783,7 @@ def hometown_search(
     q: str = Query("", min_length=0),
 ):
     """Search players by hometown. Returns players whose hometown contains the query string.
-    Premium-gated (soft mode = auth-only)."""
+    Public."""
     with get_connection() as conn:
         cur = conn.cursor()
 
@@ -1476,9 +1478,9 @@ def stat_leaders(
             # When away_team_id is NULL, use: home = player's team IS home_team,
             # road = player's team IS NOT home_team.
             if is_home:
-                home_road_condition = "p2.team_id = g.home_team_id"
+                home_road_condition = "gb.team_id = g.home_team_id"
             else:
-                home_road_condition = "(p2.team_id = g.away_team_id OR (g.away_team_id IS NULL AND p2.team_id != g.home_team_id))"
+                home_road_condition = "(gb.team_id = g.away_team_id OR (g.away_team_id IS NULL AND gb.team_id != g.home_team_id))"
 
             batting_split_categories = [
                 {"key": "batting_avg", "label": "AVG", "col": "agg.avg", "order": "DESC", "format": "avg"},
@@ -1490,7 +1492,7 @@ def stat_leaders(
             ]
 
             def fetch_batting_split_leaders(cat):
-                params = [season] + level_params + [min_pa_split, limit]
+                params = [season, min_pa_split] + level_params + [limit]   # placeholder order: season, PA floor, level, limit
                 cur.execute(f"""
                     WITH agg AS (
                         SELECT gb.player_id,
@@ -1510,8 +1512,8 @@ def stat_leaders(
                                  ELSE NULL END as obp
                         FROM game_batting gb
                         JOIN games g ON g.id = gb.game_id
-                        JOIN players p2 ON p2.id = gb.player_id
                         WHERE g.season = %s AND g.status = 'final'
+                          AND gb.team_id IN (g.home_team_id, g.away_team_id)
                           AND {home_road_condition}
                         GROUP BY gb.player_id
                     )
@@ -1541,9 +1543,9 @@ def stat_leaders(
 
             # Pitching splits - same logic: use player's team from players table
             if is_home:
-                pit_home_road_condition = "p2.team_id = g.home_team_id"
+                pit_home_road_condition = "gp.team_id = g.home_team_id"
             else:
-                pit_home_road_condition = "(p2.team_id = g.away_team_id OR (g.away_team_id IS NULL AND p2.team_id != g.home_team_id))"
+                pit_home_road_condition = "(gp.team_id = g.away_team_id OR (g.away_team_id IS NULL AND gp.team_id != g.home_team_id))"
             min_ip_split = 10
 
             pitching_split_categories = [
@@ -1562,7 +1564,7 @@ def stat_leaders(
                     params = [season] + level_params + [limit]
                 else:
                     ip_filter = "agg.real_ip >= %s"
-                    params = [season] + level_params + [min_ip_split, limit]
+                    params = [season, min_ip_split] + level_params + [limit]   # placeholder order: season, IP floor, level, limit
                 cur.execute(f"""
                     WITH agg AS (
                         SELECT gp.player_id,
@@ -1591,8 +1593,8 @@ def stat_leaders(
                                  ELSE NULL END as k_per_9
                         FROM game_pitching gp
                         JOIN games g ON g.id = gp.game_id
-                        JOIN players p2 ON p2.id = gp.player_id
                         WHERE g.season = %s AND g.status = 'final'
+                          AND gp.team_id IN (g.home_team_id, g.away_team_id)
                           AND {pit_home_road_condition}
                         GROUP BY gp.player_id
                     )
@@ -5187,7 +5189,7 @@ def team_info_graphic(
         power_rating_div_total = None
         try:
             cur.execute("""
-                SELECT t.id, t.conference_id, t.division_level,
+                SELECT t.id, t.conference_id, d.level AS division_level,
                        COALESCE(s.wins, 0) as wins,
                        COALESCE(s.losses, 0) as losses,
                        bat.rs, bat.total_owar, bat.avg_wrc_plus,
@@ -5195,6 +5197,7 @@ def team_info_graphic(
                        nr.national_percentile
                 FROM teams t
                 JOIN conferences c ON t.conference_id = c.id
+                JOIN divisions d ON c.division_id = d.id
                 LEFT JOIN team_season_stats s ON s.team_id = t.id AND s.season = %s
                 LEFT JOIN (
                     SELECT team_id,
@@ -7387,8 +7390,8 @@ def war_leaderboard(
     """
     allowed_sort = {
         "total_war", "offensive_war", "pitching_war", "war_per_pa", "war_per_ip",
-        "plate_appearances", "batting_avg", "woba", "wobacon", "wrc_plus",
-        "innings_pitched", "era", "whip", "fip", "fip_plus", "era_minus", "era_plus", "k_per_9", "wins",
+        "plate_appearances", "batting_avg", "woba", "wrc_plus",
+        "innings_pitched", "era", "whip", "fip", "fip_plus", "era_minus", "k_per_9", "wins",
     }
     if sort_by not in allowed_sort:
         sort_by = "total_war"
@@ -8596,7 +8599,11 @@ def _league_rate_avgs(conn, division_level: str, season):
             if r["fip"] is not None:
                 out["fip"] = round(float(r["fip"]), 2)
     except Exception:
-        pass
+        # roll back so the pooled connection is not left in an aborted transaction
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     return out
 
 
@@ -9510,7 +9517,8 @@ def compare_players(
         pos_sql = ("""SELECT gb.player_id, gb.position,
                              COUNT(DISTINCT (g.game_date, COALESCE(g.game_number, 1))) AS games
                       FROM game_batting gb JOIN games g ON g.id = gb.game_id
-                      WHERE gb.player_id = ANY(%s)""" +
+                      WHERE gb.player_id = ANY(%s)
+                        AND gb.team_id IN (g.home_team_id, g.away_team_id)""" +
                    ("" if career else " AND g.season = %s") +
                    " GROUP BY gb.player_id, gb.position")
         cur.execute(pos_sql, [pid_list] if career else [pid_list, season])
@@ -9978,6 +9986,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                 JOIN games g ON g.id = gb.game_id
                 WHERE gb.player_id IN %s
                   AND g.season = %s
+                  AND gb.team_id IN (g.home_team_id, g.away_team_id)
                 GROUP BY gb.position
                 ORDER BY games DESC
             """, (tuple(all_player_ids), target_season))
@@ -9987,6 +9996,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
                 FROM game_batting gb
                 JOIN games g ON g.id = gb.game_id
                 WHERE gb.player_id IN %s
+                  AND gb.team_id IN (g.home_team_id, g.away_team_id)
                 GROUP BY gb.position
                 ORDER BY games DESC
             """, (tuple(all_player_ids),))
@@ -10270,7 +10280,7 @@ def uncommitted_juco_players(
 ):
     """
     Find uncommitted JUCO players - the primary recruiting tool.
-    Premium-tier gated (the JUCO tracker lives in the Coaching tab).
+    Public (the JUCO tracker lives in the Coaching tab).
     Shows sophomores (or specified class) who haven't committed to a 4-year school.
     Year filter groups: 'So' matches So and R-So, 'Fr' matches Fr and R-Fr.
     """
@@ -10545,7 +10555,7 @@ def transfer_portal_players(
     entered the transfer portal. Curated list lives in
     backend/data/transfer_portal.json; this enriches each with the same
     stat row shape the JUCO tracker uses so the two pages share a table.
-    Premium-tier gated (Coaching tab).
+    Public (Coaching tab).
     """
     # Portal MEMBERSHIP now lives in the transfer_portal_members DB table
     # (migrated off the git-tracked JSON) so the dev Commitment Editor can
@@ -10553,12 +10563,6 @@ def transfer_portal_players(
     # players table (committed_to column), also editor-managed.
     with get_connection() as _mconn:
         _mcur = _mconn.cursor()
-        _mcur.execute("""
-            CREATE TABLE IF NOT EXISTS transfer_portal_members (
-                player_id INTEGER PRIMARY KEY, from_school TEXT, position TEXT,
-                added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())
-        """)
-        _mcur.execute("ALTER TABLE transfer_portal_members ADD COLUMN IF NOT EXISTS season INTEGER")
         # Membership is per cycle year: the 2026 list is players who left after
         # the 2026 season, the 2027 list fills up as that cycle opens.
         _mcur.execute("SELECT player_id, position FROM transfer_portal_members WHERE COALESCE(season, 2026) = %s", (season,))
@@ -10669,13 +10673,6 @@ def team_incoming_transfers(team_id: int, arrival_season: int = Query(NEXT_SEASO
     name-only), each tagged with `kind`."""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS incoming_transfers (
-                id SERIAL PRIMARY KEY, name TEXT NOT NULL, from_school TEXT,
-                to_team_id INTEGER NOT NULL, position TEXT, added_by TEXT,
-                added_at TIMESTAMP NOT NULL DEFAULT now())
-        """)
-
         # Team name variants used to resolve the free-text players.committed_to.
         cur.execute("SELECT short_name, name, school_name FROM teams WHERE id = %s", (team_id,))
         trow = cur.fetchone()
@@ -10740,7 +10737,6 @@ def team_incoming_transfers(team_id: int, arrival_season: int = Query(NEXT_SEASO
                 })
 
         # Name-only out-of-region transfers (no DB stats).
-        cur.execute("ALTER TABLE incoming_transfers ADD COLUMN IF NOT EXISTS season INTEGER")
         cur.execute(
             "SELECT id, name, from_school, position FROM incoming_transfers WHERE to_team_id = %s AND COALESCE(season, %s) = %s ORDER BY name",
             (team_id, NEXT_SEASON, arrival_season),
@@ -11230,11 +11226,8 @@ def projection_player_leaders(side: str = Query("bat"), season: int = Query(PROJ
         return {"side": side, "season": season, "players": out}
 
 
-# ── Per-player projection card (paywalled preview on player pages) ──────────
-# Tier >= premium sees the full projected line + range of outcomes + writeup;
-# everyone else gets a teaser (one headline stat) + locked=true. Gating is
-# server-side (the full numbers never reach a sub-premium client), mirroring the
-# article paywall. NOT @cached_endpoint — the payload varies by viewer tier.
+# ── Per-player projection card (player pages) ─────────────────────────────
+# Public: the full projected line + range of outcomes + writeup.
 _YOUNG_CLASSES = {"Fr", "R-Fr", "So", "R-So", "Freshman", "Sophomore"}
 
 
@@ -11370,11 +11363,11 @@ def _projection_payload(proj, side):
 
 
 @router.get("/players/{player_id}/projection")
-def player_projection(player_id: int, request: Request,
+def player_projection(player_id: int,
                       side: str = Query(..., pattern="^(bat|pit|hitter|pitcher)$"),
                       season: Optional[int] = None):
-    """Next-season projection for one player, gated: premium+ gets the full
-    line + range + writeup; lower tiers get a one-stat teaser + locked=true."""
+    """Next-season projection for one player: full line, range and writeup
+    (public since the site went free in Sept 2026)."""
     side = "bat" if side in ("bat", "hitter") else "pit"
     with get_connection() as conn:
         cur = conn.cursor()
@@ -13095,7 +13088,7 @@ def games_by_date(
                 gid = r["game_id"]
                 if gid not in decisions:
                     decisions[gid] = {}
-                name = r["last_name"] or r["player_name"].split(",")[0].strip() if r["player_name"] else "Unknown"
+                name = r["last_name"] or (r["player_name"].split(",")[0].strip() if r["player_name"] else "Unknown")
                 decisions[gid][r["decision"]] = name
             for g in games:
                 d = decisions.get(g["id"], {})
@@ -13498,7 +13491,7 @@ def daily_performers(
             er  = p.get("earned_runs") or 0
             bb  = p.get("walks") or 0
             hra = p.get("home_runs_allowed") or 0
-            return (k * 3.5) + (ip * 3.5) - (h * 1.5) - (er * 6) - (bb * 1.5) - (hra * 2.5)
+            return (k * 3.5) + (ip_to_outs(ip) / 3.0 * 3.5) - (h * 1.5) - (er * 6) - (bb * 1.5) - (hra * 2.5)
 
         # Keep each pitcher's best individual game to avoid double-counting
         seen_pitch_rows = set()
@@ -13852,7 +13845,7 @@ def weekly_top_performers(
             er = p.get("earned_runs") or 0
             bb = p.get("walks") or 0
             hra = p.get("home_runs_allowed") or 0
-            return (k * 3.5) + (ip_val * 3.5) - (h_a * 1.5) - (er * 6) - (bb * 1.5) - (hra * 2.5)
+            return (k * 3.5) + (ip_to_outs(ip_val) / 3.0 * 3.5) - (h_a * 1.5) - (er * 6) - (bb * 1.5) - (hra * 2.5)
 
         pitchers = []
         for p in pitcher_agg.values():
@@ -14230,7 +14223,7 @@ def series_recap(
             er = p.get("earned_runs") or 0
             bb = p.get("walks") or 0
             hra = p.get("home_runs_allowed") or 0
-            return (k*3.5)+(ip*3.5)-(h*1.5)-(er*6)-(bb*1.5)-(hra*2.5)
+            return (k*3.5)+(ip_to_outs(ip)/3.0*3.5)-(h*1.5)-(er*6)-(bb*1.5)-(hra*2.5)
 
         def _team_info(tid, short, logo):
             """Build rich team object."""
@@ -14321,15 +14314,15 @@ def series_recap(
                 p_h = p.get("hits_allowed") or 0
                 p_bb = p.get("walks") or 0
                 p_k = p.get("strikeouts") or 0
-                ip += p_ip
+                ip += ip_to_outs(p_ip) / 3.0      # true innings (6.2 -> 6.667)
                 h += p_h
                 er += (p.get("earned_runs") or 0)
                 bb += p_bb
                 k += p_k
                 hra += (p.get("home_runs_allowed") or 0)
                 ra += (p.get("runs_allowed") or 0)
-                # Approximate BF: IP*3 + H + BB (rough estimate)
-                total_bf += int(p_ip) * 3 + p_h + p_bb
+                # Approximate BF: outs + H + BB (rough estimate)
+                total_bf += ip_to_outs(p_ip) + p_h + p_bb
             era = round(er * 9 / ip, 2) if ip else 0
             whip = round((bb + h) / ip, 2) if ip else 0
             k_per_9 = round(k * 9 / ip, 1) if ip else 0
@@ -14341,7 +14334,7 @@ def series_recap(
             # FIP = ((13*HR + 3*BB - 2*K) / IP) + 3.10
             fip = round(((13 * hra + 3 * bb - 2 * k) / ip) + 3.10, 2) if ip else 0
             return {
-                "ip": round(ip, 1), "h": h, "er": er, "ra": ra, "bb": bb, "k": k,
+                "ip": outs_to_ip(int(round(ip * 3))), "h": h, "er": er, "ra": ra, "bb": bb, "k": k,
                 "hra": hra, "era": era, "whip": whip, "fip": fip,
                 "k_per_9": k_per_9, "bb_per_9": bb_per_9, "h_per_9": h_per_9,
                 "hr_per_9": hr_per_9, "k_rate": k_rate, "bb_rate": bb_rate,
@@ -14492,8 +14485,8 @@ def series_recap(
                 # Use opponent AB for K% and BB% so they match batting card
                 pitcher_team["k_rate"] = round(pitcher_team.get("k", 0) / opp_ab * 100, 1) if opp_ab else 0
                 pitcher_team["bb_rate"] = round(pitcher_team.get("bb", 0) / opp_ab * 100, 1) if opp_ab else 0
-                # Recalculate HR/9 from opponent batting HR
-                ip = pitcher_team.get("ip", 0)
+                # Recalculate HR/9 from opponent batting HR ("ip" is baseball notation)
+                ip = ip_to_outs(pitcher_team.get("ip", 0)) / 3.0
                 pitcher_team["hr_per_9"] = round(opp_batting.get("hr", 0) * 9 / ip, 1) if ip else 0
                 # Recalculate FIP with accurate HR
                 hr_for_fip = opp_batting.get("hr", 0)
@@ -14561,7 +14554,10 @@ def series_recap(
                         for k in pitch_keys:
                             agg[pk][k] = 0
                     for k in pitch_keys:
-                        agg[pk][k] += (p.get(k) or 0)
+                        if k == "innings_pitched":
+                            agg[pk][k] = outs_to_ip(ip_to_outs(agg[pk][k]) + ip_to_outs(p.get(k) or 0))
+                        else:
+                            agg[pk][k] += (p.get(k) or 0)
                     if p.get("decision"):
                         agg[pk]["decisions"].append(p["decision"])
                 result = [p for p in agg.values() if (p.get("innings_pitched") or 0) >= 2.0]
@@ -14571,8 +14567,8 @@ def series_recap(
                     decs = p.pop("decisions", [])
                     p["decision_summary"] = ", ".join(decs) if decs else None
                     p["bb_hbp"] = (p.get("walks") or 0)  # HBP not tracked in pitching lines
-                    # FIP: ((13*HR + 3*BB - 2*K) / IP) + 3.10
-                    ip = p.get("innings_pitched") or 0
+                    # FIP: ((13*HR + 3*BB - 2*K) / IP) + 3.10, on true innings
+                    ip = ip_to_outs(p.get("innings_pitched") or 0) / 3.0
                     if ip > 0:
                         hra = p.get("home_runs_allowed") or 0
                         bb = p.get("walks") or 0
@@ -14745,7 +14741,7 @@ def daily_recap(
             er = p.get("earned_runs") or 0
             bb = p.get("walks") or 0
             hra = p.get("home_runs_allowed") or 0
-            return (k*3.5)+(ip*3.5)-(h*1.5)-(er*6)-(bb*1.5)-(hra*2.5)
+            return (k*3.5)+(ip_to_outs(ip)/3.0*3.5)-(h*1.5)-(er*6)-(bb*1.5)-(hra*2.5)
 
         def _display_name(row):
             if row.get("last_name") and row.get("first_name"):
@@ -14786,17 +14782,12 @@ def daily_recap(
             return ", ".join(parts)
 
         def _fmt_ip(ip):
-            """Format innings pitched: 6.333->6.1, 6.667->6.2, 7.0->7.0"""
+            """Format baseball-notation innings (6.2 = 6 and 2/3) as text.
+            Goes through outs so a summed doubleheader line rolls over
+            correctly (5.2 + 5.2 -> 11.1)."""
             if ip is None:
                 return "0.0"
-            whole = int(ip)
-            frac = ip - whole
-            if frac < 0.1:
-                return f"{whole}.0"
-            elif frac < 0.5:
-                return f"{whole}.1"
-            else:
-                return f"{whole}.2"
+            return f"{outs_to_ip(ip_to_outs(ip)):.1f}"
 
         def _format_pitcher_line(p):
             """Generate human-readable stat line for a pitcher."""
@@ -14991,7 +14982,11 @@ def daily_recap(
                     }
                 for k in ["innings_pitched", "hits_allowed", "earned_runs", "walks",
                           "strikeouts", "home_runs_allowed"]:
-                    pitcher_agg[pk][k] += (p.get(k) or 0)
+                    if k == "innings_pitched":
+                        # baseball notation: add in outs, not as a decimal
+                        pitcher_agg[pk][k] = outs_to_ip(ip_to_outs(pitcher_agg[pk][k]) + ip_to_outs(p.get(k) or 0))
+                    else:
+                        pitcher_agg[pk][k] += (p.get(k) or 0)
                 if p.get("decision") and not pitcher_agg[pk]["decision"]:
                     pitcher_agg[pk]["decision"] = p["decision"]
 
@@ -15676,23 +15671,15 @@ def games_future(
     except Exception:
         pass
 
-    # Enrich games with team logos / names / postseason flag.
-    # Postseason rule (per coach decision 2026-04-30): any game
-    # involving a CCC team from today onwards is a playoff game —
-    # CCC tournament starts tomorrow and CCC teams play out-of-CCC
-    # opponents in NAIA regionals starting next week.
-    from datetime import date as _date
-    today_iso = _date.today().isoformat()
+    # Enrich games with team logos / names / postseason flag. The postseason
+    # flag comes from the schedule data itself (a spring-2026 rule that marked
+    # every CCC game from "today" on as playoffs was removed: it would have
+    # flagged the whole 2027 CCC regular season).
     enriched = []
     for g in games[:limit]:
         home_id = g.get("home_team_id")
         away_id = g.get("away_team_id")
-        home_conf = team_info.get(home_id, {}).get("conference_abbrev")
-        away_conf = team_info.get(away_id, {}).get("conference_abbrev")
-        is_postseason = (
-            (home_conf == 'CCC' or away_conf == 'CCC')
-            and (g.get("game_date") or '') >= today_iso
-        )
+        is_postseason = bool(g.get("is_postseason"))
         enriched.append({
             **g,
             "home_logo": team_info.get(home_id, {}).get("logo_url") if home_id else None,
@@ -16099,7 +16086,7 @@ def games_live():
                     gid = r["game_id"]
                     if gid not in decisions:
                         decisions[gid] = {}
-                    name = r["last_name"] or r["player_name"].split(",")[0].strip() if r["player_name"] else None
+                    name = r["last_name"] or (r["player_name"].split(",")[0].strip() if r["player_name"] else None)
                     decisions[gid][r["decision"]] = name
 
             # Backfill hits from game_batting for games missing them
@@ -16806,6 +16793,7 @@ def get_player_gamelogs(
             WHERE gb.player_id IN ({id_placeholders})
               AND g.season = %s
               AND g.status = 'final'
+              AND gb.team_id IN (g.home_team_id, g.away_team_id)
             ORDER BY g.game_date ASC, g.id ASC
         """, (*all_player_ids, season))
         batting_rows = cur.fetchall()
@@ -16888,6 +16876,7 @@ def get_player_gamelogs(
             WHERE gp.player_id IN ({id_placeholders})
               AND g.season = %s
               AND g.status = 'final'
+              AND gp.team_id IN (g.home_team_id, g.away_team_id)
             ORDER BY g.game_date ASC, g.id ASC
         """, (*all_player_ids, season))
         pitching_rows = cur.fetchall()
@@ -17236,6 +17225,7 @@ def get_player_splits(
             JOIN games g ON g.id = gb.game_id
             WHERE gb.player_id IN ({id_placeholders})
               AND g.status = 'final'
+              AND gb.team_id IN (g.home_team_id, g.away_team_id)
               {season_filter}
             ORDER BY g.game_date
         """, (*all_player_ids, *season_params))
@@ -17315,6 +17305,7 @@ def get_player_splits(
             JOIN games g ON g.id = gp.game_id
             WHERE gp.player_id IN ({id_placeholders})
               AND g.status = 'final'
+              AND gp.team_id IN (g.home_team_id, g.away_team_id)
               {season_filter}
             ORDER BY g.game_date
         """, (*all_player_ids, *season_params))
@@ -17352,7 +17343,7 @@ def get_player_splits(
                 bucket["l"] += 1
             elif dec == "SV" or dec == "S":
                 bucket["sv"] += 1
-            bucket["ip"] += float(r["innings_pitched"] or 0)
+            bucket["ip"] += ip_to_outs(r["innings_pitched"])   # outs; converted in calc_pit_rates
             bucket["h"] += r["hits_allowed"] or 0
             bucket["er"] += r["earned_runs"] or 0
             bucket["r"] += r["runs_allowed"] or 0
@@ -17363,12 +17354,10 @@ def get_player_splits(
             bucket["bf"] += r["batters_faced"] or 0
 
         def calc_pit_rates(s):
-            ip = s["ip"]
-            # Convert fractional innings (e.g. 5.1 → 5.333)
-            whole = int(ip)
-            frac = ip - whole
-            real_ip = whole + (frac * 10) / 3.0
-            s["ip_display"] = round(ip, 1)
+            outs = int(s["ip"])
+            real_ip = outs / 3.0
+            s["ip"] = outs_to_ip(outs)
+            s["ip_display"] = outs_to_ip(outs)
             s["era"] = round(s["er"] * 9 / real_ip, 2) if real_ip > 0 else None
             s["whip"] = round((s["bb"] + s["h"]) / real_ip, 2) if real_ip > 0 else None
             s["k_per_9"] = round(s["k"] * 9 / real_ip, 1) if real_ip > 0 else None

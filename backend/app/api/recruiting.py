@@ -1813,7 +1813,6 @@ def _transfer_commits(cur, arrival_season=None):
             to_team_id INTEGER NOT NULL, position TEXT, added_by TEXT,
             added_at TIMESTAMP NOT NULL DEFAULT now())
     """)
-    cur.execute("ALTER TABLE incoming_transfers ADD COLUMN IF NOT EXISTS season INTEGER")
     if arrival_season:
         cur.execute("SELECT name, from_school, to_team_id, position FROM incoming_transfers WHERE COALESCE(season, %s) = %s",
                     (NEXT_SEASON, arrival_season))

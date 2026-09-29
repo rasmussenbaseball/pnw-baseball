@@ -362,7 +362,6 @@ def _wcl_portal_member_ids(cur, season, restrict=None):
              summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
              position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
     )
-    cur.execute("ALTER TABLE wcl_portal_members ADD COLUMN IF NOT EXISTS season INTEGER")
     if not season:
         cur.execute("SELECT summer_player_id FROM wcl_portal_members")
         return {int(r["summer_player_id"]) for r in cur.fetchall()}
@@ -3860,7 +3859,6 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
                  summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
                  position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
         )
-        cur.execute("ALTER TABLE wcl_portal_members ADD COLUMN IF NOT EXISTS season INTEGER")
         cur.execute(
             """
             SELECT sp.id, sp.first_name, sp.last_name, sp.position,

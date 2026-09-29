@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from 'react'
+import { useState, useMemo, Fragment, useEffect } from 'react'
 import { useRecruitingClasses, useRecruitingClassDetail, useRecruitingTransfers } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
 // Grad years the selector offers + the default (class currently committing)
@@ -401,6 +401,11 @@ export default function RecruitingClasses() {
 
   const { data: hsData, loading: hsLoading, error: hsError } = useRecruitingClasses(gradYear)
   const { data: trData, loading: trLoading, error: trError } = useRecruitingTransfers(gradYear)
+  useEffect(() => {
+    if (!autoFell && !hsLoading && hsData && !(hsData.classes || []).length && gradYear === RECRUITING_GRAD_YEAR) {
+      setAutoFell(true); setGradYear(RECRUITING_GRAD_YEAR - 1)
+    }
+  }, [autoFell, hsLoading, hsData, gradYear])
 
   const classes = hsData?.classes || []
   const transferTeams = trData?.teams || []
