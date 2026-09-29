@@ -205,7 +205,7 @@ function resolveRoute(pathname) {
       subtitle: 'How the site is built, what it tracks, and who runs it.',
       pageTitle: 'About · NW Baseball Stats',
       pageDesc:
-        'How NW Baseball Stats is built, what it tracks, and the team behind it.',
+        'How NW Baseball Stats is built, what it tracks, and why it is free for everyone.',
     },
     '/national-rankings': {
       kicker: 'National',

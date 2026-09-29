@@ -328,9 +328,6 @@ export default function PlayerComps() {
             resemble it. Comps are built on percentile-based stat profiles, so players match when they create value
             in similar ways, not just when their raw numbers line up.
           </p>
-          <p className="text-[11px] mt-1" style={{ color: T.textLight }}>
-            Built by NWBB Stats interns Trevor Kazahaya and Connor Broschard.
-          </p>
         </div>
 
         {/* Controls */}

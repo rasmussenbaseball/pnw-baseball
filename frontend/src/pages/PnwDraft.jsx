@@ -12,7 +12,6 @@
 // scoring, two-way de-dupe, deadlock-proof spins, share card).
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import InternCredit from '../components/InternCredit'
 
 const HPOS = ['C', '1B', '2B', 'SS', '3B', 'RF', 'CF', 'LF', 'DH']
 const PLBLS = ['SP1', 'SP2', 'SP3', 'SP4', 'RP']
@@ -314,7 +313,6 @@ function Game({ data }) {
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           The PNW Draft. Spin a team, draft a player, build the best roster in the Pacific Northwest. 14 picks (9 hitters plus 5 pitchers), one shot at a perfect 56-0 season.
         </p>
-        <InternCredit names="Nate Petz" className="mt-2" />
       </div>
 
       <div id="pnwdraft">

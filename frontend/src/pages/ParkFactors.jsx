@@ -505,7 +505,7 @@ export default function ParkFactors() {
               </p>
             )}
             <p className="mt-2 text-gray-400 dark:text-gray-500">
-              Updated {data?.last_updated}. Park Factors model built by Kai Malloch (intern).
+              Updated {data?.last_updated}.
             </p>
           </div>
         </>

@@ -13,7 +13,6 @@ import StatsTable from '../components/StatsTable'
 import StatPresetBar from '../components/StatPresetBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
-import InternCredit from '../components/InternCredit'
 import { useRelieverLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { RELIEVER_COLUMNS, RELIEVER_PRESETS } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
@@ -69,7 +68,6 @@ export default function RelieverLeaderboard() {
         <span className="font-semibold">WPA</span> is the win-probability swing a reliever added. Spring D1–NAIA.
       </p>
 
-      <InternCredit names="Nate Petz" className="mb-3" />
 
       <FilterBar
         filters={filters}

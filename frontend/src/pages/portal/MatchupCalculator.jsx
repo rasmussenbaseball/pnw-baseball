@@ -13,7 +13,6 @@
 // at the top of the file; everything below <body> is theirs).
 
 import { useEffect, useState } from 'react'
-import InternCredit from '../../components/InternCredit'
 
 function useSiteDarkMode() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
@@ -38,7 +37,6 @@ export default function MatchupCalculator() {
           outcome tree, projected line, hand splits, and head-to-head history. Rank your
           whole roster against an opposing arm with the Best Matchup Finder.
         </p>
-        <InternCredit names="Kai Malloch & Oliver Duthie" className="mt-1" />
       </div>
 
       {/* key forces a reload when the theme flips so the tool re-reads ?theme= */}

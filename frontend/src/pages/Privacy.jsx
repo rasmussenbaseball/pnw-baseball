@@ -23,7 +23,7 @@ export default function Privacy() {
       <div className="space-y-6 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
         <p>
           This Privacy Policy explains what information NW Baseball Stats (nwbaseballstats.com, the
-          &ldquo;Service,&rdquo; operated by Nate Rasmussen) collects, how we use it, and the choices
+          &ldquo;Service&rdquo;) collects, how we use it, and the choices
           you have. By using the Service, you agree to this policy.
         </p>
 

@@ -121,7 +121,7 @@ const NAV = [
     label: 'Misc',
     items: [
       { to: '/about', label: 'About',
-        desc: 'The team, the build, the stat glossary, the run environments' },
+        desc: 'The site, the build, the stat glossary, the run environments' },
       { to: '/graphics-hub', label: 'Graphics',
         desc: 'Pick from every social-media graphic generator on the site' },
       { to: '/feature-request', label: 'Request a Feature',

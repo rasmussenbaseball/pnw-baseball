@@ -577,7 +577,7 @@ function ArticleCard({ article, coverSrc }) {
   const cover = coverSrc || fixUrl(article.hero_image_url);
   const title = article.title || 'NW Baseball Stats Article';
   const subtitle = article.subtitle || '';
-  const author = article.author_name || 'NWBB';
+  const author = 'NW Baseball Stats';
   const date = article.published_at
     ? new Date(article.published_at).toLocaleDateString('en-US', {
         month: 'short',

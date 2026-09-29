@@ -25,7 +25,7 @@ export default function Terms() {
         <p>
           These Terms of Service (the &ldquo;Terms&rdquo;) govern your use of NW Baseball Stats,
           available at nwbaseballstats.com (the &ldquo;Service&rdquo;). The Service is operated by
-          Nate Rasmussen (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;). By accessing or
+          the operators of NW Baseball Stats (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;). By accessing or
           using the Service, you agree to these Terms. If you do not agree, please do not use the Service.
         </p>
 

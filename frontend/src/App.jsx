@@ -601,10 +601,7 @@ export default function App() {
               <p className="text-xs text-white/70 leading-relaxed mb-3 max-w-xs">
                 Advanced analytics for every level of Pacific Northwest college baseball, plus recruiting and summer-ball coverage.
               </p>
-              <p className="text-xs text-white/70">
-                Created by{' '}
-                <a href="https://x.com/RasmussenBase" target="_blank" rel="noopener noreferrer" className="text-white font-semibold hover:underline">Nate Rasmussen</a>
-              </p>
+              <p className="text-xs text-white/70">Free for everyone, forever. Independently run.</p>
             </div>
 
             {/* Explore */}
@@ -624,7 +621,7 @@ export default function App() {
             <div>
               <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Site</p>
               <div className="space-y-1.5">
-                <Link to="/about" className="block text-xs text-white/80 hover:text-white transition-colors">About & The Team</Link>
+                <Link to="/about" className="block text-xs text-white/80 hover:text-white transition-colors">About</Link>
                 <a href="/about#behind" className="block text-xs text-white/80 hover:text-white transition-colors">Behind the Curtain</a>
                 <a href="/about#glossary" className="block text-xs text-white/80 hover:text-white transition-colors">Stat Glossary</a>
                 <Link to="/feature-request" className="block text-xs text-white/80 hover:text-white transition-colors">Feedback</Link>

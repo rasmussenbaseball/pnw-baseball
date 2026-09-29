@@ -80,7 +80,7 @@ export default function NewsList() {
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{a.subtitle}</p>
               )}
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 uppercase tracking-wider">
-                {a.author_name} · {fmtDate(a.published_at)}
+                {fmtDate(a.published_at)}
               </p>
             </div>
           </Link>

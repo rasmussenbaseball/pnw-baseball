@@ -63,7 +63,7 @@ export default function NewsArticle() {
           <p className="text-lg text-gray-600 dark:text-gray-400 mt-2">{data.subtitle}</p>
         )}
         <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-3 uppercase tracking-wider">
-          By {data.author_name} · {fmtDate(data.published_at)}
+          NW Baseball Stats · {fmtDate(data.published_at)}
         </p>
       </header>
 

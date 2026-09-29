@@ -2,7 +2,7 @@
 //
 // Sections (in order):
 //   1. Hero stats   - big "wow" counters pulled from /site-stats
-//   2. The Team     - Nate's bio + intern roster (placeholders ready for blurbs)
+//   2. About the site - anonymous, free forever
 //   3. Behind the   - how the site was built (tech stack, LOC chart, data pipeline)
 //      Curtain
 //   4. Coverage     - teams + data sources
@@ -38,81 +38,6 @@ LOC.total = LOC.frontend + LOC.backend + LOC.scripts
 //  Source: the repo's initial commit, March 26, 2026.
 // ───────────────────────────────────────────────────────────────────
 const SITE_LAUNCHED = 'Mar 26, 2026'
-
-
-// ─── Interns. Each entry: name, role, headshot (path or null), blurb.
-//     Set bioPending: true when the person is on the team but hasn't
-//     submitted a bio yet — that swaps the blurb for a small
-//     placeholder line instead of leaving the card looking empty.
-const INTERNS = [
-  {
-    name: 'Kai Malloch',
-    role: 'Intern',
-    headshot: '/team-photos/kai-malloch.jpg',
-    blurb: 'Kai is a high school baseball player at Nathan Hale High School and a youth pitching coach working with the 13U to 15U age groups. He builds independent player development projects to further understand pitching and showcase his work, including regression models that look at how factors like bodyweight and sleep impact pitching velocity, plus deep dives into MLB pitching arsenals. He plans to attend either Gonzaga University or the University of Washington to study Business Administration and Finance, with hopes to work in professional baseball operations.',
-  },
-  // For interns who play college ball in the PNW, `headshot` is the
-  // same URL their player profile page renders (sourced from each
-  // school's Sidearm CDN). If a school re-uploads a photo and the URL
-  // changes, update both here and the players row at the same time.
-  {
-    name: 'Connor Broschard',
-    role: 'Intern',
-    playerId: 3336,
-    headshot: 'https://golcathletics.com/images/2025/12/16/Conor_Broschard_IWQMZ.jpg?width=80&quality=90',
-    blurb: 'Connor is an outfielder and pitcher at Lewis & Clark College, originally from Fairfield, California. He is studying Rhetoric and Media Studies with a minor in Entrepreneurial Leadership and Innovation. He has been fascinated by baseball stats and baseball media for as long as he can remember, and hopes to work professionally in the baseball world someday, whether in the media landscape or in a front office or scouting role. He is also a diehard Boston Red Sox fan.',
-    highlight: { pct: 91, label: 'Opponent wOBA', value: '.252' },
-    built: { label: 'Player Comparison Tool', to: '/player-comps' },
-  },
-  {
-    name: 'Oliver Duthie',
-    role: 'Intern',
-    playerId: 3002,
-    headshot: 'https://gothunderbirds.ca/images/2026/1/6/BASE_Oliver_Duthie.jpg?width=80&quality=90',
-    blurb: 'Oliver recently graduated from the University of British Columbia, where he spent five years as a left-handed pitcher. Born and raised in Dubai, United Arab Emirates, he moved to Canada for school and immersed himself in analytics, player development, pitch design, and scouting, handling advance reports on opposing teams along the way. Whether he is building models in R, analyzing pitch shapes, or studying how arsenals and lineups fit together, he is focused on using data and technology to help players improve, with the goal of contributing to a professional baseball organization.',
-    highlight: { pct: 99, label: 'First-Pitch Strike%', value: '70.6%' },
-    built: { label: 'Pro Tracker', to: '/pro-tracker' },
-  },
-  {
-    name: 'Trevor Kazahaya',
-    role: 'Intern',
-    playerId: 3352,
-    headshot: 'https://goboxers.com/images/2026/2/23/0_Trevor_Kazahaya.jpg?width=80&quality=90',
-    blurb: 'Trevor is a student-athlete from Rancho Santa Margarita, California, studying Business Administration with concentrations in Accounting and Finance at Pacific University. A member of the Pacific Boxers, he is drawn to the analytical side of the game: player development, scouting, performance evaluation, and advanced metrics. His focus is combining modern analytics with on-field experience to give coaches, players, and fans meaningful insight, and to make advanced data more accessible across D2, D3, NAIA, and JUCO programs in the Pacific Northwest.',
-    highlight: { pct: 90, label: 'wRC+ (D3)', value: '133' },
-    built: { label: 'Player Comparison Tool', to: '/player-comps' },
-  },
-  {
-    name: 'Zack Ahn',
-    role: 'Intern',
-    headshot: '/team-photos/zack-ahn.jpg',
-    blurb: 'Zack is a Washington-based student-athlete and catching coordinator focused on player development and baseball analytics. He works alongside former MLB pitcher Casey Sadler on youth player development, and is graduating from Eastlake High School with an associate degree earned through Central Washington University\'s Running Start program. A lifelong Seattle Mariners season-ticket holder, he hopes to play college baseball and work in its analysis.',
-  },
-  {
-    name: 'Nate Petz',
-    role: 'Intern',
-    playerId: 3253,
-    headshot: 'https://athletics.whitman.edu/images/2025/11/7/Petz_HS.jpg?width=80&quality=90',
-    blurb: 'Nate is from West Sacramento, California, and plays baseball while studying statistics at Whitman College. He has been All-Conference at both second base and catcher, and loves digging into advanced analytics, especially when they involve his friends and teammates.',
-    highlight: { pct: 94, label: 'WAR', value: '1.4' },
-    built: { label: 'Goose Eggs (Reliever Leaders)', to: '/relievers' },
-  },
-  {
-    name: 'Luke Malzewski',
-    role: 'Intern',
-    playerId: 3261,
-    headshot: 'https://athletics.whitman.edu/images/2025/11/7/Malzewski_2_HS.jpg?width=80&quality=90',
-    blurb: 'Luke is a utility player at Whitman College, originally from Seattle, WA. He is studying Economics and works as an Athletic Event Management student worker, and earned All-Conference honors this past season. He has been fascinated by baseball stats since he started playing and has been surrounded by PNW baseball his whole life, and is excited to combine the two.',
-    highlight: { pct: 96, label: 'wRC+ (D3)', value: '146' },
-    built: { label: 'Recruiting Matchmaker', to: '/recruiting/quiz' },
-  },
-  {
-    name: "Joe O'Leary",
-    role: 'Intern',
-    headshot: '/team-photos/joe-oleary.jpg',
-    blurb: 'Joe is a journalism student working toward a bachelor\'s degree in Communications at Portland State University. He grew up loving the game, its nuances, and the numbers we can use to quantify it, and he brings that perspective to writing about baseball across the Pacific Northwest. He hopes to build a career in journalism or in baseball itself.',
-  },
-]
 
 
 // ─── Run environment numbers (averaged 2022-2026 PNW data).
@@ -266,166 +191,49 @@ function HeroStats({ siteStats }) {
 
 
 // ============================================================
-// THE TEAM — Nate's bio + intern roster
+// ABOUT THE SITE — anonymous, free, and staying that way
 // ============================================================
-function TeamSection() {
+function SiteSection() {
   return (
     <div>
-      {/* Founder card */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
-        <div className="px-5 py-5">
-          <div className="flex flex-col sm:flex-row gap-5">
-            <div className="shrink-0">
-              <img
-                src="/team-photos/nate-rasmussen.jpg"
-                alt="Nate Rasmussen"
-                className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-gray-700 mx-auto sm:mx-0"
-              />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-baseline gap-2 flex-wrap mb-1">
-                <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Nate Rasmussen</h3>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-nw-teal bg-nw-teal/10 px-2 py-0.5 rounded">
-                  Founder
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider font-semibold mb-3">
-                Pitching Coach · Scout · Analyst
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
-                Born and raised in West Seattle, WA. Pitched two years out of the bullpen at{' '}
-                <Link to="/player/5882" className="text-nw-teal hover:underline">Bellevue College</Link>{' '}
-                before transferring to{' '}
-                <Link to="/player/3925" className="text-nw-teal hover:underline">Bushnell University</Link>{' '}
-                as a starter, where he started the program's first playoff game in school history. He is now the pitching coach at{' '}
-                <Link to="/team/bushnell-beacons" className="text-nw-teal hover:underline">Bushnell</Link>, and previously coached at Washington Baseball Academy.
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
-                On the scouting side, he is currently an analyst and scout for Over-Slot Baseball and Just Baseball Media, and was previously the Director of Amateur Scouting at Prospects Live.
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
-                He built NW Baseball Stats from scratch in early 2026 to close the analytics gap between MLB-level data and PNW college baseball. The same advanced metrics that FanGraphs, Baseball Reference, and Baseball Savant make trivial at the big-league level were essentially nonexistent for D2, D3, NAIA, and JUCO programs in this region. This site fills that gap.
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-                NW Baseball Stats sits at the intersection of coaching and scouting, giving coaches actionable game-planning intelligence and giving players a fair, modern measurement of what they actually did on the field.
-              </p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <a
-                  href="https://x.com/RasmussenBase"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-medium hover:bg-gray-700 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                  </svg>
-                  @RasmussenBase
-                </a>
-                <span className="text-[11px] text-gray-400 dark:text-gray-500">·</span>
-                <Link to="/feature-request" className="text-xs text-nw-teal hover:underline">
-                  Request a feature
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Intern roster */}
       <Card
-        title="2026 Internship Class"
-        subtitle="A small, hand-picked team helping build out scouting, content, and engineering"
+        title="Free for everyone, forever"
+        subtitle="No subscriptions, no tiers, no paywalls"
       >
         <P>
-          The internship is geared toward giving young people in the Pacific Northwest real work experience inside the baseball world, building on the skills they already have in player development, scouting, writing, and analysis.
+          NW Baseball Stats is free to use for everyone, forever. As of September 2026 there are no
+          subscription tiers and nothing on the site is paywalled. Every tool, from the leaderboards
+          and player pages to the full Coach &amp; Scouting Portal, is open to anyone who visits.
         </P>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-3">
-          {INTERNS.map((intern, i) => (
-            <div
-              key={i}
-              className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4 border border-gray-100 dark:border-gray-700"
-            >
-              <div className="flex items-start gap-3">
-                <div className="shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-nw-teal/30 to-nw-teal/20 dark:from-nw-teal/40 dark:to-gray-700 flex items-center justify-center">
-                  {intern.headshot ? (
-                    <img src={intern.headshot} alt={intern.name} className="w-12 h-12 rounded-full object-cover" />
-                  ) : (
-                    <svg className="w-6 h-6 text-nw-teal/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 flex-wrap">
-                    {intern.playerId ? (
-                      <Link
-                        to={`/player/${intern.playerId}`}
-                        className="text-sm font-bold text-nw-teal hover:text-nw-teal-light dark:text-nw-teal/90 dark:hover:text-nw-teal-light underline-offset-2 hover:underline"
-                      >
-                        {intern.name}
-                      </Link>
-                    ) : (
-                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{intern.name}</p>
-                    )}
-                    {intern.joining && (
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">
-                        Joining Soon
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider mb-1">
-                    {intern.role}
-                  </p>
-                  <p className={`text-xs leading-relaxed ${
-                    intern.bioPending
-                      ? 'text-gray-400 dark:text-gray-500 italic'
-                      : 'text-gray-600 dark:text-gray-300'
-                  }`}>
-                    {intern.blurb}
-                  </p>
-                  {intern.built && (
-                    <p className="mt-2 text-[11px]">
-                      <span className="font-bold uppercase tracking-wider text-[9px] text-nw-teal mr-1">Built</span>
-                      <Link
-                        to={intern.built.to}
-                        className="text-nw-teal hover:text-nw-teal-light hover:underline font-medium underline-offset-2"
-                      >
-                        {intern.built.label} →
-                      </Link>
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* 2026 statistical highlight — detached mini-section */}
-              {intern.highlight && (
-                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2.5">
-                  <div className="shrink-0 w-11 h-11 rounded-lg bg-gradient-to-br from-nw-teal to-nw-teal-light text-white flex flex-col items-center justify-center leading-none shadow-sm">
-                    <span className="text-sm font-extrabold tabular-nums">{intern.highlight.pct}</span>
-                    <span className="text-[7px] font-bold uppercase tracking-wider opacity-80">pct</span>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[9px] font-bold uppercase tracking-[1.5px] text-nw-teal mb-0.5">
-                      2026 Highlight
-                    </div>
-                    <div className="text-xs text-gray-700 dark:text-gray-200 leading-tight">
-                      <span className="font-extrabold text-gray-900 dark:text-gray-100">{intern.highlight.value}</span>{' '}
-                      {intern.highlight.label}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        <p className="text-[11px] text-gray-400 dark:text-gray-500 italic mt-2">
-          Interested in joining? Reach out via X or the feature-request form.
-        </p>
+        <P>
+          All prior subscriptions have been canceled and no one is being billed. If you were a paying
+          subscriber, thank you for supporting the site while it got off the ground. You keep everything
+          you had, and so does everyone else now.
+        </P>
+        <P>
+          You do not need an account to use the site. A free account is only needed for tools that store
+          your own data, like uploading TrackMan or Rapsodo files and keeping recruiting boards, so the site
+          knows whose data to show you.
+        </P>
       </Card>
 
-      <Card title="Why This Site Exists" accent>
+      <Card
+        title="Who runs this"
+        subtitle="An independent, anonymous project"
+      >
         <P>
-          MLB fans have FanGraphs, Baseball Reference, and Baseball Savant. College baseball, especially at the D2, D3, NAIA, and JUCO levels, has almost none of that. A catcher at a JUCO putting up a 150 wRC+ should be visible to four-year programs. A D3 pitcher with a 2.50 FIP should be recognized even if their ERA is inflated by poor defense. The goal of this site is to give every player a fair, modern measurement and to give every coach a real scouting tool.
+          NW Baseball Stats is run anonymously as an independent project. It is not affiliated with the
+          NCAA, the NAIA, the NWAC, any school, any league, or any professional organization, and it
+          represents no one's views but its own. It exists to close the analytics gap between MLB-level
+          data and Pacific Northwest college baseball: the same advanced metrics that FanGraphs, Baseball
+          Reference, and Baseball Savant make trivial at the big-league level were essentially nonexistent
+          for D2, D3, NAIA, and JUCO programs in this region.
+        </P>
+        <P>
+          Questions, corrections, or ideas: email{' '}
+          <a href="mailto:info@nwbaseballstats.com" className="text-nw-teal hover:underline">info@nwbaseballstats.com</a>{' '}
+          or use the{' '}
+          <Link to="/feature-request" className="text-nw-teal hover:underline">feature request</Link> page.
         </P>
       </Card>
     </div>
@@ -445,9 +253,9 @@ function BehindTheCurtainSection() {
 
   return (
     <div>
-      <Card title="How This Was Built" subtitle="A two-person team: one human, one AI">
+      <Card title="How This Was Built" subtitle="One person and one AI">
         <P>
-          The entire site (frontend, backend, database, scrapers, advanced-stats engine) was built collaboratively between Nate and Claude, Anthropic's AI coding assistant. Claude handles implementation; Nate drives vision, design, data validation, and quality control. Every formula, every UI choice, every scraper edge case was reviewed by a human who actually coaches and scouts the players these stats are measuring.
+          The entire site (frontend, backend, database, scrapers, advanced-stats engine) was built collaboratively by one person and Claude, Anthropic's AI coding assistant. Claude handles implementation; the human drives vision, design, data validation, and quality control. Every formula, every UI choice, every scraper edge case was reviewed by someone who has spent years around the players these stats are measuring.
         </P>
         <P>
           The site went from zero to a working leaderboard on March 30, 2026. Since then it has added per-plate-appearance play-by-play, Baseball Savant-style percentiles, a draft board, a coaching/scouting portal, an article system, a JUCO transfer tracker, full email broadcasts, and dozens of other features. All while staying a one-person operation.
@@ -1503,7 +1311,7 @@ function WarSection() {
 
 // ─── Jump-link navigation (no Updates section) ─────────────────────
 const PAGE_SECTIONS = [
-  { id: 'team', label: 'The Team' },
+  { id: 'site', label: 'About the Site' },
   { id: 'behind', label: 'Behind the Curtain' },
   { id: 'coverage', label: 'Coverage' },
   { id: 'environments', label: 'Run Environments' },
@@ -1536,7 +1344,7 @@ export default function About() {
         About NW Baseball Stats
       </h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        The story behind the site, the team building it, and every stat we track. A true peek behind the curtain.
+        The story behind the site, how it is built, and every stat we track. A true peek behind the curtain.
       </p>
 
       <HeroStats siteStats={siteStats} />
@@ -1557,8 +1365,8 @@ export default function About() {
       </div>
 
       <div className="max-w-5xl">
-        <SectionHeading id="team">The Team</SectionHeading>
-        <TeamSection />
+        <SectionHeading id="site">About the Site</SectionHeading>
+        <SiteSection />
 
         <SectionHeading id="behind">Behind the Curtain</SectionHeading>
         <BehindTheCurtainSection />

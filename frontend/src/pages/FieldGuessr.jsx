@@ -284,9 +284,6 @@ function SetupScreen({
         ⚾ Play Ball
       </button>
 
-      <p className="text-xs text-gray-400 dark:text-gray-500 mt-6">
-        Created by Connor Broschard, NW Baseball Stats intern.
-      </p>
     </div>
   )
 }
