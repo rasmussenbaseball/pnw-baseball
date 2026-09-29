@@ -15,6 +15,7 @@ Run from repo root:
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -227,41 +228,101 @@ def departing(level, cls):
     return cls in {"Sr", "Sr+", "Gr", "5th"}             # 4-year seniors graduate
 
 
+# The 57 PNW programs are the only valid commitment destinations. Anything
+# else (a D1 OOC opponent that happens to be in our teams table, an NAIA
+# school in Nebraska) means the player left the region.
+_PNW_STATES = ("WA", "OR", "ID", "MT", "BC")
+_PNW_CONFS = ("GNAC", "NWC", "CCC")
+
+# Hand aliases (normalized form -> team short_name) for names the automatic
+# variants can't derive: abbreviations and nicknames coaches type into the
+# Commitment Editor.
+_COMMIT_ALIASES = {
+    "wsu": "Wash. St.", "wazzu": "Wash. St.", "uw": "UW", "uo": "Oregon", "osu": None,
+    "gu": "Gonzaga", "up": "Portland", "seattle u": "Seattle U", "seattle university": "Seattle U",
+    "cwu": "CWU", "wou": "WOU", "nnu": "NNU", "smu": "SMU", "msub": "MSUB", "msu billings": "MSUB",
+    "montana state billings": "MSUB", "montana state university billings": "MSUB",
+    "gfu": "GFU", "george fox": "GFU", "l and c": "L&C", "lewis and clark": "L&C", "lc": None,
+    "plu": "PLU", "ups": "UPS", "puget sound": "UPS", "coi": "C of I", "c of i": "C of I",
+    "college of idaho": "C of I", "lcsc": "LCSC", "lewis clark state": "LCSC", "lewis clark": "LCSC",
+    "oit": "OIT", "oregon tech": "OIT", "ubc": "UBC", "british columbia": "UBC", "eou": "EOU",
+    "eastern oregon": "EOU", "warner pacific": "Warner Pacific", "lcc": "Lower Columbia",
+    "lbcc": "Linn-Benton", "linn benton": "Linn-Benton", "swocc": "SW Oregon",
+    "southwestern oregon": "SW Oregon", "sw oregon": "SW Oregon", "sfcc": "Spokane",
+    "spokane falls": "Spokane", "svc": "Skagit", "skagit valley": "Skagit", "cbc": "Columbia Basin",
+    "bbcc": "Big Bend", "bmcc": "Blue Mountain", "tvcc": "Treasure Valley", "wwcc": "Walla Walla",
+    "wvc": "Wenatchee Valley", "yvc": "Yakima Valley", "mt hood": "Mt. Hood", "mount hood": "Mt. Hood",
+    "mhcc": "Mt. Hood", "everett cc": "Everett", "evcc": "Everett", "tcc": "Tacoma", "pierce": "Pierce",
+    "ghc": "Grays Harbor", "u of the pacific": None, "university of the pacific": None,
+    "bellevue university": None, "pacific": "Pacific", "pacific university": "Pacific",
+}
+
+_STRIP_WORDS = {"university", "college", "community", "cc", "univ", "u", "the", "of", "at"}
+
+
+def _norm_name(s):
+    s = (s or "").lower().replace("&", " and ").replace("-", " ")
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
+    s = re.sub(r"\bst\b\.?", "state", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _name_variants(s):
+    """All the ways a school name might be typed: full, minus the generic
+    words (university/college/community/of/the), and with st<->state."""
+    base = _norm_name(s)
+    if not base:
+        return set()
+    out = {base}
+    toks = [t for t in base.split() if t not in _STRIP_WORDS]
+    if toks:
+        out.add(" ".join(toks))
+    return out
+
+
 def team_name_map(cur):
-    """lower(name|short_name|school_name) -> (team_id, level)."""
+    """normalized name variant -> (team_id, level) for PNW programs only."""
     cur.execute("""
-        SELECT t.id, t.name, t.short_name, t.school_name, d.level
+        SELECT t.id, t.name, t.short_name, t.school_name, t.mascot, t.state,
+               d.level, c.abbreviation AS conf
         FROM teams t JOIN conferences c ON c.id=t.conference_id
-        JOIN divisions d ON d.id=c.division_id WHERE COALESCE(t.is_active,1)=1
-    """)
-    m = {}
+        JOIN divisions d ON d.id=c.division_id
+        WHERE COALESCE(t.is_active,1)=1
+          AND (t.state = ANY(%s) OR c.abbreviation = ANY(%s) OR c.abbreviation LIKE 'NWAC%%')
+    """, (list(_PNW_STATES), list(_PNW_CONFS)))
+    m, by_short = {}, {}
     for r in cur.fetchall():
-        for nm in (r["short_name"], r["name"], r["school_name"]):
-            if nm:
-                m.setdefault(nm.strip().lower(), (r["id"], r["level"]))
+        dest = (r["id"], r["level"])
+        by_short[r["short_name"]] = dest
+        names = [r["short_name"], r["school_name"], r["name"]]
+        # "Oregon Ducks" -> also "Oregon" (drop the mascot word(s))
+        if r["name"] and r["mascot"] and r["name"].lower().endswith(r["mascot"].lower()):
+            names.append(r["name"][: -len(r["mascot"])].strip())
+        for nm in names:
+            for v in _name_variants(nm):
+                m.setdefault(v, dest)
+    for alias, short in _COMMIT_ALIASES.items():
+        m[alias] = by_short.get(short) if short else None
     return m
 
 
-# Out-of-region schools whose name loosely collides with a PNW team — they must
-# resolve to None (player leaves the region), not the same-city PNW school.
-# "Bellevue University" (NAIA, Nebraska) vs "Bellevue" CC (NWAC, WA).
-_NON_PNW_COMMITS = {"bellevue university"}
-
-
 def resolve_commit(name, tname_map):
-    """Free-text committed_to -> (team_id, level) if it's a tracked PNW team."""
+    """Free-text committed_to -> (team_id, level) if it is a PNW program,
+    else None (the player left the region). EXACT match on normalized name
+    variants only. The old contains-match sent "Oregon State" and "Western
+    Oregon" commits to Oregon; never loosen this again. Unresolved names are
+    collected in UNRESOLVED_COMMITS so new spellings can be added to
+    _COMMIT_ALIASES."""
     if not name:
         return None
-    key = name.strip().lower()
-    if key in _NON_PNW_COMMITS:
-        return None
-    if key in tname_map:
-        return tname_map[key]
-    # loose contains-match (e.g. "Oregon State" vs "Oregon St")
-    for nm, val in tname_map.items():
-        if key in nm or nm in key:
-            return val
+    for v in _name_variants(name):
+        if v in tname_map:
+            return tname_map[v]
+    UNRESOLVED_COMMITS.add(name.strip())
     return None
+
+
+UNRESOLVED_COMMITS = set()
 
 
 def _incoming_side(pos):
