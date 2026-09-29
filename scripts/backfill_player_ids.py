@@ -55,57 +55,14 @@ def backfill_game_pitching(cur):
     """)
     print(f"  Matched {cur.rowcount} rows via 'Last,First' + team_id")
 
-    # --- Now try matching WITHOUT team_id for remaining unmatched ---
-    # Only match when the name uniquely identifies one player
-    print("\nStep 1b: Matching remaining by name only (unique names)...")
-
-    # "First Last" format - name-only match (unique players only)
-    cur.execute("""
-        UPDATE game_pitching gp
-        SET player_id = unique_pl.id
-        FROM (
-            SELECT LOWER(TRIM(first_name) || ' ' || TRIM(last_name)) AS full_name,
-                   MIN(id) AS id
-            FROM players
-            GROUP BY LOWER(TRIM(first_name) || ' ' || TRIM(last_name))
-            HAVING COUNT(*) = 1
-        ) unique_pl
-        WHERE gp.player_id IS NULL
-          AND LOWER(TRIM(gp.player_name)) = unique_pl.full_name
-    """)
-    print(f"  Matched {cur.rowcount} rows via 'First Last' (unique name only)")
-
-    # "Last, First" format - name-only match
-    cur.execute("""
-        UPDATE game_pitching gp
-        SET player_id = unique_pl.id
-        FROM (
-            SELECT LOWER(TRIM(last_name) || ', ' || TRIM(first_name)) AS full_name,
-                   MIN(id) AS id
-            FROM players
-            GROUP BY LOWER(TRIM(last_name) || ', ' || TRIM(first_name))
-            HAVING COUNT(*) = 1
-        ) unique_pl
-        WHERE gp.player_id IS NULL
-          AND LOWER(TRIM(gp.player_name)) = unique_pl.full_name
-    """)
-    print(f"  Matched {cur.rowcount} rows via 'Last, First' (unique name only)")
-
-    # "Last,First" format - name-only match
-    cur.execute("""
-        UPDATE game_pitching gp
-        SET player_id = unique_pl.id
-        FROM (
-            SELECT LOWER(TRIM(last_name) || ',' || TRIM(first_name)) AS full_name,
-                   MIN(id) AS id
-            FROM players
-            GROUP BY LOWER(TRIM(last_name) || ',' || TRIM(first_name))
-            HAVING COUNT(*) = 1
-        ) unique_pl
-        WHERE gp.player_id IS NULL
-          AND LOWER(TRIM(gp.player_name)) = unique_pl.full_name
-    """)
-    print(f"  Matched {cur.rowcount} rows via 'Last,First' (unique name only)")
+    # NOTE (2026-09-29): the old "Step 1b" matched remaining rows by name
+    # ALONE across every team in the database. Combined with fix_team_ids()
+    # below, that turned an opponent's "C. Hansen" (California Baptist, in a
+    # Seattle U box score) into Columbia Basin's C. Hansen and then moved the
+    # row's team_id to Columbia Basin -- a "ghost row" whose team is not in
+    # the game. Matching is now restricted to the two teams in the game
+    # (Step 1c), which is the only place a box-score name can legitimately
+    # resolve.
 
     # Game-based matching for pitching (check both teams in game)
     # Only update player_id (not team_id) to avoid unique constraint violations
@@ -269,25 +226,9 @@ def backfill_game_batting(cur):
         """)
         print(f"  Matched {cur.rowcount} rows via '{fmt_name}' + team_id")
 
-    # Name-only for unique names
-    for fmt_name, expr in [
-        ("First Last", "LOWER(TRIM(first_name) || ' ' || TRIM(last_name))"),
-        ("Last, First", "LOWER(TRIM(last_name) || ', ' || TRIM(first_name))"),
-        ("Last,First", "LOWER(TRIM(last_name) || ',' || TRIM(first_name))"),
-    ]:
-        cur.execute(f"""
-            UPDATE game_batting gb
-            SET player_id = unique_pl.id
-            FROM (
-                SELECT {expr} AS full_name, MIN(id) AS id
-                FROM players
-                GROUP BY {expr}
-                HAVING COUNT(*) = 1
-            ) unique_pl
-            WHERE gb.player_id IS NULL
-              AND LOWER(TRIM(gb.player_name)) = unique_pl.full_name
-        """)
-        print(f"  Matched {cur.rowcount} rows via '{fmt_name}' (unique name only)")
+    # Name-only global matching removed 2026-09-29 (see note in
+    # backfill_game_pitching): a box-score name may only resolve to a player
+    # on one of the game's two teams. Step 2c below does that.
 
     # ── "F. Last" initial format → match by first initial + last name + team ──
     print("\n  Step 2b: Matching 'F. Last' initial format...")
@@ -302,25 +243,6 @@ def backfill_game_batting(cur):
           AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = LOWER(TRIM(pl.last_name))
     """)
     print(f"  Matched {cur.rowcount} rows via 'F. Last' + team_id")
-
-    # "F. Last" without team -- only if unique first-initial + last name
-    cur.execute("""
-        UPDATE game_batting gb
-        SET player_id = unique_pl.id
-        FROM (
-            SELECT LOWER(SUBSTRING(first_name FROM 1 FOR 1)) AS initial,
-                   LOWER(TRIM(last_name)) AS lname,
-                   MIN(id) AS id
-            FROM players
-            GROUP BY LOWER(SUBSTRING(first_name FROM 1 FOR 1)), LOWER(TRIM(last_name))
-            HAVING COUNT(*) = 1
-        ) unique_pl
-        WHERE gb.player_id IS NULL
-          AND gb.player_name ~ '^[A-Z]\. '
-          AND LOWER(SUBSTRING(gb.player_name FROM 1 FOR 1)) = unique_pl.initial
-          AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = unique_pl.lname
-    """)
-    print(f"  Matched {cur.rowcount} rows via 'F. Last' (unique name only)")
 
     # ── Step 2c: Game-based matching ──────────────────────────────────────
     # Many unmatched rows have the WRONG team_id (opponent's team) or NULL
@@ -370,11 +292,17 @@ def fix_team_ids(cur):
     print("\nStep 2d: Fixing team_id on rows where player matched but team is wrong...")
 
     # Fix game_batting
+    # Guard (2026-09-29): the destination team MUST be one of the game's two
+    # teams. Without this the step created ghost rows (team_id not in the
+    # game) whenever a name-only match had linked an opponent's player to a
+    # same-named player on some other PNW team.
     cur.execute("""
         UPDATE game_batting gb
         SET team_id = p.team_id
-        FROM players p
+        FROM players p, games g
         WHERE gb.player_id = p.id
+          AND g.id = gb.game_id
+          AND p.team_id IN (g.home_team_id, g.away_team_id)
           AND gb.team_id != p.team_id
           AND NOT EXISTS (
               SELECT 1 FROM game_batting gb2
@@ -390,8 +318,10 @@ def fix_team_ids(cur):
     cur.execute("""
         UPDATE game_pitching gp
         SET team_id = p.team_id
-        FROM players p
+        FROM players p, games g
         WHERE gp.player_id = p.id
+          AND g.id = gp.game_id
+          AND p.team_id IN (g.home_team_id, g.away_team_id)
           AND gp.team_id != p.team_id
           AND NOT EXISTS (
               SELECT 1 FROM game_pitching gp2

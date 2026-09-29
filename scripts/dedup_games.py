@@ -9,7 +9,7 @@ Games can be duplicated when:
 - A scraper creates an OOC placeholder (team_id > 30000) for an opponent that
   team_matching.py could not resolve, shadowing a real-team game on the same date
 
-Five passes:
+Six passes:
   Pass 1: same team pair, home/away flipped.
   Pass 2: one side has NULL team_id, matched to a valid same-date counterpart.
   Pass 3: phantom pair — one side has an OOC placeholder; the other side is all
@@ -20,6 +20,12 @@ Five passes:
           game_number, but byte-identical per-player stat lines. Catches
           schools that publish the same box score under two URLs (different
           internal IDs) which the scraper auto-bumps to game_number=2.
+  Pass 6: same box-score id under two opponent ids -- same date, same host
+          site, same numeric box-score id in source_url, exactly one team in
+          common, the OTHER team differs. Happens when a site changes the
+          opponent slug ("texas" -> "university-of-texas") and the resolver
+          maps the two spellings to two team rows. Keeps the fuller copy and
+          warns that the surviving opponent id may still be wrong.
 
 Usage (on server):
     cd /opt/pnw-baseball
@@ -107,7 +113,7 @@ def _batting_overlap_ratio(cur, shadow_id, canon_id):
     return (2 * len(sh_keys & ca_keys)) / denom
 
 
-def dedup_games(season, dry_run=False):
+def dedup_games(season, dry_run=False, passes=None):
     conn = get_conn()
     cur = conn.cursor()
 
@@ -115,466 +121,598 @@ def dedup_games(season, dry_run=False):
     total_batting_deleted = 0
     total_pitching_deleted = 0
 
-    # ========== Pass 1: home/away-flipped duplicates ==========
-    # Group by the NORMALIZED team pair so games with teams swapped between
-    # home and away are caught as the same matchup. Requires both team_ids
-    # to be non-NULL. NULL-opponent orphans are handled in Pass 2.
-    cur.execute("""
-        SELECT
-            game_date,
-            LEAST(home_team_id, away_team_id)    AS team_lo,
-            GREATEST(home_team_id, away_team_id) AS team_hi,
-            game_number,
-            COUNT(*) as cnt,
-            array_agg(id ORDER BY id) as game_ids
-        FROM games
-        WHERE season = %s AND status = 'final'
-          AND home_team_id IS NOT NULL
-          AND away_team_id IS NOT NULL
-        GROUP BY game_date,
-                 LEAST(home_team_id, away_team_id),
-                 GREATEST(home_team_id, away_team_id),
-                 game_number
-        HAVING COUNT(*) > 1
-        ORDER BY COUNT(*) DESC
-    """, (season,))
+    passes = set(passes) if passes else set(range(1, 7))
+    dup_groups = orphans = phantoms = phantoms_p4 = p5_pairs = []
+    p6_deleted = 0
 
-    dup_groups = cur.fetchall()
-    logger.info(f"Pass 1 (same team pair, either orientation): "
-                f"found {len(dup_groups)} duplicate groups")
+    if 1 in passes:
+        # ========== Pass 1: home/away-flipped duplicates ==========
+        # Group by the NORMALIZED team pair so games with teams swapped between
+        # home and away are caught as the same matchup. Requires both team_ids
+        # to be non-NULL. NULL-opponent orphans are handled in Pass 2.
+        cur.execute("""
+            SELECT
+                game_date,
+                LEAST(home_team_id, away_team_id)    AS team_lo,
+                GREATEST(home_team_id, away_team_id) AS team_hi,
+                game_number,
+                COUNT(*) as cnt,
+                array_agg(id ORDER BY id) as game_ids
+            FROM games
+            WHERE season = %s AND status = 'final'
+              AND home_team_id IS NOT NULL
+              AND away_team_id IS NOT NULL
+            GROUP BY game_date,
+                     LEAST(home_team_id, away_team_id),
+                     GREATEST(home_team_id, away_team_id),
+                     game_number
+            HAVING COUNT(*) > 1
+            ORDER BY COUNT(*) DESC
+        """, (season,))
 
-    for group in dup_groups:
-        game_ids = group["game_ids"]
-        date = group["game_date"]
-        t_lo = group["team_lo"]
-        t_hi = group["team_hi"]
-        gnum = group["game_number"]
+        dup_groups = cur.fetchall()
+        logger.info(f"Pass 1 (same team pair, either orientation): "
+                    f"found {len(dup_groups)} duplicate groups")
 
-        # For each game in the group, count batting rows and keep the fullest.
-        best_id = None
-        best_count = -1
-        game_counts = {}
+        for group in dup_groups:
+            game_ids = group["game_ids"]
+            date = group["game_date"]
+            t_lo = group["team_lo"]
+            t_hi = group["team_hi"]
+            gnum = group["game_number"]
 
-        for gid in game_ids:
-            cur.execute("SELECT COUNT(*) as cnt FROM game_batting WHERE game_id = %s", (gid,))
-            cnt = cur.fetchone()["cnt"]
-            game_counts[gid] = cnt
-            if cnt > best_count:
-                best_count = cnt
-                best_id = gid
+            # For each game in the group, count batting rows and keep the fullest.
+            best_id = None
+            best_count = -1
+            game_counts = {}
 
-        ids_to_delete = [gid for gid in game_ids if gid != best_id]
+            for gid in game_ids:
+                cur.execute("SELECT COUNT(*) as cnt FROM game_batting WHERE game_id = %s", (gid,))
+                cnt = cur.fetchone()["cnt"]
+                game_counts[gid] = cnt
+                if cnt > best_count:
+                    best_count = cnt
+                    best_id = gid
 
-        if not ids_to_delete:
-            continue
+            ids_to_delete = [gid for gid in game_ids if gid != best_id]
 
-        logger.info(
-            f"  {date} teams=({t_lo},{t_hi}) gn={gnum}: "
-            f"keeping game {best_id} ({best_count} batting rows), "
-            f"deleting {len(ids_to_delete)} dupes {ids_to_delete}"
-        )
+            if not ids_to_delete:
+                continue
 
-        if dry_run:
-            total_deleted += len(ids_to_delete)
+            logger.info(
+                f"  {date} teams=({t_lo},{t_hi}) gn={gnum}: "
+                f"keeping game {best_id} ({best_count} batting rows), "
+                f"deleting {len(ids_to_delete)} dupes {ids_to_delete}"
+            )
+
+            if dry_run:
+                total_deleted += len(ids_to_delete)
+                for did in ids_to_delete:
+                    total_batting_deleted += game_counts[did]
+                continue
+
+            # Delete batting and pitching rows for duplicate games
             for did in ids_to_delete:
-                total_batting_deleted += game_counts[did]
-            continue
+                cur.execute("DELETE FROM game_batting WHERE game_id = %s", (did,))
+                total_batting_deleted += cur.rowcount
 
-        # Delete batting and pitching rows for duplicate games
-        for did in ids_to_delete:
-            cur.execute("DELETE FROM game_batting WHERE game_id = %s", (did,))
+                cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (did,))
+                total_pitching_deleted += cur.rowcount
+
+                cur.execute("DELETE FROM games WHERE id = %s", (did,))
+                total_deleted += 1
+
+            conn.commit()
+
+    if 2 in passes:
+        # ========== Pass 2: NULL-opponent orphan games ==========
+        # Find games with NULL home_team_id or away_team_id that have a valid
+        # counterpart on the same date + game_number where the valid game shares
+        # one of the known team_ids. These orphans are safe to delete because the
+        # valid game already contains the real data.
+        cur.execute("""
+            SELECT DISTINCT ON (g1.id)
+                g1.id                AS orphan_id,
+                g1.game_date         AS game_date,
+                g1.game_number       AS game_number,
+                g1.home_team_id      AS orphan_home,
+                g1.away_team_id      AS orphan_away,
+                g2.id                AS valid_id,
+                g2.home_team_id      AS valid_home,
+                g2.away_team_id      AS valid_away
+            FROM games g1
+            JOIN games g2
+              ON g1.season = g2.season
+             AND g1.game_date = g2.game_date
+             AND COALESCE(g1.game_number, 1) = COALESCE(g2.game_number, 1)
+             AND g1.id <> g2.id
+             AND g2.home_team_id IS NOT NULL
+             AND g2.away_team_id IS NOT NULL
+             AND g2.home_team_id <> g2.away_team_id
+             AND (
+                  g1.home_team_id IN (g2.home_team_id, g2.away_team_id)
+               OR g1.away_team_id IN (g2.home_team_id, g2.away_team_id)
+             )
+            WHERE g1.season = %s
+              AND g1.status = 'final'
+              AND (g1.home_team_id IS NULL OR g1.away_team_id IS NULL)
+            ORDER BY g1.id, g2.id
+        """, (season,))
+
+        orphans = cur.fetchall()
+        logger.info(f"Pass 2 (NULL-opponent orphans with a valid counterpart): "
+                    f"found {len(orphans)}")
+
+        for o in orphans:
+            logger.info(
+                f"  {o['game_date']} gn={o['game_number']} "
+                f"orphan={o['orphan_id']} "
+                f"home={o['orphan_home']} away={o['orphan_away']} "
+                f"-> valid={o['valid_id']} "
+                f"(home={o['valid_home']} away={o['valid_away']})"
+            )
+
+            if dry_run:
+                cur.execute("SELECT COUNT(*) as cnt FROM game_batting  WHERE game_id = %s",
+                            (o["orphan_id"],))
+                total_batting_deleted += cur.fetchone()["cnt"]
+                cur.execute("SELECT COUNT(*) as cnt FROM game_pitching WHERE game_id = %s",
+                            (o["orphan_id"],))
+                total_pitching_deleted += cur.fetchone()["cnt"]
+                total_deleted += 1
+                continue
+
+            cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (o["orphan_id"],))
             total_batting_deleted += cur.rowcount
-
-            cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (did,))
+            cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (o["orphan_id"],))
             total_pitching_deleted += cur.rowcount
-
-            cur.execute("DELETE FROM games WHERE id = %s", (did,))
+            cur.execute("DELETE FROM games         WHERE id      = %s", (o["orphan_id"],))
             total_deleted += 1
 
-        conn.commit()
+        if not dry_run:
+            conn.commit()
 
-    # ========== Pass 2: NULL-opponent orphan games ==========
-    # Find games with NULL home_team_id or away_team_id that have a valid
-    # counterpart on the same date + game_number where the valid game shares
-    # one of the known team_ids. These orphans are safe to delete because the
-    # valid game already contains the real data.
-    cur.execute("""
-        SELECT DISTINCT ON (g1.id)
-            g1.id                AS orphan_id,
-            g1.game_date         AS game_date,
-            g1.game_number       AS game_number,
-            g1.home_team_id      AS orphan_home,
-            g1.away_team_id      AS orphan_away,
-            g2.id                AS valid_id,
-            g2.home_team_id      AS valid_home,
-            g2.away_team_id      AS valid_away
-        FROM games g1
-        JOIN games g2
-          ON g1.season = g2.season
-         AND g1.game_date = g2.game_date
-         AND COALESCE(g1.game_number, 1) = COALESCE(g2.game_number, 1)
-         AND g1.id <> g2.id
-         AND g2.home_team_id IS NOT NULL
-         AND g2.away_team_id IS NOT NULL
-         AND g2.home_team_id <> g2.away_team_id
-         AND (
-              g1.home_team_id IN (g2.home_team_id, g2.away_team_id)
-           OR g1.away_team_id IN (g2.home_team_id, g2.away_team_id)
-         )
-        WHERE g1.season = %s
-          AND g1.status = 'final'
-          AND (g1.home_team_id IS NULL OR g1.away_team_id IS NULL)
-        ORDER BY g1.id, g2.id
-    """, (season,))
+    if 3 in passes:
+        # ========== Pass 3: phantom pairs (OOC placeholder shadowing real team) ==========
+        # team_matching.py auto-creates an OOC placeholder team (id > 30000, is_active=0)
+        # when it cannot resolve an opponent string. If the SAME real game is later
+        # scraped from the other team's site and their matcher resolves both teams
+        # correctly, we end up with two rows: a "canon" (both team_ids real) and a
+        # "shadow" (one real team_id + the OOC placeholder). Pass 1 misses these
+        # because the normalized team pair differs.
+        #
+        # Classify a pair as a phantom only when >= 50% of the two games' batting
+        # rows describe the same player (player_id match, or team_id + last name).
+        # This keeps real separate games against different OOC opponents safe.
+        cur.execute("""
+            SELECT g1.id AS id1, g2.id AS id2, g1.game_date,
+                   g1.home_team_id AS h1, g1.away_team_id AS a1,
+                   g2.home_team_id AS h2, g2.away_team_id AS a2
+            FROM games g1
+            JOIN games g2
+              ON g1.season = g2.season
+             AND g1.game_date = g2.game_date
+             AND g1.id < g2.id
+            WHERE g1.season = %s
+              AND g1.status = 'final' AND g2.status = 'final'
+              AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
+              AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
+              AND (
+                  (g1.home_team_id IN (g2.home_team_id, g2.away_team_id))::int +
+                  (g1.away_team_id IN (g2.home_team_id, g2.away_team_id))::int = 1
+              )
+              AND (g1.home_team_id > 30000 OR g1.away_team_id > 30000
+                   OR g2.home_team_id > 30000 OR g2.away_team_id > 30000)
+            ORDER BY g1.game_date
+        """, (season,))
 
-    orphans = cur.fetchall()
-    logger.info(f"Pass 2 (NULL-opponent orphans with a valid counterpart): "
-                f"found {len(orphans)}")
+        phantom_candidates = cur.fetchall()
 
-    for o in orphans:
-        logger.info(
-            f"  {o['game_date']} gn={o['game_number']} "
-            f"orphan={o['orphan_id']} "
-            f"home={o['orphan_home']} away={o['orphan_away']} "
-            f"-> valid={o['valid_id']} "
-            f"(home={o['valid_home']} away={o['valid_away']})"
-        )
+        confirmed_phantoms = []
+        for p in phantom_candidates:
+            g1_ooc = p["h1"] > 30000 or p["a1"] > 30000
+            g2_ooc = p["h2"] > 30000 or p["a2"] > 30000
 
-        if dry_run:
-            cur.execute("SELECT COUNT(*) as cnt FROM game_batting  WHERE game_id = %s",
-                        (o["orphan_id"],))
-            total_batting_deleted += cur.fetchone()["cnt"]
-            cur.execute("SELECT COUNT(*) as cnt FROM game_pitching WHERE game_id = %s",
-                        (o["orphan_id"],))
-            total_pitching_deleted += cur.fetchone()["cnt"]
-            total_deleted += 1
-            continue
+            # Clear canon/shadow required: exactly one side must have the OOC id.
+            if g1_ooc and not g2_ooc:
+                shadow_id, canon_id = p["id1"], p["id2"]
+            elif g2_ooc and not g1_ooc:
+                shadow_id, canon_id = p["id2"], p["id1"]
+            else:
+                # Both-OOC or neither-OOC — skip, needs manual review.
+                continue
 
-        cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (o["orphan_id"],))
-        total_batting_deleted += cur.rowcount
-        cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (o["orphan_id"],))
-        total_pitching_deleted += cur.rowcount
-        cur.execute("DELETE FROM games         WHERE id      = %s", (o["orphan_id"],))
-        total_deleted += 1
+            ratio = _batting_overlap_ratio(cur, shadow_id, canon_id)
+            if ratio < PHANTOM_OVERLAP_THRESHOLD:
+                continue
 
-    if not dry_run:
-        conn.commit()
+            confirmed_phantoms.append({
+                "game_date": p["game_date"],
+                "shadow": shadow_id,
+                "canon": canon_id,
+                "ratio": ratio,
+            })
 
-    # ========== Pass 3: phantom pairs (OOC placeholder shadowing real team) ==========
-    # team_matching.py auto-creates an OOC placeholder team (id > 30000, is_active=0)
-    # when it cannot resolve an opponent string. If the SAME real game is later
-    # scraped from the other team's site and their matcher resolves both teams
-    # correctly, we end up with two rows: a "canon" (both team_ids real) and a
-    # "shadow" (one real team_id + the OOC placeholder). Pass 1 misses these
-    # because the normalized team pair differs.
-    #
-    # Classify a pair as a phantom only when >= 50% of the two games' batting
-    # rows describe the same player (player_id match, or team_id + last name).
-    # This keeps real separate games against different OOC opponents safe.
-    cur.execute("""
-        SELECT g1.id AS id1, g2.id AS id2, g1.game_date,
-               g1.home_team_id AS h1, g1.away_team_id AS a1,
-               g2.home_team_id AS h2, g2.away_team_id AS a2
-        FROM games g1
-        JOIN games g2
-          ON g1.season = g2.season
-         AND g1.game_date = g2.game_date
-         AND g1.id < g2.id
-        WHERE g1.season = %s
-          AND g1.status = 'final' AND g2.status = 'final'
-          AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
-          AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
-          AND (
-              (g1.home_team_id IN (g2.home_team_id, g2.away_team_id))::int +
-              (g1.away_team_id IN (g2.home_team_id, g2.away_team_id))::int = 1
-          )
-          AND (g1.home_team_id > 30000 OR g1.away_team_id > 30000
-               OR g2.home_team_id > 30000 OR g2.away_team_id > 30000)
-        ORDER BY g1.game_date
-    """, (season,))
+        # Deduplicate per-shadow: in doubleheader cases a single shadow can
+        # candidate-match both real games. Keep the canon with the highest overlap.
+        best_by_shadow = {}
+        for p in confirmed_phantoms:
+            key = p["shadow"]
+            if key not in best_by_shadow or p["ratio"] > best_by_shadow[key]["ratio"]:
+                best_by_shadow[key] = p
+        phantoms = list(best_by_shadow.values())
 
-    phantom_candidates = cur.fetchall()
+        logger.info(f"Pass 3 (phantom pairs, OOC shadowing real team): "
+                    f"found {len(phantoms)}")
 
-    confirmed_phantoms = []
-    for p in phantom_candidates:
-        g1_ooc = p["h1"] > 30000 or p["a1"] > 30000
-        g2_ooc = p["h2"] > 30000 or p["a2"] > 30000
+        phantom_games_deleted = 0
+        phantom_bat_deleted = 0
+        phantom_pit_deleted = 0
 
-        # Clear canon/shadow required: exactly one side must have the OOC id.
-        if g1_ooc and not g2_ooc:
-            shadow_id, canon_id = p["id1"], p["id2"]
-        elif g2_ooc and not g1_ooc:
-            shadow_id, canon_id = p["id2"], p["id1"]
-        else:
-            # Both-OOC or neither-OOC — skip, needs manual review.
-            continue
+        for p in phantoms:
+            logger.info(
+                f"  {p['game_date']} canon=g{p['canon']} shadow=g{p['shadow']} "
+                f"overlap_ratio={p['ratio']:.2f}"
+            )
 
-        ratio = _batting_overlap_ratio(cur, shadow_id, canon_id)
-        if ratio < PHANTOM_OVERLAP_THRESHOLD:
-            continue
+            if dry_run:
+                cur.execute("SELECT COUNT(*) AS cnt FROM game_batting WHERE game_id = %s",
+                            (p["shadow"],))
+                phantom_bat_deleted += cur.fetchone()["cnt"]
+                cur.execute("SELECT COUNT(*) AS cnt FROM game_pitching WHERE game_id = %s",
+                            (p["shadow"],))
+                phantom_pit_deleted += cur.fetchone()["cnt"]
+                phantom_games_deleted += 1
+                continue
 
-        confirmed_phantoms.append({
-            "game_date": p["game_date"],
-            "shadow": shadow_id,
-            "canon": canon_id,
-            "ratio": ratio,
-        })
-
-    # Deduplicate per-shadow: in doubleheader cases a single shadow can
-    # candidate-match both real games. Keep the canon with the highest overlap.
-    best_by_shadow = {}
-    for p in confirmed_phantoms:
-        key = p["shadow"]
-        if key not in best_by_shadow or p["ratio"] > best_by_shadow[key]["ratio"]:
-            best_by_shadow[key] = p
-    phantoms = list(best_by_shadow.values())
-
-    logger.info(f"Pass 3 (phantom pairs, OOC shadowing real team): "
-                f"found {len(phantoms)}")
-
-    phantom_games_deleted = 0
-    phantom_bat_deleted = 0
-    phantom_pit_deleted = 0
-
-    for p in phantoms:
-        logger.info(
-            f"  {p['game_date']} canon=g{p['canon']} shadow=g{p['shadow']} "
-            f"overlap_ratio={p['ratio']:.2f}"
-        )
-
-        if dry_run:
-            cur.execute("SELECT COUNT(*) AS cnt FROM game_batting WHERE game_id = %s",
-                        (p["shadow"],))
-            phantom_bat_deleted += cur.fetchone()["cnt"]
-            cur.execute("SELECT COUNT(*) AS cnt FROM game_pitching WHERE game_id = %s",
-                        (p["shadow"],))
-            phantom_pit_deleted += cur.fetchone()["cnt"]
+            cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (p["shadow"],))
+            phantom_bat_deleted += cur.rowcount
+            cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (p["shadow"],))
+            phantom_pit_deleted += cur.rowcount
+            cur.execute("DELETE FROM games         WHERE id      = %s", (p["shadow"],))
             phantom_games_deleted += 1
-            continue
 
-        cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (p["shadow"],))
-        phantom_bat_deleted += cur.rowcount
-        cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (p["shadow"],))
-        phantom_pit_deleted += cur.rowcount
-        cur.execute("DELETE FROM games         WHERE id      = %s", (p["shadow"],))
-        phantom_games_deleted += 1
+        if not dry_run:
+            conn.commit()
 
-    if not dry_run:
-        conn.commit()
+        total_deleted += phantom_games_deleted
+        total_batting_deleted += phantom_bat_deleted
+        total_pitching_deleted += phantom_pit_deleted
 
-    total_deleted += phantom_games_deleted
-    total_batting_deleted += phantom_bat_deleted
-    total_pitching_deleted += phantom_pit_deleted
+    if 4 in passes:
+        # ========== Pass 4: orientation-swapped schedule-only phantoms ==========
+        # When Sidearm's team schedule lists a game the scraper cannot match to a
+        # real box score URL, scrape_boxscores.py synthesizes a gamelog:// URL and
+        # inserts a schedule-only row (final status, W/L, no batting/pitching). If
+        # the real box score is already stored under a different source_url, we end
+        # up with two rows on the same date for the same team pair but with
+        # different game_number values — Pass 1 misses them because it groups by
+        # game_number, and Pass 3 misses them because both rows have real team_ids.
+        #
+        # Signature that makes this safe against legitimate doubleheaders:
+        #   - same date, same team pair (either orientation)
+        #   - different game_number (or one NULL)
+        #   - phantom has 0 batting rows AND 0 pitching rows
+        #   - canon has batting rows
+        # Real doubleheaders scraped by us always have batting on both games.
+        cur.execute("""
+            SELECT g1.id AS phantom_id, g1.game_date,
+                   g1.game_number AS phantom_gn, g2.game_number AS canon_gn,
+                   g1.source_url  AS phantom_src,
+                   g2.id AS canon_id
+            FROM games g1
+            JOIN games g2
+              ON g1.season = g2.season
+             AND g1.game_date = g2.game_date
+             AND g1.id <> g2.id
+             AND (g1.game_number IS DISTINCT FROM g2.game_number)
+             AND LEAST(g1.home_team_id, g1.away_team_id)
+                 = LEAST(g2.home_team_id, g2.away_team_id)
+             AND GREATEST(g1.home_team_id, g1.away_team_id)
+                 = GREATEST(g2.home_team_id, g2.away_team_id)
+            WHERE g1.season = %s
+              AND g1.status = 'final' AND g2.status = 'final'
+              AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
+              AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM game_batting  WHERE game_id = g1.id)
+              AND NOT EXISTS (SELECT 1 FROM game_pitching WHERE game_id = g1.id)
+              AND EXISTS     (SELECT 1 FROM game_batting  WHERE game_id = g2.id)
+            ORDER BY g1.game_date, g1.id
+        """, (season,))
 
-    # ========== Pass 4: orientation-swapped schedule-only phantoms ==========
-    # When Sidearm's team schedule lists a game the scraper cannot match to a
-    # real box score URL, scrape_boxscores.py synthesizes a gamelog:// URL and
-    # inserts a schedule-only row (final status, W/L, no batting/pitching). If
-    # the real box score is already stored under a different source_url, we end
-    # up with two rows on the same date for the same team pair but with
-    # different game_number values — Pass 1 misses them because it groups by
-    # game_number, and Pass 3 misses them because both rows have real team_ids.
-    #
-    # Signature that makes this safe against legitimate doubleheaders:
-    #   - same date, same team pair (either orientation)
-    #   - different game_number (or one NULL)
-    #   - phantom has 0 batting rows AND 0 pitching rows
-    #   - canon has batting rows
-    # Real doubleheaders scraped by us always have batting on both games.
-    cur.execute("""
-        SELECT g1.id AS phantom_id, g1.game_date,
-               g1.game_number AS phantom_gn, g2.game_number AS canon_gn,
-               g1.source_url  AS phantom_src,
-               g2.id AS canon_id
-        FROM games g1
-        JOIN games g2
-          ON g1.season = g2.season
-         AND g1.game_date = g2.game_date
-         AND g1.id <> g2.id
-         AND (g1.game_number IS DISTINCT FROM g2.game_number)
-         AND LEAST(g1.home_team_id, g1.away_team_id)
-             = LEAST(g2.home_team_id, g2.away_team_id)
-         AND GREATEST(g1.home_team_id, g1.away_team_id)
-             = GREATEST(g2.home_team_id, g2.away_team_id)
-        WHERE g1.season = %s
-          AND g1.status = 'final' AND g2.status = 'final'
-          AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
-          AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM game_batting  WHERE game_id = g1.id)
-          AND NOT EXISTS (SELECT 1 FROM game_pitching WHERE game_id = g1.id)
-          AND EXISTS     (SELECT 1 FROM game_batting  WHERE game_id = g2.id)
-        ORDER BY g1.game_date, g1.id
-    """, (season,))
+        raw_p4 = cur.fetchall()
+        # A single phantom can match multiple canons (e.g., legit doubleheader
+        # where our row happens to lack batting on game 2). Keep one canon per
+        # phantom — the one whose game_number matches the phantom's, else the
+        # lowest canon id. This ensures we only delete each phantom once.
+        seen = set()
+        phantoms_p4 = []
+        for r in raw_p4:
+            if r["phantom_id"] in seen:
+                continue
+            seen.add(r["phantom_id"])
+            phantoms_p4.append(r)
 
-    raw_p4 = cur.fetchall()
-    # A single phantom can match multiple canons (e.g., legit doubleheader
-    # where our row happens to lack batting on game 2). Keep one canon per
-    # phantom — the one whose game_number matches the phantom's, else the
-    # lowest canon id. This ensures we only delete each phantom once.
-    seen = set()
-    phantoms_p4 = []
-    for r in raw_p4:
-        if r["phantom_id"] in seen:
-            continue
-        seen.add(r["phantom_id"])
-        phantoms_p4.append(r)
+        logger.info(f"Pass 4 (orientation-swapped schedule-only phantoms): "
+                    f"found {len(phantoms_p4)}")
 
-    logger.info(f"Pass 4 (orientation-swapped schedule-only phantoms): "
-                f"found {len(phantoms_p4)}")
-
-    p4_deleted = 0
-    for r in phantoms_p4:
-        logger.info(
-            f"  {r['game_date']} phantom=g{r['phantom_id']} "
-            f"gn={r['phantom_gn']} src={r['phantom_src']!r} "
-            f"-> canon=g{r['canon_id']} gn={r['canon_gn']}"
-        )
-        if dry_run:
+        p4_deleted = 0
+        for r in phantoms_p4:
+            logger.info(
+                f"  {r['game_date']} phantom=g{r['phantom_id']} "
+                f"gn={r['phantom_gn']} src={r['phantom_src']!r} "
+                f"-> canon=g{r['canon_id']} gn={r['canon_gn']}"
+            )
+            if dry_run:
+                p4_deleted += 1
+                continue
+            # Phantom has no batting/pitching by construction, so no child rows
+            # to clean up. Still issue the DELETEs defensively in case of race.
+            cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (r["phantom_id"],))
+            cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (r["phantom_id"],))
+            cur.execute("DELETE FROM games         WHERE id      = %s", (r["phantom_id"],))
             p4_deleted += 1
-            continue
-        # Phantom has no batting/pitching by construction, so no child rows
-        # to clean up. Still issue the DELETEs defensively in case of race.
-        cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (r["phantom_id"],))
-        cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (r["phantom_id"],))
-        cur.execute("DELETE FROM games         WHERE id      = %s", (r["phantom_id"],))
-        p4_deleted += 1
 
-    if not dry_run:
-        conn.commit()
+        if not dry_run:
+            conn.commit()
 
-    total_deleted += p4_deleted
+        total_deleted += p4_deleted
 
-    # ========== Pass 5: identical-stats duplicate scrapes ==========
-    # Some Sidearm sites publish the same game under multiple internal IDs
-    # (e.g., smusaints.com served the SMU @ CWU 4/24/2026 game at both
-    # /boxscore/6357 and /boxscore/6571). The scraper visits both URLs,
-    # finds no source_url match, and inserts the second one as
-    # game_number=2, which Pass 1 then misses because it groups by
-    # game_number.
-    #
-    # Signature that makes this safe against legitimate doubleheaders:
-    #   - same date, same team pair (either orientation)
-    #   - different game_number (or one NULL)
-    #   - same final score
-    #   - both games have batting rows
-    #   - per-player stat lines are byte-identical (computed in Python)
-    # A real doubleheader will always have different per-player stat lines
-    # because no two games unfold identically.
-    cur.execute("""
-        SELECT g1.id AS id1, g2.id AS id2, g1.game_date,
-               g1.game_number AS gn1, g2.game_number AS gn2,
-               g1.source_url AS src1, g2.source_url AS src2,
-               g1.home_score, g1.away_score
-        FROM games g1
-        JOIN games g2
-          ON g1.season = g2.season
-         AND g1.game_date = g2.game_date
-         AND g1.id < g2.id
-         AND (g1.game_number IS DISTINCT FROM g2.game_number)
-         AND LEAST(g1.home_team_id, g1.away_team_id)
-             = LEAST(g2.home_team_id, g2.away_team_id)
-         AND GREATEST(g1.home_team_id, g1.away_team_id)
-             = GREATEST(g2.home_team_id, g2.away_team_id)
-         AND g1.home_score = g2.home_score
-         AND g1.away_score = g2.away_score
-        WHERE g1.season = %s
-          AND g1.status = 'final' AND g2.status = 'final'
-          AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
-          AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
-          AND EXISTS (SELECT 1 FROM game_batting WHERE game_id = g1.id)
-          AND EXISTS (SELECT 1 FROM game_batting WHERE game_id = g2.id)
-        ORDER BY g1.game_date, g1.id
-    """, (season,))
-
-    p5_candidates = cur.fetchall()
-
-    def _stat_signature(cur, game_id):
-        """Order-independent hash of per-player batting + pitching stat lines.
-
-        Uses player_id when present, else normalized last name. Two games with
-        identical signatures are byte-identical real-game scrapes."""
-        import hashlib
+    if 5 in passes:
+        # ========== Pass 5: identical-stats duplicate scrapes ==========
+        # Some Sidearm sites publish the same game under multiple internal IDs
+        # (e.g., smusaints.com served the SMU @ CWU 4/24/2026 game at both
+        # /boxscore/6357 and /boxscore/6571). The scraper visits both URLs,
+        # finds no source_url match, and inserts the second one as
+        # game_number=2, which Pass 1 then misses because it groups by
+        # game_number.
+        #
+        # Signature that makes this safe against legitimate doubleheaders:
+        #   - same date, same team pair (either orientation)
+        #   - different game_number (or one NULL)
+        #   - same final score
+        #   - both games have batting rows
+        #   - per-player stat lines are byte-identical (computed in Python)
+        # A real doubleheader will always have different per-player stat lines
+        # because no two games unfold identically.
         cur.execute("""
-            SELECT player_id, player_name, team_id,
-                   at_bats, hits, runs, rbi
-            FROM game_batting WHERE game_id = %s
-        """, (game_id,))
-        bat_keys = sorted(
-            (r["player_id"] or _last_name(r["player_name"]),
-             r["team_id"], r["at_bats"], r["hits"], r["runs"], r["rbi"])
-            for r in cur.fetchall()
-        )
-        cur.execute("""
-            SELECT player_id, player_name, team_id,
-                   innings_pitched, hits_allowed, runs_allowed,
-                   strikeouts, walks
-            FROM game_pitching WHERE game_id = %s
-        """, (game_id,))
-        pit_keys = sorted(
-            (r["player_id"] or _last_name(r["player_name"]),
-             r["team_id"],
-             # innings_pitched is baseball notation (decimal-ish); cast to str
-             str(r["innings_pitched"]),
-             r["hits_allowed"], r["runs_allowed"],
-             r["strikeouts"], r["walks"])
-            for r in cur.fetchall()
-        )
-        return hashlib.md5(
-            (str(bat_keys) + "|" + str(pit_keys)).encode()
-        ).hexdigest()
+            SELECT g1.id AS id1, g2.id AS id2, g1.game_date,
+                   g1.game_number AS gn1, g2.game_number AS gn2,
+                   g1.source_url AS src1, g2.source_url AS src2,
+                   g1.home_score, g1.away_score
+            FROM games g1
+            JOIN games g2
+              ON g1.season = g2.season
+             AND g1.game_date = g2.game_date
+             AND g1.id < g2.id
+             AND (g1.game_number IS DISTINCT FROM g2.game_number)
+             AND LEAST(g1.home_team_id, g1.away_team_id)
+                 = LEAST(g2.home_team_id, g2.away_team_id)
+             AND GREATEST(g1.home_team_id, g1.away_team_id)
+                 = GREATEST(g2.home_team_id, g2.away_team_id)
+             AND g1.home_score = g2.home_score
+             AND g1.away_score = g2.away_score
+            WHERE g1.season = %s
+              AND g1.status = 'final' AND g2.status = 'final'
+              AND g1.home_team_id IS NOT NULL AND g1.away_team_id IS NOT NULL
+              AND g2.home_team_id IS NOT NULL AND g2.away_team_id IS NOT NULL
+              AND EXISTS (SELECT 1 FROM game_batting WHERE game_id = g1.id)
+              AND EXISTS (SELECT 1 FROM game_batting WHERE game_id = g2.id)
+            ORDER BY g1.game_date, g1.id
+        """, (season,))
 
-    p5_pairs = []
-    for c in p5_candidates:
-        sig1 = _stat_signature(cur, c["id1"])
-        sig2 = _stat_signature(cur, c["id2"])
-        if sig1 == sig2:
-            p5_pairs.append(c)
+        p5_candidates = cur.fetchall()
 
-    logger.info(f"Pass 5 (identical-stats duplicate scrapes): "
-                f"found {len(p5_pairs)}")
+        def _stat_signature(cur, game_id):
+            """Order-independent hash of per-player batting + pitching stat lines.
 
-    p5_deleted = 0
-    p5_bat_deleted = 0
-    p5_pit_deleted = 0
-    p5_evt_deleted = 0
-    for c in p5_pairs:
-        # Keep the lower id (older/canonical) and delete the duplicate.
-        canon_id = c["id1"]
-        dup_id = c["id2"]
-        logger.info(
-            f"  {c['game_date']} canon=g{canon_id}(gn={c['gn1']}) "
-            f"dup=g{dup_id}(gn={c['gn2']}) score={c['home_score']}-{c['away_score']} "
-            f"src_dup={c['src2']!r}"
-        )
-        if dry_run:
-            cur.execute("SELECT COUNT(*) AS cnt FROM game_batting WHERE game_id = %s",
-                        (dup_id,))
-            p5_bat_deleted += cur.fetchone()["cnt"]
-            cur.execute("SELECT COUNT(*) AS cnt FROM game_pitching WHERE game_id = %s",
-                        (dup_id,))
-            p5_pit_deleted += cur.fetchone()["cnt"]
+            Uses player_id when present, else normalized last name. Two games with
+            identical signatures are byte-identical real-game scrapes."""
+            import hashlib
+            cur.execute("""
+                SELECT player_id, player_name, team_id,
+                       at_bats, hits, runs, rbi
+                FROM game_batting WHERE game_id = %s
+            """, (game_id,))
+            bat_keys = sorted(
+                (r["player_id"] or _last_name(r["player_name"]),
+                 r["team_id"], r["at_bats"], r["hits"], r["runs"], r["rbi"])
+                for r in cur.fetchall()
+            )
+            cur.execute("""
+                SELECT player_id, player_name, team_id,
+                       innings_pitched, hits_allowed, runs_allowed,
+                       strikeouts, walks
+                FROM game_pitching WHERE game_id = %s
+            """, (game_id,))
+            pit_keys = sorted(
+                (r["player_id"] or _last_name(r["player_name"]),
+                 r["team_id"],
+                 # innings_pitched is baseball notation (decimal-ish); cast to str
+                 str(r["innings_pitched"]),
+                 r["hits_allowed"], r["runs_allowed"],
+                 r["strikeouts"], r["walks"])
+                for r in cur.fetchall()
+            )
+            return hashlib.md5(
+                (str(bat_keys) + "|" + str(pit_keys)).encode()
+            ).hexdigest()
+
+        p5_pairs = []
+        for c in p5_candidates:
+            sig1 = _stat_signature(cur, c["id1"])
+            sig2 = _stat_signature(cur, c["id2"])
+            if sig1 == sig2:
+                p5_pairs.append(c)
+
+        logger.info(f"Pass 5 (identical-stats duplicate scrapes): "
+                    f"found {len(p5_pairs)}")
+
+        p5_deleted = 0
+        p5_bat_deleted = 0
+        p5_pit_deleted = 0
+        p5_evt_deleted = 0
+        for c in p5_pairs:
+            # Keep the lower id (older/canonical) and delete the duplicate.
+            canon_id = c["id1"]
+            dup_id = c["id2"]
+            logger.info(
+                f"  {c['game_date']} canon=g{canon_id}(gn={c['gn1']}) "
+                f"dup=g{dup_id}(gn={c['gn2']}) score={c['home_score']}-{c['away_score']} "
+                f"src_dup={c['src2']!r}"
+            )
+            if dry_run:
+                cur.execute("SELECT COUNT(*) AS cnt FROM game_batting WHERE game_id = %s",
+                            (dup_id,))
+                p5_bat_deleted += cur.fetchone()["cnt"]
+                cur.execute("SELECT COUNT(*) AS cnt FROM game_pitching WHERE game_id = %s",
+                            (dup_id,))
+                p5_pit_deleted += cur.fetchone()["cnt"]
+                p5_deleted += 1
+                continue
+
+            cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (dup_id,))
+            p5_bat_deleted += cur.rowcount
+            cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (dup_id,))
+            p5_pit_deleted += cur.rowcount
+            # game_events may not exist on every install yet; guard with try.
+            try:
+                cur.execute("DELETE FROM game_events WHERE game_id = %s", (dup_id,))
+                p5_evt_deleted += cur.rowcount
+            except psycopg2.errors.UndefinedTable:
+                conn.rollback()  # game_events table doesn't exist
+            cur.execute("DELETE FROM games WHERE id = %s", (dup_id,))
             p5_deleted += 1
-            continue
 
-        cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (dup_id,))
-        p5_bat_deleted += cur.rowcount
-        cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (dup_id,))
-        p5_pit_deleted += cur.rowcount
-        # game_events may not exist on every install yet; guard with try.
-        try:
-            cur.execute("DELETE FROM game_events WHERE game_id = %s", (dup_id,))
-            p5_evt_deleted += cur.rowcount
-        except psycopg2.errors.UndefinedTable:
-            conn.rollback()  # game_events table doesn't exist
-        cur.execute("DELETE FROM games WHERE id = %s", (dup_id,))
-        p5_deleted += 1
+        if not dry_run:
+            conn.commit()
 
-    if not dry_run:
-        conn.commit()
+        total_deleted += p5_deleted
+        total_batting_deleted += p5_bat_deleted
+        total_pitching_deleted += p5_pit_deleted
 
-    total_deleted += p5_deleted
-    total_batting_deleted += p5_bat_deleted
-    total_pitching_deleted += p5_pit_deleted
+    if 6 in passes:
+        # ========== Pass 6: same box-score id, different opponent id ==========
+        # Oregon's site served the 2026-06-06 NCAA game vs Texas at both
+        # .../2026/texas/boxscore/24476 and .../2026/university-of-texas/
+        # boxscore/24476. team_matching resolved "Texas" and "University of
+        # Texas" to two different team rows, so upsert_game saw a new source_url
+        # AND a new team pair and inserted a second copy of the game (29 batting
+        # + 9 pitching rows each -> every Oregon pitcher double-counted). Passes
+        # 1-5 all key on the team pair, so none of them can see it.
+        #
+        # Signature: same season + date, same host, same numeric box-score id
+        # (Sidearm /boxscore/<id>, /boxscore.aspx?id=<id>, WMT /games/<id>),
+        # exactly ONE team in common. Keep the copy with the most game_events,
+        # then the most batting rows, then the lower id. The survivor's opponent
+        # id may still be the wrong row (that is a team-identity problem, see
+        # scripts/merge_teams.py) -- we log both names so it can be merged.
+        cur.execute(r"""
+            WITH g AS (
+                SELECT id, game_date, home_team_id, away_team_id, source_url,
+                       regexp_replace(source_url, '^https?://([^/]+)/.*$', '\1') AS host,
+                       COALESCE(
+                           substring(source_url FROM '/boxscore/([0-9]+)'),
+                           substring(source_url FROM 'boxscore\.aspx\?id=([0-9]+)'),
+                           substring(source_url FROM '/games/([0-9]+)')
+                       ) AS box_id
+                FROM games
+                WHERE season = %s AND status = 'final'
+                  AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+            )
+            SELECT g1.id AS id1, g2.id AS id2, g1.game_date, g1.host, g1.box_id,
+                   g1.home_team_id AS h1, g1.away_team_id AS a1,
+                   g2.home_team_id AS h2, g2.away_team_id AS a2,
+                   g1.source_url AS src1, g2.source_url AS src2
+            FROM g g1
+            JOIN g g2
+              ON g1.game_date = g2.game_date
+             AND g1.host = g2.host
+             AND g1.box_id = g2.box_id
+             AND g1.id < g2.id
+            WHERE g1.box_id IS NOT NULL
+              AND (g1.home_team_id IN (g2.home_team_id, g2.away_team_id))::int
+                + (g1.away_team_id IN (g2.home_team_id, g2.away_team_id))::int = 1
+            ORDER BY g1.game_date, g1.id
+        """, (season,))
+        p6_candidates = cur.fetchall()
+
+        def _evidence(gid):
+            cur.execute("SELECT COUNT(*) AS c FROM game_events  WHERE game_id = %s", (gid,))
+            ev = cur.fetchone()["c"]
+            cur.execute("SELECT COUNT(*) AS c FROM game_batting WHERE game_id = %s", (gid,))
+            bat = cur.fetchone()["c"]
+            cur.execute("SELECT COUNT(*) AS c FROM game_pitching WHERE game_id = %s", (gid,))
+            pit = cur.fetchone()["c"]
+            return ev, bat, pit
+
+        def _team_name(tid):
+            cur.execute("SELECT short_name FROM teams WHERE id = %s", (tid,))
+            r = cur.fetchone()
+            return r["short_name"] if r else "?"
+
+        logger.info(f"Pass 6 (same box-score id, different opponent id): "
+                    f"found {len(p6_candidates)}")
+
+        p6_deleted = 0
+        p6_bat_deleted = 0
+        p6_pit_deleted = 0
+        p6_seen = set()
+        for c in p6_candidates:
+            if c["id1"] in p6_seen or c["id2"] in p6_seen:
+                continue
+            ev1, bat1, pit1 = _evidence(c["id1"])
+            ev2, bat2, pit2 = _evidence(c["id2"])
+            # Keep the fuller record; the lower id wins a full tie.
+            if (ev2, bat2, -c["id2"]) > (ev1, bat1, -c["id1"]):
+                keep, drop = c["id2"], c["id1"]
+                drop_bat, drop_pit = bat1, pit1
+                keep_sides, drop_sides = (c["h2"], c["a2"]), (c["h1"], c["a1"])
+            else:
+                keep, drop = c["id1"], c["id2"]
+                drop_bat, drop_pit = bat2, pit2
+                keep_sides, drop_sides = (c["h1"], c["a1"]), (c["h2"], c["a2"])
+            shared = set(keep_sides) & set(drop_sides)
+            keep_opp = [t for t in keep_sides if t not in shared]
+            drop_opp = [t for t in drop_sides if t not in shared]
+            p6_seen.update((keep, drop))
+            logger.info(
+                f"  {c['game_date']} {c['host']} box={c['box_id']}: "
+                f"keeping g{keep} (opp={keep_opp[0] if keep_opp else '?'} "
+                f"'{_team_name(keep_opp[0]) if keep_opp else '?'}'), "
+                f"deleting g{drop} (opp={drop_opp[0] if drop_opp else '?'} "
+                f"'{_team_name(drop_opp[0]) if drop_opp else '?'}')"
+            )
+            logger.warning(
+                f"    two team rows for one opponent -- if they are the same "
+                f"school, merge them: python3 scripts/merge_teams.py "
+                f"--into {keep_opp[0] if keep_opp else '?'} "
+                f"--from {drop_opp[0] if drop_opp else '?'} --dry-run"
+            )
+            if dry_run:
+                p6_deleted += 1
+                p6_bat_deleted += drop_bat
+                p6_pit_deleted += drop_pit
+                continue
+            cur.execute("DELETE FROM game_batting  WHERE game_id = %s", (drop,))
+            p6_bat_deleted += cur.rowcount
+            cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (drop,))
+            p6_pit_deleted += cur.rowcount
+            # game_events / game_fielding cascade on games.id, but be explicit.
+            for tbl in ("game_events", "game_fielding"):
+                try:
+                    cur.execute(f"DELETE FROM {tbl} WHERE game_id = %s", (drop,))
+                except psycopg2.errors.UndefinedTable:
+                    conn.rollback()
+            cur.execute("DELETE FROM games WHERE id = %s", (drop,))
+            p6_deleted += 1
+
+        if not dry_run:
+            conn.commit()
+
+        total_deleted += p6_deleted
+        total_batting_deleted += p6_bat_deleted
+        total_pitching_deleted += p6_pit_deleted
 
     # ========== Summary ==========
     logger.info(f"\n{'='*60}")
@@ -584,6 +722,7 @@ def dedup_games(season, dry_run=False):
     logger.info(f"  Pass 3 phantom pairs:    {len(phantoms)}")
     logger.info(f"  Pass 4 schedule-only:    {len(phantoms_p4)}")
     logger.info(f"  Pass 5 identical-stats:  {len(p5_pairs)}")
+    logger.info(f"  Pass 6 same-box-id:      {p6_deleted}")
     logger.info(f"  Games deleted:           {total_deleted}")
     logger.info(f"  Batting rows deleted:    {total_batting_deleted}")
     logger.info(f"  Pitching rows deleted:   {total_pitching_deleted}")
@@ -600,6 +739,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Deduplicate games")
     parser.add_argument("--season", type=int, default=2026)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--passes", default=None,
+                        help="comma-separated pass numbers to run, e.g. 1,5,6 (default: all)")
     args = parser.parse_args()
 
-    dedup_games(args.season, args.dry_run)
+    passes = [int(x) for x in args.passes.split(",")] if args.passes else None
+    dedup_games(args.season, args.dry_run, passes=passes)

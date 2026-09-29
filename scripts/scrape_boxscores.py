@@ -3192,7 +3192,9 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                 cur = conn.cursor()
                 opp_id = get_team_id_by_school(cur, opponent_clean, prefer_division_of_team_id=team_id)
                 if not opp_id:
-                    opp_id = get_or_create_ooc_team(cur, opponent_clean)
+                    opp_id = get_or_create_ooc_team(
+                        cur, opponent_clean, prefer_division_of_team_id=team_id
+                    )
                     conn.commit()
                 if opp_id:
                     if is_away:
@@ -3526,9 +3528,23 @@ def scrape_seattle_u_boxscores(season_year, dry_run=False, since_date=None):
                 cur = conn.cursor()
                 from scrape_live_scores import normalize_team_name
                 opp_key = normalize_team_name(opp_clean)
-                opp_team_id = get_team_id_by_name(cur, opp_key)
+                # Resolve through the shared resolver WITH Seattle U's division
+                # as the hint. The old exact short_name lookup had no hint, so
+                # "Pacific" landed on D3 Pacific University (id 17) instead of
+                # WCC rival University of the Pacific (id 32857) -- both share
+                # short_name "Pacific" -- and the March 2026 series was filed
+                # under the wrong school (fixed 2026-09-29).
+                opp_team_id = get_team_id_by_school(
+                    cur, opp_key, prefer_division_of_team_id=team_id
+                )
+                if not opp_team_id and opp_key != opp_clean:
+                    opp_team_id = get_team_id_by_school(
+                        cur, opp_clean, prefer_division_of_team_id=team_id
+                    )
                 if not opp_team_id:
-                    opp_team_id = get_or_create_ooc_team(cur, opp_clean)
+                    opp_team_id = get_or_create_ooc_team(
+                        cur, opp_clean, prefer_division_of_team_id=team_id
+                    )
                     conn.commit()
 
             # Build line scores from teamStats (per-inning data)

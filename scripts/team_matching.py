@@ -193,9 +193,96 @@ def normalize_opponent(name):
     name = re.sub(r'^#\d+\s+', '', name)
     # Strip "No. 7 " or "No 7 " style rankings (Sidearm sites use this)
     name = re.sub(r'^No\.?\s*\d+\s+', '', name, flags=re.IGNORECASE)
+    # Strip "1-seed " / "3-Seed " NCAA regional prefixes. Before this, every
+    # regional opponent got its own OOC placeholder ("2-seed Portland",
+    # "3-seed Central Wash.") instead of resolving to the real team.
+    name = re.sub(r'^\d+\s*-\s*seed\s+', '', name, flags=re.IGNORECASE)
     # Strip trailing parenthetical like "(Ore.)"
     name = re.sub(r'\s*\(.*?\)\s*$', '', name)
     return name.strip()
+
+
+# Words that carry no identity when comparing two spellings of a school.
+# "Pomona-Pitzer Colleges" == "Pomona-Pitzer", "University of La Verne" ==
+# "La Verne", "Jessup University" == "Jessup".
+_KEY_GENERIC = {
+    "university", "univ", "college", "colleges", "community", "cc",
+    "of", "the", "at",
+}
+# NOTE: "and" is deliberately NOT generic -- "Lewis & Clark" (NWC, D3) and
+# "Lewis-Clark" (LCSC, NAIA) must never key to the same school.
+
+# Abbreviation expansions applied to the punctuation-stripped lowercase key
+# (both the input and the stored names go through the same function, so
+# a rule only has to make the two sides agree, not be "correct").
+_KEY_ABBREV = (
+    (r"\bwash\b", "washington"),
+    (r"\bore\b", "oregon"),
+    (r"\bcalif\b", "california"),
+    (r"\bcal state\b", "california state"),
+    (r"\bcal st\b", "california state"),
+    (r"\bst\b", "state"),
+    (r"\bmt\b", "mount"),
+)
+
+
+def _name_key(s):
+    """Reduce a school spelling to a comparison key.
+
+    "California State University Monterey Bay" -> "california state monterey bay"
+    "Cal St. Monterey Bay"                      -> "california state monterey bay"
+    "Concordia University Texas"                -> "concordia texas"
+    "St. Thomas University"                     -> "state thomas"
+
+    Used to recognise that a freshly scraped opponent string is the same
+    school as an existing row, so the OOC auto-creator stops minting a new
+    placeholder for every spelling variant (June-Sept 2026 audit found ~40
+    such duplicate pairs).
+    """
+    if not s:
+        return ""
+    s = normalize_opponent(s).lower()
+    s = s.replace("&", " and ").replace("'", "").replace("\u2019", "")
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    for pat, rep in _KEY_ABBREV:
+        s = re.sub(pat, rep, s)
+    return " ".join(w for w in s.split() if w not in _KEY_GENERIC)
+
+
+def _fuzzy_remainder_ok(frag_low, field_low):
+    """True when `field_low` contains `frag_low` and everything OUTSIDE the
+    match is generic filler ("university", "of", ...).
+
+    "pacific"   in "pacific university"            -> True   (same school)
+    "texas"     in "texas tech"                    -> False  (different school)
+    "hawaii"    in "hawaii pacific"                -> False
+    "lsu"       in "lsu shreveport"                -> False
+    "arizona"   in "arizona state"                 -> False
+    "pacific"   in "warner pacific university"     -> False
+
+    The bare substring rule this replaces resolved Oregon's June 2026 NCAA
+    games vs Texas to the OOC row "Texas Tech" (and Hawaii -> Hawaii
+    Pacific, LSU -> LSU Shreveport, Arizona -> Arizona State), which then
+    produced a shadow copy of the same game under a second opponent id.
+    """
+    if not frag_low or frag_low not in field_low:
+        return False
+    remainder = field_low.replace(frag_low, " ")
+    remainder = re.sub(r"[^a-z0-9]+", " ", remainder)
+    return all(w in _KEY_GENERIC for w in remainder.split())
+
+
+def _pick_best(rows, hint_div, frag_low=None):
+    """Tie-break a candidate list: same division as the caller's hint, then an
+    exact school_name match, then the shortest short_name (so "Pacific" beats
+    "Warner Pacific" and "UW" beats "Wash. St.")."""
+    rows = _prefer_same_division(rows, hint_div)
+    if frag_low and len(rows) > 1:
+        exact = [r for r in rows
+                 if (r.get("school_name") or "").lower() == frag_low]
+        if exact:
+            rows = exact
+    return sorted(rows, key=lambda r: len(r.get("short_name") or ""))[0]
 
 
 def get_team_id_by_short_name(cur, short_name):
@@ -235,17 +322,25 @@ def _prefer_same_division(rows, hint_div):
 def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
     """Fuzzy-lookup a team by school_name, name, or short_name.
 
-    Resolution order:
-      1. Alias table match on raw and normalized name
-      2. Exact short_name match (case-insensitive). Ties between multiple
-         actives broken by prefer_division_of_team_id.
-      3. Exact school_name or name match. Same tie-break.
-      4. Forward LIKE fuzzy match (team name contained in or containing
-         the input). The bare `input LIKE '%team_name%'` form was removed
-         because it silently matched "Fresno Pacific University" to D3
-         Pacific. Prefix-unqualified schools now fall through to OOC.
-      5. If multiple fuzzy hits, prefer the shortest short_name, then
-         prefer a team in the same division as the caller's hint.
+    Candidate tiers, in priority order:
+      1. Alias table match on raw and normalized name (returns immediately).
+      2. Exact short_name / school_name / name match (case-insensitive), on
+         the normalized string first, then the raw string.
+      3. Normalized-key match (_name_key): spelling variants of the same
+         school ("Cal State Monterey Bay" == "California State University
+         Monterey Bay", "Pomona-Pitzer Colleges" == "Pomona-Pitzer").
+      4. Guarded substring match: the input must be contained in
+         school_name/name AND the leftover words must all be generic
+         ("university", "of", ...). A bare "Texas" therefore no longer
+         matches "Texas Tech", and "Hawaii" no longer matches "Hawaii
+         Pacific" (both happened in 2026 and produced shadow games).
+
+    Within each tier an ACTIVE team beats an inactive OOC placeholder, and
+    an active hit in a lower tier beats an inactive hit in a higher tier
+    (so an OOC shadow row named exactly "Western Oregon" never outranks the
+    real WOU whose school_name is "Western Oregon University"). Ties are
+    broken by prefer_division_of_team_id, then exact school_name, then the
+    shortest short_name.
 
     Returns team_id or None when nothing could be matched.
     """
@@ -277,114 +372,88 @@ def get_team_id_by_school(cur, name_fragment, prefer_division_of_team_id=None):
         names_to_try.append(name_fragment)
 
     hint_div = _get_hint_division(cur, prefer_division_of_team_id)
-    rows = []
+    frag_low = (normalized or name_fragment).strip().lower()
 
-    # 2) + 3) Exact matches. Each query orders is_active=1 rows first so
-    # that if a real team and an OOC placeholder share the same name, the
-    # real team wins. This is the guard that keeps us from ever resolving
-    # to an OOC shadow again.
+    # 2) Exact matches (short_name, then school_name / name)
+    exact_rows = []
+    seen = set()
     for frag in names_to_try:
-        # Exact short_name match — highest confidence.
-        # When two real teams share a short_name (NWC Pacific id=17 vs
-        # WCC Pacific id=32857), caller's division hint picks the right one.
         cur.execute(
             """
-            SELECT t.id, t.short_name, t.school_name, t.is_active, c.division_id
+            SELECT t.id, t.short_name, t.school_name, t.name, t.is_active,
+                   c.division_id
             FROM teams t
             JOIN conferences c ON c.id = t.conference_id
             WHERE LOWER(t.short_name) = LOWER(%s)
-            ORDER BY t.is_active DESC, LENGTH(t.short_name) ASC
+               OR LOWER(t.school_name) = LOWER(%s)
+               OR LOWER(t.name) = LOWER(%s)
+            ORDER BY t.is_active DESC, LENGTH(t.short_name) ASC, t.id ASC
             """,
-            (frag,),
+            (frag, frag, frag),
         )
-        rows = cur.fetchall()
-        if rows:
-            # If any active team matched, use it; ignore inactive placeholders.
-            active = [r for r in rows if r.get("is_active")]
-            if active:
-                chosen = _prefer_same_division(active, hint_div)
-                return chosen[0]["id"]
-            # No active match — fall through to try school/name before accepting OOC
-            pass
+        for r in cur.fetchall():
+            if r["id"] not in seen:
+                seen.add(r["id"])
+                exact_rows.append(r)
 
-        # Exact school_name or name match
+    # 3) Normalized-key matches over every team row (321 rows; cheap)
+    key_rows = []
+    key = _name_key(name_fragment)
+    if key:
         cur.execute(
             """
-            SELECT t.id, t.short_name, t.school_name, t.is_active, c.division_id
+            SELECT t.id, t.short_name, t.school_name, t.name, t.is_active,
+                   c.division_id
             FROM teams t
             JOIN conferences c ON c.id = t.conference_id
-            WHERE LOWER(t.school_name) = LOWER(%s)
-               OR LOWER(t.name) = LOWER(%s)
-            ORDER BY t.is_active DESC, LENGTH(t.short_name) ASC
-            """,
-            (frag, frag),
+            """
         )
-        rows = cur.fetchall()
+        for r in cur.fetchall():
+            if r["id"] in seen:
+                continue
+            if key in (_name_key(r["short_name"]), _name_key(r["school_name"]),
+                       _name_key(r["name"])):
+                seen.add(r["id"])
+                key_rows.append(r)
+
+    # 4) Guarded substring matches
+    fuzzy_rows = []
+    for frag in names_to_try:
+        fl = frag.strip().lower()
+        if not fl:
+            continue
+        cur.execute(
+            """
+            SELECT t.id, t.short_name, t.school_name, t.name, t.is_active,
+                   c.division_id
+            FROM teams t
+            JOIN conferences c ON c.id = t.conference_id
+            WHERE LOWER(t.school_name) LIKE LOWER(%s)
+               OR LOWER(t.name) LIKE LOWER(%s)
+            """,
+            (f"%{frag}%", f"%{frag}%"),
+        )
+        for r in cur.fetchall():
+            if r["id"] in seen:
+                continue
+            if (_fuzzy_remainder_ok(fl, (r["school_name"] or "").lower())
+                    or _fuzzy_remainder_ok(fl, (r["name"] or "").lower())):
+                seen.add(r["id"])
+                fuzzy_rows.append(r)
+
+    tiers = (exact_rows, key_rows, fuzzy_rows)
+
+    # Active (real) teams first, best tier wins ...
+    for rows in tiers:
+        active = [r for r in rows if r.get("is_active")]
+        if active:
+            return _pick_best(active, hint_div, frag_low)["id"]
+    # ... then inactive OOC placeholders, best tier wins.
+    for rows in tiers:
         if rows:
-            active = [r for r in rows if r.get("is_active")]
-            if active:
-                chosen = _prefer_same_division(active, hint_div)
-                return chosen[0]["id"]
-            break
+            return _pick_best(rows, hint_div, frag_low)["id"]
 
-    # 4) Fuzzy matching only when exact matches found nothing active.
-    # NOTE: The previous backward LIKE `input LIKE '%team_name%'` was
-    # removed — it silently matched "Fresno Pacific University" against
-    # D3 Pacific's school_name "Pacific University" and created ghost
-    # games. Forward LIKE is kept because it handles the useful case
-    # where the caller passes a prefix of a longer school_name (e.g.
-    # input "Pacific" matching school_name "Pacific University"). Inputs
-    # with a qualifying prefix that no team row covers (e.g. "Fresno
-    # Pacific") now fall through to get_or_create_ooc_team, which
-    # creates a clearly-visible OOC placeholder.
-    if not rows or not any(r.get("is_active") for r in rows):
-        for frag in names_to_try:
-            cur.execute(
-                """
-                SELECT t.id, t.short_name, t.school_name, t.is_active, c.division_id
-                FROM teams t
-                JOIN conferences c ON c.id = t.conference_id
-                WHERE LOWER(t.school_name) LIKE LOWER(%s)
-                   OR LOWER(t.name) LIKE LOWER(%s)
-                """,
-                (f"%{frag}%", f"%{frag}%"),
-            )
-            rows = cur.fetchall()
-            if rows:
-                # Prefer active teams first; only fall back to OOC if no active match
-                active_rows = [r for r in rows if r.get("is_active")]
-                if active_rows:
-                    rows = active_rows
-                if len(rows) > 1:
-                    frag_low = frag.strip().lower()
-                    exact_sub = [
-                        r for r in rows
-                        if r["school_name"] and r["school_name"].lower() == frag_low
-                    ]
-                    if exact_sub:
-                        rows = exact_sub
-                    else:
-                        # Prefer the SHORTEST short_name. Handles "Pacific" beating
-                        # "Warner Pacific" AND "Washington" picking UW (short len 2)
-                        # over Wash. St. (short len 9). The previous heuristic used
-                        # abs(len(short) - len(frag)) which broke for long inputs.
-                        rows.sort(
-                            key=lambda r: len(r.get("short_name", "") or "")
-                        )
-                break
-
-    if not rows:
-        return None
-    if len(rows) == 1:
-        return rows[0]["id"]
-
-    # 5) Multiple fuzzy matches — prefer same division when caller supplied a hint
-    if hint_div:
-        filtered = _prefer_same_division(rows, hint_div)
-        if filtered:
-            return filtered[0]["id"]
-
-    return rows[0]["id"]
+    return None
 
 
 def get_or_create_ooc_team(cur, opponent_name, prefer_division_of_team_id=None):
