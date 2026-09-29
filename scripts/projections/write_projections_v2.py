@@ -116,11 +116,41 @@ def build_rows(cur, TARGET):
 
     # most-recent-season role (a two-way JUCO bat who became a D1 pitcher only pitches)
     bat_latest = bat.groupby("pid")["season"].max(); pit_latest = pit.groupby("pid")["season"].max()
+    # Real usage in that latest season, so a shortstop who threw a mop-up inning
+    # does not get a pitching projection and a starter with two pinch-hit PAs
+    # does not get a hitting line. A side counts when it was a real role:
+    # pitching >= 8 IP or >= 6 appearances, hitting >= 20 PA. When a player
+    # has both sides but neither clears the bar, the roster position decides.
+    cur.execute("""
+        WITH canon AS (SELECT linked_id AS player_id, canonical_id FROM player_links)
+        SELECT COALESCE(c.canonical_id, x.player_id) cid, x.season,
+               SUM(x.pa) pa, SUM(x.outs) outs, SUM(x.g) g
+        FROM (
+            SELECT player_id, season, plate_appearances pa, 0 outs, 0 g FROM batting_stats
+            UNION ALL
+            SELECT player_id, season, 0,
+                   FLOOR(innings_pitched)*3 + ROUND((innings_pitched-FLOOR(innings_pitched))*10),
+                   COALESCE(games, 0)
+            FROM pitching_stats
+        ) x LEFT JOIN canon c ON c.player_id = x.player_id
+        GROUP BY 1, 2
+    """)
+    usage = {(r["cid"], int(r["season"])): (float(r["pa"] or 0), float(r["outs"] or 0), float(r["g"] or 0)) for r in cur.fetchall()}
     role = {}
     for pid in set(bat_latest.index) | set(pit_latest.index):
         bl = int(bat_latest.get(pid, -1)); pl = int(pit_latest.get(pid, -1))
         latest = max(bl, pl)
-        role[pid] = {"bat": bl == latest and bl > 0, "pit": pl == latest and pl > 0}
+        has_bat = bl == latest and bl > 0; has_pit = pl == latest and pl > 0
+        if has_bat and has_pit:
+            pa, outs, g = usage.get((pid, latest), (0.0, 0.0, 0.0))
+            pit_ok = outs >= 24 or g >= 6
+            bat_ok = pa >= 20
+            if not pit_ok and not bat_ok:
+                rpos = (meta.get(pid, {}).get("pos") or "").upper()
+                pit_ok = any(t in rpos.split("/") for t in ("P", "RHP", "LHP", "SP", "RP"))
+                bat_ok = not pit_ok
+            has_bat, has_pit = bat_ok, pit_ok
+        role[pid] = {"bat": has_bat, "pit": has_pit}
 
     # per-level HR per fly ball (for the xFIP-style pitcher HR rate) and HBP/SF rates
     cur.execute("""
