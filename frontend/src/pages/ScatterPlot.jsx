@@ -303,7 +303,7 @@ export default function ScatterPlot() {
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100">Team Scatter Plot</h1>
-        <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">Compare team performance across any two stats · 2026 Season</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">Compare team performance across any two stats · {CURRENT_SEASON} Season</p>
       </div>
 
       {/* Controls bar */}
@@ -390,7 +390,7 @@ export default function ScatterPlot() {
               {xOpt?.label} vs {yOpt?.label}
             </text>
             <text x={WIDTH - 20} y={42} fontSize={10} fill="rgba(255,255,255,0.5)" textAnchor="end">
-              {divLabel} · 2026 Season
+              {divLabel} · {CURRENT_SEASON} Season
             </text>
 
             {/* ── Plot background ── */}
@@ -588,7 +588,7 @@ export default function ScatterPlot() {
               nwbaseballstats.com
             </text>
             <text x={WIDTH - 20} y={HEIGHT - 10} fontSize={9} fill="#cbd5e1" textAnchor="end">
-              {points.length} teams · Data updated 2026
+              {points.length} teams · Data updated {CURRENT_SEASON}
             </text>
 
             {/* ── Correlation badge ── */}

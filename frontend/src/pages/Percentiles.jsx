@@ -4,7 +4,7 @@ import { useApi } from '../hooks/useApi'
 import { usePersistedState } from '../hooks/usePersistedState'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import SeasonSelect from '../components/SeasonSelect'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 
 const LEVELS = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
 const TYPES = [
@@ -59,7 +59,8 @@ function PercentileCell({ pct, highlighted }) {
 }
 
 export default function Percentiles() {
-  const [season, setSeason] = usePersistedState('pct_season', CURRENT_SEASON)
+  // clampSeason: a stale stored year (not in SEASONS) falls back to the current season.
+  const [season, setSeason] = usePersistedState('pct_season', CURRENT_SEASON, { sanitize: clampSeason })
   const [level, setLevel] = usePersistedState('pct_level', 'D1')
   const [type, setType] = usePersistedState('pct_type', 'hitter')
   const [sortKey, setSortKey] = usePersistedState('pct_sort', 'avg_pct')

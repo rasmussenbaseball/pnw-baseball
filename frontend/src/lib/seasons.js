@@ -14,6 +14,53 @@
 export const CURRENT_SEASON = 2026
 export const DEFAULT_SEASON = CURRENT_SEASON
 
+// The season after the current one: where a normal commitment lands.
+export const NEXT_SEASON = CURRENT_SEASON + 1
+
+// The transfer cycle that is currently OPEN (mirrors backend config.py
+// PORTAL_SEASON). Trackers default to it, portal adds belong to it, and a
+// commitment made today is for PORTAL_SEASON + 1 unless the editor picks
+// another year. Runs one ahead of CURRENT_SEASON in the offseason. Bump it
+// every fall once the summer portal has closed.
+export const PORTAL_SEASON = 2027
+
+// Years a tracker's season selector offers (open cycle first).
+export const TRACKER_SEASONS = [PORTAL_SEASON, ...[2026, 2025, 2024].filter((y) => y < PORTAL_SEASON)]
+
+// Seasons a commitment can be entered for (arrival season at the new school).
+export const COMMIT_SEASONS = [PORTAL_SEASON + 1, PORTAL_SEASON]
+
+// The most recent WCL (summer) season with data (mirrors backend config.py
+// SUMMER_SEASON). Summer pages default to THIS, not CURRENT_SEASON: summer
+// runs June-August, so bumping CURRENT_SEASON in January must not make the
+// WCL pages ask for a summer that has not happened yet. Bump it in June
+// when the next WCL season starts.
+export const SUMMER_SEASON = 2026
+
+// Summer seasons the WCL graphics / stats pickers offer, newest first.
+export const SUMMER_SEASONS = [2026, 2025, 2024]
+
+// The season projections point at (mirrors backend PROJECTION_SEASON).
+// Projections are published in the fall for the NEXT spring, so this runs
+// one ahead of CURRENT_SEASON in the offseason. "Actuals" shown next to a
+// projection are PROJECTION_SEASON - 1.
+export const PROJECTION_SEASON = 2027
+
+// The high-school class currently being recruited / committing (mirrors
+// backend RECRUITING_GRAD_YEAR). Fall 2026 = the class of 2027; the class
+// of 2026 has already enrolled. Bump it each summer.
+export const RECRUITING_GRAD_YEAR = 2027
+
+// Class years the recruiting pages let you flip between (current class
+// first, then the class that just enrolled).
+export const GRAD_YEARS = [RECRUITING_GRAD_YEAR, RECRUITING_GRAD_YEAR - 1]
+
+// "2027-28" style label for a season (the academic year it belongs to).
+export function academicYear(season) {
+  const y = Number(season)
+  return `${y - 1}-${String(y).slice(2)}`
+}
+
 // Newest-first so dropdowns list the current year at the top.
 export const SEASONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018]
 

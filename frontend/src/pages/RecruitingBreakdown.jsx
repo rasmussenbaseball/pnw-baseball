@@ -115,7 +115,7 @@ export default function RecruitingBreakdown() {
     <div>
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Recruiting Breakdown</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Team-level recruiting metrics for the 2026 season. Compare programs side-by-side - who's trending up, who plays freshmen, and where the talent is.
+        Team-level recruiting metrics for the {CURRENT_SEASON} season. Compare programs side-by-side - who's trending up, who plays freshmen, and where the talent is.
       </p>
 
       {/* Level filter */}
@@ -248,11 +248,11 @@ export default function RecruitingBreakdown() {
       {/* Legend */}
       <div className="mt-4 px-1 text-[10px] text-gray-400 dark:text-gray-500 space-y-1">
         <p><strong>Rank</strong> - National composite ranking for D1/D2/D3/NAIA teams. NWAC teams show CPI rank (our internal Composite Power Index, a schedule-adjusted, predictive power rating).</p>
-        <p><strong>Trend</strong> - Change in W-L% compared to the average of the prior two seasons (2024-2025). <span className="text-emerald-500">▲ Green = improving</span>, <span className="text-red-400">▼ Red = declining</span>, <span className="text-gray-400 dark:text-gray-500">▸ Gray = steady</span>. Hover for year-by-year W-L%.</p>
+        <p><strong>Trend</strong> - Change in W-L% compared to the average of the prior two seasons ({CURRENT_SEASON - 2}-{CURRENT_SEASON - 1}). <span className="text-emerald-500">▲ Green = improving</span>, <span className="text-red-400">▼ Red = declining</span>, <span className="text-gray-400 dark:text-gray-500">▸ Gray = steady</span>. Hover for year-by-year W-L%.</p>
         <p><strong>Fr PA% / Fr IP%</strong> - Freshman (Fr + R-Fr) plate appearances or innings pitched as a percentage of the team total. Higher = more freshman playing time.</p>
         <p><strong>WAR/G</strong> - Total team WAR (offensive + pitching) divided by games played. Measures overall roster talent density.</p>
         <p><strong>wRC+</strong> - PA-weighted team average wRC+. 100 = league average. <strong>FIP</strong> - IP-weighted team average FIP. Lower is better.</p>
-        <p className="italic">2026 season is in progress. Stats reflect games played to date.</p>
+        <p className="italic">Stats reflect {CURRENT_SEASON} games played to date.</p>
       </div>
     </div>
   )

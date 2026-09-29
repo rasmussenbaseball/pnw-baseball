@@ -1,10 +1,9 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useRecruitingClasses, useRecruitingClassDetail, useRecruitingTransfers } from '../hooks/useApi'
 import { divisionBadgeClass } from '../utils/stats'
-
-// Grad years that have been scraped. Future years come online as they're
-// scraped, so adding one here is all it takes to extend the selector.
-const GRAD_YEARS = [2026]
+// Grad years the selector offers + the default (class currently committing)
+// come from seasons.js so the page rolls over with one bump.
+import { GRAD_YEARS, RECRUITING_GRAD_YEAR } from '../lib/seasons'
 
 // Combined Class Rating = HS class rating + this much per point of a program's
 // transfer rating (its AVERAGE WAR per transfer, drop-down-adjusted, floored at
@@ -391,7 +390,7 @@ function CombinedBoard({ rows, gradYear, expanded, toggle }) {
 }
 
 export default function RecruitingClasses() {
-  const [gradYear, setGradYear] = useState(2026)
+  const [gradYear, setGradYear] = useState(RECRUITING_GRAD_YEAR)
   const [view, setView] = useState('hs')
   const [expanded, setExpanded] = useState(null)
   const [levelFilter, setLevelFilter] = useState('all')
@@ -569,7 +568,7 @@ export default function RecruitingClasses() {
               <p className="italic">WAR is only available for transfers from PNW programs (NWAC JUCO + tracked four-year players); out-of-region transfers are shown but unrated and left out of the average.</p>
             </>
           )}
-          <p className="italic">2026 commitments trickle in through the cycle, so classes will keep filling out.</p>
+          <p className="italic">{gradYear} commitments trickle in through the cycle, so classes will keep filling out.</p>
         </div>
       )}
     </div>

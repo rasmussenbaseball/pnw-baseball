@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const SIZE = { w: 1080, h: 1080 }   // ALWAYS this size, every board
 const FONT = "-apple-system, 'Inter', 'Helvetica Neue', sans-serif"
@@ -359,7 +360,7 @@ export default function TransferPortalGraphic() {
   const [err, setErr] = useState(null)
   const canvasRef = useRef(null)
 
-  const SEASON = 2026
+  const SEASON = CURRENT_SEASON  // stats season shown on the card (seasons.js)
 
   useEffect(() => {
     let alive = true

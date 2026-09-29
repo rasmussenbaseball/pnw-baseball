@@ -1,4 +1,4 @@
-// 2027 projection card for the player profile pages, placed under the PBP data.
+// Next-season projection card for the player profile pages, placed under the PBP data.
 //
 // Everyone sees the full projected line, the 10th-90th percentile range of
 // outcomes, and a short scouting writeup of WHY the model lands where it does.
@@ -7,6 +7,7 @@
 // Powered by the "College Marcel" projection model.
 
 import { useApi } from '../hooks/useApi'
+import { PROJECTION_SEASON } from '../lib/seasons'
 import { usePlayerProfileTheme, pctColor } from './playerProfile/shared'
 
 // ── formatters ──
@@ -58,7 +59,7 @@ export default function PlayerProjectionCard({ playerId, side = 'hitter' }) {
 
   if (loading && !data) return null            // stay quiet until we know
   if (!data) return null
-  const season = data.season || 2027
+  const season = data.season || PROJECTION_SEASON
 
   // No projection for this player (insufficient stats).
   if (!data.available) {

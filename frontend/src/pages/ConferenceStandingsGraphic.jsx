@@ -147,7 +147,7 @@ function renderStandings(ctx, W, H, conf, teams, faviconImg, logoImgs, isFrozen 
   const divLabel = conf.division_level === 'JUCO' ? 'NWAC' : conf.division_name
   ctx.font = `500 16px ${font}`
   ctx.fillStyle = THEME.textSecondary
-  ctx.fillText(`2026 Conference Standings  |  ${divLabel}`, padX, curY)
+  ctx.fillText(`${CURRENT_SEASON} Conference Standings  |  ${divLabel}`, padX, curY)
 
   // Header border
   ctx.strokeStyle = THEME.border

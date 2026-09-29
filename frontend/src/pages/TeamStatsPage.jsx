@@ -10,7 +10,7 @@ import StatPresetBar from '../components/StatPresetBar'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
 import SeasonSelect from '../components/SeasonSelect'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 import { usePersistedState } from '../hooks/usePersistedState'
 
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'NWAC']
@@ -21,7 +21,8 @@ export default function TeamStatsPage() {
   const [preset, setPreset] = usePersistedState('teamstats_preset', 'Standard')
   const [sortBy, setSortBy] = usePersistedState('teamstats_sortBy', null)
   const [sortDir, setSortDir] = usePersistedState('teamstats_sortDir', 'desc')
-  const [season, setSeason] = usePersistedState('teamstats_season', CURRENT_SEASON)
+  // clampSeason: a stale stored year (not in SEASONS) falls back to the current season.
+  const [season, setSeason] = usePersistedState('teamstats_season', CURRENT_SEASON, { sanitize: clampSeason })
 
   const params = {
     season,

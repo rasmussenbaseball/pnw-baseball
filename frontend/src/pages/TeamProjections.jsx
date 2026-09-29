@@ -1,17 +1,21 @@
-// Projections (2027) — dev-gated page under the Teams tab.
+// Projections (PROJECTION_SEASON) — dev-gated page under the Teams tab.
 //
-// Pick a team, see its projected 2027 roster: returning players + incoming
+// Pick a team, see its projected next-season roster: returning players + incoming
 // transfers. Graduating seniors and departed NWAC sophomores are excluded.
-// Class shown is the player's 2027 class. Click any row to expand a detail
-// view: 2026 actual → 2027 projected with the change, plus the floor/ceiling
+// Class shown is the player's projected-season class. Click any row to expand a detail
+// view: prior-season actual → projected with the change, plus the floor/ceiling
 // (10th–90th percentile) outcomes.
 
 import { useState, useMemo, Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import { useProjectionTeams, useTeamProjections,
          useProjectionTeamLeaders, useProjectionPlayerLeaders } from '../hooks/useApi'
+import { PROJECTION_SEASON } from '../lib/seasons'
 
-const SEASON = 2027
+// The season being projected and the season the actuals come from. Both
+// come from seasons.js so the copy below rolls over with one bump.
+const SEASON = PROJECTION_SEASON
+const PREV = PROJECTION_SEASON - 1
 const LEVEL_ORDER = ['D1', 'D2', 'D3', 'NAIA', 'JUCO']
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
 const int0 = (v) => (v === null || v === undefined ? '–' : Math.round(v).toLocaleString())
@@ -62,7 +66,7 @@ function Incoming({ row }) {
   return <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={from ? `Incoming from ${from}` : 'Incoming transfer'}>{from ? `↙ ${from}` : 'Incoming'}</span>
 }
 
-// tiny up/down arrow vs 2026 actual, colored by whether it's an improvement
+// tiny up/down arrow vs prior-season actual, colored by whether it's an improvement
 function deltaArrow(v27, v26, higherBetter = true) {
   if (v26 == null || v27 == null || isNaN(v26) || isNaN(v27)) return null
   const d = v27 - v26
@@ -70,7 +74,7 @@ function deltaArrow(v27, v26, higherBetter = true) {
   const improved = higherBetter ? d > 0 : d < 0
   return <span className={`ml-0.5 text-[8px] align-middle ${improved ? 'text-emerald-500' : 'text-rose-400'}`}>{d > 0 ? '▲' : '▼'}</span>
 }
-const rate = (num, den) => (den ? num / den : null)   // 2026 actual rate from counts
+const rate = (num, den) => (den ? num / den : null)   // prior-season actual rate from counts
 
 function valueColor(v, lo, hi, invert = false) {
   if (v === null || v === undefined) return ''
@@ -87,7 +91,7 @@ const TDL = TD + ' text-left'
 const GROUP = 'px-2.5 py-1 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500'
 const BL = ' border-l border-gray-200 dark:border-gray-700'
 
-// one "2026 → 2027 (Δ)" cell in the expanded detail
+// one "PREV → SEASON (Δ)" cell in the expanded detail
 function Cmp({ label, v26, v27, fmt = slash, pct = false, invertGood = false }) {
   const fmtv = pct ? (x) => (x == null ? '–' : `${Math.round(x * 100)}%`) : fmt
   const d = (v26 != null && v27 != null) ? (pct ? Math.round((v27 - v26) * 100) : v27 - v26) : null
@@ -128,7 +132,7 @@ function HitterDetail({ row, span }) {
               <span className="text-emerald-600 dark:text-emerald-400">{slash(p.wOBA_hi)}</span></span>
           </div>
         </div>
-        <p className="text-[11px] text-gray-400 mt-3">2026 actual → 2027 projected. Range is the 10th–90th percentile of likely outcomes (his realistic floor and ceiling).</p>
+        <p className="text-[11px] text-gray-400 mt-3">{PREV} actual → {SEASON} projected. Range is the 10th–90th percentile of likely outcomes (his realistic floor and ceiling).</p>
       </td>
     </tr>
   )
@@ -152,7 +156,7 @@ function PitcherDetail({ row, span }) {
               <span className="text-rose-500">{f2(p.ERA_hi)}</span></span>
           </div>
         </div>
-        <p className="text-[11px] text-gray-400 mt-3">2026 actual → 2027 projected. ERA leans on FIP/peripherals, not noisy ERA. Range is the 10th–90th percentile (best case–worst case).</p>
+        <p className="text-[11px] text-gray-400 mt-3">{PREV} actual → {SEASON} projected. ERA leans on FIP/peripherals, not noisy ERA. Range is the 10th–90th percentile (best case–worst case).</p>
       </td>
     </tr>
   )
@@ -236,7 +240,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
                   <td className={TDL + ' font-medium text-gray-900 dark:text-gray-100'}>
                     <span className="text-gray-300 mr-1">{open ? '▾' : '▸'}</span>{r.name}<Incoming row={r} />
                     {p.breakout && <span className="ml-1 align-middle" title="Projected breakout: the model reads last season's results as unlucky relative to the underlying skills (low BABIP / ERA well above FIP) and expects a big step forward">🚀</span>}
-                    {p.insufficient && <span className="ml-1.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-semibold px-1 py-0.5 uppercase align-middle" title="Barely played in 2026 — projected as a below-average player from limited data">ltd</span>}
+                    {p.insufficient && <span className="ml-1.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-semibold px-1 py-0.5 uppercase align-middle" title={`Barely played in ${PREV} — projected as a below-average player from limited data`}>ltd</span>}
                   </td>
                   <td className={TD}>{p.class_2027 || '–'}</td>
                   <td className={TD}>{r.pos || '–'}</td>
@@ -245,7 +249,7 @@ function Table({ rows, side, expanded, toggle, norm }) {
                     <td colSpan={span - 4} className="px-2.5 py-2 text-left text-[11px] italic text-gray-400">
                       {p.is_freshman ? 'incoming freshman — no projection yet'
                         : p.is_transfer ? 'incoming transfer — no projection yet'
-                        : 'not enough data to project (2026 sample too small)'}
+                        : `not enough data to project (${PREV} sample too small)`}
                     </td>
                   </> : <>
                   {isBat ? <>
@@ -540,7 +544,7 @@ function PlayerLeaders() {
           columns={side === 'bat' ? PLR_HIT_COLS : PLR_PIT_COLS}
           defaultSort={side === 'bat' ? { key: 'wOBA', asc: false } : { key: 'ERA', asc: true }} />
       )}
-      <p className="text-[11px] text-gray-400">Projected 2027 individual stats. Click a name for the player page, or any column to sort.</p>
+      <p className="text-[11px] text-gray-400">Projected {SEASON} individual stats. Click a name for the player page, or any column to sort.</p>
     </div>
   )
 }
@@ -565,7 +569,7 @@ export default function TeamProjections() {
   return (
     <div className="max-w-screen-2xl mx-auto px-4 py-6">
       <div className="mb-5">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">2027 Projections</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{SEASON} Projections</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           Returning players + incoming transfers and freshmen. Graduating seniors and departed NWAC sophomores excluded.
           Browse a single team, or see who projects best across a level.
@@ -634,13 +638,13 @@ export default function TeamProjections() {
           </section>
           <div className="text-xs text-gray-400 dark:text-gray-500 space-y-1 pt-3 border-t border-gray-100 dark:border-gray-800">
             <p><b>Conf</b> = how much career data backs the projection (more data → more confident, less regression).
-              <b> Plate skills / Stuff</b> show the projected rate with the projected change vs 2026 (▲/▼).
+              <b> Plate skills / Stuff</b> show the projected rate with the projected change vs {PREV} (▲/▼).
               The point projection is the most-likely (median) outcome, calibrated on four seasons of backtests; a player’s upside lives in his ceiling (the range covers about 80% of next-season outcomes). Click a row to see it.</p>
             <p><b>How a career is read.</b> Every season a player has logged counts, at any level, with recent ones mattering most because true talent drifts from year to year (the model measures how fast for each skill, and pitchers move more than hitters). Skills are projected together rather than one at a time, so a hitter’s power, walks and contact inform each other, and a pitcher’s strikeouts inform his home-run and hit rates. Small samples are trusted less than their plate-appearance count alone would suggest.</p>
-            <p><b>ERA</b> is built from the projected strikeout, walk and home-run rates plus a small, heavily regressed luck term, so a lucky or unlucky 2026 ERA barely moves it. The run model behind it leans harder on strikeouts than standard FIP does, because that is what predicts next-season runs best. <b>FIP</b> and <b>WAR</b> use the standard FIP formula on the projected rates, so they compare directly with the numbers on player pages. Incoming transfers (↗) are projected at their new level, with every stat translated using real transfer history and the West Coast League as a common yardstick across levels. Power gets a real bump on the move up: NWAC homers about 0.7 per 100 PA, the 4-year levels 2 to 2.6, so transfer HR rates roughly double.</p>
-            <p><b>ltd</b> (limited data) marks players who barely appeared in 2026. With little to go on they sit close to their class average and are capped at a small workload, but they are still included so rosters and totals are complete. They firm up as transfers and freshmen are added.</p>
+            <p><b>ERA</b> is built from the projected strikeout, walk and home-run rates plus a small, heavily regressed luck term, so a lucky or unlucky {PREV} ERA barely moves it. The run model behind it leans harder on strikeouts than standard FIP does, because that is what predicts next-season runs best. <b>FIP</b> and <b>WAR</b> use the standard FIP formula on the projected rates, so they compare directly with the numbers on player pages. Incoming transfers (↗) are projected at their new level, with every stat translated using real transfer history and the West Coast League as a common yardstick across levels. Power gets a real bump on the move up: NWAC homers about 0.7 per 100 PA, the 4-year levels 2 to 2.6, so transfer HR rates roughly double.</p>
+            <p><b>ltd</b> (limited data) marks players who barely appeared in {PREV}. With little to go on they sit close to their class average and are capped at a small workload, but they are still included so rosters and totals are complete. They firm up as transfers and freshmen are added.</p>
             <p><b>PA and IP</b> reflect projected playing time: the best players earn near-full workloads, backups and unproven players get fewer, so a team's reps are shared realistically rather than every regular getting the same total.</p>
-            <p><b>▲▼</b> next to a rate show whether it is projected up or down vs the player's 2026 rate (green = better, red = worse, direction-aware). <b>🚀</b> flags a projected breakout: the model reads last season as unlucky relative to the underlying skills (low BABIP, or ERA well above FIP) and expects a real step forward.</p>
+            <p><b>▲▼</b> next to a rate show whether it is projected up or down vs the player's {PREV} rate (green = better, red = worse, direction-aware). <b>🚀</b> flags a projected breakout: the model reads last season as unlucky relative to the underlying skills (low BABIP, or ERA well above FIP) and expects a real step forward.</p>
           </div>
         </div>
       )}

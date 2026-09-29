@@ -47,7 +47,7 @@ export default function PlayerScouting() {
       <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">Player Scouting</h1>
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
         Opposing-coach scouting report. Strengths to avoid, weaknesses to
-        exploit, and PBP-derived tendencies for any 2026 player.
+        exploit, and PBP-derived tendencies for any {SEASON} player.
       </p>
 
       <form onSubmit={handleSearch} className="flex gap-2 mb-4">
@@ -293,7 +293,7 @@ function HitterReport({ player, profile, stats }) {
 
       {/* Stat line */}
       <StatLineCard
-        label="2026 line"
+        label={`${SEASON} line`}
         items={[
           { label: 'AVG', value: fmtAvg(current.batting_avg) },
           { label: 'OBP', value: fmtAvg(current.on_base_pct) },
@@ -373,7 +373,7 @@ function PitcherReport({ player, profile, stats }) {
       </div>
 
       <StatLineCard
-        label="2026 line"
+        label={`${SEASON} line`}
         items={[
           { label: 'ERA', value: current.era != null ? current.era.toFixed(2) : '—' },
           { label: 'FIP', value: current.fip != null ? current.fip.toFixed(2) : '—' },

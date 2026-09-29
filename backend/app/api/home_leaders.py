@@ -16,9 +16,10 @@ import math
 import time
 
 from fastapi import APIRouter, Query
+from typing import Optional
 
 from app.models.database import get_connection
-from app.config import CURRENT_SEASON
+from app.config import CURRENT_SEASON, SUMMER_SEASON
 
 home_leaders_router = APIRouter(prefix="/home")
 
@@ -209,9 +210,15 @@ def _wcl_leaders(season):
 @home_leaders_router.get("/leaders")
 def home_leaders(
     division: str = Query("all", description="all | D1 | D2 | D3 | NAIA | NWAC | WCL"),
-    season: int = Query(CURRENT_SEASON),
+    season: Optional[int] = Query(None),
 ):
     division = (division or "all").upper()
+    # No explicit season: spring divisions default to the current spring
+    # season, but WCL is summer ball, so it defaults to the most recent
+    # summer with data. Otherwise bumping CURRENT_SEASON in January would
+    # make the WCL board ask for a summer that has not been played yet.
+    if season is None:
+        season = SUMMER_SEASON if division == "WCL" else CURRENT_SEASON
     ck = (division, season)
     hit = _CACHE.get(ck)
     if hit and (time.time() - hit[0]) < _TTL:

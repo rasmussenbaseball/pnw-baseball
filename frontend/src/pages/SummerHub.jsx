@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { SUMMER_SEASON } from '../lib/seasons'
 
 const TABS = [
   { key: 'scoreboard',  label: 'Scoreboard' },
@@ -20,15 +20,18 @@ const TABS = [
   { key: 'colleges',    label: 'College Mix' },
 ]
 
-// 2026 WCL key dates. The schedule scraper marks games as
+// WCL key dates for SUMMER_SEASON (month/day are the usual WCL calendar;
+// re-check them each June when SUMMER_SEASON is bumped). The schedule scraper marks games as
 // 'exhibition' / 'conference' / 'playoff' so we can also infer
 // season phase from data, but these dates anchor the UI banner.
-const SEASON_OPENS    = new Date('2026-05-29T00:00:00-07:00')  // first regular-season games
-const REGULAR_FULL_GO = new Date('2026-06-04T00:00:00-07:00')  // every team in play
-const PLAYOFFS_START  = new Date('2026-08-12T00:00:00-07:00')  // approx
+const SEASON_OPENS    = new Date(`${SUMMER_SEASON}-05-29T00:00:00-07:00`)  // first regular-season games
+const REGULAR_FULL_GO = new Date(`${SUMMER_SEASON}-06-04T00:00:00-07:00`)  // every team in play
+const PLAYOFFS_START  = new Date(`${SUMMER_SEASON}-08-12T00:00:00-07:00`)  // approx
 
 const LEAGUE = 'WCL'
-const SEASON = CURRENT_SEASON
+// Most recent WCL summer with data (NOT the spring CURRENT_SEASON: the summer
+// lags the spring year until June).
+const SEASON = SUMMER_SEASON
 
 const fmtAvg = v => v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')
 const fmtEra = v => v == null ? '—' : Number(v).toFixed(2)
@@ -365,12 +368,12 @@ function Side({ teamId, name, short, logo, score, bold, dim }) {
 }
 
 export function ScheduleCalendar() {
-  // Default to current month — but if pre-June, default to June 2026 so
+  // Default to current month, but if pre-June, default to June of SUMMER_SEASON so
   // visitors see the opening series instead of an empty May.
   const today = new Date()
-  const minMonth = new Date(2026, 5, 1) // June 2026
+  const minMonth = new Date(SUMMER_SEASON, 5, 1) // June of the summer season
   const initial = today < minMonth
-    ? new Date(2026, 5, 1)
+    ? new Date(SUMMER_SEASON, 5, 1)
     : new Date(today.getFullYear(), today.getMonth(), 1)
   const [cursor, setCursor] = useState(initial)
 

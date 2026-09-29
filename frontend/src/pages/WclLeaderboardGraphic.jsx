@@ -23,15 +23,15 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useApi } from '../hooks/useApi'
+import { SUMMER_SEASON, SUMMER_SEASONS } from '../lib/seasons'
 
 // ─── Fixed 1080×1080 ───
 const SIZE = { w: 1080, h: 1080 }
 
-// Summer seasons with WCL data (summer scraping started in 2024).
-// There's no summer entry in lib/seasons.js — the backend exposes
-// /summer/seasons if this ever needs to be dynamic. Newest first.
-const SUMMER_SEASONS = [2026, 2025, 2024]
-const CURRENT_SUMMER_SEASON = 2026
+// Summer seasons with WCL data (summer scraping started in 2024) and the
+// default season both come from lib/seasons.js (SUMMER_SEASONS / SUMMER_SEASON,
+// bumped each June when the new WCL season starts).
+const CURRENT_SUMMER_SEASON = SUMMER_SEASON
 
 // ─── WCL color constants (same hexes as WclRecapGraphic.jsx) ───
 const WCL = {

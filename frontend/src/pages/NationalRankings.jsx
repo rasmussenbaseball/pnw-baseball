@@ -358,7 +358,7 @@ export default function NationalRankings() {
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
           National rankings require running the scraper first:
           <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded ml-1 text-xs">
-            python3 scripts/scrape_national_ratings.py --season 2026
+            python3 scripts/scrape_national_ratings.py --season {CURRENT_SEASON}
           </code>
         </p>
       </div>
@@ -414,7 +414,7 @@ export default function NationalRankings() {
             Run the scraper to import ratings from Pear and CBR:
           </p>
           <code className="block bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded mt-3 text-sm text-gray-700 dark:text-gray-300">
-            python3 scripts/scrape_national_ratings.py --season 2026
+            python3 scripts/scrape_national_ratings.py --season {CURRENT_SEASON}
           </code>
         </div>
       )}

@@ -4,7 +4,7 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 import PlayerTrackerTable, {
   BoardToggle, HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { PORTAL_SEASON, TRACKER_SEASONS } from '../lib/seasons'
 
 /**
  * JUCO Tracker - the recruiting tool.
@@ -14,7 +14,7 @@ import { CURRENT_SEASON } from '../lib/seasons'
  */
 
 export default function JucoTracker() {
-  const [season, setSeason] = usePersistedState('juco_season', CURRENT_SEASON)
+  const [season, setSeason] = usePersistedState('juco_season_v2', PORTAL_SEASON)
   const [position, setPosition] = usePersistedState('juco_position', '')
   const [classYear, setClassYear] = usePersistedState('juco_classYear', 'So')
   const [hitSortBy, setHitSortBy] = usePersistedState('juco_hitSortBy', 'offensive_war')
@@ -95,13 +95,17 @@ export default function JucoTracker() {
   )
   const hitters = visibleRows.filter(isHitter)
   const pitchers = visibleRows.filter(isPitcher)
+  // The board year can run ahead of the data: the 2027 class is last spring's
+  // freshmen, shown with their 2026 stats until 2027 games are played.
+  const statsSeason = data && data.length ? data[0].stats_season : null
+  const ahead = statsSeason && statsSeason !== season
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">JUCO Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         {isNwac
-          ? 'NWAC players available for transfer to 4-year programs. Two-way players appear on both tables.'
+          ? `NWAC players available for transfer to 4-year programs, by the season they leave. Two-way players appear on both tables.${ahead ? ` The ${season} class is shown with ${statsSeason} stats until ${season} games begin.` : ''}`
           : `${conf} junior-college players, for recruiting. Stats are season totals (advanced metrics not available for this conference).`}
       </p>
 
@@ -129,7 +133,7 @@ export default function JucoTracker() {
             <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Season</label>
             <select value={season} onChange={(e) => setSeason(parseInt(e.target.value))}
               className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm">
-              {[2026, 2025, 2024].map(y => <option key={y} value={y}>{y}</option>)}
+              {TRACKER_SEASONS.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
 

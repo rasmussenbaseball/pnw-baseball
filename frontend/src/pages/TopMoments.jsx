@@ -1,4 +1,4 @@
-// TopMoments — biggest plays + clutch leaderboards of 2026.
+// TopMoments — biggest plays + clutch leaderboards of the current season.
 //
 // Four tabs:
 //   1. Hitter Moments  — top WPA from the BATTER's perspective
@@ -25,7 +25,7 @@ export default function TopMoments() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-5">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Top Moments of 2026</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-1">Top Moments of {SEASON}</h1>
       <p className="text-xs text-gray-500 mb-4 max-w-2xl">
         The most-clutch plays and players of the season, measured by Win
         Probability Added on every plate appearance with PBP coverage. Hitter
@@ -128,8 +128,8 @@ function HeroMoment({ moment, rank, perspective }) {
     ? new Date(m.game_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : '—'
   const headlineLabel = perspective === 'batter'
-    ? '#1 · biggest hitter swing of 2026'
-    : '#1 · biggest pitcher escape of 2026'
+    ? `#1 · biggest hitter swing of ${SEASON}`
+    : `#1 · biggest pitcher escape of ${SEASON}`
   const wpaLabel = perspective === 'batter' ? 'batter WPA' : 'pitcher WPA'
   return (
     <div className="bg-gradient-to-br from-nw-teal-dark to-nw-teal text-white rounded-xl p-5 shadow-md">

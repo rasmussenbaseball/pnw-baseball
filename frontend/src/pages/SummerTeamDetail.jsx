@@ -5,6 +5,7 @@
 
 import { Link, useParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { CURRENT_SEASON } from '../lib/seasons'
 import { titleName, fmtYr } from '../utils/summerDisplay'
 
 const fmtAvg = v => v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')
@@ -175,7 +176,7 @@ export default function SummerTeamDetail() {
             : <div className="text-xs text-gray-500 dark:text-gray-400">No games yet.</div>}
         </div>
 
-        {/* Roster — full 2026 squad, split by role so pitchers show pitching
+        {/* Roster — the full squad for the season shown, split by role so pitchers show pitching
             stats (not 0-for batting) and bench players still appear. */}
         {(() => {
           const all = roster || []
@@ -195,7 +196,7 @@ export default function SummerTeamDetail() {
                   {titleName(p.first_name, p.last_name)}
                 </Link>
                 {p.pnw_spring && (
-                  <span title="Plays 2026 PNW college ball — click for full profile"
+                  <span title={`Plays ${CURRENT_SEASON} PNW college ball — click for full profile`}
                     className="ml-1 inline-flex items-center justify-center text-[7px] font-black text-white bg-nw-teal rounded-[3px] px-[3px] leading-none align-middle"
                     style={{ height: '12px' }}>NW</span>
                 )}

@@ -21,6 +21,7 @@ from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
+from ..config import NEXT_SEASON, RECRUITING_GRAD_YEAR
 from .auth import require_admin
 from .leverage import compute_li
 from .lineup_helper import (
@@ -1172,7 +1173,8 @@ def recruiting_nwac_advancement(season: int = CURRENT_SEASON):
                  LIMIT 1
                ) dt ON true
                WHERE d.level='JUCO' AND COALESCE(p.is_committed,0)=1
-                 AND p.committed_to IS NOT NULL AND p.committed_to <> ''""")
+                 AND p.committed_to IS NOT NULL AND p.committed_to <> ''
+                 AND COALESCE(p.committed_season, %s) = %s""", (NEXT_SEASON, season + 1))
         commits = []
         for r in cur.fetchall():
             level = _COMMIT_LEVEL_OVERRIDES.get((r["committed_to"] or "").strip().lower()) or r["dest_level"]
@@ -1593,7 +1595,7 @@ def _class_summary_rows(cur, grad_year, limit=None, level=None):
 @router.get("/recruiting/classes")
 @cached_endpoint(ttl_seconds=3600)
 def recruiting_classes(
-    grad_year: int = Query(2026, description="Recruiting class year"),
+    grad_year: int = Query(RECRUITING_GRAD_YEAR, description="Recruiting class year"),
 ):
     """Per-school incoming-class leaderboard ranked by class_score."""
     with get_connection() as conn:
@@ -1604,7 +1606,7 @@ def recruiting_classes(
 @router.get("/recruiting/classes/top")
 @cached_endpoint(ttl_seconds=3600)
 def recruiting_classes_top(
-    grad_year: int = Query(2026, description="Recruiting class year"),
+    grad_year: int = Query(RECRUITING_GRAD_YEAR, description="Recruiting class year"),
     limit: int = Query(5, ge=1, le=15),
     level: Optional[str] = Query(None, description="Restrict to a division (D1/D2/D3/NAIA)"),
 ):
@@ -1622,7 +1624,7 @@ def recruiting_classes_top(
 @cached_endpoint(ttl_seconds=3600)
 def recruiting_class_detail(
     team_id: int,
-    grad_year: int = Query(2026, description="Recruiting class year"),
+    grad_year: int = Query(RECRUITING_GRAD_YEAR, description="Recruiting class year"),
 ):
     """One school's full incoming class: every commit with ranks + score."""
     with get_connection() as conn:
@@ -1663,7 +1665,7 @@ def recruiting_class_detail(
 @cached_endpoint(ttl_seconds=3600)
 def team_recruits(
     team_id: int,
-    grad_year: int = Query(2026, description="Recruiting class year"),
+    grad_year: int = Query(RECRUITING_GRAD_YEAR, description="Recruiting class year"),
 ):
     """PUBLIC: a team's incoming HS commits, for the team-page section."""
     with get_connection() as conn:
@@ -1745,12 +1747,15 @@ def _resolve_committed_team_id(cur, name, cache, pnw_ids):
     return tid
 
 
-def _transfer_commits(cur):
+def _transfer_commits(cur, arrival_season=None):
     """Every committed transfer (JUCO + portal) that landed at a PNW program, as
-    flat dicts ready to group by dest_team_id."""
+    flat dicts ready to group by dest_team_id. `arrival_season` scopes to the
+    commits whose first season at the new school is that year."""
     pnw_ids = _pnw_program_ids()
     cache = {}
     out = []
+    season_clause = "AND COALESCE(p.committed_season, %s) = %s" if arrival_season else ""
+    season_params = (NEXT_SEASON, arrival_season) if arrival_season else ()
 
     # JUCO tracker — players.is_committed + committed_to (free-text school).
     cur.execute(
@@ -1761,7 +1766,7 @@ def _transfer_commits(cur):
            JOIN conferences c ON t.conference_id = c.id
            JOIN divisions d ON c.division_id = d.id
            WHERE d.level = 'JUCO' AND COALESCE(p.is_committed, 0) = 1
-             AND p.committed_to IS NOT NULL AND p.committed_to <> ''""")
+             AND p.committed_to IS NOT NULL AND p.committed_to <> '' """ + season_clause, season_params)
     for r in cur.fetchall():
         tid = _resolve_committed_team_id(cur, r["committed_to"], cache, pnw_ids)
         if not tid:
@@ -1785,7 +1790,7 @@ def _transfer_commits(cur):
            JOIN conferences c ON t.conference_id = c.id
            JOIN divisions d ON c.division_id = d.id
            WHERE d.level <> 'JUCO' AND COALESCE(p.is_committed, 0) = 1
-             AND p.committed_to IS NOT NULL AND p.committed_to <> ''""")
+             AND p.committed_to IS NOT NULL AND p.committed_to <> '' """ + season_clause, season_params)
     for r in cur.fetchall():
         tid = _resolve_committed_team_id(cur, r["committed_to"], cache, pnw_ids)
         if not tid:
@@ -1808,7 +1813,12 @@ def _transfer_commits(cur):
             to_team_id INTEGER NOT NULL, position TEXT, added_by TEXT,
             added_at TIMESTAMP NOT NULL DEFAULT now())
     """)
-    cur.execute("SELECT name, from_school, to_team_id, position FROM incoming_transfers")
+    cur.execute("ALTER TABLE incoming_transfers ADD COLUMN IF NOT EXISTS season INTEGER")
+    if arrival_season:
+        cur.execute("SELECT name, from_school, to_team_id, position FROM incoming_transfers WHERE COALESCE(season, %s) = %s",
+                    (NEXT_SEASON, arrival_season))
+    else:
+        cur.execute("SELECT name, from_school, to_team_id, position FROM incoming_transfers")
     for r in cur.fetchall():
         out.append({
             "player_id": None,
@@ -1917,7 +1927,7 @@ def _enrich_transfer_war(cur, commits, season):
 @router.get("/recruiting/transfers")
 @cached_endpoint(ttl_seconds=300)
 def recruiting_transfers(
-    grad_year: int = Query(2026, description="Cycle year (transfers are the current incoming class)"),
+    grad_year: int = Query(RECRUITING_GRAD_YEAR, description="Cycle year (transfers are the current incoming class)"),
 ):
     """Transfer commits (JUCO + portal) grouped by destination PNW program, for the
     Recruiting Classes "Transfers" / "Combined" views. Each transfer carries its
@@ -1928,8 +1938,9 @@ def recruiting_transfers(
     so a newly-flagged commitment appears within the short cache window."""
     with get_connection() as conn:
         cur = conn.cursor()
-        commits = _transfer_commits(cur)
-        _enrich_transfer_war(cur, commits, CURRENT_SEASON)
+        # grad_year = the class cycle (HS grad year); its transfers arrive the next season.
+        commits = _transfer_commits(cur, arrival_season=grad_year + 1)
+        _enrich_transfer_war(cur, commits, min(CURRENT_SEASON, grad_year))
         teams = {}
         ids = sorted({c["dest_team_id"] for c in commits})
         if ids:

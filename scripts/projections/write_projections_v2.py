@@ -46,11 +46,16 @@ def build_rows(cur, TARGET):
 
     # ── who is where next season (same rules as v1) ──
     commits, left = {}, set()
-    cur.execute("SELECT id, committed_to FROM players WHERE is_committed = 1")
+    # A commitment carries the first season at the new school: only commits
+    # landing by TARGET remove the player from his old team, and only commits
+    # landing exactly in TARGET place him on the new one (a 2028 commit stays
+    # put for 2027).
+    cur.execute("SELECT id, committed_to, committed_season FROM players "
+                "WHERE is_committed = 1 AND COALESCE(committed_season, %s) <= %s", (TARGET, TARGET))
     for r in cur.fetchall():
         left.add(r["id"])
         dest = W.resolve_commit(r["committed_to"], tname_map)
-        if dest:
+        if dest and (r.get("committed_season") or TARGET) == TARGET:
             commits[r["id"]] = dest
     tp_path = REPO / "backend" / "data" / "transfer_portal.json"
     if tp_path.exists():
@@ -63,7 +68,7 @@ def build_rows(cur, TARGET):
             if dest:
                 commits[int(pid)] = dest
     try:
-        cur.execute("SELECT player_id FROM transfer_portal_members")
+        cur.execute("SELECT player_id FROM transfer_portal_members WHERE COALESCE(season, %s) < %s", (TARGET - 1, TARGET))
         for r in cur.fetchall():
             left.add(int(r["player_id"]))
     except Exception:

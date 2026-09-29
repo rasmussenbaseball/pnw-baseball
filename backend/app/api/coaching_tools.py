@@ -21,6 +21,7 @@ from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
+from ..config import NEXT_SEASON
 from .auth import require_admin
 from .leverage import compute_li
 from .lineup_helper import (
@@ -1341,6 +1342,7 @@ def list_commitments(
     season: int = Query(CURRENT_SEASON, description="Season to pull stats from"),
     level: str = Query("JUCO", description="Division level filter (default JUCO/NWAC)"),
     limit: int = Query(200, ge=1, le=500),
+    commit_season: Optional[int] = Query(None, description="Only commitments whose first season at the new school is this year"),
 ):
     """List committed players, newest commitment first.
 
@@ -1355,7 +1357,8 @@ def list_commitments(
     """
     all_levels = (level or "").strip().lower() == "all"
     level_clause = "" if all_levels else "AND d.level = %s"
-    sql_params = [limit] if all_levels else [level, limit]
+    season_clause = "AND COALESCE(p.committed_season, %s) = %s" if commit_season else ""
+    sql_params = ([] if all_levels else [level]) + ([NEXT_SEASON, commit_season] if commit_season else []) + [limit]
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -1369,6 +1372,7 @@ def list_commitments(
                    p.weight,
                    p.headshot_url,
                    p.committed_to,
+                   p.committed_season,
                    -- Real commitment stamp when present (June 2026 column,
                    -- set by update_commitments.py); updated_at is the legacy
                    -- proxy for rows committed before the column existed.
@@ -1389,6 +1393,7 @@ def list_commitments(
               AND COALESCE(p.is_phantom, FALSE) = FALSE
               AND t.is_active = 1
               {level_clause}
+              {season_clause}
             ORDER BY COALESCE(p.commitment_date, p.updated_at) DESC, p.last_name ASC
             LIMIT %s
             """,

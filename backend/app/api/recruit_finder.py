@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ..models.database import get_connection
-from ..config import CURRENT_SEASON
+from ..config import CURRENT_SEASON, NEXT_SEASON
 
 router = APIRouter(prefix="/recruit-finder", tags=["recruit-finder"])
 
@@ -153,12 +153,12 @@ def search(body: FinderQuery):
             JOIN teams t ON t.id = p.team_id
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
-            WHERE COALESCE(p.is_committed, 0) = 0
+            WHERE NOT (COALESCE(p.is_committed, 0) = 1 AND COALESCE(p.committed_season, %s) <= %s)
               AND ( d.level = 'JUCO'
                  OR p.id IN (SELECT player_id FROM transfer_portal_members)
                  OR p.id IN (SELECT spl.spring_player_id FROM wcl_portal_members w
                              JOIN summer_player_links spl ON spl.summer_player_id = w.summer_player_id) )
-        """)
+        """, (NEXT_SEASON, season + 1))
         pool = {r["id"]: dict(r) for r in cur.fetchall()}
         if not pool:
             return {"results": [], "count": 0, "note": "No uncommitted players found."}

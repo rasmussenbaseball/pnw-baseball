@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, cloneElement, Fragment } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { usePlayer, usePlayerGameLogs, usePlayerSplits } from '../hooks/useApi'
-import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason, NEXT_SEASON } from '../lib/seasons'
 import SeasonSelect from '../components/SeasonSelect'
 import { buildStints, defaultStint, StintRow, SummerStintView } from '../components/PlayerStints'
 import { formatStat, divisionBadgeClass } from '../utils/stats'
@@ -1845,7 +1845,7 @@ function PlayerDetailStandard() {
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
-                  Committed to {player.committed_to}
+                  Committed to {player.committed_to}{player.committed_season > NEXT_SEASON ? ` for ${player.committed_season - 1}-${String(player.committed_season).slice(2)}` : ''}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
@@ -1909,13 +1909,15 @@ function PlayerDetailStandard() {
 
       {/* ── Percentile Bars + Awards + Position ──
           Unified 2-column layout for ALL seasons. Left column = bars
-          (2026 metric set when on 2026, legacy metric set otherwise).
+          (modern metric set from 2026 on, legacy metric set for older years).
           Right column = Position → Awards → Glance → RecentGames in
           priority order, capped at the bars' natural height. */}
       {(() => {
-        const isCurrent2026 = activePercentileSeason === '2026'
-        const battingMetrics = isCurrent2026 ? BATTING_PERCENTILE_METRICS_2026 : BATTING_PERCENTILE_METRICS
-        const pitchingMetrics = isCurrent2026 ? PITCHING_PERCENTILE_METRICS_2026 : PITCHING_PERCENTILE_METRICS
+        // The savant-style metric set exists for 2026 onward (PBP era), not just
+        // the literal 2026 season, so 2027+ keep using it after the rollover.
+        const usesModernMetrics = Number(activePercentileSeason) >= 2026
+        const battingMetrics = usesModernMetrics ? BATTING_PERCENTILE_METRICS_2026 : BATTING_PERCENTILE_METRICS
+        const pitchingMetrics = usesModernMetrics ? PITCHING_PERCENTILE_METRICS_2026 : PITCHING_PERCENTILE_METRICS
         const hasAwards = (awards && awards.length > 0)
                        || (career_rankings && career_rankings.length > 0)
                        || (pnw_rankings && pnw_rankings.length > 0)

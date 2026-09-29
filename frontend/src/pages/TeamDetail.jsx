@@ -10,7 +10,7 @@ import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
 import SeasonSelect from '../components/SeasonSelect'
-import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
+import { CURRENT_SEASON, RECRUITING_GRAD_YEAR, clampSeason } from '../lib/seasons'
 import { BATTING_COLUMNS, PITCHING_COLUMNS, BATTING_PBP_COLUMNS, PITCHING_PBP_COLUMNS,
          formatStat, divisionBadgeClass, ipSum } from '../utils/stats'
 
@@ -336,12 +336,19 @@ function TransferRow({ t }) {
 
 // Unified Incoming Class: incoming transfers (JUCO/portal + name-only) and HS
 // commits in one section. Renders nothing when the team has neither.
-function IncomingClassSection({ teamId, gradYear = 2026 }) {
-  const { data: transferData } = useIncomingTransfers(teamId)
+// Default class = the one arriving for next season (class of RECRUITING_GRAD_YEAR - 1,
+// already signed); the toggle below also offers the class currently committing.
+function IncomingClassSection({ teamId, gradYear: initialGradYear = RECRUITING_GRAD_YEAR - 1 }) {
+  // Class year = HS grad year; its transfers arrive the following season, so
+  // the 2026 class = 2027 arrivals, the 2027 class = early commits for 2028.
+  const [gradYear, setGradYear] = useState(initialGradYear)
+  const { data: transferData } = useIncomingTransfers(teamId, gradYear + 1)
   const { data: recruitData } = useTeamRecruits(teamId, gradYear)
+  const { data: nextTransfers } = useIncomingTransfers(teamId, initialGradYear + 2)
+  const hasNext = Array.isArray(nextTransfers) && nextTransfers.length > 0
   const transfers = Array.isArray(transferData) ? transferData : []
   const commits = recruitData?.commits || []
-  if (!transfers.length && !commits.length) return null
+  if (!transfers.length && !commits.length && !hasNext) return null
 
   const classScore = recruitData?.class_score
   const scoredCount = recruitData?.scored_count
@@ -350,6 +357,16 @@ function IncomingClassSection({ teamId, gradYear = 2026 }) {
     <div className="mb-8">
       <div className="mb-2 flex items-center gap-2 flex-wrap">
         <h2 className="text-lg sm:text-xl font-bold text-nw-teal dark:text-gray-100">Incoming Class ({gradYear})</h2>
+        {hasNext && (
+          <div className="inline-flex rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-[11px] font-semibold">
+            {[initialGradYear, initialGradYear + 1].map((y) => (
+              <button key={y} type="button" onClick={() => setGradYear(y)}
+                className={`px-2 py-0.5 ${gradYear === y ? 'bg-nw-teal text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}>
+                {y} class
+              </button>
+            ))}
+          </div>
+        )}
         {classScore != null && (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-nw-teal dark:text-nw-teal-light">
             <span className="text-sm font-black tabular-nums">{classScore.toFixed(1)}</span>
@@ -367,7 +384,7 @@ function IncomingClassSection({ teamId, gradYear = 2026 }) {
         {transfers.length > 0 && (
           <div>
             <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1.5">
-              Transfers <span className="text-gray-400 dark:text-gray-500">· {transfers.length}</span>
+              Transfers <span className="text-gray-400 dark:text-gray-500">· {transfers.length} · arriving for {gradYear + 1}</span>
             </div>
             <div className="grid sm:grid-cols-2 gap-x-6">
               {transfers.map((t) => <TransferRow key={`${t.kind}-${t.player_id || t.id}`} t={t} />)}

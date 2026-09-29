@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
 import { DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, BROADCAST_OWNER_EMAILS, COMMITMENT_EDITOR_EMAILS } from '../lib/tiers'
+import { CURRENT_SEASON, PROJECTION_SEASON } from '../lib/seasons'
 
 // ─── Navigation structure ───
 const NAV = [
@@ -40,7 +41,7 @@ const NAV = [
     items: [
       { to: '/recruiting', label: 'Recruiting Hub', desc: 'Start here: every recruiting tool, explained. Free to browse.' },
       { to: '/recruiting/tips', label: 'Recruiting Tips', desc: 'How to get recruited + freshman production by level' },
-      { to: '/recruiting/advancement', label: 'NWAC Advancement', desc: 'Where NWAC teams send players + 2026 D1 commits' },
+      { to: '/recruiting/advancement', label: 'NWAC Advancement', desc: `Where NWAC teams send players + ${CURRENT_SEASON} D1 commits` },
       { to: '/recruiting/quiz', label: 'Recruit Matchmaker', desc: 'Match yourself to your best-fit NW program (free; full list Premium)' },
       { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends' },
       { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city' },
@@ -99,7 +100,7 @@ const NAV = [
       { to: '/portal', label: 'Coach & Scouting Portal',
         desc: 'Trends, opponent scouting, and PDFs in one workspace' },
       { to: '/projections', label: 'Projections',
-        desc: '2027 projected rosters (returners, transfers & freshmen)' },
+        desc: `${PROJECTION_SEASON} projected rosters (returners, transfers & freshmen)` },
       { to: '/compare', label: 'Matchups', desc: 'Head-to-head team comparisons' },
       { to: '/coaching/player-comparison', label: 'Player Comparison',
         desc: 'Compare up to 5 players side by side (hitting, pitching, fielding)' },

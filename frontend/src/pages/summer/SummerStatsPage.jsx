@@ -2,7 +2,7 @@
 //
 // Replaces the old /summerball page from the Stats tab. Adds:
 //   • Batting / Pitching / Fielding sub-tabs in one place
-//   • Multi-year season picker (2026 default, 2019-2025 history)
+//   • Multi-year season picker (SUMMER_SEASON default, 2019 onward history)
 //   • Sort + min-PA / min-IP / min-TC filters
 //   • Click-through to player + team profiles
 //
@@ -15,10 +15,13 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import SummerPageShell from './SummerPageShell'
 import { useApi } from '../../hooks/useApi'
-import { CURRENT_SEASON } from '../../lib/seasons'
+import { SUMMER_SEASON, SUMMER_SEASONS } from '../../lib/seasons'
 
 const LEAGUE = 'WCL'
-const SEASON_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2019]
+// Newest summers come from seasons.js (bumped each June); older history is
+// listed here so the picker keeps offering it after the rollover.
+const SEASON_HISTORY = [2024, 2023, 2022, 2021, 2019]
+const SEASON_OPTIONS = [...new Set([...SUMMER_SEASONS, ...SEASON_HISTORY])]
 const TABS = [
   { key: 'batting',  label: 'Batting' },
   { key: 'pitching', label: 'Pitching' },
@@ -33,7 +36,7 @@ const fmtPct = (v) => v == null ? '—' : `${(v * 100).toFixed(1)}%`
 
 export default function SummerStatsPage() {
   const [tab,     setTab]     = useState('batting')
-  const [season,  setSeason]  = useState(CURRENT_SEASON)
+  const [season,  setSeason]  = useState(SUMMER_SEASON)
   return (
     <SummerPageShell
       title="WCL Stats"

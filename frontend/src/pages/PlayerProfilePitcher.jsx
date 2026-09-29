@@ -18,7 +18,7 @@ import {
   ProfileShell, divisionBadge, ipToTrue,
   CHART_TIERS, HERO_GRADIENT, AWARD_BADGE_STYLE, RANK_BADGE_STYLE,
 } from '../components/playerProfile/shared'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, NEXT_SEASON } from '../lib/seasons'
 
 // SEASON is derived from the `season` prop inside the component (the year
 // selector / ?season= URL param), so the page can render any season.
@@ -276,7 +276,7 @@ export default function PlayerProfilePitcher({ playerId, data, season = CURRENT_
             </div>
             {!!player.is_committed && player.committed_to && (
               <div className="mt-2 mr-2 inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200">
-                ✓ Committed to {player.committed_to}
+                ✓ Committed to {player.committed_to}{player.committed_season > NEXT_SEASON ? ` for ${player.committed_season - 1}-${String(player.committed_season).slice(2)}` : ''}
               </div>
             )}
             {current_summer_assignment && (

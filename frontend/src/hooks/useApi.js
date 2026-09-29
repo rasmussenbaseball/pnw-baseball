@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CURRENT_SEASON } from '../utils/constants'
+import { PROJECTION_SEASON, RECRUITING_GRAD_YEAR } from '../lib/seasons'
 import { supabase } from '../lib/supabase'
 import { bumpPending, decrementPending } from '../lib/pendingRequests'
 
@@ -118,22 +119,22 @@ export function useTeamStats(teamId, season) {
 }
 
 /** Teams that have projections (for the Projections page team picker). */
-export function useProjectionTeams(season = 2027) {
+export function useProjectionTeams(season = PROJECTION_SEASON) {
   return useApi('/projections/teams', { season }, [season])
 }
 
-/** 2027 projected hitters + pitchers for a team (returning + incoming). */
-export function useTeamProjections(teamId, season = 2027) {
+/** Projected (PROJECTION_SEASON) hitters + pitchers for a team (returning + incoming). */
+export function useTeamProjections(teamId, season = PROJECTION_SEASON) {
   return useApi(teamId ? `/teams/${teamId}/projections` : null, { season }, [teamId, season])
 }
 
 /** Every team's projected totals (hitting + pitching) for the team leaderboard. */
-export function useProjectionTeamLeaders(season = 2027) {
+export function useProjectionTeamLeaders(season = PROJECTION_SEASON) {
   return useApi('/projections/team-leaders', { season }, [season])
 }
 
 /** All projected players for a side (bat|pit) for the player leaderboard. */
-export function useProjectionPlayerLeaders(side = 'bat', season = 2027) {
+export function useProjectionPlayerLeaders(side = 'bat', season = PROJECTION_SEASON) {
   return useApi('/projections/player-leaders', { side, season }, [side, season])
 }
 
@@ -461,7 +462,7 @@ export function useSeasons() {
  * Top moments of the season — best single-PA WPA swings + clutch
  * leaderboards for hitters and pitchers. Powers the /top-moments page.
  */
-export function useTopMoments(season = 2026, opts = {}) {
+export function useTopMoments(season = CURRENT_SEASON, opts = {}) {
   return useApi('/top-moments', { season, ...opts }, [season, JSON.stringify(opts)])
 }
 
@@ -703,7 +704,7 @@ export function useRecruitingBreakdown(season = CURRENT_SEASON) {
  * Recruiting Classes leaderboard - per-school HS commit class summaries
  * for a grad year. Sorted by class_score desc.
  */
-export function useRecruitingClasses(gradYear = 2026) {
+export function useRecruitingClasses(gradYear = RECRUITING_GRAD_YEAR) {
   return useApi('/recruiting/classes', { grad_year: gradYear }, [gradYear])
 }
 
@@ -711,7 +712,7 @@ export function useRecruitingClasses(gradYear = 2026) {
  * One school's full HS commit list for a grad year. Pass
  * null teamId to skip the fetch (used when no leaderboard row is expanded).
  */
-export function useRecruitingClassDetail(teamId, gradYear = 2026) {
+export function useRecruitingClassDetail(teamId, gradYear = RECRUITING_GRAD_YEAR) {
   return useApi(
     teamId ? `/recruiting/classes/${teamId}` : null,
     { grad_year: gradYear },
@@ -724,7 +725,7 @@ export function useRecruitingClassDetail(teamId, gradYear = 2026) {
  *. Powers the "Transfers" and "Combined" views on the
  * Recruiting Classes page. Transfers are unrated for now (listed only).
  */
-export function useRecruitingTransfers(gradYear = 2026) {
+export function useRecruitingTransfers(gradYear = RECRUITING_GRAD_YEAR) {
   return useApi('/recruiting/transfers', { grad_year: gradYear }, [gradYear])
 }
 
@@ -732,7 +733,7 @@ export function useRecruitingTransfers(gradYear = 2026) {
  * A team's incoming HS commits for a grad year (PUBLIC) - powers the
  * team-page "Incoming Class" section. Pass null teamId to skip.
  */
-export function useTeamRecruits(teamId, gradYear = 2026) {
+export function useTeamRecruits(teamId, gradYear = RECRUITING_GRAD_YEAR) {
   return useApi(
     teamId ? `/teams/${teamId}/recruits` : null,
     { grad_year: gradYear },
@@ -740,11 +741,11 @@ export function useTeamRecruits(teamId, gradYear = 2026) {
   )
 }
 
-export function useIncomingTransfers(teamId) {
+export function useIncomingTransfers(teamId, arrivalSeason) {
   return useApi(
     teamId ? `/teams/${teamId}/incoming-transfers` : null,
-    {},
-    [teamId]
+    arrivalSeason ? { arrival_season: arrivalSeason } : {},
+    [teamId, arrivalSeason]
   )
 }
 
@@ -752,7 +753,7 @@ export function useIncomingTransfers(teamId) {
  * Top recruiting classes (PUBLIC) - capped leaderboard for the homepage /
  * Recruiting Hub teaser card.
  */
-export function useTopRecruitingClasses(gradYear = 2026, limit = 5) {
+export function useTopRecruitingClasses(gradYear = RECRUITING_GRAD_YEAR, limit = 5) {
   return useApi('/recruiting/classes/top', { grad_year: gradYear, limit }, [gradYear, limit])
 }
 

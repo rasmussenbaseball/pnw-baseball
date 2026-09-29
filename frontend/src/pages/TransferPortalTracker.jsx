@@ -4,7 +4,7 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 import PlayerTrackerTable, {
   BoardToggle, HITTER_STAT_COLS, PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { PORTAL_SEASON, TRACKER_SEASONS } from '../lib/seasons'
 
 /**
  * Transfer Portal Tracker — PNW four-year (non-JUCO) college players who
@@ -14,7 +14,7 @@ import { CURRENT_SEASON } from '../lib/seasons'
  */
 
 export default function TransferPortalTracker() {
-  const [season, setSeason] = usePersistedState('tp_season', CURRENT_SEASON)
+  const [season, setSeason] = usePersistedState('tp_season_v2', PORTAL_SEASON)
   const [position, setPosition] = usePersistedState('tp_position', '')
   const [hitSortBy, setHitSortBy] = usePersistedState('tp_hitSortBy', 'offensive_war')
   const [hitSortDir, setHitSortDir] = usePersistedState('tp_hitSortDir', 'desc')
@@ -53,12 +53,16 @@ export default function TransferPortalTracker() {
 
   const hitters = (data || []).filter(isHitter)
   const pitchers = (data || []).filter(isPitcher)
+  const statsSeason = data && data.length ? data[0].stats_season : null
+  const ahead = statsSeason && statsSeason !== season
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-2">Transfer Portal Tracker</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Pacific Northwest four-year college players who have entered the transfer portal. Two-way players appear on both tables.
+        Pacific Northwest four-year college players who entered the transfer portal after the selected season. Two-way players appear on both tables.
+        {ahead ? ` ${season} entries are shown with ${statsSeason} stats until ${season} games begin.` : ''}
+        {!loading && data && data.length === 0 ? ` No one has entered the ${season} portal yet.` : ''}
       </p>
 
       {/* Filters */}
@@ -71,7 +75,7 @@ export default function TransferPortalTracker() {
               onChange={(e) => setSeason(parseInt(e.target.value))}
               className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm"
             >
-              {[2026, 2025, 2024].map(y => (
+              {TRACKER_SEASONS.map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>

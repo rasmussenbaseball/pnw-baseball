@@ -624,7 +624,7 @@ function renderTeamView({
   const headerH = drawHeader(
     ctx, W, padX,
     `${result.label || ''} ${teamLabel}`,
-    `2026 All-Conference Team`,
+    `${CURRENT_SEASON} All-Conference Team`,
     faviconImg
   )
   drawFooter(ctx, W, H)
@@ -757,7 +757,7 @@ function renderHmView({
   const headerH = drawHeader(
     ctx, W, padX,
     `${result.label || ''} Honorable Mentions`,
-    `2026 All-Conference Honorable Mentions`,
+    `${CURRENT_SEASON} All-Conference Honorable Mentions`,
     faviconImg
   )
   drawFooter(ctx, W, H)

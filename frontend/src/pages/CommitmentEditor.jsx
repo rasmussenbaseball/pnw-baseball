@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, PORTAL_SEASON, COMMIT_SEASONS, NEXT_SEASON, RECRUITING_GRAD_YEAR, academicYear } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -70,15 +70,37 @@ function PnwSchoolField({ value, onChange, pnwTeams }) {
   )
 }
 
-function StatusChip({ committed, school }) {
-  if (committed && school) return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">✓ {school}</span>
+function StatusChip({ committed, school, season }) {
+  if (committed && school) {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+        ✓ {school}{season ? <span className="ml-1 font-medium text-emerald-700/80">for {academicYear(season)}</span> : null}
+      </span>
+    )
+  }
   return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Uncommitted</span>
+}
+
+// Season a commitment is FOR (the first season at the new school). Default =
+// the open cycle's arrival year; the earlier year is offered for stragglers.
+function SeasonSelect({ value, onChange, options, label }) {
+  return (
+    <label className="flex flex-col text-[10px] font-bold text-gray-500 uppercase">
+      {label}
+      <select value={value} onChange={e => onChange(parseInt(e.target.value))}
+        className="mt-0.5 px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-normal normal-case bg-white dark:bg-gray-900">
+        {options.map(y => <option key={y} value={y}>{academicYear(y)}</option>)}
+      </select>
+    </label>
+  )
 }
 
 // ── Commitment + portal row ──
 function PlayerRow({ player, pnwTeams, onChanged, setToast }) {
   const [school, setSchool] = useState(player.committed_to || '')
   const [teamId, setTeamId] = useState(null)
+  const [season, setSeason] = useState(player.committed_season || COMMIT_SEASONS[0])
+  const [portalSeason, setPortalSeason] = useState(player.portal_season || PORTAL_SEASON)
   const [busy, setBusy] = useState(false)
 
   const run = async (fn) => { setBusy(true); try { await fn() } catch (e) { setToast({ type: 'err', msg: e.message }) } finally { setBusy(false) } }
@@ -86,19 +108,20 @@ function PlayerRow({ player, pnwTeams, onChanged, setToast }) {
   const save = () => run(async () => {
     const val = school.trim()
     if (!val) { setToast({ type: 'err', msg: 'Enter a school first.' }); return }
-    const r = await apiPost('/admin/commitment/set', { player_id: player.id, committed_to: val, committed_team_id: teamId })
-    setToast({ type: 'ok', msg: `${player.name} → ${r.committed_to}${r.matched_pnw ? ' (PNW — on 2027 roster)' : ''}` })
-    onChanged(player.id, { is_committed: true, committed_to: r.committed_to })
+    const r = await apiPost('/admin/commitment/set', { player_id: player.id, committed_to: val, committed_team_id: teamId, season })
+    const when = academicYear(r.committed_season)
+    setToast({ type: 'ok', msg: `${player.name} → ${r.committed_to} for ${when}${r.matched_pnw ? ` (PNW, on the ${r.committed_season} roster)` : ''}${r.committed_season > NEXT_SEASON ? `. Stays on ${player.team_short} through ${r.committed_season - 1}.` : ''}` })
+    onChanged(player.id, { is_committed: true, committed_to: r.committed_to, committed_season: r.committed_season })
   })
   const undo = () => run(async () => {
     await apiPost('/admin/commitment/clear', { player_id: player.id })
     setToast({ type: 'ok', msg: `${player.name} marked uncommitted` }); setSchool('')
-    onChanged(player.id, { is_committed: false, committed_to: null })
+    onChanged(player.id, { is_committed: false, committed_to: null, committed_season: null })
   })
   const togglePortal = () => run(async () => {
-    const r = await apiPost(player.in_portal ? '/admin/portal/remove' : '/admin/portal/add', { player_id: player.id })
-    setToast({ type: 'ok', msg: `${player.name} ${r.in_portal ? 'added to' : 'removed from'} portal` })
-    onChanged(player.id, { in_portal: r.in_portal })
+    const r = await apiPost(player.in_portal ? '/admin/portal/remove' : '/admin/portal/add', { player_id: player.id, season: portalSeason })
+    setToast({ type: 'ok', msg: `${player.name} ${r.in_portal ? `added to the ${r.portal_season} portal` : 'removed from portal'}` })
+    onChanged(player.id, { in_portal: r.in_portal, portal_season: r.in_portal ? r.portal_season : null })
   })
 
   return (
@@ -107,15 +130,25 @@ function PlayerRow({ player, pnwTeams, onChanged, setToast }) {
       <div className="min-w-[170px] flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-gray-900 dark:text-gray-100">{player.name}</span>
-          <StatusChip committed={player.is_committed} school={player.committed_to} />
-          {player.in_portal && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">In portal</span>}
+          <StatusChip committed={player.is_committed} school={player.committed_to} season={player.committed_season} />
+          {player.in_portal && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">In {player.portal_season || PORTAL_SEASON} portal</span>}
         </div>
         <div className="text-xs text-gray-500">{playerMeta(player)}</div>
       </div>
       <PnwSchoolField value={school} onChange={(v, id) => { setSchool(v); setTeamId(id) }} pnwTeams={pnwTeams} />
+      <SeasonSelect label="For season" value={season} onChange={setSeason} options={COMMIT_SEASONS} />
       <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-md bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 disabled:opacity-50">Save</button>
       {player.is_committed && (
         <button onClick={undo} disabled={busy} className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 disabled:opacity-50">Undo</button>
+      )}
+      {!player.in_portal && (
+        <label className="flex flex-col text-[10px] font-bold text-gray-500 uppercase">
+          Portal year
+          <select value={portalSeason} onChange={e => setPortalSeason(parseInt(e.target.value))}
+            className="mt-0.5 px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-normal normal-case bg-white dark:bg-gray-900">
+            {[PORTAL_SEASON, PORTAL_SEASON - 1].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
       )}
       <button onClick={togglePortal} disabled={busy}
         className={`px-3 py-1.5 rounded-md text-sm font-semibold border disabled:opacity-50 ${player.in_portal
@@ -127,11 +160,57 @@ function PlayerRow({ player, pnwTeams, onChanged, setToast }) {
   )
 }
 
+// Every commitment on file for one arrival season (the editor's year filter).
+function CommitList({ setToast, refreshKey, onChanged }) {
+  const [season, setSeason] = useState(COMMIT_SEASONS[0])
+  const [rows, setRows] = useState(null)
+  const load = useCallback(async () => {
+    try { setRows(await apiGet(`/admin/commitment/list${season ? `?season=${season}` : ''}`)) } catch { setRows([]) }
+  }, [season])
+  useEffect(() => { load() }, [load, refreshKey])
+  const clear = async (r) => {
+    try {
+      await apiPost('/admin/commitment/clear', { player_id: r.player_id })
+      setToast({ type: 'ok', msg: `${r.name} marked uncommitted` }); onChanged(r.player_id, { is_committed: false, committed_to: null, committed_season: null })
+    } catch (e) { setToast({ type: 'err', msg: e.message }) }
+  }
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Commitments on file</h2>
+        <select value={season || ''} onChange={e => setSeason(e.target.value ? parseInt(e.target.value) : null)}
+          className="px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900">
+          {COMMIT_SEASONS.map(y => <option key={y} value={y}>For {academicYear(y)} ({y === NEXT_SEASON ? 'this cycle' : 'early commits'})</option>)}
+          <option value="">All seasons</option>
+        </select>
+        {rows && <span className="text-xs text-gray-400">{rows.length} player{rows.length === 1 ? '' : 's'}</span>}
+      </div>
+      {rows === null && <div className="text-sm text-gray-400 py-3">Loading…</div>}
+      {rows && rows.length === 0 && <div className="text-sm text-gray-400 py-3">No commitments recorded for this season yet.</div>}
+      {rows && rows.length > 0 && (
+        <div className="max-h-96 overflow-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-800">
+          {rows.map(r => (
+            <div key={r.player_id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-1.5 text-sm">
+              <span className="font-medium text-gray-800 dark:text-gray-200">{r.name}</span>
+              <span className="text-xs text-gray-400">{[r.position, r.team_short, r.division_level, r.year_in_school].filter(Boolean).join(' · ')}</span>
+              <span className="text-emerald-700 font-medium">→ {r.committed_to}</span>
+              <span className="text-xs text-gray-400">for {academicYear(r.committed_season || NEXT_SEASON)}</span>
+              {r.in_portal && <span className="text-[10px] font-semibold px-1.5 rounded bg-amber-100 text-amber-800">{r.portal_season || ''} portal</span>}
+              <button onClick={() => clear(r)} className="ml-auto text-xs text-red-500 hover:underline">clear</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CommitmentsTab({ pnwTeams, setToast }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [recent, setRecent] = useState([])
+  const [refreshKey, setRefreshKey] = useState(0)
   const debounceRef = useRef(null)
 
   const loadRecent = useCallback(async () => { try { setRecent(await apiGet('/admin/commitment/recent')) } catch { /* */ } }, [])
@@ -148,10 +227,16 @@ function CommitmentsTab({ pnwTeams, setToast }) {
     return () => clearTimeout(debounceRef.current)
   }, [q])
 
-  const onChanged = (id, patch) => { setResults(rs => rs.map(p => p.id === id ? { ...p, ...patch } : p)); loadRecent() }
+  const onChanged = (id, patch) => { setResults(rs => rs.map(p => p.id === id ? { ...p, ...patch } : p)); loadRecent(); setRefreshKey(k => k + 1) }
 
   return (
     <>
+      <p className="text-sm text-gray-500 mb-3">
+        A commitment is saved <b>for a season</b>: the first year the player plays at the new school.
+        Pick {academicYear(NEXT_SEASON)} for players moving this cycle, or {academicYear(NEXT_SEASON + 1)} for an early commit
+        who stays on his current team through {NEXT_SEASON} (he keeps his {NEXT_SEASON} roster spot and projections, and shows on the new
+        school's page under that class).
+      </p>
       <input value={q} onChange={e => setQ(e.target.value)} autoFocus placeholder="Search a player by name…"
         className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 mb-3" />
       <div className="space-y-2 mb-8">
@@ -159,6 +244,7 @@ function CommitmentsTab({ pnwTeams, setToast }) {
         {!searching && q.trim().length >= 2 && results.length === 0 && <div className="text-sm text-gray-400 py-4 text-center">No players found.</div>}
         {results.map(p => <PlayerRow key={p.id} player={p} pnwTeams={pnwTeams} onChanged={onChanged} setToast={setToast} />)}
       </div>
+      <CommitList setToast={setToast} refreshKey={refreshKey} onChanged={onChanged} />
       {recent.length > 0 && (
         <div>
           <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">Recent edits</h2>
@@ -317,6 +403,7 @@ function IncomingTab({ pnwTeams, setToast }) {
   const [pos, setPos] = useState('')
   const [dest, setDest] = useState('')
   const [destId, setDestId] = useState(null)
+  const [season, setSeason] = useState(COMMIT_SEASONS[0])
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => { try { setList(await apiGet('/admin/incoming/list')) } catch { /* */ } }, [])
@@ -327,8 +414,8 @@ function IncomingTab({ pnwTeams, setToast }) {
     if (!destId) { setToast({ type: 'err', msg: 'Pick the destination PNW school from the dropdown.' }); return }
     setBusy(true)
     try {
-      await apiPost('/admin/incoming/add', { name: name.trim(), from_school: fromSchool.trim(), to_team_id: destId, position: pos.trim() || null })
-      setToast({ type: 'ok', msg: `${name.trim()} → ${dest}` })
+      await apiPost('/admin/incoming/add', { name: name.trim(), from_school: fromSchool.trim(), to_team_id: destId, position: pos.trim() || null, season })
+      setToast({ type: 'ok', msg: `${name.trim()} → ${dest} for ${academicYear(season)}` })
       setName(''); setFromSchool(''); setPos(''); setDest(''); setDestId(null)
       load()
     } catch (e) { setToast({ type: 'err', msg: e.message }) }
@@ -365,6 +452,7 @@ function IncomingTab({ pnwTeams, setToast }) {
           <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">To (PNW school)</div>
           <PnwSchoolField value={dest} onChange={(v, id) => { setDest(v); setDestId(id) }} pnwTeams={pnwTeams} />
         </div>
+        <SeasonSelect label="For season" value={season} onChange={setSeason} options={COMMIT_SEASONS} />
         <button onClick={add} disabled={busy} className="px-4 py-1.5 rounded-md bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 disabled:opacity-50">Add</button>
       </div>
 
@@ -375,6 +463,7 @@ function IncomingTab({ pnwTeams, setToast }) {
             <span className="font-semibold text-gray-800 dark:text-gray-200">{r.name}</span>
             {r.position && <span className="text-[10px] font-bold text-gray-400 uppercase">{r.position}</span>}
             <span className="text-gray-500">{r.from_school ? `from ${r.from_school}` : ''} → <span className="text-emerald-700 font-medium">{r.to_team}</span></span>
+            <span className="text-xs text-gray-400">for {academicYear(r.season || NEXT_SEASON)}</span>
             <button onClick={() => remove(r.id)} className="ml-auto text-red-500 hover:underline text-xs">remove</button>
           </div>
         ))}
@@ -389,7 +478,7 @@ function FreshmenTab({ pnwTeams, setToast }) {
   const [name, setName] = useState('')
   const [pos, setPos] = useState('')
   const [state, setState] = useState('')
-  const [gradYear, setGradYear] = useState(2026)
+  const [gradYear, setGradYear] = useState(RECRUITING_GRAD_YEAR)  // HS class currently committing
   const [dest, setDest] = useState('')
   const [destId, setDestId] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -404,7 +493,7 @@ function FreshmenTab({ pnwTeams, setToast }) {
     try {
       await apiPost('/admin/freshman/add', {
         name: name.trim(), position: pos.trim() || null, state: state.trim() || null,
-        grad_year: Number(gradYear) || 2026, to_team_id: destId,
+        grad_year: Number(gradYear) || RECRUITING_GRAD_YEAR, to_team_id: destId,
       })
       setToast({ type: 'ok', msg: `${name.trim()} → ${dest} (unrated freshman)` })
       setName(''); setPos(''); setState(''); setDest(''); setDestId(null)
@@ -496,8 +585,8 @@ function WclPlayerRow({ player, pnwTeams, onChanged, setToast }) {
     onChanged(player.id, { assigned_school: null })
   })
   const togglePortal = () => run(async () => {
-    const r = await apiPost(player.in_wcl_portal ? '/admin/wcl-portal/remove' : '/admin/wcl-portal/add', { summer_player_id: player.id })
-    setToast({ type: 'ok', msg: `${player.name} ${r.in_wcl_portal ? 'added to' : 'removed from'} WCL portal` })
+    const r = await apiPost(player.in_wcl_portal ? '/admin/wcl-portal/remove' : '/admin/wcl-portal/add', { summer_player_id: player.id, season: PORTAL_SEASON })
+    setToast({ type: 'ok', msg: `${player.name} ${r.in_wcl_portal ? `added to the ${r.portal_season} WCL portal` : 'removed from WCL portal'}` })
     onChanged(player.id, { in_wcl_portal: r.in_wcl_portal })
   })
 

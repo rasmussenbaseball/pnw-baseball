@@ -24,7 +24,8 @@ from psycopg2.extras import Json
 from typing import Optional
 from ..models.database import get_connection
 from ..cache import cached_endpoint
-from ..config import CURRENT_SEASON
+from ..config import CURRENT_SEASON, SUMMER_SEASON, PROJECTION_SEASON
+from ..config import NEXT_SEASON, PORTAL_SEASON  # season-scoped commitments / portal cycles
 from .auth import require_admin
 from .leverage import compute_li
 from .lineup_helper import (
@@ -78,6 +79,33 @@ _YEAR_GROUPS = {
     "Jr": ("Jr", "R-Jr"),
     "Sr": ("Sr", "R-Sr"),
 }
+
+# A tracker year can run ahead of the data (fall 2026: the 2027 JUCO class is
+# last spring's freshmen, and no 2027 stats exist yet). When the requested
+# season has no stats, the tracker falls back to the previous season's stats
+# and shifts the class filter back one step (2027 sophomores = 2026 freshmen).
+_PREV_CLASS = {"So": "Fr", "Jr": "So", "Sr": "Jr", "Fr": None}
+_NEXT_CLASS_LABEL = {"Fr": "So", "R-Fr": "R-So", "So": "Jr", "R-So": "R-Jr", "Jr": "Sr", "R-Jr": "R-Sr", "Sr": "Sr+"}
+
+
+def _tracker_stats_season(cur, season, level=None):
+    """(stats_season, shift): the season whose stats a tracker should show for
+    `season`. shift=1 means the requested season has no stats yet, so classes
+    are promoted by one year relative to the stored year_in_school."""
+    lvl = "AND d.level = %s" if level else ""
+    cur.execute(f"""SELECT 1 FROM batting_stats bs JOIN players p ON p.id = bs.player_id
+                    JOIN teams t ON t.id = p.team_id JOIN conferences c ON c.id = t.conference_id
+                    JOIN divisions d ON d.id = c.division_id
+                    WHERE bs.season = %s {lvl} LIMIT 1""", (season, level) if level else (season,))
+    if cur.fetchone():
+        return season, 0
+    return season - 1, 1
+
+
+def _promote_class(year_in_school, shift):
+    if not shift or not year_in_school:
+        return year_in_school
+    return _NEXT_CLASS_LABEL.get(year_in_school, year_in_school)
 
 
 # ── Qualification thresholds (per team game played) ──
@@ -10053,7 +10081,7 @@ def get_player(player_id: int, percentile_season: Optional[str] = Query(None)):
         # in the stat tables rather than from summer_players, because that
         # roster table holds entries from multiple past seasons (so a guy
         # who last played WCL in 2023 was wrongly getting a 2026 button).
-        CURRENT_SUMMER_SEASON = CURRENT_SEASON
+        CURRENT_SUMMER_SEASON = SUMMER_SEASON  # most recent WCL summer with data, not the spring year
         current_summer_assignment = None
         for _sr in (summer_batting + summer_pitching):
             if _sr.get("season") == CURRENT_SUMMER_SEASON and _sr.get("league_abbrev") == "WCL":
@@ -10256,6 +10284,13 @@ def uncommitted_juco_players(
 
     with get_connection() as conn:
         cur = conn.cursor()
+        # Tracker year vs data year: the 2027 board (fall 2026) shows last
+        # spring's freshmen with their 2026 stats, promoted one class.
+        stats_season, shift = _tracker_stats_season(cur, season, "JUCO")
+        if shift and year_in_school:
+            year_in_school = _PREV_CLASS.get(year_in_school, year_in_school)
+            if year_in_school is None:
+                return []           # next year's freshmen are not in the DB yet
         query = _PLAYER_PBP_CTES(
             "ge.batter_player_id IN (SELECT id FROM juco_ids)",
             "ge.pitcher_player_id IN (SELECT id FROM juco_ids)",
@@ -10281,10 +10316,12 @@ def uncommitted_juco_players(
             LEFT JOIN ppbp ON ppbp.pid = p.id
             WHERE d.level = 'JUCO'
               AND (bs.player_id IS NOT NULL OR ps2.player_id IS NOT NULL)
+              -- already gone: committed somewhere for this tracker year or earlier
+              AND NOT (COALESCE(p.is_committed, 0) = 1 AND COALESCE(p.committed_season, %s) <= %s)
         """
         # PBP CTE season params first (batter, then pitcher), then the
-        # batting_stats + pitching_stats join seasons.
-        params: list = [season, season, season, season]
+        # batting_stats + pitching_stats join seasons, then the commit gate.
+        params: list = [stats_season, stats_season, stats_season, stats_season, NEXT_SEASON, season]
 
         if year_in_school:
             query = _apply_year_filter(query, params, year_in_school)
@@ -10328,6 +10365,9 @@ def uncommitted_juco_players(
         rows = cur.execute(query, params)
         rows = cur.fetchall()
         out = [_add_era_plus(dict(r)) for r in rows]
+        for r in out:
+            r["stats_season"] = stats_season
+            r["year_in_school"] = _promote_class(r.get("year_in_school"), shift)
         # Tag each committed player's destination with its division level, using
         # the same resolver as the NWAC advancement graphic so the level shown on
         # the tracker matches the graphic and updates with every new commitment.
@@ -10338,7 +10378,7 @@ def uncommitted_juco_players(
             for r in out:
                 if r.get("committed_to"):
                     r["committed_level"] = levels.get(r["committed_to"].strip().lower())
-        _attach_tracker_awards(cur, out, season)
+        _attach_tracker_awards(cur, out, stats_season)
         return out
 
 
@@ -10518,8 +10558,12 @@ def transfer_portal_players(
                 player_id INTEGER PRIMARY KEY, from_school TEXT, position TEXT,
                 added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())
         """)
-        _mcur.execute("SELECT player_id, position FROM transfer_portal_members")
+        _mcur.execute("ALTER TABLE transfer_portal_members ADD COLUMN IF NOT EXISTS season INTEGER")
+        # Membership is per cycle year: the 2026 list is players who left after
+        # the 2026 season, the 2027 list fills up as that cycle opens.
+        _mcur.execute("SELECT player_id, position FROM transfer_portal_members WHERE COALESCE(season, 2026) = %s", (season,))
         _members = _mcur.fetchall()
+        stats_season, shift = _tracker_stats_season(_mcur, season)
     ids = [int(r["player_id"]) for r in _members]
     # Optional per-entry position override (placeholders missing a DB position).
     position_map = {int(r["player_id"]): r["position"] for r in _members if r.get("position")}
@@ -10560,7 +10604,7 @@ def transfer_portal_players(
         """
         # CTE params (bpbp season+ids, ppbp season+ids), then bs/ps2 seasons,
         # then the main id filter.
-        params: list = [season, ids, season, ids, season, season, ids]
+        params: list = [stats_season, ids, stats_season, ids, stats_season, stats_season, ids]
         if position:
             if position == 'P':
                 query += " AND (p.position IN ('RHP','LHP') OR p.position LIKE 'RHP/%%' OR p.position LIKE 'LHP/%%')"
@@ -10598,8 +10642,10 @@ def transfer_portal_players(
             # Position override from the JSON (for placeholders missing a DB position).
             if position_map.get(d["id"]):
                 d["position"] = position_map[d["id"]]
+            d["stats_season"] = stats_season
+            d["year_in_school"] = _promote_class(d.get("year_in_school"), shift)
             out.append(d)
-        _attach_tracker_awards(cur, out, season)
+        _attach_tracker_awards(cur, out, stats_season)
         # Tag each committed destination school with its division level.
         names = [r["committed_to"] for r in out if r.get("committed_to")]
         if names:
@@ -10613,7 +10659,7 @@ def transfer_portal_players(
 
 @router.get("/teams/{team_id}/incoming-transfers")
 @cached_endpoint(ttl_seconds=900)
-def team_incoming_transfers(team_id: int):
+def team_incoming_transfers(team_id: int, arrival_season: int = Query(NEXT_SEASON)):
     """Incoming transfers committed to this PNW team. Two sources merged:
       - DB players (JUCO/NWAC + four-year portal) whose `committed_to` resolves
         to this team — these carry their origin school/level + a stat line.
@@ -10652,8 +10698,9 @@ def team_incoming_transfers(team_id: int):
                 JOIN divisions d ON d.id = c.division_id
                 WHERE p.is_committed = 1
                   AND lower(trim(p.committed_to)) = ANY(%s)
+                  AND COALESCE(p.committed_season, %s) = %s
                 ORDER BY p.last_name, p.first_name
-            """, (variants,))
+            """, (variants, NEXT_SEASON, arrival_season))
             prows = [dict(r) for r in cur.fetchall()]
             pids = [r["id"] for r in prows] or [0]
 
@@ -10693,9 +10740,10 @@ def team_incoming_transfers(team_id: int):
                 })
 
         # Name-only out-of-region transfers (no DB stats).
+        cur.execute("ALTER TABLE incoming_transfers ADD COLUMN IF NOT EXISTS season INTEGER")
         cur.execute(
-            "SELECT id, name, from_school, position FROM incoming_transfers WHERE to_team_id = %s ORDER BY name",
-            (team_id,),
+            "SELECT id, name, from_school, position FROM incoming_transfers WHERE to_team_id = %s AND COALESCE(season, %s) = %s ORDER BY name",
+            (team_id, NEXT_SEASON, arrival_season),
         )
         name_only = [{"kind": "name", **dict(r)} for r in cur.fetchall()]
 
@@ -10708,7 +10756,7 @@ def team_incoming_transfers(team_id: int):
 
 @router.get("/projections/teams")
 @cached_endpoint(ttl_seconds=1800)
-def projections_teams(season: int = Query(2027)):
+def projections_teams(season: int = Query(PROJECTION_SEASON)):
     """Teams that have projections for the season, for the page's team picker."""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -10957,7 +11005,7 @@ def _all_team_projection_totals(cur, season):
 
 @router.get("/teams/{team_id}/projections")
 @cached_endpoint(ttl_seconds=1800)
-def team_projections(team_id: int, season: int = Query(2027)):
+def team_projections(team_id: int, season: int = Query(PROJECTION_SEASON)):
     """2027 projected hitters + pitchers for a team (returning + incoming
     transfers). Each row's `proj` holds the full projected stat line."""
     with get_connection() as conn:
@@ -11006,9 +11054,9 @@ def team_projections(team_id: int, season: int = Query(2027)):
                    ROUND(AVG(b.batting_avg)::numeric,3) AS avg, ROUND(AVG(b.on_base_pct)::numeric,3) AS obp,
                    ROUND(AVG(b.slugging_pct)::numeric,3) AS slg, ROUND(AVG(b.woba)::numeric,3) AS woba
             FROM batting_stats b LEFT JOIN canon c ON c.pid = b.player_id
-            WHERE b.season = 2026 AND COALESCE(c.cid, b.player_id) = ANY(%s)
+            WHERE b.season = %s AND COALESCE(c.cid, b.player_id) = ANY(%s)
             GROUP BY 1
-        """, (cids,))
+        """, (season - 1, cids))
         bat26 = {r["cid"]: dict(r) for r in cur.fetchall()}
         cur.execute("""
             WITH canon AS (SELECT linked_id AS pid, canonical_id AS cid FROM player_links)
@@ -11022,9 +11070,9 @@ def team_projections(team_id: int, season: int = Query(2027)):
                    ROUND((SUM(p.home_runs_allowed) * 9.0
                          / NULLIF(SUM(FLOOR(p.innings_pitched) + (p.innings_pitched - FLOOR(p.innings_pitched)) * 10/3.0), 0))::numeric, 2) AS hr9
             FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
-            WHERE p.season = 2026 AND COALESCE(c.cid, p.player_id) = ANY(%s)
+            WHERE p.season = %s AND COALESCE(c.cid, p.player_id) = ANY(%s)
             GROUP BY 1
-        """, (cids,))
+        """, (season - 1, cids))
         pit26 = {r["cid"]: dict(r) for r in cur.fetchall()}
         hitters, pitchers = [], []
         for row in rows:
@@ -11055,7 +11103,7 @@ def team_projections(team_id: int, season: int = Query(2027)):
 
 @router.get("/projections/team-leaders")
 @cached_endpoint(ttl_seconds=1800)
-def projection_team_leaders(season: int = Query(2027)):
+def projection_team_leaders(season: int = Query(PROJECTION_SEASON)):
     """Every PNW team's projected hitting + pitching totals (with within-level
     ranks), for the team-leaderboard view."""
     with get_connection() as conn:
@@ -11072,7 +11120,7 @@ def projection_team_leaders(season: int = Query(2027)):
 
 @router.get("/projections/player-leaders")
 @cached_endpoint(ttl_seconds=1800)
-def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027)):
+def projection_player_leaders(side: str = Query("bat"), season: int = Query(PROJECTION_SEASON)):
     """All projected players for a side (bat|pit) with team + level, for the
     individual-player projection leaderboard. Same departing/portal filtering as the
     team pages; pool + no-data rows excluded."""
@@ -11138,8 +11186,8 @@ def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027
                        SUM(b.walks) bb, SUM(b.strikeouts) so, SUM(b.runs) r, SUM(b.rbi) rbi,
                        AVG(b.batting_avg) avg, AVG(b.on_base_pct) obp, AVG(b.slugging_pct) slg, AVG(b.woba) woba
                 FROM batting_stats b LEFT JOIN canon c ON c.pid = b.player_id
-                WHERE b.season = 2026 AND COALESCE(c.cid, b.player_id) = ANY(%s) GROUP BY 1
-            """, (cids,))
+                WHERE b.season = %s AND COALESCE(c.cid, b.player_id) = ANY(%s) GROUP BY 1
+            """, (season - 1, cids))
             a26 = {}
             for r in cur.fetchall():
                 pa = float(r["pa"] or 0); ab = float(r["ab"] or 0)
@@ -11163,8 +11211,8 @@ def projection_player_leaders(side: str = Query("bat"), season: int = Query(2027
                        SUM(p.home_runs_allowed) hr, SUM(p.batters_faced) bf, SUM(p.walks) w, SUM(p.hit_batters) hbp,
                        SUM(p.hits_allowed) h
                 FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
-                WHERE p.season = 2026 AND COALESCE(c.cid, p.player_id) = ANY(%s) GROUP BY 1
-            """, (cids,))
+                WHERE p.season = %s AND COALESCE(c.cid, p.player_id) = ANY(%s) GROUP BY 1
+            """, (season - 1, cids))
             a26 = {}
             for r in cur.fetchall():
                 ipd = float(r["ipd"] or 0); ab = float(r["bf"] or 0) - float(r["w"] or 0) - float(r["hbp"] or 0)
@@ -11198,10 +11246,17 @@ def _proj_confidence(rel):
     return "High" if rel >= 0.6 else "Med" if rel >= 0.4 else "Low"
 
 
-def _projection_writeup(proj, side, actual):
+def _projection_writeup(proj, side, actual, prior_year=None):
     """A few plain-language sentences on WHY the model lands where it does —
-    development/age, regression vs the player's 2026 line, the standout skill,
-    and any breakout/translation/confidence flag. Audience: players & coaches."""
+    development/age, regression vs the player's prior-season line, the standout
+    skill, and any breakout/translation/confidence flag. Audience: players & coaches.
+
+    prior_year is the season the "actuals" came from (the year before the
+    projection target). It is passed in from the endpoint so the copy says
+    the right year after the projections roll over to a new target season."""
+    # Default to the year before the projection target so the copy never
+    # hardcodes "2026" and goes stale when PROJECTION_SEASON is bumped.
+    py = prior_year or (PROJECTION_SEASON - 1)
     cls = (proj.get("class_2027") or "").strip()
     young = cls in _YOUNG_CLASSES
     level = proj.get("level") or ""
@@ -11221,13 +11276,13 @@ def _projection_writeup(proj, side, actual):
         if proj_woba is not None and act_woba:
             d = proj_woba - float(act_woba)
             if d <= -0.020:
-                bits.append("His strong 2026 line regresses toward the mean — single-season "
+                bits.append(f"His strong {py} line regresses toward the mean — single-season "
                             "average and BABIP are largely luck-driven and rarely repeat in full.")
             elif d >= 0.015:
-                bits.append("His underlying contact and power suggest his 2026 output is "
+                bits.append(f"His underlying contact and power suggest his {py} output is "
                             "repeatable, with room to climb.")
             else:
-                bits.append("His 2026 production looks largely repeatable.")
+                bits.append(f"His {py} production looks largely repeatable.")
         # 3) standout skill
         k = proj.get("k_pct"); bb = proj.get("bb_pct"); iso = proj.get("iso")
         ap = proj.get("p_airpull")
@@ -11250,10 +11305,10 @@ def _projection_writeup(proj, side, actual):
         if act_era is not None and act_fip is not None:
             gap = float(act_era) - float(act_fip)
             if gap >= 0.50:
-                bits.append("His 2026 ERA ran above his FIP (bad luck), so the model projects "
+                bits.append(f"His {py} ERA ran above his FIP (bad luck), so the model projects "
                             "his run prevention to rebound toward his peripherals.")
             elif gap <= -0.50:
-                bits.append("His 2026 ERA beat his FIP; the model credits only a fraction of "
+                bits.append(f"His {py} ERA beat his FIP; the model credits only a fraction of "
                             "that as repeatable, nudging his ERA up toward his FIP.")
         # standout skill
         kp = proj.get("K_pct"); bbp = proj.get("BB_pct"); wh = proj.get("p_whiff"); gb = proj.get("p_gb")
@@ -11280,7 +11335,7 @@ def _projection_writeup(proj, side, actual):
 
     if proj.get("breakout"):
         bits.append("He is flagged as a breakout candidate" +
-                    (" — an unlucky 2026 BABIP points to upside." if side == "bat"
+                    (f" — an unlucky {py} BABIP points to upside." if side == "bat"
                      else " — his peripherals were better than his ERA showed."))
     if proj.get("incoming") and proj.get("from_level") and proj.get("from_level") != level:
         bits.append(f"His numbers are translated from {proj['from_level']} to {level}.")
@@ -11325,7 +11380,7 @@ def player_projection(player_id: int, request: Request,
         cur = conn.cursor()
         if season is None:
             cur.execute("SELECT MAX(season) AS s FROM player_projections")
-            season = (cur.fetchone() or {}).get("s") or 2027
+            season = (cur.fetchone() or {}).get("s") or PROJECTION_SEASON
         # Resolve to the canonical id the projections are keyed on (transfers).
         cur.execute("SELECT canonical_id FROM player_links WHERE linked_id = %s LIMIT 1", (player_id,))
         link = cur.fetchone()
@@ -11362,15 +11417,15 @@ def player_projection(player_id: int, request: Request,
                 WITH canon AS (SELECT linked_id pid, canonical_id cid FROM player_links)
                 SELECT ROUND(AVG(b.woba)::numeric,3) woba, ROUND(AVG(b.batting_avg)::numeric,3) avg
                 FROM batting_stats b LEFT JOIN canon c ON c.pid = b.player_id
-                WHERE b.season = 2026 AND COALESCE(c.cid, b.player_id) = %s
-            """, (cid,))
+                WHERE b.season = %s AND COALESCE(c.cid, b.player_id) = %s
+            """, (season - 1, cid))
         else:
             cur.execute("""
                 WITH canon AS (SELECT linked_id pid, canonical_id cid FROM player_links)
                 SELECT ROUND(AVG(p.era)::numeric,2) era, ROUND(AVG(p.fip)::numeric,2) fip
                 FROM pitching_stats p LEFT JOIN canon c ON c.pid = p.player_id
-                WHERE p.season = 2026 AND COALESCE(c.cid, p.player_id) = %s
-            """, (cid,))
+                WHERE p.season = %s AND COALESCE(c.cid, p.player_id) = %s
+            """, (season - 1, cid))
         a = cur.fetchone()
         if a and any(v is not None for v in a.values()):
             actual = {k: (float(v) if v is not None else None) for k, v in a.items()}
@@ -11387,7 +11442,8 @@ def player_projection(player_id: int, request: Request,
     # Projections are open to everyone (no paid tiers since September 2026).
     base["locked"] = False
     base["projection"] = _projection_payload(proj, side)
-    base["writeup"] = _projection_writeup(proj, side, actual)
+    # actuals were pulled from season - 1 above, so the copy names that year
+    base["writeup"] = _projection_writeup(proj, side, actual, prior_year=season - 1)
     return base
 
 

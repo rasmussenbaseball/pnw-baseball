@@ -23,13 +23,14 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useApi } from '../hooks/useApi'
+import { SUMMER_SEASON, SUMMER_SEASONS } from '../lib/seasons'
 
 // ─── Fixed 1080×1080 ───
 const SIZE = { w: 1080, h: 1080 }
 
-// Summer seasons with WCL data (matches WclLeaderboardGraphic). Newest first.
-const SUMMER_SEASONS = [2026, 2025, 2024]
-const CURRENT_SUMMER_SEASON = 2026
+// Summer seasons with WCL data and the default season come from
+// lib/seasons.js (SUMMER_SEASONS / SUMMER_SEASON, bumped each June).
+const CURRENT_SUMMER_SEASON = SUMMER_SEASON
 
 // ─── WCL color constants (same hexes as WclLeaderboardGraphic.jsx) ───
 const WCL = {

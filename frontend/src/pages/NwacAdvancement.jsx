@@ -1,5 +1,5 @@
 // NWAC Advancement — where NWAC (JUCO) players move on to, built from our
-// cross-team player links. Shows 2026 D1 arrivals, a per-team leaderboard of who
+// cross-team player links. Shows current-season D1 arrivals, a per-team leaderboard of who
 // sends the most / best, each team's destination breakdown + committed players,
 // and the top landing spots league-wide. Lives in the Recruiting dropdown.
 // Scope note: only transfers to PNW programs we track are visible (Bellevue ->
@@ -69,7 +69,7 @@ export default function NwacAdvancement() {
         </p>
         {data && (
           <div className="mt-6 flex flex-wrap items-center justify-center gap-y-4 divide-x divide-gray-200 dark:divide-gray-700">
-            {[[data.commit_counts.total, '2026 commitments'], [data.commit_counts.D1, 'to Division I'], [t.advanced, 'advanced all-time']].map(([n, l]) => (
+            {[[data.commit_counts.total, `${CURRENT_SEASON} commitments`], [data.commit_counts.D1, 'to Division I'], [t.advanced, 'advanced all-time']].map(([n, l]) => (
               <div key={l} className="text-center px-4">
                 <div className="text-2xl sm:text-3xl font-black text-nw-teal">{n}</div>
                 <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-0.5">{l}</div>
@@ -86,12 +86,12 @@ export default function NwacAdvancement() {
         <>
           {/* Scope disclaimer — this data is PNW-only and tracking has a start year */}
           <div className="rounded-xl bg-amber-50/70 dark:bg-amber-900/15 ring-1 ring-amber-200/70 dark:ring-amber-800/40 px-4 py-3 mb-6 text-[12.5px] leading-relaxed text-amber-900 dark:text-amber-200/90">
-            <span className="font-bold">How to read this:</span> "Advanced" and the landing-spot counts only include players who moved on to a <span className="font-semibold">Pacific Northwest four-year program we track</span> (Division I through NAIA in WA, OR, ID, MT, plus UBC), using data since <span className="font-semibold">{data.tracking_since}</span>. A player who transferred to a school outside the region (a California D1, say) will not appear here. Commitment data reflects publicly known commitments, so the 2026 percentages below are a floor, not the full picture.
+            <span className="font-bold">How to read this:</span> "Advanced" and the landing-spot counts only include players who moved on to a <span className="font-semibold">Pacific Northwest four-year program we track</span> (Division I through NAIA in WA, OR, ID, MT, plus UBC), using data since <span className="font-semibold">{data.tracking_since}</span>. A player who transferred to a school outside the region (a California D1, say) will not appear here. Commitment data reflects publicly known commitments, so the {CURRENT_SEASON} percentages below are a floor, not the full picture.
           </div>
 
-          {/* 2026 commitments, grouped by the level committed to */}
+          {/* current-season commitments, grouped by the level committed to */}
           <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">Headliner · the 2026 class</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">Headliner · the {CURRENT_SEASON} class</div>
             <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100 mb-1">Where this year's NWAC players committed</h2>
             <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">Every NWAC player with a commitment on file, grouped by the level of the school they chose. Division I first.</p>
             {data.commits.length === 0 ? (
@@ -125,7 +125,7 @@ export default function NwacAdvancement() {
             })}
           </section>
 
-          {/* 2026 sophomore movement — % of each team's sophomores with a known commitment */}
+          {/* current-season sophomore movement — % of each team's sophomores with a known commitment */}
           {(() => {
             const SO = new Set(['So', 'R-So'])
             const rows = data.teams
@@ -147,7 +147,7 @@ export default function NwacAdvancement() {
               .sort((a, b) => b.pct - a.pct || b.committed - a.committed || b.soph - a.soph)
             return (
               <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-6">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">The 2026 class</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">The {CURRENT_SEASON} class</div>
                 <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100 mb-1">How much of each team's sophomore class is moving on</h2>
                 <p className="text-[13px] text-gray-500 dark:text-gray-400">Sophomores are NWAC players in their final junior-college year. "Moving on" counts those with a known commitment to a four-year school, and lists where. Because commitments are only as complete as what programs publish, these percentages are a floor, not the full picture.</p>
                 <div className="overflow-x-auto -mx-1 mt-3">
@@ -155,7 +155,7 @@ export default function NwacAdvancement() {
                     <thead>
                       <tr className="text-gray-400 dark:text-gray-500 text-[11px] uppercase tracking-wide border-b border-gray-200 dark:border-gray-700">
                         <th className="text-left py-2 pl-1 font-semibold">NWAC Team</th>
-                        <th className="text-right px-2 tabular-nums" title="2026 sophomores on the roster">Soph</th>
+                        <th className="text-right px-2 tabular-nums" title={`${CURRENT_SEASON} sophomores on the roster`}>Soph</th>
                         <th className="text-right px-2 tabular-nums">Moving on</th>
                         <th className="text-right px-2 tabular-nums">%</th>
                         <th className="text-left px-2">Committed to</th>
@@ -296,7 +296,7 @@ export default function NwacAdvancement() {
           </section>
 
           <p className="text-[11px] text-gray-400 dark:text-gray-500">
-            Advancements are reconstructed from players who appear at a NWAC school and later at a four-year PNW program in our database, so a player who transferred to a school we do not track (an out-of-region D1, for example) will not appear. Committed-player data reflects what programs publish on their rosters, which is limited. Includes transfers from past seasons, not just 2026.
+            Advancements are reconstructed from players who appear at a NWAC school and later at a four-year PNW program in our database, so a player who transferred to a school we do not track (an out-of-region D1, for example) will not appear. Committed-player data reflects what programs publish on their rosters, which is limited. Includes transfers from past seasons, not just {CURRENT_SEASON}.
           </p>
         </>
       )}

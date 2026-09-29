@@ -10,8 +10,8 @@
  *   5. Play-by-play    coverage, the biggest swing of the season, clutch leaders, pitch-level leaders
  *      Standings       conference standings for one division
  *      WCL             summer standings as run-differential bars
- *   6. Projections     2027 player projections in key categories (hitters / pitchers)
- *      Recruiting      2026 recruiting class ratings
+ *   6. Projections     next-season player projections in key categories (hitters / pitchers)
+ *      Recruiting      recruiting class ratings for the class currently committing
  *   7. Articles + tools
  *
  * Everything here is light and flat on purpose: white panels on the site
@@ -22,11 +22,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
-import { CURRENT_SEASON } from '../../lib/seasons'
+import { CURRENT_SEASON, SUMMER_SEASON, PROJECTION_SEASON, RECRUITING_GRAD_YEAR } from '../../lib/seasons'
 import { teamColor, darken } from '../../lib/teamColors'
 
 const SEASON = CURRENT_SEASON
-const PROJ_SEASON = SEASON + 1
+// Projections target the NEXT spring; comes from seasons.js so a January
+// CURRENT_SEASON bump does not ask for projections that do not exist yet.
+const PROJ_SEASON = PROJECTION_SEASON
 const DIVS = ['D1', 'D2', 'D3', 'NAIA', 'NWAC']
 
 // ─── small shared pieces ─────────────────────────────────────────────
@@ -477,7 +479,8 @@ export function StandingsPanel({ standings, loading }) {
 
 // ─── 5c. WCL ──────────────────────────────────────────────────────────
 export function WclPanel() {
-  const { data, loading } = useApi('/summer/standings', { season: SEASON })
+  // WCL is summer ball: use the most recent summer with data, not the spring year.
+  const { data, loading } = useApi('/summer/standings', { season: SUMMER_SEASON })
   const teams = Array.isArray(data) ? data : (data?.teams || [])
   const byDiv = useMemo(() => {
     const g = {}
@@ -489,7 +492,7 @@ export function WclPanel() {
   const best = teams.length ? [...teams].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))[0] : null
   const bestDiff = best ? (best.runs_scored || 0) - (best.runs_against || 0) : 0
   return (
-    <Panel title={`West Coast League · ${SEASON}`} to="/summer" linkLabel="Summer hub">
+    <Panel title={`West Coast League · ${SUMMER_SEASON}`} to="/summer" linkLabel="Summer hub">
       {loading && !teams.length ? <Skeleton rows={10} /> : (
         <>
           {best && <Lead>{best.short_name || best.name} finished <Mono>{best.wins}-{best.losses}</Mono>, {bestDiff >= 0 ? '+' : ''}{bestDiff} in runs.</Lead>}
@@ -582,7 +585,9 @@ export function ProjectionsPanel() {
 export function RecruitingPanel() {
   const { data, loading } = useApi('/recruiting/classes/top')
   const classes = (data?.classes || []).slice(0, 7)
-  const year = data?.grad_year || SEASON
+  // The endpoint defaults to the class currently committing (backend
+  // RECRUITING_GRAD_YEAR); mirror that if the payload ever omits grad_year.
+  const year = data?.grad_year || RECRUITING_GRAD_YEAR
   return (
     <Panel title={`${year} recruiting classes`} to="/recruiting-classes" linkLabel="All classes">
       {loading && !data ? <Skeleton rows={7} /> : (

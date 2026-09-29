@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useStatLeaders } from '../hooks/useApi'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import SeasonSelect from '../components/SeasonSelect'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 import { usePersistedState } from '../hooks/usePersistedState'
 
 const BADGE_COLORS = {
@@ -106,7 +106,9 @@ export default function StatLeaders() {
   const [qualified, setQualified] = usePersistedState('statl_qualified', true)
   const [level, setLevel] = usePersistedState('statl_level', 'All')
   const [split, setSplit] = usePersistedState('statl_split', 'All')
-  const [season, setSeason] = usePersistedState('statl_season', CURRENT_SEASON)
+  // clampSeason: a stored year that is no longer in SEASONS falls back to the
+  // current season instead of sticking after the yearly rollover.
+  const [season, setSeason] = usePersistedState('statl_season', CURRENT_SEASON, { sanitize: clampSeason })
   const { data, loading, error } = useStatLeaders(season, 10, qualified, level === 'All' ? null : level, split === 'All' ? null : split.toLowerCase())
 
   if (loading) {

@@ -3,6 +3,7 @@
 // in the header; the header now just links to this one page.
 
 import { Link } from 'react-router-dom'
+import { PROJECTION_SEASON } from '../lib/seasons'
 
 const GRAPHICS = [
   { to: '/graphics',                label: 'Leaderboards',          desc: 'Hitting / pitching / WAR leaderboard cards for social media.' },
@@ -16,7 +17,7 @@ const GRAPHICS = [
   { to: '/conference-standings',    label: 'Conference Standings',  desc: 'Standings graphic for any PNW conference.' },
   { to: '/all-conference-graphic',  label: 'All-Conference Teams',  desc: 'Render the All-Conference 1st / 2nd / HM teams.' },
   { to: '/top-performers-graphic',  label: 'Top Performers',        desc: 'Weekly top 10 hitters and pitchers.' },
-  { to: '/projections/graphic',     label: 'Projection Leaders',    desc: '2027 projected stat leaders, best-in-every-stat, and biggest breakout gains.' },
+  { to: '/projections/graphic',     label: 'Projection Leaders',    desc: `${PROJECTION_SEASON} projected stat leaders, best-in-every-stat, and biggest breakout gains.` },
   { to: '/wcl-top-performers-graphic', label: 'WCL Top Performers', desc: 'Top 10 WCL hitters and pitchers over any date range.' },
   { to: '/graphics/recruiting-classes', label: 'Recruiting Class Rankings', desc: 'Top 5 to 50 PNW recruiting classes ranked by class rating.' },
   { to: '/team-info-graphic',       label: 'Team Info',             desc: 'Full team overview graphic.' },

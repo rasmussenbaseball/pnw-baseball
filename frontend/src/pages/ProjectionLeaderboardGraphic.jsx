@@ -1,6 +1,6 @@
 // ProjectionLeaderboardGraphic — /projections/graphic
 //
-// 2027-projection leaderboard cards, built on the same single-canvas engine and
+// Next-season-projection leaderboard cards, built on the same single-canvas engine and
 // visual identity as the WCL / spring leaderboard graphics (WclLeaderboardGraphic):
 // fixed 1080×1080, header band + accent rule, white stat-row cards, medallions for
 // the top 3, team logos, footer strip. One canvas feeds both preview and PNG export.
@@ -8,12 +8,15 @@
 // Projection-specific: side (hitting/pitching/teams), LEVEL filter (All/D1…/JUCO),
 // qualifier (min PA/IP), count, stat presets + full custom mode (main stat + up to 5
 // extra columns), themes, custom title — plus a "Biggest Gains" mode that ranks the
-// largest 2026→2027 improvement in any stat (breakout candidates).
+// largest prior-season → projected improvement in any stat (breakout candidates).
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useProjectionPlayerLeaders, useProjectionTeamLeaders } from '../hooks/useApi'
+import { PROJECTION_SEASON } from '../lib/seasons'
 
 const SIZE = { w: 1080, h: 1080 }
-const SEASON = 2027
+// Projected season + the season the baseline actuals come from (seasons.js).
+const SEASON = PROJECTION_SEASON
+const PREV = PROJECTION_SEASON - 1
 const LEVELS = ['All', 'D1', 'D2', 'D3', 'NAIA', 'JUCO']
 const POSITIONS = ['All', 'C', '1B', '2B', '3B', 'SS', 'OF', 'DH']
 // a player's pos can be multi (e.g. "RF/LF", "1B/DH"); match if ANY slot fits.
@@ -227,7 +230,7 @@ const PIT_STATS = [
   { key: 'WAR', label: 'WAR', format: 'war', dir: 'desc' },
   { key: 'IP', label: 'IP', format: 'ip', dir: 'desc' },
 ]
-// stats with no 2026 baseline (can't be a "Biggest Gains" stat)
+// stats with no prior-season baseline (can't be a "Biggest Gains" stat)
 const NO_GAIN = new Set(['WAR', 'PT', 'IP', 'BF', 'wobacon'])
 const TEAM_STATS = [
   { key: 'AVG', label: 'AVG', format: 'avg', dir: 'desc' },
@@ -431,7 +434,7 @@ async function renderBoard(canvas, opts) {
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = theme.kicker
   ctx.font = `900 15px ${FONT}`
-  ctx.fillText('PNW BASEBALL · 2027 PROJECTIONS', padX, 48)
+  ctx.fillText(`PNW BASEBALL · ${SEASON} PROJECTIONS`, padX, 48)
 
   let titleSize = 44
   ctx.font = `900 ${titleSize}px ${FONT}`
@@ -604,7 +607,7 @@ export default function ProjectionLeaderboardGraphic() {
   const [count, setCount] = useState(10)
   const [qualified, setQualified] = useState(true)
   const [minSample, setMinSample] = useState('')
-  const [min2026, setMin2026] = useState('')   // Biggest-Gains: min 2026 sample
+  const [min2026, setMin2026] = useState('')   // Biggest-Gains: min prior-season sample
   const [customTitle, setCustomTitle] = useState('')
   const [themeId, setThemeId] = useState('classic')
 
@@ -627,7 +630,7 @@ export default function ProjectionLeaderboardGraphic() {
 
   const preset = PRESETS[category]?.[presetIdx] || PRESETS[category]?.[0]
   const statDef = (key) => catalog.find(s => s.key === key)
-  // the active main stat (preset or custom). In Gains mode a stat with no 2026
+  // the active main stat (preset or custom). In Gains mode a stat with no prior-season
   // baseline (WAR/PA/IP…) can't be diffed, so fall back to the first gainable stat.
   let mainKey = statMode === 'custom' && customMain ? customMain : preset.key
   if (mode === 'gains' && NO_GAIN.has(mainKey)) mainKey = catalog.find(s => !NO_GAIN.has(s.key))?.key || mainKey
@@ -676,8 +679,8 @@ export default function ProjectionLeaderboardGraphic() {
     }
 
     if (mode === 'gains' && !isTeam) {
-      // 2026 baseline: PBP rates from the projection's *_prev field, box stats from
-      // the 2026 actuals (`a`). A player with NO 2026 (or a 0 in the stat) is excluded
+      // Prior-season baseline: PBP rates from the projection's *_prev field, box stats from
+      // the prior-season actuals (`a`). A player with NO prior season (or a 0 in the stat) is excluded
       // — a .000→.245 jump is a small-sample artifact, not a breakout.
       const isPbp = mainKey.startsWith('p_')
       const base26 = (p) => isPbp ? p[mainKey + '_prev'] : (p.a ? p.a[mainKey] : null)
@@ -691,9 +694,9 @@ export default function ProjectionLeaderboardGraphic() {
       v.sort((a, b) => mainDef.dir === 'asc' ? a._gn - b._gn : b._gn - a._gn)
       const items = v.map(p => ({ ...p, _y26: p._b26, _y27: p[mainKey], _gain: fmtGain(p._gn, mainDef.format) }))
       return {
-        items, config: { key: '_gain', label: `${mainDef.label} +/-`, format: 'raw', extra: [{ key: '_y26', label: '2026', format: mainDef.format }, { key: '_y27', label: '2027', format: mainDef.format }] },
-        title: customTitle || `Projected Biggest ${mainDef.label} Gains`, subtitle: `${sub} · 2026 → 2027`,
-        footerNote: `Min ${minN26} 2026 ${cat.sampleLabel}`,
+        items, config: { key: '_gain', label: `${mainDef.label} +/-`, format: 'raw', extra: [{ key: '_y26', label: String(PREV), format: mainDef.format }, { key: '_y27', label: String(SEASON), format: mainDef.format }] },
+        title: customTitle || `Projected Biggest ${mainDef.label} Gains`, subtitle: `${sub} · ${PREV} → ${SEASON}`,
+        footerNote: `Min ${minN26} ${PREV} ${cat.sampleLabel}`,
       }
     }
 
@@ -741,7 +744,7 @@ export default function ProjectionLeaderboardGraphic() {
   return (
     <div className="max-w-screen-xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-nw-teal dark:text-gray-100 mb-1">Projection Leaderboard Graphics</h1>
-      <p className="text-sm text-gray-500 mb-5">Shareable 2027-projection stat cards (1080×1080), in the leaderboard-graphic style. Pick a stat or build a custom one, filter by level, or rank the biggest projected breakouts.</p>
+      <p className="text-sm text-gray-500 mb-5">Shareable {SEASON}-projection stat cards (1080×1080), in the leaderboard-graphic style. Pick a stat or build a custom one, filter by level, or rank the biggest projected breakouts.</p>
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="lg:w-80 shrink-0 space-y-3">
@@ -825,7 +828,7 @@ export default function ProjectionLeaderboardGraphic() {
                 )}
                 {mode === 'gains' && (
                   <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-                    <span title="Players with fewer than this many 2026 PA/IP are excluded — keeps small-sample flukes (e.g. .000 → .245) off the breakout list.">Min 2026 {cat.sampleLabel}</span>
+                    <span title={`Players with fewer than this many ${PREV} PA/IP are excluded — keeps small-sample flukes (e.g. .000 → .245) off the breakout list.`}>Min {PREV} {cat.sampleLabel}</span>
                     <input type="number" value={min2026} placeholder={cat.side === 'bat' ? '50' : '10'} onChange={e => setMin2026(e.target.value)}
                       className="w-20 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1" />
                   </div>

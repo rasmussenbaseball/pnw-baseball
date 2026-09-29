@@ -8,6 +8,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from app.models.database import get_connection
 
 # (last_name, first_name, team_short_name) -> committed_to
+# First season the listed players play at their NEW school. Commitments are
+# season-scoped (Sept 2026): a commit for a later year keeps the player on his
+# current team until then. Set this before running the list.
+COMMIT_SEASON = 2027
+
 COMMITMENTS = [
     ("Davidson", "Sam", "Lower Columbia", "Utah Tech"),
     ("Hubbs", "Quinn", "Lower Columbia", "Gonzaga"),
@@ -123,9 +128,9 @@ def main():
                 # column kept whatever stale default it had.
                 cur.execute("""
                     UPDATE players
-                    SET is_committed = 1, committed_to = %s, commitment_date = NOW()
+                    SET is_committed = 1, committed_to = %s, committed_season = %s, commitment_date = NOW()
                     WHERE id = %s
-                """, (committed_to, pid))
+                """, (committed_to, COMMIT_SEASON, pid))
                 print(f"  ✓ {first} {last} ({team_short}) → {committed_to}")
                 updated += 1
 
@@ -153,7 +158,7 @@ def main():
                     continue
                 cur.execute("""
                     UPDATE players
-                    SET is_committed = 0, committed_to = NULL
+                    SET is_committed = 0, committed_to = NULL, committed_season = NULL
                     WHERE id = %s
                 """, (pid,))
                 print(f"  ✗ {first} {last} ({team_short}) — cleared (was {row['committed_to']})")

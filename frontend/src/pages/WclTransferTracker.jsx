@@ -3,7 +3,7 @@ import { usePersistedState } from '../hooks/usePersistedState'
 import PlayerTrackerTable, {
   BoardToggle, HITTER_STAT_COLS, WCL_PITCHER_STAT_COLS, SORTABLE, ASC_DEFAULT, isHitter, isPitcher,
 } from '../components/PlayerTrackerTable'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { PORTAL_SEASON, TRACKER_SEASONS } from '../lib/seasons'
 
 /**
  * WCL Transfer Portal Tracker — West Coast League summer players added to the
@@ -16,7 +16,7 @@ import { CURRENT_SEASON } from '../lib/seasons'
 const wclHref = (row) => `/summer/players/${row.id}`
 
 export default function WclTransferTracker() {
-  const [season, setSeason] = usePersistedState('wcl_season', CURRENT_SEASON)
+  const [season, setSeason] = usePersistedState('wcl_season_v2', PORTAL_SEASON)
   const [position, setPosition] = usePersistedState('wcl_position', '')
   const [hitSortBy, setHitSortBy] = usePersistedState('wcl_hitSortBy', 'offensive_war')
   const [hitSortDir, setHitSortDir] = usePersistedState('wcl_hitSortDir', 'desc')
@@ -62,6 +62,7 @@ export default function WclTransferTracker() {
         West Coast League players in the transfer portal, shown with their summer (WCL) stats. Includes players added
         manually plus every uncommitted NWAC sophomore playing in the WCL (they're aging out of juco). Players whose
         spring school is outside the Pacific Northwest are included too. Two-way players appear on both tables.
+        {!loading && data && data.length === 0 ? ` Nothing listed for the ${season} summer yet.` : ''}
       </p>
 
       {/* Filters */}
@@ -71,7 +72,7 @@ export default function WclTransferTracker() {
             <label className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Summer</label>
             <select value={season} onChange={(e) => setSeason(parseInt(e.target.value))}
               className="rounded border border-gray-300 dark:border-gray-600 px-2.5 py-1 text-sm">
-              {[2026, 2025, 2024].map(y => <option key={y} value={y}>{y}</option>)}
+              {TRACKER_SEASONS.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div className="flex flex-col">

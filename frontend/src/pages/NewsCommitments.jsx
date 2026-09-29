@@ -5,6 +5,7 @@
 // Phase 2 (coming): HS commitments to PNW schools — same page, second
 // section once that data starts flowing in.
 
+import { NEXT_SEASON } from '../lib/seasons'
 import { useEffect, useState } from 'react'
 
 const API_BASE = '/api/v1'
@@ -182,6 +183,11 @@ function CommitmentCard({ c }) {
           <div className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate mb-0.5"
                title={c.committed_to}>
             {c.committed_to}
+          </div>
+        )}
+        {c.committed_season > NEXT_SEASON && (
+          <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 text-right">
+            for {c.committed_season - 1}-{String(c.committed_season).slice(2)}
           </div>
         )}
         {/* Commitment date intentionally hidden: the backend currently

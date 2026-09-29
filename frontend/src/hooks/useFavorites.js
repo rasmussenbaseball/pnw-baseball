@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -99,7 +100,7 @@ export function useAllFavorites() {
  * Hook to fetch enriched favorites dashboard data.
  * Usage: const { data, loading, refresh } = useFavoritesDashboard()
  */
-export function useFavoritesDashboard(season = 2026) {
+export function useFavoritesDashboard(season = CURRENT_SEASON) {
   const { session, user } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)

@@ -1347,11 +1347,14 @@ def main():
         # entered the portal (even if not yet committed). They get removed from
         # the old roster; committed ones reappear on the new team.
         commits, left = {}, set()
-        cur.execute("""SELECT id, committed_to FROM players WHERE is_committed = 1""")
+        # Only commits landing by TARGET remove a player from his old team; only
+        # commits landing exactly in TARGET place him on the new one.
+        cur.execute("""SELECT id, committed_to, committed_season FROM players
+                       WHERE is_committed = 1 AND COALESCE(committed_season, %s) <= %s""", (TARGET, TARGET))
         for r in cur.fetchall():
             left.add(r["id"])
             dest = resolve_commit(r["committed_to"], tname_map)
-            if dest:
+            if dest and (r.get("committed_season") or TARGET) == TARGET:
                 commits[r["id"]] = dest
         tp_path = REPO / "backend" / "data" / "transfer_portal.json"
         if tp_path.exists():
@@ -1367,7 +1370,7 @@ def main():
         # Editor writes here, not the legacy JSON) — anyone in it has left their
         # old team. Committed ones still reappear on the new team via `commits`.
         try:
-            cur.execute("SELECT player_id FROM transfer_portal_members")
+            cur.execute("SELECT player_id FROM transfer_portal_members WHERE COALESCE(season, %s) < %s", (TARGET - 1, TARGET))
             for r in cur.fetchall():
                 left.add(int(r["player_id"]))
         except Exception:

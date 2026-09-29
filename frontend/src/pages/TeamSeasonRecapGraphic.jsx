@@ -9,7 +9,7 @@
 // filters to WA/OR/ID/MT/BC).
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, SEASONS } from '../lib/seasons'
 
 const API_BASE = '/api/v1'
 const W = 1080
@@ -563,7 +563,8 @@ export default function TeamSeasonRecapGraphic() {
           onChange={(e) => setSeason(Number(e.target.value))}
           className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-nw-teal"
         >
-          {[2026, 2025, 2024].map(y => <option key={y} value={y}>{y}</option>)}
+          {/* three most recent seasons, newest first (rolls over with seasons.js) */}
+          {SEASONS.slice(0, 3).map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
         {rendered && (

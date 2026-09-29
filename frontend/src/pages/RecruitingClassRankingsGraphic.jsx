@@ -13,11 +13,12 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRecruitingClasses } from '../hooks/useApi'
+import { GRAD_YEARS, RECRUITING_GRAD_YEAR } from '../lib/seasons'
 
 // ─── Fixed 1080×1080 ───
 const SIZE = { w: 1080, h: 1080 }
 
-const GRAD_YEARS = [2026, 2027]
+// GRAD_YEARS / RECRUITING_GRAD_YEAR come from seasons.js (bumped each summer).
 const FONT = "-apple-system, 'Inter', 'Helvetica Neue', sans-serif"
 
 // ─── Palette + themes ───
@@ -304,7 +305,7 @@ async function renderBoard(canvas, { rows, title, subtitle, theme, count, twoCol
 
 // ════════════════════════════════════════════════════════════════
 export default function RecruitingClassRankingsGraphic() {
-  const [gradYear, setGradYear] = useState(2026)
+  const [gradYear, setGradYear] = useState(RECRUITING_GRAD_YEAR)
   const [count, setCount] = useState(10)
   const [themeId, setThemeId] = useState('classic')
   const [customTitle, setCustomTitle] = useState('')

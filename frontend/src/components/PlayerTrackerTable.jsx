@@ -277,11 +277,13 @@ export default function PlayerTrackerTable({
               <td style={{width:40,minWidth:40,maxWidth:40}} className="sticky left-[330px] z-10 bg-inherit px-1 py-1 text-gray-500 dark:text-gray-400 truncate overflow-hidden">{row.year_in_school || '-'}</td>
               <td style={{width:130,minWidth:130,maxWidth:130}} className="sticky left-[370px] z-10 bg-inherit px-1.5 py-1 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
                 {row.committed_to ? (
-                  <span title={`${row.committed_to}${row.committed_level ? ' (' + row.committed_level + ')' : ''}`} className="inline-flex items-center gap-1 max-w-full align-middle">
+                  <span title={`${row.committed_to}${row.committed_level ? ' (' + row.committed_level + ')' : ''}${row.committed_season ? ' for ' + (row.committed_season - 1) + '-' + String(row.committed_season).slice(2) : ''}`} className="inline-flex items-center gap-1 max-w-full align-middle">
                     {row.committed_level && (
                       <span className={`shrink-0 text-[8px] font-extrabold px-1 py-0.5 rounded ${COMMIT_LVL[row.committed_level] || 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>{row.committed_level}</span>
                     )}
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 rounded truncate">{row.committed_to}</span>
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 rounded truncate">
+                      {row.committed_to}{row.committed_season && row.stats_season && row.committed_season > row.stats_season + 1 ? ` '${String(row.committed_season).slice(2)}` : ''}
+                    </span>
                   </span>
                 ) : (
                   <span className="text-gray-400 dark:text-gray-500">-</span>

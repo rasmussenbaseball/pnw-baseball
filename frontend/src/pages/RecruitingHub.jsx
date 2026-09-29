@@ -4,6 +4,7 @@
 // The tools it links to ARE gated; clicking one while signed out shows the upsell.
 // Brand rule: no em-dashes in displayed copy.
 import { Link } from 'react-router-dom'
+import { CURRENT_SEASON } from '../lib/seasons'
 import TopRecruitingClassesCard from '../components/home/TopRecruitingClassesCard'
 
 // ── tiny inline line icons (stroke = currentColor) ────────────────
@@ -41,7 +42,7 @@ const RECRUIT_TOOLS = [
     blurb: 'A straight-talk guide to how recruiting really works: how to reach coaches, a copy-paste email template, video and measurables advice, camps, and showcases.',
     why: 'Paired with freshman production by level, so you can see how much players actually play as freshmen at D1, D2, NAIA, D3, and the NWAC before you choose a level.' },
   { to: '/recruiting/advancement', icon: 'rise', name: 'NWAC Advancement',
-    blurb: 'See which NWAC programs move players up to four-year schools, where those players land, and who just committed to a Division I program for 2026.',
+    blurb: `See which NWAC programs move players up to four-year schools, where those players land, and who just committed to a Division I program for ${CURRENT_SEASON}.`,
     why: 'The JUCO pipeline laid bare: the NWAC teams that send the most players and the best players, built from our transfer history.' },
   { to: '/recruiting/breakdown', icon: 'chart', name: 'Recruiting Breakdown',
     blurb: 'Team-level recruiting metrics and trends: how programs build their rosters, where their production comes from, and how much they lean on transfers.',
@@ -158,7 +159,7 @@ export default function RecruitingHub() {
           {RECRUIT_TOOLS.map((t) => <ToolCard key={t.name} tool={t} />)}
         </div>
 
-        {/* Public teaser: a live peek at the 2026 recruiting classes leaderboard.
+        {/* Public teaser: a live peek at the current recruiting class leaderboard.
             Ungated so logged-out visitors see real data and click through. */}
         <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <TopRecruitingClassesCard />

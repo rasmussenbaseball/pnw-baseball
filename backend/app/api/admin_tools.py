@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 from .auth import require_commitment_editor
 from ._positions import normalize_position
 from ..models.database import get_connection
+from ..config import NEXT_SEASON, PORTAL_SEASON, RECRUITING_GRAD_YEAR
 
 router = APIRouter()
 
@@ -70,6 +71,14 @@ def _ensure_tables(cur):
         )
         """
     )
+    # Season scoping (Sept 2026). A commitment carries the FIRST season the
+    # player plays at the new school (a Bellevue freshman committing to
+    # Gonzaga for 2027-28 -> 2028) so he stays on Bellevue's 2027 roster.
+    # Portal membership carries the cycle year (the season after which the
+    # player entered the portal), so each tracker year has its own list.
+    cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS committed_season INTEGER")
+    cur.execute("ALTER TABLE transfer_portal_members ADD COLUMN IF NOT EXISTS season INTEGER")
+    cur.execute("ALTER TABLE incoming_transfers ADD COLUMN IF NOT EXISTS season INTEGER")
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS incoming_transfers (
@@ -111,6 +120,7 @@ def _ensure_tables(cur):
         )
         """
     )
+    cur.execute("ALTER TABLE wcl_portal_members ADD COLUMN IF NOT EXISTS season INTEGER")
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS wcl_audit (
@@ -188,10 +198,10 @@ def commitment_search(q: str = Query(..., min_length=2), _email: str = Depends(r
         cur.execute(
             """
             SELECT p.id, p.first_name, p.last_name, p.position, p.year_in_school,
-                   p.bats, p.throws, p.is_committed, p.committed_to,
+                   p.bats, p.throws, p.is_committed, p.committed_to, p.committed_season,
                    t.short_name AS team_short, t.name AS team_name, t.logo_url,
                    d.level AS division_level,
-                   (tpm.player_id IS NOT NULL) AS in_portal
+                   (tpm.player_id IS NOT NULL) AS in_portal, tpm.season AS portal_season
             FROM players p
             JOIN teams t ON p.team_id = t.id
             JOIN conferences c ON t.conference_id = c.id
@@ -229,10 +239,14 @@ class SetCommitment(BaseModel):
     # team id — we then store that team's canonical short_name (guaranteed
     # 2027-roster match) regardless of what was typed.
     committed_team_id: Optional[int] = None
+    # First season at the new school. Default: the open cycle's arrival year
+    # (PORTAL_SEASON + 1). The editor offers PORTAL_SEASON too for stragglers.
+    season: Optional[int] = Field(None, ge=2020, le=2040)
 
 
 class PlayerIdBody(BaseModel):
     player_id: int
+    season: Optional[int] = Field(None, ge=2020, le=2040)
 
 
 def _audit_commit(cur, player_id, email, action, old, new):
@@ -277,16 +291,17 @@ def commitment_set(body: SetCommitment, email: str = Depends(require_commitment_
                 matched = t
                 school = t["short_name"]
 
+        season = body.season or (PORTAL_SEASON + 1)
         cur.execute(
-            """UPDATE players SET is_committed = 1, committed_to = %s,
+            """UPDATE players SET is_committed = 1, committed_to = %s, committed_season = %s,
                       commitment_date = COALESCE(commitment_date, now())
                WHERE id = %s""",
-            (school, body.player_id),
+            (school, season, body.player_id),
         )
-        _audit_commit(cur, body.player_id, email, "set", old, school)
+        _audit_commit(cur, body.player_id, email, "set", old, f"{school} ({season})")
         conn.commit()
     _bust_profile_cache()
-    return {"ok": True, "player_id": body.player_id, "committed_to": school,
+    return {"ok": True, "player_id": body.player_id, "committed_to": school, "committed_season": season,
             "is_committed": True, "matched_pnw": bool(matched),
             "matched_team": (matched or {}).get("short_name")}
 
@@ -303,7 +318,7 @@ def commitment_clear(body: PlayerIdBody, email: str = Depends(require_commitment
             raise HTTPException(status_code=404, detail="Player not found")
         old = row.get("committed_to")
         cur.execute(
-            "UPDATE players SET is_committed = 0, committed_to = NULL, commitment_date = NULL WHERE id = %s",
+            "UPDATE players SET is_committed = 0, committed_to = NULL, committed_season = NULL, commitment_date = NULL WHERE id = %s",
             (body.player_id,),
         )
         _audit_commit(cur, body.player_id, email, "clear", old, None)
@@ -330,16 +345,17 @@ def portal_add(body: PlayerIdBody, email: str = Depends(require_commitment_edito
         if not row:
             raise HTTPException(status_code=404, detail="Player not found")
         from_school = row.get("short_name")
+        season = body.season or PORTAL_SEASON
         cur.execute(
-            """INSERT INTO transfer_portal_members (player_id, from_school, added_by)
-               VALUES (%s, %s, %s)
-               ON CONFLICT (player_id) DO NOTHING""",
-            (body.player_id, from_school, email),
+            """INSERT INTO transfer_portal_members (player_id, from_school, added_by, season)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (player_id) DO UPDATE SET season = EXCLUDED.season""",
+            (body.player_id, from_school, email, season),
         )
-        _audit_commit(cur, body.player_id, email, "portal_add", None, from_school)
+        _audit_commit(cur, body.player_id, email, "portal_add", None, f"{from_school} ({season})")
         conn.commit()
     _bust_profile_cache()
-    return {"ok": True, "player_id": body.player_id, "in_portal": True}
+    return {"ok": True, "player_id": body.player_id, "in_portal": True, "portal_season": season}
 
 
 @router.post("/admin/portal/remove")
@@ -383,14 +399,14 @@ def returning_roster(team_id: int = Query(...), season: int = Query(...),
         portal = _portal_ids(cur)
         cur.execute(
             """SELECT bs.player_id, p.first_name, p.last_name, p.position, p.year_in_school,
-                      p.is_committed, p.committed_to,
+                      p.is_committed, p.committed_to, p.committed_season,
                       bs.plate_appearances pa FROM batting_stats bs JOIN players p ON p.id = bs.player_id
                WHERE bs.team_id = %s AND bs.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
         bat = {r["player_id"]: dict(r) for r in cur.fetchall()}
         cur.execute(
             """SELECT ps.player_id, p.first_name, p.last_name, p.position, p.year_in_school,
-                      p.is_committed, p.committed_to,
+                      p.is_committed, p.committed_to, p.committed_season,
                       ps.innings_pitched ip FROM pitching_stats ps JOIN players p ON p.id = ps.player_id
                WHERE ps.team_id = %s AND ps.season = %s AND COALESCE(p.is_phantom,false)=false""",
             (team_id, season))
@@ -403,7 +419,9 @@ def returning_roster(team_id: int = Query(...), season: int = Query(...),
             out[pid] = {
                 "player_id": pid, "name": f"{r['first_name']} {r['last_name']}".strip(),
                 "year_in_school": r.get("year_in_school"), "position": r.get("position"),
-                "committed": bool(r.get("is_committed")), "committed_to": r.get("committed_to"),
+                # a commitment only removes him from the season+1 roster when it lands by then
+                "committed": bool(r.get("is_committed")) and (r.get("committed_season") or NEXT_SEASON) <= season + 1,
+                "committed_to": r.get("committed_to"), "committed_season": r.get("committed_season"),
                 "pa": 0, "ip": 0,
             }
         for pid, r in bat.items():
@@ -488,6 +506,7 @@ class SummerSchool(BaseModel):
 
 class SummerIdBody(BaseModel):
     summer_player_id: int
+    season: Optional[int] = Field(None, ge=2020, le=2040)   # WCL portal cycle year (add only)
 
 
 def _audit_wcl(cur, spid, email, action, detail):
@@ -617,14 +636,15 @@ def wcl_portal_add(body: SummerIdBody, email: str = Depends(require_commitment_e
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Summer player not found")
+        season = getattr(body, "season", None) or PORTAL_SEASON
         cur.execute(
-            """INSERT INTO wcl_portal_members (summer_player_id, from_school, position, added_by)
-               VALUES (%s, %s, %s, %s) ON CONFLICT (summer_player_id) DO NOTHING""",
-            (body.summer_player_id, row.get("short_name"), row.get("position"), email),
+            """INSERT INTO wcl_portal_members (summer_player_id, from_school, position, added_by, season)
+               VALUES (%s, %s, %s, %s, %s) ON CONFLICT (summer_player_id) DO UPDATE SET season = EXCLUDED.season""",
+            (body.summer_player_id, row.get("short_name"), row.get("position"), email, season),
         )
-        _audit_wcl(cur, body.summer_player_id, email, "portal_add", None)
+        _audit_wcl(cur, body.summer_player_id, email, "portal_add", str(season))
         conn.commit()
-    return {"ok": True, "summer_player_id": body.summer_player_id, "in_wcl_portal": True}
+    return {"ok": True, "summer_player_id": body.summer_player_id, "in_wcl_portal": True, "portal_season": season}
 
 
 @router.post("/admin/wcl-portal/remove")
@@ -671,7 +691,7 @@ class FreshmanAdd(BaseModel):
     to_team_id: int
     position: Optional[str] = Field(None, max_length=20)
     state: Optional[str] = Field(None, max_length=4)
-    grad_year: int = 2026
+    grad_year: int = RECRUITING_GRAD_YEAR  # the HS class currently committing (config.py)
 
 
 @router.post("/admin/freshman/add")
@@ -945,6 +965,7 @@ class IncomingAdd(BaseModel):
     from_school: str = Field("", max_length=120)
     to_team_id: int
     position: Optional[str] = Field(None, max_length=20)
+    season: Optional[int] = Field(None, ge=2020, le=2040)   # arrival season; default PORTAL_SEASON + 1
 
 
 @router.get("/admin/incoming/list")
@@ -953,10 +974,10 @@ def incoming_list(_email: str = Depends(require_commitment_editor)):
         cur = conn.cursor()
         _ensure_tables(cur)
         cur.execute(
-            """SELECT it.id, it.name, it.from_school, it.to_team_id, it.position, it.added_at,
+            """SELECT it.id, it.name, it.from_school, it.to_team_id, it.position, it.added_at, it.season,
                       t.short_name AS to_team
                FROM incoming_transfers it JOIN teams t ON t.id = it.to_team_id
-               ORDER BY t.short_name, it.name"""
+               ORDER BY it.season DESC NULLS LAST, t.short_name, it.name"""
         )
         return [dict(r) for r in cur.fetchall()]
 
@@ -971,10 +992,10 @@ def incoming_add(body: IncomingAdd, email: str = Depends(require_commitment_edit
         if not t:
             raise HTTPException(status_code=404, detail="Destination team not found")
         cur.execute(
-            """INSERT INTO incoming_transfers (name, from_school, to_team_id, position, added_by)
-               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+            """INSERT INTO incoming_transfers (name, from_school, to_team_id, position, added_by, season)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
             (body.name.strip(), body.from_school.strip() or None, body.to_team_id,
-             (body.position or "").strip() or None, email),
+             (body.position or "").strip() or None, email, body.season or (PORTAL_SEASON + 1)),
         )
         new_id = cur.fetchone()["id"]
         conn.commit()
@@ -1018,4 +1039,37 @@ def commitment_recent(limit: int = Query(15, le=50), _email: str = Depends(requi
         rows = [dict(r) for r in cur.fetchall()]
     for r in rows:
         r["name"] = f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip()
+    return rows
+
+
+@router.get("/admin/commitment/list")
+def commitment_list(season: Optional[int] = Query(None, ge=2020, le=2040),
+                    _email: str = Depends(require_commitment_editor)):
+    """Every current commitment, optionally for one arrival season (the first
+    season at the new school). The editor's year filter."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_tables(cur)
+        cur.execute(
+            """
+            SELECT p.id AS player_id, p.first_name, p.last_name, p.position, p.year_in_school,
+                   p.committed_to, p.committed_season, p.commitment_date,
+                   t.short_name AS team_short, d.level AS division_level,
+                   (tpm.player_id IS NOT NULL) AS in_portal, tpm.season AS portal_season
+            FROM players p
+            JOIN teams t ON p.team_id = t.id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            LEFT JOIN transfer_portal_members tpm ON tpm.player_id = p.id
+            WHERE COALESCE(p.is_committed, 0) = 1 AND COALESCE(p.committed_to, '') <> ''
+              AND (%s::int IS NULL OR COALESCE(p.committed_season, %s) = %s)
+            ORDER BY COALESCE(p.commitment_date, p.updated_at) DESC NULLS LAST, p.last_name
+            """,
+            (season, NEXT_SEASON, season),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["name"] = f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip()
+        r["is_committed"] = True
+        r["in_portal"] = bool(r.get("in_portal"))
     return rows

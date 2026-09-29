@@ -7,6 +7,7 @@
  */
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { PROJECTION_SEASON } from '../lib/seasons'
 
 const r3 = (v) => (v == null ? '-' : Number(v).toFixed(3).replace(/^0/, ''))
 const r2 = (v) => (v == null ? '-' : Number(v).toFixed(2))
@@ -292,7 +293,7 @@ export default function TeamReturning({ teamId, season }) {
             </div>
             <p className="text-[11px] text-gray-400 mt-3">
               Assumed roster combines returning players, committed transfers, and incoming freshmen.
-              Stats are 2027 projections (estimates); incoming freshmen have no projection yet.
+              Stats are {PROJECTION_SEASON} projections (estimates); incoming freshmen have no projection yet.
             </p>
           </Card>
         )

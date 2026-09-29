@@ -5,8 +5,11 @@ import { useState, useCallback } from 'react'
  *
  * @param {string} key - Unique storage key (e.g. "juco_position")
  * @param {*} defaultValue - Initial value if nothing stored
- * @param {{ storage?: 'session' | 'local' }} [opts] - 'session' (default) lasts
- *   the browser tab; 'local' persists across visits until cleared.
+ * @param {{ storage?: 'session' | 'local', sanitize?: (v: any) => any }} [opts] -
+ *   storage: 'session' (default) lasts the browser tab; 'local' persists across
+ *   visits until cleared. sanitize: applied to a STORED value on read, so a
+ *   value that has gone stale (e.g. a season no longer in SEASONS after the
+ *   yearly rollover) can be clamped back to something valid instead of sticking.
  */
 export function usePersistedState(key, defaultValue, opts = {}) {
   const store = () => {
@@ -16,7 +19,10 @@ export function usePersistedState(key, defaultValue, opts = {}) {
   const [value, setValue] = useState(() => {
     try {
       const stored = store()?.getItem(key)
-      if (stored != null) return JSON.parse(stored)
+      if (stored != null) {
+        const parsed = JSON.parse(stored)
+        return opts.sanitize ? opts.sanitize(parsed) : parsed
+      }
     } catch { /* ignore */ }
     return defaultValue
   })

@@ -1,11 +1,13 @@
-// Public teaser: top 2026 recruiting classes. Uses the shared homepage
+// Public teaser: top recruiting classes for the class currently committing
+// (RECRUITING_GRAD_YEAR). Uses the shared homepage
 // WidgetCard shell so it matches the rest of the widget grid. Fed by the
 // PUBLIC /recruiting/classes/top endpoint, so logged-out visitors see it
 // and can click through to the (premium) full leaderboard.
 import { useTopRecruitingClasses } from '../../hooks/useApi'
+import { RECRUITING_GRAD_YEAR } from '../../lib/seasons'
 import { WidgetCard, PlayerRow, WidgetSkeleton, WidgetNote } from './WidgetShell'
 
-export default function TopRecruitingClassesCard({ gradYear = 2026, limit = 5, className = '' }) {
+export default function TopRecruitingClassesCard({ gradYear = RECRUITING_GRAD_YEAR, limit = 5, className = '' }) {
   const { data, loading, error } = useTopRecruitingClasses(gradYear, limit)
   const classes = data?.classes || []
 

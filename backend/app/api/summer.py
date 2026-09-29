@@ -24,7 +24,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..cache import cached_endpoint
-from ..config import CURRENT_SEASON
+from ..config import CURRENT_SEASON, SUMMER_SEASON
+from ..config import NEXT_SEASON, PORTAL_SEASON
 from ..models.database import get_connection
 from ..stats.cpi import compute_cpi
 from .auth import require_developer
@@ -76,7 +77,7 @@ def summer_leagues():
 @cached_endpoint(ttl_seconds=120)
 def summer_scoreboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     days_back: int = Query(3, ge=0, le=120),
     days_ahead: int = Query(3, ge=0, le=120),
 ):
@@ -124,7 +125,7 @@ def summer_scoreboard(
 @cached_endpoint(ttl_seconds=300)
 def summer_games(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     team_id: Optional[int] = None,
     status: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
@@ -361,10 +362,21 @@ def _wcl_portal_member_ids(cur, season, restrict=None):
              summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
              position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
     )
-    cur.execute("SELECT summer_player_id FROM wcl_portal_members")
-    ids = {int(r["summer_player_id"]) for r in cur.fetchall()}
+    cur.execute("ALTER TABLE wcl_portal_members ADD COLUMN IF NOT EXISTS season INTEGER")
     if not season:
-        return ids
+        cur.execute("SELECT summer_player_id FROM wcl_portal_members")
+        return {int(r["summer_player_id"]) for r in cur.fetchall()}
+    # Membership is per summer: the 2026 list stays the 2026 list, the 2027
+    # list fills as players are added for that cycle.
+    cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE COALESCE(season, 2026) = %s", (season,))
+    ids = {int(r["summer_player_id"]) for r in cur.fetchall()}
+    # Before the spring rosters of `season` are scraped, year_in_school still
+    # reflects the previous spring, so "this summer's sophomores" are last
+    # spring's freshmen.
+    cur.execute("""SELECT 1 FROM batting_stats bs JOIN players p ON p.id = bs.player_id
+                   JOIN teams t ON t.id = p.team_id JOIN conferences c ON c.id = t.conference_id
+                   JOIN divisions d ON d.id = c.division_id WHERE d.level = 'JUCO' AND bs.season = %s LIMIT 1""", (season,))
+    soph_pattern = "%so%" if cur.fetchone() else "%fr%"
     sql = """
         SELECT DISTINCT spl.summer_player_id
         FROM summer_player_links spl
@@ -375,12 +387,12 @@ def _wcl_portal_member_ids(cur, season, restrict=None):
         JOIN summer_players sp ON sp.id = spl.summer_player_id
         JOIN summer_teams stt ON stt.id = sp.team_id AND stt.league_id = 1
         WHERE d.level = 'JUCO'
-          AND COALESCE(p.is_committed, 0) <> 1
-          AND lower(COALESCE(p.year_in_school, '')) LIKE '%%so%%'
+          AND NOT (COALESCE(p.is_committed, 0) = 1 AND COALESCE(p.committed_season, %s) <= %s)
+          AND lower(COALESCE(p.year_in_school, '')) LIKE %s
           AND (EXISTS (SELECT 1 FROM summer_batting_stats b WHERE b.player_id = sp.id AND b.season = %s)
                OR EXISTS (SELECT 1 FROM summer_pitching_stats ps WHERE ps.player_id = sp.id AND ps.season = %s))
     """
-    params: list = [season, season]
+    params: list = [NEXT_SEASON, season + 1, soph_pattern, season, season]
     if restrict:
         sql += " AND spl.summer_player_id = ANY(%s)"
         params.append(sorted({int(x) for x in restrict if x}))
@@ -540,7 +552,7 @@ def summer_game_detail(game_id: int):
 
 @router.get("/summer/cpi")
 @cached_endpoint(ttl_seconds=600)
-def summer_cpi(league: str = Query(DEFAULT_LEAGUE), season: int = Query(CURRENT_SEASON)):
+def summer_cpi(league: str = Query(DEFAULT_LEAGUE), season: int = Query(SUMMER_SEASON)):
     """Composite Power Index: a predictive, SoS-adjusted power rating built from
     underlying performance (team wRC+ / FIP) blended with regressed results.
     Engine in app.stats.cpi (reused for spring later)."""
@@ -621,7 +633,7 @@ def summer_teams(league: str = Query(DEFAULT_LEAGUE)):
 
 @router.get("/summer/teams/{team_id}")
 @cached_endpoint(ttl_seconds=300)
-def summer_team_detail(team_id: int, season: int = Query(CURRENT_SEASON)):
+def summer_team_detail(team_id: int, season: int = Query(SUMMER_SEASON)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -1486,7 +1498,7 @@ def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
         elif seasons_present:
             eff_season = seasons_present[-1]
         else:
-            eff_season = season if season is not None else CURRENT_SEASON
+            eff_season = season if season is not None else SUMMER_SEASON
 
         # Per-game logs for the effective season
         cur.execute(
@@ -1585,7 +1597,7 @@ def summer_player_detail(player_id: int, season: Optional[int] = Query(None)):
 @cached_endpoint(ttl_seconds=600)
 def summer_standings(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
 ):
     """W/L per team plus last-10 record + current win/loss streak."""
     with get_connection() as conn:
@@ -1697,7 +1709,7 @@ def summer_standings(
 @cached_endpoint(ttl_seconds=600)
 def summer_batting_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     # Qualifying. When `qualified=True`, ignores `min_pa` and uses the
     # ratio convention: a hitter is qualified at >= 2.0 PA per team
     # game played (industry standard for summer leagues).
@@ -1862,7 +1874,7 @@ def summer_batting_leaderboard(
 @cached_endpoint(ttl_seconds=600)
 def summer_trends(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     window: int = Query(5, ge=2, le=15),
     min_total_pa: int = Query(15, ge=0),
     min_recent_pa: int = Query(4, ge=0),
@@ -1951,7 +1963,7 @@ def summer_trends(
 @cached_endpoint(ttl_seconds=600)
 def summer_fielding_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     min_chances: int = Query(5, ge=0),
     sort_by: str = Query("fielding_pct"),
     limit: int = Query(100, ge=1, le=500),
@@ -1997,7 +2009,7 @@ def summer_fielding_leaderboard(
 @cached_endpoint(ttl_seconds=900)
 def summer_college_representation(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     limit: int = Query(25, ge=1, le=100),
 ):
     """Top colleges by number of players currently rostered in the
@@ -2058,7 +2070,7 @@ def summer_college_representation(
 @cached_endpoint(ttl_seconds=600)
 def summer_pnw_alumni(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     limit: int = Query(500, ge=1, le=1000),
 ):
     """Spring PNW college players currently rostered in this summer
@@ -2122,7 +2134,7 @@ def summer_pnw_alumni(
 @cached_endpoint(ttl_seconds=600)
 def summer_pitching_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     # Qualified pitchers = IP >= team_games * 0.75 (matches MLB
     # convention scaled to short summer seasons).
     qualified: bool = Query(False),
@@ -2308,7 +2320,7 @@ def summer_pitching_leaderboard(
 @cached_endpoint(ttl_seconds=1800)
 def summer_team_stats_leaderboard(
     league: str = Query(DEFAULT_LEAGUE),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     sort_by: str = Query("team_avg"),
     sort_dir: Optional[str] = Query(None, description="'asc' | 'desc'. Defaults to the natural direction for the stat."),
     limit: int = Query(50, ge=1, le=50),
@@ -3042,7 +3054,7 @@ def _spl_player_meta(cur, player_id):
 @cached_endpoint(ttl_seconds=600)
 def summer_player_pitch_level_stats(
     player_id: int,
-    season: int = Query(CURRENT_SEASON, description="Summer season year"),
+    season: int = Query(SUMMER_SEASON, description="Summer season year"),
 ):
     """Hitter pitch-level stats from summer_game_events — spring payload
     mirror (discipline / count_states / lr_splits / situational_splits /
@@ -3322,7 +3334,7 @@ def summer_player_pitch_level_stats(
 @cached_endpoint(ttl_seconds=600)
 def summer_player_pitch_level_stats_pitcher(
     player_id: int,
-    season: int = Query(CURRENT_SEASON, description="Summer season year"),
+    season: int = Query(SUMMER_SEASON, description="Summer season year"),
 ):
     """Pitcher pitch-level stats from summer_game_events — spring payload
     mirror (discipline / count_states / lr_splits / situational_splits /
@@ -3691,7 +3703,7 @@ def _wcl_pbp_pitching(cur, ids, season):
 
 @router.get("/wcl-portal")
 def wcl_portal_players(
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(PORTAL_SEASON),   # the open transfer cycle (summer = cycle year)
     position: Optional[str] = None,
     sort_by: str = Query("total_war"),
     sort_dir: str = Query("desc"),
@@ -3771,9 +3783,10 @@ def wcl_portal_players(
                   SELECT 1 FROM summer_player_links spl2
                   JOIN players p2 ON p2.id = spl2.spring_player_id
                   WHERE spl2.summer_player_id = sp.id AND COALESCE(p2.is_committed, 0) = 1
+                    AND COALESCE(p2.committed_season, %s) <= %s
               )
         """
-        params: list = [season, season, season, season, season, ids]
+        params: list = [season, season, season, season, season, ids, NEXT_SEASON, season + 1]
         if position:
             if position == "P":
                 query += " AND (sp.position IN ('RHP','LHP','P') OR sp.position LIKE 'RHP/%%' OR sp.position LIKE 'LHP/%%' OR sp.position LIKE 'P/%%')"
@@ -3836,7 +3849,7 @@ def wcl_portal_players(
 
 @router.get("/wcl-portal/preview")
 def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
-                       season: int = Query(CURRENT_SEASON)):
+                       season: int = Query(SUMMER_SEASON)):   # last complete summer (teaser only)
     """Public teaser for the homepage 'New on the site' card: a few WCL portal
     players with their CURRENT-season (default 2026) summer WAR + spring school.
     No tier gate (teaser only exposes name/pos/school/WAR, not the full tracker)."""
@@ -3847,6 +3860,7 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
                  summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
                  position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
         )
+        cur.execute("ALTER TABLE wcl_portal_members ADD COLUMN IF NOT EXISTS season INTEGER")
         cur.execute(
             """
             SELECT sp.id, sp.first_name, sp.last_name, sp.position,
@@ -3856,7 +3870,7 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
                    ) AS linked_has_cur,
                    bs.offensive_war AS owar, ps.pitching_war AS pwar
             FROM wcl_portal_members w
-            JOIN summer_players sp ON sp.id = w.summer_player_id
+            JOIN summer_players sp ON sp.id = w.summer_player_id AND COALESCE(w.season, 2026) = %s
             LEFT JOIN summer_player_links spl ON spl.summer_player_id = sp.id
             LEFT JOIN players spr ON spr.id = spl.spring_player_id
             LEFT JOIN teams lt ON lt.id = spr.team_id
@@ -3868,9 +3882,10 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
                   SELECT 1 FROM summer_player_links spl2
                   JOIN players p2 ON p2.id = spl2.spring_player_id
                   WHERE spl2.summer_player_id = sp.id AND COALESCE(p2.is_committed, 0) = 1
+                    AND COALESCE(p2.committed_season, %s) <= %s
               )
             """,
-            (season, season, season, season),
+            (season, season, season, season, season, NEXT_SEASON, season + 1),
         )
         rows = [dict(r) for r in cur.fetchall()]
     out = []
@@ -3975,7 +3990,7 @@ def _resolve_spring_display(cur, spids, season):
 def summer_top_performers(
     start: str = Query(..., description="Start date YYYY-MM-DD (inclusive)"),
     end: str = Query(..., description="End date YYYY-MM-DD (inclusive)"),
-    season: int = Query(CURRENT_SEASON),
+    season: int = Query(SUMMER_SEASON),
     league: str = Query("WCL"),
 ):
     """Top WCL hitters + pitchers over an arbitrary date range, for the WCL Top

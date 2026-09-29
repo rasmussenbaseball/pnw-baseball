@@ -2,7 +2,7 @@
 // centered at 100. Extracted from the old standalone /summer/cpi page so it can
 // live as a section on the combined Standings page. Brand rule: no em-dashes.
 import { useState, useEffect } from 'react'
-import { CURRENT_SEASON } from '../../lib/seasons'
+import { SUMMER_SEASON } from '../../lib/seasons'
 
 const API_BASE = '/api/v1'
 
@@ -40,7 +40,7 @@ export default function PowerIndexTable() {
     let cancel = false
     ;(async () => {
       try {
-        const r = await fetch(`${API_BASE}/summer/cpi?league=WCL&season=${CURRENT_SEASON}`)
+        const r = await fetch(`${API_BASE}/summer/cpi?league=WCL&season=${SUMMER_SEASON}`)
         if (!r.ok) throw new Error()
         const j = await r.json()
         if (!cancel) setData(j)

@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { CURRENT_SEASON } from '../lib/seasons'
 
 // Level badge styling, best level first. Tailwind needs literal class strings.
 const LEVEL_STYLE = {
@@ -86,7 +87,7 @@ export default function ProTracker() {
           NWBB profile where we have one.
         </p>
         <p className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-medium text-nw-teal bg-teal-50 dark:bg-teal-900/30 dark:text-teal-300 rounded-full px-3 py-1">
-          Only players who have appeared in a game during the 2026 season are included.
+          Only players who have appeared in a game during the {CURRENT_SEASON} season are included.
         </p>
       </div>
 
