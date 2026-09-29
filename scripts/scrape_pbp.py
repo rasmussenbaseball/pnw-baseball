@@ -41,6 +41,7 @@ import psycopg2.extras
 
 # Project imports
 from app.models.database import get_connection
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 
 # Local script imports — same scripts/ dir
 sys.path.insert(0, "scripts")
@@ -836,7 +837,7 @@ def select_games(cur, args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--season", type=int, default=2026)
+    ap.add_argument("--season", type=int, default=scrape_season())
     ap.add_argument("--backfill", action="store_true",
                     help="Process all games in season, not just last 14 days")
     ap.add_argument("--rescrape", action="store_true",

@@ -43,6 +43,7 @@ sys.path.insert(0, str(_HERE.parent / "backend"))
 sys.path.insert(0, str(_HERE))
 
 from app.models.database import get_connection  # noqa: E402
+from season_utils import presto_season_str  # shared academic-year helper
 from scrape_boxscores import (  # noqa: E402
     D2_TEAMS, D3_TEAMS, NAIA_TEAMS,
     find_player_id, USER_AGENTS,
@@ -315,9 +316,9 @@ def scrape_team(cur, short_name: str, team_config: tuple, season: int) -> int:
 # / approved IP (a local Mac works; the production server doesn't).
 # ─────────────────────────────────────────────────────────────
 
-def _nwac_season_str(season: int) -> str:
-    """2026 → '2025-26' (academic-year string NWAC uses in URLs)."""
-    return f"{season - 1}-{str(season)[2:]}"
+# _nwac_season_str is the shared presto_season_str from scripts/season_utils.py
+# (2026 -> "2025-26"); kept under its old name so callers below do not change.
+_nwac_season_str = presto_season_str
 
 
 def fetch_nwac_fielding_page(season: int) -> str | None:

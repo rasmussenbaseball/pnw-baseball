@@ -28,6 +28,7 @@ import os
 import sys
 import json
 import argparse
+from season_utils import scrape_season, presto_season_str  # shared season helpers
 import statistics
 from pathlib import Path
 
@@ -42,8 +43,8 @@ except Exception:
     pass
 
 OUT = Path(__file__).resolve().parent.parent / "backend" / "data" / "run_environments.json"
-NAIA_SEASON = "2025-26"
-SEASON = 2026
+SEASON = scrape_season()                    # derived from today's date
+NAIA_SEASON = presto_season_str(SEASON)    # "2026-27" style, NAIA/Presto URLs
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"}
 
@@ -165,7 +166,7 @@ def _ncaa_final_period(div, key):
 def _ncaa_runenv(div, rp, key):
     """sum-runs / sum-games for a division's team Scoring ranking → level +
     per-conference run env (runs per team-game). Conference is in '(...)'."""
-    url = (f"https://stats.ncaa.org/rankings/national_ranking?academic_year=2026.0"
+    url = (f"https://stats.ncaa.org/rankings/national_ranking?academic_year={SEASON}.0"
            f"&division={div}.0&ranking_period={rp}.0&sport_code=MBA&stat_seq={NCAA_SCORING_STAT_SEQ}")
     soup = BeautifulSoup(_scraperapi(url, key), "html.parser")
     tbl = soup.find("table")

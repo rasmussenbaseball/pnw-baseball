@@ -24,6 +24,7 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 from app.models.database import get_connection  # noqa: E402
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 
 
 def resolve_team(cur, arg):
@@ -41,7 +42,7 @@ def resolve_team(cur, arg):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("team")
-    ap.add_argument("season", nargs="?", type=int, default=2026)
+    ap.add_argument("season", nargs="?", type=int, default=scrape_season())
     ap.add_argument("--yes", action="store_true",
                     help="Skip the confirmation prompt")
     args = ap.parse_args()

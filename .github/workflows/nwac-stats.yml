@@ -18,6 +18,10 @@ on:
   #   - cron: '0 3 * * *'
   workflow_dispatch:  # Allow manual runs
     inputs:
+      season:
+        description: 'Season year (e.g. 2027). Blank = derived from today''s date; the 2026-27 style string is derived from it.'
+        required: false
+        default: ''
       team:
         description: 'Team group to scrape (nwac, willamette, seattle-u, or blank for all)'
         required: false
@@ -39,6 +43,21 @@ jobs:
         run: |
           pip install requests beautifulsoup4 psycopg2-binary python-dotenv
 
+      # Season = dispatch input when given, otherwise derived from today's date
+      # by scripts/season_utils.py (calendar year through August, next year
+      # from September on). PRESTO_SEASON is the matching "2026-27" style
+      # academic-year string that scrape_nwac.py expects.
+      - name: Resolve season
+        run: |
+          SEASON="${{ github.event.inputs.season }}"
+          if [ -z "$SEASON" ]; then
+            SEASON="$(python3 -c "import sys; sys.path.insert(0,'scripts'); from season_utils import scrape_season; print(scrape_season())")"
+          fi
+          PRESTO_SEASON="$(python3 -c "import sys; sys.path.insert(0,'scripts'); from season_utils import presto_season_str; print(presto_season_str($SEASON))")"
+          echo "Season: $SEASON ($PRESTO_SEASON)"
+          echo "SEASON=$SEASON" >> "$GITHUB_ENV"
+          echo "PRESTO_SEASON=$PRESTO_SEASON" >> "$GITHUB_ENV"
+
       # Runs BEFORE the scrape: scrape_nwac.py ends by reconciling pitching_stats
       # against game_pitching sums, and duplicate game rows would inflate those
       # sums (this is how 2026 batters_faced got corrupted).
@@ -47,7 +66,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           cd $GITHUB_WORKSPACE
-          PYTHONPATH=backend python3 scripts/dedup_games.py --season 2026
+          PYTHONPATH=backend python3 scripts/dedup_games.py --season "$SEASON"
 
       - name: Scrape stats
         env:
@@ -57,9 +76,9 @@ jobs:
           cd $GITHUB_WORKSPACE
           TEAM_FLAG="${{ github.event.inputs.team }}"
           if [ -n "$TEAM_FLAG" ]; then
-            PYTHONPATH=backend python3 scripts/scrape_nwac.py --season 2025-26 --skip-rosters --team "$TEAM_FLAG"
+            PYTHONPATH=backend python3 scripts/scrape_nwac.py --season "$PRESTO_SEASON" --skip-rosters --team "$TEAM_FLAG"
           else
-            PYTHONPATH=backend python3 scripts/scrape_nwac.py --season 2025-26 --skip-rosters
+            PYTHONPATH=backend python3 scripts/scrape_nwac.py --season "$PRESTO_SEASON" --skip-rosters
           fi
 
       - name: Recalculate league-adjusted stats
@@ -67,4 +86,4 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           cd $GITHUB_WORKSPACE
-          PYTHONPATH=backend python3 scripts/recalculate_league_adjusted.py --season 2026
+          PYTHONPATH=backend python3 scripts/recalculate_league_adjusted.py --season "$SEASON"

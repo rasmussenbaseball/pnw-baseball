@@ -26,6 +26,8 @@ import os
 import time
 import random
 import argparse
+from wmt_utils import seattle_u_wmt_id  # Seattle U WMT team id (known map + API lookup)
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 import logging
 import re
 import json
@@ -483,7 +485,7 @@ def format_game(game, team_name, team_info):
 # Main Scraping Logic
 # ============================================================
 
-def parse_html_schedule(html, team_name, team_info, today):
+def parse_html_schedule(html, team_name, team_info, today, season):
     """
     Fallback parser for older Sidearm sites that don't use Nuxt 3.
     These sites use the 'sidearm-schedule-game' class with a predictable structure:
@@ -503,7 +505,7 @@ def parse_html_schedule(html, team_name, team_info, today):
 
     for item in game_items:
         try:
-            game = _parse_legacy_sidearm_game(item, team_name, team_info, today)
+            game = _parse_legacy_sidearm_game(item, team_name, team_info, today, season)
             if game:
                 games.append(game)
         except Exception:
@@ -513,7 +515,7 @@ def parse_html_schedule(html, team_name, team_info, today):
     return games
 
 
-def _parse_legacy_sidearm_game(item, team_name, team_info, today):
+def _parse_legacy_sidearm_game(item, team_name, team_info, today, season):
     """Parse a game from legacy Sidearm HTML format."""
     # Get date
     date_el = item.find(class_=re.compile(r"sidearm-schedule-game-opponent-date"))
@@ -535,7 +537,7 @@ def _parse_legacy_sidearm_game(item, team_name, team_info, today):
     for fmt in ("%b %d", "%B %d"):
         try:
             dt = datetime.strptime(f"{month_str} {day_str}", fmt)
-            game_date = dt.replace(year=2026).date()
+            game_date = dt.replace(year=season).date()  # the season being scraped
             break
         except ValueError:
             continue
@@ -682,21 +684,20 @@ def scrape_team_scores(team_name, team_info, season, today):
 
     # Fallback: parse HTML for game data (older Sidearm sites)
     logger.info(f"  {team_name}: no __NUXT_DATA__, trying HTML fallback")
-    return parse_html_schedule(html, team_name, team_info, today)
+    return parse_html_schedule(html, team_name, team_info, today, season)
 
 
 # ── Seattle U via WMT Games API (Sidearm V3 = client-rendered) ──
 
-SEATTLE_U_WMT_IDS = {
-    2025: 552115,
-    2026: 614833,
-}
+# WMT team ids per season live in scripts/wmt_utils.py (known map + API lookup
+# for new seasons), so this file no longer needs its own table.
 
 
 def scrape_seattle_u_live(season, today):
     """Scrape Seattle U scores from WMT Games API."""
-    wmt_team_id = SEATTLE_U_WMT_IDS.get(season)
+    wmt_team_id = seattle_u_wmt_id(season)
     if not wmt_team_id:
+        logger.warning(f"Seattle U: no WMT team ID for season {season} (lookup failed)")
         return []
 
     api_url = f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/games"
@@ -781,7 +782,7 @@ def scrape_seattle_u_live(season, today):
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape live scores for PNW baseball")
-    parser.add_argument("--season", type=int, default=2026, help="Season year")
+    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: derived from today's date)")
     args = parser.parse_args()
 
     # Use Pacific time for "today"

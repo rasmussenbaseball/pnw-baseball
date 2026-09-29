@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import requests
 
 from app.models.database import get_connection
+from season_utils import summer_season  # WCL = calendar year (see scripts/season_utils.py)
 from parse_nwac_boxscore import parse_presto_xml_boxscore
 from wcl_http import mount_retries, fetch as wcl_fetch
 
@@ -442,7 +443,7 @@ def run(season, limit=None, rescrape=False, dry_run=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape WCL box scores")
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=summer_season())
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--rescrape", action="store_true",
                         help="Re-parse box scores even when batting rows already exist")

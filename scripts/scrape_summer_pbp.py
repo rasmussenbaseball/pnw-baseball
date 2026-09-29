@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import requests
 
 from app.models.database import get_connection
+from season_utils import summer_season  # WCL = calendar year (see scripts/season_utils.py)
 from parse_wcl_pbp import parse_wcl_pbp
 from resolve_summer_game_players import build_lookup, resolve_one, sanitize_player_name
 from wcl_http import mount_retries, fetch as wcl_fetch
@@ -183,7 +184,8 @@ def ingest_game(cur, session, game, exact, by_last, dry_run=False):
     return len(rows), bat_res, pit_res
 
 
-def run(season=2026, rescrape=False, limit=None, game_id=None, dry_run=False):
+def run(season=None, rescrape=False, limit=None, game_id=None, dry_run=False):
+    season = season or summer_season()  # WCL = calendar year
     session = get_session()
     with get_connection() as conn:
         cur = conn.cursor()
@@ -220,7 +222,7 @@ def run(season=2026, rescrape=False, limit=None, game_id=None, dry_run=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--season", type=int, default=2026)
+    ap.add_argument("--season", type=int, default=summer_season())
     ap.add_argument("--limit", type=int)
     ap.add_argument("--game-id", type=int, help="Process a single summer_games.id")
     ap.add_argument("--rescrape", action="store_true", help="Re-ingest games that already have events")

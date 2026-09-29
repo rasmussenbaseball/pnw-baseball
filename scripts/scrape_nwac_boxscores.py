@@ -55,6 +55,7 @@ from bs4 import BeautifulSoup
 import psycopg2.errors
 
 from app.models.database import get_connection
+from season_utils import scrape_season, presto_season_str  # shared season helpers
 from parse_nwac_boxscore import parse_presto_xml_boxscore
 
 logging.basicConfig(
@@ -67,8 +68,9 @@ logger = logging.getLogger("scrape_nwac_boxscores")
 SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY", "")
 SCRAPER_API_BASE = "https://api.scraperapi.com"
 NWAC_BASE = "https://nwacsports.com"
-SEASON = os.environ.get("SEASON_YEAR", "2026")
-PRESTO_SEASON = f"{int(SEASON) - 1}-{SEASON[2:]}"  # e.g. "2025-26"
+# SEASON_YEAR comes from the GitHub workflow; otherwise derive from the date.
+SEASON = os.environ.get("SEASON_YEAR") or str(scrape_season())
+PRESTO_SEASON = presto_season_str(SEASON)  # e.g. "2026-27"
 
 
 # ── ScraperAPI fetch ──
@@ -595,11 +597,11 @@ def main():
     parser.add_argument("--limit", type=int, default=0,
                         help="Max number of box scores to process (0 = unlimited)")
     parser.add_argument("--season", default=SEASON,
-                        help="Season year (default: from SEASON_YEAR env or 2026)")
+                        help="Season year (default: SEASON_YEAR env, else derived from today's date)")
     args = parser.parse_args()
 
     season_year = int(args.season)
-    presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
+    presto_season = presto_season_str(season_year)
 
     success = 0
     failed = 0

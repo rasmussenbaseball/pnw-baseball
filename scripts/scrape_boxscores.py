@@ -69,6 +69,8 @@ except ImportError:
     _have_cloudscraper = False
 
 from app.models.database import get_connection
+from wmt_utils import seattle_u_wmt_id  # Seattle U WMT team id (known map + API lookup)
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -295,7 +297,7 @@ def _nwac_fetch(url, timeout=30):
     """
     global _nwac_session, _nwac_warmed_for
     if _nwac_session is None:
-        _warm_nwac_session(2026)
+        _warm_nwac_session(scrape_season())
 
     resp = _nwac_session.get(url, timeout=timeout)
     text = resp.text
@@ -3429,10 +3431,8 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
 # Seattle U's Sidearm V3 site renders schedule/box score data
 # entirely client-side. We use the WMT Games API instead.
 
-SEATTLE_U_WMT_IDS = {
-    2025: 552115,
-    2026: 614833,
-}
+# WMT team ids per season live in scripts/wmt_utils.py (known map + API lookup
+# for new seasons), so this file no longer needs its own table.
 
 
 def scrape_seattle_u_boxscores(season_year, dry_run=False, since_date=None):
@@ -3440,9 +3440,9 @@ def scrape_seattle_u_boxscores(season_year, dry_run=False, since_date=None):
     Scrape Seattle U box scores via the WMT Games API.
     Returns (games_found, games_scraped, errors).
     """
-    wmt_team_id = SEATTLE_U_WMT_IDS.get(season_year)
+    wmt_team_id = seattle_u_wmt_id(season_year)
     if not wmt_team_id:
-        logger.warning(f"Seattle U: no WMT team ID for season {season_year}")
+        logger.warning(f"Seattle U: no WMT team ID for season {season_year} (lookup failed)")
         return 0, 0, 1
 
     logger.info(f"\n{'='*60}")

@@ -33,9 +33,10 @@ from collections import defaultdict
 from typing import Dict, Tuple
 
 from app.models.database import get_connection
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 
 
-SEASON = 2026
+SEASON = scrape_season()  # derived from today's date
 
 # Same bucket caps as wp_lookup — the lookups have to agree
 INNING_CAP = 10

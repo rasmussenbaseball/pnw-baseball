@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       grad_year:
-        description: 'Recruiting class year (default 2026)'
+        description: 'Recruiting class year. Blank = the class enrolling for the upcoming spring (derived from today''s date).'
         required: false
-        default: '2026'
+        default: ''
       state:
         description: 'Limit to one state (WA/OR/ID/MT/BC); blank = all PNW'
         required: false
@@ -45,7 +45,13 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          GRAD="${{ github.event.inputs.grad_year || '2026' }}"
+          # Grad year = dispatch input, else the class enrolling for the upcoming
+          # spring season (scripts/season_utils.py upcoming_season: e.g. 2027 from
+          # Sept 2026 on).
+          GRAD="${{ github.event.inputs.grad_year }}"
+          if [ -z "$GRAD" ]; then
+            GRAD="$(python3 -c "import sys; sys.path.insert(0,'scripts'); from season_utils import upcoming_season; print(upcoming_season())")"
+          fi
           STATE="${{ github.event.inputs.state || '' }}"
           ARGS="--grad-year $GRAD"
           if [ -n "$STATE" ]; then ARGS="$ARGS --state $STATE"; fi

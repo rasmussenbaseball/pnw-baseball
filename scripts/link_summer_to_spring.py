@@ -32,6 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.models.database import get_connection
+from season_utils import summer_season  # WCL = calendar year (see scripts/season_utils.py)
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -407,15 +408,15 @@ def run(season, dry_run=False, rescore=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=summer_season())
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--rescore", action="store_true",
                         help="Delete existing auto links and recompute")
     parser.add_argument("--all-seasons", action="store_true",
-                        help="Run the linker for every summer season (2022-2026)")
+                        help="Run the linker for every summer season (2022 through this year)")
     args = parser.parse_args()
     if args.all_seasons:
-        for yr in range(2022, 2027):
+        for yr in range(2022, summer_season() + 1):
             logger.info(f"===== Season {yr} =====")
             run(yr, dry_run=args.dry_run, rescore=args.rescore)
     else:

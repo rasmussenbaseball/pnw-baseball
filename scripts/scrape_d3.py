@@ -37,6 +37,7 @@ import requests
 from bs4 import BeautifulSoup, NavigableString
 
 from app.models.database import get_connection, init_db, seed_divisions_and_conferences
+from season_utils import presto_season_str  # shared academic-year helper
 from app.stats.advanced import (
     BattingLine, PitchingLine,
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
@@ -309,11 +310,8 @@ def parse_sidearm_table(table):
 # PrestoSports Parsing (used by Willamette)
 # ============================================================
 
-def presto_season_str(season_year):
-    """Convert numeric year (2026) to PrestoSports academic year (2025-26)."""
-    start = season_year - 1
-    end_short = str(season_year)[-2:]
-    return f"{start}-{end_short}"
+# presto_season_str (2026 -> "2025-26") now lives in scripts/season_utils.py
+# and is imported at the top of this file; the local copy was removed.
 
 
 def parse_presto_template_table(html):

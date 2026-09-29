@@ -22,6 +22,8 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 from app.models.database import get_connection
+from wmt_utils import seattle_u_wmt_id  # Seattle U WMT team id (known map + API lookup)
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("scrape_records")
@@ -339,17 +341,15 @@ D1_TEAMS = {
     # Seattle U handled separately via WMT API (Sidearm V3 = client-rendered)
 }
 
-# WMT team IDs for Seattle U by season
-SEATTLE_U_WMT_IDS = {
-    2025: 552115,
-    2026: 614833,
-}
+# WMT team ids per season live in scripts/wmt_utils.py (known map + API lookup
+# for new seasons), so this file no longer needs its own table.
 
 
 def scrape_seattle_u_record(season_year):
     """Fetch Seattle U record from WMT Games API (Sidearm V3 is client-rendered)."""
-    wmt_team_id = SEATTLE_U_WMT_IDS.get(season_year)
+    wmt_team_id = seattle_u_wmt_id(season_year)
     if not wmt_team_id:
+        logger.warning(f"Seattle U: no WMT team ID for season {season_year} (lookup failed)")
         return None, None
 
     # Use team endpoint for overall record
@@ -471,7 +471,7 @@ def scrape_bigten_standings(season):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=scrape_season())
     args = parser.parse_args()
     season = args.season
 

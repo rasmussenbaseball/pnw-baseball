@@ -13,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       season:
-        description: 'Season year (default 2026)'
+        description: 'Season year. Blank = this calendar year (WCL is summer-only).'
         required: false
-        default: '2026'
+        default: ''
       rescrape:
         description: 'Re-parse box scores even if already ingested (true/false)'
         required: false
@@ -26,7 +26,33 @@ on:
         default: '0'
 
 jobs:
+  # Gate: the WCL only plays June to August, so the twice-daily cron used to
+  # burn ScraperAPI credits all offseason finding nothing. Scheduled runs are
+  # skipped outside May through August (a skipped job still counts as a green
+  # run). Manual workflow_dispatch runs always go ahead. The season year is
+  # the calendar year (dispatch input overrides).
+  window:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+      season: ${{ steps.gate.outputs.season }}
+    steps:
+      - id: gate
+        run: |
+          MONTH=$((10#$(date -u +%m)))
+          SEASON="${{ github.event.inputs.season }}"
+          if [ -z "$SEASON" ]; then SEASON="$(date -u +%Y)"; fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "$MONTH" -ge 5 ] && [ "$MONTH" -le 8 ]; }; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Outside the WCL window (month $MONTH); skipping scheduled run."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "season=$SEASON" >> "$GITHUB_OUTPUT"
+
   scrape:
+    needs: window
+    if: needs.window.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -55,7 +81,7 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          SEASON="${{ github.event.inputs.season || '2026' }}"
+          SEASON="${{ needs.window.outputs.season }}"
           echo "→ Refreshing schedule for season $SEASON"
           PYTHONPATH=backend python3 scripts/scrape_wcl_schedule.py --season "$SEASON"
 
@@ -64,7 +90,7 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          SEASON="${{ github.event.inputs.season || '2026' }}"
+          SEASON="${{ needs.window.outputs.season }}"
           RESCRAPE="${{ github.event.inputs.rescrape || 'false' }}"
           LIMIT="${{ github.event.inputs.limit || '0' }}"
 
@@ -90,7 +116,7 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          SEASON="${{ github.event.inputs.season || '2026' }}"
+          SEASON="${{ needs.window.outputs.season }}"
           echo "→ Resolving box-score names → summer_players"
           PYTHONPATH=backend python3 scripts/resolve_summer_game_players.py
           echo "→ Rolling per-game data up into season aggregates"
@@ -103,7 +129,7 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          SEASON="${{ github.event.inputs.season || '2026' }}"
+          SEASON="${{ needs.window.outputs.season }}"
           RESCRAPE="${{ github.event.inputs.rescrape || 'false' }}"
           # Runs AFTER box scores (for starter seeding) and name
           # resolution (so summer_players rosters exist to resolve
@@ -132,7 +158,7 @@ jobs:
           # the win-prob curve. Idempotent: skips games already derived
           # (state_derived_at), and rescraped games re-derive naturally
           # because their fresh rows have NULL state_derived_at.
-          SEASON="${{ github.event.inputs.season || '2026' }}"
+          SEASON="${{ needs.window.outputs.season }}"
           PYTHONPATH=backend python3 scripts/derive_summer_event_state.py --season "$SEASON" || true
 
       - name: Compute summer WPA (win probability added)
@@ -142,7 +168,7 @@ jobs:
           # Must run AFTER state derivation. Reuses the spring wp_lookup
           # table (NCAA surface) so WPA means the same thing site-wide.
           # Idempotent via wpa_derived_at IS NULL.
-          SEASON="${{ github.event.inputs.season || '2026' }}"
+          SEASON="${{ needs.window.outputs.season }}"
           PYTHONPATH=backend python3 scripts/compute_summer_wpa.py --season "$SEASON" || true
 
       - name: Scrape WCL season fielding
@@ -150,7 +176,7 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          SEASON="${{ github.event.inputs.season || '2026' }}"
+          SEASON="${{ needs.window.outputs.season }}"
           echo "→ Pulling WCL season fielding from wclstats.com"
           PYTHONPATH=backend python3 scripts/scrape_wcl_fielding.py --season "$SEASON" || true
 
@@ -159,6 +185,6 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          SEASON="${{ github.event.inputs.season || '2026' }}"
+          SEASON="${{ needs.window.outputs.season }}"
           echo "→ Auto-linking summer_players to spring players"
           PYTHONPATH=backend python3 scripts/link_summer_to_spring.py --season "$SEASON"

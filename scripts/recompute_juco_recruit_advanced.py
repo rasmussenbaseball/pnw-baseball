@@ -29,6 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 from app.models.database import get_connection
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 from app.stats.advanced import (
     BattingLine, PitchingLine, DEFAULT_WEIGHTS,
     compute_batting_advanced, compute_pitching_advanced,
@@ -202,7 +203,7 @@ def recompute_conference(cur, conference, season, verbose=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--season", type=int, default=2026)
+    ap.add_argument("--season", type=int, default=scrape_season())
     ap.add_argument("--conference", help="Only this conference_name (default: all)")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()

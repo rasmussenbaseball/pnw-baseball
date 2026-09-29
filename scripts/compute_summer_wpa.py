@@ -37,9 +37,10 @@ from typing import Dict, Tuple
 import psycopg2.extras
 
 from app.models.database import get_connection
+from season_utils import summer_season  # WCL = calendar year (see scripts/season_utils.py)
 
 
-SEASON = 2026
+SEASON = summer_season()  # WCL = calendar year
 
 # WCL = 9-inning regulation, college talent → use the NCAA WP surface.
 DIVISION_GROUP = "NCAA"

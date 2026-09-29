@@ -30,6 +30,7 @@ from scrape_boxscores import (  # noqa: E402
 )
 
 from app.models.database import get_connection  # noqa: E402
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 
 
 def resolve_team(cur, arg):
@@ -162,7 +163,7 @@ def retry_one_game(game, season):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("team")
-    ap.add_argument("season", nargs="?", type=int, default=2026)
+    ap.add_argument("season", nargs="?", type=int, default=scrape_season())
     args = ap.parse_args()
 
     with get_connection() as conn:

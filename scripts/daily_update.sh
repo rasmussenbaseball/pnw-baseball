@@ -13,7 +13,9 @@
 #   chmod +x scripts/daily_update.sh
 #   ./scripts/daily_update.sh
 #
-# Optional: pass --season YEAR (default: 2026)
+# Optional: pass --season YEAR (or a bare YEAR). Default: the site's
+# CURRENT_SEASON (backend/app/config.py) via scripts/season_utils.py, so
+# one bump moves the scrapers and the site together. See docs/SEASON_ROLLOVER.md.
 # ============================================================
 
 set -e  # Exit on first error
@@ -29,11 +31,27 @@ if ! flock -n 200; then
     exit 0
 fi
 
-SEASON="${1:-2026}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
 export PYTHONPATH="$PROJECT_DIR/backend"
+
+# ── Season argument ───────────────────────────────────────
+# Accepts `--season 2027`, `--season=2027`, or a bare `2027` (the old
+# positional style still works). With no argument the season is the site's
+# CURRENT_SEASON (read by scripts/season_utils.py), so nothing here needs a
+# hand edit when a new season starts beyond bumping that constant.
+SEASON=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --season)   SEASON="$2"; shift 2 ;;
+        --season=*) SEASON="${1#--season=}"; shift ;;
+        *)          SEASON="$1"; shift ;;
+    esac
+done
+if [ -z "$SEASON" ]; then
+    SEASON="$(python3 -c "import sys; sys.path.insert(0,'scripts'); from season_utils import scrape_season; print(scrape_season())")"
+fi
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -73,6 +91,7 @@ echo ""
 run_step "D1 stats (Pac-12 / WCC PNW teams)" \
     python3 scripts/scrape_d1.py --season "$SEASON"
 
+# Spring rollover: uncomment when 2027 games start (see docs/SEASON_ROLLOVER.md)
 # ── D2 / D3 / NAIA / NWAC all paused: their 2026 seasons ended in May
 # 2026 (and the NWAC championships wrapped May 25). Only D1 keeps
 # scraping through June for the College World Series and selection.
@@ -103,6 +122,13 @@ run_step "D1 stats (Pac-12 / WCC PNW teams)" \
 run_step "Box scores (D1)" \
     python3 scripts/scrape_boxscores.py --season "$SEASON" --division D1
 
+# Spring rollover: uncomment when 2027 games start (see docs/SEASON_ROLLOVER.md)
+# run_step "Box scores (D2)" \
+#     python3 scripts/scrape_boxscores.py --season "$SEASON" --division D2
+#
+# run_step "Box scores (D3)" \
+#     python3 scripts/scrape_boxscores.py --season "$SEASON" --division D3
+#
 # run_step "Box scores (NAIA)" \
 #     python3 scripts/scrape_boxscores.py --season "$SEASON" --division NAIA
 
@@ -198,13 +224,13 @@ echo "============================================"
 # Re-derive WPA after scrapes — idempotent (only games with
 # wpa_derived_at IS NULL get processed). Self-heals when scrape_pbp
 # re-INSERTs game_events rows and clears the wpa_* columns.
-PYTHONPATH=backend python3 scripts/compute_wpa.py --season 2026
+PYTHONPATH=backend python3 scripts/compute_wpa.py --season "$SEASON"
 
 # Holds + blown saves — derived from game_events score state, written to
 # game_pitching flags + pitching_stats season totals. Idempotent (full
 # recompute for the season each run). Also run manually after any PBP
 # rescrape, same as compute_wpa.
-PYTHONPATH=backend python3 scripts/compute_holds_blown_saves.py --season 2026
+PYTHONPATH=backend python3 scripts/compute_holds_blown_saves.py --season "$SEASON"
 
 # Batted-ball type + fine field zone (5 IF + 5 OF lanes) from game_events
 # result_text. Idempotent (only rows with bb_derived_at IS NULL). Feeds the

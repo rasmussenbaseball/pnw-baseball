@@ -41,6 +41,7 @@ Usage:
 """
 
 import argparse
+from season_utils import summer_season  # WCL = calendar year (see scripts/season_utils.py)
 import logging
 import os
 import re
@@ -728,7 +729,7 @@ def derive_game(cur, game_id, dry_run=False, force=False):
 def main():
     parser = argparse.ArgumentParser(description="Derive base/out/score state for summer_game_events.")
     parser.add_argument("--game-id", type=int, help="Single summer_games.id (smoke test).")
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=summer_season())
     parser.add_argument("--force", action="store_true", help="Re-derive games already derived.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--limit", type=int, help="Cap number of games processed.")

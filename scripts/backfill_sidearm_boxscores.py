@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import requests
 from app.models.database import get_connection
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 
 # Shared team-name matching (see scripts/team_matching.py)
 from team_matching import (
@@ -628,7 +629,7 @@ def main():
     parser.add_argument("--all-d1", action="store_true", help="Backfill all D1 Sidearm teams")
     parser.add_argument("--start-id", type=int, help="Start of ID range to probe")
     parser.add_argument("--end-id", type=int, help="End of ID range to probe")
-    parser.add_argument("--season", type=int, default=2026, help="Season year (default: 2026)")
+    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: derived from today's date)")
     parser.add_argument("--dry-run", action="store_true", help="Find games but don't insert")
     args = parser.parse_args()
 

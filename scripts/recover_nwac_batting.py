@@ -20,6 +20,7 @@ Usage (on server):
 """
 
 import argparse
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 import os
 import sys
 
@@ -159,7 +160,7 @@ def run_recovery(season, clear_partial=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Recover NWAC batting data")
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=scrape_season())
     parser.add_argument("--clear-partial", action="store_true",
                         help="Clear incomplete batting data so backfill will re-scrape")
     args = parser.parse_args()

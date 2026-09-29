@@ -30,6 +30,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import requests
 from bs4 import BeautifulSoup
 from app.models.database import get_connection
+from wmt_utils import seattle_u_wmt_id  # Seattle U WMT team id (known map + API lookup)
+from season_utils import scrape_season, presto_season_str  # shared season helpers
 
 logging.basicConfig(
     level=logging.INFO,
@@ -729,7 +731,7 @@ def extract_future_nwac_games(season_year, today, team_map):
     Extract future games from individual NWAC team schedule pages.
     Each team has a PrestoSports game-log page with their full season schedule.
     """
-    season_str = f"{season_year - 1}-{str(season_year)[2:]}"
+    season_str = presto_season_str(season_year)
     api_key = get_scraper_api_key()
 
     if not api_key:
@@ -779,7 +781,7 @@ def extract_future_willamette_games(season_year, today, team_map):
     Extract future games for Willamette from their PrestoSports schedule page.
     Uses the shared parse_presto_future_games() parser.
     """
-    presto_season = f"{season_year - 1}-{str(season_year)[2:]}"
+    presto_season = presto_season_str(season_year)
     schedule_url = (
         f"https://www.wubearcats.com/sports/bsb/{presto_season}"
         f"/teams/willamette?view=schedule"
@@ -805,11 +807,8 @@ def extract_future_willamette_games(season_year, today, team_map):
 # Seattle U (WMT Games API) - Sidearm V3 renders client-side
 # ============================================================
 
-# WMT team IDs by season (matches scrape_nwac.py)
-SEATTLE_U_WMT_IDS = {
-    2025: 552115,
-    2026: 614833,
-}
+# WMT team ids per season live in scripts/wmt_utils.py (known map + API lookup
+# for new seasons, shared with scrape_nwac.py), so no per-file table here.
 
 
 def extract_future_seattle_u_games(season_year, today, team_map):
@@ -818,9 +817,9 @@ def extract_future_seattle_u_games(season_year, today, team_map):
     Seattle U's Sidearm V3 site renders data entirely client-side,
     so we use the same WMT API that scrape_nwac.py uses for stats.
     """
-    wmt_team_id = SEATTLE_U_WMT_IDS.get(season_year)
+    wmt_team_id = seattle_u_wmt_id(season_year)
     if not wmt_team_id:
-        logger.warning(f"Seattle U: no WMT team ID for season {season_year}")
+        logger.warning(f"Seattle U: no WMT team ID for season {season_year} (lookup failed)")
         return []
 
     api_url = f"https://api.wmt.games/api/statistics/teams/{wmt_team_id}/games"
@@ -1007,7 +1006,7 @@ def deduplicate_future_games(games):
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape future schedules for PNW baseball")
-    parser.add_argument("--season", type=int, default=2026, help="Season year")
+    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: derived from today's date)")
     args = parser.parse_args()
 
     import pytz

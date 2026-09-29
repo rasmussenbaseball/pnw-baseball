@@ -24,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.models.database import get_connection
+from season_utils import summer_season  # WCL = calendar year (see scripts/season_utils.py)
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -225,7 +226,7 @@ def rollup_pitching(cur, league_id, season):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--league", default="WCL")
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=summer_season())
     args = parser.parse_args()
     with get_connection() as conn:
         cur = conn.cursor()

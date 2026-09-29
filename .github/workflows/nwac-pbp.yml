@@ -11,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       season:
-        description: 'Season year (e.g. 2026, 2024)'
+        description: 'Season year (e.g. 2027, 2024). Blank = derived from today''s date.'
         required: false
-        default: '2026'
+        default: ''
       mode:
         description: 'Run mode: daily (default) or backfill'
         required: false
@@ -49,14 +49,25 @@ jobs:
         run: |
           pip install requests beautifulsoup4 psycopg2-binary python-dotenv
 
+      # Season = dispatch input when given, otherwise derived from today's date
+      # by scripts/season_utils.py (calendar year through August, next year
+      # from September on). Later steps read it from $SEASON / env.SEASON.
+      - name: Resolve season
+        run: |
+          SEASON="${{ github.event.inputs.season }}"
+          if [ -z "$SEASON" ]; then
+            SEASON="$(python3 -c "import sys; sys.path.insert(0,'scripts'); from season_utils import scrape_season; print(scrape_season())")"
+          fi
+          echo "Season: $SEASON"
+          echo "SEASON=$SEASON" >> "$GITHUB_ENV"
+
       - name: Scrape NWAC PBP via scrape_pbp.py
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SEASON_YEAR: ${{ github.event.inputs.season || '2026' }}
+          SEASON_YEAR: ${{ env.SEASON }}
         run: |
           cd $GITHUB_WORKSPACE
-          SEASON="${{ github.event.inputs.season || '2026' }}"
           MODE="${{ github.event.inputs.mode }}"
           LIMIT="${{ github.event.inputs.limit }}"
           RESCRAPE="${{ github.event.inputs.rescrape }}"

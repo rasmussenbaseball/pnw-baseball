@@ -50,6 +50,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.models.database import get_connection
+from season_utils import scrape_season, presto_season_str, season_from_presto  # shared season helpers
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("scrape_juco_recruit")
@@ -534,14 +535,15 @@ def scrape_team(cur, team, season_str, season_year, dry_run=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--season", default="2025-26", help="Presto academic-year season, e.g. 2025-26")
+    ap.add_argument("--season", default=presto_season_str(scrape_season()),
+                    help="Presto academic-year season, e.g. 2026-27 (default: derived from today's date)")
     ap.add_argument("--conference", help="Only this conference_name")
     ap.add_argument("--school", help="Only this school_name")
     ap.add_argument("--dry-run", action="store_true", help="Parse + count, write nothing")
     args = ap.parse_args()
 
     # Derive the integer DB season from the academic-year string (2025-26 -> 2026)
-    season_year = int(args.season.split("-")[0]) + 1 if "-" in args.season else int(args.season)
+    season_year = season_from_presto(args.season)
 
     with get_connection() as conn:
         cur = conn.cursor()

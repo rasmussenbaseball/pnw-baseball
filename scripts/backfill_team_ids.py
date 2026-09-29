@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, "backend")
 
 from app.models.database import get_connection  # noqa: E402
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 
 
 ABBREV_MAP = {
@@ -116,8 +117,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true",
                     help="actually write the UPDATEs (default is dry run)")
-    ap.add_argument("--season", type=int, default=2026,
-                    help="season to scan (default 2026)")
+    ap.add_argument("--season", type=int, default=scrape_season(),
+                    help="season to scan (default: derived from today's date)")
     args = ap.parse_args()
 
     with get_connection() as conn:

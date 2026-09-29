@@ -32,6 +32,8 @@ import psycopg2
 import psycopg2.extras
 
 # Shared team-name matching (see scripts/team_matching.py)
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from wmt_utils import resolve_wmt_team_id, SEATTLE_U_WMT_DOMAIN, SEATTLE_U_WMT_IDS  # shared WMT id lookup
 from team_matching import (
     get_team_id_by_short_name,
     get_or_create_ooc_team,
@@ -48,12 +50,13 @@ USER_AGENTS = [
 ]
 
 # ── Team configs ──
-# wmt_team_ids maps season year -> WMT team ID
+# wmt_team_ids maps season year -> WMT team ID. Seasons missing from the map
+# are looked up through the WMT API by resolve_wmt_team_id (scripts/wmt_utils.py).
 WMT_TEAMS = {
     "Seattle U": {
         "db_short": "Seattle U",
-        "wmt_domain": "goseattleu",
-        "wmt_team_ids": {2026: 614833},
+        "wmt_domain": SEATTLE_U_WMT_DOMAIN,
+        "wmt_team_ids": SEATTLE_U_WMT_IDS,
     },
 }
 
@@ -276,9 +279,9 @@ def backfill_team(team_key, season=2026, dry_run=False):
         logger.error(f"Team '{db_short}' not found in database")
         return
 
-    wmt_team_id = config["wmt_team_ids"].get(season)
+    wmt_team_id = resolve_wmt_team_id(config["wmt_domain"], season, known_ids=config["wmt_team_ids"])
     if not wmt_team_id:
-        logger.error(f"No WMT team_id configured for {team_key} season {season}")
+        logger.error(f"No WMT team_id found for {team_key} season {season}")
         return
 
     logger.info(f"{'='*60}")
@@ -489,7 +492,7 @@ def backfill_team(team_key, season=2026, dry_run=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Backfill box scores from WMT Games API")
     parser.add_argument("--team", type=str, required=True, help="Team name (e.g., 'Seattle U')")
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=scrape_season())
     parser.add_argument("--dry-run", action="store_true", help="Don't actually insert, just show what would be done")
     args = parser.parse_args()
 

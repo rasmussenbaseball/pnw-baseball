@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import requests
 from bs4 import BeautifulSoup
 from app.models.database import get_connection
+from season_utils import scrape_season, presto_season_str  # shared season helpers
 from scrape_boxscores import (
     get_team_id_by_name,
     get_team_id_by_school,
@@ -141,7 +142,7 @@ def scraperapi_fetch(api_key, target_url, min_size=3000, label="page"):
 
 def fetch_schedule(api_key, season_year):
     """Fetch the NWAC master schedule page via ScraperAPI."""
-    season_str = f"{season_year - 1}-{str(season_year)[2:]}"
+    season_str = presto_season_str(season_year)
     schedule_url = f"https://nwacsports.com/sports/bsb/{season_str}/schedule"
 
     logger.info(f"Fetching NWAC schedule: {schedule_url}")
@@ -568,7 +569,8 @@ def main():
         logger.error("SCRAPER_API_KEY environment variable not set")
         sys.exit(1)
 
-    season_year = int(os.environ.get("SEASON_YEAR", "2026"))
+    # SEASON_YEAR comes from the GitHub workflow; otherwise derive from the date.
+    season_year = int(os.environ.get("SEASON_YEAR") or scrape_season())
     logger.info(f"NWAC Schedule Scraper — Season {season_year}")
 
     # ── 1. Fetch composite page for today's games (fast-updating) ──

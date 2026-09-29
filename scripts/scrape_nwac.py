@@ -51,6 +51,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.models.database import get_connection, init_db, seed_divisions_and_conferences
+from wmt_utils import resolve_wmt_team_id, SEATTLE_U_WMT_IDS  # shared WMT id lookup
+from season_utils import scrape_season, presto_season_str, season_from_presto  # shared season helpers
 from app.stats.advanced import (
     BattingLine, PitchingLine,
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
@@ -165,7 +167,7 @@ EXTRA_PRESTO_TEAMS = {
 WMT_TEAMS = {
     "Seattle U": {
         "wmt_domain": "goseattleu",
-        "wmt_team_ids": {2026: 614833, 2025: 552115},
+        "wmt_team_ids": SEATTLE_U_WMT_IDS,  # newer seasons are looked up automatically
     },
 }
 
@@ -215,9 +217,9 @@ def _warm_session(season_str=None):
     """Visit the NWAC baseball page for the target season to establish cookies."""
     global _session_warmed_for, last_request_time
     if _use_scraper_api:
-        _session_warmed_for = season_str or "2025-26"
+        _session_warmed_for = season_str or presto_season_str(scrape_season())
         return  # ScraperAPI doesn't need session warming
-    target = season_str or "2025-26"
+    target = season_str or presto_season_str(scrape_season())
     if _session_warmed_for == target:
         return
     logger.info(f"Warming session — visiting NWAC {target} page...")
@@ -1320,33 +1322,12 @@ def process_seattle_u(season_year):
     logger.info("=" * 60)
     logger.info("Scraping Seattle U (WMT Games API)")
 
-    # Get WMT team_id for this season
-    wmt_team_id = config["wmt_team_ids"].get(season_year)
-    if not wmt_team_id:
-        # Try to discover it from the school endpoint
-        logger.info(f"  Looking up WMT team_id for season {season_year}...")
-        try:
-            r = requests.get(
-                f"https://api.wmt.games/api/schools/{config['wmt_domain']}",
-                headers={"User-Agent": random.choice(USER_AGENTS)},
-                timeout=15,
-            )
-            school_data = r.json().get("data", {})
-            school_id = school_data.get("statistic_configuration", {}).get("school_id")
-            if school_id:
-                r2 = requests.get(
-                    "https://api.wmt.games/api/statistics/teams",
-                    params={"filter[org_id]": school_id, "filter[sport_code]": "MBA",
-                            "filter[season_academic_year]": season_year, "per_page": 5},
-                    headers={"User-Agent": random.choice(USER_AGENTS)},
-                    timeout=15,
-                )
-                teams = r2.json().get("data", [])
-                if teams:
-                    wmt_team_id = teams[0]["id"]
-                    logger.info(f"  Found WMT team_id: {wmt_team_id}")
-        except Exception as e:
-            logger.warning(f"  Could not discover WMT team_id: {e}")
+    # Get WMT team_id for this season: known map first, then the WMT API
+    # lookup (shared with the other Seattle U scrapers via scripts/wmt_utils.py).
+    wmt_team_id = resolve_wmt_team_id(
+        config["wmt_domain"], season_year, known_ids=config["wmt_team_ids"],
+        headers={"User-Agent": random.choice(USER_AGENTS)},
+    )
 
     if not wmt_team_id:
         logger.error(f"No WMT team_id for Seattle U season {season_year} — skipping")
@@ -1622,8 +1603,7 @@ def main():
 
     season_str = args.season
     try:
-        parts = season_str.split("-")
-        season_year = int(parts[0]) + 1
+        season_year = season_from_presto(season_str)  # "2026-27" -> 2027
     except (ValueError, IndexError):
         logger.error(f"Invalid season format: '{season_str}'. Use format like '2025-26'")
         sys.exit(1)

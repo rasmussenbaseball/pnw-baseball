@@ -30,6 +30,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.models.database import get_connection
+from season_utils import summer_season  # WCL = calendar year (see scripts/season_utils.py)
 from wcl_http import mount_retries, fetch as wcl_fetch
 
 
@@ -297,7 +298,7 @@ def run(season):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=summer_season())
     args = parser.parse_args()
     run(args.season)
 

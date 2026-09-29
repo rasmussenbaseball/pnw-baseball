@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.models.database import get_connection
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
 from scrape_nwac_boxscores import process_boxscore
 
 
@@ -86,7 +87,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-id", type=int, required=True)
     ap.add_argument("--url", required=True, help="NWAC box score XML URL")
-    ap.add_argument("--season", type=int, default=2026)
+    ap.add_argument("--season", type=int, default=scrape_season())
     ap.add_argument("--no-rescrape", action="store_true",
                     help="Only print current state; do not refetch/rewrite.")
     args = ap.parse_args()

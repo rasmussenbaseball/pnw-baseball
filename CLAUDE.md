@@ -410,6 +410,10 @@ The current season has ONE source of truth per layer (consolidated June 2026):
 
 When 2027 starts, bump those two values (and add 2027 to `SEASONS`). Some literal `2026` strings remain on purpose: page copy ("2026 MLB Draft Board"), real-event data (NWAC champ seeds), and date strings. Don't blind-replace them.
 
+Rollover checklist: `docs/SEASON_ROLLOVER.md` lists every remaining MANUAL step (Mac vs server) at the start of a season, each fall (PORTAL_SEASON), and each summer.
+Scrapers and workflows no longer carry their own year: `scripts/season_utils.py` gives them `scrape_season()` = the site's `CURRENT_SEASON` (so one bump moves scrapers and site together; nothing flips on the calendar), `summer_season()` = calendar year (WCL only), `upcoming_season()` = the calendar rule used only for the HS recruiting class, and `presto_season_str()` for `2026-27` strings.
+Seattle U's WMT team id for a new season is looked up automatically by `scripts/wmt_utils.py`.
+
 Homepage WCL (summer ball) leaders use `2025` intentionally (summer 2025 is the most recent completed summer season). Summer-league endpoints keep their own year defaults.
 
 ### 10.13 NWAC season format

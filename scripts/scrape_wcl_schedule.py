@@ -41,6 +41,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.models.database import get_connection
+from season_utils import summer_season  # WCL = calendar year (see scripts/season_utils.py)
 from wcl_http import mount_retries, fetch as wcl_fetch
 
 
@@ -364,7 +365,7 @@ def run(season, dry_run=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape WCL schedule")
-    parser.add_argument("--season", type=int, default=2026)
+    parser.add_argument("--season", type=int, default=summer_season())
     parser.add_argument("--dry-run", action="store_true",
                         help="Parse + print, do not write to DB")
     args = parser.parse_args()

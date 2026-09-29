@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.models.database import get_connection
+from season_utils import scrape_season, presto_season_str  # shared season helpers (scripts/season_utils.py)
 from scrape_boxscores import (
     D1_TEAMS, D2_TEAMS, D3_TEAMS, NAIA_TEAMS, NWAC_TEAMS,
     NWAC_TEAM_SLUGS,
@@ -40,7 +41,7 @@ from scrape_boxscores import (
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-SEASON = 2026
+SEASON = scrape_season()  # derived from today's date
 
 # Home cities for D1 teams whose schedule pages lack at/vs indicators.
 # Location text on the schedule page is compared to this to determine home/away.
@@ -349,7 +350,7 @@ def fix_sidearm_team(db_short, team_config, team_id):
         cur = conn.cursor()
 
         for game in away_games:
-            if game["date"].year < 2026:
+            if game["date"].year < SEASON:
                 continue
 
             # This is an AWAY game. Check if DB has this team as home.
@@ -375,7 +376,7 @@ def fix_sidearm_team(db_short, team_config, team_id):
         # Also fix the REVERSE: home games wrongly set to away.
         # This corrects over-swaps from previous runs.
         for game in home_games:
-            if game["date"].year < 2026:
+            if game["date"].year < SEASON:
                 continue
 
             # This is a HOME game. Check if DB has this team as away.
@@ -413,7 +414,7 @@ def fix_presto_team(db_short, team_config, team_id):
     is_nwac = db_short in NWAC_TEAM_SLUGS
 
     if db_short == "Willamette":
-        presto_season = f"{SEASON - 1}-{str(SEASON)[2:]}"
+        presto_season = presto_season_str(SEASON)
         url = build_presto_schedule_url(base_url, sport, "willamette", presto_season)
         html = fetch_page(url)
         if not html and SCRAPER_API_KEY:
@@ -426,7 +427,7 @@ def fix_presto_team(db_short, team_config, team_id):
             logger.warning(f"  Skipping {db_short} (NWAC) -- no SCRAPER_API_KEY set")
             return 0
         slug = NWAC_TEAM_SLUGS.get(db_short, db_short.lower().replace(" ", "-"))
-        presto_season = f"{SEASON - 1}-{str(SEASON)[2:]}"
+        presto_season = presto_season_str(SEASON)
         url = f"{base_url}/sports/{sport}/{presto_season}/teams/{slug}?view=schedule"
         logger.info(f"  Fetching NWAC schedule via ScraperAPI: {url}")
         html = fetch_with_scraper_api(url)
@@ -546,11 +547,11 @@ def fix_home_away():
                    SUM(CASE WHEN g.away_team_id = t.id THEN 1 ELSE 0 END) as away
             FROM teams t
             JOIN games g ON g.home_team_id = t.id OR g.away_team_id = t.id
-            WHERE g.season = 2026
+            WHERE g.season = %s
             GROUP BY t.short_name, t.id
             HAVING COUNT(*) > 10
             ORDER BY t.short_name
-        """)
+        """, (SEASON,))
         print("\nTeam home/away counts after fix:")
         for r in cur.fetchall():
             ratio = r['home'] / max(r['home'] + r['away'], 1) * 100
