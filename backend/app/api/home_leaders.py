@@ -422,3 +422,195 @@ def home_faces(season: int = Query(CURRENT_SEASON), limit: int = Query(8, ge=1, 
     result = {"season": season, "faces": faces}
     _CACHE[ck] = (time.time(), result)
     return result
+
+
+# ─────────────────────────────────────────────────────────────
+# Homepage "of the year" cards + play-by-play summary
+# (September 2026 homepage redesign)
+# ─────────────────────────────────────────────────────────────
+
+def _card(r, kind, stats):
+    return {
+        "kind": kind,
+        "player_id": r["player_id"],
+        "name": r["name"],
+        "position": r.get("position"),
+        "team_id": r["team_id"],
+        "team": r.get("team_short"),
+        "logo": r.get("logo"),
+        "level": DISPLAY_LEVEL.get(r.get("db_level"), r.get("db_level")),
+        "stats": stats,
+    }
+
+
+@home_leaders_router.get("/awards")
+def home_awards(season: int = Query(CURRENT_SEASON)):
+    """Rule-based season awards for the homepage hero:
+      hitter   = qualified leader in wRC+
+      mvp      = leader in oWAR (any PA)
+      pitcher  = qualified leader in K%-BB%
+    Qualification matches /home/leaders (2 PA / 0.75 IP per team game).
+    The team card is assembled on the frontend from /team-ratings +
+    /national-rankings, which the page loads anyway."""
+    ck = ("awards", season)
+    hit = _CACHE.get(ck)
+    if hit and (time.time() - hit[0]) < _TTL:
+        return hit[1]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT team_id, COALESCE(wins,0)+COALESCE(losses,0)+COALESCE(ties,0) AS g
+            FROM team_season_stats WHERE season = %(season)s
+        """, {"season": season})
+        team_games = {r["team_id"]: r["g"] for r in cur.fetchall()}
+        cur.execute("""
+            SELECT bs.player_id, bs.team_id, p.position,
+                   p.first_name || ' ' || p.last_name AS name,
+                   t.short_name AS team_short, t.logo_url AS logo, d.level AS db_level,
+                   bs.plate_appearances AS pa, bs.offensive_war AS owar, bs.wrc_plus,
+                   bs.batting_avg AS avg, bs.on_base_pct AS obp, bs.slugging_pct AS slg,
+                   bs.home_runs AS hr, bs.doubles, bs.triples, bs.stolen_bases AS sb, bs.rbi
+            FROM batting_stats bs
+            JOIN players p ON p.id = bs.player_id
+            JOIN teams t ON t.id = bs.team_id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE bs.season = %(season)s AND COALESCE(p.is_phantom, false) = false
+        """, {"season": season})
+        bat = cur.fetchall()
+        cur.execute("""
+            SELECT ps.player_id, ps.team_id, p.position,
+                   p.first_name || ' ' || p.last_name AS name,
+                   t.short_name AS team_short, t.logo_url AS logo, d.level AS db_level,
+                   ps.innings_pitched AS ip, ps.pitching_war AS pwar, ps.fip_plus,
+                   ps.era, ps.k_pct, ps.bb_pct, ps.strikeouts AS k, ps.wins, ps.losses
+            FROM pitching_stats ps
+            JOIN players p ON p.id = ps.player_id
+            JOIN teams t ON t.id = ps.team_id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE ps.season = %(season)s AND COALESCE(p.is_phantom, false) = false
+        """, {"season": season})
+        pit = cur.fetchall()
+
+    qbat = [r for r in bat if (r["pa"] or 0) >= QUALIFIED_PA_PER_GAME * team_games.get(r["team_id"], 0) > 0]
+    qpit = [r for r in pit if _ip_real(r["ip"]) >= QUALIFIED_IP_PER_GAME * team_games.get(r["team_id"], 0) > 0]
+
+    def ops(r):
+        return (r["obp"] or 0) + (r["slg"] or 0) if r["obp"] is not None and r["slg"] is not None else None
+
+    out = {"season": season}
+    h = max((r for r in qbat if r["wrc_plus"] is not None), key=lambda r: r["wrc_plus"], default=None)
+    if h:
+        out["hitter"] = _card(h, "hitter", {
+            "headline": {"label": "wRC+", "value": f"{h['wrc_plus']:.0f}"},
+            "line": [{"label": "AVG", "value": _avg3(h["avg"])}, {"label": "HR", "value": f"{h['hr'] or 0}"},
+                     {"label": "OPS", "value": _avg3(ops(h)) if ops(h) is not None else None}]})
+    m = max((r for r in bat if r["owar"] is not None), key=lambda r: r["owar"], default=None)
+    if m:
+        xbh = (m["doubles"] or 0) + (m["triples"] or 0) + (m["hr"] or 0)
+        out["mvp"] = _card(m, "mvp", {
+            "headline": {"label": "WAR", "value": f"{m['owar']:.1f}"},
+            "line": [{"label": "wRC+", "value": f"{m['wrc_plus']:.0f}" if m["wrc_plus"] is not None else None},
+                     {"label": "HR", "value": f"{m['hr'] or 0}"}, {"label": "XBH", "value": f"{xbh}"}]})
+    pl = [r for r in qpit if r["k_pct"] is not None and r["bb_pct"] is not None]
+    p = max(pl, key=lambda r: r["k_pct"] - r["bb_pct"], default=None)
+    if p:
+        out["pitcher"] = _card(p, "pitcher", {
+            "headline": {"label": "K-BB%", "value": _pct(p["k_pct"] - p["bb_pct"])},
+            "line": [{"label": "pWAR", "value": f"{p['pwar']:.1f}" if p["pwar"] is not None else None},
+                     {"label": "ERA", "value": f"{p['era']:.2f}" if p["era"] is not None else None},
+                     {"label": "K", "value": f"{p['k'] or 0}"}]})
+    _CACHE[ck] = (time.time(), out)
+    return out
+
+
+@home_leaders_router.get("/pbp")
+def home_pbp(season: int = Query(CURRENT_SEASON)):
+    """Play-by-play summary for the homepage: coverage, the biggest single
+    swing of the season (batter WPA), and the top clutch hitters and pitchers
+    by season WPA. Everything comes from game_events."""
+    ck = ("pbp", season)
+    hit = _CACHE.get(ck)
+    if hit and (time.time() - hit[0]) < _TTL:
+        return hit[1]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS events, COUNT(DISTINCT ge.game_id) AS games,
+                   COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1) AS pitched_pa
+            FROM game_events ge JOIN games g ON g.id = ge.game_id WHERE g.season = %(s)s
+        """, {"s": season})
+        cov = dict(cur.fetchone())
+        cur.execute("SELECT COUNT(*) AS n FROM games WHERE season = %(s)s AND status = 'final'", {"s": season})
+        cov["final_games"] = cur.fetchone()["n"]
+        cur.execute("SELECT COUNT(*) AS n FROM game_events")
+        cov["events_all_time"] = cur.fetchone()["n"]
+
+        cur.execute("""
+            SELECT ge.wpa_batter AS wpa, ge.result_text, ge.inning, ge.half, ge.game_date_ AS gd
+            FROM (SELECT ge.*, g.game_date AS game_date_ FROM game_events ge
+                  JOIN games g ON g.id = ge.game_id WHERE g.season = %(s)s AND ge.wpa_batter IS NOT NULL) ge
+            ORDER BY ge.wpa_batter DESC LIMIT 1
+        """, {"s": season})
+        top = cur.fetchone()
+        moment = None
+        if top:
+            cur.execute("""
+                SELECT ge.batter_player_id AS player_id, ge.batter_name AS name, ge.result_text, ge.inning, ge.half,
+                       ge.bat_score_before, ge.fld_score_before, ge.runs_on_play, ge.outs_before, ge.bases_before,
+                       g.game_date, g.home_score, g.away_score,
+                       ht.short_name AS home_short, ht.logo_url AS home_logo,
+                       at.short_name AS away_short, at.logo_url AS away_logo,
+                       bt.short_name AS bat_team, bt.logo_url AS bat_logo
+                FROM game_events ge
+                JOIN games g ON g.id = ge.game_id
+                LEFT JOIN teams ht ON ht.id = g.home_team_id
+                LEFT JOIN teams at ON at.id = g.away_team_id
+                LEFT JOIN teams bt ON bt.id = ge.batting_team_id
+                WHERE g.season = %(s)s AND ge.wpa_batter IS NOT NULL
+                ORDER BY ge.wpa_batter DESC LIMIT 1
+            """, {"s": season})
+            r = cur.fetchone()
+            moment = {**dict(r), "wpa": float(top["wpa"])}
+            moment["game_date"] = moment["game_date"].isoformat() if moment.get("game_date") else None
+            moment["result_text"] = (moment.get("result_text") or "").split("\n")[0].strip()
+
+        cur.execute("""
+            SELECT ge.batter_player_id AS player_id, p.first_name || ' ' || p.last_name AS name,
+                   t.short_name AS team, t.logo_url AS logo, d.level AS db_level,
+                   SUM(ge.wpa_batter) AS wpa, COUNT(*) AS pa
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            JOIN players p ON p.id = ge.batter_player_id
+            JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE g.season = %(s)s AND ge.wpa_batter IS NOT NULL AND COALESCE(p.is_phantom,false) = false
+            GROUP BY ge.batter_player_id, p.first_name, p.last_name, t.short_name, t.logo_url, d.level
+            HAVING COUNT(*) >= 100
+            ORDER BY SUM(ge.wpa_batter) DESC LIMIT 5
+        """, {"s": season})
+        hitters = [{**dict(r), "wpa": round(float(r["wpa"]), 2), "level": DISPLAY_LEVEL.get(r["db_level"], r["db_level"])} for r in cur.fetchall()]
+        cur.execute("""
+            SELECT ge.pitcher_player_id AS player_id, p.first_name || ' ' || p.last_name AS name,
+                   t.short_name AS team, t.logo_url AS logo, d.level AS db_level,
+                   SUM(ge.wpa_pitcher) AS wpa, COUNT(*) AS bf
+            FROM game_events ge
+            JOIN games g ON g.id = ge.game_id
+            JOIN players p ON p.id = ge.pitcher_player_id
+            JOIN teams t ON t.id = p.team_id
+            JOIN conferences c ON t.conference_id = c.id
+            JOIN divisions d ON c.division_id = d.id
+            WHERE g.season = %(s)s AND ge.wpa_pitcher IS NOT NULL AND COALESCE(p.is_phantom,false) = false
+            GROUP BY ge.pitcher_player_id, p.first_name, p.last_name, t.short_name, t.logo_url, d.level
+            HAVING COUNT(*) >= 100
+            ORDER BY SUM(ge.wpa_pitcher) DESC LIMIT 5
+        """, {"s": season})
+        pitchers = [{**dict(r), "wpa": round(float(r["wpa"]), 2), "level": DISPLAY_LEVEL.get(r["db_level"], r["db_level"])} for r in cur.fetchall()]
+    for lst in (hitters, pitchers):
+        for x in lst:
+            x.pop("db_level", None)
+    result = {"season": season, "coverage": cov, "moment": moment, "clutch_hitters": hitters, "clutch_pitchers": pitchers}
+    _CACHE[ck] = (time.time(), result)
+    return result

@@ -62,6 +62,10 @@ export default {
         // 8-bit display font for headers + nav.
         'pixel': ['"VT323"', '"Courier New"', 'monospace'],
         'pixel-display': ['"Press Start 2P"', '"Courier New"', 'monospace'],
+        // Homepage (Sept 2026 redesign): Archivo for display, IBM Plex Mono
+        // for every number. Loaded on demand by Homepage.jsx.
+        'archivo': ['Archivo', 'Inter', 'system-ui', 'sans-serif'],
+        'plex': ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
     },
   },
