@@ -162,7 +162,9 @@ def build_rows(cur, TARGET):
             praw_prev = {r["pid"]: {f: r.get(f) for f in feats} for _, r in pprev.iterrows()}
         else:
             praw_prev = {}
-        run_coef = E.fit_run_model(tc, S["means"]) if side == "pit" else None
+        run_coef = E.fit_run_model(tc, S["means"]) if side == "pit" else None          # observed-scale (luck, last-season FIP)
+        run_coef_t = (E.fit_run_model_talent(tc, S["means"], S.get("drift"), S["ballast"]) if E.DRIFT
+                      else run_coef) if side == "pit" else None                            # talent-scale (projections)
         hist_by = {pid: g for pid, g in tc.groupby("pid")}
         sum_by = {pid: g for pid, g in sc.groupby("pid")} if sc is not None and not sc.empty else {}
         recent = tc[tc["season"].isin([TARGET - 1, TARGET - 2])]
@@ -236,7 +238,7 @@ def build_rows(cur, TARGET):
                     fip_h = run_coef[0] * hh["k_pct"] + run_coef[1] * hh["bb_pct"] + run_coef[2] * hh["hr_bf"] + run_coef[3]
                     n = float(hh["bf"].sum())
                     luck = float(np.average(hh["er_rate"] - fip_h, weights=hh["bf"])) * n / (n + LUCK_M)
-                rc = E.reconstruct_pit(comp, run_coef, ipbf, park_run=park.run_mult(team_id),
+                rc = E.reconstruct_pit(comp, run_coef_t, ipbf, park_run=park.run_mult(team_id),
                                        park_hr=park.pit_hr_mult(team_id), luck=luck)
                 sd_t = pr["er_rate"]["sd"]
                 line.update({"ERA": round(rc["ERA"], 2), "FIP": round(rc["FIP"], 2),

@@ -69,7 +69,8 @@ def run_side(side, bat, pit, sbat, spit, pbp_b, pbp_p, bat_v1, pit_v1):
         h1_by = {pid: g for pid, g in h1.groupby("pid")}
         div_avg_n = tc[tc["wt_n"] >= 40].groupby("level")["wt_n"].mean().to_dict()
         actual = df[(df["season"] == T) & (df["wt_n"] >= 40)].sort_values("wt_n", ascending=False).drop_duplicates("pid")
-        run_coef = E.fit_run_model(tc, S["means"]) if side == "pit" else None
+        run_coef = (E.fit_run_model_talent(tc, S["means"], S.get("drift"), S["ballast"]) if E.DRIFT
+                    else E.fit_run_model(tc, S["means"])) if side == "pit" else None
         for _, a in actual.iterrows():
             pid, level = a["pid"], a["level"]
             lg = E.env_mean(S["means"], level, T - 1, headline)
@@ -117,7 +118,7 @@ def run_side(side, bat, pit, sbat, spit, pbp_b, pbp_p, bat_v1, pit_v1):
                     rec["v2"] = pr["woba"]["value"] if pr["woba"]["value"] is not None else lg
                 rec["v2_direct"] = pr["woba"]["value"] if pr["woba"]["value"] is not None else lg
                 sd = pr["woba"]["sd"]
-                for s in ("k_pct", "bb_pct", "iso", "babip"):
+                for s in ("k_pct", "bb_pct", "iso", "babip", "hr_pa"):
                     rec[f"v2_{s}"] = pr[s]["value"]; rec[f"act_{s}"] = float(a[s]) if pd.notna(a[s]) else np.nan
                     rec[f"rep_{s}"] = float(h.sort_values("season").iloc[-1][s]) if had and pd.notna(h.sort_values("season").iloc[-1][s]) else np.nan
             else:
@@ -129,7 +130,7 @@ def run_side(side, bat, pit, sbat, spit, pbp_b, pbp_p, bat_v1, pit_v1):
                     rec["v2"] = pr["er_rate"]["value"] if pr["er_rate"]["value"] is not None else lg
                 rec["v2_direct"] = pr["er_rate"]["value"] if pr["er_rate"]["value"] is not None else lg
                 sd = pr["er_rate"]["sd"]
-                for s in ("k_pct", "bb_pct"):
+                for s in ("k_pct", "bb_pct", "hr_bf", "babip_against"):
                     rec[f"v2_{s}"] = pr[s]["value"]; rec[f"act_{s}"] = float(a[s]) if pd.notna(a[s]) else np.nan
                     rec[f"rep_{s}"] = float(h.sort_values("season").iloc[-1][s]) if had and pd.notna(h.sort_values("season").iloc[-1][s]) else np.nan
             # outcome band: posterior sd of talent + sampling noise at the realized n
@@ -196,6 +197,15 @@ def main():
         print(f"\n=== {side} level offsets (lift to D1, centered units) ===")
         for s, d in C[side]["offsets"].items():
             print(f"  {s:<14} " + "  ".join(f"{lv}={v:+.4f}" for lv, v in d.items()))
+        print(f"=== {side} talent drift (AR1 phi, persistent var tau2, season-effect var) ===")
+        for st, d in C[side].get("drift", {}).items():
+            print(f"  {st:<14} phi={d['phi']:.2f}  gamma={d.get('gamma', 0):.1f}  tau2={d['tau2']:.5f}  sig_s2={d['sig_s2']:.5f}  share persistent={d['tau2']/(d['tau2']+d['sig_s2']):.2f}  internal mse {d.get('mse', 0):.6f} vs constant-talent {d.get('mse_const', 0) or 0:.6f}")
+        Sg = C[side].get("talent_cov")
+        if Sg is not None:
+            comps = E.JOINT_COMPS[side]; d = np.sqrt(np.diag(Sg))
+            print(f"=== {side} talent correlations (joint shrinkage) ===")
+            for i, a in enumerate(comps):
+                print(f"  {a:<14} " + " ".join(f"{Sg[i, j] / (d[i] * d[j]):+.2f}" for j in range(len(comps))))
         print(f"=== {side} ballasts (ALL) ===")
         for (lv, s), b in C[side]["ballast"].items():
             if lv == "ALL":

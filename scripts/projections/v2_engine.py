@@ -93,6 +93,23 @@ AGE_PER_ROW = _os.getenv("V2_AGEROW", "1") == "1"
 # established ones less. gamma=0 is the plain empirical-Bayes curve.
 M_GAMMA = {"bat": float(_os.getenv("V2_MEXP_BAT", "0.6")), "pit": float(_os.getenv("V2_MEXP_PIT", "0"))}
 M_REF = 150.0
+# Talent-drift (Kalman) mode. Each player's true talent is an AR(1) state:
+# theta_t = phi * theta_{t-1} + innovation, observed each season through a
+# one-season effect (health, role, lineup, park-within-season: variance
+# sig_s2, NOT sampling noise) plus sampling noise ev/n. Same-level pair
+# covariances decay with the gap (wOBA ~0.82 at 1 season, ~0.67 at 3;
+# pitcher ER/BF ~0.48 / ~0.31), which a constant-talent model cannot
+# represent: it over-trusts one big season and under-trusts a long record.
+DRIFT = _os.getenv("V2_DRIFT", "1") == "1"
+# Joint (multivariate) shrinkage of the component vector. Component talents
+# are correlated (power hitters strike out and walk more, high-K pitchers
+# allow fewer hits), so shrinking each alone ignores the information the
+# other components carry and over-compresses the rebuilt headline (wOBA
+# from components was calibrated at 1.29 with drift alone).
+JOINT = _os.getenv("V2_JOINT", "1") == "1"
+JOINT_COMPS = {"bat": ["k_pct", "bb_pct", "hbp_pct", "hr_pa", "iso", "babip"],
+               "pit": ["k_pct", "bb_pct", "hr_bf", "babip_against"]}
+CORR_SHRINK = 300              # talent-correlation trust n/(n+300)
 M_SCALE = {"bat": float(_os.getenv("V2_MSCALE_BAT", "1")), "pit": float(_os.getenv("V2_MSCALE_PIT", "1"))}                       # age every history season from ITS class to the target class
 _rw = [float(x) for x in _os.getenv("V2_RECENCY", "5,4,3").split(",")]
 RECENCY = {i + 1: w for i, w in enumerate(_rw)}
@@ -114,7 +131,7 @@ PRIOR_JUCO_D1_N = 25
 WOBA_W = {"bb": 0.69, "hbp": 0.72, "1b": 0.88, "2b": 1.25, "3b": 1.58, "hr": 2.00}
 # Outcome-band multiplier on the model's own sd, calibrated so the P10-P90 band
 # covers ~80% of next-season results in the 2023-2026 backtest (backtest_v2.py).
-SD_CAL = {"bat": 1.78, "pit": 1.13}
+SD_CAL = {"bat": 1.56, "pit": 1.10}   # backtest_v2 implied band multipliers (drift+joint, 2026-09-29)
 
 
 # ── loading ─────────────────────────────────────────────────────────
@@ -310,6 +327,18 @@ def samp_var(row, stat):
     return p * (1 - p)
 
 
+def _row_ev(row, stat):
+    """samp_var for the drift filter: NaN (caller falls back to the pooled
+    per-event variance) when the row lacks the second-moment column the
+    stat needs. Summer rows carry no woba_m2/iso_m2; without this guard
+    samp_var floors at 1e-4 and the filter trusts a WCL season ~fully."""
+    if stat in ("iso", "woba"):
+        m2 = row.get(f"{stat}_m2")
+        if m2 is None or (isinstance(m2, float) and math.isnan(m2)) or m2 <= 0:
+            return np.nan
+    return samp_var(row, stat)
+
+
 def _weights(df, stat, side):
     n = df[dn(side, stat)].clip(lower=1).to_numpy(float)
     return n
@@ -339,6 +368,8 @@ def fit_constants(bat, pit, summer_bat, summer_pit, target):
             "mixture": _mixture_priors(q, stats, side),
             "calib": _calibration(q, stats, side),
         }
+        C[side]["drift"] = _drift_tune(q, stats, side, C[side]["ballast"])
+        C[side]["talent_cov"] = _talent_cov(q, JOINT_COMPS[side], C[side]["drift"])
         C[side]["offsets"] = _level_offsets(q, sc, stats, C[side]["aging"], side)
     return C
 
@@ -418,6 +449,225 @@ def _mixture_priors(q, stats, side):
         comps = sorted(zip(pi, mu, tau2), key=lambda t: -t[0])   # regular (bigger weight) first
         out[s] = [(float(a), float(b), float(c)) for a, b, c in comps]
     return out
+
+
+def _drift(q, stats, side, ballasts):
+    """AR(1) talent + season-effect decomposition per stat (pooled levels).
+
+    Same-level pair covariance at gap g is tau2 * phi^g; the cross-sectional
+    sampling-free variance (ballast var_true) is tau2 + sig_s2. Weighted
+    least squares on log cov vs gap (gaps 1..3), phi clipped to [0.5, 1].
+    Returns {stat: {"phi", "tau2", "sig_s2"}}."""
+    out = {}
+    for s in stats:
+        b = ballasts.get(("ALL", s))
+        if not b:
+            continue
+        gs, cs, ws = [], [], []
+        for gap in (1, 2, 3):
+            p = _pairs(q, gap=gap)
+            p = p[p["level_1"] == p["level_2"]].dropna(subset=[f"{s}_c_1", f"{s}_c_2"])
+            if len(p) < 60:
+                continue
+            w = p["hn"].to_numpy(float)
+            a = p[f"{s}_c_1"].to_numpy(float); c = p[f"{s}_c_2"].to_numpy(float)
+            cov = float(np.average((a - np.average(a, weights=w)) * (c - np.average(c, weights=w)), weights=w))
+            if cov <= 0:
+                continue
+            gs.append(gap); cs.append(math.log(cov)); ws.append(math.sqrt(len(p)))
+        if len(gs) >= 2:
+            X = np.column_stack([np.ones(len(gs)), np.array(gs, float)]); W = np.array(ws)
+            coef, *_ = np.linalg.lstsq(X * W[:, None], np.array(cs) * W, rcond=None)
+            phi = float(np.clip(math.exp(coef[1]), 0.5, 1.0))
+            tau2 = float(min(math.exp(coef[0]), b["var_true"]))
+        elif gs:
+            phi, tau2 = 0.9, float(min(math.exp(cs[0]) / 0.9, b["var_true"]))
+        else:
+            phi, tau2 = 1.0, b["var_true"]
+        tau2 = max(tau2, 0.25 * b["var_true"])
+        out[s] = {"phi": phi, "tau2": tau2, "sig_s2": max(b["var_true"] - tau2, 0.0)}
+    return out
+
+
+def _drift_tune(q, stats, side, ballasts):
+    """Choose each stat's drift parameters by PREDICTIVE fit, not moments.
+
+    Pair covariances at longer gaps come from the players who lasted, so the
+    moment estimates of phi/sig_s2 are confounded by survival. Instead: for
+    every (player, level) sequence in the training data, run the filter
+    through the seasons in order and score its one-step-ahead prediction of
+    each season (>= MIN_N_STAT) against what happened, sample-weighted.
+    Grid over persistence phi, the season-effect share of sampling-free
+    variance, and a scale on that variance (the constant-talent empirical
+    Bayes model is the phi=1, share=0, scale=1 corner). Returns
+    {stat: {"phi", "tau2", "sig_s2", "mse", "mse_const"}}."""
+    out = {}
+    qq = q[~q["season"].isin(COVID)]
+    for s in stats:
+        b = ballasts.get(("ALL", s))
+        if not b:
+            continue
+        sub = qq.dropna(subset=[f"{s}_c"])
+        nn = sub[dn(side, s)].clip(lower=1).to_numpy(float)
+        seq = {}
+        for pid, lv, se, x, n in zip(sub["pid"], sub["level"], sub["season"], sub[f"{s}_c"].to_numpy(float), nn):
+            seq.setdefault((pid, lv), []).append((int(se), float(x), float(n)))
+        seqs = [sorted(v) for v in seq.values() if len(v) >= 2]
+        if len(seqs) < 100:
+            continue
+        L = max(len(v) for v in seqs); N = len(seqs)
+        S = np.full((N, L), np.nan); X = np.zeros((N, L)); NN = np.ones((N, L))
+        for i, v in enumerate(seqs):
+            for j, (se, x, n) in enumerate(v):
+                S[i, j] = se; X[i, j] = x; NN[i, j] = n
+        ev = b["M"] * b["var_true"]; vt = b["var_true"]
+        best = None; mse_const = None
+        for phi in (0.8, 0.85, 0.9, 0.95, 1.0):
+            for share in (0.0, 0.15, 0.3, 0.5):
+                for scale in (0.7, 1.0, 1.4, 2.0):
+                    for gamma in (0.0, 0.3, 0.6):
+                        # gamma inflates a thin season's noise by (M_REF/n)^gamma:
+                        # part-time samples are less informative than their PA
+                        # count says (role, matchups, garbage time)
+                        tau2 = vt * scale * (1 - share); sig = vt * scale * share
+                        m = np.zeros(N); P = np.full(N, tau2); last = S[:, 0].copy()
+                        sse = 0.0; sw = 0.0
+                        for j in range(L):
+                            valid = ~np.isnan(S[:, j])
+                            if j > 0:
+                                g = np.where(valid, S[:, j] - last, 1.0)
+                                pg = phi ** g
+                                m_pred = m * pg; P_pred = pg ** 2 * P + tau2 * (1 - pg ** 2)
+                                sc = valid & (NN[:, j] >= MIN_N_STAT)
+                                err = X[:, j] - m_pred
+                                sse += float(np.sum(NN[sc, j] * err[sc] ** 2)); sw += float(np.sum(NN[sc, j]))
+                                m = np.where(valid, m_pred, m); P = np.where(valid, P_pred, P)
+                            R = (sig + ev / NN[:, j]) * (M_REF / NN[:, j]) ** gamma
+                            K = P / (P + R)
+                            m = np.where(valid, m + K * (X[:, j] - m), m)
+                            P = np.where(valid, (1 - K) * P, P)
+                            last = np.where(valid, S[:, j], last)
+                        mse = sse / max(sw, 1.0)
+                        if phi == 1.0 and share == 0.0 and scale == 1.0 and gamma == 0.0:
+                            mse_const = mse
+                        if best is None or mse < best[0]:
+                            best = (mse, phi, tau2, sig, gamma)
+        out[s] = {"phi": best[1], "tau2": best[2], "sig_s2": best[3], "gamma": best[4],
+                  "mse": best[0], "mse_const": mse_const}
+    return out
+
+
+def _talent_cov(q, comps, drift):
+    """Persistent-talent covariance across components.
+
+    Sampling noise is independent across seasons, so the lagged cross-
+    covariance cov(x_i season t, x_j season t+1) = phi_j * Sigma_T[i, j] is
+    free of it. Symmetrize, convert to correlations (shrunk n/(n+300) toward
+    zero, clipped to +-0.9), then rebuild with the tuned per-stat tau2 on the
+    diagonal and force positive-definiteness. Returns the k x k matrix (None
+    if any component lacks drift parameters)."""
+    if any(c not in drift for c in comps):
+        return None
+    k = len(comps)
+    p = _pairs(q)
+    p = p[p["level_1"] == p["level_2"]]
+    raw = np.zeros((k, k)); cnt = np.zeros((k, k))
+    for i, a in enumerate(comps):
+        for j, c in enumerate(comps):
+            sub = p.dropna(subset=[f"{a}_c_1", f"{c}_c_2"])
+            if len(sub) < 50:
+                continue
+            w = sub["hn"].to_numpy(float)
+            x = sub[f"{a}_c_1"].to_numpy(float); y = sub[f"{c}_c_2"].to_numpy(float)
+            raw[i, j] = np.average((x - np.average(x, weights=w)) * (y - np.average(y, weights=w)), weights=w) / max(drift[c]["phi"], 0.5)
+            cnt[i, j] = len(sub)
+    sym = (raw + raw.T) / 2
+    d = np.sqrt(np.maximum(np.diag(sym), 1e-12))
+    rho = sym / np.outer(d, d)
+    n = (cnt + cnt.T) / 2
+    rho = rho * (n / (n + CORR_SHRINK))
+    rho = np.clip(rho, -0.9, 0.9); np.fill_diagonal(rho, 1.0)
+    tau = np.array([math.sqrt(drift[c]["tau2"]) for c in comps])
+    S = rho * np.outer(tau, tau)
+    w, V = np.linalg.eigh(S)
+    w = np.maximum(w, 1e-4 * w.max())
+    S = V @ np.diag(w) @ V.T
+    return (S + S.T) / 2
+
+
+def _blend_ev(ev, n_w, ev_default):
+    if ev is None or (isinstance(ev, float) and math.isnan(ev)):
+        return ev_default
+    return (n_w * ev + 100.0 * ev_default) / (n_w + 100.0)
+
+
+def _kalman_joint(groups, comps, priors, drift, Sigma, ev_defaults, target_season):
+    """Multivariate AR(1) filter over the component vector.
+
+    groups: {(season, order): {stat: (x, n_w, ev)}} one entry per history
+    row (spring or summer). Missing components in a row are simply not
+    observed that step. Returns {stat: (est, rel, var)}."""
+    k = len(comps); idx = {c: i for i, c in enumerate(comps)}
+    phi = np.array([drift[c]["phi"] for c in comps])
+    sig = np.array([drift[c]["sig_s2"] for c in comps])
+    m = np.zeros(k); P = Sigma.copy(); last = None
+    for key in sorted(groups):
+        season = key[0]
+        if last is not None and season > last:
+            pg = phi ** (season - last); F = np.diag(pg)
+            m = pg * m
+            P = F @ P @ F + (Sigma - F @ Sigma @ F)
+        rows = {c: v for c, v in groups[key].items() if c in idx}
+        if not rows:
+            continue
+        ii = [idx[c] for c in rows]
+        z = np.array([rows[c][0] - priors[c] for c in rows])
+        Rd = np.array([(sig[idx[c]] + _blend_ev(rows[c][2], rows[c][1], ev_defaults[c]) / max(rows[c][1], 1e-6))
+                       * (M_REF / max(rows[c][1], 1.0)) ** drift[c].get("gamma", 0.0) for c in rows])
+        H = np.zeros((len(ii), k)); H[np.arange(len(ii)), ii] = 1.0
+        Sm = H @ P @ H.T + np.diag(Rd)
+        K = P @ H.T @ np.linalg.inv(Sm)
+        m = m + K @ (z - H @ m)
+        P = (np.eye(k) - K @ H) @ P
+        P = (P + P.T) / 2
+        last = season
+    if last is not None:
+        pg = phi ** max(target_season - last, 1); F = np.diag(pg)
+        m = pg * m
+        P = F @ P @ F + (Sigma - F @ Sigma @ F)
+    out = {}
+    for c, i in idx.items():
+        t2 = max(Sigma[i, i], 1e-12)
+        rel = 1 - P[i, i] / t2
+        out[c] = (priors[c] + m[i], max(0.0, min(1.0, rel)), max(P[i, i], 0.0) + sig[i])
+    return out
+
+
+def _kalman(obs, prior, d, ev_default, target_season):
+    """Run the AR(1) filter over obs = [(season, x, n_w, ev)] (x centered and
+    already translated/aged, n_w = discounted sample). Returns (est, rel, var)."""
+    phi, tau2, sig = d["phi"], d["tau2"], d["sig_s2"]
+    m, P, last = 0.0, tau2, None
+    for season, x, n_w, ev in sorted(obs, key=lambda o: o[0]):
+        if last is not None and season > last:
+            g = season - last
+            m *= phi ** g
+            P = (phi ** (2 * g)) * P + tau2 * (1 - phi ** (2 * g))
+        # per-event variance: the row's own (heteroskedastic) estimate is
+        # degenerate for tiny samples (a 6-PA hitter who struck out every
+        # time gets p(1-p) ~ 0), so blend it with the pooled value, n/(n+100)
+        ev = _blend_ev(ev, n_w, ev_default)
+        R = (sig + ev / max(n_w, 1e-6)) * (M_REF / max(n_w, 1.0)) ** d.get("gamma", 0.0)
+        K = P / (P + R)
+        m += K * ((x - prior) - m)
+        P = (1 - K) * P
+        last = season
+    if last is not None:
+        g = max(target_season - last, 1)
+        m *= phi ** g
+        P = (phi ** (2 * g)) * P + tau2 * (1 - phi ** (2 * g))
+    rel = 1 - P / tau2 if tau2 > 0 else 0.0
+    return prior + m, max(0.0, min(1.0, rel)), P + sig
 
 
 def _calibration(q, stats, side):
@@ -753,46 +1003,41 @@ def project(C, side, hist, summer_hist, pbp_last, target_level, target_season,
     out = {}
     next_cls = CLASS_NEXT.get(cls_last) if cls_last else None
     tier = C[side]["tier"]; team = C[side]["team"]
+    tcls = next_cls or cls_last
+
+    # ---- stage 1: per-stat history observations + prior ------------------
+    obs_by, num_by, den_by, prior_by, ball_by = {}, {}, {}, {}, {}
+    groups = {}                        # (season, row order) -> {stat: (x, n_w, ev)}
+    rows = [(int(r["season"]), r, r["level"], TRANSLATED_DISCOUNT if r["level"] != target_level else 1.0)
+            for _, r in hist.iterrows()]
+    if summer_hist is not None:
+        rows += [(int(r["season"]), r, "WCL", SUMMER_DISCOUNT) for _, r in summer_hist.iterrows()]
     for s in stats:
         num = den = 0.0
-        for _, r in hist.iterrows():
-            back = target_season - int(r["season"])
+        obs = []
+        for order, (season, r, lvl, disc) in enumerate(rows):
+            back = target_season - season
             v = r.get(f"{s}_c")
-            if back not in RECENCY or v is None or pd.isna(v):
+            if (back not in RECENCY and not DRIFT) or v is None or pd.isna(v):
                 continue
             n = float(max(r[dn(side, s)], 0))
             if n <= 0:
                 continue
-            v = v + translate(C, side, r["level"], target_level, s)
-            if AGE_PER_ROW:
+            v = v + translate(C, side, lvl, target_level, s)
+            if AGE_PER_ROW and lvl != "WCL":
                 # a senior-to-be's freshman season needs three class steps of
                 # development, not one: age each row from its own class
                 rc = r.get("cls")
                 rc = rc if isinstance(rc, str) else cls_last
                 steps = _class_steps(rc, cls_last)
                 v = v + _class_path_delta(C, side, target_level, rc, steps + 1, s) if rc else v
-            w = RECENCY[back] * n * (TRANSLATED_DISCOUNT if r["level"] != target_level else 1.0)
-            num += w * v; den += w
-        if summer_hist is not None:
-            for _, r in summer_hist.iterrows():
-                back = target_season - int(r["season"])
-                v = r.get(f"{s}_c")
-                if back not in RECENCY or v is None or pd.isna(v):
-                    continue
-                n = float(max(r[dn(side, s)], 0))
-                if n <= 0:
-                    continue
-                v = v + translate(C, side, "WCL", target_level, s)
-                w = RECENCY[back] * n * SUMMER_DISCOUNT
+            ev = _row_ev(r, s)
+            obs.append((season, v, n * disc, ev))
+            groups.setdefault((season, order), {})[s] = (v, n * disc, ev)
+            if back in RECENCY:
+                w = RECENCY[back] * n * disc
                 num += w * v; den += w
-        b = ballast(C, side, target_level, s)
-        M = b["M"]
-        n_eff = den / RECENCY[1]
-        M = M * M_SCALE[side]
-        if M_GAMMA[side] and n_eff > 0:
-            M = M * (M_REF / n_eff) ** M_GAMMA[side]
         prior = 0.0
-        tcls = next_cls or cls_last
         if tcls:
             prior += tier.get((target_level, tcls, s), 0.0)
         if dest_team_id is not None:
@@ -805,8 +1050,33 @@ def project(C, side, hist, summer_hist, pbp_last, target_level, target_season,
             n_last = float(max(last.get(dn(side, s), 0) or 0, 1))
             slope, log_ref = sl
             prior += slope * (math.log(n_last) - log_ref)
+        obs_by[s], num_by[s], den_by[s], prior_by[s] = obs, num, den, prior
+        ball_by[s] = ballast(C, side, target_level, s)
+
+    # ---- stage 2: joint shrinkage of the component vector -----------------
+    joint = {}
+    Sigma = C[side].get("talent_cov") if (DRIFT and JOINT) else None
+    if Sigma is not None and groups:
+        comps = JOINT_COMPS[side]
+        joint = _kalman_joint(groups, comps, {c: prior_by[c] for c in comps}, C[side]["drift"], Sigma,
+                              {c: ball_by[c]["M"] * ball_by[c]["var_true"] for c in comps}, target_season)
+
+    # ---- stage 3: per-stat estimate -------------------------------------
+    for s in stats:
+        obs, num, den, prior, b = obs_by[s], num_by[s], den_by[s], prior_by[s], ball_by[s]
+        M = b["M"] * M_SCALE[side]
+        n_eff = den / RECENCY[1]
+        if M_GAMMA[side] and n_eff > 0:
+            M = M * (M_REF / n_eff) ** M_GAMMA[side]
         mix = C[side].get("mixture", {}).get(s) if PRIOR_MODE == "mixture" else None
-        if mix and n_eff > 0:
+        drift = C[side].get("drift", {}).get(s) if DRIFT else None
+        if s in joint and obs:
+            est, rel, var_post = joint[s]
+            n_eff = sum(o[2] for o in obs)
+        elif drift and obs:
+            est, rel, var_post = _kalman(obs, prior, drift, b["M"] * b["var_true"], target_season)
+            n_eff = sum(o[2] for o in obs)
+        elif mix and n_eff > 0:
             # responsibility-weighted shrinkage toward each component
             xbar = num / den
             ev = float(np.average(b["var_true"] * b["M"], weights=None))  # E[per-event var] = M * var_true
@@ -887,6 +1157,39 @@ def fit_run_model(train_c, means):
     X = np.column_stack([f["k_pct"], f["bb_pct"], f["hr_bf"], np.ones(len(f))])
     w = np.sqrt(f["bf"].to_numpy(float))
     coef, *_ = np.linalg.lstsq(X * w[:, None], f["er_rate"].to_numpy(float) * w, rcond=None)
+    return coef
+
+
+def fit_run_model_talent(train_c, means, drift, ballasts):
+    """Run-model coefficients for PROJECTED (talent-scale) K/BB/HR.
+
+    fit_run_model regresses a season's ER/BF on that season's OBSERVED
+    rates, which is the right thing for FIP-style accounting on actual
+    seasons (luck, last-season FIP). Applied to shrunk projections those
+    weights are ~20% too weak (the backtest showed actual ER responding
+    1.2x more strongly to projected than to observed components). Here:
+    next season's ER/BF regressed on this season's one-step shrunk
+    estimates (same shrink the filter uses), same-level pairs, >= 60 BF
+    both sides. Falls back to fit_run_model when drift is missing."""
+    if not drift or not all(c in drift for c in ("k_pct", "bb_pct", "hr_bf")):
+        return fit_run_model(train_c, means)
+    q = train_c[train_c["wt_n"] >= 60]
+    p = _pairs(q)
+    p = p[(p["level_1"] == p["level_2"]) & (p["bf_2"] >= 60)].dropna(subset=["er_rate_2", "k_pct_c_1", "bb_pct_c_1", "hr_bf_c_1"])
+    if len(p) < 200:
+        return fit_run_model(train_c, means)
+    n = p["bf_1"].to_numpy(float).clip(min=1)
+    cols = []
+    for c in ("k_pct", "bb_pct", "hr_bf"):
+        d = drift[c]; b = ballasts.get(("ALL", c)) or {"M": 200, "var_true": 1e-4}
+        ev = b["M"] * b["var_true"]
+        R = (ev / n) * (M_REF / n) ** d.get("gamma", 0.0)
+        K = d["tau2"] / (d["tau2"] + R) * d["phi"]
+        base = np.array([env_mean(means, lv, int(se), c) for lv, se in zip(p["level_2"], p["season_2"])], dtype=float)
+        cols.append(base + p[f"{c}_c_1"].to_numpy(float) * K)
+    X = np.column_stack(cols + [np.ones(len(p))])
+    w = np.sqrt(p["hn"].to_numpy(float))
+    coef, *_ = np.linalg.lstsq(X * w[:, None], p["er_rate_2"].to_numpy(float) * w, rcond=None)
     return coef
 
 
