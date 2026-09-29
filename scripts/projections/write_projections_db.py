@@ -617,12 +617,39 @@ def _league_baselines(cur):
         WHERE b.season=2026 AND b.plate_appearances>=20 AND b.woba IS NOT NULL GROUP BY 1""")
     lg_woba = {r["lvl"]: float(r["v"]) for r in cur.fetchall() if r["v"]}
     cur.execute("""SELECT d.level lvl,
-          SUM(p.fip*p.innings_pitched)/NULLIF(SUM(p.innings_pitched),0) v
+          SUM(p.fip*p.innings_pitched)/NULLIF(SUM(p.innings_pitched),0) v,
+          SUM(p.earned_runs) er, SUM(p.home_runs_allowed) hr, SUM(p.walks) bb,
+          SUM(COALESCE(p.hit_batters,0)) hbp, SUM(p.strikeouts) k, SUM(p.batters_faced) bf,
+          SUM(FLOOR(p.innings_pitched) + (p.innings_pitched-FLOOR(p.innings_pitched))*10/3) ip
         FROM pitching_stats p JOIN teams t ON t.id=p.team_id
         JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
         WHERE p.season=2026 AND p.innings_pitched>=10 AND p.fip IS NOT NULL GROUP BY 1""")
-    lg_fip = {r["lvl"]: float(r["v"]) for r in cur.fetchall() if r["v"]}
-    return lg_woba, lg_fip
+    lg_fip, fip_env = {}, {}
+    for r in cur.fetchall():
+        if not r["v"]:
+            continue
+        lg_fip[r["lvl"]] = float(r["v"])
+        ip = float(r["ip"] or 0) or 1.0
+        era = 9.0 * float(r["er"] or 0) / ip
+        comp = (13 * float(r["hr"] or 0) + 3 * (float(r["bb"] or 0) + float(r["hbp"] or 0)) - 2 * float(r["k"] or 0)) / ip
+        # same FIP constant the site uses for actual seasons (lgERA - components)
+        fip_env[r["lvl"]] = {"const": era - comp, "hbp_bf": float(r["hbp"] or 0) / max(float(r["bf"] or 1), 1),
+                             "bf_ip": float(r["bf"] or 0) / ip}
+    return lg_woba, lg_fip, fip_env
+
+
+def site_fip(p, env):
+    """FIP by the site's formula ((13HR + 3(BB+HBP) - 2K)/IP + constant) from a
+    projected line's per-BF rates. Projected WAR must use THIS, not the run
+    model's ERA-scale estimate: the run model leans on strikeouts about twice
+    as hard as FIP does (that is what predicts next-season ERA best), so
+    feeding it into the WAR formula that actual seasons use put three
+    pitchers above 3 WAR when no real PNW season has produced one."""
+    k, bb, hr = p.get("K_pct"), p.get("BB_pct"), p.get("HR_bf")
+    if k is None or bb is None or hr is None or not env:
+        return p.get("FIP")
+    bf_ip = env["bf_ip"]
+    return (13 * hr + 3 * (bb + env["hbp_bf"]) - 2 * k) * bf_ip + env["const"]
 
 
 def add_war(rows, pos_fracs):
@@ -631,7 +658,7 @@ def add_war(rows, pos_fracs):
     comparable). Batting runs from projected wOBA vs league wOBA at the
     destination level + positional + replacement; pitching from FIP vs league."""
     with get_connection() as conn:
-        lg_woba, lg_fip = _league_baselines(conn.cursor())
+        lg_woba, lg_fip, fip_env = _league_baselines(conn.cursor())
     DEF_WOBA, DEF_FIP = 0.345, 5.0
     for r in rows:
         p = r["proj"]; level = p.get("level") or "D2"
@@ -649,9 +676,12 @@ def add_war(rows, pos_fracs):
                 plate_appearances=int(pa), division_level=level)
         else:
             ip = p.get("IP") or 0
-            fip = p.get("FIP")
+            fip = site_fip(p, fip_env.get(level))
             if not ip or fip is None:
                 continue
+            if p.get("FIP") is not None and "FIP_model" not in p:
+                p["FIP_model"] = p["FIP"]          # run-model ERA-scale estimate (what ERA is built from)
+            p["FIP"] = round(float(fip), 2)        # site-formula FIP, comparable to player pages
             # pitching runs above replacement, on the site's runs_per_win scale
             pwar = ((lg_fip.get(level, DEF_FIP) - fip) / w.runs_per_win
                     + 0.025) * (ip / 9.0)
