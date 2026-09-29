@@ -390,7 +390,10 @@ function CombinedBoard({ rows, gradYear, expanded, toggle }) {
 }
 
 export default function RecruitingClasses() {
+  // Default to the class currently committing; if nothing has been scraped
+  // for it yet, drop back to the enrolled class so the page is not empty.
   const [gradYear, setGradYear] = useState(RECRUITING_GRAD_YEAR)
+  const [autoFell, setAutoFell] = useState(false)
   const [view, setView] = useState('hs')
   const [expanded, setExpanded] = useState(null)
   const [levelFilter, setLevelFilter] = useState('all')

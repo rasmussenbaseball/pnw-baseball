@@ -583,11 +583,15 @@ export function ProjectionsPanel() {
 
 // ─── 6b. Recruiting ───────────────────────────────────────────────────
 export function RecruitingPanel() {
-  const { data, loading } = useApi('/recruiting/classes/top')
+  // Show the class currently committing (RECRUITING_GRAD_YEAR); until its
+  // commits are scraped that class is empty, so fall back to the enrolled
+  // class rather than rendering an empty panel.
+  const cur = useApi('/recruiting/classes/top', { grad_year: RECRUITING_GRAD_YEAR })
+  const curEmpty = !cur.loading && cur.data && !(cur.data.classes || []).length
+  const prev = useApi(curEmpty ? '/recruiting/classes/top' : null, { grad_year: RECRUITING_GRAD_YEAR - 1 }, [curEmpty])
+  const { data, loading } = curEmpty ? prev : cur
   const classes = (data?.classes || []).slice(0, 7)
-  // The endpoint defaults to the class currently committing (backend
-  // RECRUITING_GRAD_YEAR); mirror that if the payload ever omits grad_year.
-  const year = data?.grad_year || RECRUITING_GRAD_YEAR
+  const year = data?.grad_year || (curEmpty ? RECRUITING_GRAD_YEAR - 1 : RECRUITING_GRAD_YEAR)
   return (
     <Panel title={`${year} recruiting classes`} to="/recruiting-classes" linkLabel="All classes">
       {loading && !data ? <Skeleton rows={7} /> : (
