@@ -43,7 +43,7 @@ function Confidence({ rel }) {
   const r = rel ?? 0
   const [label, cls] = r >= 0.6 ? ['High', 'bg-emerald-500'] : r >= 0.4 ? ['Med', 'bg-amber-500'] : ['Low', 'bg-gray-400']
   return (
-    <span className="inline-flex items-center gap-1.5" title={`Confidence ${label} — how much career data backs this projection (reliability ${r.toFixed(2)}). More data → less regression.`}>
+    <span className="inline-flex items-center gap-1.5" title={`Confidence ${label}: how much career data backs this projection (reliability ${r.toFixed(2)}). More data, less regression.`}>
       <span className={`h-2 w-2 rounded-full ${cls}`} /><span className="text-[11px] text-gray-500 dark:text-gray-400">{label}</span>
     </span>
   )
@@ -635,9 +635,10 @@ export default function TeamProjections() {
           <div className="text-xs text-gray-400 dark:text-gray-500 space-y-1 pt-3 border-t border-gray-100 dark:border-gray-800">
             <p><b>Conf</b> = how much career data backs the projection (more data → more confident, less regression).
               <b> Plate skills / Stuff</b> show the projected rate with the projected change vs 2026 (▲/▼).
-              The point projection is the most-likely (median) outcome, calibrated on four seasons of backtests; a player’s upside lives in his ceiling (the range covers about 80% of next-season outcomes) — click a row to see it.</p>
+              The point projection is the most-likely (median) outcome, calibrated on four seasons of backtests; a player’s upside lives in his ceiling (the range covers about 80% of next-season outcomes). Click a row to see it.</p>
+            <p><b>How a career is read.</b> Every season a player has logged counts, at any level, with recent ones mattering most because true talent drifts from year to year (the model measures how fast for each skill, and pitchers move more than hitters). Skills are projected together rather than one at a time, so a hitter’s power, walks and contact inform each other, and a pitcher’s strikeouts inform his home-run and hit rates. Small samples are trusted less than their plate-appearance count alone would suggest.</p>
             <p><b>ERA</b> is built from the projected strikeout, walk and home-run rates (FIP-style) plus a small, heavily regressed luck term, so a lucky or unlucky 2026 ERA barely moves it. Incoming transfers (↗) are projected at their new level, with every stat translated using real transfer history and the West Coast League as a common yardstick across levels. Power gets a real bump on the move up: NWAC homers about 0.7 per 100 PA, the 4-year levels 2 to 2.6, so transfer HR rates roughly double.</p>
-            <p><b>ltd</b> (limited data) marks players who barely appeared in 2026. With little to go on they are projected below their class average, in proportion to how little they played (players who earn few at-bats are usually the weaker ones), and capped at a small workload, but still included so rosters and totals are complete. They firm up as transfers and freshmen are added.</p>
+            <p><b>ltd</b> (limited data) marks players who barely appeared in 2026. With little to go on they sit close to their class average and are capped at a small workload, but they are still included so rosters and totals are complete. They firm up as transfers and freshmen are added.</p>
             <p><b>PA and IP</b> reflect projected playing time: the best players earn near-full workloads, backups and unproven players get fewer, so a team's reps are shared realistically rather than every regular getting the same total.</p>
             <p><b>▲▼</b> next to a rate show whether it is projected up or down vs the player's 2026 rate (green = better, red = worse, direction-aware). <b>🚀</b> flags a projected breakout: the model reads last season as unlucky relative to the underlying skills (low BABIP, or ERA well above FIP) and expects a real step forward.</p>
           </div>
