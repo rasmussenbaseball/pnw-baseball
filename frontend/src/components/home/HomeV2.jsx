@@ -19,7 +19,7 @@
  * Archivo (font-archivo), every number is IBM Plex Mono (font-plex); both are
  * loaded on demand by Homepage.jsx.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { CURRENT_SEASON } from '../../lib/seasons'
@@ -41,15 +41,19 @@ function Logo({ src, size = 20, className = '' }) {
 
 function Panel({ title, to, linkLabel = 'View all', controls = null, className = '', children }) {
   return (
-    <section className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 min-w-0 ${className}`}>
-      <div className="flex items-center gap-3 mb-2">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 truncate">{title}</h2>
-        <div className="ml-auto flex items-center gap-2">
-          {controls}
-          {to && <Link to={to} className="text-[11px] font-semibold text-nw-teal dark:text-nw-teal-light hover:underline whitespace-nowrap">{linkLabel} →</Link>}
+    <section data-panel className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 min-w-0 ${className}`}>
+      {/* data-panel-body is what the Masonry measures: the natural height of the
+          content, independent of any stretch applied to the section. */}
+      <div data-panel-body>
+        <div className="flex items-center gap-3 mb-2">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 truncate">{title}</h2>
+          <div className="ml-auto flex items-center gap-2">
+            {controls}
+            {to && <Link to={to} className="text-[11px] font-semibold text-nw-teal dark:text-nw-teal-light hover:underline whitespace-nowrap">{linkLabel} →</Link>}
+          </div>
         </div>
+        {children}
       </div>
-      {children}
     </section>
   )
 }
@@ -522,56 +526,54 @@ const PROJ_COLS = {
     { key: 'WAR', label: 'WAR', fmt: v => v.toFixed(1) },
     { key: 'wOBA', label: 'wOBA', fmt: v => v.toFixed(3).replace(/^0/, '') },
     { key: 'HR', label: 'HR', fmt: v => Math.round(v).toString() },
+    { key: 'OPS', label: 'OPS', fmt: v => v.toFixed(3).replace(/^0/, '') },
   ],
   pit: [
     { key: 'WAR', label: 'WAR', fmt: v => v.toFixed(1) },
     { key: 'FIP', label: 'FIP', fmt: v => v.toFixed(2), asc: true },
     { key: 'K_pct', label: 'K%', fmt: v => `${(v * 100).toFixed(1)}%` },
+    { key: 'ERA', label: 'ERA', fmt: v => v.toFixed(2), asc: true },
   ],
 }
 const PROJ_MIN = { bat: p => (p.PT || 0) >= 150, pit: p => (p.IP || 0) >= 40 }
 
-export function ProjectionsPanel({ className = '' }) {
+export function ProjectionsPanel() {
   const [side, setSide] = useState('bat')
+  const [statKey, setStatKey] = useState('WAR')
   const { data, loading } = useApi('/projections/player-leaders', { side, season: PROJ_SEASON }, [side])
   const players = (data?.players || []).filter(p => !p.insufficient && PROJ_MIN[side](p))
   const cols = PROJ_COLS[side]
+  const c = cols.find(x => x.key === statKey) || cols[0]
+  const list = players.filter(p => p[c.key] != null).sort((a, b) => c.asc ? a[c.key] - b[c.key] : b[c.key] - a[c.key]).slice(0, 8)
+  const top = list[0]?.[c.key]
+  const pickSide = (sd) => { setSide(sd); setStatKey('WAR') }
   return (
-    <Panel title={`${PROJ_SEASON} projections`} to="/projections" linkLabel="All projections" className={className}
-      controls={<Pills options={['bat', 'pit']} value={side} onChange={setSide} />}>
+    <Panel title={`${PROJ_SEASON} projections`} to="/projections" linkLabel="All projections"
+      controls={<Pills options={['bat', 'pit']} value={side} onChange={pickSide} />}>
       <Lead>Who the model likes for {PROJ_SEASON}, before a pitch is thrown.</Lead>
-      <p className="text-[12px] text-gray-500 dark:text-gray-400 -mt-2 mb-3">
+      <p className="text-[12px] text-gray-500 dark:text-gray-400 -mt-2 mb-2">
         College Marcel projections for every returner, transfer and freshman. Minimum {side === 'bat' ? '150 projected PA' : '40 projected IP'}.
       </p>
-      {loading && !data ? <Skeleton rows={8} /> : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {cols.map((c) => {
-            const list = players.filter(p => p[c.key] != null).sort((a, b) => c.asc ? a[c.key] - b[c.key] : b[c.key] - a[c.key]).slice(0, 5)
-            const top = list[0]?.[c.key]
-            return (
-              <div key={c.key} className="min-w-0">
-                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 mb-1">Projected {c.label}</div>
-                {list.map((p, i) => {
-                  const pct = top == null ? 0 : c.asc ? (top / p[c.key]) * 100 : (p[c.key] / top) * 100
-                  return (
-                    <div key={p.player_id} className="grid items-center gap-1.5 py-[3px] border-t border-gray-100 dark:border-gray-700/60 text-[12px]" style={{ gridTemplateColumns: '14px 18px 1fr 44px' }}>
-                      <Mono className="text-[11px] text-gray-400">{i + 1}</Mono>
-                      <Logo src={p.logo_url} size={18} />
-                      <div className="min-w-0">
-                        <Link to={`/player/${p.canonical_id || p.player_id}`} className="block truncate font-semibold text-gray-900 dark:text-gray-100 hover:underline">
-                          {p.name} <span className="font-normal text-gray-400">{p.team}{p.is_incoming ? ' · new' : ''}</span>
-                        </Link>
-                        <Bar pct={pct} className="mt-1" color={i === 0 ? 'bg-nw-teal' : 'bg-nw-teal/40'} />
-                      </div>
-                      <Mono className="text-right text-gray-700 dark:text-gray-300">{c.fmt(p[c.key])}</Mono>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Projected {c.label}</div>
+        <Pills options={cols.map(x => x.key)} value={c.key} onChange={setStatKey} />
+      </div>
+      {loading && !data ? <Skeleton rows={8} /> : list.map((p, i) => {
+        const pct = top == null ? 0 : c.asc ? (top / p[c.key]) * 100 : (p[c.key] / top) * 100
+        return (
+          <div key={p.player_id} className="grid items-center gap-1.5 py-[3px] border-t border-gray-100 dark:border-gray-700/60 text-[12px]" style={{ gridTemplateColumns: '14px 18px 1fr 48px' }}>
+            <Mono className="text-[11px] text-gray-400">{i + 1}</Mono>
+            <Logo src={p.logo_url} size={18} />
+            <div className="min-w-0">
+              <Link to={`/player/${p.canonical_id || p.player_id}`} className="block truncate font-semibold text-gray-900 dark:text-gray-100 hover:underline">
+                {p.name} <span className="font-normal text-gray-400">{p.team} · {p.level}{p.is_incoming ? ' · new' : ''}</span>
+              </Link>
+              <Bar pct={pct} className="mt-1" color={i === 0 ? 'bg-nw-teal' : 'bg-nw-teal/40'} />
+            </div>
+            <Mono className="text-right text-gray-700 dark:text-gray-300">{c.fmt(p[c.key])}</Mono>
+          </div>
+        )
+      })}
     </Panel>
   )
 }
@@ -612,14 +614,14 @@ function fmtDate(iso) {
   return { d: dt.getDate(), m: dt.toLocaleDateString('en-US', { month: 'short' }).toUpperCase() }
 }
 
-export function ArticlesPanel({ className = '' }) {
-  const { data, loading } = useApi('/articles', { limit: 5 })
+export function ArticlesPanel() {
+  const { data, loading } = useApi('/articles', { limit: 4 })
   const arts = data?.articles || []
   const [first, ...rest] = arts
   return (
-    <Panel title="From the newsroom" to="/news" linkLabel="All articles" className={className}>
+    <Panel title="From the newsroom" to="/news" linkLabel="All articles">
       {loading && !data ? <Skeleton rows={6} /> : !arts.length ? <div className="text-[12px] text-gray-400">No articles yet.</div> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3">
           <Link to={`/news/${first.slug}`} className="group min-w-0">
             {first.hero_image_url
               ? <img src={first.hero_image_url} alt="" className="w-full aspect-[16/9] object-cover rounded-md bg-gray-100 dark:bg-gray-700" onError={(e) => { e.currentTarget.style.display = 'none' }} />
@@ -629,7 +631,7 @@ export function ArticlesPanel({ className = '' }) {
             {(first.subtitle || first.excerpt) && <p className="text-[12.5px] text-gray-600 dark:text-gray-300 leading-snug mt-1 line-clamp-3">{first.subtitle || first.excerpt}</p>}
           </Link>
           <div className="min-w-0">
-            {rest.slice(0, 4).map((a) => {
+            {rest.slice(0, 3).map((a) => {
               const { d, m } = fmtDate(a.published_at)
               return (
                 <Link key={a.id || a.slug} to={`/news/${a.slug}`} className="grid gap-3 py-2.5 border-t first:border-t-0 border-gray-100 dark:border-gray-700/60 group" style={{ gridTemplateColumns: '40px 1fr' }}>
@@ -679,7 +681,185 @@ export function SiteNumbersPanel() {
   )
 }
 
-// ─── 7c. Tools ────────────────────────────────────────────────────────
+// ─── 7c. Conference champions ─────────────────────────────────────────
+const CONF_ORDER = ['CCC', 'GNAC', 'NWC', 'NWAC-N', 'NWAC-S', 'NWAC-E', 'NWAC-W', 'WCC', 'Big Ten', 'MWC']
+function confSort(a, b) {
+  const ia = CONF_ORDER.indexOf(a), ib = CONF_ORDER.indexOf(b)
+  return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+}
+function levelLabel(l) { return l === 'JUCO' ? 'NWAC' : l }
+
+export function ChampionsPanel({ standings }) {
+  const { data, loading } = useApi('/home/champions', { season: SEASON })
+  const regular = useMemo(() => {
+    const out = []
+    ;(standings?.conferences || []).forEach((c) => {
+      if (!c.conference_abbrev || c.conference_abbrev === 'IND') return
+      const winners = (c.teams || []).filter(t => t.rank === 1 || /^T-?1$/i.test(String(t.rank_label || '')))
+      if (!winners.length) return
+      out.push({ conf: c.conference_abbrev, name: c.conference_name, level: levelLabel(c.division_level), winners })
+    })
+    return out.sort((a, b) => confSort(a.conf, b.conf))
+  }, [standings])
+  const tourn = [...(data?.tournaments || [])].sort((a, b) => confSort(a.conference, b.conference))
+  const Row = ({ logo, name, to, sub, right }) => (
+    <Link to={to || '#'} className="grid items-center gap-2 py-[5px] border-t border-gray-100 dark:border-gray-700/60 text-[12px] hover:bg-gray-50 dark:hover:bg-gray-700/40" style={{ gridTemplateColumns: '22px 1fr auto' }}>
+      <Logo src={logo} size={22} />
+      <div className="min-w-0"><div className="truncate font-semibold text-gray-900 dark:text-gray-100">{name}</div><div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{sub}</div></div>
+      <div className="text-right text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 whitespace-nowrap">{right}</div>
+    </Link>
+  )
+  return (
+    <Panel title={`${SEASON} champions`} to="/standings" linkLabel="Standings">
+      {!standings && loading ? <Skeleton rows={8} /> : (
+        <>
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 mb-1">Conference tournaments</div>
+          {tourn.length ? tourn.map((t) => (
+            <Row key={t.conference + t.team} logo={t.logo} name={t.team} to={t.team_id ? `/team/${t.team_id}` : '/standings'}
+              sub={t.note || t.event} right={<><span>{t.conference}</span><span className="block text-gray-400 font-semibold">{t.level}</span></>} />
+          )) : <div className="text-[12px] text-gray-400 py-1">Tournaments start in May.</div>}
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 mt-4 mb-1">Regular season</div>
+          {regular.map((r) => r.winners.map((t) => (
+            <Row key={r.conf + t.id} logo={t.logo_url} name={t.short_name} to={`/team/${t.id}`}
+              sub={`${t.conf_wins}-${t.conf_losses} in ${r.name}${r.winners.length > 1 ? ' (shared)' : ''}`}
+              right={<><span>{r.conf}</span><span className="block text-gray-400 font-semibold">{r.level}</span></>} />
+          )))}
+        </>
+      )}
+    </Panel>
+  )
+}
+
+// ─── Masonry ──────────────────────────────────────────────────────────
+// Panels have very different heights depending on the data, so a plain grid
+// leaves holes. This lays them out greedily (each panel goes to the shortest
+// column, in the order given), then spreads any leftover height across the
+// panels of shorter columns so every column ends on the same line. Children
+// never move between DOM parents, so their state and fetches survive.
+function useColumnCount() {
+  const get = () => (typeof window === 'undefined' ? 3 : window.innerWidth >= 1024 ? 3 : window.innerWidth >= 640 ? 2 : 1)
+  const [n, setN] = useState(get)
+  useEffect(() => {
+    const onResize = () => setN(get())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return n
+}
+
+function assignColumns(heights, cols, gap) {
+  const n = heights.length
+  if (cols <= 1) return heights.map(() => 0)
+  const greedy = () => {
+    const colH = Array(cols).fill(0)
+    return heights.map((h) => {
+      let c = 0
+      for (let k = 1; k < cols; k++) if (colH[k] < colH[c] - 1) c = k
+      colH[c] += h + gap
+      return c
+    })
+  }
+  if (n > 11) return greedy()
+  let best = null, bestScore = Infinity
+  const cur = Array(n).fill(0)
+  const colH = Array(cols).fill(0)
+  const rec = (i) => {
+    if (i === n) {
+      if (colH.some((h) => h === 0)) return
+      const score = Math.max(...colH) - Math.min(...colH)
+      if (score < bestScore - 0.5) { bestScore = score; best = cur.slice() }
+      return
+    }
+    for (let c = 0; c < cols; c++) {
+      cur[i] = c; colH[c] += heights[i] + gap
+      rec(i + 1)
+      colH[c] -= heights[i] + gap
+    }
+  }
+  rec(0)
+  return best || greedy()
+}
+
+export function Masonry({ children, gap = 16 }) {
+  const items = Array.isArray(children) ? children.filter(Boolean) : [children]
+  const cols = useColumnCount()
+  const wrapRef = useRef(null)
+  const itemRefs = useRef([])
+  const [layout, setLayout] = useState({ pos: [], height: 0, colW: 0 })
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    let raf = 0
+    const measure = () => {
+      const width = el.clientWidth
+      if (!width) return
+      const colW = (width - gap * (cols - 1)) / cols
+      // Natural height of each panel: its body plus the section's own padding
+      // and border, so a stretch from a previous pass never feeds back in.
+      const heights = itemRefs.current.map((r) => {
+        if (!r) return 0
+        const sec = r.querySelector('[data-panel]')
+        const body = sec && sec.querySelector('[data-panel-body]')
+        if (!sec || !body) return r.offsetHeight
+        const cs = getComputedStyle(sec)
+        return body.offsetHeight + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
+          + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth)
+      })
+      // Pick the column assignment with the least slack (max column minus min
+      // column). With a handful of panels every assignment can be tried; the
+      // first best one in lexicographic order keeps early panels in early
+      // columns, so the reading order stays sensible. Panels never reorder
+      // within a column.
+      const colOf = assignColumns(heights, cols, gap)
+      const colH = Array(cols).fill(0)
+      colOf.forEach((c, i) => { colH[c] += heights[i] + gap })
+      const maxH = Math.max(...colH)
+      // spread the slack of each shorter column across its panels
+      const perCol = colH.map((h) => maxH - h)
+      const countCol = Array(cols).fill(0)
+      colOf.forEach((c) => { countCol[c] += 1 })
+      const extra = perCol.map((slack, c) => (countCol[c] ? slack / countCol[c] : 0))
+      const run = Array(cols).fill(0)
+      const pos = heights.map((h, i) => {
+        const c = colOf[i]
+        const top = run[c]
+        const hh = h + (cols > 1 ? extra[c] : 0)
+        run[c] += hh + gap
+        return { left: c * (colW + gap), top, height: hh }
+      })
+      setLayout({ pos, height: Math.max(0, maxH - gap), colW })
+    }
+    const ro = new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure) })
+    ro.observe(el)
+    itemRefs.current.forEach((r) => { const b = r && r.querySelector('[data-panel-body]'); ro.observe(b || r) })
+    measure()
+    return () => { ro.disconnect(); cancelAnimationFrame(raf) }
+  }, [cols, gap, items.length])
+
+  if (cols === 1) {
+    return <div className="flex flex-col gap-4">{items}</div>
+  }
+  const ready = layout.pos.length === items.length && layout.colW > 0
+  return (
+    <div ref={wrapRef} className="relative" style={{ height: ready ? layout.height : undefined }}>
+      {items.map((child, i) => {
+        const p = ready ? layout.pos[i] : null
+        return (
+          <div key={child.key ?? i} ref={(r) => { itemRefs.current[i] = r }}
+            className={ready ? 'absolute' : 'relative mb-4'}
+            style={ready ? { left: p.left, top: p.top, width: layout.colW } : { width: layout.colW || undefined }}>
+            <div className="h-full flex flex-col [&>section]:flex-1" style={ready && p.height ? { minHeight: p.height } : undefined}>
+              {child}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── 7d. Tools ────────────────────────────────────────────────────────
 const TOOLS = [
   ['Portal', 'Coach & Scouting Portal', 'Series planner, scouting sheets, lineup helper, printable PDFs', '/portal'],
   ['Players', 'Player Comps', 'Closest NW and MLB comparables for every player', '/player-comps'],

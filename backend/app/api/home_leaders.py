@@ -614,3 +614,35 @@ def home_pbp(season: int = Query(CURRENT_SEASON)):
     result = {"season": season, "coverage": cov, "moment": moment, "clutch_hitters": hitters, "clutch_pitchers": pitchers}
     _CACHE[ck] = (time.time(), result)
     return result
+
+
+@home_leaders_router.get("/champions")
+def home_champions(season: int = Query(CURRENT_SEASON)):
+    """Conference tournament champions for a season, from
+    backend/data/conference_champions.json (curated; the scrapers don't tag
+    tournament games reliably). Team names are resolved to ids + logos.
+    Regular-season winners come from /standings on the frontend."""
+    import json
+    from pathlib import Path
+    ck = ("champions", season)
+    hit = _CACHE.get(ck)
+    if hit and (time.time() - hit[0]) < _TTL:
+        return hit[1]
+    path = Path(__file__).resolve().parents[2] / "data" / "conference_champions.json"
+    try:
+        raw = json.loads(path.read_text()).get(str(season), [])
+    except Exception:
+        raw = []
+    out = []
+    if raw:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, short_name, logo_url FROM teams WHERE short_name = ANY(%s)",
+                        ([r["team"] for r in raw],))
+            byname = {r["short_name"]: r for r in cur.fetchall()}
+        for r in raw:
+            t = byname.get(r["team"], {})
+            out.append({**r, "team_id": t.get("id"), "logo": t.get("logo_url")})
+    result = {"season": season, "tournaments": out}
+    _CACHE[ck] = (time.time(), result)
+    return result

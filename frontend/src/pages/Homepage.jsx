@@ -1,19 +1,23 @@
 /**
  * Homepage (September 2026 redesign).
  *
- * Flat, light, data-first. Award cards and Team Ratings on top, then a leader
- * rail, then three columns of charts (play-by-play, standings, WCL), then
- * projections and recruiting, then articles and the tool tiles. Every module
- * lives in components/home/HomeV2.jsx; the widget-column homepage this
- * replaced is still in components/home/{StatWidgets,FeatureWidgets}.jsx.
+ * Flat, light, data-first. Award cards and Team Ratings on top, a leader rail,
+ * then a masonry of panels (champions, play-by-play, standings, WCL,
+ * projections, recruiting, articles, site totals) that always ends on one
+ * line, then the tool tiles. Every module lives in components/home/HomeV2.jsx;
+ * the widget-column homepage this replaced is still in
+ * components/home/{StatWidgets,FeatureWidgets}.jsx.
+ *
+ * The "last results" strip (ResultsStrip in HomeV2) is unmounted for the
+ * offseason; add it back under AwardsRow when games start in the spring.
  */
 import { useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
 import { CURRENT_SEASON } from '../lib/seasons'
 import { ensureGoogleFonts } from '../lib/loadFonts'
 import {
-  AwardsRow, ResultsStrip, RatingsTiles, LeaderRail,
-  PbpPanel, StandingsPanel, WclPanel,
+  AwardsRow, RatingsTiles, LeaderRail, Masonry,
+  ChampionsPanel, PbpPanel, StandingsPanel, WclPanel,
   ProjectionsPanel, RecruitingPanel, ArticlesPanel, SiteNumbersPanel, ToolsRow,
 } from '../components/home/HomeV2'
 
@@ -22,7 +26,7 @@ export default function Homepage() {
     ensureGoogleFonts('home-fonts', 'family=Archivo:wdth,wght@75..100,500..900&family=IBM+Plex+Mono:wght@400;500;600')
   }, [])
 
-  // Shared by the award cards, the ratings tiles and the standings panel.
+  // Shared by the award cards, the ratings tiles, standings and champions.
   const { data: ratings, loading: ratingsLoading } = useApi('/team-ratings', { season: CURRENT_SEASON })
   const { data: natl } = useApi('/national-rankings', { season: CURRENT_SEASON })
   const { data: standings, loading: standingsLoading } = useApi('/standings', { season: CURRENT_SEASON })
@@ -30,25 +34,19 @@ export default function Homepage() {
   return (
     <div className="max-w-7xl mx-auto flex flex-col gap-6">
       <AwardsRow ratings={ratings} natl={natl} />
-      <ResultsStrip />
       <RatingsTiles ratings={ratings} natl={natl} loading={ratingsLoading} />
       <LeaderRail />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-        <PbpPanel />
-        <StandingsPanel standings={standings} loading={standingsLoading} />
-        <WclPanel />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-        <ProjectionsPanel className="lg:col-span-2" />
-        <RecruitingPanel />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-        <ArticlesPanel className="lg:col-span-2" />
-        <SiteNumbersPanel />
-      </div>
+      <Masonry>
+        <ChampionsPanel key="champions" standings={standings} />
+        <PbpPanel key="pbp" />
+        <StandingsPanel key="standings" standings={standings} loading={standingsLoading} />
+        <WclPanel key="wcl" />
+        <ProjectionsPanel key="projections" />
+        <RecruitingPanel key="recruiting" />
+        <ArticlesPanel key="articles" />
+        <SiteNumbersPanel key="numbers" />
+      </Masonry>
 
       <ToolsRow />
 

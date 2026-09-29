@@ -1,0 +1,10 @@
+{
+  "_readme": "Conference TOURNAMENT champions by season. Regular-season winners are computed from standings; this file only holds tournament results, which the box-score scrapers do not tag reliably. Keys: conference (abbrev shown on the site), level (D1/D2/D3/NAIA/NWAC), team (DB short_name), event, note. Edit by hand each May.",
+  "2026": [
+    {"conference": "NWAC", "level": "NWAC", "team": "Lower Columbia", "event": "NWAC Championship", "note": "Beat Linn-Benton 5-1 in the final at Longview"},
+    {"conference": "CCC", "level": "NAIA", "team": "LCSC", "event": "CCC Tournament", "note": "Beat UBC 12-2 in the final"},
+    {"conference": "GNAC", "level": "D2", "team": "NNU", "event": "GNAC Championship", "note": "Beat WOU 7-6 in the final"},
+    {"conference": "NWC", "level": "D3", "team": "Whitworth", "event": "NWC Tournament", "note": "Beat Linfield 9-7 in the final"},
+    {"conference": "MWC", "level": "D1", "team": "Wash. St.", "event": "Mountain West Tournament", "note": "Beat SDSU 14-4 in the deciding game"}
+  ]
+}
