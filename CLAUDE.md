@@ -353,7 +353,22 @@ There's a regression test at `scripts/test_team_matching_pacific.py`. Run it bef
 
 ```bash
 PYTHONPATH=backend python3 scripts/test_team_matching_pacific.py
+PYTHONPATH=backend python3 scripts/test_team_matching_bare_names.py
 ```
+
+**Resolver tiers (since 2026-09-29).** `get_team_id_by_school` builds three candidate tiers and picks the best ACTIVE hit across all tiers before any inactive OOC placeholder:
+1. exact `short_name` / `school_name` / `name`;
+2. normalized-key match (`_name_key`: strips "University/College/of/the", expands "Cal St." to "California State", "Wash." to "Washington", drops "N-seed" regional prefixes) so spelling variants land on the existing row instead of minting a new placeholder;
+3. guarded substring match: the input must be contained in the school name AND every leftover word must be generic filler. A bare "Texas" therefore never matches "Texas Tech", "Hawaii" never matches "Hawaii Pacific", "LSU" never "LSU Shreveport", "Arizona" never "Arizona State". Each of those happened before the guard and filed real games (Oregon/OSU/WSU/Gonzaga vs Texas, Hawaii, LSU, Arizona) under the wrong opponent.
+
+"and" is deliberately not generic: "Lewis & Clark" (NWC) and "Lewis-Clark" (LCSC) must never key to the same school.
+
+### 10.3a Opponent identity repairs: merge_teams.py + dedup Pass 6
+
+- `scripts/merge_teams.py --into CANON --from DUP [...] [--apply]` folds duplicate team rows (games, box-score rows, game_events, phantom players matched by name, every other FK) into one row and deletes the duplicate. `--repoint --games ... --from WRONG --into RIGHT` moves one side of specific games when they were filed under the wrong opponent. Default is a dry run that executes and rolls back.
+- `scripts/repair_opponent_identity.py` is the 2026-09-29 one-off that used those helpers (Texas/Hawaii/LSU/Arizona repoints, Seattle U vs D1 Pacific, ghost-row cleanup, ~40 OOC spelling-variant merges). Keep it as the worked example.
+- `dedup_games.py` Pass 6 catches the same game stored twice under two opponent ids (same date + host + numeric box-score id, exactly one team in common). It keeps the fuller copy and prints the `merge_teams.py` command for the two opponent rows. `--passes 1,5,6` runs a subset (use that on 2023-2025, where Pass 4 has never been vetted).
+- A box-score name may only resolve to a player on one of the game's two teams. `backfill_player_ids.py` used to match names globally and then move `team_id` to the matched player's team, which created "ghost rows" (`team_id` not in the game). Both steps are now scoped to the game's teams; `insert_game_batting/pitching` refuse ghost rows at insert time.
 
 ### 10.4 Player matching pitfalls
 
