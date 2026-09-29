@@ -22,7 +22,6 @@ import {
   DraftBoardWidget, GridPreviewWidget, ArticlesWidget,
   RecentMovesWidget, GmPreviewWidget, PortalPreviewWidget,
   NewFeaturesWidget, GamesWidget, ComparablesWidget,
-  StealthPartnerWidget,
 } from '../components/home/FeatureWidgets'
 
 export default function Homepage() {
@@ -60,21 +59,20 @@ const WIDGETS = {
   games:       <GamesWidget />,
   gm:          <GmPreviewWidget />,
   portal:      <PortalPreviewWidget />,
-  stealth:     <StealthPartnerWidget />,
 }
 
 const COLUMN_LAYOUTS = {
   3: [
     ['standings', 'recentMoves', 'portal', 'games'],
-    ['newFeatures', 'stealth', 'comps', 'draft', 'records'],
+    ['newFeatures', 'comps', 'draft', 'records'],
     ['articles', 'grid', 'gm'],
   ],
   2: [
-    ['standings', 'newFeatures', 'stealth', 'comps', 'draft', 'records', 'portal'],
+    ['standings', 'newFeatures', 'comps', 'draft', 'records', 'portal'],
     ['gm', 'games', 'articles', 'recentMoves', 'grid'],
   ],
   1: [
-    ['standings', 'newFeatures', 'stealth', 'comps', 'articles', 'draft', 'games',
+    ['standings', 'newFeatures', 'comps', 'articles', 'draft', 'games',
      'grid', 'records', 'recentMoves', 'gm', 'portal'],
   ],
 }
@@ -101,7 +99,7 @@ function useColumnCount() {
 // /newFeatures now lives — bumped down a row).
 const DESKTOP_LEFT = ['standings', 'draft', 'records', 'gm']
 const DESKTOP_SUB = [
-  ['newFeatures', 'stealth', 'comps', 'games'],
+  ['newFeatures', 'comps', 'games'],
   ['portal', 'recentMoves', 'grid'],
 ]
 
