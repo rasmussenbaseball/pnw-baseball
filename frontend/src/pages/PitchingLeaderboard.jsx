@@ -74,8 +74,8 @@ export default function PitchingLeaderboard() {
     offset: page * limit,
   }
 
-  const standardResp = usePitchingLeaderboard(apiParams)
-  const pbpResp = usePitchingPbpLeaderboard(pbpParams)
+  const standardResp = usePitchingLeaderboard(apiParams, !isPbp)
+  const pbpResp = usePitchingPbpLeaderboard(pbpParams, isPbp)
   const { data: result, loading } = isPbp ? pbpResp : standardResp
 
   const handleSort = (key, dir) => {

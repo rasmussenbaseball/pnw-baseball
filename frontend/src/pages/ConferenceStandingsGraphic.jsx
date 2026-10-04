@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useApi } from '../hooks/useApi'
 import { CURRENT_SEASON } from '../lib/seasons'
 
@@ -340,12 +340,12 @@ export default function ConferenceStandingsGraphic() {
 
   const { data: result, loading } = useApi('/conference-standings-graphic', { season }, [season])
   const conferences = result?.conferences || []
-  const frozenSet = new Set((result?.frozen_conferences || []).map(f => f.conf_key))
+  const frozenSet = useMemo(() => new Set((result?.frozen_conferences || []).map(f => f.conf_key)), [result])
 
-  // Auto-select first conference
-  if (conferences.length > 0 && selectedConf === null) {
-    setSelectedConf(conferences[0].conference_id)
-  }
+  // Auto-select first conference (in an effect, not during render)
+  useEffect(() => {
+    if (conferences.length > 0 && selectedConf === null) setSelectedConf(conferences[0].conference_id)
+  }, [conferences, selectedConf])
 
   const activeConf = conferences.find(c => c.conference_id === selectedConf)
 

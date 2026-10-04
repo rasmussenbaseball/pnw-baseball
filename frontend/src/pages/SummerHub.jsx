@@ -409,7 +409,8 @@ export function ScheduleCalendar() {
     cells.push(new Date(cur))
     cur.setDate(cur.getDate() + 1)
   }
-  const dayKey = d => d.toISOString().slice(0, 10)
+  // local calendar date, not toISOString (UTC), so viewers east of UTC don't see every cell shifted a day
+  const dayKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const monthLabel = cursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
   return (

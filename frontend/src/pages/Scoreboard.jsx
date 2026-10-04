@@ -41,7 +41,8 @@ function getTodayPacific() {
 function shiftDate(dateStr, days) {
   const d = new Date(dateStr + 'T12:00:00')
   d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  // format in LOCAL time: toISOString() is UTC and skips or repeats a day for some viewers
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 

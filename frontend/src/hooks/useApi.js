@@ -157,29 +157,33 @@ export function useTeamInfoGraphic(teamId, season) {
 /**
  * Fetch batting leaderboard.
  */
-export function useBattingLeaderboard(params) {
-  return useApi('/leaderboards/batting', params, [JSON.stringify(params)])
+export function useBattingLeaderboard(params, enabled = true) {
+  // enabled=false skips the request (the leaderboard pages mount both the standard and the PBP hook)
+  return useApi(enabled ? '/leaderboards/batting' : null, params, [enabled, JSON.stringify(params)])
 }
 
 /**
  * Fetch pitching leaderboard.
  */
-export function usePitchingLeaderboard(params) {
-  return useApi('/leaderboards/pitching', params, [JSON.stringify(params)])
+export function usePitchingLeaderboard(params, enabled = true) {
+  // enabled=false skips the request (the leaderboard pages mount both the standard and the PBP hook)
+  return useApi(enabled ? '/leaderboards/pitching' : null, params, [enabled, JSON.stringify(params)])
 }
 
 /**
  * Fetch hitter plate-discipline leaderboard (PBP preset).
  */
-export function useBattingPbpLeaderboard(params) {
-  return useApi('/leaderboards/batting-pbp', params, [JSON.stringify(params)])
+export function useBattingPbpLeaderboard(params, enabled = true) {
+  // enabled=false skips the request (the leaderboard pages mount both the standard and the PBP hook)
+  return useApi(enabled ? '/leaderboards/batting-pbp' : null, params, [enabled, JSON.stringify(params)])
 }
 
 /**
  * Fetch pitcher pitch-level leaderboard (PBP preset).
  */
-export function usePitchingPbpLeaderboard(params) {
-  return useApi('/leaderboards/pitching-pbp', params, [JSON.stringify(params)])
+export function usePitchingPbpLeaderboard(params, enabled = true) {
+  // enabled=false skips the request (the leaderboard pages mount both the standard and the PBP hook)
+  return useApi(enabled ? '/leaderboards/pitching-pbp' : null, params, [enabled, JSON.stringify(params)])
 }
 
 /**
@@ -448,7 +452,9 @@ export function useTeamRankings(teamId, season) {
  * Search players.
  */
 export function usePlayerSearch(query, filters = {}) {
-  return useApi('/players/search', { q: query, ...filters }, [query, JSON.stringify(filters)])
+  // the backend requires q of 2+ characters; skip the request (null endpoint) below that
+  const active = typeof query === 'string' && query.trim().length >= 2
+  return useApi(active ? '/players/search' : null, { q: query, ...filters }, [active, query, JSON.stringify(filters)])
 }
 
 /**

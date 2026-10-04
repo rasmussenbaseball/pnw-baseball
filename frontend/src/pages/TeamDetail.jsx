@@ -436,10 +436,12 @@ function ChampionshipBanner({ teamId }) {
 
   useEffect(() => {
     if (!teamId) return
+    let alive = true
     fetch(`/api/v1/teams/${teamId}/championships`)
-      .then(r => r.json())
-      .then(d => setTitles(d.championships || []))
+      .then(r => (r.ok ? r.json() : {}))
+      .then(d => { if (alive) setTitles(d.championships || []) })
       .catch((err) => console.error('[TeamDetail] /teams/championships failed:', err))
+    return () => { alive = false }
   }, [teamId])
 
   if (!titles.length) return null

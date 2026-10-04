@@ -172,16 +172,18 @@ function SearchBar({ mobile = false }) {
     results.players.forEach(p => flatResults.push({ type: 'player', data: p }))
   }
 
+  const searchSeq = useRef(0)
   const doSearch = useCallback(async (q) => {
     if (q.length < 2) {
       setResults(null)
       setOpen(false)
       return
     }
+    const seq = ++searchSeq.current   // a slower earlier response must not overwrite newer results
     setLoading(true)
     try {
       const resp = await fetch(`/api/v1/search?q=${encodeURIComponent(q)}&limit=6`)
-      if (resp.ok) {
+      if (resp.ok && seq === searchSeq.current) {
         const data = await resp.json()
         setResults(data)
         setOpen(true)

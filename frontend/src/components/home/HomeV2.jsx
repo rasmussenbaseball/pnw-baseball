@@ -321,7 +321,7 @@ export function LeaderRail() {
           if (!c) return <div key={i} className="h-[150px] rounded-lg bg-gray-200 dark:bg-gray-700 animate-pulse" />
           const top = c.leaders[0]
           const lower = LOWER_BETTER.has(c.key)
-          const scale = (l) => !top || !l ? 0 : lower ? (top.value / l.value) * 100 : (l.value / top.value) * 100
+          const scale = (l) => (!top || !l || !top.value || !l.value) ? 0 : lower ? (top.value / l.value) * 100 : (l.value / top.value) * 100
           return (
             <div key={c.key} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 min-w-0">
               <div className="flex items-baseline justify-between">
@@ -562,7 +562,7 @@ export function ProjectionsPanel() {
         <Pills options={cols.map(x => x.key)} value={c.key} onChange={setStatKey} />
       </div>
       {loading && !data ? <Skeleton rows={8} /> : list.map((p, i) => {
-        const pct = top == null ? 0 : c.asc ? (top / p[c.key]) * 100 : (p[c.key] / top) * 100
+        const pct = (top == null || !top || !p[c.key]) ? 0 : c.asc ? (top / p[c.key]) * 100 : (p[c.key] / top) * 100
         return (
           <div key={p.player_id} className="grid items-center gap-1.5 py-[3px] border-t border-gray-100 dark:border-gray-700/60 text-[12px]" style={{ gridTemplateColumns: '14px 18px 1fr 48px' }}>
             <Mono className="text-[11px] text-gray-400">{i + 1}</Mono>

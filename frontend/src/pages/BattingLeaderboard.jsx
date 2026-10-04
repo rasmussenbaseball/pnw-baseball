@@ -72,10 +72,9 @@ export default function BattingLeaderboard() {
     offset: page * limit,
   }
 
-  // Always call both hooks (React requires stable hook order). The
-  // inactive endpoint is cheap (cached 30 min on the backend).
-  const standardResp = useBattingLeaderboard(apiParams)
-  const pbpResp = useBattingPbpLeaderboard(pbpParams)
+  // Both hooks are always called (stable hook order); the inactive one is disabled so only one request fires.
+  const standardResp = useBattingLeaderboard(apiParams, !isPbp)
+  const pbpResp = useBattingPbpLeaderboard(pbpParams, isPbp)
   const { data: result, loading } = isPbp ? pbpResp : standardResp
 
   const handleSort = (key, dir) => {
