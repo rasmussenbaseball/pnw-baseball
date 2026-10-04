@@ -279,7 +279,7 @@ def list_camps(owner: str = Depends(_gate)):
 
 
 @router.post("/portal/camps")
-def create_camp(body: CampCreate, owner: str = Depends(_gate)):
+def create_camp(body: CampCreate, owner: str = Depends(_write_gate)):
     name = (body.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Camp name is required.")
@@ -497,7 +497,7 @@ class PlayerPatch(BaseModel):
 
 
 @router.post("/portal/camps/{camp_id}/players")
-def add_camp_player(camp_id: int, body: PlayerPatch, owner: str = Depends(_gate)):
+def add_camp_player(camp_id: int, body: PlayerPatch, owner: str = Depends(_write_gate)):
     """Manually add an attendee (no device data yet)."""
     display = (body.display_name or "").strip()
     if not display:
@@ -512,7 +512,7 @@ def add_camp_player(camp_id: int, body: PlayerPatch, owner: str = Depends(_gate)
 
 
 @router.patch("/portal/camps/{camp_id}/players/{name_key}")
-def patch_camp_player(camp_id: int, name_key: str, body: PlayerPatch, owner: str = Depends(_gate)):
+def patch_camp_player(camp_id: int, name_key: str, body: PlayerPatch, owner: str = Depends(_write_gate)):
     sets, vals = [], []
     for f in PLAYER_FIELDS:
         v = getattr(body, f)
@@ -535,7 +535,7 @@ def patch_camp_player(camp_id: int, name_key: str, body: PlayerPatch, owner: str
 
 
 @router.delete("/portal/camps/{camp_id}/players/{name_key}")
-def delete_camp_player(camp_id: int, name_key: str, owner: str = Depends(_gate)):
+def delete_camp_player(camp_id: int, name_key: str, owner: str = Depends(_write_gate)):
     with get_connection() as conn:
         cur = conn.cursor()
         _own_camp(cur, owner, camp_id)

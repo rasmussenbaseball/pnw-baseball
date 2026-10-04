@@ -64,6 +64,15 @@ def _ensure_table(cur):
                    WHERE table_name = 'tracking_workspace_shares' AND column_name = 'can_upload'""")
     if not cur.fetchone():
         cur.execute("ALTER TABLE tracking_workspace_shares ADD COLUMN can_upload BOOLEAN DEFAULT TRUE")
+    # accepted_at (Oct 2026): a staff add is an INVITATION until the invited
+    # coach accepts it. Before this, typing any email into My Staff re-owned
+    # that account's TrackMan/Rapsodo/Camp uploads into the caller's
+    # workspace with no consent. NULL = pending; nothing resolves or merges
+    # until it is set.
+    cur.execute("""SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'tracking_workspace_shares' AND column_name = 'accepted_at'""")
+    if not cur.fetchone():
+        cur.execute("ALTER TABLE tracking_workspace_shares ADD COLUMN accepted_at TIMESTAMPTZ")
     _TABLE_READY = True
 
 
@@ -99,7 +108,8 @@ def resolve_workspace(request: Request, owner: str) -> str:
             try:
                 cur.execute(
                     """SELECT owner_user_id FROM tracking_workspace_shares
-                       WHERE member_email = %s ORDER BY created_at DESC""",
+                       WHERE member_email = %s AND accepted_at IS NOT NULL
+                       ORDER BY created_at DESC""",
                     (email,),
                 )
                 owners += [str(r["owner_user_id"]) for r in cur.fetchall()]
@@ -243,7 +253,7 @@ def ensure_can_upload(request: Request, resolved_owner: str) -> None:
                 try:
                     cur.execute(
                         """SELECT can_upload FROM tracking_workspace_shares
-                           WHERE owner_user_id = %s AND member_email = %s""",
+                           WHERE owner_user_id = %s AND member_email = %s AND accepted_at IS NOT NULL""",
                         (resolved_owner, email))
                     row = cur.fetchone()
                     if row is not None and row.get("can_upload") is False:
@@ -363,16 +373,17 @@ def my_staff(request: Request, owner: str = Depends(_gate)):
         # has one source of truth going forward.
         for e in _legacy_seat_emails(cur, owner):
             cur.execute(
-                """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
-                   VALUES (%s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
+                """INSERT INTO tracking_workspace_shares (owner_user_id, member_email, accepted_at)
+                   VALUES (%s, %s, NOW()) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
                 (owner, e))
         cur.execute(
-            "SELECT member_email AS email, can_upload, created_at::date AS added "
+            "SELECT member_email AS email, can_upload, created_at::date AS added, accepted_at "
             "FROM tracking_workspace_shares "
             "WHERE owner_user_id = %s ORDER BY created_at", (owner,))
         for r in cur.fetchall():
             members[r["email"]] = {"email": r["email"], "data": True,
                                    "can_upload": r["can_upload"] is not False,
+                                   "pending": r.get("accepted_at") is None,
                                    "added": r["added"].isoformat() if r["added"] else None}
         # Is the caller viewing a workspace someone shared with THEM?
         viewing = resolve_workspace(request, owner) != owner
@@ -399,30 +410,97 @@ def my_staff_add(body: ShareAdd, request: Request, owner: str = Depends(_gate)):
         if (cur.fetchone()["n"] or 0) >= MAX_SHARE_EMAILS:
             raise HTTPException(status_code=400,
                                 detail=f"Your staff list is limited to {MAX_SHARE_EMAILS} coaches.")
+        # An INVITATION: the row stays pending (accepted_at NULL) until the
+        # invited coach accepts it from their own portal. Nothing about their
+        # account changes before that (no workspace redirect, no data merge).
         cur.execute(
             """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
                VALUES (%s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
             (owner, email))
-        # If this coach already has an account with their own uploads (and
-        # isn't a head coach with a staff of their own), fold their data
-        # into this workspace right away.
+        conn.commit()
+    invalidate_share_cache()
+    return {"status": "invited", "email": email, "pending": True}
+
+
+# ── Invitations (member side) ─────────────────────────────────────
+
+def _email_for_user_id(cur, user_id: str):
+    try:
+        cur.execute("SELECT email FROM auth.users WHERE id = %s::uuid LIMIT 1", (user_id,))
+        row = cur.fetchone()
+        return (row["email"] or "").lower() if row else None
+    except Exception:
+        return None
+
+
+@router.get("/portal/my-invites")
+def my_invites(request: Request, owner: str = Depends(_gate)):
+    """Pending staff invitations addressed to the signed-in coach."""
+    email = _caller_email(request)
+    if not email:
+        return {"invites": []}
+    out = []
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_table(cur)
+        cur.execute(
+            """SELECT id, owner_user_id, created_at::date AS invited
+               FROM tracking_workspace_shares
+               WHERE member_email = %s AND accepted_at IS NULL ORDER BY created_at DESC""",
+            (email,))
+        for r in cur.fetchall():
+            out.append({"id": r["id"], "owner_email": _email_for_user_id(cur, str(r["owner_user_id"])),
+                        "invited": r["invited"].isoformat() if r["invited"] else None})
+    return {"invites": out}
+
+
+@router.post("/portal/my-invites/{share_id}/accept")
+def my_invite_accept(share_id: int, request: Request, owner: str = Depends(_gate)):
+    """Join the inviting coach's staff. The member's OWN uploads are folded into
+    that workspace only now, with their consent (per Nate 2026-08-18 the staff
+    sees one pool), and never when the member runs a staff of their own."""
+    email = _caller_email(request)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_table(cur)
+        cur.execute("SELECT owner_user_id FROM tracking_workspace_shares WHERE id = %s AND member_email = %s",
+                    (share_id, email))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Invitation not found.")
+        target = str(row["owner_user_id"])
+        cur.execute("UPDATE tracking_workspace_shares SET accepted_at = NOW() WHERE id = %s", (share_id,))
         merged = False
-        member_id = _user_id_for_email(cur, email)
-        if member_id and member_id != owner:
+        if target != owner:
             try:
                 cur.execute(
-                    """SELECT 1 FROM tracking_workspace_shares WHERE owner_user_id = %s
+                    """SELECT 1 FROM tracking_workspace_shares WHERE owner_user_id = %s AND accepted_at IS NOT NULL
                        UNION SELECT 1 FROM coach_staff_seats WHERE owner_user_id = %s LIMIT 1""",
-                    (member_id, member_id))
+                    (owner, owner))
                 if not cur.fetchone():
-                    merge_member_data(cur, member_id, owner)
+                    merge_member_data(cur, owner, target)
                     merged = True
             except Exception:
                 conn.rollback()
                 cur = conn.cursor()
+                cur.execute("UPDATE tracking_workspace_shares SET accepted_at = NOW() WHERE id = %s", (share_id,))
         conn.commit()
     invalidate_share_cache()
-    return {"status": "ok", "email": email, "merged": merged}
+    return {"status": "accepted", "merged": merged}
+
+
+@router.post("/portal/my-invites/{share_id}/decline")
+def my_invite_decline(share_id: int, request: Request, owner: str = Depends(_gate)):
+    email = _caller_email(request)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_table(cur)
+        cur.execute("DELETE FROM tracking_workspace_shares WHERE id = %s AND member_email = %s AND accepted_at IS NULL",
+                    (share_id, email))
+        deleted = cur.rowcount
+        conn.commit()
+    invalidate_share_cache()
+    return {"status": "declined", "deleted": deleted}
 
 
 class SharePatch(BaseModel):

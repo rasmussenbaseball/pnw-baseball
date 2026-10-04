@@ -13,6 +13,37 @@ async function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+// Invitations addressed to the signed-in coach. A head coach adding your
+// email creates an invite; nothing about your account changes until you
+// accept it here (your own uploads then join that staff's shared pool).
+function StaffInvites({ onChanged }) {
+  const { data, refetch } = useApi('/portal/my-invites')
+  const [busy, setBusy] = useState(null)
+  const invites = data?.invites || []
+  if (!invites.length) return null
+  async function act(id, verb) {
+    setBusy(id)
+    try {
+      await fetch(`/api/v1/portal/my-invites/${id}/${verb}`, { method: 'POST', headers: await authHeaders() })
+      refetch(); onChanged?.()
+    } finally { setBusy(null) }
+  }
+  return (
+    <div className="mb-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 ring-1 ring-amber-200 dark:ring-amber-800 px-4 py-3">
+      <div className="text-[13px] font-semibold text-amber-900 dark:text-amber-200">Staff invitation{invites.length > 1 ? 's' : ''}</div>
+      {invites.map(inv => (
+        <div key={inv.id} className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-amber-900/90 dark:text-amber-200/90">
+          <span><span className="font-mono">{inv.owner_email || 'A coach'}</span> invited you to join their staff. Accepting shares their TrackMan, Rapsodo and Camp data with you, and folds any uploads of your own into that shared pool.</span>
+          <button disabled={busy === inv.id} onClick={() => act(inv.id, 'accept')}
+            className="rounded-md bg-portal-purple text-white text-[11px] font-semibold px-2.5 py-1 disabled:opacity-50">Accept</button>
+          <button disabled={busy === inv.id} onClick={() => act(inv.id, 'decline')}
+            className="rounded-md border border-amber-300 text-amber-800 dark:text-amber-200 text-[11px] font-semibold px-2.5 py-1 disabled:opacity-50">Decline</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function StaffManager({ variant = 'card' }) {
   const { user } = useAuth()
   const { data, refetch } = useApi(user ? '/portal/my-staff' : null)
@@ -72,8 +103,8 @@ export default function StaffManager({ variant = 'card' }) {
     )
   }
 
-  const seatsLine = `Add up to ${max} coaches to share your TrackMan Suite, Rapsodo Lab, and Camp Report
-       data. Use each coach's Uploads toggle to control who can add or delete CSVs.`
+  const seatsLine = `Invite up to ${max} coaches to share your TrackMan Suite, Rapsodo Lab, and Camp Report
+       data. Each coach accepts the invitation from their own portal. Use the Uploads toggle to control who can add or delete CSVs.`
 
   const inner = (
     <>
@@ -96,6 +127,10 @@ export default function StaffManager({ variant = 'card' }) {
                 className="flex items-center gap-2 rounded-full bg-gray-50 dark:bg-gray-900/40
                            ring-1 ring-gray-200 dark:ring-gray-700 pl-3 pr-2 py-1">
               <span className="text-[12px] font-mono text-gray-700 dark:text-gray-200">{m.email}</span>
+              {m.pending && (
+                <span title="Invited; waiting for this coach to accept in their portal"
+                      className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Invited</span>
+              )}
               <button onClick={() => toggleUpload(m)}
                 title={m.can_upload !== false
                   ? 'Can upload and delete CSVs — click to make view-only'
@@ -121,7 +156,7 @@ export default function StaffManager({ variant = 'card' }) {
                      dark:bg-gray-900 px-3 py-1.5 text-sm" />
         <button onClick={add} disabled={busy || !email.trim() || members.length >= max}
           className="rounded-lg bg-portal-purple text-white text-sm font-semibold px-3.5 py-1.5 disabled:opacity-50">
-          {busy ? 'Adding…' : 'Add coach'}
+          {busy ? 'Inviting…' : 'Invite coach'}
         </button>
       </div>
       {error && <div className="mt-1.5 text-[12px] text-rose-600">{error}</div>}
@@ -130,15 +165,21 @@ export default function StaffManager({ variant = 'card' }) {
 
   if (variant === 'banner') {
     return (
-      <div className="mt-4 rounded-xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700
-                      border-l-4 border-portal-accent px-4 sm:px-5 py-3.5">
-        {inner}
+      <div className="mt-4">
+        <StaffInvites onChanged={refetch} />
+        <div className="rounded-xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700
+                        border-l-4 border-portal-accent px-4 sm:px-5 py-3.5">
+          {inner}
+        </div>
       </div>
     )
   }
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-      {inner}
+    <div>
+      <StaffInvites onChanged={refetch} />
+      <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+        {inner}
+      </div>
     </div>
   )
 }

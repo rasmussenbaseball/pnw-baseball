@@ -398,7 +398,7 @@ class SessionTypePatch(BaseModel):
 
 
 @router.patch("/trackman/sessions/{session_id}/type")
-def set_session_type(session_id: int, body: SessionTypePatch, owner: str = Depends(_gate)):
+def set_session_type(session_id: int, body: SessionTypePatch, owner: str = Depends(_write_gate)):
     """Reclassify a session (the auto-detector can't tell a scrimmage vs an
     intrasquad, and mis-coded games happen). Affects every view's context
     filter immediately."""
@@ -3299,7 +3299,7 @@ class SessionNotes(BaseModel):
 
 
 @router.patch("/trackman/sessions/{session_id}/notes")
-def save_session_notes(session_id: int, body: SessionNotes, owner: str = Depends(_gate)):
+def save_session_notes(session_id: int, body: SessionNotes, owner: str = Depends(_write_gate)):
     """Staff highlights/concerns on a session (shown in Session Review and
     its exports)."""
     with get_connection() as conn:
@@ -3476,7 +3476,7 @@ class PitchTypeOverride(_BM):
 
 
 @router.patch("/trackman/pitches/{pitch_id}/type")
-def override_pitch_type(pitch_id: int, body: PitchTypeOverride, owner: str = Depends(_gate)):
+def override_pitch_type(pitch_id: int, body: PitchTypeOverride, owner: str = Depends(_write_gate)):
     """Manually re-tag one pitch. Overrides win over the auto classifier and
     the TrackMan tags everywhere (arsenals, grades, labs, leaderboards)."""
     if body.pitch_type is not None and body.pitch_type not in SUITE_TYPES:
@@ -3501,7 +3501,7 @@ class GroupRetag(_BM):
 
 
 @router.patch("/trackman/pitchers/retag-group")
-def retag_pitch_group(body: GroupRetag, owner: str = Depends(_gate)):
+def retag_pitch_group(body: GroupRetag, owner: str = Depends(_write_gate)):
     """Rename ONE pitch type for ONE pitcher across the whole corpus — the
     one-click answer to a shape suggestion ("his slider rides like a cutter").
     Writes override_pitch_type on every pitch whose effective type is

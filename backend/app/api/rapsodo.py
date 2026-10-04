@@ -422,7 +422,7 @@ class LinkBody(BaseModel):
 
 @router.post("/portal/rapsodo/players/{rapsodo_player_id}/link")
 def link_rapsodo_player(rapsodo_player_id: str, body: LinkBody,
-                        owner: str = Depends(_ws_gate)):
+                        owner: str = Depends(_ws_write_gate)):
     """Link a Rapsodo player to a site player profile so their spring + summer stats
     show on the Rapsodo page. `players_id: null` unlinks (e.g. an incoming freshman or
     redshirt who has no profile yet). Stamps the linked player's team_id too."""
@@ -484,7 +484,7 @@ class LabelBody(BaseModel):
 
 
 @router.post("/portal/rapsodo/pitches/{pitch_id}/label")
-def relabel_pitch(pitch_id: int, body: LabelBody, owner: str = Depends(_ws_gate)):
+def relabel_pitch(pitch_id: int, body: LabelBody, owner: str = Depends(_ws_write_gate)):
     """Click-to-reclassify: set (or clear) a coach's manual pitch label on one
     pitch. The override persists forever — the auto classifier never overwrites it.
     Re-derives the player's pitches immediately so the profile reflects the change."""
@@ -517,7 +517,7 @@ class ArsenalBody(BaseModel):
 
 @router.post("/portal/rapsodo/players/{rapsodo_player_id}/arsenal")
 def set_arsenal(rapsodo_player_id: str, body: ArsenalBody,
-                owner: str = Depends(_ws_gate)):
+                owner: str = Depends(_ws_write_gate)):
     """Guided arsenal: the coach declares which pitch types a pitcher throws, and
     the classifier buckets every pitch into ONLY those types (snapping outliers to
     the nearest declared shape). An empty list clears it (back to auto). Re-derives

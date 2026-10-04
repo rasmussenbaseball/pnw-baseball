@@ -274,6 +274,79 @@ _CAREER_PITCHING_POOL = [
 ]
 
 
+# ── Custom-criteria sanitizer (security) ─────────────────────────────
+# The random/custom grid endpoints accept criteria dicts from the client and
+# the stat helpers interpolate `stat`, `q_stat`, `numerator`, `denominator`
+# and `multiplier` straight into SQL. Only the operator was whitelisted, so
+# an unauthenticated POST could run arbitrary SQL. Every client-supplied
+# criteria now passes through here: identifiers must be real numeric
+# columns of the stat table, numbers must be numbers, types must be known.
+_STAT_TYPES = {"season_batting", "career_batting", "season_pitching", "career_pitching"}
+_TEAM_TYPES = {"division", "team", "conference", "dual_team", "small_school", "any"}
+_COLS_CACHE: dict = {}
+
+
+def _numeric_columns(cur, table):
+    cols = _COLS_CACHE.get(table)
+    if cols is None:
+        cur.execute(
+            """SELECT column_name FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = %s
+                 AND data_type IN ('integer','bigint','smallint','numeric','real','double precision')""",
+            (table,))
+        cols = {r["column_name"] for r in cur.fetchall()}
+        _COLS_CACHE[table] = cols
+    return cols
+
+
+def _sanitize_criteria(cur, c):
+    """Return a cleaned copy of a client-supplied criteria dict or raise 400."""
+    if not isinstance(c, dict):
+        raise HTTPException(status_code=400, detail="Bad criteria")
+    ctype = str(c.get("type", ""))
+    out = {"type": ctype, "label": str(c.get("label", ""))[:80], "category": str(c.get("category", ""))[:40]}
+    if ctype in _STAT_TYPES:
+        table = "batting_stats" if "batting" in ctype else "pitching_stats"
+        allowed = _numeric_columns(cur, table)
+        def ident(key, required=False):
+            v = c.get(key)
+            if v in (None, ""):
+                if required:
+                    raise HTTPException(status_code=400, detail=f"Bad criteria: {key}")
+                return None
+            v = str(v)
+            if not re.fullmatch(r"[a-z_][a-z0-9_]{0,40}", v) or v not in allowed:
+                raise HTTPException(status_code=400, detail=f"Bad criteria: unknown stat {v!r}")
+            return v
+        def num(key, default=None):
+            v = c.get(key, default)
+            if v is None:
+                return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail=f"Bad criteria: {key}")
+        out["stat"] = ident("stat", required=True)
+        out["operator"] = c.get("operator") if c.get("operator") in (">=", ">", "<=", "<", "=") else ">="
+        out["threshold"] = num("threshold", 0)
+        out["qualified"] = bool(c.get("qualified", False))
+        out["q_stat"] = ident("q_stat") or ""
+        out["q_min"] = num("q_min", 0) or 0
+        if c.get("career_rate"):
+            out["career_rate"] = True
+            out["numerator"] = ident("numerator", required=True)
+            out["denominator"] = ident("denominator", required=True)
+            out["multiplier"] = num("multiplier", 1) or 1
+        return out
+    if ctype in _TEAM_TYPES:
+        # team values are bound as SQL parameters downstream; cap their size
+        for k in ("value", "team_a", "team_b"):
+            if k in c:
+                out[k] = str(c.get(k) or "")[:80]
+        return out
+    raise HTTPException(status_code=400, detail=f"Bad criteria type {ctype!r}")
+
+
 # --------------- Grid Validation ---------------
 
 def _count_players_for_cell(cur, team_criteria, stat_criteria):
@@ -1055,9 +1128,15 @@ def grid_check_custom(data: dict = Body(...)):
     col_criteria = data.get("col_criteria")
     if not player_id or not row_criteria or not col_criteria:
         raise HTTPException(status_code=400, detail="Missing player_id, row_criteria, or col_criteria")
+    try:
+        player_id = int(player_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Bad player_id")
 
     with get_connection() as conn:
         cur = conn.cursor()
+        row_criteria = _sanitize_criteria(cur, row_criteria)
+        col_criteria = _sanitize_criteria(cur, col_criteria)
         return _do_grid_check(cur, player_id, row_criteria, col_criteria)
 
 
@@ -1073,6 +1152,12 @@ def grid_solutions(data: dict = Body(...)):
     columns = data.get("columns")
     if not rows or not columns:
         raise HTTPException(status_code=400, detail="Missing rows or columns")
+    if len(rows) > 6 or len(columns) > 6:
+        raise HTTPException(status_code=400, detail="Too many rows or columns")
+    with get_connection() as _sc:
+        _cur = _sc.cursor()
+        rows = [_sanitize_criteria(_cur, c) for c in rows]
+        columns = [_sanitize_criteria(_cur, c) for c in columns]
 
     stat_types = {"season_batting", "career_batting", "season_pitching", "career_pitching"}
 
@@ -1140,6 +1225,10 @@ def grid_validate_custom(data: dict = Body(...)):
     columns = data.get("columns")
     if not rows or not columns or len(rows) != 3 or len(columns) != 3:
         raise HTTPException(status_code=400, detail="Need exactly 3 rows and 3 columns")
+    with get_connection() as _sc:
+        _cur = _sc.cursor()
+        rows = [_sanitize_criteria(_cur, c) for c in rows]
+        columns = [_sanitize_criteria(_cur, c) for c in columns]
 
     stat_types = {"season_batting", "career_batting", "season_pitching", "career_pitching"}
 
