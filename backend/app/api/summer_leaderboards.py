@@ -80,8 +80,8 @@ def summer_batting_leaderboard(
     min_ab: int = Query(0, description="Minimum at-bats"),
     sort_by: str = Query("batting_avg", description="Sort column"),
     sort_dir: str = Query("desc", description="Sort direction (asc/desc)"),
-    limit: int = Query(50, description="Results per page"),
-    offset: int = Query(0, description="Pagination offset"),
+    limit: int = Query(50, ge=1, le=500, description="Results per page"),
+    offset: int = Query(0, ge=0, le=5000, description="Pagination offset"),
 ):
     """Summer league batting leaderboard - WCL, PIL, or all."""
     allowed_sort = {
@@ -183,8 +183,8 @@ def summer_pitching_leaderboard(
     min_ip: float = Query(0, description="Minimum innings pitched"),
     sort_by: str = Query("era", description="Sort column"),
     sort_dir: str = Query("asc", description="Sort direction"),
-    limit: int = Query(50, description="Results per page"),
-    offset: int = Query(0, description="Pagination offset"),
+    limit: int = Query(50, ge=1, le=500, description="Results per page"),
+    offset: int = Query(0, ge=0, le=5000, description="Pagination offset"),
 ):
     """Summer league pitching leaderboard - WCL, PIL, or all."""
     allowed_sort = {
@@ -277,7 +277,7 @@ def summer_pitching_leaderboard(
 def summer_stat_leaders(
     season: int = Query(..., description="Season year"),
     league: str = Query("WCL", description="League abbreviation"),
-    limit: int = Query(3, description="Leaders per category"),
+    limit: int = Query(3, ge=1, le=500, description="Leaders per category"),
 ):
     """Compact summer league stat leaders for homepage widget."""
     with get_connection() as conn:

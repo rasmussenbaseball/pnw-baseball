@@ -1024,7 +1024,7 @@ def decision_cards(opp, own, peers):
 
     cs = field.get("catcher_cs_pct")
     if cs is not None and cs < 0.22 and own_off.get("sb_success") >= 0.70:
-        add("Green light the run game?", "Yes, selectively", "High", f"Opponent catcher CS% is {fmt_pct(cs)} and our 2026 SB success is {fmt_pct(own_off.get('sb_success'))}. Pick counts, jumps, and the right runners.")
+        add("Green light the run game?", "Yes, selectively", "High", f"Opponent catcher CS% is {fmt_pct(cs)} and our SB success rate is {fmt_pct(own_off.get('sb_success'))}. Pick counts, jumps, and the right runners.")
     elif cs is not None and cs > 0.34:
         add("Green light the run game?", "Be careful", "Medium", f"Opponent catcher CS% is {fmt_pct(cs)}. Run only with clear jumps, plus runners, or a pitcher-time edge.")
     else:

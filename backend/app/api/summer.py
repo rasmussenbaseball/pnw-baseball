@@ -3992,8 +3992,8 @@ def _resolve_spring_display(cur, spids, season):
 @router.get("/summer/top-performers")
 @cached_endpoint(ttl_seconds=600)
 def summer_top_performers(
-    start: str = Query(..., description="Start date YYYY-MM-DD (inclusive)"),
-    end: str = Query(..., description="End date YYYY-MM-DD (inclusive)"),
+    start: date = Query(..., description="Start date YYYY-MM-DD (inclusive)"),
+    end: date = Query(..., description="End date YYYY-MM-DD (inclusive)"),
     season: int = Query(SUMMER_SEASON),
     league: str = Query("WCL"),
 ):
@@ -4001,7 +4001,7 @@ def summer_top_performers(
     Performers graphic. Same row shape as /games/weekly-top-performers so the
     graphic renderer is shared. Summer players have no headshots, so headshot_url
     is null (cards fall back to the team logo / placeholder)."""
-    ds, de = date.fromisoformat(start), date.fromisoformat(end)
+    ds, de = start, end
     empty = {"start": start, "end": end, "top_hitters": [], "top_pitchers": [], "game_count": 0}
     with get_connection() as conn:
         cur = conn.cursor()
