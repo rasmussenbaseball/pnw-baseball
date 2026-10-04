@@ -61,8 +61,6 @@ from ..stats.projections import (
     simulate_nwac_championship_odds,
     resolve_known_nwac_results,
     pct_to_american,
-    NWAC_2026_CHAMP_SEEDS,
-    NWAC_2026_CHAMP_HOST_ID,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )
@@ -1238,6 +1236,7 @@ class BuildLineupRequest(BaseModel):
 
 
 @router.get("/portal/team-scouting")
+@cached_endpoint(ttl_seconds=900)   # conference-wide baselines: multi-second per call
 def portal_team_scouting(
     team_id: int = Query(..., description="Team to scout"),
     season: int = Query(CURRENT_SEASON, description="Season year"),
@@ -1253,6 +1252,7 @@ def portal_team_scouting(
 
 
 @router.get("/portal/advance-report")
+@cached_endpoint(ttl_seconds=900)   # conference-wide baselines: multi-second per call
 def portal_advance_report(
     team_id: int = Query(..., description="Opponent team to scout"),
     season: int = Query(CURRENT_SEASON, description="Season year"),
@@ -1271,6 +1271,7 @@ def portal_advance_report(
 
 
 @router.get("/portal/splits")
+@cached_endpoint(ttl_seconds=900)   # conference-wide baselines: multi-second per call
 def portal_splits(
     team_id: int = Query(..., description="Team to explore"),
     side: str = Query("hitters", description="hitters | pitchers"),
@@ -1315,6 +1316,7 @@ def portal_count_grid(
 
 
 @router.get("/portal/bullpen-sheet/{team_id}")
+@cached_endpoint(ttl_seconds=900)   # conference-wide baselines: multi-second per call
 def portal_bullpen_sheet(
     team_id: int,
     season: int = Query(CURRENT_SEASON, description="Season year"),
@@ -1510,6 +1512,7 @@ def list_commitments(
 
 
 @router.get("/portal/scouting-sheet/{team_id}")
+@cached_endpoint(ttl_seconds=900)   # conference-wide baselines: multi-second per call
 def portal_scouting_sheet(
     team_id: int,
     season: int = Query(CURRENT_SEASON, description="Season year"),

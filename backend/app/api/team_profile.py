@@ -152,12 +152,11 @@ def _team_raw(cur, team_id, season, division_level, overrides, portal):
 
 
 def _portal_ids(cur):
-    """player_ids currently in the transfer portal (auto-departing)."""
-    try:
-        cur.execute("SELECT player_id FROM transfer_portal_members")
-        return {r["player_id"] for r in cur.fetchall()}
-    except Exception:
-        return set()
+    """player_ids currently in the transfer portal (auto-departing). No
+    try/except: swallowing a failed SELECT left the transaction aborted and
+    the NEXT query failed far from the cause."""
+    cur.execute("SELECT player_id FROM transfer_portal_members")
+    return {r["player_id"] for r in cur.fetchall()}
 
 
 def _division_raw(cur, division_level, season, overrides, portal):
@@ -530,7 +529,7 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
         e = {
             "name": r["name"],
             "pos": r["pos"] or ("P" if side == "pit" else "-"),
-            "class": proj.get("class_2027") or r["class_last"] or "-",
+            "class": proj.get(f"class_{proj_season}") or r["class_last"] or "-",
             "incoming": incoming, "kind": kind,
             "from_school": proj.get("from_school") or r.get("from_team"),
             "no_data": no_data,
@@ -588,8 +587,8 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
             _add_incoming(nm, r["position"], None, None,
                           cls=_class_from_grad(r["grad_year"], proj_season), incoming=False)
     # 2) curated incoming transfers
-    cur.execute("SELECT name, from_school, position FROM incoming_transfers WHERE to_team_id = %s",
-                (team_id,))
+    cur.execute("SELECT name, from_school, position FROM incoming_transfers WHERE to_team_id = %s AND COALESCE(season, %s) = %s",
+                (team_id, NEXT_SEASON, proj_season))
     for r in cur.fetchall():
         _add_incoming(r["name"], r["position"], "Transfer", r["from_school"], incoming=True)
     # 3) players who committed to this team via the players table (is_committed +

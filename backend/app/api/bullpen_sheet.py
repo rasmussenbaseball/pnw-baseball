@@ -181,7 +181,7 @@ def _fetch_pitcher_overall(cur, player_ids, season):
             'whip': float(r['whip']) if r['whip'] is not None else None,
             'k_pct': float(r['ks_kpct']) if r['ks_kpct'] is not None else None,
             'bb_pct': float(r['ks_bbpct']) if r['ks_bbpct'] is not None else None,
-            'hr_per_pa': (r['home_runs_allowed'] / bf) if bf else None,
+            'hr_per_pa': ((r['home_runs_allowed'] or 0) / bf) if bf else None,
             'baa': baa,
         }
     return out

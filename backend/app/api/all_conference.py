@@ -60,8 +60,6 @@ from ..stats.projections import (
     simulate_nwac_championship_odds,
     resolve_known_nwac_results,
     pct_to_american,
-    NWAC_2026_CHAMP_SEEDS,
-    NWAC_2026_CHAMP_HOST_ID,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )
@@ -442,7 +440,7 @@ def all_conference(
             pid, p["team_id"], p["first_name"], p["last_name"],
             p["headshot_url"], p["listed_position"], p.get("year_in_school")
         )
-        ip = float(p.get("innings_pitched") or 0)
+        ip = innings_to_outs(p.get("innings_pitched") or 0) / 3.0   # true innings (6.2 -> 6.667)
         pwar = float(p.get("pitching_war") or 0)
         rec.update({
             "ip": ip,
@@ -1151,7 +1149,7 @@ def _get_league_constants(cur, season: int, division_level: str) -> dict:
         league_ip=total_ip,
     )
 
-    ip_decimal = innings_to_outs(total_ip) / 3.0 if total_ip else 1
+    ip_decimal = total_ip if total_ip else 1   # total_ip is already true decimal innings
     lg_fip = (
         (13 * pit_hr + 3 * (pit_bb + pit_hbp) - 2 * pit_k) / ip_decimal
     ) + fip_const

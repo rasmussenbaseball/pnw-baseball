@@ -117,7 +117,7 @@ def sitemap_players():
         cur.execute("""
             SELECT p.id FROM players p
             WHERE COALESCE(p.is_phantom, false) = false
-              AND p.id NOT IN (SELECT linked_id FROM player_links)
+              AND NOT EXISTS (SELECT 1 FROM player_links pl WHERE pl.linked_id = p.id)
               AND (EXISTS (SELECT 1 FROM batting_stats b WHERE b.player_id = p.id)
                 OR EXISTS (SELECT 1 FROM pitching_stats s WHERE s.player_id = p.id))
             ORDER BY p.id

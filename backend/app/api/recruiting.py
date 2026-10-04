@@ -22,7 +22,7 @@ from ..models.database import get_connection
 from ..cache import cached_endpoint
 from ..config import CURRENT_SEASON
 from ..config import NEXT_SEASON, RECRUITING_GRAD_YEAR
-from .auth import require_admin
+from .auth import require_admin, require_developer
 from .leverage import compute_li
 from .lineup_helper import (
     compute_team_lineup_helper,
@@ -78,8 +78,6 @@ from ..stats.projections import (
     simulate_nwac_championship_odds,
     resolve_known_nwac_results,
     pct_to_american,
-    NWAC_2026_CHAMP_SEEDS,
-    NWAC_2026_CHAMP_HOST_ID,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )
@@ -166,7 +164,7 @@ def get_recruiting_guide(team_id: int):
                 ) s
             """, (team_id, team_id))
             max_season_row = cur.fetchone()
-            current_season = max_season_row['max_season'] if max_season_row else CURRENT_SEASON
+            current_season = (max_season_row or {}).get('max_season') or CURRENT_SEASON   # MAX() always returns a row
 
             # Use roster_year to identify current roster players.
             # If roster_year is populated, use it; otherwise fall back to
@@ -1199,7 +1197,7 @@ def recruiting_nwac_advancement(season: int = CURRENT_SEASON):
                       OR EXISTS(SELECT 1 FROM batting_stats b WHERE b.player_id=p.id AND b.season=%s)
                       OR EXISTS(SELECT 1 FROM pitching_stats ps WHERE ps.player_id=p.id AND ps.season=%s))
                GROUP BY t.short_name""",
-            (CURRENT_SEASON, CURRENT_SEASON, CURRENT_SEASON))
+            (season, season, season))
         for r in cur.fetchall():
             if r["team"] in teams:
                 teams[r["team"]]["soph_count"] = r["soph"]
@@ -1807,12 +1805,6 @@ def _transfer_commits(cur, arrival_season=None):
     # Johnstone from Vanderbilt → Oregon). Name-only, no stats, so they list
     # unrated. Managed via the Commitment Editor (incoming_transfers table);
     # the same rows power the destination team page's "Incoming Transfers".
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS incoming_transfers (
-            id SERIAL PRIMARY KEY, name TEXT NOT NULL, from_school TEXT,
-            to_team_id INTEGER NOT NULL, position TEXT, added_by TEXT,
-            added_at TIMESTAMP NOT NULL DEFAULT now())
-    """)
     if arrival_season:
         cur.execute("SELECT name, from_school, to_team_id, position FROM incoming_transfers WHERE COALESCE(season, %s) = %s",
                     (NEXT_SEASON, arrival_season))

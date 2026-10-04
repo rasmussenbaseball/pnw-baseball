@@ -42,7 +42,7 @@ _METRICS = [
 _COLS = [c for _, c in _METRICS]
 
 
-def _ensure_table(cur):
+def _ensure_table_impl(cur):
     cur.execute(f"""
         CREATE TABLE IF NOT EXISTS blast_stats (
             id            SERIAL PRIMARY KEY,
@@ -57,6 +57,20 @@ def _ensure_table(cur):
         )
     """)
     cur.execute("ALTER TABLE blast_stats ENABLE ROW LEVEL SECURITY")
+
+
+_ENSURE_TABLE_READY = False
+
+
+def _ensure_table(cur):
+    """Runs the DDL ONCE per process. CREATE/ALTER ... IF NOT EXISTS still take
+    an ACCESS EXCLUSIVE lock as a no-op, so doing it per request serialized
+    every reader behind editor/upload traffic (and self-deadlocked once)."""
+    global _ENSURE_TABLE_READY
+    if _ENSURE_TABLE_READY:
+        return
+    _ensure_table_impl(cur)
+    _ENSURE_TABLE_READY = True
 
 
 def _parse(text, filename):

@@ -222,7 +222,7 @@ def _aggregate_team_offense(cur, team_id, season):
     bb_pct = bb_total / pa if pa else 0
     k_pct = (so or 0) / pa if pa else 0
     hr_per_pa = (hr or 0) / pa if pa else 0
-    babip_denom = (ab - so - hr + sf) if (ab and so is not None and hr is not None) else 0
+    babip_denom = (ab - so - hr + (sf or 0)) if (ab and so is not None and hr is not None) else 0
     babip = (h - hr) / babip_denom if babip_denom else 0
 
     # wOBA from D3/NAIA-style linear weights (close enough for percentile use).
@@ -282,7 +282,7 @@ def _aggregate_team_pitching(cur, team_id, season):
     k_bb_ratio = (so / bb) if bb else (so if so else 0)
     k_pct = (so / bf) if bf else 0
     bb_pct = (bb / bf) if bf else 0
-    opp_avg = (h / (bf - bb - r.get('hbp', 0))) if (bf - bb - (r.get('hbp') or 0)) > 0 else 0
+    opp_avg = (h / (bf - bb - (r.get('hbp') or 0))) if (bf - bb - (r.get('hbp') or 0)) > 0 else 0
 
     # Team-level FIP/SIERA: weighted avg of player FIP / SIERA by IP
     cur.execute("""

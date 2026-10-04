@@ -66,7 +66,7 @@ def _team_games_played(cur, team_id: int, season: int) -> int:
         """
         SELECT COUNT(DISTINCT g.id) AS gp
         FROM games g
-        WHERE g.season = %s
+        WHERE g.season = %s AND g.status = 'final'
           AND (g.home_team_id = %s OR g.away_team_id = %s)
         """,
         (season, team_id, team_id),

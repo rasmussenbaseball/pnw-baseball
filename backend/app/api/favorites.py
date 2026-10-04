@@ -213,13 +213,17 @@ def favorites_dashboard(user_id: str = Depends(get_current_user), season: int = 
             """, (*all_pids, season))
             recent_pit = [dict(r) for r in cur.fetchall()]
             if recent_pit:
-                ip3 = sum(r["innings_pitched"] or 0 for r in recent_pit)
+                # innings are baseball notation (6.2 = 6 and 2/3): add in outs
+                def _outs(v):
+                    v = float(v or 0); w = int(v); return w * 3 + round((v - w) * 10)
+                outs3 = sum(_outs(r["innings_pitched"]) for r in recent_pit)
+                ip3 = outs3 / 3.0
                 er3 = sum(r["earned_runs"] or 0 for r in recent_pit)
                 k3 = sum(r["strikeouts"] or 0 for r in recent_pit)
                 bb3 = sum(r["walks"] or 0 for r in recent_pit)
                 p_data["last3_pitching"] = {
                     "games": len(recent_pit),
-                    "ip": round(ip3, 1),
+                    "ip": float(f"{outs3 // 3}.{outs3 % 3}"),
                     "era": round((er3 / ip3) * 9, 2) if ip3 > 0 else None,
                     "k": k3, "bb": bb3,
                     "recent": [
@@ -287,6 +291,8 @@ def favorites_dashboard(user_id: str = Depends(get_current_user), season: int = 
                     continue
                 seen.add(dk)
                 is_home = g["home_team_id"] == tid
+                if g["home_score"] is None or g["away_score"] is None:
+                    continue   # final row without scores (scorer gap): skip rather than crash
                 won = (g["home_score"] > g["away_score"]) if is_home else (g["away_score"] > g["home_score"])
                 last5.append({
                     "game_date": str(g["game_date"]),

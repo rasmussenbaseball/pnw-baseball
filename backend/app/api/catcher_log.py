@@ -51,7 +51,7 @@ _COLS = ("game_no", "row_no", "inning", "catcher", "batter", "pitcher", "count",
          "two_strike", "foul_balls", "pop_time", "grade", "note")
 
 
-def _ensure_table(cur):
+def _ensure_table_impl(cur):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS tm_catcher_log (
             id            SERIAL PRIMARY KEY,
@@ -74,6 +74,20 @@ def _ensure_table(cur):
         cur.execute(f"ALTER TABLE tm_catcher_log ADD COLUMN IF NOT EXISTS {col} {typ}")
     cur.execute("ALTER TABLE tm_catcher_log ENABLE ROW LEVEL SECURITY")
     cur.execute("CREATE INDEX IF NOT EXISTS tm_catcher_log_owner_date ON tm_catcher_log (owner_user_id, session_date)")
+
+
+_ENSURE_TABLE_READY = False
+
+
+def _ensure_table(cur):
+    """Runs the DDL ONCE per process. CREATE/ALTER ... IF NOT EXISTS still take
+    an ACCESS EXCLUSIVE lock as a no-op, so doing it per request serialized
+    every reader behind editor/upload traffic (and self-deadlocked once)."""
+    global _ENSURE_TABLE_READY
+    if _ENSURE_TABLE_READY:
+        return
+    _ensure_table_impl(cur)
+    _ENSURE_TABLE_READY = True
 
 
 def _count(v):

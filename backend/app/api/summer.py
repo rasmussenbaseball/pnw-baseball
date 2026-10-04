@@ -345,7 +345,7 @@ def _school_from_team(name, mascot):
     return name
 
 
-def _wcl_portal_member_ids(cur, season, restrict=None):
+def _wcl_portal_member_ids(cur, season, restrict=None, cycle=None):
     """Summer player_ids considered 'in the WCL portal' — the SAME set the WCL
     Transfer Portal Tracker (/summer/wcl-portal) shows:
 
@@ -357,18 +357,21 @@ def _wcl_portal_member_ids(cur, season, restrict=None):
     they can't drift apart. Pass `restrict` (an id iterable) to scope the
     auto-JUCO scan when resolving a single graphic.
     """
-    cur.execute(
-        """CREATE TABLE IF NOT EXISTS wcl_portal_members (
-             summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
-             position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
-    )
     if not season:
         cur.execute("SELECT summer_player_id FROM wcl_portal_members")
         return {int(r["summer_player_id"]) for r in cur.fetchall()}
-    # Membership is per summer: the 2026 list stays the 2026 list, the 2027
-    # list fills as players are added for that cycle.
-    cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE COALESCE(season, 2026) = %s", (season,))
+    # Membership is per portal CYCLE (the tracker year): the 2026 list stays
+    # the 2026 list, the 2027 list fills as players are added this fall.
+    # `season` is the SUMMER whose stats/rosters are read; the cycle defaults
+    # to it, and callers that render a summer (recap graphics, teaser) pass
+    # cycle=None to accept that summer's cycle or any later one, so a player
+    # added to the 2027 list in September still shows "Portal" on 2026 recaps.
+    if cycle is None:
+        cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE COALESCE(season, 2026) >= %s", (season,))
+    else:
+        cur.execute("SELECT summer_player_id FROM wcl_portal_members WHERE COALESCE(season, 2026) = %s", (cycle,))
     ids = {int(r["summer_player_id"]) for r in cur.fetchall()}
+    cycle_year = cycle if cycle is not None else season
     # Before the spring rosters of `season` are scraped, year_in_school still
     # reflects the previous spring, so "this summer's sophomores" are last
     # spring's freshmen.
@@ -391,7 +394,7 @@ def _wcl_portal_member_ids(cur, season, restrict=None):
           AND (EXISTS (SELECT 1 FROM summer_batting_stats b WHERE b.player_id = sp.id AND b.season = %s)
                OR EXISTS (SELECT 1 FROM summer_pitching_stats ps WHERE ps.player_id = sp.id AND ps.season = %s))
     """
-    params: list = [NEXT_SEASON, season + 1, soph_pattern, season, season]
+    params: list = [NEXT_SEASON, cycle_year + 1, soph_pattern, season, season]
     if restrict:
         sql += " AND spl.summer_player_id = ANY(%s)"
         params.append(sorted({int(x) for x in restrict if x}))
@@ -585,13 +588,15 @@ def compute_summer_cpi(league: str, season: int):
             """SELECT team_id, SUM(plate_appearances) pa, SUM(wrc_plus*plate_appearances) wsum
                FROM summer_batting_stats WHERE season=%s AND plate_appearances>0
                GROUP BY team_id""", (season,))
-        offense = {r["team_id"]: {"pa": r["pa"], "wrc_sum": float(r["wsum"])} for r in cur.fetchall()}
-        # innings_pitched is only a weighting term here; small notation error is fine.
+        # wrc_plus is NULL until the summer advanced-stats job has run (opening week)
+        offense = {r["team_id"]: {"pa": r["pa"], "wrc_sum": float(r["wsum"] or 0)} for r in cur.fetchall()}
+        # innings_pitched is baseball notation (6.2 = 6 and 2/3): weight by outs
         cur.execute(
-            """SELECT team_id, SUM(innings_pitched) ip, SUM(fip*innings_pitched) fsum
+            """SELECT team_id, SUM(ip_outs(innings_pitched)) / 3.0 ip,
+                      SUM(fip * ip_outs(innings_pitched)) / 3.0 fsum
                FROM summer_pitching_stats WHERE season=%s AND innings_pitched>0
                GROUP BY team_id""", (season,))
-        pitching = {r["team_id"]: {"ip": float(r["ip"]), "fip_sum": float(r["fsum"])} for r in cur.fetchall()}
+        pitching = {r["team_id"]: {"ip": float(r["ip"] or 0), "fip_sum": float(r["fsum"] or 0)} for r in cur.fetchall()}
 
         cur.execute("SELECT id, name, short_name, logo_url, division FROM summer_teams WHERE id = ANY(%s)", (team_ids,))
         meta = {r["id"]: dict(r) for r in cur.fetchall()}
@@ -3709,11 +3714,17 @@ def wcl_portal_players(
     bats: Optional[str] = None,
     throws: Optional[str] = None,
 ):
+    # `season` is the portal CYCLE (tracker year). Stats come from the most
+    # recent completed summer up to it: the 2027 list (fall 2026) shows 2026
+    # WCL numbers until summer 2027 is played. Same for the spring-school check.
+    cycle = season
+    summer = min(season, SUMMER_SEASON)
+    spring = min(season, CURRENT_SEASON)
     with get_connection() as _mc:
         # Portal membership = manual members + auto-included uncommitted JUCO
         # sophomores. Shared with the recap-graphic 'Portal' label via the same
         # helper so the two can't drift apart.
-        ids = sorted(_wcl_portal_member_ids(_mc.cursor(), season))
+        ids = sorted(_wcl_portal_member_ids(_mc.cursor(), summer, cycle=cycle))
     if not ids:
         return []
 
@@ -3785,7 +3796,7 @@ def wcl_portal_players(
                     AND COALESCE(p2.committed_season, %s) <= %s
               )
         """
-        params: list = [season, season, season, season, season, ids, NEXT_SEASON, season + 1]
+        params: list = [spring, spring, summer, summer, summer, ids, NEXT_SEASON, cycle + 1]
         if position:
             if position == "P":
                 query += " AND (sp.position IN ('RHP','LHP','P') OR sp.position LIKE 'RHP/%%' OR sp.position LIKE 'LHP/%%' OR sp.position LIKE 'P/%%')"
@@ -3854,11 +3865,6 @@ def wcl_portal_preview(limit: int = Query(3, ge=1, le=6),
     No tier gate (teaser only exposes name/pos/school/WAR, not the full tracker)."""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS wcl_portal_members (
-                 summer_player_id INTEGER PRIMARY KEY, from_school TEXT,
-                 position TEXT, added_by TEXT, added_at TIMESTAMP NOT NULL DEFAULT now())"""
-        )
         cur.execute(
             """
             SELECT sp.id, sp.first_name, sp.last_name, sp.position,

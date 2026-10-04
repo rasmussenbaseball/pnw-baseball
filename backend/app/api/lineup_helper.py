@@ -135,8 +135,8 @@ def _fetch_eligible_players(
                p.headshot_url, p.jersey_number,
                COUNT(*) FILTER (WHERE ge.result_type IS NOT NULL) AS pa
         FROM players p
-        LEFT JOIN game_events ge ON ge.batter_player_id = p.id
-        LEFT JOIN games g ON g.id = ge.game_id AND g.season = %s
+        JOIN game_events ge ON ge.batter_player_id = p.id
+        JOIN games g ON g.id = ge.game_id AND g.season = %s
         WHERE p.team_id = %s
         GROUP BY p.id
         HAVING COUNT(*) FILTER (WHERE ge.result_type IS NOT NULL) >= %s

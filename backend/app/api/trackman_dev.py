@@ -1087,7 +1087,7 @@ def hitter_dev(team: str | None = Query(None),
 
 # ── Physical measurables (height/weight/speed per player) ────────
 
-def _ensure_measurables(cur):
+def _ensure_measurables_impl(cur):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS tm_measurables (
             id            SERIAL PRIMARY KEY,
@@ -1101,6 +1101,20 @@ def _ensure_measurables(cur):
         )
     """)
     cur.execute("ALTER TABLE tm_measurables ENABLE ROW LEVEL SECURITY")
+
+
+_ENSURE_MEASURABLES_READY = False
+
+
+def _ensure_measurables(cur):
+    """Runs the DDL ONCE per process. CREATE/ALTER ... IF NOT EXISTS still take
+    an ACCESS EXCLUSIVE lock as a no-op, so doing it per request serialized
+    every reader behind editor/upload traffic (and self-deadlocked once)."""
+    global _ENSURE_MEASURABLES_READY
+    if _ENSURE_MEASURABLES_READY:
+        return
+    _ensure_measurables_impl(cur)
+    _ENSURE_MEASURABLES_READY = True
 
 
 @router.get("/trackman/measurables")

@@ -229,8 +229,11 @@ def _ensure_tables(cur):
             created_at    TIMESTAMPTZ DEFAULT NOW(),
             UNIQUE (owner_user_id, pitch_uid)
         )""")
-    cur.execute("ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS class_pitch_type TEXT")
-    cur.execute("ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS override_pitch_type TEXT")
+    cur.execute("""SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'tm_pitches' AND column_name = 'override_pitch_type'""")
+    if cur.fetchone() is None:
+        cur.execute("ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS class_pitch_type TEXT")
+        cur.execute("ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS override_pitch_type TEXT")
     # contact-position columns (added 2026-09): catalog-check first so the
     # no-op ALTER doesn't take an ACCESS EXCLUSIVE lock on every upload
     cur.execute("""SELECT column_name FROM information_schema.columns
@@ -3304,8 +3307,11 @@ def save_session_notes(session_id: int, body: SessionNotes, owner: str = Depends
     its exports)."""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("ALTER TABLE tm_sessions ADD COLUMN IF NOT EXISTS highlights TEXT")
-        cur.execute("ALTER TABLE tm_sessions ADD COLUMN IF NOT EXISTS concerns TEXT")
+        cur.execute("""SELECT 1 FROM information_schema.columns
+                       WHERE table_name = 'tm_sessions' AND column_name = 'concerns'""")
+        if cur.fetchone() is None:   # catalog check: no per-save ALTER lock
+            cur.execute("ALTER TABLE tm_sessions ADD COLUMN IF NOT EXISTS highlights TEXT")
+            cur.execute("ALTER TABLE tm_sessions ADD COLUMN IF NOT EXISTS concerns TEXT")
         cur.execute(
             "UPDATE tm_sessions SET highlights = %s, concerns = %s WHERE id = %s AND owner_user_id = %s",
             (body.highlights, body.concerns, session_id, owner),

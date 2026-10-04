@@ -53,7 +53,7 @@ def current_member(request: Request) -> dict:
     return {"user_id": user_id, "email": email}
 
 
-def _ensure_tables(cur):
+def _ensure_tables_impl(cur):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS recruiting_boards (
             id SERIAL PRIMARY KEY,
@@ -101,6 +101,20 @@ def _ensure_tables(cur):
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_rb_share_token ON recruiting_boards(share_token) WHERE share_token IS NOT NULL")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_rbp_board ON recruiting_board_players(board_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_rbm_email ON recruiting_board_members(LOWER(email))")
+
+
+_ENSURE_TABLES_READY = False
+
+
+def _ensure_tables(cur):
+    """Runs the DDL ONCE per process. CREATE/ALTER ... IF NOT EXISTS still take
+    an ACCESS EXCLUSIVE lock as a no-op, so doing it per request serialized
+    every reader behind editor/upload traffic (and self-deadlocked once)."""
+    global _ENSURE_TABLES_READY
+    if _ENSURE_TABLES_READY:
+        return
+    _ensure_tables_impl(cur)
+    _ENSURE_TABLES_READY = True
 
 
 def _board_row(cur, board_id: int):

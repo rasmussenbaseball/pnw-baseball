@@ -46,7 +46,7 @@ _PNW_STATES = ["WA", "OR", "ID", "MT", "BC"]
 # ─────────────────────────────────────────────────────────────────
 # Tables (created lazily — no migration step needed)
 # ─────────────────────────────────────────────────────────────────
-def _ensure_tables(cur):
+def _ensure_tables_impl(cur):
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS commitment_audit (
@@ -138,6 +138,22 @@ def _ensure_tables(cur):
 # ─────────────────────────────────────────────────────────────────
 # PNW team matching
 # ─────────────────────────────────────────────────────────────────
+
+
+_ENSURE_TABLES_READY = False
+
+
+def _ensure_tables(cur):
+    """Runs the DDL ONCE per process. CREATE/ALTER ... IF NOT EXISTS still take
+    an ACCESS EXCLUSIVE lock as a no-op, so doing it per request serialized
+    every reader behind editor/upload traffic (and self-deadlocked once)."""
+    global _ENSURE_TABLES_READY
+    if _ENSURE_TABLES_READY:
+        return
+    _ensure_tables_impl(cur)
+    _ENSURE_TABLES_READY = True
+
+
 def _pnw_teams(cur):
     cur.execute(
         """
@@ -903,8 +919,12 @@ def link_create(body: CreateLink, email: str = Depends(require_commitment_editor
             if canonical not in (a.id, b.id):
                 raise HTTPException(status_code=400, detail="canonical_id must be one of the two players")
             linked = b.id if canonical == a.id else a.id
-            # Guard: neither may already be a linked_id (avoid chains/cycles).
-            cur.execute("SELECT 1 FROM player_links WHERE linked_id IN (%s, %s)", (canonical, linked))
+            # Guard: neither may already be a linked_id, and the id being
+            # linked away must not be the canonical of OTHER rows (that made
+            # a chain: those players pointed at a non-canonical id and
+            # vanished from /search).
+            cur.execute("SELECT 1 FROM player_links WHERE linked_id IN (%s, %s) OR canonical_id = %s",
+                        (canonical, linked, linked))
             if cur.fetchone():
                 raise HTTPException(status_code=409, detail="One of these is already linked. Unlink it first.")
             cur.execute(

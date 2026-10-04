@@ -39,12 +39,16 @@ from .scouting_sheet import (
 # of truth and 2027 only updates the projections constant.
 # ─────────────────────────────────────────────────────────────────
 
-def _champ_team_ids():
+def _champ_team_ids(season=2026):
+    """The championship field for `season`. Only 2026 is known; any other
+    season returns [] so the sheet says "field not set" instead of ranking
+    this year's stats over last year's eight teams."""
+    if int(season) != 2026:
+        return []
     try:
         from app.stats.projections import NWAC_2026_CHAMP_SEEDS
         return list(NWAC_2026_CHAMP_SEEDS.values())
     except Exception:
-        # Fallback to the hardcoded 2026 field if the import shape changes.
         return [28, 44, 35, 52, 30, 38, 43, 27]
 
 
@@ -354,7 +358,7 @@ def build_nwac_tournament_sheet(cur, season):
         'cohort_size': {...},
       }
     """
-    team_ids = _champ_team_ids()
+    team_ids = _champ_team_ids(season)
     team_meta = _fetch_team_meta(cur, team_ids)
 
     raw_hitters = _fetch_hitters(cur, team_ids, season)

@@ -60,8 +60,6 @@ from ..stats.projections import (
     simulate_nwac_championship_odds,
     resolve_known_nwac_results,
     pct_to_american,
-    NWAC_2026_CHAMP_SEEDS,
-    NWAC_2026_CHAMP_HOST_ID,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )
@@ -121,9 +119,9 @@ def team_stats_agg(
                     CASE WHEN SUM(b.at_bats) > 0
                          THEN ROUND(SUM(b.hits)::numeric / SUM(b.at_bats), 3)
                          ELSE NULL END as avg,
-                    CASE WHEN SUM(b.plate_appearances) > 0
+                    CASE WHEN SUM(b.at_bats) + SUM(b.walks) + SUM(COALESCE(b.hit_by_pitch,0)) + SUM(COALESCE(b.sacrifice_flies,0)) > 0
                          THEN ROUND((SUM(b.hits) + SUM(b.walks) + SUM(COALESCE(b.hit_by_pitch,0)))::numeric
-                              / SUM(b.plate_appearances), 3)
+                              / (SUM(b.at_bats) + SUM(b.walks) + SUM(COALESCE(b.hit_by_pitch,0)) + SUM(COALESCE(b.sacrifice_flies,0))), 3)
                          ELSE NULL END as obp,
                     CASE WHEN SUM(b.at_bats) > 0
                          THEN ROUND((SUM(b.hits) + SUM(b.doubles) + 2*SUM(b.triples) + 3*SUM(b.home_runs))::numeric

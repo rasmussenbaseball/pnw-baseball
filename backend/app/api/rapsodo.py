@@ -130,9 +130,10 @@ async def upload_rapsodo(
                 text = raw.decode("utf-8-sig", errors="replace")
                 parsed = parse_text(text, f.filename or "upload.csv")
                 results.append(_ingest(cur, owner, parsed, mode))
+                conn.commit()        # per file: one bad file must not roll back the good ones
             except Exception as e:  # noqa: BLE001 — surface per-file, don't abort the batch
+                conn.rollback()      # clear the aborted transaction so later files can succeed
                 errors.append({"file": f.filename, "error": str(e)})
-        conn.commit()
     return {"uploaded": len(results), "results": results, "errors": errors}
 
 

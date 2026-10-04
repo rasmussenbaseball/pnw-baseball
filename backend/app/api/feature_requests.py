@@ -60,8 +60,6 @@ from ..stats.projections import (
     simulate_nwac_championship_odds,
     resolve_known_nwac_results,
     pct_to_american,
-    NWAC_2026_CHAMP_SEEDS,
-    NWAC_2026_CHAMP_HOST_ID,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )

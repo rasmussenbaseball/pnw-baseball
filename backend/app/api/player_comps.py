@@ -433,8 +433,22 @@ def _nw_pitcher_row(r):
     }
 
 
-@lru_cache(maxsize=8)
+_NW_POOL_CACHE: dict = {}
+_NW_POOL_TTL = 6 * 3600   # was lru_cache (never expired): nightly scrapes never showed up
+
+
 def _load_nw_pool(side, season):
+    key = (side, season)
+    hit = _NW_POOL_CACHE.get(key)
+    now = __import__("time").time()
+    if hit and hit[0] > now:
+        return hit[1]
+    rows = _load_nw_pool_uncached(side, season)
+    _NW_POOL_CACHE[key] = (now + _NW_POOL_TTL, rows)
+    return rows
+
+
+def _load_nw_pool_uncached(side, season):
     """All NW player-season rows for the side that have the metric columns. Cached
     per (side, season); the in-memory cache is reset on service restart."""
     with get_connection() as conn:
@@ -999,7 +1013,8 @@ def comps_showcase(seed: int = Query(0, ge=0, le=999)):
 
     # ── Reverse: a 2026 MLB hitter, rotated by seed → closest PNW seasons ──
     mlb = _eligible(_load_mlb_pool("hitter"), "hitter", include_small=True)
-    pool2026 = [m for m in mlb if (m.get("season") == 2026)] or mlb
+    latest = max((m.get("season") or 0) for m in mlb) if mlb else None
+    pool2026 = [m for m in mlb if (m.get("season") == latest)] or mlb
     if pool2026:
         pick = pool2026[seed % len(pool2026)]
         rc = compute_reverse_comps(pick["id"], "hitter", season, opts, limit=3)
