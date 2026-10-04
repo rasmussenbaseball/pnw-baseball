@@ -13,7 +13,7 @@ import {
   PITCHING_PBP_COLUMNS, PITCHING_PBP_PRESETS,
 } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 
 // PBP lives inside the View: pill bar as another preset alongside
 // Standard / Advanced / Strikeouts / Relievers.
@@ -24,7 +24,7 @@ export default function PitchingLeaderboard() {
     season: CURRENT_SEASON,
     min_ip: 20,
     _type: 'pitching',
-  })
+  }, { sanitize: (f) => ({ ...f, season: clampSeason(f?.season) }) })
   const [sortBy, setSortBy] = usePersistedState('pit_lb_sortBy', 'era')
   const [sortDir, setSortDir] = usePersistedState('pit_lb_sortDir', 'asc')
   const [pbpSortBy, setPbpSortBy] = usePersistedState('pit_lb_pbp_sortBy', 'strike_pct')

@@ -65,14 +65,20 @@ fail() { echo -e "${RED}[$(date '+%H:%M:%S')] FAILED:${NC} $1"; }
 
 ERRORS=0
 
+# Runs one step. The step's full output goes to the log (cron appends this
+# script's stdout to /var/log/nwbb-scrape.log), and its EXIT CODE decides
+# success. The old version piped through `tail -5`, which (without pipefail)
+# made every step report success, so scraper failures went unnoticed.
 run_step() {
     local name="$1"
     shift
     log "Starting: $name"
-    if "$@" 2>&1 | tail -5; then
+    local rc=0
+    "$@" 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
         log "Done: $name ✓"
     else
-        fail "$name"
+        fail "$name (exit $rc)"
         ERRORS=$((ERRORS + 1))
     fi
     echo ""
@@ -220,27 +226,28 @@ else
     fail "$ERRORS step(s) had errors. Check output above."
 fi
 echo "============================================"
+[ $ERRORS -eq 0 ] || exit 1
 
 # Re-derive WPA after scrapes — idempotent (only games with
 # wpa_derived_at IS NULL get processed). Self-heals when scrape_pbp
 # re-INSERTs game_events rows and clears the wpa_* columns.
-PYTHONPATH=backend python3 scripts/compute_wpa.py --season "$SEASON"
+run_step "WPA (game_events)" python3 scripts/compute_wpa.py --season "$SEASON"
 
 # Holds + blown saves — derived from game_events score state, written to
 # game_pitching flags + pitching_stats season totals. Idempotent (full
 # recompute for the season each run). Also run manually after any PBP
 # rescrape, same as compute_wpa.
-PYTHONPATH=backend python3 scripts/compute_holds_blown_saves.py --season "$SEASON"
+run_step "Holds + blown saves" python3 scripts/compute_holds_blown_saves.py --season "$SEASON"
 
 # Batted-ball type + fine field zone (5 IF + 5 OF lanes) from game_events
 # result_text. Idempotent (only rows with bb_derived_at IS NULL). Feeds the
 # spray charts and Defensive Alignments. Runs before the Series Planner regen
 # so its stored spray is fresh.
-PYTHONPATH=backend python3 scripts/derive_batted_ball.py --season "$SEASON"
+run_step "Batted-ball type + zone" python3 scripts/derive_batted_ball.py --season "$SEASON"
 
 # Series Planner — rebuild the per-team aggregate records the live
 # /portal/series-planner endpoint reads. Pulls from the local API (this
 # server's nwbb service), so it runs LAST, after all stats are fresh.
 # Output backend/data/series_planner.json is gitignored; the live endpoint
 # hot-reloads it on mtime change (no restart needed).
-PYTHONPATH=backend python3 scripts/generate_series_planner.py --season "$SEASON" --base http://localhost:8000/api/v1
+run_step "Series Planner records" python3 scripts/generate_series_planner.py --season "$SEASON" --base http://localhost:8000/api/v1

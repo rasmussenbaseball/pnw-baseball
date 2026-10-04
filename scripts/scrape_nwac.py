@@ -52,6 +52,19 @@ from bs4 import BeautifulSoup
 
 from app.models.database import get_connection, init_db, seed_divisions_and_conferences
 from wmt_utils import resolve_wmt_team_id, SEATTLE_U_WMT_IDS  # shared WMT id lookup
+
+
+def _wmt_ip(v):
+    """WMT reports innings as decimals (16.333 = 16 and 1/3). Store baseball
+    notation (16.1) like every other scraper so ip_outs()/ERA/FIP are right."""
+    if v is None:
+        return None
+    whole = int(v)
+    frac = round((v - whole) * 10)
+    if frac in (0, 1, 2):
+        return float(f"{whole}.{frac}")
+    outs = round(v * 3)
+    return float(f"{outs // 3}.{outs % 3}")
 from season_utils import scrape_season, presto_season_str, season_from_presto  # shared season helpers
 from app.stats.advanced import (
     BattingLine, PitchingLine,
@@ -1480,7 +1493,7 @@ def process_seattle_u(season_year):
 
                 # Process pitching
                 if has_pitching:
-                    ip = safe_float(stats.get("sInningsPitched"))
+                    ip = _wmt_ip(safe_float(stats.get("sInningsPitched")))   # .333/.667 -> .1/.2
                     p_h = safe_int(stats.get("sHitsAllowed"))
                     p_r = safe_int(stats.get("sRunsAllowed"))
                     er = safe_int(stats.get("sEarnedRuns"))

@@ -538,8 +538,8 @@ function WpaTile({ totalWPA, peakWPA, pa, side }) {
         explanation={
           <>
             Win Probability Added measures the cumulative change in win
-            probability from each batter faced. Built from 1,100+ games of
-            2026 PBP data.
+            probability from each batter faced. Built from play-by-play data
+            for every covered game.
           </>
         }
       />

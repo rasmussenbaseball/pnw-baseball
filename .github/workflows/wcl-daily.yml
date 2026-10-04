@@ -138,7 +138,7 @@ jobs:
           ARGS="--season $SEASON"
           if [ "$RESCRAPE" = "true" ]; then ARGS="$ARGS --rescrape"; fi
           echo "→ python3 scripts/scrape_summer_pbp.py $ARGS"
-          PYTHONPATH=backend python3 scripts/scrape_summer_pbp.py $ARGS || true
+          PYTHONPATH=backend python3 scripts/scrape_summer_pbp.py $ARGS
 
       - name: Derive summer batted-ball type + spray zones
         env:
@@ -147,7 +147,7 @@ jobs:
           # Classifies bb_type/field_zone from the play narratives (same
           # classifier spring uses) so Air-Pull% etc. work for summer.
           # Idempotent: only touches rows with bb_derived_at IS NULL.
-          PYTHONPATH=backend python3 scripts/derive_summer_batted_ball.py || true
+          PYTHONPATH=backend python3 scripts/derive_summer_batted_ball.py
 
       - name: Derive summer base/out/score state
         env:
@@ -159,7 +159,7 @@ jobs:
           # (state_derived_at), and rescraped games re-derive naturally
           # because their fresh rows have NULL state_derived_at.
           SEASON="${{ needs.window.outputs.season }}"
-          PYTHONPATH=backend python3 scripts/derive_summer_event_state.py --season "$SEASON" || true
+          PYTHONPATH=backend python3 scripts/derive_summer_event_state.py --season "$SEASON"
 
       - name: Compute summer WPA (win probability added)
         env:
@@ -169,7 +169,7 @@ jobs:
           # table (NCAA surface) so WPA means the same thing site-wide.
           # Idempotent via wpa_derived_at IS NULL.
           SEASON="${{ needs.window.outputs.season }}"
-          PYTHONPATH=backend python3 scripts/compute_summer_wpa.py --season "$SEASON" || true
+          PYTHONPATH=backend python3 scripts/compute_summer_wpa.py --season "$SEASON"
 
       - name: Scrape WCL season fielding
         env:
@@ -178,7 +178,7 @@ jobs:
         run: |
           SEASON="${{ needs.window.outputs.season }}"
           echo "→ Pulling WCL season fielding from wclstats.com"
-          PYTHONPATH=backend python3 scripts/scrape_wcl_fielding.py --season "$SEASON" || true
+          PYTHONPATH=backend python3 scripts/scrape_wcl_fielding.py --season "$SEASON"
 
       - name: Link summer ↔ spring players
         env:

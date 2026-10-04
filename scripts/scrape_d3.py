@@ -37,7 +37,7 @@ import requests
 from bs4 import BeautifulSoup, NavigableString
 
 from app.models.database import get_connection, init_db, seed_divisions_and_conferences
-from season_utils import presto_season_str  # shared academic-year helper
+from season_utils import presto_season_str  # shared academic-year helper, page_matches_season
 from app.stats.advanced import (
     BattingLine, PitchingLine,
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
@@ -1210,6 +1210,9 @@ def scrape_team(base_url, sport_path, db_short, team_id, season_year, skip_roste
         stats_url = f"{base_url}/sports/{sport_path}/stats"
         logger.info(f"  Retrying without year: {stats_url}")
         stats_html = fetch_page(stats_url)
+        if stats_html and not page_matches_season(stats_html, season_year):
+            logger.warning(f"  Year-less stats page does not show the {season_year} season; skipping (would save another year's numbers)")
+            stats_html = None
 
     if not stats_html:
         logger.error(f"  Failed to fetch stats page for {db_short}")
@@ -1230,18 +1233,14 @@ def scrape_team(base_url, sport_path, db_short, team_id, season_year, skip_roste
     # Only fall back to current page if scraping the CURRENT season.
     # For historical seasons, skip to avoid saving current data under wrong year.
     if not batting_rows and not pitching_rows and f"/{season_year}" in stats_url:
-        import datetime
-        current_year = str(datetime.datetime.now().year)
-        if season_year == current_year:
+        if True:  # trusted only when the page itself says it is this season (checked below)
             fallback_url = f"{base_url}/sports/{sport_path}/stats"
             logger.info(f"  No stats found for {season_year}, retrying without year: {fallback_url}")
             fallback_html = fetch_page(fallback_url)
-            if fallback_html:
+            if fallback_html and page_matches_season(fallback_html, season_year):
                 batting_table, pitching_table = find_stats_tables(fallback_html)
                 batting_rows = parse_sidearm_table(batting_table)
                 pitching_rows = parse_sidearm_table(pitching_table)
-        else:
-            logger.warning(f"  No stats found for historical season {season_year} — skipping (won't fall back to current page)")
 
     logger.info(f"  Batting: {len(batting_rows)} players")
     logger.info(f"  Pitching: {len(pitching_rows)} players")

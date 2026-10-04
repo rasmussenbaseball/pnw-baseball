@@ -70,7 +70,7 @@ except ImportError:
 
 from app.models.database import get_connection
 from wmt_utils import seattle_u_wmt_id  # Seattle U WMT team id (known map + API lookup)
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py), page_matches_season
 
 logging.basicConfig(
     level=logging.INFO,
@@ -2486,17 +2486,21 @@ def find_player_id(cur, team_id, player_name, season):
     if initial_m:
         initial = initial_m.group(1).lower()
         last = initial_m.group(2).strip()
+        # LIMIT 2: two same-initial brothers (the Barney case) must NOT both
+        # resolve to the lower id; ambiguous -> fall through / None.
         cur.execute(f"""
             SELECT p.id FROM players p
             WHERE p.team_id = %s
               AND LOWER(SUBSTRING(p.first_name FROM 1 FOR 1)) = %s
               AND {LAST_MATCH}
             ORDER BY p.is_phantom ASC, p.id ASC
-            LIMIT 1
+            LIMIT 2
         """, (team_id, initial, last, last))
-        row = cur.fetchone()
-        if row:
-            return row["id"]
+        rows = cur.fetchall()
+        if len(rows) == 1:
+            return rows[0]["id"]
+        if len(rows) > 1:
+            return None
 
     # ── Strategy 3b: "Last, F." initial format (e.g. "Moon, A.") ──
     if "," in name:
@@ -2512,11 +2516,13 @@ def find_player_id(cur, team_id, player_name, season):
                   AND LOWER(SUBSTRING(p.first_name FROM 1 FOR 1)) = %s
                   AND {LAST_MATCH}
                 ORDER BY p.is_phantom ASC, p.id ASC
-                LIMIT 1
+                LIMIT 2
             """, (team_id, initial, last, last))
-            row = cur.fetchone()
-            if row:
-                return row["id"]
+            rows = cur.fetchall()
+            if len(rows) == 1:
+                return rows[0]["id"]
+            if len(rows) > 1:
+                return None
 
     # ── Strategy 4: Last-name-only match (unique on team) ──
     # Extract last name from whatever format we have
@@ -3101,10 +3107,13 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
         html = fetch_page(schedule_url)
 
         if not html:
-            # Try without year
+            # Try without year, but only trust the page if it is this season's
             schedule_url = f"{base_url}/sports/{sport}/schedule"
             logger.info(f"  Retrying without year: {schedule_url}")
             html = fetch_page(schedule_url)
+            if html and not page_matches_season(html, season_year):
+                logger.warning(f"  Year-less schedule page is not the {season_year} season; skipping")
+                html = None
 
         schedule = parse_sidearm_schedule(html, base_url, season_year, db_short=db_short)
 
@@ -3375,10 +3384,16 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                     continue
 
                 # Delete old game-level stats before re-inserting
-                # (ensures correct team_id assignments if home/away changed)
-                if box_batting or box_pitching:
+                # (ensures correct team_id assignments if home/away changed).
+                # Only when the box actually returned player lines: a 204 /
+                # timeout / empty Nuxt page used to pass this test (the dicts
+                # are never falsy) and wiped a final game's rows for good.
+                has_box = any(box_batting.values()) or any(box_pitching.values())
+                if has_box:
                     cur.execute("DELETE FROM game_batting WHERE game_id = %s", (game_id,))
                     cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (game_id,))
+                else:
+                    logger.warning(f"    Box returned no player lines (fetch failed or empty page); keeping existing rows")
 
                 # Insert batting lines
                 home_team = game_data.get("home_team_id")
@@ -3402,11 +3417,13 @@ def scrape_team_boxscores(db_short, team_config, season_year, dry_run=False, sin
                     insert_game_fielding(cur, game_id, away_team, box_fielding["away"], season_year)
 
                 # Stamp the fingerprint last so an interrupted run
-                # doesn't leave behind a fingerprint with no rows.
-                cur.execute(
-                    "UPDATE games SET box_fingerprint = %s WHERE id = %s",
-                    (fingerprint, game_id),
-                )
+                # doesn't leave behind a fingerprint with no rows (and never
+                # stamp an empty fetch, so the next run retries it).
+                if has_box:
+                    cur.execute(
+                        "UPDATE games SET box_fingerprint = %s WHERE id = %s",
+                        (fingerprint, game_id),
+                    )
 
                 conn.commit()
 
@@ -3630,6 +3647,12 @@ def scrape_seattle_u_boxscores(season_year, dry_run=False, since_date=None):
                     continue
 
                 # Separate Seattle U players from opponent, then split batters/pitchers
+                # Re-insert from scratch: the ON CONFLICT updates do not refresh
+                # decisions/BF/HBP and batting_order is part of the key, so a
+                # scorer correction that reorders the WMT list would otherwise
+                # leave duplicate rows behind (same pattern as the Sidearm path).
+                cur.execute("DELETE FROM game_batting WHERE game_id = %s", (game_id,))
+                cur.execute("DELETE FROM game_pitching WHERE game_id = %s", (game_id,))
                 for side_team_id, side_db_id in [(wmt_team_id, team_id), (opp_comp["teamId"], opp_team_id)]:
                     side_players = [p for p in game_players if p.get("team_id") == side_team_id]
 
@@ -3656,7 +3679,7 @@ def scrape_seattle_u_boxscores(season_year, dry_run=False, since_date=None):
                                 "pitch_order": totals.get("sOrderOfPitchingAppearance", 1),
                                 "is_starter": totals.get("sPitcherGamesStarted", 0) > 0,
                                 "decision": _wmt_decision(totals),
-                                "ip": ip_raw,
+                                "ip": parse_innings_pitched(ip_raw),   # WMT reports thirds as .333/.667
                                 "h": totals.get("sHitsAllowed", 0),
                                 "r": totals.get("sRunsAllowed", 0),
                                 "er": totals.get("sEarnedRuns", 0),

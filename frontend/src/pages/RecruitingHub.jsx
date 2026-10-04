@@ -183,7 +183,7 @@ export default function RecruitingHub() {
       <section className="mb-10">
         <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 mb-1">For coaches and recruiters</div>
         <h2 className="text-xl sm:text-2xl font-black text-nw-teal dark:text-gray-100">Recruit smarter, with live boards</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-5">These tools unlock with the Recruiting plan.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-5">Free for every coach. Boards and uploads need a sign-in so your work is saved to you.</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {COACH_TOOLS.map((t) => <ToolCard key={t.name} tool={t} />)}
         </div>

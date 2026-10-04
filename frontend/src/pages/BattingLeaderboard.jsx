@@ -13,7 +13,7 @@ import {
   BATTING_PBP_COLUMNS, BATTING_PBP_PRESETS,
 } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 
 // PBP lives inside the View: pill bar as another preset alongside
 // Standard / Advanced / Power / Discipline / Speed. When the user
@@ -26,7 +26,7 @@ export default function BattingLeaderboard() {
     season: CURRENT_SEASON,
     min_pa: 50,
     _type: 'batting',
-  })
+  }, { sanitize: (f) => ({ ...f, season: clampSeason(f?.season) }) })
   const [sortBy, setSortBy] = usePersistedState('bat_lb_sortBy', 'batting_avg')
   const [sortDir, setSortDir] = usePersistedState('bat_lb_sortDir', 'desc')
   const [pbpSortBy, setPbpSortBy] = usePersistedState('bat_lb_pbp_sortBy', 'whiff_pct')

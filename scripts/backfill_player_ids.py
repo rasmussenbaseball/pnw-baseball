@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 from app.models.database import get_connection
+from season_utils import scrape_season as _season  # the site's CURRENT_SEASON
 
 
 def backfill_game_pitching(cur):
@@ -241,6 +242,11 @@ def backfill_game_batting(cur):
           AND gb.player_name ~ '^[A-Z]\\. '
           AND LOWER(SUBSTRING(gb.player_name FROM 1 FOR 1)) = LOWER(SUBSTRING(pl.first_name FROM 1 FOR 1))
           AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = LOWER(TRIM(pl.last_name))
+          -- the initial + last name must be unique on the team (same-initial brothers)
+          AND (SELECT COUNT(*) FROM players p2
+               WHERE p2.team_id = pl.team_id
+                 AND LOWER(SUBSTRING(p2.first_name FROM 1 FOR 1)) = LOWER(SUBSTRING(pl.first_name FROM 1 FOR 1))
+                 AND LOWER(TRIM(p2.last_name)) = LOWER(TRIM(pl.last_name))) = 1
     """)
     print(f"  Matched {cur.rowcount} rows via 'F. Last' + team_id")
 
@@ -276,6 +282,10 @@ def backfill_game_batting(cur):
           AND gb.player_name ~ '^[A-Z]\\. '
           AND LOWER(SUBSTRING(gb.player_name FROM 1 FOR 1)) = LOWER(SUBSTRING(pl.first_name FROM 1 FOR 1))
           AND LOWER(TRIM(SUBSTRING(gb.player_name FROM 4))) = LOWER(TRIM(pl.last_name))
+          AND (SELECT COUNT(*) FROM players p2
+               WHERE p2.team_id IN (g.home_team_id, g.away_team_id)
+                 AND LOWER(SUBSTRING(p2.first_name FROM 1 FOR 1)) = LOWER(SUBSTRING(pl.first_name FROM 1 FOR 1))
+                 AND LOWER(TRIM(p2.last_name)) = LOWER(TRIM(pl.last_name))) = 1
     """)
     print(f"  Matched {cur.rowcount} rows via 'F. Last' + game teams")
 
@@ -368,10 +378,10 @@ def update_quality_starts(cur):
         FROM pitching_stats ps
         JOIN players p ON ps.player_id = p.id
         JOIN teams t ON ps.team_id = t.id
-        WHERE ps.season = 2026 AND ps.quality_starts > 0
+        WHERE ps.season = %s AND ps.quality_starts > 0
         ORDER BY ps.quality_starts DESC
         LIMIT 10
-    """)
+    """, (_season(),))
     print("\n  Top QS leaders:")
     for row in cur.fetchall():
         print(f"    {row['first_name']} {row['last_name']} ({row['short_name']}): {row['quality_starts']} QS")

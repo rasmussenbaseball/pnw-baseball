@@ -439,8 +439,13 @@ def main() -> int:
             WHERE g.season = %s
         """, (args.season,))
         r = cur.fetchone()
-        print(f"── WPA coverage: {r['computed']:,}/{r['total']:,} events "
-              f"({r['computed']/r['total']*100:.1f}%) ──")
+        if r and r["total"]:
+            computed = r["computed"] or 0
+            print(f"── WPA coverage: {computed:,}/{r['total']:,} events "
+                  f"({computed / r['total'] * 100:.1f}%) ──")
+        else:
+            # no play-by-play yet for this season (first weeks of a new year)
+            print("── WPA coverage: no game_events for this season yet ──")
 
         # WPA distribution sanity
         cur.execute("""

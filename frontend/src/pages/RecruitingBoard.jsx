@@ -8,6 +8,7 @@
 //    the board can add players to it.
 //
 // Lives on the main site under /coaching (teal theme); needs a sign-in (per-user lists).
+import { RECRUITING_GRAD_YEAR } from '../lib/seasons'
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -411,7 +412,7 @@ function ShareLinkRow({ boardId, token, onChanged }) {
 }
 
 
-const CLASS_PRESETS = ['HS 2027', 'HS 2028', 'HS 2029', 'JUCO Fr', 'JUCO So', 'Transfer']
+const CLASS_PRESETS = [0, 1, 2].map((i) => `HS ${RECRUITING_GRAD_YEAR + i}`).concat(['JUCO Fr', 'JUCO So', 'Transfer'])
 
 function AddPlayersCard({ boardId, onAdded }) {
   const [mode, setMode] = useState('search')   // 'search' | 'manual'

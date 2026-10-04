@@ -148,13 +148,13 @@ def ingest_game(cur, session, game, exact, by_last, dry_run=False):
         batter_pid = None
         if e["batter_name"]:
             batter_pid = resolve_one(sanitize_player_name(e["batter_name"]),
-                                     batting_id, exact, by_last)
+                                     batting_id, exact, by_last, firsts)
             if batter_pid:
                 bat_res += 1
         pitcher_pid = None
         if e["pitcher_name"] and e["pitcher_name"] != "<UNKNOWN STARTER>":
             pitcher_pid = resolve_one(sanitize_player_name(e["pitcher_name"]),
-                                      defending_id, exact, by_last)
+                                      defending_id, exact, by_last, firsts)
             if pitcher_pid:
                 pit_res += 1
 
@@ -190,7 +190,7 @@ def run(season=None, rescrape=False, limit=None, game_id=None, dry_run=False):
     with get_connection() as conn:
         cur = conn.cursor()
         league_id = get_league_id(cur, LEAGUE_ABBR)
-        exact, by_last = build_lookup(cur)
+        exact, by_last, firsts = build_lookup(cur)   # sibling-guard lookup (3 parts)
         games = games_needing_pbp(cur, league_id, season, rescrape, limit, game_id)
         logger.info("Games to process: %d (season=%s, rescrape=%s, dry_run=%s)",
                     len(games), season, rescrape, dry_run)

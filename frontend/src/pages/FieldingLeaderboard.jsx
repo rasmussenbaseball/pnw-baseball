@@ -21,14 +21,14 @@ import {
   FIELDING_COLUMNS, FIELDING_PRESETS, FIELDING_POSITIONS,
 } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 
 export default function FieldingLeaderboard() {
   const [filters, setFilters] = usePersistedState('fld_lb_filters', {
     season: CURRENT_SEASON,
     min_games: 10,
     _type: 'fielding',
-  })
+  }, { sanitize: (f) => ({ ...f, season: clampSeason(f?.season) }) })
   const [position, setPosition] = usePersistedState('fld_lb_position', '')
   const [sortBy, setSortBy] = usePersistedState('fld_lb_sortBy', 'fielding_pct')
   const [sortDir, setSortDir] = usePersistedState('fld_lb_sortDir', 'desc')

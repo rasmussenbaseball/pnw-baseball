@@ -528,6 +528,11 @@ def main():
                     if matched:
                         ov = data.get("overall", (0, 0))
                         cf = data.get("conf", (0, 0))
+                        if (ov[0] + ov[1]) == 0:
+                            # preseason standings pages list every team 0-0; never
+                            # overwrite a finished season's record with that
+                            logger.info(f"  {matched['short_name']}: 0-0 on the standings page, skipping")
+                            continue
                         save(matched["id"], matched["short_name"], ov[0], ov[1], cf[0], cf[1])
                     else:
                         logger.warning(f"  Could not match: {team_name}")

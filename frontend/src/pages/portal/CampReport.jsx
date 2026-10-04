@@ -7,6 +7,7 @@
 // deep dive on the game outing: arsenal, movement, locations, velo by
 // pitch). Cards carry .custom-card-page + data-scale-content so they
 // reuse all the Custom Player Card print/export machinery.
+import { RECRUITING_GRAD_YEAR } from '../../lib/seasons'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { supabase } from '../../lib/supabase'
@@ -35,7 +36,7 @@ const BIO_FIELDS = [
   ['throws', 'Throws', 'R / L'],
   ['height', 'Height', `6'1"`],
   ['weight', 'Weight', '185'],
-  ['grad_year', 'Grad year', '2027'],
+  ['grad_year', 'Grad year', String(RECRUITING_GRAD_YEAR)],
   ['school', 'School', 'Sheldon HS'],
   ['hometown', 'Hometown', 'Eugene'],
   ['state', 'State', 'OR'],

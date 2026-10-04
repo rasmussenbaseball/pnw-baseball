@@ -7,7 +7,7 @@ import { formatStat, divisionBadgeClass } from '../utils/stats'
 import { Link } from 'react-router-dom'
 import { usePersistedState } from '../hooks/usePersistedState'
 import CommitBadge from '../components/CommitBadge'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 
 const COLUMNS = [
   // WAR cluster
@@ -35,7 +35,7 @@ const COLUMNS = [
 const LOWER_IS_BETTER = new Set(['era', 'whip', 'fip'])
 
 export default function WarLeaderboard() {
-  const [filters, setFilters] = usePersistedState('war_lb_filters', { season: CURRENT_SEASON })
+  const [filters, setFilters] = usePersistedState('war_lb_filters', { season: CURRENT_SEASON }, { sanitize: (f) => ({ ...f, season: clampSeason(f?.season) }) })
   const [page, setPage] = useState(0)
   const [sortBy, setSortBy] = usePersistedState('war_lb_sortBy', 'total_war')
   const [sortDir, setSortDir] = usePersistedState('war_lb_sortDir', 'desc')

@@ -337,7 +337,11 @@ def finalize(rows, workload):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--season", type=int, default=2027)
+    try:
+        from app.config import PROJECTION_SEASON as _default_season   # PYTHONPATH=backend
+    except Exception:
+        _default_season = 2027
+    ap.add_argument("--season", type=int, default=_default_season)
     ap.add_argument("--dry-run", action="store_true", help="write CSVs, skip the DB")
     args = ap.parse_args()
     TARGET = args.season

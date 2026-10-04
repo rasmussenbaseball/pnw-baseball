@@ -90,7 +90,7 @@ export default function NewsCommitments() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Commitments</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          NWAC players committing to 4-year programs. (HS commitments to PNW schools coming soon.)
+          NWAC players committing to 4-year programs. High school commitments live on Recruiting Classes.
         </p>
       </div>
 

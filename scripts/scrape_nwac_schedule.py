@@ -174,8 +174,11 @@ def _infer_date_from_cell(date_text, current_date, season_year):
         month = current_date.month
         year = current_date.year
 
-        # If the new day < current day, we've rolled into the next month
-        if day < current_date.day - 15:  # Allow for reasonable date jumps
+        # The schedule is chronological, so a smaller day number than the
+        # last known date means the next month (Mar 28 -> "Sun. 12" = Apr 12).
+        # The old "- 15" slack dated such games a month early and the
+        # recency filter then dropped them.
+        if day < current_date.day:
             month += 1
             if month > 12:
                 month = 1

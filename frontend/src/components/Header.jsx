@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { divisionBadgeClass } from '../utils/stats'
 import { useAuth } from '../context/AuthContext'
-import { DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, BROADCAST_OWNER_EMAILS, COMMITMENT_EDITOR_EMAILS } from '../lib/tiers'
+import { DEVELOPER_EMAILS, ARTICLE_AUTHOR_EMAILS, BROADCAST_OWNER_EMAILS, COMMITMENT_EDITOR_EMAILS, isAdminEmail } from '../lib/tiers'
 import { CURRENT_SEASON, PROJECTION_SEASON } from '../lib/seasons'
 
 // ─── Navigation structure ───
@@ -42,7 +42,7 @@ const NAV = [
       { to: '/recruiting', label: 'Recruiting Hub', desc: 'Start here: every recruiting tool, explained. Free to browse.' },
       { to: '/recruiting/tips', label: 'Recruiting Tips', desc: 'How to get recruited + freshman production by level' },
       { to: '/recruiting/advancement', label: 'NWAC Advancement', desc: `Where NWAC teams send players + ${CURRENT_SEASON} D1 commits` },
-      { to: '/recruiting/quiz', label: 'Recruit Matchmaker', desc: 'Match yourself to your best-fit NW program (free; full list Premium)' },
+      { to: '/recruiting/quiz', label: 'Recruit Matchmaker', desc: 'Match yourself to your best-fit NW program' },
       { to: '/recruiting/breakdown', label: 'Breakdown', desc: 'Team-level recruiting metrics & trends' },
       { to: '/recruiting/hometown', label: 'Hometown Search', desc: 'Find players from your city' },
       { to: '/recruiting/guide', label: 'Recruiting Guide', desc: 'Complete program profiles & analysis' },
@@ -59,7 +59,7 @@ const NAV = [
       { to: '/news', label: 'Articles',
         desc: 'Stories, recaps, and notes from around PNW college baseball' },
       { to: '/news/commitments', label: 'Commitments',
-        desc: 'NWAC commitments to 4-year programs (HS commitments coming soon)' },
+        desc: 'NWAC commitments to 4-year programs; HS classes live on Recruiting Classes' },
     ],
   },
   // Summer baseball — currently WCL, more leagues later. The tab is
@@ -571,8 +571,7 @@ function NavTab({ section, isActive, user }) {
   const tabRef = useRef(null)
   const navigate = useNavigate()
 
-  const ADMIN_EMAILS = ['nate.rasmussen26@gmail.com']
-  const isAdmin = user && ADMIN_EMAILS.includes(user.email)
+  const isAdmin = !!(user && isAdminEmail(user.email))   // one list, lib/tiers.js
   const isLocked = (section.authRequired && !user) || (section.adminOnly && !isAdmin)
 
   const handleEnter = () => {

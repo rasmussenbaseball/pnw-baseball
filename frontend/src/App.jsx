@@ -299,6 +299,21 @@ const Records = lazyWithRetry(() => import('./pages/gm/Records'))
 const Academics = lazyWithRetry(() => import('./pages/gm/Academics'))
 const TeamStats = lazyWithRetry(() => import('./pages/gm/TeamStats'))
 
+function NotFound() {
+  return (
+    <div className="max-w-xl mx-auto px-4 py-16 text-center">
+      <div className="text-5xl font-black text-nw-teal dark:text-gray-100 mb-2">404</div>
+      <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">That page does not exist</h1>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">The link may be old, or the page may have moved.</p>
+      <div className="flex flex-wrap justify-center gap-3 text-sm font-semibold">
+        <Link to="/" className="px-4 py-2 rounded-md bg-nw-teal text-white">Home</Link>
+        <Link to="/teams" className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">Teams</Link>
+        <Link to="/stat-leaders" className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">Stat leaders</Link>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   // Portal routes get their own full-page shell — no main-site Header,
   // no global <main> width constraint, no main-site footer. Inside the
@@ -382,9 +397,7 @@ export default function App() {
           <Route path="/team-history" element={<TeamHistory />} />
           {/* Public landing page for the whole Recruiting tab (all tiers, no gate) */}
           <Route path="/recruiting" element={<RecruitingHub />} />
-          {/* Matchmaker is open to EVERYONE (anonymous included) as a funnel:
-              non-paid users only see their #1 fit — the full ranked list is
-              gated inside RecruitQuiz.jsx at premium. */}
+          {/* Recruit Matchmaker: open to everyone, full list for everyone (free site). */}
           <Route path="/recruiting/quiz" element={<RecruitQuiz />} />
           <Route path="/recruiting-classes" element={<RecruitingClasses />} />
           <Route path="/recruiting/breakdown" element={<RecruitingBreakdown />} />
@@ -580,6 +593,8 @@ export default function App() {
 
           {/* Legacy route: redirect old / batting path */}
           <Route path="/player/:playerId" element={<PlayerDetail />} />
+          {/* Anything else: a real not-found page instead of an empty frame */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
       </RouteContainer>
@@ -665,7 +680,7 @@ export default function App() {
 // PortalLayout handles padding internally), so this helper picks the
 // right wrapper based on the current route.
 function HomepageRouter() {
-  // June 2026 redesign: ONE homepage for every tier (per Nate). The five
+  // June 2026 redesign: ONE homepage for every visitor. The five
   // per-tier homepages (Anonymous/Free/Premium/Recruiting/Coach) are
   // retired from routing; their files remain for now as a rollback path.
   return <Homepage />

@@ -288,7 +288,8 @@ def scrape_pear_ratings(conn, season, teams_by_div):
                     ))
                 count += 1
                 logger.info(f"    ✓ {team['short_name']}: NET #{net_rank} "
-                           f"(Score={net_score:.4f}, TSR={tsr:.2f}, "
+                           f"(Score={net_score if net_score is None else f'{net_score:.4f}'}, "
+                           f"TSR={tsr if tsr is None else f'{tsr:.2f}'}, "
                            f"RQI #{rqi_rank}, SOS #{sos_rank})")
             else:
                 logger.warning(f"    ✗ Could not find '{pear_name}' in Pear {div_level}")

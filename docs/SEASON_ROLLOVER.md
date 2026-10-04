@@ -140,3 +140,20 @@ Gotcha to remember: nothing flips on its own. Until `CURRENT_SEASON` is
 bumped to 2027, every no-argument script and cron job keeps targeting 2026.
 Pass `--season 2027` explicitly for early 2027 work (rosters, future
 schedules) before the bump.
+
+## Server housekeeping found in the Sept 2026 audit (one-time, root on the server)
+
+- Log rotation: the live-score log was 112 MB with no rotation. Install once:
+  `cp /opt/pnw-baseball/deploy/logrotate-nwbb /etc/logrotate.d/nwbb` (then
+  `logrotate -d /etc/logrotate.d/nwbb` as a dry run).
+- The crontab still passes `--season 2026` on three lines (live scores twice,
+  the morning box-score rescrape). Drop that flag so they follow CURRENT_SEASON:
+  `crontab -l > /root/crontab.backup && crontab -l | sed "s/ --season 2026//" | crontab -`
+- League adjustments (wRC+, FIP+, WAR, park factors) are written ONLY by
+  `recalculate_league_adjusted.py`, which runs from `.github/workflows/nwac-stats.yml`
+  (deliberately not from daily_update.sh: it would race the NWAC job). That
+  workflow's schedule is commented out for the offseason. Re-enable it with the
+  other NWAC workflows at season start or every advanced stat stays unadjusted.
+- `daily_update.sh` now exits non-zero and lists the failed steps when any
+  scraper fails (it used to report success no matter what). Check
+  `/var/log/nwbb-scrape.log` for "FAILED" after the first few runs of a season.

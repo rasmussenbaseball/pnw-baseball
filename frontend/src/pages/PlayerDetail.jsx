@@ -633,7 +633,7 @@ function TeamAwards({ awards, careerRankings, pnwRankings, goldGloves, teamShort
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">Top 10 across all PNW divisions (2026, qualified)</p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">Top 10 across all PNW divisions ({CURRENT_SEASON}, qualified)</p>
         </div>
       )}
 

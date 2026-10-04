@@ -273,7 +273,7 @@ export default function PitchLevelStatsCard({
             </tbody>
           </DataTable>
           <p className="text-[10px] text-gray-400 mt-2 italic">
-            Situational splits use base/out/score state from PBP. Some 2026 PAs are not yet
+            Situational splits use base/out/score state from PBP. Some PAs are not yet
             state-derived (especially OOC opponents) — totals here may be slightly lower than
             the season totals above.
           </p>
@@ -549,7 +549,7 @@ function WpaTile({ totalWPA, peakWPA, pa, side }) {
         explanation={
           <>
             Win Probability Added measures the cumulative change in win
-            probability from each PA. Built from 1,100+ games of 2026 PBP data.
+            probability from each PA. Built from play-by-play data for every covered game.
           </>
         }
       />

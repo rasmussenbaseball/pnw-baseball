@@ -242,21 +242,24 @@ def get_recent_nwac_games(cur, season, days):
 # ── Box score processing ──
 
 def compute_bill_james_game_score(ip, h, er, bb, k, hr=0, unearn_runs=0):
-    """Compute Bill James Game Score for a starting pitcher."""
+    """Bill James Game Score, SAME formula as scrape_boxscores.py so NWAC
+    pitchers are comparable with every other division on the leaderboards
+    (the old NWAC copy charged -2 per walk and -6 per HR and floored at 0).
+      50 + 1/out + 2/inning after the 4th + 1/K - 2/H - 4/ER - 2/unearned - 1/BB"""
+    if ip is None or ip == 0:
+        return None
+    ip = float(ip)
+    outs = int(ip) * 3 + round((ip % 1) * 10)
+    innings_completed = int(ip)
     score = 50
-    score += 3 * int(ip)  # full innings
-    frac = ip - int(ip)
-    if abs(frac - 0.1) < 0.05:
-        score += 1
-    elif abs(frac - 0.2) < 0.05:
-        score += 2
-    score -= 2 * h
-    score -= 4 * er
-    score -= 2 * (unearn_runs)
-    score -= 2 * bb
-    score += 1 * k
-    score -= 6 * hr
-    return max(0, score)
+    score += outs
+    score += max(0, innings_completed - 4) * 2
+    score += (k or 0)
+    score -= (h or 0) * 2
+    score -= (er or 0) * 4
+    score -= (unearn_runs or 0) * 2
+    score -= (bb or 0)
+    return score
 
 
 def is_quality_start(ip, er):
@@ -288,8 +291,8 @@ def process_boxscore(box_url, season_year, dry_run=False):
 
     away_name = parsed.get("away_team_name", "Unknown")
     home_name = parsed.get("home_team_name", "Unknown")
-    away_score = parsed.get("away_score", 0)
-    home_score = parsed.get("home_score", 0)
+    away_score = parsed.get("away_score")   # None when the box has no line score;
+    home_score = parsed.get("home_score")   # the finalize step below requires both
     game_date = parsed.get("game_date")
 
     logger.info(f"  Parsed: {away_name} {away_score} @ {home_name} {home_score} ({game_date})")

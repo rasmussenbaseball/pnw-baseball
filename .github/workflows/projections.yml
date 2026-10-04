@@ -11,9 +11,9 @@ on:
   workflow_dispatch:        # allow manual runs from the Actions tab
     inputs:
       season:
-        description: 'Projection season (default 2027)'
+        description: 'Projection season (default: PROJECTION_SEASON in backend/app/config.py)'
         required: false
-        default: '2027'
+        default: ''
 
 jobs:
   project:
@@ -31,4 +31,4 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           PYTHONPATH=backend python3 scripts/projections/write_projections_v2.py \
-            --season "${{ github.event.inputs.season || '2027' }}"
+            ${{ github.event.inputs.season && format('--season {0}', github.event.inputs.season) || '' }}

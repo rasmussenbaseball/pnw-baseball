@@ -101,7 +101,7 @@ export default function ConferencePage() {
 
       <div className="mt-5 flex flex-wrap gap-3 text-sm">
         <Link to="/standings" className="text-nw-teal hover:underline">Full standings →</Link>
-        <Link to="/leaderboards" className="text-nw-teal hover:underline">Stat leaders →</Link>
+        <Link to="/stat-leaders" className="text-nw-teal hover:underline">Stat leaders →</Link>
         <Link to="/teams" className="text-nw-teal hover:underline">All teams →</Link>
       </div>
     </div>

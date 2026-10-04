@@ -286,7 +286,8 @@ def upsert_game(cur, league_id, game, team_lookup):
         cur.execute(
             """
             UPDATE summer_games
-            SET status         = %s,
+            SET status         = CASE WHEN summer_games.status = 'final' AND %s <> 'postponed'
+                                      THEN 'final' ELSE %s END,
                 game_date      = %s,
                 away_team_id   = COALESCE(%s, away_team_id),
                 home_team_id   = COALESCE(%s, home_team_id),
@@ -297,7 +298,7 @@ def upsert_game(cur, league_id, game, team_lookup):
                 updated_at     = CURRENT_TIMESTAMP
             WHERE id = %s
             """,
-            (game["status"], game["game_date"], away_id, home_id,
+            (game["status"], game["status"], game["game_date"], away_id, home_id,
              game["away_team_name"], game["home_team_name"],
              game["source_url"], game["boxscore_code"], existing["id"]),
         )

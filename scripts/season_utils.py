@@ -121,3 +121,25 @@ if __name__ == "__main__":
     print(f"current_season = {current_season()}")
     print(f"scrape_season  = {scrape_season()}  ({presto_season_str(scrape_season())})")
     print(f"summer_season  = {summer_season()}")
+
+
+def page_matches_season(html, season) -> bool:
+    """Does a Sidearm/Presto page's heading talk about `season`?
+
+    Used before trusting a YEAR-LESS fallback URL (`/sports/baseball/stats`
+    instead of `/stats/2027`). In January the year-less page still shows the
+    finished season, so saving it under the new year would copy last year's
+    finals into this year's tables. Looks at the <title> and the first
+    headings for "2027" or "2026-27"; absent either, the page is not trusted.
+    """
+    if not html:
+        return False
+    try:
+        season = int(season)
+    except (TypeError, ValueError):
+        return False
+    import re as _re
+    head = html[:20000]
+    parts = _re.findall(r"<(?:title|h1|h2|h3)[^>]*>(.*?)</(?:title|h1|h2|h3)>", head, _re.I | _re.S)
+    hay = _re.sub(r"<[^>]+>", " ", " ".join(parts)) if parts else _re.sub(r"<[^>]+>", " ", head)
+    return (str(season) in hay) or (f"{season - 1}-{str(season)[2:]}" in hay)

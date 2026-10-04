@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function AuthPage() {
-  const [mode, setMode] = useState('login') // 'login' | 'signup' | 'forgot'
+  const location = useLocation()
+  // "Create a free account" buttons link here with ?tab=signup
+  const initialMode = new URLSearchParams(location.search).get('tab') === 'signup' ? 'signup' : 'login'
+  const [mode, setMode] = useState(initialMode) // 'login' | 'signup' | 'forgot'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')

@@ -45,6 +45,7 @@ import requests
 from bs4 import BeautifulSoup, NavigableString
 
 from app.models.database import get_connection, init_db, seed_divisions_and_conferences
+from season_utils import page_matches_season  # year-less page guard
 from app.stats.advanced import (
     BattingLine, PitchingLine,
     compute_batting_advanced, compute_pitching_advanced, compute_college_war,
@@ -931,6 +932,9 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
         stats_url = f"{base_url}/sports/baseball/stats"
         logger.info(f"  Retrying without year: {stats_url}")
         stats_html = fetch_page(stats_url)
+        if stats_html and not page_matches_season(stats_html, season_year):
+            logger.warning(f"  Year-less stats page does not show the {season_year} season; skipping (would save another year's numbers)")
+            stats_html = None
 
     if not stats_html:
         logger.error(f"  Failed to fetch stats page for {db_short}")
@@ -943,7 +947,7 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
         fallback_stats = f"{base_url}/sports/baseball/stats"
         logger.info(f"  No record on stats page, trying without year: {fallback_stats}")
         fb_html = fetch_page(fallback_stats)
-        if fb_html:
+        if fb_html and page_matches_season(fb_html, season_year):
             overall, conf = extract_record_from_html(fb_html)
     if not overall:
         # Try schedule page (Nuxt-based Sidearm sites have record there)
@@ -966,18 +970,14 @@ def scrape_team(base_url, db_short, team_id, season_year, skip_roster=False):
     # if we're scraping the CURRENT season. For historical seasons, skip to avoid
     # saving current-season data under the wrong year.
     if not batting_rows and not pitching_rows and f"/{url_year}" in stats_url:
-        import datetime
-        current_year = str(datetime.datetime.now().year)
-        if season_year == current_year:
+        if True:  # trusted only when the page itself says it is this season (checked below)
             fallback_url = f"{base_url}/sports/baseball/stats"
             logger.info(f"  No stats found for {season_year}, retrying without year: {fallback_url}")
             fallback_html = fetch_page(fallback_url)
-            if fallback_html:
+            if fallback_html and page_matches_season(fallback_html, season_year):
                 batting_table, pitching_table = find_stats_tables(fallback_html)
                 batting_rows = parse_sidearm_table(batting_table)
                 pitching_rows = parse_sidearm_table(pitching_table)
-        else:
-            logger.warning(f"  No stats found for historical season {season_year} — skipping (won't fall back to current page)")
 
     logger.info(f"  Batting: {len(batting_rows)} players")
     logger.info(f"  Pitching: {len(pitching_rows)} players")

@@ -16,14 +16,14 @@ import ExportCSVButton from '../components/ExportCSVButton'
 import { useRelieverLeaderboard, useDivisions, useConferences } from '../hooks/useApi'
 import { RELIEVER_COLUMNS, RELIEVER_PRESETS } from '../utils/stats'
 import { usePersistedState } from '../hooks/usePersistedState'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { CURRENT_SEASON, clampSeason } from '../lib/seasons'
 
 export default function RelieverLeaderboard() {
   const [filters, setFilters] = usePersistedState('rel_lb_filters', {
     season: CURRENT_SEASON,
     min_bf: 20,
     _type: 'pitching',
-  })
+  }, { sanitize: (f) => ({ ...f, season: clampSeason(f?.season) }) })
   const [sortBy, setSortBy] = usePersistedState('rel_lb_sortBy', 'wpa')
   const [sortDir, setSortDir] = usePersistedState('rel_lb_sortDir', 'desc')
   const [preset, setPreset] = usePersistedState('rel_lb_preset', 'Clutch')

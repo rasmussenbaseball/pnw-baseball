@@ -82,7 +82,7 @@ export function useAllFavorites() {
     fetch(`${API_BASE}/favorites`, {
       headers: authHeaders(session),
     })
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then(data => {
         setTeams(data.teams || [])
         setPlayers(data.players || [])
