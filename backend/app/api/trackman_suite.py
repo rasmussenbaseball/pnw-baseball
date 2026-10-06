@@ -699,7 +699,9 @@ def trackman_values(
     PITCHING  = (division avg FIP - FIP) / 9 x IP (10+ IP qualifiers).
     When a player has no season stats for the season in view (fall
     intrasquads/scrimmages), OFFENSE and PITCHING fall back to the TrackMan
-    count-based run values (30+ priced pitches), flagged off_src/pitch_src.
+    count-based run values (30+ priced pitches), flagged off_src/pitch_src,
+    and BASERUN falls back to coach-entered SB/CS (tm_baserunning_manual),
+    flagged bsr_src="manual".
     Every component is average-relative, so 0 = an average player.
 
     pos_adj adds the WAR-style positional adjustment (premium spots get
@@ -815,6 +817,9 @@ def trackman_values(
             e[0] += e[1] * _mean
         for h in hrv.values():
             h[0] -= h[1] * _mean
+        # coach-entered steals for this TrackMan season (fills Baserun when
+        # season stats are missing)
+        manual_bsr = _manual_bsr(cur, owner, season) if season else {}
 
         # division baselines: PA-weighted wOBA and IP-weighted FIP
         cur.execute("""
@@ -896,6 +901,11 @@ def trackman_values(
                 row["off_src"] = "trk"
                 if not row.get("pa"):
                     row["pa"] = hrv[name][2]
+            if row["bsr_runs"] is None and name in manual_bsr:
+                sb, cs = manual_bsr[name]
+                row["bsr_runs"] = round(sb * 0.2 - cs * 0.4, 1)
+                row["bsr_src"] = "manual"
+                row["sb"], row["cs"] = sb, cs
             if row["pitch_runs"] is None and row.get("tracked_rv") is not None:
                 row["pitch_runs"] = row["tracked_rv"]
                 row["pitch_src"] = "trk"
@@ -3384,6 +3394,75 @@ def catcher_include(catcher: str, owner: str = Depends(_write_gate)):
         cur.execute("DELETE FROM tm_catcher_exclusions WHERE owner_user_id = %s AND catcher = %s", (owner, catcher))
         conn.commit()
     return {"status": "ok", "catcher": catcher, "excluded": False}
+
+
+# ── Manual baserunning (steals) ─────────────────────────────────────
+# TrackMan records nothing about stolen bases, and fall intrasquads never
+# reach a box score, so the Values ledger had no baserunning input for
+# the fall. The coach can type each runner's SB and CS for the season in
+# view; the ledger prices them with the standard weights (+0.2 runs per
+# steal, -0.4 per caught stealing) wherever season stats are missing.
+_BSR_READY = False
+
+
+def _ensure_bsr_table(cur):
+    global _BSR_READY
+    if _BSR_READY:
+        return
+    cur.execute("""CREATE TABLE IF NOT EXISTS tm_baserunning_manual (
+                       owner_user_id UUID NOT NULL,
+                       player        TEXT NOT NULL,
+                       season        INTEGER NOT NULL,
+                       sb            INTEGER NOT NULL DEFAULT 0,
+                       cs            INTEGER NOT NULL DEFAULT 0,
+                       updated_at    TIMESTAMPTZ DEFAULT now(),
+                       PRIMARY KEY (owner_user_id, player, season))""")
+    cur.execute("ALTER TABLE tm_baserunning_manual ENABLE ROW LEVEL SECURITY")
+    _BSR_READY = True
+
+
+def _manual_bsr(cur, owner, season):
+    _ensure_bsr_table(cur)
+    cur.execute("SELECT player, sb, cs FROM tm_baserunning_manual WHERE owner_user_id = %s AND season = %s",
+                (owner, int(season or 0)))
+    return {r["player"]: (int(r["sb"]), int(r["cs"])) for r in cur.fetchall()}
+
+
+class BsrEntry(BaseModel):
+    player: str
+    season: int
+    sb: int = 0
+    cs: int = 0
+
+
+@router.get("/trackman/baserunning")
+def baserunning_list(season: int = Query(...), owner: str = Depends(_gate)):
+    with get_connection() as conn:
+        entries = _manual_bsr(conn.cursor(), owner, season)
+    return {"season": season, "entries": [{"player": k, "sb": v[0], "cs": v[1]} for k, v in sorted(entries.items())]}
+
+
+@router.put("/trackman/baserunning")
+def baserunning_set(body: BsrEntry, owner: str = Depends(_write_gate)):
+    name = (body.player or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="player is required")
+    sb, cs = max(0, int(body.sb or 0)), max(0, int(body.cs or 0))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_bsr_table(cur)
+        if sb == 0 and cs == 0:
+            cur.execute("DELETE FROM tm_baserunning_manual WHERE owner_user_id = %s AND player = %s AND season = %s",
+                        (owner, name, body.season))
+        else:
+            cur.execute("""INSERT INTO tm_baserunning_manual (owner_user_id, player, season, sb, cs)
+                           VALUES (%s, %s, %s, %s, %s)
+                           ON CONFLICT (owner_user_id, player, season)
+                           DO UPDATE SET sb = EXCLUDED.sb, cs = EXCLUDED.cs, updated_at = now()""",
+                        (owner, name, body.season, sb, cs))
+        conn.commit()
+    return {"status": "ok", "player": name, "season": body.season, "sb": sb, "cs": cs,
+            "bsr_runs": round(sb * 0.2 - cs * 0.4, 1)}
 
 
 # ── Staff notes + Coach Board insights ───────────────────────────

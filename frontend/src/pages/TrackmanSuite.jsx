@@ -5133,7 +5133,7 @@ function ValuesTab({ teamCtx, season }) {
   const [posAdj, setPosAdj] = useState(false)
   const [shrink, setShrink] = useState(false)
   const [context, setContext] = useState('all')
-  const { data, loading } = useApi('/trackman/values',
+  const { data, loading, refetch } = useApi('/trackman/values',
     { ...(team ? { team } : {}), pos_adj: posAdj, shrink, season, context },
     [team, posAdj, shrink, context])
   const seasonOnly = context !== 'all' && context !== 'game'
@@ -5146,9 +5146,31 @@ function ValuesTab({ teamCtx, season }) {
     </span>
   )
   const anyTrk = rows.some(r => r.off_src === 'trk' || r.pitch_src === 'trk')
+  const [stealsOpen, setStealsOpen] = useState(false)
+  const [stealDraft, setStealDraft] = useState({})      // player -> {sb, cs}
+  const [stealBusy, setStealBusy] = useState(null)
+  // Manual steals: TrackMan has no stolen-base data, so the coach types each
+  // runner's SB / CS for the season in view; the ledger prices them at
+  // +0.2 per steal and -0.4 per caught stealing where season stats are missing.
+  const saveSteals = async (player) => {
+    const d = stealDraft[player] || {}
+    const cur = rows.find(r => r.player === player) || {}
+    const sb = Number(d.sb ?? cur.sb ?? 0), cs = Number(d.cs ?? cur.cs ?? 0)
+    setStealBusy(player)
+    try {
+      const r = await fetch('/api/v1/trackman/baserunning', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ player, season, sb, cs }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`)
+      setStealDraft(dr => { const n = { ...dr }; delete n[player]; return n })
+      refetch()
+    } catch (e) { alert(e.message) } finally { setStealBusy(null) }
+  }
+  const runners = rows.filter(r => r.off_runs != null || r.pa)
   const COLS = [
     ['off_runs', 'Offense', 'wRAA: season wOBA vs the division average, per PA'],
-    ['bsr_runs', 'Baserun', 'SB x 0.2 - CS x 0.4 from season steals'],
+    ['bsr_runs', 'Baserun', 'SB x 0.2 - CS x 0.4 from season steals, or from the steals you enter (M)'],
     ['if_runs', 'Infield', 'Defense-tab OAE at infield positions x 0.70 runs/out'],
     ['of_runs', 'Outfield', 'Defense-tab OAE at outfield positions x 0.80 runs/out'],
     ['catch_runs', 'Catching', 'Framing runs + blended arm runs from the Catching tab'],
@@ -5168,8 +5190,8 @@ function ValuesTab({ teamCtx, season }) {
             <span className="block mt-0.5 text-amber-600 dark:text-amber-400">
               Offense and pitching use official season stats when they exist. Where they do not (fall
               intrasquads and scrimmages, or a scrimmage-only view) they come from TrackMan pitch run values
-              instead, marked <sup className="text-[8px] font-bold text-sky-600 dark:text-sky-400">TM</sup>. Baserunning needs
-              season steals, so it stays blank there. Fielding and catching are tracked and follow this filter.
+              instead, marked <sup className="text-[8px] font-bold text-sky-600 dark:text-sky-400">TM</sup>. Baserunning uses
+              season steals, or the SB / CS you enter under "Enter steals" (marked <sup className="text-[8px] font-bold text-amber-600 dark:text-amber-400">M</sup>). Fielding and catching are tracked and follow this filter.
             </span>
           )}
         </div>
@@ -5197,9 +5219,47 @@ function ValuesTab({ teamCtx, season }) {
               : 'bg-white dark:bg-gray-800 text-gray-500 ring-gray-200 dark:ring-gray-700'}`}>
             Small-sample stabilizer {shrink ? 'on' : 'off'}
           </button>
+          <button onClick={() => setStealsOpen(v => !v)}
+            title="Type each runner's stolen bases and caught stealings for this season; the Baserun column prices them at +0.2 per SB and -0.4 per CS where season stats are missing"
+            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ${stealsOpen
+              ? 'bg-portal-purple text-white ring-portal-purple'
+              : 'bg-white dark:bg-gray-800 text-gray-500 ring-gray-200 dark:ring-gray-700'}`}>
+            Enter steals
+          </button>
           <TeamSelect teamCtx={teamCtx} value={team} onChange={setTeam} />
         </div>
       </div>
+
+      {stealsOpen && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-amber-200 dark:ring-amber-800 p-3">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">Steals entry, {season}-{String(Number(season) + 1).slice(2)}</span>
+            <span className="text-[10.5px] text-gray-400">Baserun = SB x 0.2 - CS x 0.4. Saved to your workspace; used wherever a runner has no season steals. Save 0 and 0 to clear.</span>
+          </div>
+          {runners.length === 0 ? <div className="text-sm text-gray-400 py-3">No hitters in this view yet.</div> : (
+            <div className="mt-2 grid sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
+              {runners.map(r => {
+                const d = stealDraft[r.player] || {}
+                const sb = d.sb ?? r.sb ?? '', cs = d.cs ?? r.cs ?? ''
+                const dirty = d.sb != null || d.cs != null
+                return (
+                  <div key={r.player} className="flex items-center gap-2 py-1 border-b border-gray-100 dark:border-gray-700/60 text-[12px]">
+                    <span className="flex-1 truncate font-semibold">{r.player}</span>
+                    <label className="text-[10px] text-gray-400">SB</label>
+                    <input type="number" min="0" value={sb} onChange={e => setStealDraft(dr => ({ ...dr, [r.player]: { ...d, sb: e.target.value } }))}
+                      className="w-12 rounded border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-1 py-0.5 text-right text-[12px]" />
+                    <label className="text-[10px] text-gray-400">CS</label>
+                    <input type="number" min="0" value={cs} onChange={e => setStealDraft(dr => ({ ...dr, [r.player]: { ...d, cs: e.target.value } }))}
+                      className="w-12 rounded border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-1 py-0.5 text-right text-[12px]" />
+                    <button onClick={() => saveSteals(r.player)} disabled={!dirty || stealBusy === r.player}
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-portal-purple text-white disabled:opacity-30">Save</button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         {leaders.map(([label, best, k]) => (
@@ -5254,6 +5314,9 @@ function ValuesTab({ teamCtx, season }) {
                   {COLS.map(([k]) => (
                     <td key={k} className="px-2 py-1.5 text-right">
                       {rv(r[k], (k === 'off_runs' && r.off_src === 'trk') || (k === 'pitch_runs' && r.pitch_src === 'trk'))}
+                      {k === 'bsr_runs' && r.bsr_src === 'manual' && (
+                        <sup className="ml-0.5 text-[8px] font-bold text-amber-600 dark:text-amber-400" title={`Coach-entered: ${r.sb} SB, ${r.cs} CS`}>M</sup>
+                      )}
                     </td>
                   ))}
                   <td className="px-2 py-1.5 text-right text-xs opacity-75">{rv(r.tracked_rv)}</td>
