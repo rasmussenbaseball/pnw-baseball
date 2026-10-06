@@ -1244,6 +1244,7 @@ def trackman_pitching(
                            p.plate_loc_side, p.plate_loc_height,
                            p.balls, p.strikes, p.pitch_call, p.play_result,
                            p.k_or_bb, p.outs_on_play, p.runs_scored,
+                           p.exit_speed, p.launch_angle, p.direction, p.batter_side,
                            p.inning, p.top_bottom, p.pa_of_inning, s.id AS session_id
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}

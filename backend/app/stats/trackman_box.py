@@ -128,11 +128,15 @@ def pitcher_line(rows, lg=None):
     # per-inning rates need a real inning behind them: 2 walks in a 0.1 IP
     # cameo is a 54 BB/9 nobody wants to read
     rate_ok = ip >= MIN_RATE_IP
+    # balls in play allowed: AB minus K and HR, plus sacrifices (they are
+    # batted balls fielded for outs, same denominator as hitter_line)
+    bip = c["AB"] - c["K"] - c["HomeRun"] + c["Sac"]
     line = {
         "ip": round(ip, 1), "ip_str": f"{outs // 3}.{outs % 3}", "outs": outs, "bf": c["PA"],
         "h": c["H"], "r": runs, "hr": c["HomeRun"], "bb": c["BB"], "k": c["K"], "hbp": c["HBP"],
         "whip": round((c["H"] + c["BB"]) / ip, 2) if rate_ok else None,
         "baa": round(c["H"] / c["AB"], 3) if c["AB"] >= MIN_BAA_AB else None,
+        "babip": round((c["H"] - c["HomeRun"]) / bip, 3) if bip >= MIN_BAA_AB else None,
         "k9": round(9 * c["K"] / ip, 1) if rate_ok else None,
         "bb9": round(9 * c["BB"] / ip, 1) if rate_ok else None,
         "ra9": round(9 * runs / ip, 2) if rate_ok else None,
@@ -141,7 +145,38 @@ def pitcher_line(rows, lg=None):
     }
     if lg and rate_ok and lg.get("fip_c") is not None:
         line["fip"] = round((13 * c["HomeRun"] + 3 * (c["BB"] + c["HBP"]) - 2 * c["K"]) / ip + lg["fip_c"], 2)
+    # Expected stats allowed, from the batted-ball model the hitting board
+    # uses (EV x LA x spray), so a pitcher's xAVG reads on the same scale as
+    # his hitters'. Needs the rows to carry exit_speed / launch_angle; an
+    # untracked ball in play falls back to its actual result inside the model.
+    line["xavg"] = line["xiso"] = None
+    if c["AB"] >= MIN_BAA_AB and any("exit_speed" in r for r in pas):
+        x = _xstats_allowed(pas)
+        if x:
+            line["xavg"] = x["xavg"]
+            line["xiso"] = round(x["xslg"] - x["xavg"], 3)
     return line
+
+
+def _xstats_allowed(pas):
+    """Pitcher-perspective expected stats over his terminal PAs."""
+    from .trackman_xstats import batter_xstats
+    out = []
+    for r in pas:
+        o = outcome(r)
+        if o is None:
+            continue
+        if o not in ("K", "BB", "HBP", "Sac"):
+            o = "InPlay"
+        out.append({
+            "outcome": o,
+            "ev": float(r["exit_speed"]) if r.get("exit_speed") is not None else None,
+            "la": float(r["launch_angle"]) if r.get("launch_angle") is not None else None,
+            "direction": float(r["direction"]) if r.get("direction") is not None else None,
+            "side": (r.get("batter_side") or "")[:1] or None,
+            "play_result": r.get("play_result"),
+        })
+    return batter_xstats(out, min_pa=1)
 
 
 def league_context(rows):
