@@ -3320,8 +3320,70 @@ def trackman_catching(team: str | None = Query(None),
         row["total_runs"] = round((row.get("framing_runs") or 0) + (row.get("arm_runs") or 0), 1)
         catchers[key] = row
 
-    out = sorted(catchers.values(), key=lambda r: -(r.get("total_runs") or 0))
-    return {"catchers": out, "corpus_cs_pct": round(corpus_cs, 3)}
+    # Coach-flagged non-catchers (a wrong position tag in a TrackMan file
+    # makes anyone who "caught" a pitch a catcher): drop them from the board.
+    with get_connection() as _xc:
+        excluded = _catcher_exclusions(_xc.cursor(), owner)
+    out = sorted((r for r in catchers.values() if r["catcher"] not in excluded),
+                 key=lambda r: -(r.get("total_runs") or 0))
+    return {"catchers": out, "corpus_cs_pct": round(corpus_cs, 3), "excluded": sorted(excluded)}
+
+
+# ── Catcher exclusions ─────────────────────────────────────────────
+# TrackMan lists whoever is tagged behind the plate as the catcher, so a
+# position tagged wrong in one file puts an infielder on the catching
+# board. The coach can mark a name "not a catcher"; the name is then
+# hidden from the Catching tab and the Values ledger (per workspace).
+_CATCHER_EXCL_READY = False
+
+
+def _ensure_catcher_exclusions(cur):
+    global _CATCHER_EXCL_READY
+    if _CATCHER_EXCL_READY:
+        return
+    cur.execute("""CREATE TABLE IF NOT EXISTS tm_catcher_exclusions (
+                       owner_user_id UUID NOT NULL,
+                       catcher       TEXT NOT NULL,
+                       created_at    TIMESTAMPTZ DEFAULT now(),
+                       PRIMARY KEY (owner_user_id, catcher))""")
+    cur.execute("ALTER TABLE tm_catcher_exclusions ENABLE ROW LEVEL SECURITY")
+    _CATCHER_EXCL_READY = True
+
+
+def _catcher_exclusions(cur, owner):
+    _ensure_catcher_exclusions(cur)
+    cur.execute("SELECT catcher FROM tm_catcher_exclusions WHERE owner_user_id = %s", (owner,))
+    return {r["catcher"] for r in cur.fetchall()}
+
+
+class CatcherName(BaseModel):
+    catcher: str
+
+
+@router.post("/trackman/catching/exclude")
+def catcher_exclude(body: CatcherName, owner: str = Depends(_write_gate)):
+    """Mark a name as NOT a catcher (hidden from the Catching tab and Values)."""
+    name = (body.catcher or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="catcher is required")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_catcher_exclusions(cur)
+        cur.execute("""INSERT INTO tm_catcher_exclusions (owner_user_id, catcher) VALUES (%s, %s)
+                       ON CONFLICT DO NOTHING""", (owner, name))
+        conn.commit()
+    return {"status": "ok", "catcher": name, "excluded": True}
+
+
+@router.delete("/trackman/catching/exclude/{catcher}")
+def catcher_include(catcher: str, owner: str = Depends(_write_gate)):
+    """Undo: list the name as a catcher again."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_catcher_exclusions(cur)
+        cur.execute("DELETE FROM tm_catcher_exclusions WHERE owner_user_id = %s AND catcher = %s", (owner, catcher))
+        conn.commit()
+    return {"status": "ok", "catcher": catcher, "excluded": False}
 
 
 # ── Staff notes + Coach Board insights ───────────────────────────

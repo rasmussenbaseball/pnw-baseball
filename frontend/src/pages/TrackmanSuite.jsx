@@ -3363,9 +3363,25 @@ function CatchingTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
   const [context, setContext] = useState('all')
-  const { data, loading } = useApi('/trackman/catching',
+  const { data, loading, refetch } = useApi('/trackman/catching',
     { ...(team ? { team } : {}), season, context }, [team, context])
   const rows = data?.catchers || []
+  const excluded = data?.excluded || []
+  const [busyName, setBusyName] = useState(null)
+  // A wrong position tag in a TrackMan file lists a non-catcher here; the
+  // coach can drop the name (also hides them from the Values ledger).
+  const setExcluded = async (name, on) => {
+    setBusyName(name)
+    try {
+      const r = await fetch(on ? '/api/v1/trackman/catching/exclude' : `/api/v1/trackman/catching/exclude/${encodeURIComponent(name)}`, {
+        method: on ? 'POST' : 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: on ? JSON.stringify({ catcher: name }) : undefined,
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`)
+      refetch()
+    } catch (e) { alert(e.message) } finally { setBusyName(null) }
+  }
   const pct = v => v != null ? `${Math.round(v * 100)}%` : '—'
   const runs = v => v == null ? '—' : (
     <span className={`font-bold ${v > 0 ? 'text-emerald-600 dark:text-emerald-400' : v < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
@@ -3416,6 +3432,7 @@ function CatchingTab({ teamCtx, season }) {
                 <th className="px-2 py-2 text-right"><StatTip k="avg_exchange" group="catching" label="Exch" /></th>
                 <th className="px-2 py-2 text-right"><StatTip k="avg_throw" group="catching" label="Arm velo" /></th>
                 <th className="px-2 py-2 text-right">Throws</th>
+                <th className="px-2 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -3448,12 +3465,31 @@ function CatchingTab({ teamCtx, season }) {
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_exchange ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_throw ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.throws ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                    <button onClick={() => setExcluded(c.catcher, true)} disabled={busyName === c.catcher}
+                      title="Not a catcher (position tagged wrong): hide this player from the Catching tab and the Values ledger"
+                      className="text-[10px] font-semibold text-gray-400 hover:text-rose-600 disabled:opacity-50">
+                      not a catcher
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+      {excluded.length > 0 && (
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 flex flex-wrap items-center gap-1.5">
+          <span className="font-semibold">Hidden as non-catchers:</span>
+          {excluded.map(n => (
+            <span key={n} className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 pl-2 pr-1 py-0.5">
+              {n}
+              <button onClick={() => setExcluded(n, false)} disabled={busyName === n} title="List as a catcher again"
+                className="text-gray-400 hover:text-emerald-600 text-[12px] leading-none px-0.5 disabled:opacity-50">↺</button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {framers.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
