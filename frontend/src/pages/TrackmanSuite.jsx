@@ -5103,11 +5103,13 @@ function ValuesTab({ teamCtx, season }) {
   const seasonOnly = context !== 'all' && context !== 'game'
 
   const rows = data?.players || []
-  const rv = v => v == null ? <span className="text-gray-300 dark:text-gray-600">—</span> : (
+  const rv = (v, trk = false) => v == null ? <span className="text-gray-300 dark:text-gray-600">—</span> : (
     <span className={`font-semibold tabular-nums ${v > 0.05 ? 'text-emerald-600 dark:text-emerald-400' : v < -0.05 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500'}`}>
       {v > 0 ? `+${v}` : v}
+      {trk && <sup className="ml-0.5 text-[8px] font-bold text-sky-600 dark:text-sky-400" title="From TrackMan pitch run values (no season stats for this view)">TM</sup>}
     </span>
   )
+  const anyTrk = rows.some(r => r.off_src === 'trk' || r.pitch_src === 'trk')
   const COLS = [
     ['off_runs', 'Offense', 'wRAA: season wOBA vs the division average, per PA'],
     ['bsr_runs', 'Baserun', 'SB x 0.2 - CS x 0.4 from season steals'],
@@ -5126,10 +5128,12 @@ function ValuesTab({ teamCtx, season }) {
         <div className="text-[11px] text-gray-400 max-w-xl">
           Every column is average-relative: 0 = an average player in the division. Season stats + tracked
           data combined. Rough rule: about 10 runs = 1 win.
-          {seasonOnly && (
+          {(seasonOnly || anyTrk) && (
             <span className="block mt-0.5 text-amber-600 dark:text-amber-400">
-              Offense, baserunning and pitching come from official season stats, so they stay blank in a
-              scrimmage or intrasquad view. Fielding and catching are tracked, so they follow this filter.
+              Offense and pitching use official season stats when they exist. Where they do not (fall
+              intrasquads and scrimmages, or a scrimmage-only view) they come from TrackMan pitch run values
+              instead, marked <sup className="text-[8px] font-bold text-sky-600 dark:text-sky-400">TM</sup>. Baserunning needs
+              season steals, so it stays blank there. Fielding and catching are tracked and follow this filter.
             </span>
           )}
         </div>
@@ -5187,7 +5191,7 @@ function ValuesTab({ teamCtx, season }) {
               <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
                 <th className="px-4 py-2"># / Player</th>
                 <th className="px-2 py-2">Team</th>
-                <th className="px-2 py-2 text-right" title="Season PA / IP behind the numbers">PA · IP</th>
+                <th className="px-2 py-2 text-right" title="Season PA / IP behind the numbers (tracked PA and outs when season stats are missing)">PA · IP</th>
                 {COLS.map(([k, label, tip]) => (
                   <th key={k} className="px-2 py-2 text-right">
                     <StatTip k={k} group="values" label={label} fallback={tip} />
@@ -5212,7 +5216,9 @@ function ValuesTab({ teamCtx, season }) {
                     {[r.pa && `${r.pa} PA`, r.ip && `${r.ip} IP`].filter(Boolean).join(' · ') || '—'}
                   </td>
                   {COLS.map(([k]) => (
-                    <td key={k} className="px-2 py-1.5 text-right">{rv(r[k])}</td>
+                    <td key={k} className="px-2 py-1.5 text-right">
+                      {rv(r[k], (k === 'off_runs' && r.off_src === 'trk') || (k === 'pitch_runs' && r.pitch_src === 'trk'))}
+                    </td>
                   ))}
                   <td className="px-2 py-1.5 text-right text-xs opacity-75">{rv(r.tracked_rv)}</td>
                   {posAdj && (
@@ -5233,7 +5239,9 @@ function ValuesTab({ teamCtx, season }) {
 
       <p className="text-[10.5px] text-gray-400 leading-snug max-w-3xl">
         Offense and pitching come from the site's real season stats (wOBA and FIP against
-        division averages, so a D3 bat is measured against D3, not D1). Baserunning uses standard
+        division averages, so a D3 bat is measured against D3, not D1); when a player has none for the
+        season in view, the TrackMan pitch run values stand in (count-by-count linear weights, centered
+        on this workspace's average pitch, 30+ pitches) and are marked TM. Baserunning uses standard
         stolen-base run weights. Infield, outfield, and catching come from the suite's tracked-data
         models (positioning + pitch calls + pop times), which cover only positioned games — those
         columns grow as more positioning files are uploaded. Players missing a column simply have

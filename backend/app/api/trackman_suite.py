@@ -697,6 +697,9 @@ def trackman_values(
     OUTFIELD  = Defense-tab OAE at OF positions x 0.80 runs per out.
     CATCHING  = framing runs + blended arm runs (Catching tab).
     PITCHING  = (division avg FIP - FIP) / 9 x IP (10+ IP qualifiers).
+    When a player has no season stats for the season in view (fall
+    intrasquads/scrimmages), OFFENSE and PITCHING fall back to the TrackMan
+    count-based run values (30+ priced pitches), flagged off_src/pitch_src.
     Every component is average-relative, so 0 = an average player.
 
     pos_adj adds the WAR-style positional adjustment (premium spots get
@@ -782,25 +785,36 @@ def trackman_values(
         _vctx_live, _vctx_live_params = (
             _context_clause(context) if context not in ("all", "live")
             else (" AND s.session_type IN ('game','scrimmage','intrasquad')", []))
-        cur.execute(f"""SELECT p.pitcher AS n, p.balls, p.strikes, p.pitch_call, p.play_result
+        cur.execute(f"""SELECT p.pitcher AS n, p.batter AS b, p.balls, p.strikes, p.pitch_call, p.play_result,
+                              p.k_or_bb, p.outs_on_play
                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                        WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
                          {_vctx_live}{_ssql}""",
                     [owner] + _vctx_live_params + _sparams)
-        trv = {}
+        # Both lenses from the same pitches: the pitcher's value is the
+        # negative of the hitter's. trv = pitchers [runs, priced pitches,
+        # outs]; hrv = hitters [runs, priced pitches, plate appearances].
+        trv, hrv = {}, {}
         _gsum, _gn = 0.0, 0
         for r in cur.fetchall():
             v = pitch_run_value(r["balls"], r["strikes"], r["pitch_call"], r["play_result"])
+            is_k = r["k_or_bb"] == "Strikeout"
+            outs = int(r["outs_on_play"] or 0) + (1 if is_k and not (r["outs_on_play"] or 0) else 0)
+            pa_end = r["pitch_call"] in ("InPlay", "HitByPitch") or r["k_or_bb"] in ("Strikeout", "Walk")
+            e = trv.setdefault(r["n"], [0.0, 0, 0]); e[2] += outs
+            if r["b"]:
+                h = hrv.setdefault(r["b"], [0.0, 0, 0]); h[2] += 1 if pa_end else 0
             if v is not None:
-                e = trv.setdefault(r["n"], [0.0, 0])
-                e[0] -= v
-                e[1] += 1
-                _gsum += v
-                _gn += 1
+                e[0] -= v; e[1] += 1
+                if r["b"]:
+                    h[0] += v; h[1] += 1
+                _gsum += v; _gn += 1
         # center on this corpus's average pitch (see _rv_baseline)
         _mean = (_gsum / _gn) if _gn else 0.0
         for e in trv.values():
             e[0] += e[1] * _mean
+        for h in hrv.values():
+            h[0] -= h[1] * _mean
 
         # division baselines: PA-weighted wOBA and IP-weighted FIP
         cur.execute("""
@@ -833,7 +847,9 @@ def trackman_values(
                    "if_runs": if_runs.get(name), "of_runs": of_runs.get(name),
                    "catch_runs": cat_runs.get(name),
                    "tracked_rv": (round(trv[name][0], 1)
-                                  if name in trv and trv[name][1] >= 30 else None)}
+                                  if name in trv and trv[name][1] >= 30 else None),
+                   "tracked_off_rv": (round(hrv[name][0], 1)
+                                      if name in hrv and hrv[name][1] >= 30 else None)}
             if m:
                 pid = m["player_id"]
                 cur.execute("""
@@ -870,6 +886,22 @@ def trackman_values(
                     if lg and ip >= 5:
                         row["pitch_runs"] = round((lg - float(pr["fip"])) / 9.0 * ip, 1)
                         row["ip"] = round(ip, 1)
+            # No season stats for this player/season (the fall: intrasquads and
+            # scrimmages never reach the box scores)? Use the TrackMan run values
+            # for offense and pitching so the ledger still covers everyone, and
+            # say so (off_src / pitch_src = "trk"). Same count-ladder model as
+            # RV (trk), re-centered on this corpus, so 0 = an average pitch here.
+            if row["off_runs"] is None and row.get("tracked_off_rv") is not None:
+                row["off_runs"] = row["tracked_off_rv"]
+                row["off_src"] = "trk"
+                if not row.get("pa"):
+                    row["pa"] = hrv[name][2]
+            if row["pitch_runs"] is None and row.get("tracked_rv") is not None:
+                row["pitch_runs"] = row["tracked_rv"]
+                row["pitch_src"] = "trk"
+                if not row.get("ip") and name in trv and trv[name][2]:
+                    outs = trv[name][2]
+                    row["ip"] = round(outs // 3 + (outs % 3) / 10, 1)   # baseball notation
             if pos_adj:
                 pp = prim_pos.get(name)
                 if pp and pp[0] in POS_ADJ:
