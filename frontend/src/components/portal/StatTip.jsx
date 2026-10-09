@@ -28,6 +28,8 @@ export const STAT_DEFS = {
   airpull_pct: ['Air-pull rate: how often he lifts AND pulls, where power lives.', 'Air balls (10+ degrees) pulled 10+ degrees / all air balls x 100.', 1, '%'],
   depth: ['Contact depth: how far in front of the plate he meets the ball.', 'Average contact position toward the pitcher. 0 = back of plate, 1.4 = front edge; damage peaks 1.3-2.7 ft.', 2, ' ft'],
   max_dist: ['Longest tracked batted ball.', 'Max projected distance.', 0, ' ft'],
+  attack_angle: ['Attack angle proxy: the bat\u2019s path through the zone.', 'Median launch angle on the hardest 10% of his batted balls (at least 3, 8+ balls total). Hardest contact comes closest to the bat path. 6-18 degrees is level, 18+ steep, under 6 flat.', 1, '°'],
+  phr: ['Park-neutral homers.', 'For every air ball with a tracked distance and bearing, the share of the 57 PNW parks in the site\u2019s park file it clears (fence distance at that bearing plus 6 ft), summed. Strips the home yard out of the power read.', 1],
   swing_pct: ['Swing rate.', 'Swings / called pitches x 100.', 1, '%'],
   contact_pct: ['Contact rate: how often a swing finds the ball.', 'Swings with contact / total swings x 100.', 1, '%'],
   zone_swing_pct: ['Zone swing rate: how often he offers at a strike. Pair with Chase%: high Z-Sw% and low Chase% is the goal.', 'Swings at in-zone pitches / in-zone pitches x 100.', 1, '%'],

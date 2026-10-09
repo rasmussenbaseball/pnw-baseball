@@ -32,6 +32,7 @@ from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_tunnel import tunnel_pairs
 from ..stats import trackman_spin as spin
 from ..stats import trackman_tempo as tempo
+from ..stats import trackman_parks as parks
 from ..stats.trackman_defense import (
     OF_POSITIONS, IF_POSITIONS, OUT_RESULTS, landing_xz,
     catch_probability, gb_out_probability, difficulty_bucket, move_direction,
@@ -1562,7 +1563,9 @@ def trackman_hitting_board(
         "zev": defaultdict(list), "zrv": defaultdict(float), "zrv_n": defaultdict(int),
         "vb": defaultdict(_band_bucket),
         "points": [], "side": None, "pa_map": {},
+        "evla": [], "phr": 0.0, "phr_n": 0,
     })
+    park_cache = {}
     for r in rows:
         d = r["session_date"].isoformat() if r["session_date"] else None
         st = sessions.setdefault(r["session_id"], {"id": r["session_id"], "date": d,
@@ -1667,6 +1670,13 @@ def trackman_hitting_board(
             b["cx"].append(float(r["contact_x"]))
         if r["distance"] is not None:
             b["dists"].append(float(r["distance"]))
+        if la is not None:
+            b["evla"].append((ev, la))
+            if r["distance"] is not None and r["bearing"] is not None and la >= 10:
+                rep_ = parks.ball_report(float(r["distance"]), float(r["bearing"]), la)
+                if rep_:
+                    b["phr"] += rep_["share"]
+                    b["phr_n"] += 1
         b["points"].append({
             "ev": round(ev, 1), "exit_speed": round(ev, 1),
             "la": round(la, 1) if la is not None else None,
@@ -1704,6 +1714,8 @@ def trackman_hitting_board(
             "depth": round(sum(b["cx"]) / len(b["cx"]), 2) if b["cx"] else None,
             "max_dist": round(max(b["dists"])) if b["dists"] else None,
             "xwobacon": round(sum(b["xw"]) / len(b["xw"]), 3) if b["xw"] else None,
+            "attack_angle": (parks.attack_angle_proxy(b["evla"]) or {}).get("attack_angle"),
+            "phr": round(b["phr"], 1) if b["phr_n"] else None,
             "zone_ev": {k: round(sum(v) / len(v), 1) for k, v in b["zev"].items() if v},
             "velo": _band_out(b["vb"], live_ctx),
             "points": b["points"],
@@ -2886,8 +2898,40 @@ def trackman_batter_detail(
 
     with get_connection() as conn:
         link = _match_player(conn.cursor(), batter)
+    # Power profile: swing-plane proxy + park-aware homers on his air balls.
+    home_code = team or next((x.get("batter_team") for x in pitches if x.get("batter_team")), None)
+    home_park = parks.match_park(home_code)
+    division = home_park["division"] if home_park else None
+    fair = [x for x in pitches if x["exit_speed"] is not None and x["launch_angle"] is not None
+            and _is_fair(x.get("pitch_call"), x.get("direction"))]
+    balls = []
+    phr = 0.0
+    for x in fair:
+        if x.get("distance") is None or x.get("bearing") is None or float(x["launch_angle"]) < 10:
+            continue
+        rp = parks.ball_report(float(x["distance"]), float(x["bearing"]), float(x["launch_angle"]), home_park, division)
+        if not rp:
+            continue
+        phr += rp["share"]
+        balls.append({"date": x.get("session_date"), "type": x.get("session_type"),
+                      "ev": round(float(x["exit_speed"]), 1), "la": round(float(x["launch_angle"]), 1),
+                      "distance": round(float(x["distance"])), "bearing": round(float(x["bearing"]), 1),
+                      "result": x.get("play_result"), **rp})
+    balls.sort(key=lambda b_: -b_["distance"])
+    live_pas = box.terminal_pas([x for x in pitches if x.get("session_type") in _LIVE_TYPES])
+    hr_actual = sum(1 for r in live_pas if r.get("play_result") == "HomeRun")
+    power = {
+        "swing_path": parks.attack_angle_proxy([(x["exit_speed"], x["launch_angle"]) for x in fair]),
+        "phr": round(phr, 1), "air_balls": len(balls), "hr_actual": hr_actual,
+        "home_park": home_park["name"] if home_park else None,
+        "home_out": sum(1 for b_ in balls if b_.get("home_out")),
+        "division": division,
+        "div_phr": round(sum(b_["div_out"] / b_["div_total"] for b_ in balls if b_.get("div_total")), 1) if division else None,
+        "balls": [{k: v for k, v in b_.items() if k != "out_at"} | {"out_at": b_["out_at"][:12]} for b_ in balls[:12]],
+    }
     return {"batter": batter, "pitch_count": len(pitches),
             "pitches": pitches, "percentiles": percentiles, "profile": link,
+            "power": power,
             "xstats": xstats, "swing_take": swing_take, "trend": trend,
             "splits": splits, "velo": velo,
             "line": box.hitter_line(box.terminal_pas(
@@ -3182,11 +3226,121 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
     correct = sum(1 for r in called if (r["pitch_call"] == "StrikeCalled") == bool(r["is_in_zone"]))
     shadow = [r for r in called if _shadow(r)]
     shadow_k = sum(1 for r in shadow if r["pitch_call"] == "StrikeCalled")
+
+    # Umpire report (the 6-4-3 "zone report"): expected strike probability
+    # for every take from the framing model's edge logistic, so each team's
+    # pitchers get a calls-gained number, plus where the zone was given and
+    # taken away. The per-take list feeds the client's called-strike maps.
+    HALF_W, Z_LO, Z_HI, SCALE = 0.83, 1.5, 3.5, 0.09
+
+    def _edge_d(px, pz):
+        dx = abs(px) - HALF_W
+        dz = max(Z_LO - pz, pz - Z_HI)
+        ox, oz = max(dx, 0.0), max(dz, 0.0)
+        return _math.hypot(ox, oz) if (ox > 0 or oz > 0) else max(dx, dz)
+
+    # Calibrate "expected strike" on the coach's WHOLE corpus of takes, so
+    # calls gained reads against the zone umpires usually give in this data
+    # (college zones run wider than the rulebook; against the rulebook alone
+    # both staffs looked +12 in one game). One-dimensional logistic in edge
+    # distance, fit by Newton steps.
+    a_fit, b_fit = 0.46, -5.7      # start near the typical college zone: 50/50 one inch outside, 2 in scale
+    with get_connection() as conn:
+        c3 = conn.cursor()
+        c3.execute(
+            """SELECT plate_loc_side AS px, plate_loc_height AS pz, pitch_call
+               FROM tm_pitches WHERE owner_user_id = %s
+                 AND pitch_call IN ('StrikeCalled','BallCalled')
+                 AND plate_loc_side IS NOT NULL AND plate_loc_height IS NOT NULL""",
+            (owner,))
+        corpus = [(_edge_d(float(r["px"]), float(r["pz"])), 1.0 if r["pitch_call"] == "StrikeCalled" else 0.0)
+                  for r in c3.fetchall()]
+    def _ll(a_, b_):
+        tot = 0.0
+        for d_, y_ in corpus:
+            z_ = max(-30.0, min(30.0, a_ + b_ * d_))
+            pr = 1.0 / (1.0 + _math.exp(-z_))
+            tot += _math.log(pr if y_ else 1 - pr) if 1e-12 < pr < 1 - 1e-12 else -27.6
+        return tot
+    if len(corpus) >= 200:
+        cur_ll = _ll(a_fit, b_fit)
+        for _ in range(25):   # damped Newton: halve the step until the likelihood improves
+            g0 = g1 = h00 = h01 = h11 = 0.0
+            for d_, y_ in corpus:
+                z_ = max(-30.0, min(30.0, a_fit + b_fit * d_))
+                pr = 1.0 / (1.0 + _math.exp(-z_))
+                w_ = pr * (1 - pr)
+                g0 += (y_ - pr); g1 += (y_ - pr) * d_
+                h00 += w_; h01 += w_ * d_; h11 += w_ * d_ * d_
+            det = h00 * h11 - h01 * h01
+            if abs(det) < 1e-12:
+                break
+            da = (h11 * g0 - h01 * g1) / det
+            db = (h00 * g1 - h01 * g0) / det
+            step = 1.0
+            while step > 1e-3:
+                na, nb = a_fit + step * da, b_fit + step * db
+                nll = _ll(na, nb)
+                if nll >= cur_ll - 1e-9:
+                    break
+                step *= 0.5
+            if step <= 1e-3:
+                break
+            a_fit, b_fit, moved = na, nb, abs(step * da) + abs(step * db)
+            cur_ll = nll
+            if moved < 1e-5:
+                break
+    usual_edge_in = round(-12.0 * a_fit / b_fit, 1) if b_fit else None   # where p = 0.5, inches past the rulebook edge
+
+    by_team, by_side = {}, {}
+    gifts, robbed = [], []
+    calls = []
+    for r in called:
+        px, pz = float(r["plate_loc_side"]), float(r["plate_loc_height"])
+        d = _edge_d(px, pz)
+        z_ = max(-30.0, min(30.0, a_fit + b_fit * d))
+        p_k = 1.0 / (1.0 + _math.exp(-z_))
+        got = 1 if r["pitch_call"] == "StrikeCalled" else 0
+        for key, bucket in ((r["pitcher_team"] or "?", by_team), ((r["batter_side"] or "?")[:1], by_side)):
+            st = bucket.setdefault(key, {"called": 0, "strikes": 0, "x_strikes": 0.0})
+            st["called"] += 1
+            st["strikes"] += got
+            st["x_strikes"] += p_k
+        if got and d > 0.1:          # strike called 1.2+ in outside the rulebook zone
+            gifts.append(d)
+        if not got and d < -0.1:     # ball called 1.2+ in inside it
+            robbed.append(-d)
+        calls.append({"plate_loc_side": round(px, 2), "plate_loc_height": round(pz, 2),
+                      "pitch_call": r["pitch_call"], "batter_side": r["batter_side"],
+                      "pitcher_team": r["pitcher_team"], "is_swing": False})
+    for bucket in (by_team, by_side):
+        for st in bucket.values():
+            st["x_strikes"] = round(st["x_strikes"], 1)
+            st["gained"] = round(st["strikes"] - st["x_strikes"], 1)
+            st["strike_pct"] = round(100 * st["strikes"] / st["called"], 1) if st["called"] else None
+    # effective zone edges: the mean position of called strikes in the shadow
+    # band tells how wide / tall the plate played
+    sh_k = [r for r in shadow if r["pitch_call"] == "StrikeCalled"]
+    edges = {}
+    if len(sh_k) >= 8:
+        xs = [abs(float(r["plate_loc_side"])) for r in sh_k if abs(abs(float(r["plate_loc_side"])) - HALF_W) <= BAND]
+        hi = [float(r["plate_loc_height"]) for r in sh_k if abs(float(r["plate_loc_height"]) - Z_HI) <= BAND]
+        lo = [float(r["plate_loc_height"]) for r in sh_k if abs(float(r["plate_loc_height"]) - Z_LO) <= BAND]
+        edges = {"width_in": round(24 * (sum(xs) / len(xs)), 1) if len(xs) >= 4 else None,
+                 "top_in": round(12 * (sum(hi) / len(hi)), 1) if len(hi) >= 4 else None,
+                 "bottom_in": round(12 * (sum(lo) / len(lo)), 1) if len(lo) >= 4 else None}
     zone_report = {
         "called": n_called,
         "accuracy_pct": round(100 * correct / n_called, 1) if n_called else None,
         "shadow_pitches": len(shadow),
         "shadow_strike_pct": round(100 * shadow_k / len(shadow), 1) if shadow else None,
+        "by_team": by_team, "by_side": by_side,
+        "gifts": {"n": len(gifts), "avg_in": round(12 * sum(gifts) / len(gifts), 1) if gifts else None},
+        "robbed": {"n": len(robbed), "avg_in": round(12 * sum(robbed) / len(robbed), 1) if robbed else None},
+        "edges": edges, "rulebook": {"width_in": round(24 * HALF_W, 1), "top_in": round(12 * Z_HI, 1), "bottom_in": round(12 * Z_LO, 1)},
+        "usual_edge_in": usual_edge_in, "corpus_takes": len(corpus),
+        "calls": calls,
+        "home_team": sess.get("home_team"), "away_team": sess.get("away_team"),
     }
 
     sess = dict(sess)

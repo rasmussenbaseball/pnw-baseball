@@ -698,6 +698,8 @@ const HB_FULL = [
   ['FB%', 'fb_pct', 'Launch 25-50 degrees', { plain: true }],
   ['AirPull%', 'airpull_pct', 'Pulled share of air balls (10+ degrees)', {}],
   ['Depth', 'depth', 'Avg contact depth (ft toward the pitcher). Green = the measured 1.3-2.7 ft damage window', { kind: 'depth', dec: 2 }],
+  ['Attack°', 'attack_angle', 'Swing-plane proxy: median launch angle on his hardest 10% of contact (no bat sensor needed). 6-18 is level, 18+ steep, under 6 flat', { plain: true, dec: 1 }],
+  ['pHR', 'phr', 'Park-neutral homers: each air ball counts the share of 57 PNW parks it clears (fence at its bearing + 6 ft), summed. A 3.0 means his fly balls were worth three homers at an average PNW yard', { dec: 1 }],
   ['xAVG', 'xavg', 'Expected AVG from EV + launch + spray, college-calibrated', { dec: 3 }],
   ['xSLG', 'xslg', null, { dec: 3 }],
   ['xwOBA', 'xwoba', null, { dec: 3 }],
@@ -917,6 +919,8 @@ const HB_BP = [
   ['FB%', 'fb_pct', null, { plain: true }],
   ['AirPull%', 'airpull_pct', 'Pulled share of air balls', {}],
   ['Depth', 'depth', 'Avg contact depth; green = the 1.3-2.7 ft damage window', { kind: 'depth', dec: 2 }],
+  ['Attack°', 'attack_angle', 'Swing-plane proxy: median launch angle on his hardest 10% of contact', { plain: true, dec: 1 }],
+  ['pHR', 'phr', 'Park-neutral homers: share of 57 PNW parks each air ball clears, summed', { dec: 1 }],
   ['O-Ct%', 'oz_contact_pct', 'Share of batted balls that came on pitches OUT of the zone. A floor on chasing, not true chase% (BP has no swing calls, so takes and whiffs are invisible)', { higher: false }],
   ['Max dist', 'max_dist', null, { dec: 0 }],
   ...HB_EV_ZONES.map(([l, k]) => [l, k, 'Avg EV on heart+shadow pitches in this part of the zone (min 3 BBE)', {}]),
@@ -2391,6 +2395,8 @@ function HitterLabTab({ teamCtx, season }) {
             <ContactPointCard pitches={pitches} />
           </div>
 
+          {data.power && <PowerCard power={data.power} />}
+
           <HitterLineCard line={data.line} />
         </div>
       )}
@@ -3102,20 +3108,10 @@ function SessionsTab({ overview, season, sessionId, setSessionId, teamCtx, onOpe
 
       {sample.length === 0 && (loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : data && (
         <div ref={contentRef} className="space-y-3">
+          {sess && !isPen && <SessionNotesEditor sess={sess} onSaved={refetch} />}
+
           {view === 'pitching' && data.zone_report?.called > 20 && !isPen && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {[
-                ['Called pitches', data.zone_report.called],
-                ['Call accuracy', data.zone_report.accuracy_pct != null ? `${data.zone_report.accuracy_pct}%` : '–'],
-                ['Shadow-zone pitches', data.zone_report.shadow_pitches],
-                ['Shadow strike rate', data.zone_report.shadow_strike_pct != null ? `${data.zone_report.shadow_strike_pct}%` : '–'],
-              ].map(([label, value]) => (
-                <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-4 py-3">
-                  <div className="text-xl font-bold text-portal-purple dark:text-gray-100 tabular-nums leading-none">{value}</div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-1.5">{label}</div>
-                </div>
-              ))}
-            </div>
+            <ZoneReportCard zr={data.zone_report} myTeam={teamCtx?.primary} />
           )}
 
           {players.length === 0 && (
@@ -3155,6 +3151,136 @@ function SessionsTab({ overview, season, sessionId, setSessionId, teamCtx, onOpe
 
 // Mini framing map: the zone with its four shadow-edge bands colored by
 // SAE (green = stealing strikes there, red = losing them).
+// ── Session Review: staff notes (highlights / concerns) ──────────
+function SessionNotesEditor({ sess, onSaved }) {
+  const [hi, setHi] = useState(sess.highlights || '')
+  const [co, setCo] = useState(sess.concerns || '')
+  const [open, setOpen] = useState(!!(sess.highlights || sess.concerns))
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { setHi(sess.highlights || ''); setCo(sess.concerns || '') }, [sess.id])
+  const dirty = hi !== (sess.highlights || '') || co !== (sess.concerns || '')
+  async function save() {
+    setBusy(true)
+    try {
+      await fetch(`/api/v1/trackman/sessions/${sess.id}/notes`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ highlights: hi || null, concerns: co || null }),
+      })
+      onSaved?.()
+    } finally { setBusy(false) }
+  }
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="text-[11px] font-semibold text-portal-purple dark:text-indigo-300 hover:underline">
+        + Add staff notes for this session
+      </button>
+    )
+  }
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Staff notes</span>
+        <span className="text-[10px] text-gray-400">saved with the session, printed on reports</span>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Highlights</span>
+          <textarea value={hi} onChange={e => setHi(e.target.value)} rows={3}
+            className="mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm"
+            placeholder="What went right" />
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400">Concerns</span>
+          <textarea value={co} onChange={e => setCo(e.target.value)} rows={3}
+            className="mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm"
+            placeholder="What needs work" />
+        </label>
+      </div>
+      <div className="mt-2 flex gap-2">
+        <button onClick={save} disabled={!dirty || busy}
+          className="px-3 py-1 rounded-full text-[12px] font-semibold bg-portal-purple text-white disabled:opacity-40">
+          {busy ? 'Saving…' : 'Save notes'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Session Review: umpire zone report ───────────────────────────
+function ZoneReportCard({ zr, myTeam }) {
+  const teams = Object.entries(zr.by_team || {}).sort((a, b) => b[1].called - a[1].called)
+  const calls = zr.calls || []
+  const tiles = [
+    ['Called pitches', zr.called],
+    ['Call accuracy', zr.accuracy_pct != null ? `${zr.accuracy_pct}%` : '–'],
+    ['Shadow strike rate', zr.shadow_strike_pct != null ? `${zr.shadow_strike_pct}%` : '–', `${zr.shadow_pitches} edge takes`],
+    ['Strikes given', zr.gifts?.n ?? 0, zr.gifts?.avg_in != null ? `avg ${zr.gifts.avg_in} in outside` : ''],
+    ['Strikes taken away', zr.robbed?.n ?? 0, zr.robbed?.avg_in != null ? `avg ${zr.robbed.avg_in} in inside` : ''],
+  ]
+  const e = zr.edges || {}, rb = zr.rulebook || {}
+  const dim = (label, v, base) => (
+    <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-sm font-bold tabular-nums">{v != null ? `${v} in` : '–'}
+        {v != null && base != null && <span className={`ml-1 text-[10px] font-semibold ${v - base > 0.5 ? 'text-emerald-600 dark:text-emerald-400' : v - base < -0.5 ? 'text-rose-500' : 'text-gray-400'}`}>{v - base > 0 ? '+' : ''}{(v - base).toFixed(1)} vs rulebook</span>}
+      </div>
+    </div>
+  )
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Zone report: how the plate was called</span>
+        <span className="text-[10px] text-gray-400">takes only · expected strikes from the site's edge model</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        {tiles.map(([label, value, sub]) => (
+          <div key={label} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5">
+            <div className="text-xl font-bold text-portal-purple dark:text-gray-100 tabular-nums leading-none">{value}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-1.5">{label}</div>
+            {sub && <div className="text-[10px] text-gray-400">{sub}</div>}
+          </div>
+        ))}
+      </div>
+      <div className="grid md:grid-cols-2 gap-3 mt-3">
+        <div>
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="py-1">Pitching for</th><th className="py-1 text-right">Takes</th><th className="py-1 text-right">Strikes</th>
+                <th className="py-1 text-right">Expected</th><th className="py-1 text-right">Calls gained</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+              {teams.map(([t, v]) => (
+                <tr key={t} className={t === myTeam ? 'font-semibold' : ''}>
+                  <td className="py-1">{t}{t === myTeam ? <span className="ml-1 text-[9px] uppercase text-portal-purple dark:text-indigo-300">us</span> : ''}</td>
+                  <td className="py-1 text-right tabular-nums">{v.called}</td>
+                  <td className="py-1 text-right tabular-nums">{v.strikes}</td>
+                  <td className="py-1 text-right tabular-nums text-gray-500">{v.x_strikes}</td>
+                  <td className={`py-1 text-right tabular-nums font-bold ${v.gained > 0.5 ? 'text-emerald-600 dark:text-emerald-400' : v.gained < -0.5 ? 'text-rose-600 dark:text-rose-400' : ''}`}>{v.gained > 0 ? '+' : ''}{v.gained}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            {dim('Zone width', e.width_in, rb.width_in)}
+            {dim('Zone top', e.top_in, rb.top_in)}
+            {dim('Zone bottom', e.bottom_in, rb.bottom_in)}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">
+            Calls gained is called strikes minus the strikes expected from the zone umpires usually give in your data ({zr.corpus_takes} takes; the 50/50 line sits {zr.usual_edge_in != null ? `${zr.usual_edge_in > 0 ? zr.usual_edge_in + ' in outside' : Math.abs(zr.usual_edge_in) + ' in inside'}` : 'at'} the rulebook edge), for each team's pitchers; a positive number means that staff got the edges this day. Zone width, top and bottom come from where edge strikes were actually called (rulebook 20 in wide, 18 to 42 in high).
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <ZoneRateMap pitches={calls} title="All takes" sub="% called strikes per cell" den={() => true} num={(p) => p.pitch_call === 'StrikeCalled'} />
+          <ZoneRateMap pitches={calls.filter(p => p.batter_side === 'Left')} title="vs LHH" sub="% called strikes" den={() => true} num={(p) => p.pitch_call === 'StrikeCalled'} />
+          <ZoneRateMap pitches={calls.filter(p => p.batter_side === 'Right')} title="vs RHH" sub="% called strikes" den={() => true} num={(p) => p.pitch_call === 'StrikeCalled'} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ShadowZoneMap({ c }) {
   const e = c.edges || {}
   const col = v => v > 0.4 ? '#059669' : v < -0.4 ? '#e11d48' : '#9ca3af'
@@ -4666,6 +4792,59 @@ function SwingTakeCard({ st }) {
 }
 
 // ── Hitter Lab: expected stats ───────────────────────────────────
+
+// ── Hitter Lab: swing path + park-aware homers ───────────────────
+function PowerCard({ power }) {
+  const sp = power.swing_path
+  const balls = power.balls || []
+  const tile = (label, value, sub) => (
+    <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-lg font-black tabular-nums text-gray-800 dark:text-gray-100">{value}</div>
+      {sub && <div className="text-[10px] text-gray-400">{sub}</div>}
+    </div>
+  )
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Power profile: swing path and park-aware homers</div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {tile('Attack angle', sp ? `${sp.attack_angle}°` : '–', sp ? `${sp.label} · launch on his hardest ${sp.n_top} of ${sp.n} balls` : 'needs 8+ batted balls')}
+        {tile('Park-neutral HR', power.phr.toFixed(1), `${power.air_balls} air balls across 57 PNW parks`)}
+        {tile('Actual HR', power.hr_actual, 'live sessions in this view')}
+        {tile(power.home_park ? 'Out at home' : 'Home park', power.home_park ? power.home_out : '–', power.home_park || 'no park matched to this team code')}
+        {tile(power.division ? `${power.division} avg park` : 'Division', power.div_phr != null ? power.div_phr.toFixed(1) : '–', power.division ? 'expected HR at the division\u2019s parks' : '')}
+      </div>
+      {balls.length > 0 && (
+        <table className="w-full text-[12px] mt-3">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="py-1">Date</th><th className="py-1 text-right">EV</th><th className="py-1 text-right">LA</th>
+              <th className="py-1 text-right">Dist</th><th className="py-1 text-right">Bearing</th>
+              <th className="py-1 text-right">Home fence</th><th className="py-1 text-right">Out in</th><th className="py-1">Result</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+            {balls.map((b, i) => (
+              <tr key={i} className={b.home_out ? 'bg-emerald-50/60 dark:bg-emerald-900/10' : ''}>
+                <td className="py-1 tabular-nums text-gray-500">{(b.date || '').slice(5)}<span className="ml-1 text-[9px] uppercase text-gray-400">{b.type === 'bp' ? 'bp' : ''}</span></td>
+                <td className="py-1 text-right tabular-nums">{b.ev}</td>
+                <td className="py-1 text-right tabular-nums">{b.la}</td>
+                <td className="py-1 text-right tabular-nums font-semibold">{b.distance}</td>
+                <td className="py-1 text-right tabular-nums">{b.bearing > 0 ? `${b.bearing} RF` : b.bearing < 0 ? `${Math.abs(b.bearing)} LF` : 'CF'}</td>
+                <td className="py-1 text-right tabular-nums">{b.home_fence != null ? `${b.home_fence}${b.home_out ? ' ✓' : ''}` : '–'}</td>
+                <td className="py-1 text-right tabular-nums" title={b.out_at.join(', ')}>{b.parks_out}/{b.parks_total}</td>
+                <td className="py-1 text-gray-500">{b.result || '–'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="text-[10px] text-gray-400 mt-2">
+        Attack angle is a proxy: the launch angle of a hitter's hardest contact tracks his bat path (no bat sensor needed). Park-neutral homers put every air ball against the five fence distances of all 57 PNW parks in the site's park file, needing 6 ft of carry past the fence distance to stand in for the wall; hover "Out in" for the yards it clears. BP balls count toward the park numbers, not the actual total.
+      </p>
+    </div>
+  )
+}
 
 function XStatsCard({ x }) {
   const Stat = ({ label, actual, expected }) => {
