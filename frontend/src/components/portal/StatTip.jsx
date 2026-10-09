@@ -107,6 +107,7 @@ export const STAT_DEFS = {
   ssw_min: ['Seam-shifted wake: movement the spin does not explain.', 'Movement tilt minus spin tilt in clock minutes (median per pitch type). 15+ minutes either way means the seams are steering the ball; sinkers and changeups often show it.', 0, ' min'],
   active_spin: ['Active spin: share of spin that creates movement.', 'Observed movement over the movement a fully efficient ball at this spin and speed would show (lift model), scaled so your fastball corpus tops out at 100. Movement-inferred, not a gyro measurement.', 0, '%'],
   bauer: ['Bauer units: spin per mph.', 'Spin rate / release speed. Separates true spin talent from velocity; 24 is typical on a fastball.', 1],
+  dirt_pct: ['Balls in the dirt per pitch.', 'Pitches TrackMan tagged BallinDirt / pitches thrown x 100. Blocking workload on the catcher, and a command read on the breaking ball.', 1, '%'],
   tempo: ['Pitch tempo.', 'Median seconds between consecutive pitches inside one plate appearance (5 to 45 s kept). The college clock is 20 s with nobody on.', 1, ' s'],
   babip: ['Batting average on balls in play allowed.', '(Hits minus homers) / (at-bats minus strikeouts minus homers plus sacrifices). Mostly luck and defense over small samples.', 3],
   xavg: ['Expected batting average allowed.', 'Expected hit probability from exit velo, launch angle and spray summed over balls in play, with strikeouts as outs, over at-bats.', 3],

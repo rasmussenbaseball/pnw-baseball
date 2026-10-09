@@ -1195,6 +1195,7 @@ def trackman_pitching(
                            SUM(CASE WHEN p.pitch_call IN ('StrikeCalled','StrikeSwinging') THEN 1 ELSE 0 END) AS csw_n,
                            SUM(CASE WHEN p.pitch_call IN ('StrikeCalled','StrikeSwinging','FoulBall','FoulBallFieldable','FoulBallNotFieldable','InPlay','AutomaticStrike') THEN 1 ELSE 0 END) AS strikes_n,
                            SUM(CASE WHEN p.pitch_call IS NOT NULL THEN 1 ELSE 0 END) AS called_n,
+                           SUM(CASE WHEN p.pitch_call = 'BallinDirt' THEN 1 ELSE 0 END) AS dirt_n,
                            SUM(CASE WHEN p.is_in_zone IS NOT NULL THEN 1 ELSE 0 END) AS zone_n,
                            SUM(CASE WHEN p.is_in_zone THEN 1 ELSE 0 END) AS in_zone,
                            AVG(p.exit_speed) AS ev_against,
@@ -1374,6 +1375,7 @@ def trackman_pitching(
             return sum(int(t.get(k) or 0) for t in types)
         sw, wh, ch, oz = _sum("swings"), _sum("whiffs"), _sum("chases"), _sum("out_zone")
         csw, strikes, called = _sum("csw_n"), _sum("strikes_n"), _sum("called_n")
+        dirt = _sum("dirt_n")
         zn, iz, bbe_t, hh, la_n, gb = _sum("zone_n"), _sum("in_zone"), _sum("bbe"), _sum("hard_hit"), _sum("la_n"), _sum("gb_n")
         ev_sum, ev_n = sum(float(t.get("ev_sum") or 0) for t in types), _sum("ev_n")
         fb_types = [t for t in types if t["ptype"] in FB_FAMILY and t["velo"]]
@@ -1396,6 +1398,7 @@ def trackman_pitching(
             "gb_pct": round(100 * gb / la_n, 1) if la_n else None,
             "xwobacon": round(tot_xw / tot_xw_n, 3) if tot_xw_n >= 5 else None,
             "tempo": tempo_s["all"]["median"] if tempo_s else None,
+            "dirt_pct": round(100 * dirt / called, 1) if called else None,
         }
         out.append({"pitcher": name, "throws": throws, "team": tteam, "slot": slot,
                     "pitches": total, "arsenal": arsenal, "totals": totals,
@@ -1608,10 +1611,10 @@ def trackman_hitting_board(
                         b["oz_ct"] += 1
             if r["is_in_zone"] is False:
                 b["oz"] += 1
+                if r["is_chase"]:      # chase = swing at a pitch OUT of the zone
+                    b["ch"] += 1
             elif r["is_in_zone"] is True:
                 b["iz"] += 1
-                if r["is_chase"]:
-                    b["ch"] += 1
             if r["balls"] == 0 and r["strikes"] == 0:
                 b["fp_n"] += 1
                 if r["is_swing"]:
@@ -1978,6 +1981,73 @@ def _usage_plan(platoon, gtypes):
     return out or None
 
 
+_PNW_FB_TYPES = ("Four Seam", "Fastball", "Four-Seam", "FourSeam", "Sinker", "Two Seam", "Two-Seam")
+_PNW_METRICS = [("velo", True), ("ivb", True), ("extension", True), ("whiff_pct", True), ("chase_pct", True)]
+
+
+def _pnw_fastball_pool(cur):
+    """{level: [rows]} of per-arm fastball-family lines from the WCL TrackMan
+    table, pitch-count weighted across an arm's fastball types. Level is the
+    arm's spring school's division where the summer link exists."""
+    try:
+        cur.execute(
+            """SELECT tp.summer_player_id AS pid, d.level,
+                      SUM(tp.pitch_count) AS n,
+                      SUM(tp.velo * tp.pitch_count) / NULLIF(SUM(CASE WHEN tp.velo IS NOT NULL THEN tp.pitch_count END), 0) AS velo,
+                      SUM(tp.ivb * tp.pitch_count) / NULLIF(SUM(CASE WHEN tp.ivb IS NOT NULL THEN tp.pitch_count END), 0) AS ivb,
+                      SUM(tp.extension * tp.pitch_count) / NULLIF(SUM(CASE WHEN tp.extension IS NOT NULL THEN tp.pitch_count END), 0) AS extension,
+                      SUM(tp.whiff_pct * tp.pitch_count) / NULLIF(SUM(CASE WHEN tp.whiff_pct IS NOT NULL THEN tp.pitch_count END), 0) AS whiff_pct,
+                      SUM(tp.chase_pct * tp.pitch_count) / NULLIF(SUM(CASE WHEN tp.chase_pct IS NOT NULL THEN tp.pitch_count END), 0) AS chase_pct
+               FROM trackman_pitches tp
+               LEFT JOIN summer_player_links l ON l.summer_player_id = tp.summer_player_id
+               LEFT JOIN players p ON p.id = l.spring_player_id
+               LEFT JOIN teams t ON t.id = p.team_id
+               LEFT JOIN conferences c ON c.id = t.conference_id
+               LEFT JOIN divisions d ON d.id = c.division_id
+               WHERE tp.pitch_type = ANY(%s)
+               GROUP BY tp.summer_player_id, d.level
+               HAVING SUM(tp.pitch_count) >= 15""",
+            (list(_PNW_FB_TYPES),))
+        return [dict(r) for r in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def _pnw_percentiles(pitches, pool):
+    """This arm's fastball-family numbers vs the WCL pool, as percentiles."""
+    if len(pool) < 30:
+        return None
+    fb = [x for x in pitches if x.get("ptype") in FB_FAMILY]
+    if len(fb) < 15:
+        return None
+    sw = [x for x in fb if x.get("is_swing")]
+    oz = [x for x in fb if x.get("is_in_zone") is False]
+    mine = {
+        "velo": _avg([x["rel_speed"] for x in fb]),
+        "ivb": _avg([x["ivb"] for x in fb]),
+        "extension": _avg([x["extension"] for x in fb], 2),
+        "whiff_pct": round(100 * sum(1 for x in sw if x.get("is_whiff")) / len(sw), 1) if len(sw) >= 10 else None,
+        "chase_pct": round(100 * sum(1 for x in oz if x.get("is_chase")) / len(oz), 1) if len(oz) >= 10 else None,
+    }
+    out = {"arms": len({r["pid"] for r in pool}), "metrics": {}, "levels": {}}
+    for key, higher in _PNW_METRICS:
+        v = mine.get(key)
+        vals = [float(r[key]) for r in pool if r.get(key) is not None]
+        if v is None or len(vals) < 30:
+            continue
+        below = sum(1 for x in vals if (x < v) == higher and x != v)
+        pct = round(100 * (below + 0.5 * sum(1 for x in vals if x == v)) / len(vals))
+        srt = sorted(vals)
+        out["metrics"][key] = {"value": v, "pctl": max(1, min(99, pct)), "pool": len(vals),
+                               "median": round(srt[len(srt) // 2], 1)}
+    for lvl in ("D1", "D2", "D3", "NAIA", "JUCO"):
+        rows = [r for r in pool if r.get("level") == lvl and r.get("velo") is not None]
+        if len(rows) >= 5:
+            vs = sorted(float(r["velo"]) for r in rows)
+            out["levels"][lvl] = {"arms": len(rows), "fb_velo_median": round(vs[len(vs) // 2], 1)}
+    return out if out["metrics"] else None
+
+
 @router.get("/trackman/pitchers/detail")
 def trackman_pitcher_detail(
     pitcher: str = Query(...),
@@ -2112,6 +2182,10 @@ def trackman_pitcher_detail(
         for r in cur.fetchall():
             tp_rows[r["pitcher"]].append(dict(r))
         tempo_pool_med = tempo.tempo_pool(tp_rows)
+        # PNW baseline pool: WCL summer TrackMan session reports (one row per
+        # arm x pitch type, 300+ college arms from every level), the only
+        # TrackMan population on the site outside this coach's uploads.
+        pnw_pool = _pnw_fastball_pool(cur)
 
     me = next((r for r in pool if r["pitcher"] == pitcher), None)
     percentiles = {}
@@ -2125,6 +2199,7 @@ def trackman_pitcher_detail(
             pct = round(100 * (below + 0.5 * sum(1 for v in vals if v == mine)) / len(vals))
             percentiles[key] = {"value": round(float(mine), 3), "pctl": max(1, min(99, pct)),
                                 "pool": len(vals)}
+    pnw = _pnw_percentiles(pitches, pnw_pool)
     live_rows = [x for x in pitches if x.get("session_type") in _LIVE_TYPES]
     tempo_me = tempo.tempo_summary(live_rows)
     if tempo_me and len(tempo_pool_med) >= 5:
@@ -2379,10 +2454,168 @@ def trackman_pitcher_detail(
         "spin": spin_prof,
         "tempo": tempo_me,
         "fatigue": fatigue,
+        "pnw": pnw,
         "line": box.pitcher_line([x for x in pitches if x.get("session_type") in _LIVE_TYPES], lab_lg),
         "count_states": count_states([x for x in pitches if x.get("session_type") in _LIVE_TYPES],
                                      lambda r: _is_fair(r["pitch_call"], r.get("direction")), rv_base),
     }
+
+
+# ── Opponent scouting from the coach's own TrackMan game files ──────
+# Nearly a quarter of a staff's tracked pitches are the OTHER dugout. This
+# packages that side for the Series Planner: resolve a site team to the
+# TrackMan team codes in the uploads, pull the live boards for those codes,
+# and write a rule-based attack note per hitter and arm.
+
+def _codes_for_team(cur, owner, team_id):
+    cur.execute("SELECT name, short_name, school_name, mascot FROM teams WHERE id = %s", (team_id,))
+    t = cur.fetchone()
+    if not t:
+        return None, []
+    words = set()
+    for k in ("name", "short_name", "school_name", "mascot"):
+        for w in (t.get(k) or "").lower().replace("&", " ").replace("-", " ").replace(".", " ").split():
+            words.add(w)
+    cur.execute(
+        """SELECT team, COUNT(*) AS n FROM (
+               SELECT pitcher_team AS team FROM tm_pitches WHERE owner_user_id = %s AND pitcher_team IS NOT NULL
+               UNION ALL
+               SELECT batter_team FROM tm_pitches WHERE owner_user_id = %s AND batter_team IS NOT NULL
+           ) x GROUP BY team""",
+        (owner, owner))
+    codes = []
+    for r in cur.fetchall():
+        code = r["team"]
+        if not code or code == "SIM_UNI":
+            continue
+        parts = [p_ for p_ in code.lower().replace("-", "_").split("_") if p_]
+        if not parts:
+            continue
+        ok = all(p_ in ("uni", "col", "univ") or any(w.startswith(p_) for w in words) for p_ in parts)
+        real = sum(1 for p_ in parts if p_ not in ("uni", "col", "univ") and any(w.startswith(p_) for w in words))
+        if ok and real >= 1:
+            codes.append(code)
+    return dict(t), codes
+
+
+def _hitter_attack(h):
+    """Rule-based scouting note from a hitting-board row."""
+    notes = []
+    ch, zc, k2 = h.get("chase_pct"), h.get("zone_contact_pct"), h.get("k2_contact_pct")
+    if ch is not None and h.get("pitches", 0) >= 40:
+        if ch >= 32:
+            notes.append(f"expands the zone ({ch:.0f}% chase): work off the edges, finish below")
+        elif ch <= 20:
+            notes.append(f"disciplined ({ch:.0f}% chase): has to be beaten in the zone")
+    if zc is not None and zc <= 78:
+        notes.append(f"swing-and-miss in the zone ({zc:.0f}% zone contact)")
+    if k2 is not None and k2 <= 65:
+        notes.append(f"put-away pitch plays with two strikes ({k2:.0f}% contact at 2K)")
+    hr = h.get("heart_rv")
+    if hr is not None and hr >= 1.0:
+        notes.append("punishes mistakes in the heart: nothing middle")
+    zr = h.get("zone_rv") or {}
+    if zr:
+        cold = min(zr.items(), key=lambda kv: kv[1])
+        hot = max(zr.items(), key=lambda kv: kv[1])
+        if cold[1] <= -0.8:
+            notes.append(f"cold {cold[0]} ({cold[1]:+.1f} RV)")
+        if hot[1] >= 0.8:
+            notes.append(f"hot {hot[0]} ({hot[1]:+.1f} RV)")
+    v = h.get("velo") or {}
+    if v.get("whiff_gap") is not None and v["whiff_gap"] >= 10:
+        notes.append(f"velo beats him (whiff +{v['whiff_gap']:.0f} pts on 84+)")
+    elif v.get("ev_gap") is not None and v["ev_gap"] >= 4:
+        notes.append("hits velo harder than soft stuff: spin over heat")
+    if h.get("hh_pct") is not None and h.get("bbe", 0) >= 10:
+        if h["hh_pct"] >= 45:
+            notes.append(f"loud contact ({h['hh_pct']:.0f}% hard-hit)")
+        elif h["hh_pct"] <= 20:
+            notes.append(f"soft contact ({h['hh_pct']:.0f}% hard-hit): let him hit it")
+    if h.get("gb_pct") is not None and h["gb_pct"] >= 55:
+        notes.append(f"ground-ball bat ({h['gb_pct']:.0f}% GB): infield in play")
+    if h.get("airpull_pct") is not None and h["airpull_pct"] >= 50 and h.get("bbe", 0) >= 10:
+        notes.append("pulls the ball in the air: shade the pull side")
+    return notes
+
+
+def _pitcher_attack(p):
+    notes = []
+    tot = p.get("totals") or {}
+    ars = sorted(p.get("arsenal") or [], key=lambda a: -(a.get("count") or 0))
+    if ars:
+        main = ars[0]
+        notes.append(f"{main['pitch_type']} {main['usage_pct']:.0f}% at {main['velo'] or '?'} mph" +
+                     (f" (whiff {main['whiff_pct']:.0f}%)" if main.get("whiff_pct") is not None else ""))
+        best = max((a for a in ars if (a.get("count") or 0) >= 15 and a.get("whiff_pct") is not None),
+                   key=lambda a: a["whiff_pct"], default=None)
+        if best and best is not main:
+            notes.append(f"out pitch is the {best['pitch_type']} ({best['whiff_pct']:.0f}% whiff): spit on it early")
+        soft = [a for a in ars if (a.get("count") or 0) >= 15 and a.get("whiff_pct") is not None and a["whiff_pct"] <= 15]
+        for a in soft[:1]:
+            notes.append(f"{a['pitch_type']} is hittable ({a['whiff_pct']:.0f}% whiff, {a.get('zone_pct') or 0:.0f}% zone)")
+    if tot.get("zone_pct") is not None and p.get("pitches", 0) >= 40:
+        if tot["zone_pct"] <= 42:
+            notes.append(f"lives out of the zone ({tot['zone_pct']:.0f}%): take until he proves it")
+        elif tot["zone_pct"] >= 55:
+            notes.append(f"pounds the zone ({tot['zone_pct']:.0f}%): be ready early")
+    if tot.get("strike_pct") is not None and tot.get("bb_pct") is not None and tot["bb_pct"] >= 12:
+        notes.append(f"walks guys ({tot['bb_pct']:.0f}% BB)")
+    if tot.get("hh_pct") is not None and tot.get("bbe", 0) >= 10 and tot["hh_pct"] >= 40:
+        notes.append(f"gets hit hard ({tot['hh_pct']:.0f}% hard-hit against)")
+    if tot.get("tempo") is not None:
+        notes.append(f"{'quick' if tot['tempo'] <= 15 else 'slow' if tot['tempo'] >= 22 else 'average'} tempo ({tot['tempo']:.0f} s)")
+    return notes
+
+
+@router.get("/trackman/opponent")
+def trackman_opponent(team_id: int = Query(...), season: int | None = Query(None),
+                      owner: str = Depends(_gate)):
+    """Series Planner panel: everything this coach's TrackMan files know
+    about one opponent's hitters and arms."""
+    with get_connection() as conn:
+        team, codes = _codes_for_team(conn.cursor(), owner, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team not found.")
+    hitters, pitchers = [], []
+    for code in codes:
+        hb = trackman_hitting_board(context="live", team=code, throws=None, pitch_type=None, season=season,
+                                    date_from=None, date_to=None, owner=owner)
+        for h in hb.get("batters", []):
+            if (h.get("pitches") or 0) < 15:
+                continue
+            h = dict(h)
+            h.pop("points", None)
+            h["attack"] = _hitter_attack(h)
+            hitters.append(h)
+        pb = trackman_pitching(context="live", team=code, side=None, season=season, owner=owner)
+        for p_ in pb.get("pitchers", []):
+            if (p_.get("pitches") or 0) < 15:
+                continue
+            row = {"pitcher": p_["pitcher"], "throws": p_["throws"], "team": p_["team"], "pitches": p_["pitches"],
+                   "totals": p_.get("totals"), "line": p_.get("line"), "rv100": p_.get("rv100"),
+                   "arsenal": [{k: a.get(k) for k in ("pitch_type", "count", "usage_pct", "velo", "max_velo", "ivb", "hb",
+                                                        "spin", "zone_pct", "whiff_pct", "chase_pct", "csw_pct", "ev_against", "rv100", "stuff", "loc")}
+                               for a in sorted(p_.get("arsenal") or [], key=lambda a: -(a.get("count") or 0))]}
+            row["attack"] = _pitcher_attack(p_)
+            pitchers.append(row)
+    hitters.sort(key=lambda h: -(h.get("pitches") or 0))
+    pitchers.sort(key=lambda p_: -(p_.get("pitches") or 0))
+    sessions = []
+    if codes:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            ssql, sparams = _season_clause(season)
+            cur.execute(
+                f"""SELECT DISTINCT s.id, s.session_date, s.session_type, s.home_team, s.away_team
+                    FROM tm_sessions s JOIN tm_pitches p ON p.session_id = s.id
+                    WHERE s.owner_user_id = %s AND (p.pitcher_team = ANY(%s) OR p.batter_team = ANY(%s)){ssql}
+                    ORDER BY s.session_date""",
+                [owner, codes, codes] + sparams)
+            sessions = [{"id": r["id"], "date": r["session_date"].isoformat() if r["session_date"] else None,
+                         "type": r["session_type"], "home": r["home_team"], "away": r["away_team"]} for r in cur.fetchall()]
+    return {"team": {"id": team_id, "name": team.get("name"), "short_name": team.get("short_name")},
+            "codes": codes, "sessions": sessions, "hitters": hitters, "pitchers": pitchers}
 
 
 @router.get("/trackman/reports/index")
@@ -3731,6 +3964,72 @@ def save_session_notes(session_id: int, body: SessionNotes, owner: str = Depends
         return {"status": "ok"}
 
 
+# ── Decision queue (Phase 4): approve or dismiss an auto-flag ──────
+_FLAG_DEC_READY = False
+
+
+def _ensure_flag_decisions(cur):
+    global _FLAG_DEC_READY
+    if _FLAG_DEC_READY:
+        return
+    cur.execute("""CREATE TABLE IF NOT EXISTS tm_flag_decisions (
+                       owner_user_id UUID NOT NULL,
+                       flag_key      TEXT NOT NULL,
+                       status        TEXT NOT NULL CHECK (status IN ('approved', 'dismissed')),
+                       note          TEXT,
+                       created_at    TIMESTAMPTZ DEFAULT now(),
+                       PRIMARY KEY (owner_user_id, flag_key))""")
+    cur.execute("ALTER TABLE tm_flag_decisions ENABLE ROW LEVEL SECURITY")
+    _FLAG_DEC_READY = True
+
+
+def _flag_decisions(cur, owner):
+    _ensure_flag_decisions(cur)
+    cur.execute("SELECT flag_key, status, note, created_at FROM tm_flag_decisions WHERE owner_user_id = %s", (owner,))
+    return {r["flag_key"]: {"status": r["status"], "note": r["note"],
+                            "at": r["created_at"].isoformat() if r["created_at"] else None} for r in cur.fetchall()}
+
+
+def _flag_key(f):
+    return f"{f.get('kind')}|{f.get('player')}|{f.get('team') or ''}"
+
+
+class FlagDecision(BaseModel):
+    key: str
+    status: str
+    note: str | None = None
+
+
+@router.put("/trackman/flags/decision")
+def set_flag_decision(body: FlagDecision, owner: str = Depends(_write_gate)):
+    """Approve (into the development plan) or dismiss an auto-flag. The key
+    is kind|player|team, so the decision sticks while the flag persists."""
+    if body.status not in ("approved", "dismissed"):
+        raise HTTPException(status_code=400, detail="status must be approved or dismissed")
+    if not body.key or "|" not in body.key:
+        raise HTTPException(status_code=400, detail="key is required")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_flag_decisions(cur)
+        cur.execute("""INSERT INTO tm_flag_decisions (owner_user_id, flag_key, status, note)
+                       VALUES (%s, %s, %s, %s)
+                       ON CONFLICT (owner_user_id, flag_key) DO UPDATE
+                         SET status = EXCLUDED.status, note = EXCLUDED.note, created_at = now()""",
+                    (owner, body.key, body.status, (body.note or "").strip() or None))
+        conn.commit()
+    return {"status": "ok", "key": body.key, "decision": body.status}
+
+
+@router.delete("/trackman/flags/decision/{key:path}")
+def clear_flag_decision(key: str, owner: str = Depends(_write_gate)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_flag_decisions(cur)
+        cur.execute("DELETE FROM tm_flag_decisions WHERE owner_user_id = %s AND flag_key = %s", (owner, key))
+        conn.commit()
+    return {"status": "ok", "key": key}
+
+
 @router.get("/trackman/insights")
 def trackman_insights(team: str | None = Query(None),
                       season: int | None = Query(None),
@@ -3878,7 +4177,14 @@ def trackman_insights(team: str | None = Query(None),
                 })
 
     flags.sort(key=lambda f: -f["severity"])
-    return {"flags": flags}
+    with get_connection() as conn:
+        decisions = _flag_decisions(conn.cursor(), owner)
+    for f in flags:
+        f["key"] = _flag_key(f)
+        f["decision"] = decisions.get(f["key"])
+    return {"flags": flags,
+            "approved": sum(1 for f in flags if (f["decision"] or {}).get("status") == "approved"),
+            "dismissed": sum(1 for f in flags if (f["decision"] or {}).get("status") == "dismissed")}
 
 
 # ── Per-pitch classification override (Pitcher Lab) ──────────────

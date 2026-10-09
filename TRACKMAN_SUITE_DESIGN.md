@@ -92,21 +92,77 @@ Known polish items: TaggedPitchType label variants (Fastball vs
 FourSeamFastBall) are graded as separate types — consider a label
 normalizer at parse time next re-ingest.
 
-## Phase 3 — Session Review + Reports (Trevor's REVIEW section)
+## Phase 3 — SHIPPED: Session Review, Catching, Defense, Values, Reports
 
-- Session Review: one session's story — box-score-ish summary, per-pitcher
-  lines, notable BBEs, staff notes (highlights/concerns text fields).
-- Coach Reports: exportable weekly summary (ReportActions PDF/PNG pattern,
-  B&W mode with data-tone like the other portal reports).
-- Catcher metrics view: pop times, exchange, throw speed (the data is
-  already stored).
+- Session Review: per-session pitcher and batter cards, team summary over
+  a chosen set of sessions, per-player and bulk PDF export, staff
+  highlights/concerns (editor added 2026-10-08; the save endpoint had
+  shipped without a UI), and an umpire zone report (2026-10-08): expected
+  strikes from an edge-distance logistic fit on the coach's whole corpus,
+  calls gained per pitching staff, strikes given / taken away, effective
+  zone width and height vs the rulebook, called-strike maps by batter side.
+- Catching: framing (strikes above expected x 0.125 runs), pop / exchange /
+  arm, estimated CS%, blocking workload, "not a catcher" exclusions,
+  catcher-log CSV upload.
+- Defense: outs above expected from the positioning CSVs (physics catch
+  probability + infield range).
+- Values: a run ledger per player (offense, baserunning incl. coach-entered
+  steals, infield, outfield, catching, pitching) with TrackMan run-value
+  fallbacks where season stats do not exist.
+- Custom Reporting: block-based report builder, starter layouts, presets,
+  per-player notes, B&W mode, PDF export. Approved auto-flags print on the
+  player's page as "Staff focus" lines (2026-10-08).
+- Stuff+ is the site-wide ridge model on expected run value (stuff_core,
+  trained on the suite's live corpus), not the z-score described in Phase 1;
+  Location+ is the shared Rapsodo command score.
 
-## Phase 4 — Coach decisions (Trevor's decision queue)
+## Phase 4 — SHIPPED (2026-10-08): decision queue
 
-- Suggested "decisions" generated from data gaps (e.g. transfer-gap flags,
-  usage vs whiff mismatches), staff approve/dismiss queue, approved
-  decisions attach to reports. Needs product thought before building —
-  revisit with Nate + Trevor after Phases 2-3 are in coaches' hands.
+- Coach Board auto-flags carry a key (kind|player|team) and a decision.
+  Approve puts a flag on the player's plan and his custom report; dismiss
+  hides it. Queue filters: open / approved / dismissed / all. Table
+  tm_flag_decisions (RLS on), PUT/DELETE /trackman/flags/decision.
+
+## October 2026 additions (Savant-style models from unused fields)
+
+Pitcher Lab
+- Spin direction (trackman_spin.py): measured spin tilt vs movement-implied
+  tilt, their gap in clock minutes (seam-shifted wake), movement-inferred
+  active spin calibrated so the coach's fastballs top out at 100, Bauer
+  units.
+- Pitch tempo (trackman_tempo.py): wall-clock gap between pitches inside a
+  PA, by count state and pitch type, percentile vs the staff.
+- Fatigue curve: velo, Stuff+, zone, whiff, RV/100 by 15-pitch bucket
+  across live outings.
+- PNW baseline: fastball-family percentiles vs the WCL summer TrackMan
+  corpus (trackman_pitches, 200+ arms), the only TrackMan population on
+  the site outside the coach's uploads. Hitters have no external baseline.
+- Arsenal rows add effective velo and xwOBAcon allowed; the pitching board
+  adds xwOBAcon against, tempo, dirt-ball rate, BABIP, xAVG, xISO.
+
+Hitting
+- Park-aware homers (trackman_parks.py): every tracked air ball against the
+  five fence distances of all 57 PNW parks in data/park_factors.json;
+  board column pHR, Hitter Lab power card with home-park and division
+  counts and the 12 longest balls.
+- Attack angle proxy: median launch angle on the hardest 10% of contact.
+- Bug fixed 2026-10-08: hitting-board Chase% was 0 for every hitter
+  (chases were counted under the in-zone branch).
+
+Series Planner
+- TrackMan tab: resolves the opponent to the TrackMan team codes in the
+  coach's uploads and shows their hitters (chase, zone contact, hot/cold
+  zones, xwOBA, RV) and arms (arsenal, whiff, zone, tempo) with rule-based
+  attack notes. GET /trackman/opponent?team_id=.
+
+Still open
+- League baselines by level for hitters (no source yet).
+- Catcher blocking / throwing stay thin (pop time on ~85 pitches, no
+  wild-pitch flag).
+- Baserunning and sprint speed have no data source beyond manual steals.
+- bp-review endpoint and GET measurables have no frontend caller.
+- Phase-era comments in TrackmanSuite.jsx ("Phase 1 of the suite") and
+  trackman_suite.py banners are historical.
 
 ## Competitive reference — 6-4-3 Charts TrackMan SYNC (researched 2026-07-13)
 

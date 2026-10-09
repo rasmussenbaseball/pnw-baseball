@@ -24,6 +24,7 @@ const TABS = [
   ['hitters', 'Hitters'],
   ['pitching', 'Pitching Plan'],
   ['states', 'Game States'],
+  ['trackman', 'TrackMan'],
 ]
 
 // ── formatters ──
@@ -326,6 +327,106 @@ function StatesTab({ plan, counts }) {
   )
 }
 
+// ── TAB: TrackMan scouting (the coach's own game files on this opponent) ──
+const TM_H_COLS = [
+  ['P', 'pitches', 0], ['PA', 'pa', 0], ['Chase%', 'chase_pct', 1], ['Z-Ct%', 'zone_contact_pct', 1], ['K%', 'k_pct', 1], ['BB%', 'bb_pct', 1],
+  ['EV', 'avg_ev', 1], ['HH%', 'hh_pct', 1], ['GB%', 'gb_pct', 1], ['xwOBA', 'xwoba', 3], ['RV', 'rv', 1],
+]
+const TM_P_COLS = [
+  ['P', 'pitches', 0], ['FB', 'fb_velo', 1], ['Max', 'fb_max', 1], ['Stuff', 'stuff', 0], ['Loc+', 'loc', 0], ['Zone%', 'zone_pct', 1],
+  ['Whiff%', 'whiff_pct', 1], ['Chase%', 'chase_pct', 1], ['K%', 'k_pct', 1], ['BB%', 'bb_pct', 1], ['xwOBAcon', 'xwobacon', 3], ['Tempo', 'tempo', 1],
+]
+const tmFmt = (v, d) => v == null ? '—' : d === 3 ? Number(v).toFixed(3).replace(/^0\./, '.') : Number(v).toFixed(d)
+
+function TrackmanScoutTab({ oppId, oppName }) {
+  const { data, loading, error } = useApi(oppId ? '/trackman/opponent' : null, { team_id: oppId }, [oppId])  // every season: opponent books accumulate
+  if (loading && !data) return <Card className="p-8"><p className="text-sm text-gray-400 animate-pulse">Reading your TrackMan files…</p></Card>
+  if (error) {
+    return (
+      <Card className="p-5">
+        <SectionTitle>TrackMan scouting</SectionTitle>
+        <p className="text-sm text-gray-600 dark:text-gray-300">This panel reads the game CSVs you uploaded to the <Link to="/portal/trackman" className="text-portal-purple underline">TrackMan Suite</Link>. Sign in with the account that owns those uploads to see what they say about {oppName}.</p>
+      </Card>
+    )
+  }
+  if (!data) return null
+  if (!data.codes?.length) {
+    return (
+      <Card className="p-5">
+        <SectionTitle>TrackMan scouting</SectionTitle>
+        <p className="text-sm text-gray-600 dark:text-gray-300">No TrackMan sessions against {oppName} in your uploads yet. Upload the game files from a series with them in the <Link to="/portal/trackman" className="text-portal-purple underline">TrackMan Suite</Link> and this tab fills in: every hitter's chase and contact profile, hot and cold zones, and every arm's arsenal with whiff rates.</p>
+      </Card>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      <Card className="p-4">
+        <SectionTitle hint={`${data.sessions.length} tracked session${data.sessions.length === 1 ? '' : 's'} · codes ${data.codes.join(', ')}`}>What your TrackMan files say about {oppName}</SectionTitle>
+        <div className="flex flex-wrap gap-1.5">
+          {data.sessions.map(s => (
+            <span key={s.id} className="text-[11px] rounded-full px-2.5 py-1 ring-1 ring-gray-200 dark:ring-gray-700 text-gray-500 dark:text-gray-400 tabular-nums">
+              {s.date} · {s.type}{s.type !== 'intrasquad' ? ` · ${s.away} @ ${s.home}` : ''}
+            </span>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-4 overflow-x-auto">
+        <SectionTitle hint="live sessions, 15+ pitches seen · attack notes are rule-based from the board">Their hitters ({data.hitters.length})</SectionTitle>
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="py-1 pr-2">Hitter</th>
+              {TM_H_COLS.map(([l]) => <th key={l} className="py-1 px-1.5 text-right whitespace-nowrap">{l}</th>)}
+              <th className="py-1 pl-2">How to attack</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+            {data.hitters.map(h => (
+              <tr key={h.batter} className="align-top">
+                <td className="py-1.5 pr-2 font-semibold whitespace-nowrap">{h.batter}<span className="ml-1 text-[10px] font-bold text-gray-400">{h.side || ''}</span></td>
+                {TM_H_COLS.map(([l, k, d]) => <td key={l} className="py-1.5 px-1.5 text-right tabular-nums">{k === 'rv' && h[k] > 0 ? '+' : ''}{tmFmt(h[k], d)}</td>)}
+                <td className="py-1.5 pl-2 text-[11.5px] text-gray-600 dark:text-gray-300 leading-snug min-w-[220px]">{(h.attack || []).join(' · ') || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card className="p-4 overflow-x-auto">
+        <SectionTitle hint="live sessions, 15+ pitches">Their arms ({data.pitchers.length})</SectionTitle>
+        <div className="space-y-3">
+          {data.pitchers.map(p => {
+            const t = p.totals || {}, ln = p.line || {}
+            const row = { ...t, ...ln, pitches: p.pitches }
+            return (
+              <div key={p.pitcher} className="border-t border-gray-100 dark:border-gray-700 pt-2 first:border-0 first:pt-0">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="font-bold">{p.pitcher}</span>
+                  <span className="text-[10px] font-bold text-gray-400">{p.throws === 'Left' ? 'LHP' : p.throws === 'Right' ? 'RHP' : ''}</span>
+                  <span className="text-[11.5px] text-gray-600 dark:text-gray-300">{(p.attack || []).join(' · ')}</span>
+                </div>
+                <div className="grid grid-cols-6 sm:grid-cols-12 gap-x-2 gap-y-1 mt-1">
+                  {TM_P_COLS.map(([l, k, d]) => (
+                    <div key={l}><div className="text-[9px] uppercase tracking-wide text-gray-400">{l}</div><div className="text-[12px] font-semibold tabular-nums">{tmFmt(row[k], d)}</div></div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {p.arsenal.map(a => (
+                    <span key={a.pitch_type} className="text-[10.5px] rounded-full px-2 py-0.5 bg-gray-50 dark:bg-gray-900/40 ring-1 ring-gray-200 dark:ring-gray-700 tabular-nums">
+                      <b>{a.pitch_type}</b> {a.usage_pct}% · {a.velo ?? '—'} mph · {a.ivb != null ? `${a.ivb}"/${a.hb}"` : ''} · whiff {a.whiff_pct ?? '—'}% · zone {a.zone_pct ?? '—'}%{a.stuff != null ? ` · Stuff ${a.stuff}` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 // ── page ──
 export default function SeriesPlanner() {
   const { team: portalTeam } = usePortalTeam()
@@ -446,6 +547,7 @@ export default function SeriesPlanner() {
           {tab === 'hitters' && <HittersTab plan={plan} />}
           {tab === 'pitching' && <PitchersTab plan={plan} />}
           {tab === 'states' && <StatesTab plan={plan} counts={data.count_tendencies} />}
+          {tab === 'trackman' && <TrackmanScoutTab oppId={oppId} oppName={plan.team.short_name} />}
         </>
       )}
     </div>

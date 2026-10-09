@@ -777,6 +777,7 @@ const PB_COLS = [
   ['GB% agn', 'gb_pct', 'Ground-ball share of batted balls allowed (launch under 10)', {}],
   ['xwOBAcon agn', 'xwobacon', 'Expected wOBA on contact allowed, from exit velo, launch angle and spray of every fair ball', { higher: false, dec: 3 }],
   ['Tempo', 'tempo', 'Median seconds between pitches within a plate appearance (college pitch clock is 20 s with bases empty)', { higher: false, dec: 1 }],
+  ['Dirt%', 'dirt_pct', 'Balls in the dirt per pitch: the blocking load this arm puts on his catcher', { higher: false }],
   ['RV', 'rv', 'Run value: runs saved vs the average pitch in your data', { plus: true }],
   ['RV/100', 'rv100', 'Run value per 100 pitches', { plus: true, dec: 2 }],
   ['H', 'h', 'Hits allowed', { plain: true, dec: 0 }],
@@ -1650,6 +1651,43 @@ const PCTL_LABELS = {
   ev_against: ['EV against', ' mph', 1], hard_hit_against: ['Hard-hit% against', '%', 1],
 }
 
+const PNW_LABELS = {
+  velo: ['Fastball velo', ' mph', 1], ivb: ['Fastball ride (IVB)', '"', 1], extension: ['Extension', ' ft', 2],
+  whiff_pct: ['Fastball whiff%', '%', 1], chase_pct: ['Fastball chase%', '%', 1],
+}
+
+// Percentiles against PNW arms outside this coach's uploads: the WCL summer
+// TrackMan session reports (one line per arm, every spring level).
+function PnwBaselineCard({ pnw }) {
+  const keys = Object.keys(PNW_LABELS).filter(k => pnw.metrics[k])
+  if (!keys.length) return null
+  const lv = Object.entries(pnw.levels || {})
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+          Percentile vs PNW arms ({pnw.arms} college arms, WCL summer TrackMan, fastball family)
+        </span>
+        {lv.length > 0 && (
+          <span className="text-[10px] text-gray-400">
+            median FB velo by spring level: {lv.map(([l, v]) => `${l} ${v.fb_velo_median} (${v.arms})`).join(' · ')}
+          </span>
+        )}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
+        {keys.map(k => {
+          const [label, unit, dec] = PNW_LABELS[k]
+          const m = pnw.metrics[k]
+          return <PctlBar key={k} label={`${label} (pool median ${m.median}${unit})`} value={Number(m.value).toFixed(dec)} unit={unit} pctl={m.pctl} />
+        })}
+      </div>
+      <p className="text-[10px] text-gray-400 mt-2">
+        The card above ranks him against your own uploads; this one ranks his fastball against every arm in the site's WCL TrackMan corpus, a cross-section of D1 through JUCO pitchers in a wood-bat summer league. Summer whiff and chase rates run a touch lower than fall intrasquads against your own hitters.
+      </p>
+    </div>
+  )
+}
+
 function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
   const exportRef = useRef(null)
   const [context, setContext] = useState('live')
@@ -1753,6 +1791,8 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
               </div>
             </div>
           )}
+
+          {data.pnw && <PnwBaselineCard pnw={data.pnw} />}
 
           <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} grades={data.grades} typeAvgs={data.type_avgs}
             slot={data.slot} pitcher={active} team={team || null} onRetag={refetch} />
@@ -3923,10 +3963,23 @@ function DevPlayerRow({ p, hd, initialOpen = false }) {
 function CoachBoardTab({ teamCtx, season }) {
   const [team, setTeam] = useState(teamCtx.primary)
   const [selHitter, setSelHitter] = useState('')
-  const { data, loading } = useApi('/trackman/insights', { team: team || undefined, season })
+  const [queue, setQueue] = useState('open')   // open | approved | dismissed | all
+  const { data, loading, refetch: refetchFlags } = useApi('/trackman/insights', { team: team || undefined, season })
+  async function decide(f, status) {
+    const cur = f.decision?.status
+    const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) }
+    if (cur === status) {
+      await fetch(`/api/v1/trackman/flags/decision/${encodeURIComponent(f.key)}`, { method: 'DELETE', headers })
+    } else {
+      await fetch('/api/v1/trackman/flags/decision', { method: 'PUT', headers, body: JSON.stringify({ key: f.key, status }) })
+    }
+    refetchFlags()
+  }
   const { data: dev, loading: devLoading } = useApi('/trackman/dev-notes', { team: team || undefined, season })
   const { data: hdData, refetch: refetchHd } = useApi('/trackman/hitter-dev', { ...(team ? { team } : {}), season }, [team])
-  const flags = data?.flags || []
+  const allFlags = data?.flags || []
+  const flags = allFlags.filter(f => queue === 'all' ? true : queue === 'open' ? !f.decision : f.decision?.status === queue)
+  const counts = { open: allFlags.filter(f => !f.decision).length, approved: data?.approved || 0, dismissed: data?.dismissed || 0, all: allFlags.length }
   const devPlayers = dev?.players || []
   const pitchers = devPlayers.filter(p => p.roles.includes('pitcher'))
   const hitters = devPlayers.filter(p => !p.roles.includes('pitcher'))
@@ -3989,11 +4042,22 @@ function CoachBoardTab({ teamCtx, season }) {
         </>
       )}
 
-      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-1 pt-2">Auto-flags</div>
+      <div className="flex items-center gap-2 px-1 pt-2 flex-wrap">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Auto-flags: decision queue</span>
+        <div className="flex rounded-lg overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700 ml-2">
+          {[['open', 'Open'], ['approved', 'Approved'], ['dismissed', 'Dismissed'], ['all', 'All']].map(([k, l]) => (
+            <button key={k} onClick={() => setQueue(k)}
+              className={`px-2.5 py-0.5 text-[11px] font-bold tabular-nums ${queue === k ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500'}`}>
+              {l} {counts[k]}
+            </button>
+          ))}
+        </div>
+        <span className="text-[10px] text-gray-400">approve a flag to put it on the player's plan and his custom report; dismiss to hide it</span>
+      </div>
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Reading the data…</div> :
        flags.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-10 text-center text-sm text-gray-400">
-          No flags right now. That's a good board.
+          {queue === 'open' ? (allFlags.length ? 'Every flag has a decision. Clean queue.' : "No flags right now. That's a good board.") : `Nothing ${queue}.`}
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
@@ -4008,6 +4072,19 @@ function CoachBoardTab({ teamCtx, season }) {
                 </div>
                 <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{f.headline}</div>
                 <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">{f.detail}</p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <button onClick={() => decide(f, 'approved')}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${f.decision?.status === 'approved'
+                      ? 'bg-emerald-600 text-white ring-emerald-600' : 'bg-white dark:bg-gray-800 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800 hover:bg-emerald-50'}`}>
+                    {f.decision?.status === 'approved' ? '✓ On the plan' : 'Approve → plan'}
+                  </button>
+                  <button onClick={() => decide(f, 'dismissed')}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${f.decision?.status === 'dismissed'
+                      ? 'bg-gray-500 text-white ring-gray-500' : 'bg-white dark:bg-gray-800 text-gray-500 ring-gray-200 dark:ring-gray-700 hover:bg-gray-50'}`}>
+                    {f.decision?.status === 'dismissed' ? 'Dismissed (undo)' : 'Dismiss'}
+                  </button>
+                  {f.decision?.at && <span className="text-[10px] text-gray-400 ml-1">{f.decision.at.slice(0, 10)}</span>}
+                </div>
               </div>
             )
           })}
@@ -5991,7 +6068,7 @@ function CrEditable({ value, onChange, placeholder, className = '' }) {
   )
 }
 
-function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef, exporting, onNote }) {
+function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef, exporting, onNote, flags = [] }) {
   const isP = role === 'pitcher'
   const { data, loading, error } = useApi(
     ids.length ? (isP ? '/trackman/pitchers/detail' : '/trackman/batters/detail') : null,
@@ -6039,9 +6116,19 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
       }
       case 'notes':
         // Typed right on the page. While exporting, an empty note prints nothing.
-        if (exporting && !cfg.notes && !myNote) return null
+        if (exporting && !cfg.notes && !myNote && !flags.length) return null
         return (
           <CrCard title="Coach notes" sub={exporting ? null : 'click and type'}>
+            {flags.length > 0 && (
+              <ul className="mb-2 space-y-1">
+                {flags.map(f => (
+                  <li key={f.key} className="text-[12px] leading-snug text-gray-800">
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 mr-1.5">Staff focus</span>
+                    <b>{f.headline}.</b> {f.detail}
+                  </li>
+                ))}
+              </ul>
+            )}
             {(!exporting || myNote) && (
               <CrEditable value={myNote || ''} placeholder={`Write ${player.name.split(',')[0]}'s note here…`}
                 onChange={(v) => onNote(player.name, v)} className="text-gray-800" />
@@ -6229,6 +6316,8 @@ function CrSection({ title, right, children, defaultOpen = true }) {
 function CustomReportTab({ teamCtx, season }) {
   const [team, setTeam] = useState(teamCtx.primary)
   const { data: index, loading } = useApi('/trackman/reports/index', { team: team || undefined }, [team])
+  const { data: flagData } = useApi('/trackman/insights', { team: team || undefined, season }, [team, season])
+  const approvedFor = (name) => (flagData?.flags || []).filter(f => f.player === name && f.decision?.status === 'approved')
   const [cfg, setCfg] = useState(() => ({ ...CR_DEFAULT, ...crLoad(CR_STORE, {}) }))
   const [presets, setPresets] = useState(() => crLoad(CR_PRESETS, {}))
   const [presetName, setPresetName] = useState('')
@@ -6507,7 +6596,7 @@ function CustomReportTab({ teamCtx, season }) {
           <div className="overflow-x-auto space-y-5 pb-4">
             {chosen.map(p => (
               <div key={`${role}-${p.name}`} className="shadow-lg ring-1 ring-gray-200 w-fit mx-auto">
-                <CrPlayerPage player={p} role={role} cfg={cfg} team={team} season={season} sessions={sessions}
+                <CrPlayerPage player={p} role={role} cfg={cfg} team={team} season={season} sessions={sessions} flags={approvedFor(p.name)}
                   exporting={exporting} onNote={(n, v) => setCfg(c => ({ ...c, playerNotes: { ...c.playerNotes, [n]: v } }))}
                   ids={crScopeIds(p, sessions, cfg, season)} innerRef={el => { pageRefs.current[p.name] = el }} />
               </div>
