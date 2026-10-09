@@ -407,8 +407,24 @@ function OverviewTab({ overview, refetch, onReview, season }) {
                           : s.session_type === 'bullpen' ? `Bullpen · ${s.stadium || '?'}`
                           : `${s.away_team || '?'} @ ${s.home_team || '?'}`}
                       </td>
-                      <td className="px-2 py-2 text-right tabular-nums">{s.pitch_count}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{s.bbe_count}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">
+                        {s.pitch_count}
+                        {s.low_conf_pct >= 10 && (
+                          <span className="ml-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 align-middle"
+                            title={`${s.low_conf_pct}% of pitches carry a Low movement or location confidence flag from TrackMan (routine on machine BP: the unit sits in front of the rubber). The labs' "High confidence only" toggle drops them.`}>
+                            ⚠{Math.round(s.low_conf_pct)}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">
+                        {s.bbe_count}
+                        {s.low_hit_pct >= 10 && (
+                          <span className="ml-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 align-middle"
+                            title={`${s.low_hit_pct}% of batted balls carry a Low launch-confidence flag (exit velo or launch angle may be off)`}>
+                            ⚠{Math.round(s.low_hit_pct)}%
+                          </span>
+                        )}
+                      </td>
                       <td className="px-2 py-2 text-right whitespace-nowrap">
                         {s.positioned_count > 0 ? (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded-full px-2 py-0.5"

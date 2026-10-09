@@ -1105,7 +1105,15 @@ def trackman_overview(owner: str = Depends(_gate)):
                           (SELECT COUNT(*) FROM tm_pitches p
                            JOIN tm_positioning po ON po.owner_user_id = p.owner_user_id
                                                  AND po.pitch_uid = p.pitch_uid
-                           WHERE p.session_id = s.id) AS positioned_count
+                           WHERE p.session_id = s.id) AS positioned_count,
+                          -- TrackMan's own confidence flags: share of pitches with a Low
+                          -- movement/location read, and of batted balls with a Low launch read
+                          (SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE p.mov_conf = 'Low' OR p.loc_conf = 'Low')
+                                        / NULLIF(COUNT(*), 0), 1)
+                           FROM tm_pitches p WHERE p.session_id = s.id) AS low_conf_pct,
+                          (SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE p.hit_launch_conf = 'Low')
+                                        / NULLIF(COUNT(*) FILTER (WHERE p.exit_speed IS NOT NULL), 0), 1)
+                           FROM tm_pitches p WHERE p.session_id = s.id) AS low_hit_pct
                    FROM tm_sessions s WHERE s.owner_user_id = %s
                    ORDER BY s.session_date DESC NULLS LAST, s.id DESC""",
                 (owner,),
@@ -1127,6 +1135,8 @@ def trackman_overview(owner: str = Depends(_gate)):
         for s in sessions:
             s["session_date"] = s["session_date"].isoformat() if s["session_date"] else None
             s["uploaded"] = s["uploaded"].isoformat() if s["uploaded"] else None
+            for k in ("low_conf_pct", "low_hit_pct"):
+                s[k] = float(s[k]) if s.get(k) is not None else None
         totals = {
             "sessions": len(sessions),
             "pitches": sum(s["pitch_count"] or 0 for s in sessions),
