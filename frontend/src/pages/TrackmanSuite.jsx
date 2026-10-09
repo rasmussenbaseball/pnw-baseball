@@ -1745,6 +1745,85 @@ function PnwBaselineCard({ pnw }) {
   )
 }
 
+// Everything TrackMan measured on one selected pitch, plus how it sits
+// against each of this arm's pitch-type centroids, so a re-tag is a read
+// of the numbers and not just the dot's color.
+const tiltOf = (axis) => {
+  if (axis == null) return null
+  const h = ((Number(axis) / 30) + 6) % 12
+  const hh = Math.floor(h), mm = Math.round((h - hh) * 60)
+  return `${hh === 0 ? 12 : hh}:${String(mm === 60 ? 0 : mm).padStart(2, '0')}`
+}
+const moveTiltOf = (ivb, hb) => {
+  if (ivb == null || hb == null) return null
+  const deg = ((Math.atan2(Number(hb), Number(ivb)) * 180) / Math.PI + 360) % 360
+  const h = deg / 30, hh = Math.floor(h), mm = Math.round((h - hh) * 60)
+  return `${hh === 0 ? 12 : hh}:${String(mm === 60 ? 0 : mm).padStart(2, '0')}`
+}
+function PickedPitchPanel({ p, byType }) {
+  const n = (v, d = 1) => v == null ? '–' : Number(v).toFixed(d)
+  const facts = [
+    ['Velo', `${n(p.rel_speed)} mph`], ['Eff velo', p.effective_velo != null ? `${n(p.effective_velo)} mph` : '–'],
+    ['IVB', `${n(p.ivb)}"`], ['HB', `${n(p.horz_break)}"`],
+    ['Spin', p.spin_rate != null ? `${Math.round(p.spin_rate)} rpm` : '–'],
+    ['Spin tilt', tiltOf(p.spin_axis) || '–'], ['Move tilt', moveTiltOf(p.ivb, p.horz_break) || '–'],
+    ['Bauer', p.spin_rate && p.rel_speed ? n(p.spin_rate / p.rel_speed) : '–'],
+    ['Release', p.rel_height != null ? `${n(p.rel_height, 2)} h · ${n(p.rel_side, 2)} s` : '–'],
+    ['Ext', p.extension != null ? `${n(p.extension, 2)} ft` : '–'], ['VAA', p.vaa != null ? `${n(p.vaa, 1)}°` : '–'],
+    ['Count', p.balls != null ? `${p.balls}-${p.strikes}` : '–'], ['Call', p.pitch_call || '–'],
+    ['Batter', `${p.batter_side === 'Left' ? 'LHH' : p.batter_side === 'Right' ? 'RHH' : '–'}${p.batter ? ` · ${p.batter}` : ''}`],
+    ['Date', p.session_date || '–'],
+    ['Tags', `${p.tagged_pitch_type ? `operator ${p.tagged_pitch_type}` : 'no operator tag'}${p.override_pitch_type ? ` · override ${p.override_pitch_type}` : ''}`],
+  ]
+  // fit against each of his pitch types: scaled distance on velo / IVB / HB / spin
+  const scales = { rel_speed: 2.0, ivb: 3.0, horz_break: 3.0, spin_rate: 150 }
+  const fits = Object.entries(byType || {}).map(([t, ps]) => {
+    const others = ps.filter(x => x.pitch_id !== p.pitch_id)
+    if (others.length < 2) return null
+    const avg = k => { const v = others.map(x => x[k]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
+    const c = { rel_speed: avg('rel_speed'), ivb: avg('ivb'), horz_break: avg('horz_break'), spin_rate: avg('spin_rate') }
+    let d2 = 0, k_n = 0
+    for (const k of Object.keys(scales)) if (p[k] != null && c[k] != null) { d2 += ((p[k] - c[k]) / scales[k]) ** 2; k_n += 1 }
+    return { t, n: others.length, c, dist: k_n ? Math.sqrt(d2 / k_n) : null }
+  }).filter(Boolean).sort((a, b) => (a.dist ?? 99) - (b.dist ?? 99))
+  return (
+    <div className="mb-2">
+      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">
+        Selected pitch: <b className="text-gray-800 dark:text-gray-100">{p.ptype}</b>
+      </div>
+      <div className="grid grid-cols-4 sm:grid-cols-8 gap-x-3 gap-y-1.5 mb-2">
+        {facts.map(([l, v]) => (
+          <div key={l} className="min-w-0"><div className="text-[9px] uppercase tracking-wide text-gray-400">{l}</div><div className="text-[11.5px] font-semibold tabular-nums truncate" title={String(v)}>{v}</div></div>
+        ))}
+      </div>
+      {fits.length > 0 && (
+        <table className="text-[11px] mb-2">
+          <thead>
+            <tr className="text-left text-[9px] uppercase tracking-wide text-gray-400">
+              <th className="pr-3 py-0.5">His pitch types</th><th className="px-2 py-0.5 text-right">N</th><th className="px-2 py-0.5 text-right">Velo</th>
+              <th className="px-2 py-0.5 text-right">IVB</th><th className="px-2 py-0.5 text-right">HB</th><th className="px-2 py-0.5 text-right">Spin</th>
+              <th className="px-2 py-0.5 text-right" title="Scaled distance from this pitch to the type's average (2 mph, 3 in, 3 in, 150 rpm per unit); smaller fits better">Fit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fits.map((f, i) => (
+              <tr key={f.t} className={i === 0 ? 'font-bold' : ''}>
+                <td className="pr-3 py-0.5 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: cFor(f.t) }} />{f.t}{f.t === p.ptype ? <span className="ml-1 text-[9px] text-gray-400 font-normal">current</span> : ''}{i === 0 ? <span className="ml-1 text-[9px] text-emerald-600 dark:text-emerald-400">closest</span> : ''}</td>
+                <td className="px-2 py-0.5 text-right tabular-nums text-gray-500">{f.n}</td>
+                <td className="px-2 py-0.5 text-right tabular-nums">{n(f.c.rel_speed)}</td>
+                <td className="px-2 py-0.5 text-right tabular-nums">{n(f.c.ivb)}</td>
+                <td className="px-2 py-0.5 text-right tabular-nums">{n(f.c.horz_break)}</td>
+                <td className="px-2 py-0.5 text-right tabular-nums">{f.c.spin_rate != null ? Math.round(f.c.spin_rate) : '–'}</td>
+                <td className="px-2 py-0.5 text-right tabular-nums">{f.dist == null ? '–' : f.dist.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
   const exportRef = useRef(null)
   const [context, setContext] = useState('live')
@@ -1887,13 +1966,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
               </div>
               {picked && (
                 <div className="mt-2 rounded-lg bg-gray-50 dark:bg-gray-900/40 p-2.5">
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">
-                    Selected: <b>{picked.ptype}</b>
-                    {picked.rel_speed != null && ` · ${Number(picked.rel_speed).toFixed(1)} mph`}
-                    {picked.ivb != null && ` · ${Number(picked.ivb).toFixed(1)}" IVB`}
-                    {picked.tagged_pitch_type && picked.tagged_pitch_type !== picked.ptype &&
-                      ` · tagged ${picked.tagged_pitch_type}`}
-                  </div>
+                  <PickedPitchPanel p={picked} byType={byType} />
                   <div className="flex flex-wrap gap-1">
                     {['Fastball', 'Sinker', 'Cutter', 'Slider', 'Sweeper', 'Curveball', 'ChangeUp', 'Splitter'].map(t => (
                       <button key={t} onClick={() => overridePitch(t)}
