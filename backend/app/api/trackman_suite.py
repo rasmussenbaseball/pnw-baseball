@@ -3553,10 +3553,12 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
     with get_connection() as conn:
         c3 = conn.cursor()
         c3.execute(
-            """SELECT plate_loc_side AS px, plate_loc_height AS pz, pitch_call
-               FROM tm_pitches WHERE owner_user_id = %s
-                 AND pitch_call IN ('StrikeCalled','BallCalled')
-                 AND plate_loc_side IS NOT NULL AND plate_loc_height IS NOT NULL""",
+            """SELECT p.plate_loc_side AS px, p.plate_loc_height AS pz, p.pitch_call
+               FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+               WHERE p.owner_user_id = %s
+                 AND p.pitch_call IN ('StrikeCalled','BallCalled')
+                 AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL
+                 AND s.session_type IN ('game', 'scrimmage')""",
             (owner,))
         corpus = [(_edge_d(float(r["px"]), float(r["pz"])), 1.0 if r["pitch_call"] == "StrikeCalled" else 0.0)
                   for r in c3.fetchall()]
@@ -3663,7 +3665,10 @@ def trackman_catching(team: str | None = Query(None),
                       owner: str = Depends(_gate)):
     """Advanced catcher metrics.
 
-    FRAMING: on TAKEN pitches (called strike/ball) near the zone edge, a
+    FRAMING: games and scrimmages only. Intrasquads are called by the
+    fixed TrackMan zone, so a catcher cannot steal or lose a strike there
+    and those takes carry no framing information.
+    On TAKEN pitches (called strike/ball) near the zone edge, a
     location-based strike-probability curve gives expected called strikes,
     CALIBRATED so the whole corpus nets ~zero — Strikes Above Expected
     reads relative to the average catcher/umpire in your own data.
@@ -3706,6 +3711,7 @@ def trackman_catching(team: str | None = Query(None),
             WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL
               AND p.pitch_call IN ('StrikeCalled', 'BallCalled')
               AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL
+              AND s.session_type IN ('game', 'scrimmage')
               {team_sql}
         """, [owner] + team_params)
         taken = cur.fetchall()
@@ -3943,7 +3949,8 @@ def trackman_catching_framing(catcher: str = Query(...), team: str | None = Quer
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL
                   AND p.pitch_call IN ('StrikeCalled', 'BallCalled')
-                  AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL{extra}""",
+                  AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL
+                  AND s.session_type IN ('game', 'scrimmage'){extra}""",
             [owner] + params)
         rows = [dict(r) for r in cur.fetchall()]
         cur.execute(

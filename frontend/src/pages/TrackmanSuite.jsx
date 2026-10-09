@@ -3216,7 +3216,7 @@ function SessionsTab({ overview, season, sessionId, setSessionId, teamCtx, onOpe
         <div ref={contentRef} className="space-y-3">
           {sess && !isPen && <SessionNotesEditor sess={sess} onSaved={refetch} />}
 
-          {view === 'pitching' && data.zone_report?.called > 20 && !isPen && (
+          {view === 'pitching' && data.zone_report?.called > 20 && !isPen && sess?.session_type !== 'intrasquad' && (
             <ZoneReportCard zr={data.zone_report} myTeam={teamCtx?.primary} />
           )}
 
@@ -3452,7 +3452,7 @@ function FramingMapCard({ catchers, team, season, context }) {
           {(data?.types || []).map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <DateRange value={dates} onChange={setDates} />
-        {data && <span className="ml-auto text-[10px] text-gray-400">graded against {data.league_catchers} catchers in your data (opponents included)</span>}
+        {data && <span className="ml-auto text-[10px] text-gray-400">games and scrimmages only (intrasquads use the fixed TrackMan zone) · graded against {data.league_catchers} catchers in your data, opponents included</span>}
       </div>
       {loading && !data && <div className="text-sm text-gray-400 p-6 text-center">Plotting takes…</div>}
       {data && (
