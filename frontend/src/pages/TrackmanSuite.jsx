@@ -129,8 +129,10 @@ export default function TrackmanSuite() {
 
   // Corpus averages behind every hover card. One fetch for the whole suite;
   // surfaces that show a filtered cohort pass their own average instead.
+  // League-wide (own players + every opponent tracked): the program is the
+  // only TrackMan unit in its league, so every pitch it has seen IS the league.
   const { data: avgData } = useApi(hasData ? '/trackman/stat-averages' : null,
-    { context: 'all', ...(primary ? { team: primary } : {}), season }, [primary, season])
+    { context: 'all', season }, [season])
   const statAvg = useMemo(() => ({ averages: avgData?.averages || {} }), [avgData])
 
   return (
@@ -173,7 +175,7 @@ export default function TrackmanSuite() {
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
           ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
-          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['values', 'Values'], ['board', 'Coach Board'], ['reports', 'Custom Reporting']].map(([k, label]) => (
+          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['values', 'Values'], ['board', 'Coach Board'], ['reports', 'Custom Reporting'], ['league', 'League Baselines']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === k
@@ -197,6 +199,7 @@ export default function TrackmanSuite() {
       {tab === 'values' && (hasData ? <ValuesTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'reports' && (hasData ? <CustomReportTab key={`${teamCtx.primary}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'board' && (hasData ? <CoachBoardTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'league' && (hasData ? <LeagueTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
     </StatAvgContext.Provider>
   )
@@ -518,6 +521,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
   const [ptype, setPtype] = useState('')
   const [vsSide, setVsSide] = useState('')
   const [view, setView] = useState('cards')   // cards (by pitch type) | board (every arm, one table)
+  const [shade, setShade] = useState('league')  // shading pool: league (every arm tracked) | shown
   const { data, loading, refetch } = useApi('/trackman/pitching',
     { context, ...(vsSide ? { side: vsSide } : {}), season }, [context, vsSide])
   const pitchers = data?.pitchers || []
@@ -528,11 +532,20 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
     .filter(p => p.arsenal.length > 0)
   // heat cohorts: every shown arsenal row, per column
   const cohort = useMemo(() => {
-    const rows = shown.flatMap(p => p.arsenal)
+    const src = shade === 'league' ? pitchers : shown
+    const rows = src.flatMap(p => ptype ? p.arsenal.filter(a => a.pitch_type === ptype) : p.arsenal)
     const grab = k => rows.map(a => a[k]).filter(v => v != null).map(Number)
     return { rv100: grab('rv100'), shadow: grab('shadow_pct'), whiff: grab('whiff_pct'),
              csw: grab('csw_pct'), ev: grab('ev_against'), chase: grab('chase_pct') }
-  }, [shown])
+  }, [shown, pitchers, shade, ptype])
+  const ShadeToggle = () => (
+    <div className="flex rounded-lg overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700" title="What the color shading compares against">
+      {[['league', 'Shade vs league'], ['shown', 'vs shown']].map(([k, l]) => (
+        <button key={k} onClick={() => setShade(k)}
+          className={`px-2 py-0.5 text-[11px] font-bold ${shade === k ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500'}`}>{l}</button>
+      ))}
+    </div>
+  )
 
   return (
     <div className="space-y-3">
@@ -554,6 +567,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
             {label}
           </button>
         ))}
+        <ShadeToggle />
         <select value={ptype} onChange={e => setPtype(e.target.value)}
           className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-sm">
           <option value="">All pitch types</option>
@@ -575,7 +589,7 @@ function PitchingTab({ onOpenLab, teamCtx, season }) {
 
       {loading ? <div className="text-sm text-gray-400 p-6 text-center">Loading…</div> : view === 'board' ? (
         <div ref={exportRef}>
-          <PitcherBoard pitchers={team ? pitchers.filter(p => p.team === team) : pitchers} context={context} onOpenLab={onOpenLab} />
+          <PitcherBoard pitchers={team ? pitchers.filter(p => p.team === team) : pitchers} pool={shade === 'league' ? pitchers : null} context={context} onOpenLab={onOpenLab} />
         </div>
       ) : (
         <div ref={exportRef} className="space-y-3">
@@ -814,16 +828,18 @@ const PB_COLS = [
 ]
 const PB_TIP_KEY = { h: 'h_allowed', r: 'r_allowed', hr: 'hr_allowed', bb: 'bb_allowed', k: 'k_pitched', hbp: 'hbp_allowed', ip_str: 'ip' }
 
-function PitcherBoard({ pitchers, context, onOpenLab }) {
+function PitcherBoard({ pitchers, pool, context, onOpenLab }) {
   const [sortK, setSortK] = useState('pitches')
   const [sortD, setSortD] = useState(-1)
+  const flat = (p) => ({
+    pitcher: p.pitcher, throws: p.throws, team: p.team, pitches: p.pitches,
+    rv: p.rv, rv100: p.rv100, shadow_pct: p.shadow_pct,
+    ...(p.totals || {}), ...(p.line || {}),
+    ip: p.line?.ip ?? null, ip_str: p.line?.ip_str ?? null,
+  })
+  const poolRows = useMemo(() => (pool || []).map(flat), [pool])
   const rows = useMemo(() => {
-    const r = pitchers.map(p => ({
-      pitcher: p.pitcher, throws: p.throws, team: p.team, pitches: p.pitches,
-      rv: p.rv, rv100: p.rv100, shadow_pct: p.shadow_pct,
-      ...(p.totals || {}), ...(p.line || {}),
-      ip: p.line?.ip ?? null, ip_str: p.line?.ip_str ?? null,
-    }))
+    const r = pitchers.map(flat)
     r.sort((a, b) => {
       const key = sortK === 'ip_str' ? 'ip' : sortK
       const x = a[key] ?? -1e9, y = b[key] ?? -1e9
@@ -837,16 +853,17 @@ function PitcherBoard({ pitchers, context, onOpenLab }) {
   }
   const cohort = useMemo(() => {
     const m = {}
-    PB_COLS.forEach(([, k, , o = {}]) => { m[k] = o.str ? [] : rows.map(b => b[k]).filter(v => v != null).map(Number) })
+    const src = pool ? poolRows : rows
+    PB_COLS.forEach(([, k, , o = {}]) => { m[k] = o.str ? [] : src.map(b => b[k]).filter(v => v != null).map(Number) })
     return m
-  }, [rows])
+  }, [rows, poolRows, pool])
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
       <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
         <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
           Pitching board — {CONTEXTS.find(c => c[0] === context)?.[1]} · {rows.length} arms
         </span>
-        <span className="text-[10px] text-gray-400">every pitch type combined · click a column to sort · click a pitcher for his lab · shading compares the arms shown</span>
+        <span className="text-[10px] text-gray-400">every pitch type combined · click a column to sort · click a pitcher for his lab · shading compares {pool ? `every arm tracked (${poolRows.length}, opponents included)` : 'the arms shown'}</span>
       </div>
       <table className="w-full text-[12.5px]">
         <thead>
@@ -958,6 +975,11 @@ function HittingTab({ teamCtx, season }) {
       pitch_type: ptype || undefined, season,
       date_from: dates.from, date_to: dates.to },
     [context, team, vsThrows, ptype, dates.from, dates.to])
+  const [shade, setShade] = useState('league')  // shading pool: league (every bat tracked) | shown
+  const { data: leagueData } = useApi(shade === 'league' && team ? '/trackman/hitting-board' : null,
+    { context, throws: vsThrows || undefined, pitch_type: ptype || undefined, season,
+      date_from: dates.from, date_to: dates.to },
+    [context, vsThrows, ptype, dates.from, dates.to, shade, team])
 
   const isBp = context === 'bp'
   const COLSET = isBp ? HB_BP : HB_FULL
@@ -980,11 +1002,22 @@ function HittingTab({ teamCtx, season }) {
     if (sortK === k) setSortD(d => -d)
     else { setSortK(k); setSortD(k === 'batter' ? 1 : -1) }
   }
+  const poolRows = useMemo(() => {
+    if (shade !== 'league') return null
+    const src = team ? (leagueData?.batters || null) : (data?.batters || null)
+    if (!src) return null
+    return src.map(b => ({
+      ...b, zev_up: b.zone_ev?.up ?? null, zev_down: b.zone_ev?.down ?? null, zev_in: b.zone_ev?.in ?? null,
+      zev_out: b.zone_ev?.out ?? null, zev_mid: b.zone_ev?.mid ?? null,
+      zrv_up: b.zone_rv?.up ?? null, zrv_down: b.zone_rv?.down ?? null, zrv_in: b.zone_rv?.in ?? null, zrv_out: b.zone_rv?.out ?? null,
+    }))
+  }, [shade, team, leagueData, data])
   const cohort = useMemo(() => {
     const m = {}
-    COLSET.forEach(([, k]) => { m[k] = batters.map(b => b[k]).filter(v => v != null).map(Number) })
+    const src = poolRows || batters
+    COLSET.forEach(([, k]) => { m[k] = src.map(b => b[k]).filter(v => v != null).map(Number) })
     return m
-  }, [batters, COLSET])
+  }, [batters, poolRows, COLSET])
   const selRow = batters.find(b => b.batter === sel) || batters[0] || null
 
   const leader = (k, fmt2) => {
@@ -1083,7 +1116,15 @@ function HittingTab({ teamCtx, season }) {
                 Hitting board — {HB_CONTEXTS.find(c => c[0] === context)?.[1]}
                 {data ? ` · ${data.totals.days} session${data.totals.days === 1 ? '' : 's'} · ${data.totals.bbe} BBE` : ''}
               </span>
-              <span className="text-[10px] text-gray-400">click a column to sort · click a hitter for spray + launch detail · shading compares the hitters shown</span>
+              <span className="text-[10px] text-gray-400 flex items-center gap-2">
+                <span>click a column to sort · click a hitter for spray + launch detail · shading compares {poolRows ? `every bat tracked (${poolRows.length}, opponents included)` : 'the hitters shown'}</span>
+                <span className="flex rounded-lg overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
+                  {[['league', 'vs league'], ['shown', 'vs shown']].map(([k, l]) => (
+                    <button key={k} onClick={() => setShade(k)}
+                      className={`px-2 py-0.5 text-[10px] font-bold ${shade === k ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500'}`}>{l}</button>
+                  ))}
+                </span>
+              </span>
             </div>
             <table className="w-full text-[12.5px]">
               <thead>
@@ -1795,7 +1836,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
           {pctKeys.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">
-                Percentile vs your data ({pct[pctKeys[0]]?.pool} qualified arms, 50+ pitches)
+                Percentile vs the league: every arm you have tracked, opponents included ({pct[pctKeys[0]]?.pool} qualified, 50+ pitches)
               </div>
               <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
                 {pctKeys.map(k => {
@@ -2386,7 +2427,7 @@ function HitterLabTab({ teamCtx, season }) {
           {pctKeys.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
               <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">
-                Percentile vs your data ({pct[pctKeys[0]]?.pool} qualified bats, 30+ pitches seen)
+                Percentile vs the league: every bat you have tracked, opponents included ({pct[pctKeys[0]]?.pool} qualified, 30+ pitches seen)
               </div>
               <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
                 {pctKeys.map(k => {
@@ -3970,6 +4011,168 @@ function DevPlayerRow({ p, hd, initialOpen = false }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── League Baselines ─────────────────────────────────────────────
+// The program is the only TrackMan unit in its league, so the league IS
+// every pitch the unit has seen: own players plus every opponent tracked.
+const LG_TYPE_COLS = [
+  ['Arms', 'arms', 0], ['N', 'n', 0], ['Use%', 'usage_pct', 1], ['Velo', 'velo', 1], ['Max', 'max_velo', 1], ['Eff', 'eff_velo', 1],
+  ['IVB', 'ivb', 1], ['HB', 'hb', 1], ['Spin', 'spin', 0], ['Ext', 'extension', 1], ['VAA', 'vaa', 1], ['Active%', 'active_spin', 0],
+  ['Zone%', 'zone_pct', 1], ['Whiff%', 'whiff_pct', 1], ['Chase%', 'chase_pct', 1], ['CSW%', 'csw_pct', 1],
+  ['EV agn', 'ev_against', 1], ['xwOBAcon', 'xwobacon', 3], ['Stuff', 'stuff', 0], ['Loc+', 'loc', 0], ['RV/100', 'rv100', 2],
+]
+const LG_CONTEXTS = [['live', 'All live'], ['game', 'Games only'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads']]
+
+function LgDistTable({ title, dist, order, decOf }) {
+  const keys = order.filter(k => dist[k])
+  if (!keys.length) return null
+  const tone = (d) => {
+    if (d.own_mean == null || d.higher == null) return ''
+    const diff = d.own_mean - d.p50
+    const span = Math.max(1e-9, d.p75 - d.p25)
+    const z = (diff / span) * (d.higher ? 1 : -1)
+    return z >= 0.5 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : z <= -0.5 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'font-semibold'
+  }
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{title}</span>
+        <span className="text-[10px] text-gray-400">percentile cutoffs across the pool · "Us" colors green when our average sits a half-IQR to the good side of the league median, red to the bad side</span>
+      </div>
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+            <th className="px-4 py-2">Metric</th>
+            {['p10', 'p25', 'Median', 'p75', 'p90', 'Mean', 'Us', 'N'].map(h => <th key={h} className="px-2 py-2 text-right">{h}</th>)}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {keys.map(k => {
+            const d = dist[k]; const dec = decOf(k)
+            const f = v => v == null ? '–' : Number(v).toFixed(dec)
+            return (
+              <tr key={k}>
+                <td className="px-4 py-1.5 font-semibold whitespace-nowrap">{d.label}{d.higher === false && <span className="ml-1 text-[9px] text-gray-400">lower better</span>}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{f(d.p10)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{f(d.p25)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums font-bold">{f(d.p50)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{f(d.p75)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{f(d.p90)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{f(d.mean)}</td>
+                <td className={`px-2 py-1.5 text-right tabular-nums ${tone(d)}`} title={d.own_n ? `${d.own_n} of ours` : ''}>{f(d.own_mean)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{d.n}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function LeagueTab({ teamCtx, season }) {
+  const exportRef = useRef(null)
+  const [context, setContext] = useState('live')
+  const [hand, setHand] = useState('all')
+  const { data, loading } = useApi('/trackman/league', { context, season, team: teamCtx.primary || undefined }, [context, season, teamCtx.primary])
+  const pDec = k => ['xwobacon', 'baa', 'babip', 'xavg', 'xiso'].includes(k) ? 3 : ['whip', 'fip', 'rv100'].includes(k) ? 2 : 1
+  const hDec = k => ['xavg', 'xslg', 'xwoba', 'xwobacon', 'avg', 'obp', 'slg', 'ops', 'iso', 'babip', 'woba'].includes(k) ? 3 : k === 'wrc_plus' ? 0 : 1
+  const types = Object.entries(data?.types || {}).filter(([, h]) => h[hand]).sort((a, b) => (b[1][hand]?.n || 0) - (a[1][hand]?.n || 0))
+  const pool = data?.pool, line = data?.line, rates = data?.rates
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        {LG_CONTEXTS.map(([k, label]) => (
+          <button key={k} onClick={() => setContext(k)}
+            className={`px-2.5 py-1 rounded-full text-[12px] font-semibold ${context === k ? 'bg-portal-purple text-white'
+              : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700'}`}>{label}</button>
+        ))}
+        <p className="text-xs text-gray-500 dark:text-gray-400 max-w-2xl">
+          Your unit is the only TrackMan in the league, so the league baseline is every pitch it has recorded: your players and every opponent who came through. These cutoffs are what the shading, hover averages and lab percentiles compare against.
+        </p>
+        {data && <div className="ml-auto"><ReportActions csv targetRef={exportRef} filename="trackman_league_baselines" /></div>}
+      </div>
+      {loading && !data && <div className="text-sm text-gray-400 p-6 text-center">Pooling every tracked pitch…</div>}
+      {data && (
+        <div ref={exportRef} className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
+            {[
+              ['Pitches', pool.pitches, `${pool.own_pitches} thrown by our arms`],
+              ['Sessions', pool.sessions, `${pool.teams} teams`],
+              ['Arms', pool.arms, `${pool.own_arms} ours · 30+ pitches`],
+              ['Bats', pool.bats, `${pool.own_bats} ours · 30+ seen`],
+              ['Opp arms', pool.arms - pool.own_arms, `${pool.arms ? Math.round(100 * (pool.arms - pool.own_arms) / pool.arms) : 0}% of the pool`],
+              ['Opp bats', pool.bats - pool.own_bats, `${pool.bats ? Math.round(100 * (pool.bats - pool.own_bats) / pool.bats) : 0}% of the pool`],
+            ].map(([label, v, sub]) => (
+              <div key={label} className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 px-4 py-3">
+                <div className="text-xl font-bold text-portal-purple dark:text-gray-100 tabular-nums leading-none">{v}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-1.5">{label}</div>
+                <div className="text-[10px] text-gray-400">{sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {line?.pa > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">League line: every tracked plate appearance ({line.pa} PA)</div>
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-x-3 gap-y-2">
+                {[['AVG', line.avg, 3], ['OBP', line.obp, 3], ['SLG', line.slg, 3], ['OPS', line.ops, 3], ['ISO', line.iso, 3], ['BABIP', line.babip, 3], ['wOBA', line.woba, 3],
+                  ['K%', rates.k_pct, 1], ['BB%', rates.bb_pct, 1], ['HR%', rates.hr_pct, 2], ['R/PA', rates.r_pa, 3], ['R/9', rates.r_9, 2], ['FIP const', rates.fip_c, 2]].map(([l, v, d]) => (
+                  <div key={l}><div className="text-[9.5px] uppercase tracking-wide text-gray-400">{l}</div><div className="text-sm font-bold tabular-nums">{v == null ? '–' : d === 3 ? Number(v).toFixed(3).replace(/^0\./, '.') : Number(v).toFixed(d)}</div></div>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-2">Built from the scorer fields on every tracked PA, both dugouts. wRC+ of 100 and FIP on the boards are scaled to this line. R/9 assumes 4.2 PA per inning.</p>
+            </div>
+          )}
+
+          <LgDistTable title={`Pitching baselines (${pool.arms} arms)`} dist={data.pitching} order={data.metric_order.pitching} decOf={pDec} />
+          <LgDistTable title={`Hitting baselines (${pool.bats} bats)`} dist={data.hitting} order={data.metric_order.hitting} decOf={hDec} />
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">League average pitch, by type</span>
+              <div className="flex rounded-lg overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
+                {[['all', 'All arms'], ['R', 'RHP'], ['L', 'LHP']].map(([k, l]) => (
+                  <button key={k} onClick={() => setHand(k)}
+                    className={`px-2 py-0.5 text-[11px] font-bold ${hand === k ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500'}`}>{l}</button>
+                ))}
+              </div>
+              <span className="text-[10px] text-gray-400">pitch-count weighted · arms with 10+ of the type · this is the "vs avg" every arsenal row reads against</span>
+            </div>
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+                  <th className="px-4 py-2">Pitch</th>
+                  {LG_TYPE_COLS.map(([l]) => <th key={l} className="px-1.5 py-2 text-right whitespace-nowrap">{l}</th>)}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {types.map(([t, h]) => (
+                  <tr key={t}>
+                    <td className="px-4 py-1.5 font-semibold whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: cFor(t) }} />{t}</td>
+                    {LG_TYPE_COLS.map(([l, k, d]) => <td key={l} className="px-1.5 py-1.5 text-right tabular-nums">{h[hand][k] == null ? '–' : Number(h[hand][k]).toFixed(d)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Who is in the pool</div>
+            <div className="flex flex-wrap gap-1.5">
+              {data.teams.map(t => (
+                <span key={t.team} className={`text-[11px] rounded-full px-2.5 py-1 ring-1 tabular-nums ${t.own ? 'bg-portal-purple text-white ring-portal-purple' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-gray-200 dark:ring-gray-700'}`}>
+                  {t.team}{t.own ? ' (us)' : ''} · {t.pitches} p · {t.arms} arms · {t.bats} bats
+                </span>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2">SIM_UNI is TrackMan's simulated-opponent placeholder from intrasquads: real hitters and arms wearing a generic code, so they stay in the pool. Every new opponent you upload widens the league.</p>
+          </div>
         </div>
       )}
     </div>

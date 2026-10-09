@@ -4267,6 +4267,150 @@ def _avg_numeric(rows, skip=()):
     return {k: round(acc[k] / cnt[k], 3) for k in acc if cnt[k]}
 
 
+# ── League baselines ─────────────────────────────────────────────
+# The coach's program is the only TrackMan unit in its league, so "the
+# league" is every pitch the unit has seen: the coach's own players plus
+# every opponent who came through. Distributions below pool both sides and
+# say how much of the pool is opponents, so a number can be read as
+# "where this sits among every arm / bat we have tracked".
+_LG_P_METRICS = [
+    ("fb_velo", "FB velo", True), ("fb_max", "FB max", True), ("stuff", "Stuff+", True), ("loc", "Loc+", True),
+    ("strike_pct", "Strike%", True), ("zone_pct", "Zone%", True), ("whiff_pct", "Whiff%", True),
+    ("chase_pct", "Chase%", True), ("csw_pct", "CSW%", True), ("k_pct", "K%", True), ("bb_pct", "BB%", False),
+    ("ev_against", "EV against", False), ("hh_pct", "Hard-hit% against", False), ("gb_pct", "GB% against", True),
+    ("xwobacon", "xwOBAcon against", False), ("baa", "BAA", False), ("babip", "BABIP", False),
+    ("xavg", "xAVG", False), ("xiso", "xISO", False), ("whip", "WHIP", False), ("fip", "FIP", False),
+    ("tempo", "Tempo (s)", False), ("dirt_pct", "Dirt%", False), ("rv100", "RV/100", True),
+]
+_LG_H_METRICS = [
+    ("swing_pct", "Swing%", None), ("zone_swing_pct", "Zone swing%", True), ("contact_pct", "Contact%", True),
+    ("zone_contact_pct", "Zone contact%", True), ("chase_pct", "Chase%", False), ("fp_swing_pct", "First-pitch swing%", None),
+    ("k2_contact_pct", "2K contact%", True), ("k_pct", "K%", False), ("bb_pct", "BB%", True),
+    ("avg_ev", "Avg EV", True), ("p90_ev", "90th EV", True), ("max_ev", "Max EV", True), ("avg_la", "Avg LA", None),
+    ("hh_pct", "Hard-hit%", True), ("barrel_pct", "Barrel%", True), ("gb_pct", "GB%", False), ("ld_pct", "LD%", True),
+    ("fb_pct", "FB%", None), ("airpull_pct", "Air-pull%", True), ("depth", "Contact depth", None),
+    ("attack_angle", "Attack angle", None), ("phr", "Park-neutral HR", True),
+    ("xavg", "xAVG", True), ("xslg", "xSLG", True), ("xwoba", "xwOBA", True), ("xwobacon", "xwOBAcon", True),
+    ("avg", "AVG", True), ("obp", "OBP", True), ("slg", "SLG", True), ("ops", "OPS", True), ("iso", "ISO", True),
+    ("babip", "BABIP", None), ("woba", "wOBA", True), ("wrc_plus", "wRC+", True), ("rv", "Swing/take RV", True),
+]
+_LG_TYPE_KEYS = ["velo", "max_velo", "eff_velo", "ivb", "hb", "spin", "extension", "vaa", "zone_pct", "whiff_pct",
+                 "chase_pct", "csw_pct", "ev_against", "xwobacon", "active_spin", "stuff", "loc", "rv100", "usage_pct"]
+
+
+def _dist(vals, own_vals, dec=1):
+    vals = sorted(float(v) for v in vals if v is not None)
+    if not vals:
+        return None
+    n = len(vals)
+    q = lambda f: round(vals[min(n - 1, int(f * (n - 1) + 0.5))], dec)   # noqa: E731
+    own = [float(v) for v in own_vals if v is not None]
+    return {"n": n, "mean": round(sum(vals) / n, dec), "p10": q(0.10), "p25": q(0.25), "p50": q(0.50),
+            "p75": q(0.75), "p90": q(0.90),
+            "own_mean": round(sum(own) / len(own), dec) if own else None, "own_n": len(own)}
+
+
+@router.get("/trackman/league")
+def trackman_league(context: str = Query("live"), season: int | None = Query(None),
+                    team: str | None = Query(None), owner: str = Depends(_gate)):
+    """League baselines from every tracked pitch (own players + every
+    opponent). `team` names the coach's own code so each distribution can
+    also report where the program sits."""
+    pb = trackman_pitching(context=context, team=None, side=None, season=season, owner=owner)
+    arms = [p_ for p_ in pb.get("pitchers", []) if (p_.get("pitches") or 0) >= 30]
+    hb = trackman_hitting_board(context=context if context != "live" else "live", team=None, throws=None, pitch_type=None,
+                                season=season, date_from=None, date_to=None, owner=owner)
+    bats = [b for b in hb.get("batters", []) if (b.get("pitches") or 0) >= 30]
+
+    def _p_val(p_, k):
+        t, ln = p_.get("totals") or {}, p_.get("line") or {}
+        if k in ("rv100",):
+            return p_.get(k)
+        return t.get(k) if t.get(k) is not None else ln.get(k)
+
+    pitching = {}
+    for k, label, higher in _LG_P_METRICS:
+        dec = 3 if k in ("xwobacon", "baa", "babip", "xavg", "xiso") else 2 if k in ("whip", "fip", "rv100") else 1
+        d = _dist([_p_val(p_, k) for p_ in arms], [_p_val(p_, k) for p_ in arms if team and p_.get("team") == team], dec)
+        if d:
+            d.update({"label": label, "higher": higher})
+            pitching[k] = d
+    hitting = {}
+    for k, label, higher in _LG_H_METRICS:
+        dec = 3 if k in ("xavg", "xslg", "xwoba", "xwobacon", "avg", "obp", "slg", "ops", "iso", "babip", "woba") else 0 if k == "wrc_plus" else 1
+        d = _dist([b.get(k) for b in bats], [b.get(k) for b in bats if team and b.get("team") == team], dec)
+        if d:
+            d.update({"label": label, "higher": higher})
+            hitting[k] = d
+
+    # per pitch type x hand: pitch-count-weighted league averages
+    types = {}
+    for p_ in arms:
+        hand = "L" if p_.get("throws") == "Left" else "R"
+        for a in p_.get("arsenal") or []:
+            if (a.get("count") or 0) < 10:
+                continue
+            for h in (hand, "all"):
+                g = types.setdefault(a["pitch_type"], {}).setdefault(h, {"n": 0, "arms": 0, "acc": defaultdict(float), "cnt": defaultdict(int)})
+                g["n"] += a["count"]; g["arms"] += 1
+                for k in _LG_TYPE_KEYS:
+                    if a.get(k) is not None:
+                        g["acc"][k] += float(a[k]) * a["count"]; g["cnt"][k] += a["count"]
+    type_avgs = {}
+    for t, hands in types.items():
+        type_avgs[t] = {}
+        for h, g in hands.items():
+            if g["arms"] < 2:
+                continue
+            type_avgs[t][h] = {"n": g["n"], "arms": g["arms"],
+                               **{k: round(g["acc"][k] / g["cnt"][k], 3 if k == "xwobacon" else 1) for k in _LG_TYPE_KEYS if g["cnt"][k]}}
+        if not type_avgs[t]:
+            type_avgs.pop(t)
+
+    # league line: the whole corpus's terminal PAs
+    with get_connection() as conn:
+        cur = conn.cursor()
+        extra, params = _context_clause(context)
+        ssql, sparams = _season_clause(season)
+        cur.execute(
+            f"""SELECT p.pitcher_team, p.batter_team, p.pitch_call, p.k_or_bb, p.play_result, p.outs_on_play,
+                       p.runs_scored, p.inning, p.top_bottom, p.pa_of_inning, s.id AS session_id, s.session_type
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}{extra}{ssql}""",
+            [owner] + params + sparams)
+        rows = [dict(r) for r in cur.fetchall()]
+    live = [r for r in rows if r.get("session_type") in _LIVE_TYPES]
+    pas = box.terminal_pas(live)
+    line = box.hitter_line(pas, None) or {}
+    lg = box.league_context(live) if live else {}
+    n_pitch = len(rows)
+    own_pitch = sum(1 for r in rows if team and r.get("pitcher_team") == team)   # thrown by our arms
+    team_counts = defaultdict(lambda: {"pitches": 0, "arms": set(), "bats": set()})
+    for p_ in pb.get("pitchers", []):
+        team_counts[p_.get("team") or "?"]["arms"].add(p_["pitcher"])
+        team_counts[p_.get("team") or "?"]["pitches"] += p_.get("pitches") or 0
+    for b in hb.get("batters", []):
+        team_counts[b.get("team") or "?"]["bats"].add(b["batter"])
+    teams = sorted(({"team": t, "pitches": v["pitches"], "arms": len(v["arms"]), "bats": len(v["bats"]), "own": t == team}
+                    for t, v in team_counts.items()), key=lambda x: -x["pitches"])
+    return {
+        "context": context, "season": season, "own_team": team,
+        "pool": {"pitches": n_pitch, "own_pitches": own_pitch, "arms": len(arms), "bats": len(bats),
+                 "own_arms": sum(1 for p_ in arms if team and p_.get("team") == team),
+                 "own_bats": sum(1 for b in bats if team and b.get("team") == team),
+                 "sessions": len({r["session_id"] for r in rows}), "teams": len(team_counts)},
+        "line": {k: line.get(k) for k in ("pa", "ab", "h", "hr", "bb", "k", "hbp", "avg", "obp", "slg", "ops", "iso", "babip", "woba")},
+        "rates": {"k_pct": round(100 * line["k"] / line["pa"], 1) if line.get("pa") else None,
+                  "bb_pct": round(100 * line["bb"] / line["pa"], 1) if line.get("pa") else None,
+                  "hr_pct": round(100 * line["hr"] / line["pa"], 2) if line.get("pa") else None,
+                  "r_pa": round(lg["r_pa"], 3) if lg.get("r_pa") is not None else None,
+                  "r_9": round(9 * lg["r_pa"] * 4.2, 2) if lg.get("r_pa") is not None else None,
+                  "fip_c": lg.get("fip_c")},
+        "pitching": pitching, "hitting": hitting, "types": type_avgs, "teams": teams,
+        "metric_order": {"pitching": [k for k, _, _ in _LG_P_METRICS], "hitting": [k for k, _, _ in _LG_H_METRICS]},
+    }
+
+
 @router.get("/trackman/stat-averages")
 def trackman_stat_averages(
     context: str = Query("all"),

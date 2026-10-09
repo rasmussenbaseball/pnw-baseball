@@ -167,7 +167,7 @@ export default function StatTip({ k, group = 'hitting', label, className = '', a
         </span>
         {avg != null && (
           <span className="block text-[10.5px] text-emerald-300 mt-1.5 font-semibold tabular-nums">
-            Your average: {fmtAvg(avg, dec, unit)}
+            {avgProp != null ? 'Shown average' : 'League average (all tracked)'}: {fmtAvg(avg, dec, unit)}
             {n ? <span className="text-gray-400 font-normal"> (across {n})</span> : null}
           </span>
         )}
