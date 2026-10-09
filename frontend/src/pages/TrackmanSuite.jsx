@@ -1759,6 +1759,18 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
   const roster = (list?.pitchers || []).filter(p => !team || p.team === team)
   const names = roster.map(p => p.pitcher)
   const active = names.includes(pitcher) ? pitcher : (names[0] || '')
+  // Shading pool for the tables: every arm tracked (opponents included) with
+  // 30+ pitches, flattened to the same keys the box line and splits use.
+  const labPool = useMemo(() => {
+    const arms = (list?.pitchers || []).filter(p => (p.pitches || 0) >= 30)
+    const flat = arms.map(p => ({ ...(p.totals || {}), ...(p.line || {}), rv100: p.rv100 }))
+    const m = { _n: flat.length }
+    ;['whip', 'baa', 'babip', 'xavg', 'xiso', 'fip', 'k9', 'bb9', 'ra9', 'k_pct', 'bb_pct', 'whiff_pct', 'chase_pct', 'zone_pct',
+      'csw_pct', 'strike_pct', 'ev_against', 'hh_pct', 'xwobacon', 'rv100', 'fb_velo'].forEach(k => {
+      m[k] = flat.map(r => r[k]).filter(v => v != null).map(Number)
+    })
+    return m
+  }, [list])
   const { data, loading, error, refetch } = useApi(
     active ? '/trackman/pitchers/detail' : null,
     { pitcher: active, context, conf, team: team || undefined,
@@ -1850,6 +1862,10 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
           )}
 
           {data.pnw && <PnwBaselineCard pnw={data.pnw} />}
+
+          {data.line && <BoxLineTable line={data.line} pool={labPool} />}
+
+          {data.splits && <SplitsTable rows={data.splits} pool={labPool} />}
 
           <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} grades={data.grades} typeAvgs={data.type_avgs}
             slot={data.slot} pitcher={active} team={team || null} onRetag={refetch} />
@@ -1957,13 +1973,6 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
             <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Two-pitch sequences (result on the 2nd pitch)</div>
             <SequencingTable pitches={data.pitches} />
           </div>
-
-          {data.line && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Box line (this view's filters applied; R not ER, TrackMan does not score earned runs)</div>
-              <PitcherLineStrip line={data.line} />
-            </div>
-          )}
 
           {data.usage_plan && <UsagePlanCard plan={data.usage_plan} />}
         </div>
@@ -4439,6 +4448,104 @@ function UsagePlanCard({ plan }) {
         How it is built: each pitch is scored against that batter side by its hand-specific Stuff+ (model expected run value), blended with what it has
         actually done against that side (counting fully at ~40 pitches). Better scores earn more usage, the result is averaged half-and-half with the
         current mix, and every pitch stays between 5% and 55%. It says which way to lean, not the exact number; sequencing and count are not in it.
+      </p>
+    </div>
+  )
+}
+
+// ── Pitcher Lab: box line as a shaded table ──────────────────────
+const BOX_COLS = [
+  ['IP', 'ip_str', 'ip', { plain: true, str: true }], ['BF', 'bf', 'bf', { plain: true, dec: 0 }],
+  ['H', 'h', 'h_allowed', { plain: true, dec: 0 }], ['R', 'r', 'r_allowed', { plain: true, dec: 0 }],
+  ['HR', 'hr', 'hr_allowed', { plain: true, dec: 0 }], ['BB', 'bb', 'bb_allowed', { plain: true, dec: 0 }],
+  ['K', 'k', 'k_pitched', { plain: true, dec: 0 }], ['HBP', 'hbp', 'hbp_allowed', { plain: true, dec: 0 }],
+  ['K%', 'k_pct', 'k_pct', { dec: 1 }], ['BB%', 'bb_pct', 'bb_pct', { dec: 1, higher: false }],
+  ['WHIP', 'whip', 'whip', { dec: 2, higher: false }], ['BAA', 'baa', 'baa', { dec: 3, higher: false }],
+  ['BABIP', 'babip', 'babip', { dec: 3, higher: false }], ['xAVG', 'xavg', 'xavg', { dec: 3, higher: false }],
+  ['xISO', 'xiso', 'xiso', { dec: 3, higher: false }], ['FIP', 'fip', 'fip', { dec: 2, higher: false }],
+  ['K/9', 'k9', 'k9', { dec: 1 }], ['BB/9', 'bb9', 'bb9', { dec: 1, higher: false }], ['RA/9', 'ra9', 'ra9', { dec: 2, higher: false }],
+]
+function BoxLineTable({ line, pool }) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Box line (this view's filters; R not ER, TrackMan does not score earned runs)</span>
+        <span className="text-[10px] text-gray-400">shading vs every arm tracked, opponents included ({pool?._n || 0} arms, 30+ pitches)</span>
+      </div>
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+            {BOX_COLS.map(([label, k, tipKey]) => <th key={k} className="px-2 py-2 text-right whitespace-nowrap"><StatTip k={tipKey} group="pitching" label={label} /></th>)}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {BOX_COLS.map(([, k, , o]) => o.plain ? (
+              <td key={k} className="px-2 py-2 text-right tabular-nums font-semibold">{line[k] == null ? '–' : o.str ? line[k] : Number(line[k]).toFixed(o.dec ?? 0)}</td>
+            ) : (
+              <HeatCell key={k} v={line[k]} vals={pool?.[k]} higher={o.higher !== false} dec={o.dec} extra="font-semibold" />
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Pitcher Lab: splits by batter side and base state ────────────
+const SPLIT_COLS = [
+  ['P', 'pitches', { plain: true, dec: 0 }], ['PA', 'pa', { plain: true, dec: 0 }], ['K', 'k', { plain: true, dec: 0 }],
+  ['BB', 'bb', { plain: true, dec: 0 }], ['H', 'h', { plain: true, dec: 0 }], ['HR', 'hr', { plain: true, dec: 0 }],
+  ['BAA', 'baa', { dec: 3, higher: false }], ['wOBA', 'woba', { plain: true, dec: 3 }],
+  ['K%', 'k_pct', { dec: 1 }], ['BB%', 'bb_pct', { dec: 1, higher: false }],
+  ['Strike%', 'strike_pct', { dec: 1 }], ['Zone%', 'zone_pct', { dec: 1 }], ['Whiff%', 'whiff_pct', { dec: 1 }],
+  ['Chase%', 'chase_pct', { dec: 1 }], ['CSW%', 'csw_pct', { dec: 1 }],
+  ['BBE', 'bbe', { plain: true, dec: 0 }], ['EV agn', 'ev_against', { dec: 1, higher: false }], ['HH%', 'hh_pct', { dec: 1, higher: false }],
+  ['xwOBAcon', 'xwobacon', { dec: 3, higher: false }], ['RV/100', 'rv100', { dec: 2, plus: true }],
+]
+const SPLIT_TIP = { ev_against: 'ev_against', hh_pct: 'hh_pct', xwobacon: 'xwobacon_against', baa: 'baa', pitches: 'pitches' }
+function SplitsTable({ rows, pool }) {
+  if (!rows?.length) return null
+  const sideRows = rows.filter(r => r.key === 'all' || r.key === 'L' || r.key === 'R')
+  const baseRows = rows.filter(r => ['empty', 'on1', 'risp'].includes(r.key))
+  const Row = ({ r, bold }) => (
+    <tr className={bold ? 'bg-gray-50/70 dark:bg-gray-900/30' : ''}>
+      <td className={`px-4 py-1.5 whitespace-nowrap ${bold ? 'font-bold' : 'font-semibold'}`}>{r.label}</td>
+      {SPLIT_COLS.map(([, k, o]) => o.plain ? (
+        <td key={k} className="px-2 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-300">{r[k] == null ? '–' : o.dec === 3 ? Number(r[k]).toFixed(3) : Number(r[k]).toFixed(o.dec ?? 0)}</td>
+      ) : (
+        <HeatCell key={k} v={r[k]} vals={pool?.[k]} higher={o.higher !== false} dec={o.dec} plus={o.plus} />
+      ))}
+    </tr>
+  )
+  const Head = () => (
+    <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+      <th className="px-4 py-2">Split</th>
+      {SPLIT_COLS.map(([label, k]) => <th key={k} className="px-2 py-2 text-right whitespace-nowrap"><StatTip k={SPLIT_TIP[k] || k} group="pitching" label={label} /></th>)}
+    </tr>
+  )
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 overflow-x-auto">
+      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Splits: batter side and base state (live sessions)</span>
+        <span className="text-[10px] text-gray-400">shading vs every arm tracked, opponents included ({pool?._n || 0} arms); wOBA is unshaded</span>
+      </div>
+      <table className="w-full text-[12.5px]">
+        <thead><Head /></thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {sideRows.map(r => <Row key={r.key} r={r} bold={r.key === 'all'} />)}
+        </tbody>
+        {baseRows.length > 0 && (
+          <>
+            <thead><tr><th colSpan={SPLIT_COLS.length + 1} className="px-4 pt-3 pb-1 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400 border-t border-gray-100 dark:border-gray-700">By base state</th></tr></thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+              {baseRows.map(r => <Row key={r.key} r={r} />)}
+            </tbody>
+          </>
+        )}
+      </table>
+      <p className="text-[10px] text-gray-400 px-4 py-2">
+        TrackMan carries no runner fields, so base states are rebuilt per half-inning from each plate appearance's result (walks force, singles move everyone one base, doubles two, RunsScored and OutsOnPlay reconcile). Close to the book, not the book: a runner stranded on an error-plus-advance can read one base off.
       </p>
     </div>
   )

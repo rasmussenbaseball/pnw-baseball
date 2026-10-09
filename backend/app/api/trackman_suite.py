@@ -33,6 +33,7 @@ from ..stats.rapsodo_tunnel import tunnel_pairs
 from ..stats import trackman_spin as spin
 from ..stats import trackman_tempo as tempo
 from ..stats import trackman_parks as parks
+from ..stats import trackman_bases as bases
 from ..stats.trackman_defense import (
     OF_POSITIONS, IF_POSITIONS, OUT_RESULTS, landing_xz,
     catch_probability, gb_out_probability, difficulty_bucket, move_direction,
@@ -2382,6 +2383,66 @@ def trackman_pitcher_detail(
         }
     usage_plan = _usage_plan(platoon, gtypes) if platoon else None
 
+    # Splits table: one results row per cut (all, by batter side, by base
+    # state), the same columns everywhere so they shade against the staff.
+    def _split_row(hx, label):
+        called = [x for x in hx if x["pitch_call"]]
+        sw = [x for x in hx if x["is_swing"]]
+        oz = [x for x in hx if x["is_in_zone"] is False]
+        zn = [x for x in hx if x["is_in_zone"] is not None]
+        bbe_h = [x for x in hx if x["exit_speed"] is not None and _is_fair(x["pitch_call"], x.get("direction"))]
+        xw = [xwobacon(float(x["exit_speed"]), float(x["launch_angle"]), x.get("direction"), (x.get("batter_side") or "")[:1] or None)
+              for x in bbe_h if x.get("launch_angle") is not None]
+        rv_h = n_h = 0.0
+        for x in hx:
+            v = pitch_run_value(x["balls"], x["strikes"], x["pitch_call"], x.get("play_result"))
+            if v is not None:
+                rv_h -= v; n_h += 1
+        ln = box.hitter_line(box.terminal_pas([x for x in hx if x.get("session_type") in _LIVE_TYPES]), None) or {}
+        pa = ln.get("pa") or 0
+        return {
+            "label": label, "pitches": len(hx), "pa": pa, "k": ln.get("k"), "bb": ln.get("bb"), "h": ln.get("h"), "hr": ln.get("hr"),
+            "baa": ln.get("avg"), "woba": ln.get("woba"),
+            "k_pct": round(100 * ln["k"] / pa, 1) if pa else None,
+            "bb_pct": round(100 * ln["bb"] / pa, 1) if pa else None,
+            "whiff_pct": round(100 * sum(1 for x in sw if x["is_whiff"]) / len(sw), 1) if sw else None,
+            "chase_pct": round(100 * sum(1 for x in oz if x["is_chase"]) / len(oz), 1) if oz else None,
+            "zone_pct": round(100 * sum(1 for x in zn if x["is_in_zone"]) / len(zn), 1) if zn else None,
+            "csw_pct": round(100 * sum(1 for x in called if x["pitch_call"] in ("StrikeCalled", "StrikeSwinging")) / len(called), 1) if called else None,
+            "strike_pct": round(100 * sum(1 for x in called if x["pitch_call"] in box_STRIKES) / len(called), 1) if called else None,
+            "bbe": len(bbe_h),
+            "ev_against": round(sum(float(x["exit_speed"]) for x in bbe_h) / len(bbe_h), 1) if bbe_h else None,
+            "hh_pct": round(100 * sum(1 for x in bbe_h if x["exit_speed"] >= 90) / len(bbe_h), 1) if bbe_h else None,
+            "xwobacon": round(sum(xw) / len(xw), 3) if xw else None,
+            "rv": round(rv_h + n_h * rv_base, 1) if n_h else None,
+            "rv100": round(100 * (rv_h + n_h * rv_base) / n_h, 2) if n_h else None,
+        }
+    box_STRIKES = ("StrikeCalled", "StrikeSwinging", "FoulBall", "FoulBallFieldable", "FoulBallNotFieldable", "InPlay", "AutomaticStrike")
+    live_px = [x for x in pitches if x.get("session_type") in _LIVE_TYPES]
+    # Base states need EVERY pitch of each half-inning he worked, not just his:
+    # a reliever who enters with two on would otherwise read as bases empty.
+    state_of_pitch = {}
+    live_sess = sorted({x["session_id"] for x in live_px if x.get("session_id") is not None})
+    if live_sess:
+        with get_connection() as conn:
+            c4 = conn.cursor()
+            c4.execute(
+                """SELECT id AS pitch_id, session_id, inning, top_bottom, pa_of_inning, pitch_of_pa, pitch_no,
+                          pitch_call, k_or_bb, play_result, outs_on_play, runs_scored
+                   FROM tm_pitches WHERE owner_user_id = %s AND session_id = ANY(%s)""",
+                (owner, live_sess))
+            state_of_pitch = bases.tag_base_states([dict(r) for r in c4.fetchall()])
+    splits_rows = [_split_row(live_px, "All")]
+    for hand, lbl in (("Left", "vs LHH"), ("Right", "vs RHH")):
+        hx = [x for x in live_px if x.get("batter_side") == hand]
+        if hx:
+            splits_rows.append({**_split_row(hx, lbl), "key": "L" if hand == "Left" else "R"})
+    for st, lbl in bases.STATES:
+        hx = [x for x in live_px if state_of_pitch.get(x["pitch_id"]) == st]
+        if hx:
+            splits_rows.append({**_split_row(hx, lbl), "key": st})
+    splits_rows[0]["key"] = "all"
+
     rv_by_type = {
         t: {"rv": round(a["rv"] + a["n"] * rv_base, 1), "n": a["n"],
             "rv100": (round(100 * (a["rv"] + a["n"] * rv_base) / a["n"], 2)
@@ -2465,6 +2526,7 @@ def trackman_pitcher_detail(
         "tempo": tempo_me,
         "fatigue": fatigue,
         "pnw": pnw,
+        "splits": splits_rows,
         "line": box.pitcher_line([x for x in pitches if x.get("session_type") in _LIVE_TYPES], lab_lg),
         "count_states": count_states([x for x in pitches if x.get("session_type") in _LIVE_TYPES],
                                      lambda r: _is_fair(r["pitch_call"], r.get("direction")), rv_base),
