@@ -773,6 +773,8 @@ const PB_COLS = [
   ['EV agn', 'ev_against', 'Average exit velocity allowed', { higher: false }],
   ['HH% agn', 'hh_pct', 'Hard-hit (90+) share of batted balls allowed', { higher: false }],
   ['GB% agn', 'gb_pct', 'Ground-ball share of batted balls allowed (launch under 10)', {}],
+  ['xwOBAcon agn', 'xwobacon', 'Expected wOBA on contact allowed, from exit velo, launch angle and spray of every fair ball', { higher: false, dec: 3 }],
+  ['Tempo', 'tempo', 'Median seconds between pitches within a plate appearance (college pitch clock is 20 s with bases empty)', { higher: false, dec: 1 }],
   ['RV', 'rv', 'Run value: runs saved vs the average pitch in your data', { plus: true }],
   ['RV/100', 'rv100', 'Run value per 100 pitches', { plus: true, dec: 2 }],
   ['H', 'h', 'Hits allowed', { plain: true, dec: 0 }],
@@ -1830,6 +1832,13 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
             <ArmProfileCard arm={data.arm} />
             <TunnelingCard tunneling={data.tunneling} />
           </div>
+
+          <div className="grid md:grid-cols-3 gap-3">
+            <div className="md:col-span-2"><SpinProfileCard spin={data.spin} /></div>
+            <TempoCard tempo={data.tempo} />
+          </div>
+
+          <FatigueCard fatigue={data.fatigue} />
 
           <PitcherZoneMaps pitches={data.pitches} />
 
@@ -4034,6 +4043,7 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs, slot, pitcher, 
       return {
         t, n: ps.length, usage: 100 * ps.length / total,
         velo: avg(ps, 'rel_speed'), max: Math.max(...ps.map(p => p.rel_speed).filter(v => v != null), 0) || null,
+        effv: avg(ps, 'effective_velo'),
         ivb: avg(ps, 'ivb'), hb: avg(ps, 'horz_break'), spin: avg(ps, 'spin_rate'),
         ext: avg(ps, 'extension'), vaa: avg(ps, 'vaa'),
         zone: (inZone + outZone) ? 100 * inZone / (inZone + outZone) : null,
@@ -4074,6 +4084,7 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs, slot, pitcher, 
             <th className="px-2 py-1.5 text-right"><StatTip k="usage_pct" group="pitching" label="Use%" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="velo" group="pitching" label="Velo" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="max_velo" group="pitching" label="Max" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="eff_velo" group="pitching" label="Eff" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="ivb" group="pitching" label="IVB" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="hb" group="pitching" label="HB" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="spin" group="pitching" label="Spin" /></th>
@@ -4086,6 +4097,7 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs, slot, pitcher, 
             <th className="px-2 py-1.5 text-right"><StatTip k="chase_pct" group="pitching" label="Chase%" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="csw_pct" group="pitching" label="CSW%" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="ev_against" group="pitching" label="EV agn" /></th>
+            <th className="px-2 py-1.5 text-right"><StatTip k="xwobacon_against" group="pitching" label="xwOBAcon" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="rv" group="pitching" label="RV" /></th>
             <th className="px-2 py-1.5 text-right"><StatTip k="rv100" group="pitching" label="RV/100" /></th>
           </tr>
@@ -4105,6 +4117,7 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs, slot, pitcher, 
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.usage)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(r.velo)}<Delta v={r.velo} base={typeAvgs?.[r.t]?.velo} /></td>
               <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{fmt(r.max)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{fmt(r.effv)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.ivb)}<Delta v={r.ivb} base={typeAvgs?.[r.t]?.ivb} /></td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.hb)}<Delta v={r.hb} base={typeAvgs?.[r.t]?.hb} /></td>
               <td className="px-2 py-1.5 text-right tabular-nums">{r.spin ? Math.round(r.spin) : '–'}</td>
@@ -4117,6 +4130,7 @@ function ArsenalStatTable({ pitches, rvByType, grades, typeAvgs, slot, pitcher, 
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.chase)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.csw)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.ev)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{rvByType?.[r.t]?.xwobacon == null ? '–' : rvByType[r.t].xwobacon.toFixed(3)}</td>
               <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${
                 rvByType?.[r.t]?.rv == null ? 'text-gray-300'
                   : rvByType[r.t].rv > 0 ? 'text-emerald-600 dark:text-emerald-400'
@@ -4695,6 +4709,160 @@ function XStatsCard({ x }) {
 }
 
 // ── Rapsodo Lab ports: arm profile + tunneling ───────────────────
+
+// ── Spin direction: measured axis vs what the movement says (Savant's
+// spin-direction comparison). The gap is seam-shifted wake; active spin is
+// movement-inferred, calibrated so this coach's fastballs top out at 100.
+function SpinProfileCard({ spin }) {
+  const rows = Object.entries(spin || {}).sort((a, b) => b[1].n - a[1].n)
+  if (!rows.length) return null
+  const ssw = (m) => {
+    if (m == null) return '–'
+    const a = Math.abs(m)
+    return `${m > 0 ? '+' : m < 0 ? '−' : ''}${a} min`
+  }
+  const actCls = (v) => v == null ? 'text-gray-300' : v >= 85 ? 'text-emerald-600 dark:text-emerald-400' : v <= 35 ? 'text-sky-600 dark:text-sky-400' : ''
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4 h-full">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Spin direction and active spin</div>
+      <table className="w-full text-[12px]">
+        <thead>
+          <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+            <th className="py-1">Pitch</th>
+            <th className="py-1 text-right">N</th>
+            <th className="py-1 text-right"><StatTip k="spin" group="pitching" label="Spin" /></th>
+            <th className="py-1 text-right"><StatTip k="bauer" group="pitching" label="Bauer" /></th>
+            <th className="py-1 text-right"><StatTip k="tilt" group="pitching" label="Spin tilt" /></th>
+            <th className="py-1 text-right"><StatTip k="move_tilt" group="pitching" label="Move tilt" /></th>
+            <th className="py-1 text-right"><StatTip k="ssw_min" group="pitching" label="SSW" /></th>
+            <th className="py-1 text-right"><StatTip k="active_spin" group="pitching" label="Active%" /></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {rows.map(([t, v]) => (
+            <tr key={t}>
+              <td className="py-1 font-semibold whitespace-nowrap">
+                <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: cFor(t) }} />{t}
+              </td>
+              <td className="py-1 text-right tabular-nums">{v.n}</td>
+              <td className="py-1 text-right tabular-nums">{v.spin ?? '–'}</td>
+              <td className="py-1 text-right tabular-nums">{v.bauer ?? '–'}</td>
+              <td className="py-1 text-right tabular-nums font-semibold">{v.tilt ?? '–'}</td>
+              <td className="py-1 text-right tabular-nums">{v.move_tilt ?? '–'}</td>
+              <td className={`py-1 text-right tabular-nums ${v.ssw_min != null && Math.abs(v.ssw_min) >= 15 ? 'font-bold text-portal-purple dark:text-indigo-300' : ''}`}>{ssw(v.ssw_min)}</td>
+              <td className={`py-1 text-right tabular-nums font-bold ${actCls(v.active_spin)}`}>{v.active_spin == null ? '–' : `${v.active_spin}%`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-[10px] text-gray-400 mt-2">
+        Spin tilt is the axis TrackMan measured; move tilt is the axis the ball's movement implies. When they
+        disagree by 15+ minutes the seams are steering the ball (seam-shifted wake), which is why a sinker or
+        changeup can move more than its spin predicts. Active spin is inferred from movement, scaled so your
+        most efficient fastballs read 100: fastballs and changeups want high, sliders and cutters live low.
+      </p>
+    </div>
+  )
+}
+
+function TempoCard({ tempo }) {
+  const t = tempo
+  if (!t?.all) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4 h-full">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Pitch tempo</div>
+        <p className="text-xs text-gray-400">Needs 10+ pitch-to-pitch gaps inside plate appearances (live sessions).</p>
+      </div>
+    )
+  }
+  const counts = [['ahead', 'Ahead'], ['even', 'Even'], ['behind', 'Behind'], ['two_strikes', '2 strikes']]
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4 h-full">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Pitch tempo</div>
+      <div className="flex items-end gap-3">
+        <div>
+          <div className="text-3xl font-black tabular-nums text-gray-800 dark:text-gray-100">{t.all.median.toFixed(1)}<span className="text-sm font-semibold text-gray-400 ml-1">s</span></div>
+          <div className="text-[10px] text-gray-400">median between pitches, same PA · {t.all.p25}-{t.all.p75} s middle half · {t.all.n} gaps</div>
+        </div>
+        {t.pctl != null && (
+          <div className="ml-auto text-right">
+            <div className={`text-lg font-black tabular-nums ${t.pctl >= 70 ? 'text-emerald-600 dark:text-emerald-400' : t.pctl <= 30 ? 'text-rose-600 dark:text-rose-400' : ''}`}>{t.pctl}<span className="text-[10px] font-semibold text-gray-400 ml-0.5">pctl</span></div>
+            <div className="text-[10px] text-gray-400">quicker than {t.pctl}% of {t.pool} arms<br />staff median {t.pool_median} s</div>
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-4 gap-1.5 mt-3">
+        {counts.map(([k, label]) => (
+          <div key={k} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-2 py-1.5 text-center">
+            <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">{label}</div>
+            <div className="text-sm font-bold tabular-nums">{t.by_count?.[k] ? t.by_count[k].median.toFixed(1) : '–'}</div>
+          </div>
+        ))}
+      </div>
+      {Object.keys(t.by_type || {}).length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {Object.entries(t.by_type).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => (
+            <span key={k} className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: cFor(k) }} />{k} {v.median.toFixed(1)}s
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-gray-400 mt-2">
+        Wall-clock gap between consecutive pitches of one plate appearance (5 to 45 s kept), so batter changes and mound visits never count. The college clock is 20 s with the bases empty.
+      </p>
+    </div>
+  )
+}
+
+// In-outing fatigue: his pitches numbered 1..N per outing, bucketed by 15.
+function FatigueCard({ fatigue }) {
+  const b = fatigue?.buckets || []
+  if (b.length < 2) return null
+  const metrics = [
+    ['fb_velo', 'FB velo', 1, true], ['fb_max', 'FB max', 1, true], ['stuff', 'Stuff+', 0, true],
+    ['zone_pct', 'Zone%', 1, true], ['whiff_pct', 'Whiff%', 1, true], ['rv100', 'RV/100', 2, true],
+  ]
+  const first = b[0]
+  const delta = (k, v, dec) => {
+    if (v == null || first[k] == null || k === 'fb_max') return null
+    const d = v - first[k]
+    if (Math.abs(d) < 0.05) return null
+    return <span className={`ml-1 text-[9px] font-semibold ${d < 0 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{d > 0 ? '+' : ''}{d.toFixed(dec)}</span>
+  }
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4 overflow-x-auto">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Deep in the outing: by pitch number</span>
+        <span className="text-[10px] text-gray-400">{fatigue.outings} live outings · deltas vs pitches 1-15</span>
+      </div>
+      <table className="w-full text-[12px]">
+        <thead>
+          <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
+            <th className="py-1">Pitches</th>
+            {b.map(x => <th key={x.bucket} className="py-1 text-right whitespace-nowrap">{x.bucket}<span className="ml-1 font-normal normal-case text-gray-300">n{x.n}</span></th>)}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+          {metrics.map(([k, label, dec]) => (
+            <tr key={k}>
+              <td className="py-1 font-semibold">{label}</td>
+              {b.map(x => (
+                <td key={x.bucket} className="py-1 text-right tabular-nums whitespace-nowrap">
+                  {x[k] == null ? '–' : (k === 'rv100' && x[k] > 0 ? '+' : '') + Number(x[k]).toFixed(dec)}
+                  {delta(k, x[k], dec)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-[10px] text-gray-400 mt-2">
+        Each outing's pitches are numbered from his first; buckets pool every live outing in this view. A velo or Stuff+ slide after pitch 45 is the pitch-limit read; a zone or whiff slide with velo intact is a command fade.
+      </p>
+    </div>
+  )
+}
 
 function ArmProfileCard({ arm }) {
   if (!arm) return null

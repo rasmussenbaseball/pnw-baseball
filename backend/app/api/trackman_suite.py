@@ -11,6 +11,7 @@ Parsing lives in app.stats.trackman_parse (validated against Bushnell's
 TrackMan's global PitchUID, so re-uploading a file or uploading overlapping
 re-downloads is always safe. See TRACKMAN_SUITE_DESIGN.md for the roadmap.
 """
+import math as _math
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -29,6 +30,8 @@ from ..stats.rapsodo_location import location_plus
 from ..stats.trackman_classify import reclassify_owner, SUITE_TYPES
 from ..stats.rapsodo_arm import arm_profile
 from ..stats.rapsodo_tunnel import tunnel_pairs
+from ..stats import trackman_spin as spin
+from ..stats import trackman_tempo as tempo
 from ..stats.trackman_defense import (
     OF_POSITIONS, IF_POSITIONS, OUT_RESULTS, landing_xz,
     catch_probability, gb_out_probability, difficulty_bucket, move_direction,
@@ -1181,6 +1184,8 @@ def trackman_pitching(
                            AVG(p.spin_rate) AS spin, AVG(p.ivb) AS ivb, AVG(p.horz_break) AS hb,
                            AVG(p.rel_height) AS rel_h, AVG(p.rel_side) AS rel_s,
                            AVG(p.extension) AS ext, AVG(p.vaa) AS vaa,
+                           AVG(p.effective_velo) AS eff_velo,
+                           AVG(SIN(RADIANS(p.spin_axis))) AS ax_s, AVG(COS(RADIANS(p.spin_axis))) AS ax_c,
                            AVG(CASE WHEN p.is_in_zone THEN 1.0 ELSE 0.0 END) AS zone_pct,
                            SUM(CASE WHEN p.is_swing THEN 1 ELSE 0 END) AS swings,
                            SUM(CASE WHEN p.is_whiff THEN 1 ELSE 0 END) AS whiffs,
@@ -1234,7 +1239,9 @@ def trackman_pitching(
     # plus count-based run values and attack-zone rates per pitcher x type.
     cur_locs = defaultdict(list)
     line_rows = defaultdict(list)   # every pitch, for the box-score line
-    rv_agg = defaultdict(lambda: {"rv": 0.0, "rv_n": 0, "shadow": 0, "heart": 0, "loc_n": 0})
+    rv_agg = defaultdict(lambda: {"rv": 0.0, "rv_n": 0, "shadow": 0, "heart": 0, "loc_n": 0,
+                                  "xw": 0.0, "xw_n": 0, "ratio": []})
+    fb_ratios = []
     with get_connection() as conn:
         c2 = conn.cursor()
         try:
@@ -1245,6 +1252,7 @@ def trackman_pitching(
                            p.balls, p.strikes, p.pitch_call, p.play_result,
                            p.k_or_bb, p.outs_on_play, p.runs_scored,
                            p.exit_speed, p.launch_angle, p.direction, p.batter_side,
+                           p.ivb, p.horz_break, p.spin_rate, p.rel_speed, p.time, p.pitch_no, p.pitch_of_pa,
                            p.inning, p.top_bottom, p.pa_of_inning, s.id AS session_id
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG}
@@ -1269,6 +1277,17 @@ def trackman_pitching(
                 if rv is not None:
                     agg["rv"] -= rv   # pitcher perspective: positive = runs saved
                     agg["rv_n"] += 1
+                # expected contact value allowed (fair balls with a launch read)
+                if (lr["exit_speed"] is not None and lr["launch_angle"] is not None
+                        and _is_fair(lr["pitch_call"], lr["direction"])):
+                    agg["xw"] += xwobacon(float(lr["exit_speed"]), float(lr["launch_angle"]),
+                                          lr["direction"], (lr["batter_side"] or "")[:1] or None)
+                    agg["xw_n"] += 1
+                ratio = spin.movement_ratio(lr["ivb"], lr["horz_break"], lr["spin_rate"], lr["rel_speed"])
+                if ratio is not None:
+                    agg["ratio"].append(ratio)
+                    if lr["ptype"] == "Fastball":
+                        fb_ratios.append(ratio)
             base = _rv_baseline(c2, owner, context, season)
             for agg in rv_agg.values():
                 agg["rv"] += agg["rv_n"] * base   # center on this corpus
@@ -1278,6 +1297,7 @@ def trackman_pitching(
         except Exception:
             conn.rollback()
             box_lg = None
+    spin_scale = spin.calibrate_scale(fb_ratios)
 
     def _grades(t):
         # Stuff grades a CENTROID (velo/shape/release), so a handful of
@@ -1301,7 +1321,13 @@ def trackman_pitching(
             stuff, loc = _grades(t)
             shp = shapes.get(t["ptype"], {})
             agg = rv_agg.get((t["pitcher"], t["pitcher_team"], t["ptype"]),
-                             {"rv": 0.0, "rv_n": 0, "shadow": 0, "heart": 0, "loc_n": 0})
+                             {"rv": 0.0, "rv_n": 0, "shadow": 0, "heart": 0, "loc_n": 0,
+                              "xw": 0.0, "xw_n": 0, "ratio": []})
+            act = [spin.active_spin_pct(r, spin_scale) for r in agg["ratio"]]
+            act = [a for a in act if a is not None]
+            tilt_h = None
+            if t.get("ax_s") is not None and t.get("ax_c") is not None and (abs(t["ax_s"]) + abs(t["ax_c"])) > 1e-6:
+                tilt_h = spin.tilt_from_axis(_math.degrees(_math.atan2(float(t["ax_s"]), float(t["ax_c"]))) % 360.0)
             arsenal.append({
                 "pitch_type": t["ptype"],
                 "shape": shp.get("shape"),
@@ -1323,6 +1349,10 @@ def trackman_pitching(
                 "rel_height": round(t["rel_h"], 2) if t["rel_h"] else None,
                 "extension": round(t["ext"], 2) if t["ext"] else None,
                 "vaa": round(t["vaa"], 2) if t["vaa"] is not None else None,
+                "eff_velo": round(t["eff_velo"], 1) if t.get("eff_velo") else None,
+                "tilt": spin.clock_str(tilt_h),
+                "active_spin": round(sum(act) / len(act)) if len(act) >= 3 else None,
+                "xwobacon": round(agg["xw"] / agg["xw_n"], 3) if agg["xw_n"] >= 3 else None,
                 "zone_pct": round(100 * t["zone_pct"], 1) if t["zone_pct"] is not None else None,
                 "whiff_pct": round(100 * (t["whiffs"] or 0) / swings, 1) if swings else None,
                 "chase_pct": round(100 * (t["chases"] or 0) / out_zone, 1) if out_zone else None,
@@ -1335,6 +1365,9 @@ def trackman_pitching(
         tot_rv_n = sum(a["rv_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
         tot_shadow = sum(a["shadow"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
         tot_loc = sum(a["loc_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
+        tot_xw = sum(a["xw"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
+        tot_xw_n = sum(a["xw_n"] for k, a in rv_agg.items() if k[0] == name and k[1] == tteam)
+        tempo_s = tempo.tempo_summary(line_rows.get((name, tteam), []))
         # Whole-arm rollup for the team board (one row per pitcher, no types).
         def _sum(k):
             return sum(int(t.get(k) or 0) for t in types)
@@ -1360,6 +1393,8 @@ def trackman_pitching(
             "ev_against": round(ev_sum / ev_n, 1) if ev_n else None,
             "hh_pct": round(100 * hh / bbe_t, 1) if bbe_t else None,
             "gb_pct": round(100 * gb / la_n, 1) if la_n else None,
+            "xwobacon": round(tot_xw / tot_xw_n, 3) if tot_xw_n >= 5 else None,
+            "tempo": tempo_s["all"]["median"] if tempo_s else None,
         }
         out.append({"pitcher": name, "throws": throws, "team": tteam, "slot": slot,
                     "pitches": total, "arsenal": arsenal, "totals": totals,
@@ -1828,6 +1863,7 @@ def trackman_hitting(
 # OTHER pitcher in this coach's corpus (their own "league").
 
 _EFF_TYPE = "COALESCE(override_pitch_type, class_pitch_type, tagged_pitch_type, auto_pitch_type)"
+_EFF_TYPE_P = "COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type)"
 
 _PCTL_METRICS = [
     # (key, sql expr, higher_is_better)
@@ -1986,6 +2022,8 @@ def trackman_pitcher_detail(
                        p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        p.outs_on_play, p.runs_scored, p.direction,
                        p.distance, p.bearing, p.batter, p.tagged_hit_type, p.contact_x, p.contact_y,
+                       p.spin_axis, p.effective_velo, p.zone_speed, p.time, p.pitch_no,
+                       p.hit_spin_rate, p.hang_time,
                        s.session_date, s.id AS session_id, s.session_type
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.pitcher = %s{_NO_MISTAG}
@@ -2039,6 +2077,29 @@ def trackman_pitcher_detail(
                               "hb": round(float(r["hb"]), 1) if r["hb"] is not None else None,
                               "velo": round(float(r["velo"]), 1) if r["velo"] is not None else None}
                      for r in cur.fetchall() if r["t"]}
+        # Active-spin scale: the coach's whole fastball corpus tops out at 100%
+        cur.execute(
+            f"""SELECT p.ivb, p.horz_break, p.spin_rate, p.rel_speed
+                FROM tm_pitches p
+                WHERE p.owner_user_id = %s AND p.pitcher_throws IS NOT NULL
+                  AND {_EFF_TYPE_P} = 'Fastball' AND p.spin_rate > 500 AND p.rel_speed > 60""",
+            [owner],
+        )
+        spin_scale = spin.calibrate_scale(
+            [spin.movement_ratio(r["ivb"], r["horz_break"], r["spin_rate"], r["rel_speed"]) for r in cur.fetchall()])
+        # Tempo pool: every arm's within-PA gaps in this scope (live only)
+        cur.execute(
+            f"""SELECT p.pitcher, p.time, p.pitch_no, p.pitch_of_pa, p.inning, p.top_bottom, p.pa_of_inning,
+                       s.id AS session_id
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{_NO_MISTAG} {pool_extra}
+                  AND s.session_type IN ('game','scrimmage','intrasquad')""",
+            [owner] + pool_params,
+        )
+        tp_rows = defaultdict(list)
+        for r in cur.fetchall():
+            tp_rows[r["pitcher"]].append(dict(r))
+        tempo_pool_med = tempo.tempo_pool(tp_rows)
 
     me = next((r for r in pool if r["pitcher"] == pitcher), None)
     percentiles = {}
@@ -2052,6 +2113,15 @@ def trackman_pitcher_detail(
             pct = round(100 * (below + 0.5 * sum(1 for v in vals if v == mine)) / len(vals))
             percentiles[key] = {"value": round(float(mine), 3), "pctl": max(1, min(99, pct)),
                                 "pool": len(vals)}
+    live_rows = [x for x in pitches if x.get("session_type") in _LIVE_TYPES]
+    tempo_me = tempo.tempo_summary(live_rows)
+    if tempo_me and len(tempo_pool_med) >= 5:
+        mine = tempo_me["all"]["median"]
+        vals = list(tempo_pool_med.values())
+        quicker = sum(1 for v in vals if v > mine)
+        tempo_me["pctl"] = max(1, min(99, round(100 * (quicker + 0.5 * sum(1 for v in vals if v == mine)) / len(vals))))
+        tempo_me["pool"] = len(vals)
+        tempo_me["pool_median"] = round(sorted(vals)[len(vals) // 2], 1)
 
     # Count-state usage matrix: pitch type share per (balls, strikes)
     usage = defaultdict(lambda: defaultdict(int))
@@ -2149,13 +2219,18 @@ def trackman_pitcher_detail(
 
     # Run values + attack zones per pitch type (pitcher perspective:
     # positive = runs saved vs average).
-    rv_types = defaultdict(lambda: {"rv": 0.0, "n": 0, "shadow": 0, "heart": 0, "loc": 0})
+    rv_types = defaultdict(lambda: {"rv": 0.0, "n": 0, "shadow": 0, "heart": 0, "loc": 0, "xw": 0.0, "xw_n": 0})
     for x in pitches:
         a = rv_types[x["ptype"]]
         v = pitch_run_value(x["balls"], x["strikes"], x["pitch_call"], x.get("play_result"))
         if v is not None:
             a["rv"] -= v
             a["n"] += 1
+        if (x["exit_speed"] is not None and x["launch_angle"] is not None
+                and _is_fair(x["pitch_call"], x.get("direction"))):
+            a["xw"] += xwobacon(float(x["exit_speed"]), float(x["launch_angle"]), x.get("direction"),
+                                (x.get("batter_side") or "")[:1] or None)
+            a["xw_n"] += 1
         z = attack_zone(x["plate_loc_side"], x["plate_loc_height"])
         if z is not None:
             a["loc"] += 1
@@ -2215,9 +2290,12 @@ def trackman_pitcher_detail(
             "rv100": (round(100 * (a["rv"] + a["n"] * rv_base) / a["n"], 2)
                       if a["n"] >= 15 else None),
             "shadow_pct": round(100 * a["shadow"] / a["loc"], 1) if a["loc"] >= 15 else None,
-            "heart_pct": round(100 * a["heart"] / a["loc"], 1) if a["loc"] >= 15 else None}
+            "heart_pct": round(100 * a["heart"] / a["loc"], 1) if a["loc"] >= 15 else None,
+            "xwobacon": round(a["xw"] / a["xw_n"], 3) if a["xw_n"] >= 3 else None}
         for t, a in rv_types.items() if a["n"] or a["loc"]
     }
+    spin_prof = spin.spin_profile(pitches, spin_scale)
+    fatigue = tempo.fatigue_curve(live_rows, FB_FAMILY, grade_trackman, pitch_run_value, rv_base)
 
     # Per-session trend: fastball velo, pitch-weighted Stuff+, and RV/100
     # (the "is he getting better" chart).
@@ -2286,6 +2364,9 @@ def trackman_pitcher_detail(
         "usage_plan": usage_plan,
         "slot": lab_slot,
         "type_avgs": type_avgs,
+        "spin": spin_prof,
+        "tempo": tempo_me,
+        "fatigue": fatigue,
         "line": box.pitcher_line([x for x in pitches if x.get("session_type") in _LIVE_TYPES], lab_lg),
         "count_states": count_states([x for x in pitches if x.get("session_type") in _LIVE_TYPES],
                                      lambda r: _is_fair(r["pitch_call"], r.get("direction")), rv_base),
