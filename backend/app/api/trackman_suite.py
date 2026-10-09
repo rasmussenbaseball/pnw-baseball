@@ -3888,6 +3888,107 @@ def trackman_catching(team: str | None = Query(None),
 _CATCHER_EXCL_READY = False
 
 
+# ── Framing map: every take, zone by zone (the 6-4-3 K-zone framing view) ──
+_FR_HALF_W, _FR_Z_LO, _FR_Z_HI, _FR_BAND = 0.83, 1.5, 3.5, 0.35
+_FR_ZONES = [("top_left", "Top Left Shadow"), ("top_mid", "Top Mid Shadow"), ("top_right", "Top Right Shadow"),
+             ("mid_left", "Mid Left Shadow"), ("mid_right", "Mid Right Shadow"),
+             ("bottom_left", "Bottom Left Shadow"), ("bottom_mid", "Bottom Mid Shadow"), ("bottom_right", "Bottom Right Shadow")]
+
+
+def _framing_zone(px, pz):
+    """Shadow cell (catcher's view: left = toward the right-handed box, px > 0),
+    'heart' inside the band, 'outside' beyond it."""
+    dx = abs(px) - _FR_HALF_W
+    dz = max(_FR_Z_LO - pz, pz - _FR_Z_HI)
+    ox, oz = max(dx, 0.0), max(dz, 0.0)
+    d = _math.hypot(ox, oz) if (ox > 0 or oz > 0) else max(dx, dz)
+    if d < -_FR_BAND:
+        return "heart"
+    if d > _FR_BAND:
+        return "outside"
+    v = "top" if pz >= _FR_Z_HI - _FR_BAND else "bottom" if pz <= _FR_Z_LO + _FR_BAND else "mid"
+    h = "left" if px >= _FR_HALF_W - _FR_BAND else "right" if px <= -(_FR_HALF_W - _FR_BAND) else "mid"
+    if v == "mid" and h == "mid":
+        v = "top" if pz >= 2.5 else "bottom"
+    return f"{v}_{h}"
+
+
+@router.get("/trackman/catching/framing")
+def trackman_catching_framing(catcher: str = Query(...), team: str | None = Query(None),
+                              season: int | None = Query(None), context: str = Query("all"),
+                              bside: str | None = Query(None), pside: str | None = Query(None),
+                              ptype: str | None = Query(None), date_from: str | None = Query(None),
+                              date_to: str | None = Query(None), owner: str = Depends(_gate)):
+    """One catcher's takes, each with its call and shadow cell, plus a zone
+    table graded against every catcher in the same filters (the league:
+    own catchers and opponents). Strike rate is called strikes over takes in
+    the zone; framing runs = (strikes - league rate x takes) x 0.125;
+    Framing+ = 100 x his strike rate / league strike rate."""
+    extra, params = _context_clause(context)
+    dsql, dparams = _date_clause(date_from, date_to)
+    ssql, sparams = _season_clause(season)
+    extra, params = extra + dsql + ssql, params + dparams + sparams
+    if bside in ("L", "R"):
+        extra += " AND p.batter_side = %s"; params = params + ["Left" if bside == "L" else "Right"]
+    if pside in ("L", "R"):
+        extra += " AND p.pitcher_throws = %s"; params = params + ["Left" if pside == "L" else "Right"]
+    if ptype:
+        extra += f" AND {_EFF_TYPE_P} = %s"; params = params + [ptype]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT p.id AS pitch_id, p.catcher, p.pitch_call, p.plate_loc_side AS px, p.plate_loc_height AS pz,
+                       p.batter_side, p.pitcher_throws, {_EFF_TYPE_P} AS ptype, p.balls, p.strikes,
+                       p.pitcher, p.batter, s.session_date
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL
+                  AND p.pitch_call IN ('StrikeCalled', 'BallCalled')
+                  AND p.plate_loc_side IS NOT NULL AND p.plate_loc_height IS NOT NULL{extra}""",
+            [owner] + params)
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            f"""SELECT DISTINCT {_EFF_TYPE_P} AS t FROM tm_pitches p
+                WHERE p.owner_user_id = %s AND p.catcher = %s AND {_EFF_TYPE_P} IS NOT NULL
+                  AND {_EFF_TYPE_P} <> 'Mistag' ORDER BY 1""", (owner, catcher))
+        types = [r["t"] for r in cur.fetchall()]
+    lg = defaultdict(lambda: [0, 0])
+    mine = defaultdict(lambda: [0, 0])
+    pitches = []
+    for r in rows:
+        z = _framing_zone(float(r["px"]), float(r["pz"]))
+        got = 1 if r["pitch_call"] == "StrikeCalled" else 0
+        lg[z][0] += 1; lg[z][1] += got
+        if r["catcher"] == catcher:
+            mine[z][0] += 1; mine[z][1] += got
+            pitches.append({"x": round(float(r["px"]), 2), "z": round(float(r["pz"]), 2), "strike": bool(got), "zone": z,
+                            "bside": (r["batter_side"] or "")[:1], "pside": (r["pitcher_throws"] or "")[:1],
+                            "ptype": r["ptype"], "count": f"{r['balls']}-{r['strikes']}" if r["balls"] is not None else None,
+                            "date": r["session_date"].isoformat() if r["session_date"] else None,
+                            "pitcher": r["pitcher"], "batter": r["batter"]})
+
+    def _row(key, label, zones):
+        n = sum(mine[z][0] for z in zones); k = sum(mine[z][1] for z in zones)
+        ln = sum(lg[z][0] for z in zones); lk = sum(lg[z][1] for z in zones)
+        rate = 100 * k / n if n else None
+        lrate = 100 * lk / ln if ln else None
+        x_k = sum(mine[z][0] * (lg[z][1] / lg[z][0]) for z in zones if lg[z][0])   # zone-by-zone expectation
+        sae = (k - x_k) if n else None
+        return {"key": key, "label": label, "pitches": n, "strikes": k,
+                "strike_rate": round(rate, 1) if rate is not None else None,
+                "lg_strike_rate": round(lrate, 1) if lrate is not None else None,
+                "sae": round(sae, 1) if sae is not None else None,
+                "framing_runs": round(sae * 0.125, 2) if sae is not None else None,
+                "framing_plus": round(100 * k / x_k) if n >= 10 and x_k > 0 else None}
+    table = [_row(k, lbl, [k]) for k, lbl in _FR_ZONES]
+    table.append(_row("shadow", "Shadow Summary", [k for k, _ in _FR_ZONES]))
+    table.append(_row("heart", "Heart", ["heart"]))
+    table.append(_row("outside", "Outside of Shadow", ["outside"]))
+    table.append(_row("all", "All Pitches Received", [k for k, _ in _FR_ZONES] + ["heart", "outside"]))
+    return {"catcher": catcher, "pitches": pitches, "table": table, "types": types,
+            "league_catchers": len({r["catcher"] for r in rows}),
+            "geometry": {"half_w": _FR_HALF_W, "z_lo": _FR_Z_LO, "z_hi": _FR_Z_HI, "band": _FR_BAND}}
+
+
 def _ensure_catcher_exclusions(cur):
     global _CATCHER_EXCL_READY
     if _CATCHER_EXCL_READY:

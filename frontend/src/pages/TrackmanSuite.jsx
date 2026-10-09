@@ -3387,6 +3387,143 @@ function ZoneReportCard({ zr, myTeam }) {
   )
 }
 
+// ── K-zone framing map: every take, called strike or ball, by shadow cell ──
+const FR_RATE_FILL = (rate) => {
+  if (rate == null) return 'rgba(156,163,175,0.12)'
+  const t = Math.max(-1, Math.min(1, (rate - 50) / 50))
+  return t >= 0 ? `rgba(210,45,73,${0.12 + 0.55 * t})` : `rgba(54,97,173,${0.12 + 0.55 * -t})`
+}
+const FR_FILTERS = { bside: [['', 'Both'], ['L', 'LHH'], ['R', 'RHH']], pside: [['', 'Both'], ['L', 'LHP'], ['R', 'RHP']] }
+
+function FramingMapCard({ catchers, team, season, context }) {
+  const names = catchers.map(c => c.catcher)
+  const [who, setWho] = useState(names[0] || '')
+  const active = names.includes(who) ? who : (names[0] || '')
+  const [bside, setBside] = useState('')
+  const [pside, setPside] = useState('')
+  const [ptype, setPtype] = useState('')
+  const [dates, setDates] = useState({})
+  const [calls, setCalls] = useState('all')      // balls | all | strikes
+  const [scope, setScope] = useState('shadow')   // shadow | all takes
+  const { data, loading } = useApi(active ? '/trackman/catching/framing' : null,
+    { catcher: active, team: team || undefined, season, context, bside: bside || undefined, pside: pside || undefined,
+      ptype: ptype || undefined, date_from: dates.from, date_to: dates.to },
+    [active, team, season, context, bside, pside, ptype, dates.from, dates.to])
+  const g = data?.geometry || { half_w: 0.83, z_lo: 1.5, z_hi: 3.5, band: 0.35 }
+  const zoneRate = Object.fromEntries((data?.table || []).map(r => [r.key, r.strike_rate]))
+  // catcher's view: TrackMan +x is toward the right-handed box, which sits on the catcher's left
+  const S = 80, X0 = 2.0, Z0 = 4.6
+  const W = 4.0 * S, H = 4.2 * S
+  const sx = x => (X0 - x) * S, sz = z => (Z0 - z) * S
+  const pts = (data?.pitches || []).filter(p => (scope === 'all' || p.zone !== 'heart' && p.zone !== 'outside')
+    && (calls === 'all' || (calls === 'strikes') === p.strike))
+  const hw = g.half_w, b = g.band, zl = g.z_lo, zh = g.z_hi
+  // ring cells in plate coordinates [x1, x2, z1, z2] (catcher's left = +x)
+  const cells = {
+    top_left: [hw - b, hw + b, zh - b, zh + b], top_mid: [-(hw - b), hw - b, zh - b, zh + b], top_right: [-(hw + b), -(hw - b), zh - b, zh + b],
+    mid_left: [hw - b, hw + b, zl + b, zh - b], mid_right: [-(hw + b), -(hw - b), zl + b, zh - b],
+    bottom_left: [hw - b, hw + b, zl - b, zl + b], bottom_mid: [-(hw - b), hw - b, zl - b, zl + b], bottom_right: [-(hw + b), -(hw - b), zl - b, zl + b],
+  }
+  const rateCell = (v) => {
+    if (v == null) return <td className="px-2 py-1.5 text-right tabular-nums text-gray-300">–</td>
+    return <td className="px-2 py-1.5 text-right tabular-nums font-bold text-white" style={{ background: FR_RATE_FILL(v).replace(/[\d.]+\)$/, m => `${Math.min(0.95, parseFloat(m) + 0.3)})`) }}>{v.toFixed(1)}</td>
+  }
+  const runs = (v) => v == null ? '–' : <span className={v > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : v < 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}>{v > 0 ? '+' : ''}{v.toFixed(2)}</span>
+  const sel = 'rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-sm'
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">K-zone framing</span>
+        <select value={active} onChange={e => setWho(e.target.value)} className={`${sel} font-semibold`}>
+          {names.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        {[['bside', bside, setBside, 'Batter'], ['pside', pside, setPside, 'Pitcher']].map(([k, v, set, lbl]) => (
+          <span key={k} className="flex items-center gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-gray-400">{lbl}</span>
+            <span className="flex rounded-lg overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
+              {FR_FILTERS[k].map(([val, l]) => (
+                <button key={val} onClick={() => set(val)} className={`px-2 py-0.5 text-[11px] font-bold ${v === val ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500'}`}>{l}</button>
+              ))}
+            </span>
+          </span>
+        ))}
+        <select value={ptype} onChange={e => setPtype(e.target.value)} className={sel}>
+          <option value="">All pitch types</option>
+          {(data?.types || []).map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <DateRange value={dates} onChange={setDates} />
+        {data && <span className="ml-auto text-[10px] text-gray-400">graded against {data.league_catchers} catchers in your data (opponents included)</span>}
+      </div>
+      {loading && !data && <div className="text-sm text-gray-400 p-6 text-center">Plotting takes…</div>}
+      {data && (
+        <div className="grid lg:grid-cols-5 gap-4">
+          <div className="lg:col-span-3 overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+                  <th className="px-2 py-2">Zone</th>
+                  <th className="px-2 py-2 text-right">Pitches</th>
+                  <th className="px-2 py-2 text-right">Strike rate</th>
+                  <th className="px-2 py-2 text-right">Lg strike rate</th>
+                  <th className="px-2 py-2 text-right" title="Called strikes minus what the league rate in each zone expected on his takes">Strikes above lg</th>
+                  <th className="px-2 py-2 text-right" title="Strikes above league x 0.125 runs">Framing runs</th>
+                  <th className="px-2 py-2 text-right" title="His strike rate over the league's, zone by zone; 100 = league, needs 10+ takes">Framing+</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {data.table.map(r => (
+                  <tr key={r.key} className={['shadow', 'heart', 'outside', 'all'].includes(r.key) ? 'bg-gray-50/70 dark:bg-gray-900/30 font-semibold' : ''}>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{r.label}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{r.pitches}</td>
+                    {rateCell(r.strike_rate)}
+                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{r.lg_strike_rate == null ? '–' : r.lg_strike_rate.toFixed(1)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{r.sae == null ? '–' : `${r.sae > 0 ? '+' : ''}${r.sae.toFixed(1)}`}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{runs(r.framing_runs)}</td>
+                    <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${r.framing_plus == null ? 'text-gray-300' : r.framing_plus >= 110 ? 'text-emerald-600 dark:text-emerald-400' : r.framing_plus <= 90 ? 'text-rose-600 dark:text-rose-400' : ''}`}>{r.framing_plus ?? '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[10px] text-gray-400 mt-2">
+              Strike rate is called strikes over all takes in a zone. League strike rate is the same zone across every catcher in your data, your staff and opponents alike, under the same filters. Framing runs price strikes above the league rate at 0.125 runs each; Framing+ is his strike rate over the league's in that zone, 100 = league. Left and right are the catcher's view: left is the right-handed batter's box.
+            </p>
+          </div>
+          <div className="lg:col-span-2">
+            <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[360px] mx-auto">
+              {Object.entries(cells).map(([k, [x1, x2, z1, z2]]) => (
+                <g key={k}>
+                  <rect x={sx(x2)} y={sz(z2)} width={(x2 - x1) * S} height={(z2 - z1) * S} fill={FR_RATE_FILL(zoneRate[k])} />
+                  <title>{k.replace('_', ' ')}: {zoneRate[k] != null ? `${zoneRate[k]}% strikes` : 'no takes'}</title>
+                </g>
+              ))}
+              <rect x={sx(hw)} y={sz(zh)} width={2 * hw * S} height={(zh - zl) * S} fill="none" stroke="#6b7280" strokeWidth="1.2" strokeDasharray="5 4" />
+              {pts.map((p, i) => (
+                <circle key={i} cx={sx(p.x)} cy={sz(p.z)} r="2.6" fill={p.strike ? '#d22d49' : '#3661ad'} fillOpacity="0.75" stroke="#fff" strokeWidth="0.5">
+                  <title>{p.strike ? 'Called strike' : 'Ball'} · {p.ptype || '?'} · {p.count || ''} · {p.pside}HP to {p.bside}HH · {p.pitcher} vs {p.batter} · {p.date}</title>
+                </circle>
+              ))}
+              <text x={14} y={H - 10} fontSize="9" fill="#9ca3af">RHH box</text>
+              <text x={W - 14} y={H - 10} fontSize="9" fill="#9ca3af" textAnchor="end">LHH box</text>
+              <polygon points={`${W / 2 - 40},${H - 36} ${W / 2 + 40},${H - 36} ${W / 2 + 40},${H - 26} ${W / 2},${H - 16} ${W / 2 - 40},${H - 26}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
+            </svg>
+            <div className="flex justify-center gap-1.5 mt-2">
+              {[['balls', 'Balls only'], ['all', 'All pitches'], ['strikes', 'Strikes only']].map(([k, l]) => (
+                <button key={k} onClick={() => setCalls(k)} className={`px-3 py-1 rounded-full text-[11px] font-semibold ${calls === k ? 'bg-lime-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-500 ring-1 ring-gray-200 dark:ring-gray-700'}`}>{l}</button>
+              ))}
+            </div>
+            <div className="flex justify-center gap-1.5 mt-1.5">
+              {[['shadow', 'Shadow takes'], ['all', 'Every take']].map(([k, l]) => (
+                <button key={k} onClick={() => setScope(k)} className={`px-3 py-1 rounded-full text-[11px] font-semibold ${scope === k ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500 ring-1 ring-gray-200 dark:ring-gray-700'}`}>{l}</button>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-400 text-center mt-1.5">{pts.length} takes plotted · <span className="text-[#d22d49] font-semibold">red</span> called strike · <span className="text-[#3661ad] font-semibold">blue</span> ball · band shading is that cell's strike rate · hover a dot</p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ShadowZoneMap({ c }) {
   const e = c.edges || {}
   const col = v => v > 0.4 ? '#059669' : v < -0.4 ? '#e11d48' : '#9ca3af'
@@ -3735,11 +3872,15 @@ function CatchingTab({ teamCtx, season }) {
         </div>
       )}
 
+      {rows.length > 0 && (
+        <FramingMapCard catchers={rows} team={team} season={season} context={context} />
+      )}
+
       {framers.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
           <div className="flex items-baseline justify-between mb-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Framing map — where each catcher wins and loses calls</span>
-            <span className="text-[10px] text-gray-400">strikes above expected on each zone edge · 20+ edge takes</span>
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Edge summary — strikes above expected per catcher</span>
+            <span className="text-[10px] text-gray-400">20+ edge takes</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
             {framers.map(c => <ShadowZoneMap key={c.catcher + c.catcher_team} c={c} />)}
