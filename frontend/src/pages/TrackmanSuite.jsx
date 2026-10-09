@@ -1861,14 +1861,12 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
             </div>
           )}
 
-          {data.pnw && <PnwBaselineCard pnw={data.pnw} />}
+          <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} grades={data.grades} typeAvgs={data.type_avgs}
+            slot={data.slot} pitcher={active} team={team || null} onRetag={refetch} />
 
           {data.line && <BoxLineTable line={data.line} pool={labPool} />}
 
           {data.splits && <SplitsTable rows={data.splits} pool={labPool} />}
-
-          <ArsenalStatTable pitches={data.pitches} rvByType={data.rv_by_type} grades={data.grades} typeAvgs={data.type_avgs}
-            slot={data.slot} pitcher={active} team={team || null} onRetag={refetch} />
 
           {data.platoon && <PlatoonCard platoon={data.platoon} />}
 
@@ -1975,6 +1973,8 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
           </div>
 
           {data.usage_plan && <UsagePlanCard plan={data.usage_plan} />}
+
+          {data.pnw && <PnwBaselineCard pnw={data.pnw} />}
         </div>
       )}
     </div>
