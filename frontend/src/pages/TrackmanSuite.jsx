@@ -3468,6 +3468,77 @@ const FR_RATE_FILL = (rate) => {
 }
 const FR_FILTERS = { bside: [['', 'Both'], ['L', 'LHH'], ['R', 'RHH']], pside: [['', 'Both'], ['L', 'LHP'], ['R', 'RHP']] }
 
+function FramingZoneTable({ table, compact = false }) {
+  const rateCell = (v) => {
+    if (v == null) return <td className="px-2 py-1 text-right tabular-nums text-gray-300">–</td>
+    return <td className="px-2 py-1 text-right tabular-nums font-bold text-white" style={{ background: FR_RATE_FILL(v).replace(/[\d.]+\)$/, m => `${Math.min(0.95, parseFloat(m) + 0.3)})`) }}>{v.toFixed(1)}</td>
+  }
+  const runs = (v) => v == null ? '–' : <span className={v > 0 ? 'text-emerald-600 font-semibold' : v < 0 ? 'text-rose-600 font-semibold' : ''}>{v > 0 ? '+' : ''}{v.toFixed(2)}</span>
+  return (
+    <table className={`w-full ${compact ? 'text-[11px]' : 'text-[12.5px]'}`}>
+      <thead>
+        <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+          <th className="px-2 py-1.5">Zone</th>
+          <th className="px-2 py-1.5 text-right">Pitches</th>
+          <th className="px-2 py-1.5 text-right">Strike rate</th>
+          <th className="px-2 py-1.5 text-right">Lg strike rate</th>
+          <th className="px-2 py-1.5 text-right" title="Called strikes minus what the league rate in each zone expected on his takes">Strikes above lg</th>
+          <th className="px-2 py-1.5 text-right" title="Strikes above league x 0.125 runs">Framing runs</th>
+          <th className="px-2 py-1.5 text-right" title="His strike rate over the league's, zone by zone; 100 = league, needs 10+ takes">Framing+</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+        {(table || []).map(r => (
+          <tr key={r.key} className={['shadow', 'heart', 'outside', 'all'].includes(r.key) ? 'bg-gray-50/70 dark:bg-gray-900/30 font-semibold' : ''}>
+            <td className="px-2 py-1 whitespace-nowrap">{r.label}</td>
+            <td className="px-2 py-1 text-right tabular-nums">{r.pitches}</td>
+            {rateCell(r.strike_rate)}
+            <td className="px-2 py-1 text-right tabular-nums text-gray-500">{r.lg_strike_rate == null ? '–' : r.lg_strike_rate.toFixed(1)}</td>
+            <td className="px-2 py-1 text-right tabular-nums">{r.sae == null ? '–' : `${r.sae > 0 ? '+' : ''}${r.sae.toFixed(1)}`}</td>
+            <td className="px-2 py-1 text-right tabular-nums">{runs(r.framing_runs)}</td>
+            <td className={`px-2 py-1 text-right tabular-nums font-bold ${r.framing_plus == null ? 'text-gray-300' : r.framing_plus >= 110 ? 'text-emerald-600' : r.framing_plus <= 90 ? 'text-rose-600' : ''}`}>{r.framing_plus ?? '–'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function FramingKZone({ pitches, table, geometry, calls = 'all', scope = 'shadow', maxWidth = 360 }) {
+  const g = geometry || { half_w: 0.83, z_lo: 1.5, z_hi: 3.5, band: 0.35 }
+  const zoneRate = Object.fromEntries((table || []).map(r => [r.key, r.strike_rate]))
+  const S = 80, X0 = 2.0, Z0 = 4.6
+  const W = 4.0 * S, H = 4.2 * S
+  const sx = x => (X0 - x) * S, sz = z => (Z0 - z) * S
+  const pts = (pitches || []).filter(p => (scope === 'all' || p.zone !== 'heart' && p.zone !== 'outside')
+    && (calls === 'all' || (calls === 'strikes') === p.strike))
+  const hw = g.half_w, b = g.band, zl = g.z_lo, zh = g.z_hi
+  const cells = {
+    top_left: [hw - b, hw + b, zh - b, zh + b], top_mid: [-(hw - b), hw - b, zh - b, zh + b], top_right: [-(hw + b), -(hw - b), zh - b, zh + b],
+    mid_left: [hw - b, hw + b, zl + b, zh - b], mid_right: [-(hw + b), -(hw - b), zl + b, zh - b],
+    bottom_left: [hw - b, hw + b, zl - b, zl + b], bottom_mid: [-(hw - b), hw - b, zl - b, zl + b], bottom_right: [-(hw + b), -(hw - b), zl - b, zl + b],
+  }
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full mx-auto" style={{ maxWidth }}>
+      {Object.entries(cells).map(([k, [x1, x2, z1, z2]]) => (
+        <g key={k}>
+          <rect x={sx(x2)} y={sz(z2)} width={(x2 - x1) * S} height={(z2 - z1) * S} fill={FR_RATE_FILL(zoneRate[k])} />
+          <title>{k.replace('_', ' ')}: {zoneRate[k] != null ? `${zoneRate[k]}% strikes` : 'no takes'}</title>
+        </g>
+      ))}
+      <rect x={sx(hw)} y={sz(zh)} width={2 * hw * S} height={(zh - zl) * S} fill="none" stroke="#6b7280" strokeWidth="1.2" strokeDasharray="5 4" />
+      {pts.map((p, i) => (
+        <circle key={i} cx={sx(p.x)} cy={sz(p.z)} r="2.6" fill={p.strike ? '#d22d49' : '#3661ad'} fillOpacity="0.75" stroke="#fff" strokeWidth="0.5">
+          <title>{p.strike ? 'Called strike' : 'Ball'} · {p.ptype || '?'} · {p.count || ''} · {p.pside}HP to {p.bside}HH · {p.pitcher} vs {p.batter} · {p.date}</title>
+        </circle>
+      ))}
+      <text x={14} y={H - 10} fontSize="9" fill="#9ca3af">RHH box</text>
+      <text x={W - 14} y={H - 10} fontSize="9" fill="#9ca3af" textAnchor="end">LHH box</text>
+      <polygon points={`${W / 2 - 40},${H - 36} ${W / 2 + 40},${H - 36} ${W / 2 + 40},${H - 26} ${W / 2},${H - 16} ${W / 2 - 40},${H - 26}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
+    </svg>
+  )
+}
+
 function FramingMapCard({ catchers, team, season, context }) {
   const names = catchers.map(c => c.catcher)
   const [who, setWho] = useState(names[0] || '')
@@ -3482,26 +3553,6 @@ function FramingMapCard({ catchers, team, season, context }) {
     { catcher: active, team: team || undefined, season, context, bside: bside || undefined, pside: pside || undefined,
       ptype: ptype || undefined, date_from: dates.from, date_to: dates.to },
     [active, team, season, context, bside, pside, ptype, dates.from, dates.to])
-  const g = data?.geometry || { half_w: 0.83, z_lo: 1.5, z_hi: 3.5, band: 0.35 }
-  const zoneRate = Object.fromEntries((data?.table || []).map(r => [r.key, r.strike_rate]))
-  // catcher's view: TrackMan +x is toward the right-handed box, which sits on the catcher's left
-  const S = 80, X0 = 2.0, Z0 = 4.6
-  const W = 4.0 * S, H = 4.2 * S
-  const sx = x => (X0 - x) * S, sz = z => (Z0 - z) * S
-  const pts = (data?.pitches || []).filter(p => (scope === 'all' || p.zone !== 'heart' && p.zone !== 'outside')
-    && (calls === 'all' || (calls === 'strikes') === p.strike))
-  const hw = g.half_w, b = g.band, zl = g.z_lo, zh = g.z_hi
-  // ring cells in plate coordinates [x1, x2, z1, z2] (catcher's left = +x)
-  const cells = {
-    top_left: [hw - b, hw + b, zh - b, zh + b], top_mid: [-(hw - b), hw - b, zh - b, zh + b], top_right: [-(hw + b), -(hw - b), zh - b, zh + b],
-    mid_left: [hw - b, hw + b, zl + b, zh - b], mid_right: [-(hw + b), -(hw - b), zl + b, zh - b],
-    bottom_left: [hw - b, hw + b, zl - b, zl + b], bottom_mid: [-(hw - b), hw - b, zl - b, zl + b], bottom_right: [-(hw + b), -(hw - b), zl - b, zl + b],
-  }
-  const rateCell = (v) => {
-    if (v == null) return <td className="px-2 py-1.5 text-right tabular-nums text-gray-300">–</td>
-    return <td className="px-2 py-1.5 text-right tabular-nums font-bold text-white" style={{ background: FR_RATE_FILL(v).replace(/[\d.]+\)$/, m => `${Math.min(0.95, parseFloat(m) + 0.3)})`) }}>{v.toFixed(1)}</td>
-  }
-  const runs = (v) => v == null ? '–' : <span className={v > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : v < 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}>{v > 0 ? '+' : ''}{v.toFixed(2)}</span>
   const sel = 'rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-sm'
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 p-4">
@@ -3531,54 +3582,13 @@ function FramingMapCard({ catchers, team, season, context }) {
       {data && (
         <div className="grid lg:grid-cols-5 gap-4">
           <div className="lg:col-span-3 overflow-x-auto">
-            <table className="w-full text-[12.5px]">
-              <thead>
-                <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
-                  <th className="px-2 py-2">Zone</th>
-                  <th className="px-2 py-2 text-right">Pitches</th>
-                  <th className="px-2 py-2 text-right">Strike rate</th>
-                  <th className="px-2 py-2 text-right">Lg strike rate</th>
-                  <th className="px-2 py-2 text-right" title="Called strikes minus what the league rate in each zone expected on his takes">Strikes above lg</th>
-                  <th className="px-2 py-2 text-right" title="Strikes above league x 0.125 runs">Framing runs</th>
-                  <th className="px-2 py-2 text-right" title="His strike rate over the league's, zone by zone; 100 = league, needs 10+ takes">Framing+</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                {data.table.map(r => (
-                  <tr key={r.key} className={['shadow', 'heart', 'outside', 'all'].includes(r.key) ? 'bg-gray-50/70 dark:bg-gray-900/30 font-semibold' : ''}>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{r.label}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{r.pitches}</td>
-                    {rateCell(r.strike_rate)}
-                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{r.lg_strike_rate == null ? '–' : r.lg_strike_rate.toFixed(1)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{r.sae == null ? '–' : `${r.sae > 0 ? '+' : ''}${r.sae.toFixed(1)}`}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{runs(r.framing_runs)}</td>
-                    <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${r.framing_plus == null ? 'text-gray-300' : r.framing_plus >= 110 ? 'text-emerald-600 dark:text-emerald-400' : r.framing_plus <= 90 ? 'text-rose-600 dark:text-rose-400' : ''}`}>{r.framing_plus ?? '–'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <FramingZoneTable table={data.table} />
             <p className="text-[10px] text-gray-400 mt-2">
               Strike rate is called strikes over all takes in a zone. League strike rate is the same zone across every catcher in your data, your staff and opponents alike, under the same filters. Framing runs price strikes above the league rate at 0.125 runs each; Framing+ is his strike rate over the league's in that zone, 100 = league. Left and right are the catcher's view: left is the right-handed batter's box.
             </p>
           </div>
           <div className="lg:col-span-2">
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[360px] mx-auto">
-              {Object.entries(cells).map(([k, [x1, x2, z1, z2]]) => (
-                <g key={k}>
-                  <rect x={sx(x2)} y={sz(z2)} width={(x2 - x1) * S} height={(z2 - z1) * S} fill={FR_RATE_FILL(zoneRate[k])} />
-                  <title>{k.replace('_', ' ')}: {zoneRate[k] != null ? `${zoneRate[k]}% strikes` : 'no takes'}</title>
-                </g>
-              ))}
-              <rect x={sx(hw)} y={sz(zh)} width={2 * hw * S} height={(zh - zl) * S} fill="none" stroke="#6b7280" strokeWidth="1.2" strokeDasharray="5 4" />
-              {pts.map((p, i) => (
-                <circle key={i} cx={sx(p.x)} cy={sz(p.z)} r="2.6" fill={p.strike ? '#d22d49' : '#3661ad'} fillOpacity="0.75" stroke="#fff" strokeWidth="0.5">
-                  <title>{p.strike ? 'Called strike' : 'Ball'} · {p.ptype || '?'} · {p.count || ''} · {p.pside}HP to {p.bside}HH · {p.pitcher} vs {p.batter} · {p.date}</title>
-                </circle>
-              ))}
-              <text x={14} y={H - 10} fontSize="9" fill="#9ca3af">RHH box</text>
-              <text x={W - 14} y={H - 10} fontSize="9" fill="#9ca3af" textAnchor="end">LHH box</text>
-              <polygon points={`${W / 2 - 40},${H - 36} ${W / 2 + 40},${H - 36} ${W / 2 + 40},${H - 26} ${W / 2},${H - 16} ${W / 2 - 40},${H - 26}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
-            </svg>
+            <FramingKZone pitches={data.pitches} table={data.table} geometry={data.geometry} calls={calls} scope={scope} />
             <div className="flex justify-center gap-1.5 mt-2">
               {[['balls', 'Balls only'], ['all', 'All pitches'], ['strikes', 'Strikes only']].map(([k, l]) => (
                 <button key={k} onClick={() => setCalls(k)} className={`px-3 py-1 rounded-full text-[11px] font-semibold ${calls === k ? 'bg-lime-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-500 ring-1 ring-gray-200 dark:ring-gray-700'}`}>{l}</button>
@@ -3589,7 +3599,7 @@ function FramingMapCard({ catchers, team, season, context }) {
                 <button key={k} onClick={() => setScope(k)} className={`px-3 py-1 rounded-full text-[11px] font-semibold ${scope === k ? 'bg-portal-purple text-white' : 'bg-white dark:bg-gray-800 text-gray-500 ring-1 ring-gray-200 dark:ring-gray-700'}`}>{l}</button>
               ))}
             </div>
-            <p className="text-[10px] text-gray-400 text-center mt-1.5">{pts.length} takes plotted · <span className="text-[#d22d49] font-semibold">red</span> called strike · <span className="text-[#3661ad] font-semibold">blue</span> ball · band shading is that cell's strike rate · hover a dot</p>
+            <p className="text-[10px] text-gray-400 text-center mt-1.5">{(data.pitches || []).filter(p => (scope === 'all' || p.zone !== 'heart' && p.zone !== 'outside') && (calls === 'all' || (calls === 'strikes') === p.strike)).length} takes plotted · <span className="text-[#d22d49] font-semibold">red</span> called strike · <span className="text-[#3661ad] font-semibold">blue</span> ball · band shading is that cell's strike rate · hover a dot</p>
           </div>
         </div>
       )}
@@ -6334,6 +6344,7 @@ const CR_PRESETS = 'tmCustomReportPresets.v1'
 const CR_TYPES = {
   pitcher: [['game', 'Games'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['bullpen', 'Bullpens']],
   hitter: [['game', 'Games'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads'], ['bp', 'BP']],
+  catcher: [['game', 'Games'], ['scrimmage', 'Scrimmages'], ['intrasquad', 'Intrasquads']],
 }
 // [id, label, half-width?, hint]
 const CR_BLOCKS = {
@@ -6377,6 +6388,16 @@ const CR_BLOCKS = {
     ['sessiontrend', 'Session trend', true, 'Contact quality over time'],
     ['battedballs', 'Batted ball log', false, 'Every tracked ball in the sample'],
   ],
+  catcher: [
+    ['keystats', 'Key numbers', false, 'The handful of numbers you pick, as big tiles'],
+    ['notes', 'Coach notes', false, 'Your typed notes (report-wide + per player)'],
+    ['cframing', 'Framing zone table', false, 'Strike rate, league rate, framing runs and Framing+ by shadow cell (games + scrimmages)'],
+    ['cmap', 'K-zone framing map', true, 'Every shadow take, red strike / blue ball, band shaded by strike rate'],
+    ['cedges', 'Framing summary tiles', true, 'Shadow takes, strike rate vs league, strikes above league, framing runs'],
+    ['cthrows', 'Throwdowns', false, 'Every clocked throw: pop, exchange, arm velo, time to base, result'],
+    ['cblock', 'Blocking and the coach log', false, 'Balls in the dirt caught, plus blocks / steals / pickoffs from the catcher log when uploaded'],
+    ['cpitchers', 'Arms caught', false, 'Each pitcher he caught: pitches, K, BB, strike%, whiff%, dirt balls, mix'],
+  ],
 }
 const CR_KEYSTATS = {
   pitcher: [['pitches', 'Pitches', 0], ['fb_velo', 'FB velo', 1], ['fb_max', 'FB max', 1], ['stuff', 'Stuff+', 0], ['loc', 'Loc+', 0],
@@ -6390,6 +6411,14 @@ const CR_KEYSTATS = {
     ['xavg', 'xAVG', 3], ['xslg', 'xSLG', 3], ['xwoba', 'xwOBA', 3],
     ['pa', 'PA', 0], ['avg', 'AVG', 3], ['obp', 'OBP', 3], ['slg', 'SLG', 3], ['ops', 'OPS', 3], ['hr', 'HR', 0], ['bb', 'BB', 0], ['k', 'K', 0],
     ['woba', 'wOBA', 3], ['wrc_plus', 'wRC+', 0]],
+  catcher: [['pitches', 'Pitches caught', 0], ['arms', 'Arms caught', 0], ['strike_pct', 'Strike%', 1], ['k', 'K', 0], ['bb', 'BB', 0],
+    ['takes', 'Umpired takes', 0], ['shadow_takes', 'Shadow takes', 0], ['shadow_strike_pct', 'Shadow strike%', 1], ['shadow_lg_strike_pct', 'Lg shadow strike%', 1],
+    ['sae', 'Strikes above lg', 1], ['framing_runs', 'Framing runs', 2], ['framing_plus', 'Framing+', 0],
+    ['throws', 'Throws clocked', 0], ['avg_pop', 'Avg pop', 2], ['best_pop', 'Best pop', 2], ['avg_exchange', 'Exchange', 2],
+    ['avg_arm', 'Arm velo', 1], ['max_arm', 'Max arm', 1], ['est_cs_pct', 'Est CS%', 0], ['runners_out', 'Runners out', 0],
+    ['dirt', 'Dirt balls', 0], ['dirt_per_100', 'Dirt / 100', 1],
+    ['log_blocks', 'Block chances (log)', 0], ['log_block_success', 'Blocks (log)', 0], ['log_pb', 'Passed balls (log)', 0],
+    ['log_sb', 'SB allowed (log)', 0], ['log_cs', 'CS (log)', 0], ['log_grade', 'Coach grade (log)', 2]],
 }
 const CR_ARSENAL_COLS = [['n', 'N', 0], ['usage', 'Use%', 1], ['stuff', 'Stuff+', 0], ['loc', 'Loc+', 0], ['velo', 'Velo', 1], ['max', 'Max', 1],
   ['ivb', 'IVB', 1], ['hb', 'HB', 1], ['spin', 'Spin', 0], ['ext', 'Ext', 1], ['vaa', 'VAA', 1], ['zone', 'Zone%', 1], ['whiff', 'Whiff%', 1],
@@ -6399,9 +6428,11 @@ const CR_DEFAULT = {
   types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
   range: 'season', lastN: 2, dates: {}, picked: [],
   blocks: { pitcher: ['keystats', 'arsenal', 'movement', 'release', 'locations', 'notes'],
-            hitter: ['keystats', 'line', 'spray', 'contact', 'zonemaps', 'notes'] },
+            hitter: ['keystats', 'line', 'spray', 'contact', 'zonemaps', 'notes'],
+            catcher: ['keystats', 'cthrows', 'cmap', 'cedges', 'cframing', 'cblock', 'cpitchers', 'notes'] },
   keyStats: { pitcher: ['pitches', 'fb_velo', 'fb_max', 'stuff', 'strike_pct', 'whiff_pct', 'csw_pct', 'ev_against'],
-              hitter: ['pitches', 'bbe', 'avg_ev', 'max_ev', 'hh_pct', 'barrel_pct', 'chase_pct', 'contact_pct'] },
+              hitter: ['pitches', 'bbe', 'avg_ev', 'max_ev', 'hh_pct', 'barrel_pct', 'chase_pct', 'contact_pct'],
+              catcher: ['pitches', 'arms', 'strike_pct', 'throws', 'avg_pop', 'best_pop', 'avg_arm', 'est_cs_pct', 'shadow_takes', 'shadow_strike_pct', 'framing_runs', 'framing_plus'] },
   arsenalCols: ['n', 'usage', 'stuff', 'velo', 'max', 'ivb', 'hb', 'spin', 'zone', 'whiff', 'csw', 'ev'],
   title: 'Player Report', notes: '', playerNotes: {}, showScope: true,
 }
@@ -6418,6 +6449,10 @@ const CR_STARTERS = [
     types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
     blocks: ['keystats', 'notes', 'line', 'battedballs', 'spray', 'evla', 'countstates'],
     keyStats: ['pa', 'avg', 'ops', 'hr', 'bb', 'k', 'bbe', 'avg_ev', 'max_ev', 'hh_pct', 'contact_pct', 'chase_pct'] }],
+  ['Post-game recap · catcher', { role: 'catcher', title: 'Catcher Post-Game Report', range: 'lastN', lastN: 1,
+    types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
+    blocks: ['keystats', 'cthrows', 'cmap', 'cedges', 'cframing', 'cblock', 'cpitchers', 'notes'],
+    keyStats: ['pitches', 'arms', 'strike_pct', 'k', 'throws', 'avg_pop', 'best_pop', 'avg_exchange', 'avg_arm', 'est_cs_pct', 'shadow_takes', 'framing_plus'] }],
   ['Pitcher · last outing quick sheet', { role: 'pitcher', range: 'lastN', lastN: 1, types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
     blocks: ['keystats', 'arsenal', 'movement', 'locations', 'notes'] }],
   ['Pitcher · full season profile', { role: 'pitcher', range: 'season', types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
@@ -6610,10 +6645,12 @@ function CrEditable({ value, onChange, placeholder, className = '' }) {
 
 function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef, exporting, onNote, flags = [] }) {
   const isP = role === 'pitcher'
+  const isC = role === 'catcher'
   const { data, loading, error } = useApi(
-    ids.length ? (isP ? '/trackman/pitchers/detail' : '/trackman/batters/detail') : null,
-    { [isP ? 'pitcher' : 'batter']: player.name, team: team || undefined, sessions: ids.join(','),
-      context: isP ? 'live' : 'all', season, [isP ? 'side' : 'throws']: cfg.hand || undefined },
+    ids.length ? (isC ? '/trackman/catchers/detail' : isP ? '/trackman/pitchers/detail' : '/trackman/batters/detail') : null,
+    isC ? { catcher: player.name, team: team || undefined, sessions: ids.join(','), season, context: 'live' }
+      : { [isP ? 'pitcher' : 'batter']: player.name, team: team || undefined, sessions: ids.join(','),
+          context: isP ? 'live' : 'all', season, [isP ? 'side' : 'throws']: cfg.hand || undefined },
     [ids.join(','), cfg.hand])
   const used = sessions.filter(s => ids.includes(s.id))
   const scope = (() => {
@@ -6624,7 +6661,7 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
     return `${used.length} session${used.length === 1 ? '' : 's'} · ${kinds} · ${span}${cfg.hand ? ` · vs ${cfg.hand}H${isP ? 'H' : 'P'}` : ''}`
   })()
   const pitches = data?.pitches || []
-  const stats = useMemo(() => data ? (isP ? crPitcherStats(data) : crHitterStats(data)) : {}, [data, isP])
+  const stats = useMemo(() => data ? (isC ? (data.summary || {}) : isP ? crPitcherStats(data) : crHitterStats(data)) : {}, [data, isP, isC])
   const byType = useMemo(() => {
     const g = {}
     pitches.forEach(p => { if (p.ptype) (g[p.ptype] = g[p.ptype] || []).push(p) })
@@ -6676,6 +6713,105 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
             {cfg.notes && <p className={`text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap ${myNote || !exporting ? 'mt-2 pt-2 border-t border-gray-100' : ''}`}>{cfg.notes}</p>}
           </CrCard>
         )
+      case 'cframing':
+        return data.framing ? <CrCard title="Framing by zone" sub="games and scrimmages only · league = every catcher in your data"><FramingZoneTable table={data.framing.table} compact /></CrCard> : null
+      case 'cmap':
+        return data.framing ? (
+          <CrCard title="K-zone framing" sub={`${(data.framing.pitches || []).filter(p => p.zone !== 'heart' && p.zone !== 'outside').length} shadow takes · red strike, blue ball · catcher's view`}>
+            <FramingKZone pitches={data.framing.pitches} table={data.framing.table} geometry={data.framing.geometry} maxWidth={300} />
+          </CrCard>
+        ) : null
+      case 'cedges': {
+        const sm = data.summary || {}
+        const tiles = [
+          ['Shadow takes', crFmt(sm.shadow_takes, 0)], ['Shadow strike%', sm.shadow_strike_pct != null ? `${crFmt(sm.shadow_strike_pct, 1)}%` : '–'],
+          ['League', sm.shadow_lg_strike_pct != null ? `${crFmt(sm.shadow_lg_strike_pct, 1)}%` : '–'],
+          ['Strikes above lg', sm.sae != null ? `${sm.sae > 0 ? '+' : ''}${crFmt(sm.sae, 1)}` : '–'],
+          ['Framing runs', sm.framing_runs != null ? `${sm.framing_runs > 0 ? '+' : ''}${crFmt(sm.framing_runs, 2)}` : '–'],
+          ['Framing+', crFmt(sm.framing_plus, 0)],
+        ]
+        return (
+          <CrCard title="Framing summary" sub={sm.takes ? `${sm.takes} umpired takes in this scope` : 'no umpired takes in this scope (intrasquads use the fixed zone)'}>
+            <div className="grid grid-cols-3 gap-x-3 gap-y-3">
+              {tiles.map(([l, v]) => (
+                <div key={l}><div className="text-[17px] font-bold tabular-nums leading-none text-portal-purple">{v}</div><div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mt-1">{l}</div></div>
+              ))}
+            </div>
+          </CrCard>
+        )
+      }
+      case 'cthrows': {
+        const th = data.throws || []
+        return (
+          <CrCard title="Throwdowns" sub={th.length ? `${th.length} clocked by TrackMan · pop = catch to the fielder's glove` : 'no throws clocked in this scope'}>
+            {th.length > 0 && (
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-left text-[9px] uppercase tracking-wide text-gray-400">
+                    <th className="py-1 pr-2">Date</th><th className="py-1 pr-2">Inn</th><th className="py-1 pr-2">Pitcher</th><th className="py-1 pr-2">Batter</th>
+                    <th className="py-1 pr-2">Count</th><th className="py-1 pr-2">Pitch</th>
+                    <th className="py-1 px-1.5 text-right">Pop</th><th className="py-1 px-1.5 text-right">Exch</th><th className="py-1 px-1.5 text-right">Arm</th><th className="py-1 px-1.5 text-right">To base</th><th className="py-1 pl-2">Result</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {th.map((t, i) => (
+                    <tr key={i}>
+                      <td className="py-1 pr-2 tabular-nums text-gray-500">{(t.date || '').slice(5)}</td><td className="py-1 pr-2 tabular-nums">{t.inning ?? '–'}</td>
+                      <td className="py-1 pr-2 whitespace-nowrap">{t.pitcher}</td><td className="py-1 pr-2 whitespace-nowrap">{t.batter || '–'}</td>
+                      <td className="py-1 pr-2 tabular-nums">{t.count || '–'}</td><td className="py-1 pr-2">{t.ptype || '–'}</td>
+                      <td className="py-1 px-1.5 text-right tabular-nums font-bold">{t.pop != null ? t.pop.toFixed(2) : '–'}</td>
+                      <td className="py-1 px-1.5 text-right tabular-nums">{t.exchange != null ? t.exchange.toFixed(2) : '–'}</td>
+                      <td className="py-1 px-1.5 text-right tabular-nums">{t.velo != null ? t.velo.toFixed(1) : '–'}</td>
+                      <td className="py-1 px-1.5 text-right tabular-nums">{t.to_base != null ? t.to_base.toFixed(2) : '–'}</td>
+                      <td className={`py-1 pl-2 ${t.result === 'Runner out' ? 'text-emerald-600 font-semibold' : 'text-gray-500'}`}>{t.result}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CrCard>
+        )
+      }
+      case 'cblock': {
+        const sm = data.summary || {}, lg = data.log
+        return (
+          <CrCard title="Blocking" sub={lg ? 'TrackMan dirt balls plus the coach log for these dates' : 'TrackMan dirt balls · upload the catcher log on the Catching tab for blocks, steals and pickoffs'}>
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-x-3 gap-y-2">
+              {[['Dirt balls', crFmt(sm.dirt, 0)], ['Dirt / 100', crFmt(sm.dirt_per_100, 1)],
+                ...(lg ? [['Block chances', crFmt(lg.block_opps, 0)], ['Blocked', crFmt(lg.block_success, 0)], ['Missed', crFmt(lg.block_miss, 0)], ['Passed balls', crFmt(lg.pb, 0)],
+                          ['SB allowed', crFmt(lg.sb, 0)], ['Caught stealing', crFmt(lg.cs, 0)], ['Pickoffs', crFmt(lg.pickoffs, 0)], ['Coach grade', crFmt(lg.grade_avg, 2)]] : [])
+              ].map(([l, v]) => (
+                <div key={l}><div className="text-[17px] font-bold tabular-nums leading-none text-portal-purple">{v}</div><div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mt-1">{l}</div></div>
+              ))}
+            </div>
+          </CrCard>
+        )
+      }
+      case 'cpitchers': {
+        const ps = data.pitchers || []
+        return (
+          <CrCard title="Arms caught" sub={`${ps.length} pitcher${ps.length === 1 ? '' : 's'}`}>
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-left text-[9px] uppercase tracking-wide text-gray-400">
+                  <th className="py-1 pr-2">Pitcher</th><th className="py-1 px-1.5 text-right">P</th><th className="py-1 px-1.5 text-right">K</th><th className="py-1 px-1.5 text-right">BB</th>
+                  <th className="py-1 px-1.5 text-right">Strike%</th><th className="py-1 px-1.5 text-right">Whiff%</th><th className="py-1 px-1.5 text-right">Dirt</th><th className="py-1 pl-2">Mix</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {ps.map(r => (
+                  <tr key={r.pitcher}>
+                    <td className="py-1 pr-2 whitespace-nowrap font-semibold">{r.pitcher}<span className="ml-1 text-[9px] text-gray-400">{r.throws === 'Left' ? 'L' : r.throws === 'Right' ? 'R' : ''}</span></td>
+                    <td className="py-1 px-1.5 text-right tabular-nums">{r.pitches}</td><td className="py-1 px-1.5 text-right tabular-nums">{r.k}</td><td className="py-1 px-1.5 text-right tabular-nums">{r.bb}</td>
+                    <td className="py-1 px-1.5 text-right tabular-nums">{crFmt(r.strike_pct, 1)}</td><td className="py-1 px-1.5 text-right tabular-nums">{crFmt(r.whiff_pct, 1)}</td>
+                    <td className="py-1 px-1.5 text-right tabular-nums">{r.dirt}</td><td className="py-1 pl-2 text-gray-500">{r.mix}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CrCard>
+        )
+      }
       case 'arsenal': return <CrCard title="Arsenal"><CrArsenalTable data={data} cols={cfg.arsenalCols} /></CrCard>
       case 'line':
         if (!data.line) return null
@@ -6811,10 +6947,10 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
           <div className="text-[24px] font-bold leading-tight text-gray-900">
             {player.name}
             <span className="ml-2 text-[12px] font-bold text-gray-500 bg-white ring-1 ring-gray-200 rounded px-1.5 py-0.5 align-middle">
-              {isP ? (player.hand === 'Left' ? 'LHP' : player.hand === 'Right' ? 'RHP' : 'P') : (player.hand === 'Left' ? 'LHH' : player.hand === 'Right' ? 'RHH' : player.hand === 'Switch' ? 'SH' : 'H')}
+              {isC ? 'C' : isP ? (player.hand === 'Left' ? 'LHP' : player.hand === 'Right' ? 'RHP' : 'P') : (player.hand === 'Left' ? 'LHH' : player.hand === 'Right' ? 'RHH' : player.hand === 'Switch' ? 'SH' : 'H')}
             </span>
           </div>
-          {cfg.showScope && <div className="text-[11px] text-gray-500 mt-0.5">{scope}{data ? ` · ${pitches.length} pitches` : ''}</div>}
+          {cfg.showScope && <div className="text-[11px] text-gray-500 mt-0.5">{scope}{data ? ` · ${isC ? (data.summary?.pitches || 0) + ' pitches caught' : pitches.length + ' pitches'}` : ''}</div>}
         </div>
         <div className="text-right text-[10px] text-gray-400 leading-snug">
           <div className="font-bold text-gray-500">{team || ''}</div>
@@ -6858,7 +6994,15 @@ function CustomReportTab({ teamCtx, season }) {
   const { data: index, loading } = useApi('/trackman/reports/index', { team: team || undefined }, [team])
   const { data: flagData } = useApi('/trackman/insights', { team: team || undefined, season }, [team, season])
   const approvedFor = (name) => (flagData?.flags || []).filter(f => f.player === name && f.decision?.status === 'approved')
-  const [cfg, setCfg] = useState(() => ({ ...CR_DEFAULT, ...crLoad(CR_STORE, {}) }))
+  // saved layouts from before a role existed lack its blocks / key stats:
+  // merge the per-role maps with the defaults so a new role never crashes
+  const [cfg, setCfg] = useState(() => {
+    const saved = crLoad(CR_STORE, {}) || {}
+    return { ...CR_DEFAULT, ...saved,
+      blocks: { ...CR_DEFAULT.blocks, ...(saved.blocks || {}) },
+      keyStats: { ...CR_DEFAULT.keyStats, ...(saved.keyStats || {}) },
+      types: { ...CR_DEFAULT.types, ...(saved.types || {}) } }
+  })
   const [presets, setPresets] = useState(() => crLoad(CR_PRESETS, {}))
   const [presetName, setPresetName] = useState('')
   const [search, setSearch] = useState('')
@@ -6872,7 +7016,7 @@ function CustomReportTab({ teamCtx, season }) {
 
   const role = cfg.role
   const sessions = index?.sessions || []
-  const roster = (role === 'pitcher' ? index?.pitchers : index?.batters) || []
+  const roster = (role === 'pitcher' ? index?.pitchers : role === 'catcher' ? index?.catchers : index?.batters) || []
   const typeOpts = CR_TYPES[role]
   // roster under the current type filter, busiest first
   const eligible = useMemo(() => roster
@@ -6955,6 +7099,7 @@ function CustomReportTab({ teamCtx, season }) {
           <div className="flex gap-1.5">
             <button onClick={() => applyLayout(CR_STARTERS[0][1])} className={chip(false)}>Pitchers</button>
             <button onClick={() => applyLayout(CR_STARTERS[1][1])} className={chip(false)}>Hitters</button>
+            <button onClick={() => applyLayout(CR_STARTERS[2][1])} className={chip(false)}>Catchers</button>
           </div>
           <p className="text-[10.5px] text-gray-500 dark:text-gray-400 mt-1.5 leading-snug">
             Each player's last outing, his numbers, and a notes box you type straight into on his page.
@@ -6964,7 +7109,7 @@ function CustomReportTab({ teamCtx, season }) {
 
         <CrSection title="1 · Who" right={`${chosen.length} selected`}>
           <div className="flex items-center gap-1.5 mb-2">
-            {[['pitcher', 'Pitchers'], ['hitter', 'Hitters']].map(([k, l]) => (
+            {[['pitcher', 'Pitchers'], ['hitter', 'Hitters'], ['catcher', 'Catchers']].map(([k, l]) => (
               <button key={k} onClick={() => set({ role: k, players: [] })} className={chip(role === k)}>{l}</button>
             ))}
             <div className="ml-auto"><TeamSelect teamCtx={teamCtx} value={team} onChange={(t) => { setTeam(t); set({ players: [] }) }} /></div>

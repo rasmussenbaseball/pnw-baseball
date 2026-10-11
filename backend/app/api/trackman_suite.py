@@ -2717,6 +2717,15 @@ def trackman_report_index(team: str | None = Query(None), owner: str = Depends(_
                         WHERE p.owner_user_id = %s AND p.batter IS NOT NULL AND s.session_type <> 'bullpen'{tb}
                         GROUP BY 1, 2, 3""", [owner] + ([team] if team else []))
         brow = [dict(r) for r in cur.fetchall()]
+        tc = " AND p.catcher_team = %s" if team else ""
+        cur.execute(f"""SELECT p.catcher AS name, NULL AS hand, p.session_id, COUNT(*) AS n
+                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                        WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL
+                          AND s.session_type IN ('game', 'scrimmage', 'intrasquad'){tc}
+                        GROUP BY 1, 2, 3""", [owner] + ([team] if team else []))
+        crow = [dict(r) for r in cur.fetchall()]
+        excl = _catcher_exclusions(cur, owner)
+        crow = [r for r in crow if r["name"] not in excl]
 
     def roll(rows):
         out = {}
@@ -2724,7 +2733,7 @@ def trackman_report_index(team: str | None = Query(None), owner: str = Depends(_
             d = out.setdefault(r["name"], {"name": r["name"], "hand": r["hand"], "sessions": {}})
             d["sessions"][r["session_id"]] = {"n": r["n"], "bbe": r.get("bbe")}
         return sorted(out.values(), key=lambda d: d["name"])
-    return {"sessions": sessions, "pitchers": roll(prow), "batters": roll(brow)}
+    return {"sessions": sessions, "pitchers": roll(prow), "batters": roll(brow), "catchers": roll(crow)}
 
 
 _LB_CATS_PITCHING = {
@@ -3924,7 +3933,8 @@ def trackman_catching_framing(catcher: str = Query(...), team: str | None = Quer
                               season: int | None = Query(None), context: str = Query("all"),
                               bside: str | None = Query(None), pside: str | None = Query(None),
                               ptype: str | None = Query(None), date_from: str | None = Query(None),
-                              date_to: str | None = Query(None), owner: str = Depends(_gate)):
+                              date_to: str | None = Query(None), sessions: str | None = Query(None),
+                              owner: str = Depends(_gate)):
     """One catcher's takes, each with its call and shadow cell, plus a zone
     table graded against every catcher in the same filters (the league:
     own catchers and opponents). Strike rate is called strikes over takes in
@@ -3940,6 +3950,9 @@ def trackman_catching_framing(catcher: str = Query(...), team: str | None = Quer
         extra += " AND p.pitcher_throws = %s"; params = params + ["Left" if pside == "L" else "Right"]
     if ptype:
         extra += f" AND {_EFF_TYPE_P} = %s"; params = params + [ptype]
+    sess_ids = _parse_ids(sessions)
+    if sess_ids:   # the catcher's takes come from the picked sessions; the league stays wide
+        extra_mine = " AND s.id = ANY(%s)"
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -3961,10 +3974,18 @@ def trackman_catching_framing(catcher: str = Query(...), team: str | None = Quer
     lg = defaultdict(lambda: [0, 0])
     mine = defaultdict(lambda: [0, 0])
     pitches = []
+    if sess_ids:
+        with get_connection() as conn:
+            c5 = conn.cursor()
+            c5.execute("SELECT id FROM tm_pitches WHERE owner_user_id = %s AND session_id = ANY(%s) AND catcher = %s",
+                       (owner, sess_ids, catcher))
+            in_scope = {r["id"] for r in c5.fetchall()}
     for r in rows:
         z = _framing_zone(float(r["px"]), float(r["pz"]))
         got = 1 if r["pitch_call"] == "StrikeCalled" else 0
         lg[z][0] += 1; lg[z][1] += got
+        if sess_ids and r["pitch_id"] not in in_scope:
+            continue
         if r["catcher"] == catcher:
             mine[z][0] += 1; mine[z][1] += got
             pitches.append({"x": round(float(r["px"]), 2), "z": round(float(r["pz"]), 2), "strike": bool(got), "zone": z,
@@ -3994,6 +4015,150 @@ def trackman_catching_framing(catcher: str = Query(...), team: str | None = Quer
     return {"catcher": catcher, "pitches": pitches, "table": table, "types": types,
             "league_catchers": len({r["catcher"] for r in rows}),
             "geometry": {"half_w": _FR_HALF_W, "z_lo": _FR_Z_LO, "z_hi": _FR_Z_HI, "band": _FR_BAND}}
+
+
+@router.get("/trackman/catchers/detail")
+def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(None),
+                            sessions: str | None = Query(None), season: int | None = Query(None),
+                            context: str = Query("live"), owner: str = Depends(_gate)):
+    """Everything a catcher's post-game report needs in one call: what he
+    caught (pitches, arms, strike rates), the framing zone table and every
+    take for the K-zone map (games and scrimmages only), the throwdown log
+    with pop / exchange / arm velo, blocking workload, and the coach's
+    catcher-log counts (blocks, steals, pickoffs) for the same dates."""
+    extra, params = _context_clause(context)
+    ssql, sparams = _season_clause(season)
+    extra, params = extra + ssql, params + sparams
+    sess_ids = _parse_ids(sessions)
+    if sess_ids:
+        extra, params = " AND s.id = ANY(%s)", [sess_ids]
+    team_sql = " AND p.catcher_team = %s" if team else ""
+    tparams = [team] if team else []
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT p.id AS pitch_id, p.pitcher, p.pitcher_throws, p.batter, p.batter_side, p.inning, p.top_bottom,
+                       p.pa_of_inning, p.balls, p.strikes, p.outs, p.pitch_call, p.k_or_bb, p.play_result,
+                       p.outs_on_play, p.runs_scored, {_EFF_TYPE_P} AS ptype, p.rel_speed,
+                       p.is_in_zone, p.is_swing, p.is_whiff, p.is_chase,
+                       p.plate_loc_side AS px, p.plate_loc_height AS pz,
+                       p.throw_speed, p.pop_time, p.exchange_time, p.time_to_base,
+                       s.id AS session_id, s.session_date, s.session_type, s.home_team, s.away_team
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.catcher = %s{team_sql}{extra}
+                  AND s.session_type IN ('game', 'scrimmage', 'intrasquad')
+                ORDER BY s.session_date, p.pitch_no""",
+            [owner, catcher] + tparams + params)
+        rows = [dict(r) for r in cur.fetchall()]
+    if not rows:
+        raise HTTPException(status_code=404, detail="No pitches caught in this scope.")
+    for r in rows:
+        r["session_date"] = r["session_date"].isoformat() if r["session_date"] else None
+    sess = {}
+    for r in rows:
+        sess.setdefault(r["session_id"], {"id": r["session_id"], "date": r["session_date"], "type": r["session_type"],
+                                          "home": r["home_team"], "away": r["away_team"], "pitches": 0})["pitches"] += 1
+    called = [r for r in rows if r["pitch_call"]]
+    strikes = [r for r in called if r["pitch_call"] in box_STRIKES_ALL]
+    sw = [r for r in rows if r["is_swing"]]
+    dirt = [r for r in rows if r["pitch_call"] == "BallinDirt"]
+    takes_umpired = [r for r in rows if r["pitch_call"] in ("StrikeCalled", "BallCalled") and r["session_type"] in ("game", "scrimmage")]
+    by_p = defaultdict(lambda: {"pitches": 0, "strikes": 0, "called": 0, "whiffs": 0, "swings": 0, "dirt": 0, "k": 0, "bb": 0, "types": defaultdict(int)})
+    for r in rows:
+        b = by_p[(r["pitcher"], r["pitcher_throws"])]
+        b["pitches"] += 1
+        if r["pitch_call"]:
+            b["called"] += 1
+            b["strikes"] += 1 if r["pitch_call"] in box_STRIKES_ALL else 0
+        if r["is_swing"]:
+            b["swings"] += 1; b["whiffs"] += 1 if r["is_whiff"] else 0
+        if r["pitch_call"] == "BallinDirt":
+            b["dirt"] += 1
+        if r["k_or_bb"] == "Strikeout":
+            b["k"] += 1
+        elif r["k_or_bb"] == "Walk":
+            b["bb"] += 1
+        if r["ptype"]:
+            b["types"][r["ptype"]] += 1
+    pitchers = []
+    for (name, throws), b in sorted(by_p.items(), key=lambda kv: -kv[1]["pitches"]):
+        top = sorted(b["types"].items(), key=lambda kv: -kv[1])[:3]
+        pitchers.append({"pitcher": name, "throws": throws, "pitches": b["pitches"], "k": b["k"], "bb": b["bb"],
+                         "strike_pct": round(100 * b["strikes"] / b["called"], 1) if b["called"] else None,
+                         "whiff_pct": round(100 * b["whiffs"] / b["swings"], 1) if b["swings"] >= 5 else None,
+                         "dirt": b["dirt"], "mix": ", ".join(f"{t} {round(100 * n / b['pitches'])}%" for t, n in top)})
+    # throwdowns: every pitch TrackMan clocked a throw on; a runner out on a
+    # non-terminal pitch reads as caught stealing / pickoff
+    throws = []
+    for r in rows:
+        if r["pop_time"] is None and r["throw_speed"] is None:
+            continue
+        terminal = r["k_or_bb"] in ("Strikeout", "Walk") or r["play_result"] or r["pitch_call"] in ("InPlay", "HitByPitch")
+        out_on = int(r["outs_on_play"] or 0) > 0 and not terminal
+        throws.append({"date": r["session_date"], "inning": r["inning"], "half": r["top_bottom"], "pitcher": r["pitcher"],
+                       "batter": r["batter"], "count": f"{r['balls']}-{r['strikes']}" if r["balls"] is not None else None,
+                       "ptype": r["ptype"], "call": r["pitch_call"],
+                       "pop": round(float(r["pop_time"]), 2) if r["pop_time"] is not None else None,
+                       "exchange": round(float(r["exchange_time"]), 2) if r["exchange_time"] is not None else None,
+                       "velo": round(float(r["throw_speed"]), 1) if r["throw_speed"] is not None else None,
+                       "to_base": round(float(r["time_to_base"]), 2) if r["time_to_base"] is not None else None,
+                       "result": "Runner out" if out_on else ("Drop 3rd / play" if terminal else "Safe or no play")})
+    pops = [t["pop"] for t in throws if t["pop"] is not None]
+    exch = [t["exchange"] for t in throws if t["exchange"] is not None]
+    velos = [t["velo"] for t in throws if t["velo"] is not None]
+
+    def est_cs(pop):
+        return max(0.05, min(0.65, 0.30 + (2.10 - pop) * 0.6))
+
+    fr = trackman_catching_framing(catcher=catcher, team=team, season=season, context=context, bside=None, pside=None,
+                                   ptype=None, date_from=None, date_to=None, sessions=sessions, owner=owner)
+    fr_tab = {r["key"]: r for r in fr["table"]}
+    shadow, allr = fr_tab.get("shadow", {}), fr_tab.get("all", {})
+    # coach's hand log for the same dates, matched on last name
+    log = None
+    try:
+        from .catcher_log import catcher_log as _clog, _last as _clast
+        dates = sorted(d for d in {x["date"] for x in sess.values()} if d)
+        if dates:
+            cl = _clog(date_from=dates[0], date_to=dates[-1], owner=owner)
+            for c in cl.get("catchers", []):
+                if _clast(c.get("catcher")) == _clast(catcher):
+                    log = {k: (len(v) if isinstance(v, (set, list)) and k != "notes" else v) for k, v in c.items() if k not in ("pops", "grades")}
+                    if isinstance(c.get("pops"), list) and c["pops"]:
+                        log["log_pop_avg"] = round(sum(c["pops"]) / len(c["pops"]), 2)
+                    if isinstance(c.get("grades"), list) and c["grades"]:
+                        log["grade_avg"] = round(sum(c["grades"]) / len(c["grades"]), 2)
+                    break
+    except Exception:
+        log = None
+    summary = {
+        "pitches": len(rows), "sessions": len(sess), "arms": len(by_p),
+        "strike_pct": round(100 * len(strikes) / len(called), 1) if called else None,
+        "whiff_pct": round(100 * sum(1 for r in sw if r["is_whiff"]) / len(sw), 1) if sw else None,
+        "k": sum(1 for r in rows if r["k_or_bb"] == "Strikeout"), "bb": sum(1 for r in rows if r["k_or_bb"] == "Walk"),
+        "dirt": len(dirt), "dirt_per_100": round(100 * len(dirt) / len(rows), 1) if rows else None,
+        "takes": len(takes_umpired),
+        "shadow_takes": shadow.get("pitches"), "shadow_strike_pct": shadow.get("strike_rate"),
+        "shadow_lg_strike_pct": shadow.get("lg_strike_rate"), "sae": shadow.get("sae"),
+        "framing_runs": shadow.get("framing_runs"), "framing_plus": shadow.get("framing_plus"),
+        "all_strike_pct": allr.get("strike_rate"),
+        "throws": len(throws), "avg_pop": round(sum(pops) / len(pops), 2) if pops else None,
+        "best_pop": round(min(pops), 2) if pops else None,
+        "avg_exchange": round(sum(exch) / len(exch), 2) if exch else None,
+        "avg_arm": round(sum(velos) / len(velos), 1) if velos else None, "max_arm": round(max(velos), 1) if velos else None,
+        "est_cs_pct": round(100 * est_cs(sum(pops) / len(pops)), 0) if pops else None,
+        "runners_out": sum(1 for t in throws if t["result"] == "Runner out"),
+    }
+    if log:
+        summary.update({"log_blocks": log.get("block_opps"), "log_block_success": log.get("block_success"),
+                        "log_pb": log.get("pb"), "log_sb": log.get("sb"), "log_cs": log.get("cs"),
+                        "log_pickoffs": log.get("pickoffs"), "log_grade": log.get("grade_avg")})
+    return {"catcher": catcher, "summary": summary, "sessions": sorted(sess.values(), key=lambda x: x["date"] or ""),
+            "pitchers": pitchers, "throws": throws, "framing": fr, "log": log,
+            "dirt_by_type": dict(sorted(((r["ptype"] or "?", 0) for r in []), key=lambda kv: kv[0]))}
+
+
+box_STRIKES_ALL = ("StrikeCalled", "StrikeSwinging", "FoulBall", "FoulBallFieldable", "FoulBallNotFieldable", "InPlay", "AutomaticStrike")
 
 
 def _ensure_catcher_exclusions(cur):
