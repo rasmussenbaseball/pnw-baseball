@@ -4114,23 +4114,56 @@ def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(
                                    ptype=None, date_from=None, date_to=None, sessions=sessions, owner=owner)
     fr_tab = {r["key"]: r for r in fr["table"]}
     shadow, allr = fr_tab.get("shadow", {}), fr_tab.get("all", {})
-    # coach's hand log for the same dates, matched on last name
+    # Coach's hand log, matched to this scope two ways: an event whose
+    # TrackMan pitch landed in one of the scoped sessions, or (unmatched) an
+    # event logged on a scoped session's date. The workbook carries several
+    # games under one upload date, so the pitch match is what ties a block
+    # to the right game.
     log = None
+    log_events = []
     try:
         from .catcher_log import catcher_log as _clog, _last as _clast
         dates = sorted(d for d in {x["date"] for x in sess.values()} if d)
         if dates:
-            cl = _clog(date_from=dates[0], date_to=dates[-1], owner=owner)
-            for c in cl.get("catchers", []):
-                if _clast(c.get("catcher")) == _clast(catcher):
-                    log = {k: (len(v) if isinstance(v, (set, list)) and k != "notes" else v) for k, v in c.items() if k not in ("pops", "grades")}
-                    if isinstance(c.get("pops"), list) and c["pops"]:
-                        log["log_pop_avg"] = round(sum(c["pops"]) / len(c["pops"]), 2)
-                    if isinstance(c.get("grades"), list) and c["grades"]:
-                        log["grade_avg"] = round(sum(c["grades"]) / len(c["grades"]), 2)
-                    break
+            from datetime import date as _date, timedelta as _td
+            d_hi = (_date.fromisoformat(dates[-1]) + _td(days=45)).isoformat()
+            cl = _clog(date_from=dates[0], date_to=d_hi, owner=owner)
+            scope_ids = set(sess.keys())
+            for ev in cl.get("events", []):
+                if _clast(ev.get("catcher")) != _clast(catcher):
+                    continue
+                tm_ = ev.get("tm") or {}
+                in_scope = (tm_.get("session_id") in scope_ids) or (not tm_ and ev.get("session_date") in dates)
+                if not in_scope:
+                    continue
+                log_events.append({"date": ev.get("session_date"), "game_no": ev.get("game_no"), "inning": ev.get("inning"),
+                                   "count": ev.get("count"), "pitcher": ev.get("pitcher"), "batter": ev.get("batter"),
+                                   "event": ev.get("event"), "outcome": ev.get("outcome"), "note": ev.get("note"),
+                                   "pop_time": ev.get("pop_time"), "grade": ev.get("grade"), "two_strike": ev.get("two_strike"),
+                                   "tm": tm_ or None})
+            if log_events:
+                blocks = [x for x in log_events if x["event"] == "Block" or x["outcome"] in ("Block Success", "Block Miss", "Passed Ball")]
+                kept = [x for x in blocks if x["outcome"] == "Block Success" or (x["event"] == "Block" and x["outcome"] in ("Stolen Base", "Caught Stealing", "Pickoff"))]
+                pops = [x["pop_time"] for x in log_events if x.get("pop_time") is not None]
+                grades = [x["grade"] for x in log_events if x.get("grade") is not None]
+                log = {
+                    "events": len(log_events), "matched": sum(1 for x in log_events if x["tm"]),
+                    "block_opps": len(blocks), "block_success": len(kept),
+                    "block_miss": sum(1 for x in blocks if x["outcome"] == "Block Miss"),
+                    "pb": sum(1 for x in blocks if x["outcome"] == "Passed Ball"),
+                    "block_pct": round(100 * len(kept) / len(blocks), 1) if blocks else None,
+                    "k2_opps": sum(1 for x in blocks if x.get("two_strike")),
+                    "k2_success": sum(1 for x in kept if x.get("two_strike")),
+                    "sb": sum(1 for x in log_events if x["outcome"] == "Stolen Base"),
+                    "cs": sum(1 for x in log_events if x["outcome"] == "Caught Stealing"),
+                    "pickoffs": sum(1 for x in log_events if x["outcome"] == "Pickoff"),
+                    "drop3": sum(1 for x in log_events if x["event"] == "Drop 3rd"),
+                    "drop3_outs": sum(1 for x in log_events if x["event"] == "Drop 3rd" and x["outcome"] == "Out"),
+                    "log_pop_avg": round(sum(pops) / len(pops), 2) if pops else None,
+                    "grade_avg": round(sum(grades) / len(grades), 2) if grades else None,
+                }
     except Exception:
-        log = None
+        log, log_events = None, []
     summary = {
         "pitches": len(rows), "sessions": len(sess), "arms": len(by_p),
         "strike_pct": round(100 * len(strikes) / len(called), 1) if called else None,
@@ -4154,8 +4187,7 @@ def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(
                         "log_pb": log.get("pb"), "log_sb": log.get("sb"), "log_cs": log.get("cs"),
                         "log_pickoffs": log.get("pickoffs"), "log_grade": log.get("grade_avg")})
     return {"catcher": catcher, "summary": summary, "sessions": sorted(sess.values(), key=lambda x: x["date"] or ""),
-            "pitchers": pitchers, "throws": throws, "framing": fr, "log": log,
-            "dirt_by_type": dict(sorted(((r["ptype"] or "?", 0) for r in []), key=lambda kv: kv[0]))}
+            "pitchers": pitchers, "throws": throws, "framing": fr, "log": log, "log_events": log_events}
 
 
 box_STRIKES_ALL = ("StrikeCalled", "StrikeSwinging", "FoulBall", "FoulBallFieldable", "FoulBallNotFieldable", "InPlay", "AutomaticStrike")

@@ -6395,7 +6395,7 @@ const CR_BLOCKS = {
     ['cmap', 'K-zone framing map', true, 'Every shadow take, red strike / blue ball, band shaded by strike rate'],
     ['cedges', 'Framing summary tiles', true, 'Shadow takes, strike rate vs league, strikes above league, framing runs'],
     ['cthrows', 'Throwdowns', false, 'Every clocked throw: pop, exchange, arm velo, time to base, result'],
-    ['cblock', 'Blocking and the coach log', false, 'Balls in the dirt caught, plus blocks / steals / pickoffs from the catcher log when uploaded'],
+    ['cblock', 'Blocking and the coach log', false, 'Block chances, misses and passed balls from the catcher log placed on the pitches TrackMan saw, plus steals and pickoffs'],
     ['cpitchers', 'Arms caught', false, 'Each pitcher he caught: pitches, K, BB, strike%, whiff%, dirt balls, mix'],
   ],
 }
@@ -6773,17 +6773,78 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
         )
       }
       case 'cblock': {
-        const sm = data.summary || {}, lg = data.log
+        const sm = data.summary || {}, lg = data.log, evs = data.log_events || []
+        const blocks = evs.filter(e => e.event === 'Block' || ['Block Success', 'Block Miss', 'Passed Ball'].includes(e.outcome))
+        const kept = (e) => e.outcome === 'Block Success' || (e.event === 'Block' && ['Stolen Base', 'Caught Stealing', 'Pickoff'].includes(e.outcome))
+        const tone = (e) => kept(e) ? '#059669' : e.outcome === 'Passed Ball' ? '#f59e0b' : e.outcome === 'Block Miss' ? '#e11d48' : '#6b7280'
+        const label = (e) => kept(e) ? (e.outcome === 'Block Success' ? 'Blocked' : `Kept in front · ${e.outcome}`) : e.outcome
+        const tiles = [['Dirt balls (TrackMan)', crFmt(sm.dirt, 0)], ['Dirt / 100', crFmt(sm.dirt_per_100, 1)],
+          ...(lg ? [['Block chances', crFmt(lg.block_opps, 0)], ['Blocked', `${crFmt(lg.block_success, 0)}${lg.block_pct != null ? ` (${crFmt(lg.block_pct, 0)}%)` : ''}`], ['Missed', crFmt(lg.block_miss, 0)], ['Passed balls', crFmt(lg.pb, 0)],
+                    ['2K blocks', lg.k2_opps ? `${lg.k2_success}/${lg.k2_opps}` : '–'], ['SB allowed', crFmt(lg.sb, 0)], ['Caught stealing', crFmt(lg.cs, 0)], ['Pickoffs', crFmt(lg.pickoffs, 0)],
+                    ...(lg.drop3 ? [['Drop 3rd outs', `${lg.drop3_outs}/${lg.drop3}`]] : []), ...(lg.grade_avg != null ? [['Coach grade', crFmt(lg.grade_avg, 2)]] : [])] : [])]
+        // block map: every logged block chance at the pitch TrackMan saw
+        const S = 60, X0 = 2.2, Z0 = 5.2, W = 4.4 * S, H = 5.8 * S
+        const sx = x => (X0 - x) * S, sz = z => (Z0 - z) * S
+        const pts = blocks.filter(e => e.tm && e.tm.loc_side != null && e.tm.loc_height != null)
         return (
-          <CrCard title="Blocking" sub={lg ? 'TrackMan dirt balls plus the coach log for these dates' : 'TrackMan dirt balls · upload the catcher log on the Catching tab for blocks, steals and pickoffs'}>
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-x-3 gap-y-2">
-              {[['Dirt balls', crFmt(sm.dirt, 0)], ['Dirt / 100', crFmt(sm.dirt_per_100, 1)],
-                ...(lg ? [['Block chances', crFmt(lg.block_opps, 0)], ['Blocked', crFmt(lg.block_success, 0)], ['Missed', crFmt(lg.block_miss, 0)], ['Passed balls', crFmt(lg.pb, 0)],
-                          ['SB allowed', crFmt(lg.sb, 0)], ['Caught stealing', crFmt(lg.cs, 0)], ['Pickoffs', crFmt(lg.pickoffs, 0)], ['Coach grade', crFmt(lg.grade_avg, 2)]] : [])
-              ].map(([l, v]) => (
+          <CrCard title="Blocking" sub={lg ? `${lg.events} coach-log events matched to this scope (${lg.matched} tied to a tracked pitch)` : 'TrackMan dirt balls · no coach-log events found for these sessions'}>
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-x-3 gap-y-2.5 mb-3">
+              {tiles.map(([l, v]) => (
                 <div key={l}><div className="text-[17px] font-bold tabular-nums leading-none text-portal-purple">{v}</div><div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mt-1">{l}</div></div>
               ))}
             </div>
+            {blocks.length > 0 && (
+              <div className="grid grid-cols-5 gap-3">
+                <div className="col-span-2">
+                  <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+                    <rect x={sx(0.83)} y={sz(3.5)} width={1.66 * S} height={2 * S} fill="none" stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 3" />
+                    <line x1={0} y1={sz(0)} x2={W} y2={sz(0)} stroke="#d1d5db" strokeWidth="1" />
+                    {pts.map((e, i) => (
+                      <circle key={i} cx={sx(e.tm.loc_side)} cy={sz(Math.max(-0.5, e.tm.loc_height))} r="5" fill={tone(e)} fillOpacity="0.8" stroke="#fff" strokeWidth="1">
+                        <title>{`Inn ${e.inning} · ${e.count} · ${e.tm.ptype || '?'} ${e.tm.velo || ''} · ${label(e)}${e.note ? ` · ${e.note}` : ''}`}</title>
+                      </circle>
+                    ))}
+                    <text x={6} y={sz(0) + 11} fontSize="8" fill="#9ca3af">ground</text>
+                    <text x={6} y={12} fontSize="8" fill="#9ca3af">RHH box</text>
+                    <text x={W - 6} y={12} fontSize="8" fill="#9ca3af" textAnchor="end">LHH box</text>
+                  </svg>
+                  <div className="text-[9px] text-gray-400 text-center mt-1">
+                    <span style={{ color: '#059669' }}>●</span> blocked · <span style={{ color: '#e11d48' }}>●</span> missed · <span style={{ color: '#f59e0b' }}>●</span> passed ball · {pts.length} of {blocks.length} chances placed
+                  </div>
+                </div>
+                <div className="col-span-3">
+                  <table className="w-full text-[10.5px]">
+                    <thead>
+                      <tr className="text-left text-[9px] uppercase tracking-wide text-gray-400">
+                        <th className="py-0.5 pr-2">Inn</th><th className="py-0.5 pr-2">Count</th><th className="py-0.5 pr-2">Pitcher</th><th className="py-0.5 pr-2">Pitch</th><th className="py-0.5 pr-2">Result</th><th className="py-0.5">Note</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {evs.map((e, i) => (
+                        <tr key={i}>
+                          <td className="py-0.5 pr-2 tabular-nums">{e.inning ?? '–'}</td>
+                          <td className="py-0.5 pr-2 tabular-nums">{e.count || '–'}{e.two_strike ? <span className="ml-0.5 text-[8px] text-gray-400">2K</span> : ''}</td>
+                          <td className="py-0.5 pr-2 whitespace-nowrap">{e.pitcher || e.tm?.pitcher || '–'}</td>
+                          <td className="py-0.5 pr-2 whitespace-nowrap">{e.tm ? `${e.tm.ptype || '?'}${e.tm.velo ? ` ${e.tm.velo}` : ''}${e.tm.call === 'BallinDirt' ? ' · dirt' : ''}` : 'unmatched'}</td>
+                          <td className="py-0.5 pr-2 whitespace-nowrap font-semibold" style={{ color: tone(e) }}>{e.event === 'Block' || ['Block Success', 'Block Miss', 'Passed Ball'].includes(e.outcome) ? label(e) : `${e.event}: ${e.outcome}`}</td>
+                          <td className="py-0.5 text-gray-500">{e.note || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {lg && !blocks.length && evs.length > 0 && (
+              <table className="w-full text-[10.5px]">
+                <tbody className="divide-y divide-gray-100">
+                  {evs.map((e, i) => (
+                    <tr key={i}><td className="py-0.5 pr-2 tabular-nums">Inn {e.inning ?? '–'} · {e.count || '–'}</td><td className="py-0.5 pr-2">{e.pitcher || '–'}</td><td className="py-0.5 pr-2 font-semibold">{e.event}: {e.outcome}</td><td className="py-0.5 text-gray-500">{e.note || ''}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {lg && <p className="text-[9px] text-gray-400 mt-2">Coach-log events are tied to the TrackMan pitch by pitcher, inning, count and batter, so a block lands on the pitch that caused it even when the file's catcher tag was wrong. Dots sit where the ball crossed the plate; below the line is a pitch that bounced.</p>}
           </CrCard>
         )
       }

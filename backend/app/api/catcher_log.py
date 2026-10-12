@@ -306,7 +306,8 @@ def catcher_log(date_from: str | None = Query(None), date_to: str | None = Query
         # A workbook holds several games and is uploaded under the last one's
         # date, so candidates come from the live sessions of the prior six
         # weeks; the match must still be unique.
-        cur.execute("""SELECT p.id, s.session_date, p.catcher, p.pitcher, p.inning, p.balls, p.strikes, p.pitch_call,
+        cur.execute("""SELECT p.id, s.id AS session_id, s.session_date, p.catcher, p.pitcher, p.batter, p.inning, p.balls, p.strikes,
+                              p.pitch_call, p.pitch_no,
                               COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                               p.rel_speed, p.plate_loc_side, p.plate_loc_height
                        FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
@@ -316,11 +317,15 @@ def catcher_log(date_from: str | None = Query(None), date_to: str | None = Query
                     (owner, min(dates) - timedelta(days=45), max(dates)))
         tm = [dict(r) for r in cur.fetchall()]
 
+    # Match keys leave the CATCHER out: the TrackMan catcher tag is the field
+    # operators forget to change (one name can sit on a whole intrasquad), so
+    # pitcher + inning + count, with the batter when the log has one, is what
+    # identifies the pitch. The tagged catcher only breaks ties.
     by_key, by_key_np = {}, {}
     for t in tm:
         cnt = f"{t['balls']}-{t['strikes']}"
-        by_key.setdefault((_last(t["catcher"]), _last(t["pitcher"]), t["inning"], cnt), []).append(t)
-        by_key_np.setdefault((_last(t["catcher"]), t["inning"], cnt), []).append(t)
+        by_key.setdefault((_last(t["pitcher"]), t["inning"], cnt), []).append(t)
+        by_key_np.setdefault((t["inning"], cnt), []).append(t)
 
     events, agg, by_pitcher = [], {}, {}
     for r in rows:
@@ -365,21 +370,38 @@ def catcher_log(date_from: str | None = Query(None), date_to: str | None = Query
         if r["note"] and r["pop_time"] is None and e != "Throwdown":
             c["notes"].append(r["note"])
         match = None
-        if e in ("Block", "Drop 3rd") and r["inning"] is not None and r["count"]:
+        if e in ("Block", "Drop 3rd", "Throw", "Throwdown") and r["inning"] is not None and r["count"]:
             d0 = date.fromisoformat(r["session_date"])
-            window = lambda t: 0 <= (d0 - t["session_date"]).days <= 45  # noqa: E731
-            cands = [t for t in by_key.get((_last(r["catcher"]), _last(r.get("pitcher")), r["inning"], r["count"]), []) if window(t)] if r.get("pitcher") else []
+            window = lambda t: -1 <= (d0 - t["session_date"]).days <= 45  # noqa: E731
+            cands = [t for t in by_key.get((_last(r.get("pitcher")), r["inning"], r["count"]), []) if window(t)] if r.get("pitcher") else []
             if not cands:
-                cands = [t for t in by_key_np.get((_last(r["catcher"]), r["inning"], r["count"]), []) if window(t)]
-            pref = [t for t in cands if t["pitch_call"] in ("BallinDirt", "BallCalled", "StrikeSwinging")]
-            pool = pref or cands
-            if len(pool) == 1:
-                t = pool[0]
-                match = {"pitch_id": t["id"], "date": t["session_date"].isoformat(), "ptype": t["ptype"],
+                cands = [t for t in by_key_np.get((r["inning"], r["count"]), []) if window(t)]
+            # narrow in order: batter named in the log, the call a block / steal
+            # pitch tends to carry, the tagged catcher, then the nearest date
+            steps = [
+                lambda ts: [t for t in ts if r.get("batter") and _last(t["batter"]) == _last(r["batter"])],
+                lambda ts: [t for t in ts if t["pitch_call"] in (("BallinDirt", "BallCalled", "StrikeSwinging") if e != "Throw" else ("BallCalled", "StrikeCalled", "BallinDirt", "StrikeSwinging", "FoulBallNotFieldable"))],
+                lambda ts: [t for t in ts if _last(t["catcher"]) == _last(r["catcher"])],
+            ]
+            pool = cands
+            for step in steps:
+                nxt = step(pool)
+                if nxt:
+                    pool = nxt
+            if len(pool) > 1:
+                best_gap = min(abs((d0 - t["session_date"]).days) for t in pool)
+                pool = [t for t in pool if abs((d0 - t["session_date"]).days) == best_gap]
+            if len(pool) > 1 and e != "Throw":
+                dirt = [t for t in pool if t["pitch_call"] == "BallinDirt"]
+                pool = dirt or pool
+            if pool:
+                t = sorted(pool, key=lambda x: (x["session_date"], x["pitch_no"] or 0))[-1]
+                match = {"pitch_id": t["id"], "session_id": t["session_id"], "date": t["session_date"].isoformat(), "ptype": t["ptype"],
                          "velo": round(float(t["rel_speed"]), 1) if t["rel_speed"] else None,
-                         "pitcher": t["pitcher"], "call": t["pitch_call"],
+                         "pitcher": t["pitcher"], "batter": t["batter"], "call": t["pitch_call"], "tm_catcher": t["catcher"],
                          "loc_side": round(float(t["plate_loc_side"]), 2) if t["plate_loc_side"] is not None else None,
-                         "loc_height": round(float(t["plate_loc_height"]), 2) if t["plate_loc_height"] is not None else None}
+                         "loc_height": round(float(t["plate_loc_height"]), 2) if t["plate_loc_height"] is not None else None,
+                         "confidence": "exact" if len(cands) == 1 or (r.get("batter") and len(pool) == 1 and len([c for c in cands if _last(c["batter"]) == _last(r["batter"])]) == 1) else "nearest"}
         events.append({**r, "tm": match})
 
     catchers = []
