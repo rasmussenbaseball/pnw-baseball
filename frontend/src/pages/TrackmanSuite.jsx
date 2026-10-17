@@ -1313,6 +1313,7 @@ function MovementPlot({ pitches, onPick, selectedId, arm }) {
         </g>
       )}
       {Object.entries(byType).map(([t, ps]) => {
+        if (t === 'Misread') return null
         const pts = ps.map(q => [sx(Math.max(-R, Math.min(R, q.horz_break))), sy(Math.max(-R, Math.min(R, q.ivb)))])
         const hull = hullOf(pts)
         if (!hull) return null
@@ -1326,7 +1327,13 @@ function MovementPlot({ pitches, onPick, selectedId, arm }) {
         return <polygon key={'hull' + t} points={padded} fill={cFor(t)} opacity="0.12"
           stroke={cFor(t)} strokeOpacity="0.55" strokeWidth="1.5" strokeLinejoin="round" />
       })}
-      {Object.entries(byType).map(([t, ps]) => ps.map((p, i) => (
+      {Object.entries(byType).map(([t, ps]) => ps.map((p, i) => t === 'Misread' ? (
+        <g key={t + i} style={onPick ? { cursor: 'pointer' } : undefined} onClick={onPick ? () => onPick(p) : undefined}>
+          <circle cx={sx(Math.max(-R, Math.min(R, p.horz_break)))} cy={sy(Math.max(-R, Math.min(R, p.ivb)))}
+            r={p.pitch_id === selectedId ? 5 : 3.5} fill="none" stroke={p.pitch_id === selectedId ? '#111' : '#9ca3af'} strokeWidth="1.2" strokeDasharray="2 1.5" />
+          <title>Misread: dropped from the sample (click to restore)</title>
+        </g>
+      ) : (
         <circle key={t + i} cx={sx(Math.max(-R, Math.min(R, p.horz_break)))} cy={sy(Math.max(-R, Math.min(R, p.ivb)))}
           r={p.pitch_id === selectedId ? 5 : 3} fill={cFor(t)}
           opacity={p.pitch_id === selectedId ? 1 : 0.35}
@@ -1955,7 +1962,7 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
                 <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Movement (catcher's view)</span>
                 <span className="text-[10px] text-gray-400">Click a dot to re-tag a pitch</span>
               </div>
-              <MovementPlot pitches={data.pitches} selectedId={picked?.pitch_id} arm={data.arm}
+              <MovementPlot pitches={[...data.pitches, ...(data.misread || [])]} selectedId={picked?.pitch_id} arm={data.arm}
                 onPick={(p) => setPicked(picked?.pitch_id === p.pitch_id ? null : p)} />
               <div className="flex flex-wrap gap-2 mt-1">
                 {Object.keys(byType).map(t => (
@@ -1963,6 +1970,11 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
                     <span className="w-2 h-2 rounded-full inline-block" style={{ background: cFor(t) }} />{t}
                   </span>
                 ))}
+                {(data.misread || []).length > 0 && (
+                  <span className="text-[11px] text-gray-400 flex items-center gap-1" title="Marked as misreads: shown here only, excluded from every table, grade and percentile">
+                    <span className="w-2 h-2 rounded-full inline-block border border-dashed border-gray-400" />Misread ({data.misread.length}, dropped from the sample)
+                  </span>
+                )}
               </div>
               {picked && (
                 <div className="mt-2 rounded-lg bg-gray-50 dark:bg-gray-900/40 p-2.5">
@@ -1976,6 +1988,13 @@ function PlayerLabTab({ pitcher, setPitcher, teamCtx, season }) {
                         {t}
                       </button>
                     ))}
+                    <button onClick={() => overridePitch('Misread')}
+                      title="Bad radar read: keep the dot on this plot (grey) but drop the pitch from every table, grade and percentile"
+                      className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${
+                        picked.ptype === 'Misread' ? 'bg-gray-600 text-white ring-gray-600'
+                          : 'bg-white dark:bg-gray-800 text-gray-500 ring-gray-300 dark:ring-gray-600 hover:ring-gray-500'}`}>
+                      Misread · drop from sample
+                    </button>
                     {picked.override_pitch_type && (
                       <button onClick={() => overridePitch(null)}
                         className="px-2 py-0.5 rounded-full text-[11px] font-semibold text-rose-600 ring-1 ring-rose-200 dark:ring-rose-800">

@@ -112,7 +112,7 @@ def dev_notes(
     })
     for r in live:
         name = r["pitcher"]
-        if not name or (r["ptype"] or "") == "Mistag":
+        if not name or (r["ptype"] or "") in ("Mistag", "Misread"):
             continue
         a = P[(name, r["pitcher_team"])]
         a["n"] += 1
@@ -238,7 +238,7 @@ def dev_notes(
                     sd["sw"] += 1
                     sd["wh"] += 1 if r["is_whiff"] else 0
             pt = r["ptype"]
-            if pt and pt != "Mistag":
+            if pt and pt not in ("Mistag", "Misread"):
                 td = h["types"][pt]
                 td["n"] += 1
                 if r["is_swing"]:

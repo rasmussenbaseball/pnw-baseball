@@ -139,7 +139,7 @@ def team_summary(ids: str = Query(..., description="comma-separated session ids"
                                s.session_type, {box.LEAGUE_SQL_COLS}
                         FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                         WHERE p.owner_user_id = %s AND p.session_id = ANY(%s)
-                          AND COALESCE(p.class_pitch_type, '') <> 'Mistag'""",
+                          AND COALESCE(p.class_pitch_type, '') <> 'Mistag' AND COALESCE(p.override_pitch_type, '') <> 'Misread'""",
                     (owner, sids))
         rows = [dict(r) for r in cur.fetchall()]
         lg = box.league_context_from_db(cur, owner)

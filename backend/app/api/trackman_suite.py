@@ -44,8 +44,14 @@ from ..stats.trackman_runvalue import pitch_run_value, attack_zone
 # caught by release-point distance in trackman_classify.flag_mistags) are
 # excluded from every PITCHER-facing view. Batter views keep them — the
 # batter on the row is real regardless of whose name is on the mound.
+# 'Misread' is the coach's own override for a bad radar read: the pitch
+# stays on the Pitcher Lab movement plot (grey, so it can be restored) but
+# leaves every table, grade, percentile and board.
+_DROPPED_TYPES = "('Mistag', 'Misread')"
 _NO_MISTAG = (" AND COALESCE(p.override_pitch_type, p.class_pitch_type,"
-              " p.tagged_pitch_type, p.auto_pitch_type) IS DISTINCT FROM 'Mistag'")
+              f" p.tagged_pitch_type, p.auto_pitch_type, '') NOT IN {_DROPPED_TYPES}")
+_NO_MISTAG_ONLY = (" AND COALESCE(p.override_pitch_type, p.class_pitch_type,"
+                   " p.tagged_pitch_type, p.auto_pitch_type) IS DISTINCT FROM 'Mistag'")
 # ── Fair-ball predicate ──────────────────────────────────────────
 # TrackMan measures exit velo on FOUL balls too. In live sessions fouls are
 # about 40% of all tracked contact and average 72.5 mph off the bat versus
@@ -71,7 +77,7 @@ def _is_fair(pitch_call, direction):
 
 
 _NO_MISTAG_BARE = (" AND COALESCE(override_pitch_type, class_pitch_type,"
-                   " tagged_pitch_type, auto_pitch_type) IS DISTINCT FROM 'Mistag'")
+                   f" tagged_pitch_type, auto_pitch_type, '') NOT IN {_DROPPED_TYPES}")
 
 
 # ── Stuff corpus recalibration ────────────────────────────────────
@@ -2119,7 +2125,7 @@ def trackman_pitcher_detail(
                        p.hit_spin_rate, p.hang_time,
                        s.session_date, s.id AS session_id, s.session_type
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
-                WHERE p.owner_user_id = %s AND p.pitcher = %s{_NO_MISTAG}
+                WHERE p.owner_user_id = %s AND p.pitcher = %s{_NO_MISTAG_ONLY}
                   AND COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) IS NOT NULL
                   {extra}{team_sql}{conf_sql}
                 ORDER BY s.session_date, p.pitch_no""",
@@ -2128,6 +2134,9 @@ def trackman_pitcher_detail(
         pitches = [dict(r) for r in cur.fetchall()]
         for p in pitches:
             p["session_date"] = p["session_date"].isoformat() if p["session_date"] else None
+        # Misread pitches ride along for the plot only; nothing below sees them
+        misread = [p for p in pitches if p["ptype"] == "Misread"]
+        pitches = [p for p in pitches if p["ptype"] != "Misread"]
         if not pitches:
             raise HTTPException(status_code=404, detail="No pitches for that pitcher in this context.")
 
@@ -2509,6 +2518,7 @@ def trackman_pitcher_detail(
         "pitcher": pitcher,
         "pitch_count": len(pitches),
         "pitches": pitches,
+        "misread": misread,
         "percentiles": percentiles,
         "count_usage": count_usage,
         "velo_trend": velo_trend,
@@ -3167,7 +3177,7 @@ def trackman_batter_detail(
             splits["hand"][lbl] = _split_line(rows_h)
     by_pt = defaultdict(list)
     for x in pitches:
-        if x["ptype"] and x["ptype"] != "Mistag":
+        if x["ptype"] and x["ptype"] not in ("Mistag", "Misread"):
             by_pt[x["ptype"]].append(x)
     for t, rows_t in sorted(by_pt.items(), key=lambda kv: -len(kv[1])):
         if len(rows_t) >= 10:
@@ -3176,7 +3186,7 @@ def trackman_batter_detail(
     # Results by pitch type, LIVE only: the plate appearances that ENDED on
     # each pitch type (box line + wOBA) alongside the process rates on every
     # pitch of that type he saw. BP has no results and no real pitch tags.
-    live_rows = [x for x in pitches if x.get("session_type") in _LIVE_TYPES and x["ptype"] and x["ptype"] != "Mistag"]
+    live_rows = [x for x in pitches if x.get("session_type") in _LIVE_TYPES and x["ptype"] and x["ptype"] not in ("Mistag", "Misread")]
     pas_by_t = defaultdict(list)
     for r in box.terminal_pas(live_rows):
         pas_by_t[r["ptype"]].append(r)
@@ -3331,7 +3341,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             r[k] = float(r[k]) if r[k] is not None else None
         cls = r["class_pitch_type"]
         r["ptype"] = (r["override_pitch_type"]
-                      or (cls if cls and cls != "Mistag" else None)
+                      or (cls if cls and cls not in ("Mistag", "Misread") else None)
                       or r["tagged_pitch_type"] or r["auto_pitch_type"])
 
     def _pct(num, den):
@@ -3340,7 +3350,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
     # ── pitchers ──
     P = {}
     for r in rows:
-        if not r["pitcher"] or r["class_pitch_type"] == "Mistag":
+        if not r["pitcher"] or r["class_pitch_type"] == "Mistag" or r.get("override_pitch_type") == "Misread":
             continue
         P.setdefault(r["pitcher"], {"throws": r["pitcher_throws"],
                                     "team": r["pitcher_team"], "rows": []})["rows"].append(r)
@@ -4577,8 +4587,8 @@ class PitchTypeOverride(_BM):
 def override_pitch_type(pitch_id: int, body: PitchTypeOverride, owner: str = Depends(_write_gate)):
     """Manually re-tag one pitch. Overrides win over the auto classifier and
     the TrackMan tags everywhere (arsenals, grades, labs, leaderboards)."""
-    if body.pitch_type is not None and body.pitch_type not in SUITE_TYPES:
-        raise HTTPException(status_code=400, detail=f"pitch_type must be one of {SUITE_TYPES} or null.")
+    if body.pitch_type is not None and body.pitch_type not in SUITE_TYPES + ["Misread"]:
+        raise HTTPException(status_code=400, detail=f"pitch_type must be one of {SUITE_TYPES + ['Misread']} or null.")
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
