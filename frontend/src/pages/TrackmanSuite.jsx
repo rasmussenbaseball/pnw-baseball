@@ -2856,8 +2856,8 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) 
       <div className="grid grid-cols-3 gap-3">
         {[['Movement', <MovementPlot key="m" pitches={dots} selectedId={picked?.pitch_id}
             onPick={(d) => setPicked(picked?.pitch_id === d.pitch_id ? null : d)} />],
-          ['Locations', <LocScatter key="l" pitches={dots} />],
-          ['Release', <ReleasePlot key="r" pitches={dots} />]].map(([t, el]) => (
+          ['Locations', <LocScatter key="l" pitches={dots.filter(d => d.ptype !== 'Misread')} />],
+          ['Release', <ReleasePlot key="r" pitches={dots.filter(d => d.ptype !== 'Misread')} />]].map(([t, el]) => (
           <div key={t}>
             <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1 text-center">{t}</div>
             {el}
@@ -2883,6 +2883,13 @@ function PitcherSessionCard({ p, sess, isPen, innerRef, onPdf, busy, onRetag }) 
                 {t}
               </button>
             ))}
+            <button onClick={() => retag('Misread')}
+              title="Bad radar read: keep the dot on the movement plot (grey) but drop the pitch from every number"
+              className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${
+                picked.ptype === 'Misread' ? 'bg-gray-600 text-white ring-gray-600'
+                  : 'bg-white dark:bg-gray-800 text-gray-500 ring-gray-300 dark:ring-gray-600 hover:ring-gray-500'}`}>
+              Misread · drop from sample
+            </button>
             {picked.override_pitch_type && (
               <button onClick={() => retag(null)}
                 className="px-2 py-0.5 rounded-full text-[11px] font-semibold text-rose-600 ring-1 ring-rose-200 dark:ring-rose-800">

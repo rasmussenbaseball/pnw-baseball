@@ -3349,8 +3349,12 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
 
     # ── pitchers ──
     P = {}
+    misread_by = defaultdict(list)   # plot-only: dropped from every number on the card
     for r in rows:
-        if not r["pitcher"] or r["class_pitch_type"] == "Mistag" or r.get("override_pitch_type") == "Misread":
+        if not r["pitcher"] or r["class_pitch_type"] == "Mistag":
+            continue
+        if r.get("override_pitch_type") == "Misread":
+            misread_by[r["pitcher"]].append(r)
             continue
         P.setdefault(r["pitcher"], {"throws": r["pitcher_throws"],
                                     "team": r["pitcher_team"], "rows": []})["rows"].append(r)
@@ -3444,7 +3448,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
                  "velo": r["rel_speed"], "call": r["pitch_call"],
                  "tagged_pitch_type": r["tagged_pitch_type"],
                  "override_pitch_type": r["override_pitch_type"]}
-                for r in rs],
+                for r in rs + misread_by.get(name, [])],
         })
     pitchers.sort(key=lambda x: (x["team"] or "", -x["pitches"]))
 
