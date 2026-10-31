@@ -34,6 +34,8 @@ from ..stats import trackman_spin as spin
 from ..stats import trackman_tempo as tempo
 from ..stats import trackman_parks as parks
 from ..stats import trackman_bases as bases
+from ..stats import trackman_swingdec as swingdec
+import time as _time
 from ..stats.trackman_defense import (
     OF_POSITIONS, IF_POSITIONS, OUT_RESULTS, landing_xz,
     catch_probability, gb_out_probability, difficulty_bucket, move_direction,
@@ -205,6 +207,60 @@ def _write_gate(request: _Request, owner: str = Depends(_gate)) -> str:
 # All pitch columns in insert order: parser fields + derived flags.
 _DERIVED = ["is_in_zone", "is_swing", "is_whiff", "is_contact", "is_chase"]
 _PITCH_FIELDS = list(TEXT_COLS) + list(INT_COLS) + list(FLOAT_COLS) + _DERIVED
+
+
+# ── Swing decision model (SD+) ─────────────────────────────────────
+# Fit once per owner on every live pitch (games, scrimmages, intrasquads)
+# and cached for ten minutes: the called-strike maps, league swing policy,
+# swing-outcome maps and the SD+ scale all come from the whole corpus, so a
+# filtered view still grades against the same yardstick.
+_SD_CACHE = {}
+_SD_TTL_S = 600
+_SD_COLS = """p.batter, p.batter_side, p.pitcher_throws, p.balls, p.strikes, p.pitch_call, p.play_result,
+              p.plate_loc_side, p.plate_loc_height, p.is_swing, p.is_whiff, p.is_chase, p.is_in_zone, p.rel_speed,
+              p.exit_speed, p.launch_angle, p.direction, s.session_type,
+              COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype"""
+
+
+def _swing_model(owner):
+    hit = _SD_CACHE.get(owner)
+    if hit and _time.time() - hit[0] < _SD_TTL_S:
+        return hit[1]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT {_SD_COLS}
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.batter IS NOT NULL
+                  AND s.session_type IN ('game', 'scrimmage', 'intrasquad')""",
+            (owner,))
+        rows = [dict(r) for r in cur.fetchall()]
+    model = swingdec.SwingDecisionModel().fit(rows) if len(rows) >= 300 else None
+    _SD_CACHE[owner] = (_time.time(), model)
+    return model
+
+
+def _sd_row(r):
+    """Map a board/review row (px/pz keys) onto the model's field names."""
+    return {"plate_loc_side": r.get("plate_loc_side", r.get("px")), "plate_loc_height": r.get("plate_loc_height", r.get("pz")),
+            "balls": r.get("balls"), "strikes": r.get("strikes"), "pitch_call": r.get("pitch_call"),
+            "play_result": r.get("play_result"), "batter_side": r.get("batter_side"), "pitcher_throws": r.get("pitcher_throws"),
+            "ptype": r.get("ptype"), "is_swing": r.get("is_swing"), "is_whiff": r.get("is_whiff"),
+            "exit_speed": r.get("exit_speed"), "launch_angle": r.get("launch_angle"), "direction": r.get("direction"),
+            "rel_speed": r.get("rel_speed"), "session_type": r.get("session_type")}
+
+
+def _sd_summary(model, rows):
+    """Priced summary for one hitter's rows (live only), prefixed sd_."""
+    if not model or not model.sigma:
+        return {}
+    priced = [pr for pr in (model.price(_sd_row(r)) for r in rows if r.get("session_type") in _LIVE_TYPES) if pr]
+    sm = swingdec.batter_summary(priced, model.sigma)
+    if not sm:
+        return {}
+    return {"sd_plus": sm["sd_plus"], "sd_zone": sm["sd_zone"], "sd_chase": sm["sd_chase"],
+            "sd_correct_pct": sm["correct_pct"], "sd_hittable_take_pct": sm["hittable_take_pct"],
+            "sd_bad_swing_pct": sm["bad_swing_pct"], "sd_dv100": sm["dv100_shrunk"], "sd_pitches": sm["pitches"]}
 
 
 def _ensure_tables(cur):
@@ -1547,6 +1603,8 @@ def trackman_hitting_board(
                        p.exit_speed, p.launch_angle, p.direction, p.distance, p.bearing,
                        p.contact_x, p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        p.effective_velo, p.outs_on_play, p.runs_scored,
+                       p.pitcher_throws, p.rel_speed,
+                       COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype,
                        s.id AS session_id, s.session_date, s.session_type
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter IS NOT NULL{extra}{team_sql}""",
@@ -1583,9 +1641,10 @@ def trackman_hitting_board(
         "zev": defaultdict(list), "zrv": defaultdict(float), "zrv_n": defaultdict(int),
         "vb": defaultdict(_band_bucket),
         "points": [], "side": None, "pa_map": {},
-        "evla": [], "phr": 0.0, "phr_n": 0,
+        "evla": [], "phr": 0.0, "phr_n": 0, "sd_rows": [],
     })
     park_cache = {}
+    sd_model = _swing_model(owner) if context != "bp" else None
     for r in rows:
         d = r["session_date"].isoformat() if r["session_date"] else None
         st = sessions.setdefault(r["session_id"], {"id": r["session_id"], "date": d,
@@ -1593,6 +1652,8 @@ def trackman_hitting_board(
         st["pitches"] += 1
         b = B[(r["batter"], r["batter_team"])]
         b["rows"] += 1
+        if sd_model and r["pitch_call"]:
+            b["sd_rows"].append(r)
         hand = (r["batter_side"] or "")[:1] or None
         b["side"] = hand or b["side"]
         vband = _velo_band(r["effective_velo"])
@@ -1735,6 +1796,7 @@ def trackman_hitting_board(
             "max_dist": round(max(b["dists"])) if b["dists"] else None,
             "xwobacon": round(sum(b["xw"]) / len(b["xw"]), 3) if b["xw"] else None,
             "attack_angle": (parks.attack_angle_proxy(b["evla"]) or {}).get("attack_angle"),
+            **(_sd_summary(sd_model, b["sd_rows"]) if sd_model else {}),
             "phr": round(b["phr"], 1) if b["phr_n"] else None,
             "zone_ev": {k: round(sum(v) / len(v), 1) for k, v in b["zev"].items() if v},
             "velo": _band_out(b["vb"], live_ctx),
@@ -2583,6 +2645,12 @@ def _codes_for_team(cur, owner, team_id):
 def _hitter_attack(h):
     """Rule-based scouting note from a hitting-board row."""
     notes = []
+    sdp = h.get("sd_plus")
+    if sdp is not None and (h.get("sd_pitches") or 0) >= 50:
+        if sdp >= 115:
+            notes.append(f"elite swing decisions (SD+ {sdp}): do not expect him to chase, beat him in the zone")
+        elif sdp <= 85:
+            notes.append(f"poor swing decisions (SD+ {sdp}): expand early and often")
     ch, zc, k2 = h.get("chase_pct"), h.get("zone_contact_pct"), h.get("k2_contact_pct")
     if ch is not None and h.get("pitches", 0) >= 40:
         if ch >= 32:
@@ -2838,14 +2906,22 @@ def trackman_leaderboards(
             cur.execute(
                 f"""SELECT p.{who} AS name, p.{hand} AS hand, p.{team_col} AS team,
                            p.balls, p.strikes, p.pitch_call, p.play_result,
-                           p.plate_loc_side AS px, p.plate_loc_height AS pz
+                           p.plate_loc_side AS px, p.plate_loc_height AS pz,
+                           p.batter_side, p.pitcher_throws, p.rel_speed, p.is_swing, p.is_whiff,
+                           p.exit_speed, p.launch_angle, p.direction, s.session_type,
+                           COALESCE(p.override_pitch_type, p.class_pitch_type, p.tagged_pitch_type, p.auto_pitch_type) AS ptype
                     FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                     WHERE p.owner_user_id = %s AND p.{who} IS NOT NULL {extra}{team_sql}""",
                 [owner] + params + tparams,
             )
+            sd_model_lb = _swing_model(owner) if side != "pitching" else None
             for r in cur.fetchall():
                 key = (r["name"], r["hand"], r["team"])
-                a = per.setdefault(key, {"rv": 0.0, "rv_n": 0, "shadow": 0, "loc": 0})
+                a = per.setdefault(key, {"rv": 0.0, "rv_n": 0, "shadow": 0, "loc": 0, "sd": []})
+                if sd_model_lb and r["session_type"] in _LIVE_TYPES:
+                    pr = sd_model_lb.price(_sd_row(r))
+                    if pr:
+                        a["sd"].append(pr)
                 v = pitch_run_value(r["balls"], r["strikes"], r["pitch_call"], r["play_result"])
                 if v is not None:
                     a["rv"] += (-v if side == "pitching" else v)
@@ -2885,6 +2961,15 @@ def trackman_leaderboards(
         _pyboard("swtk_rv", "Swing/take RV", [
             {"name": k[0], "hand": k[1], "team": k[2], "sample": a["rv_n"], "value": round(a["rv"], 1)}
             for k, a in per.items() if a["rv_n"] >= 10], 10)
+        sd_model_lb = _swing_model(owner)
+        if sd_model_lb and sd_model_lb.sigma:
+            sd_rows = []
+            for k, a in per.items():
+                if len(a.get("sd") or []) >= 50:
+                    sm = swingdec.batter_summary(a["sd"], sd_model_lb.sigma)
+                    if sm and sm.get("sd_plus") is not None:
+                        sd_rows.append({"name": k[0], "hand": k[1], "team": k[2], "sample": sm["pitches"], "value": sm["sd_plus"]})
+            _pyboard("sd_plus", "SD+ (swing decisions)", sd_rows, 50)
     return {"side": side, "boards": boards}
 
 
@@ -3222,6 +3307,18 @@ def trackman_batter_detail(
 
     with get_connection() as conn:
         link = _match_player(conn.cursor(), batter)
+    # Swing decisions: SD+ summary and the count-by-count table, league
+    # baselines per count riding along for the comparison columns.
+    swing_decisions = None
+    sd_model = _swing_model(owner)
+    if sd_model and sd_model.sigma:
+        priced = [pr for pr in (sd_model.price(_sd_row(x)) for x in pitches if x.get("session_type") in _LIVE_TYPES) if pr]
+        if priced:
+            swing_decisions = {
+                "summary": swingdec.batter_summary(priced, sd_model.sigma),
+                "by_count": swingdec.by_count(priced, sd_model.sigma, sd_model.count_base, sigma_count=sd_model.sigma_count),
+                "model": {"fit_pitches": sd_model.n_fit, "sigma_dv100": round(sd_model.sigma, 3)},
+            }
     # Power profile: swing-plane proxy + park-aware homers on his air balls.
     home_code = team or next((x.get("batter_team") for x in pitches if x.get("batter_team")), None)
     home_park = parks.match_park(home_code)
@@ -3262,7 +3359,8 @@ def trackman_batter_detail(
                 [x for x in pitches if x.get("session_type") in _LIVE_TYPES]), hit_lg),
             "count_states": count_states([x for x in pitches if x.get("session_type") in _LIVE_TYPES],
                                          lambda r: _is_fair(r["pitch_call"], r.get("direction")), rv_base),
-            "pt_results": pt_results}
+            "pt_results": pt_results,
+            "swing_decisions": swing_decisions}
 
 
 def _bp_grade(avg_ev, hh_pct, ss_pct):
@@ -3347,6 +3445,7 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
     def _pct(num, den):
         return round(100 * num / den, 1) if den else None
 
+    sd_model_rev = _swing_model(owner) if sess["session_type"] in ("game", "scrimmage", "intrasquad") else None
     # ── pitchers ──
     P = {}
     misread_by = defaultdict(list)   # plot-only: dropped from every number on the card
@@ -3499,7 +3598,13 @@ def trackman_session_review(session_id: int, owner: str = Depends(_gate)):
             grade = None
             if is_bp and n_bbe >= 5:
                 grade = _bp_grade(_avg(evs), 100 * hh / n_bbe, 100 * ss / n_bbe)
+            sd_rev = {}
+            if not is_bp and sd_model_rev:
+                for r in rs:
+                    r.setdefault("session_type", sess["session_type"])
+                sd_rev = _sd_summary(sd_model_rev, rs)
             batters.append({
+                **sd_rev,
                 "batter": name, "side": b["side"], "team": b["team"],
                 "pa": len({(r["inning"], r["top_bottom"], r["pa_of_inning"]) for r in rs
                            if r["pa_of_inning"] is not None}),
@@ -4674,6 +4779,8 @@ _LG_H_METRICS = [
     ("xavg", "xAVG", True), ("xslg", "xSLG", True), ("xwoba", "xwOBA", True), ("xwobacon", "xwOBAcon", True),
     ("avg", "AVG", True), ("obp", "OBP", True), ("slg", "SLG", True), ("ops", "OPS", True), ("iso", "ISO", True),
     ("babip", "BABIP", None), ("woba", "wOBA", True), ("wrc_plus", "wRC+", True), ("rv", "Swing/take RV", True),
+    ("sd_plus", "SD+", True), ("sd_zone", "Zone SD+", True), ("sd_chase", "Chase SD+", True),
+    ("sd_correct_pct", "Correct decision%", True), ("sd_hittable_take_pct", "Hittable take%", False), ("sd_bad_swing_pct", "Bad swing%", False),
 ]
 _LG_TYPE_KEYS = ["velo", "max_velo", "eff_velo", "ivb", "hb", "spin", "extension", "vaa", "zone_pct", "whiff_pct",
                  "chase_pct", "csw_pct", "ev_against", "xwobacon", "active_spin", "stuff", "loc", "rv100", "usage_pct"]
@@ -4718,7 +4825,7 @@ def trackman_league(context: str = Query("live"), season: int | None = Query(Non
             pitching[k] = d
     hitting = {}
     for k, label, higher in _LG_H_METRICS:
-        dec = 3 if k in ("xavg", "xslg", "xwoba", "xwobacon", "avg", "obp", "slg", "ops", "iso", "babip", "woba") else 0 if k == "wrc_plus" else 1
+        dec = 3 if k in ("xavg", "xslg", "xwoba", "xwobacon", "avg", "obp", "slg", "ops", "iso", "babip", "woba") else 0 if k in ("wrc_plus", "sd_plus", "sd_zone", "sd_chase") else 1
         d = _dist([b.get(k) for b in bats], [b.get(k) for b in bats if team and b.get("team") == team], dec)
         if d:
             d.update({"label": label, "higher": higher})

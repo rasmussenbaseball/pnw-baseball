@@ -717,6 +717,12 @@ const HB_FULL = [
   ['2K Ct%', 'k2_contact_pct', 'Contact per swing with two strikes', {}],
   ['K%', 'k_pct', 'Strikeouts per completed plate appearance', { higher: false }],
   ['BB%', 'bb_pct', 'Walks per completed plate appearance', {}],
+  ['SD+', 'sd_plus', 'Swing decision grade: run value of his swing/take choices vs the league policy on the same pitches, 100 = average bat in your data, 10 = one SD', { dec: 0 }],
+  ['zSD+', 'sd_zone', 'Swing decisions on pitches in the zone (hittable takes cost here)', { dec: 0 }],
+  ['oSD+', 'sd_chase', 'Swing decisions on pitches out of the zone (chases cost here)', { dec: 0 }],
+  ['Correct%', 'sd_correct_pct', 'Share of pitches where he picked the higher-value option (swing vs take) within a coin-flip tolerance', {}],
+  ['Hittable take%', 'sd_hittable_take_pct', 'Pitches where swinging was worth 0.02+ runs more than taking that he watched', { higher: false }],
+  ['Bad swing%', 'sd_bad_swing_pct', 'Pitches where taking was worth 0.02+ runs more that he swung at', { higher: false }],
   ['Avg EV', 'avg_ev', 'Average exit velocity', {}],
   ['90th EV', 'p90_ev', '90th percentile exit velo, the steadiest top-end bat speed read', {}],
   ['Max EV', 'max_ev', null, {}],
@@ -2543,6 +2549,8 @@ function HitterLabTab({ teamCtx, season }) {
 
           {data.xstats && <XStatsCard x={data.xstats} />}
 
+          {data.swing_decisions && <SwingDecisionCard sd={data.swing_decisions} />}
+
           {boardRow && <LiveBoardLine row={boardRow} cohort={boardCohort} pool={(board?.batters || []).length} />}
 
           {data.pt_results && <ResultsByPitchCard results={data.pt_results} />}
@@ -2948,7 +2956,7 @@ function BatterSessionCard({ b, sess, innerRef, onPdf, busy, cohort, isBp }) {
     ['Depth', b.avg_depth != null ? b.avg_depth : '—', null, depthVc],
   ] : [
     ['PA', b.pa], ['Pitches', b.pitches], ['K', b.k], ['BB', b.bb],
-    ['Swing%', fmt(b.swing_pct)], ['Whiff%', fmt(b.whiff_pct), P.whiff],
+    ['SD+', b.sd_plus ?? '—'], ['Swing%', fmt(b.swing_pct)], ['Whiff%', fmt(b.whiff_pct), P.whiff],
     ['Chase%', fmt(b.chase_pct), P.chase], ['Contact%', fmt(b.contact_pct), P.contact],
     ['BBE', b.bbe], ['Avg EV', fmt(b.avg_ev), P.avg_ev], ['Max EV', fmt(b.max_ev), P.max_ev],
     ['Hard hit', b.bbe ? b.hard_hit : '—', P.hh], ['Barrels', b.bbe ? b.barrels : '—', P.br],
@@ -4340,7 +4348,7 @@ function LeagueTab({ teamCtx, season }) {
   const [hand, setHand] = useState('all')
   const { data, loading } = useApi('/trackman/league', { context, season, team: teamCtx.primary || undefined }, [context, season, teamCtx.primary])
   const pDec = k => ['xwobacon', 'baa', 'babip', 'xavg', 'xiso'].includes(k) ? 3 : ['whip', 'fip', 'rv100'].includes(k) ? 2 : 1
-  const hDec = k => ['xavg', 'xslg', 'xwoba', 'xwobacon', 'avg', 'obp', 'slg', 'ops', 'iso', 'babip', 'woba'].includes(k) ? 3 : k === 'wrc_plus' ? 0 : 1
+  const hDec = k => ['xavg', 'xslg', 'xwoba', 'xwobacon', 'avg', 'obp', 'slg', 'ops', 'iso', 'babip', 'woba'].includes(k) ? 3 : ['wrc_plus', 'sd_plus', 'sd_zone', 'sd_chase'].includes(k) ? 0 : 1
   const types = Object.entries(data?.types || {}).filter(([, h]) => h[hand]).sort((a, b) => (b[1][hand]?.n || 0) - (a[1][hand]?.n || 0))
   const pool = data?.pool, line = data?.line, rates = data?.rates
   return (
@@ -5499,6 +5507,76 @@ function PowerCard({ power }) {
   )
 }
 
+// ── Hitter Lab: swing decisions (SD+) with the count-by-count table ──
+const SD_PLUS_CLS = (v) => v == null ? 'text-gray-300' : v >= 115 ? 'text-emerald-600 dark:text-emerald-400' : v <= 85 ? 'text-rose-600 dark:text-rose-400' : v >= 108 ? 'text-emerald-700/80 dark:text-emerald-300/80' : v <= 92 ? 'text-rose-500/80' : ''
+function SdDelta({ v, lg, higher = true, dec = 1 }) {
+  if (v == null || lg == null) return null
+  const d = v - lg
+  if (Math.abs(d) < 0.05) return null
+  const good = (d > 0) === higher
+  return <span className={`ml-1 text-[9px] font-semibold ${Math.abs(d) >= 8 ? (good ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500') : 'text-gray-400'}`}>{d > 0 ? '+' : ''}{d.toFixed(dec)}</span>
+}
+function SwingDecisionCard({ sd, compact = false }) {
+  const sm = sd.summary || {}
+  const rows = (sd.by_count || []).filter(r => r.pitches > 0)
+  const tiles = [
+    ['SD+', sm.sd_plus, 'overall'], ['zSD+', sm.sd_zone, 'in the zone'], ['oSD+', sm.sd_chase, 'out of the zone'],
+    ['Correct%', sm.correct_pct, 'picked the better option'], ['Hittable take%', sm.hittable_take_pct, 'good pitches watched'], ['Bad swing%', sm.bad_swing_pct, 'bad pitches chased'],
+  ]
+  return (
+    <div className={`bg-white dark:bg-gray-800 rounded-xl ring-1 ring-gray-200 dark:ring-gray-700 ${compact ? 'p-3' : 'p-4'}`}>
+      <div className="flex items-baseline justify-between mb-2.5 flex-wrap gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Swing decisions (SD+)</span>
+        <span className="text-[10px] text-gray-400">{sm.pitches} priced pitches · 100 = average bat in your data, 10 points = one SD · league columns are the whole corpus in that count</span>
+      </div>
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+        {tiles.map(([l, v, sub]) => (
+          <div key={l} className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{l}</div>
+            <div className={`text-xl font-black tabular-nums ${l.includes('SD+') ? SD_PLUS_CLS(v) : ''}`}>{v == null ? '–' : l.includes('SD+') ? v : `${Number(v).toFixed(1)}%`}</div>
+            <div className="text-[9px] text-gray-400">{sub}</div>
+          </div>
+        ))}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-left text-[9.5px] uppercase tracking-wide text-gray-400">
+              <th className="py-1 pr-2">Count</th><th className="py-1 px-1.5 text-right">P</th>
+              <th className="py-1 px-1.5 text-right">SD+</th>
+              <th className="py-1 px-1.5 text-right">Swing%</th><th className="py-1 px-1.5 text-right text-gray-300">lg</th>
+              <th className="py-1 px-1.5 text-right">Chase%</th><th className="py-1 px-1.5 text-right text-gray-300">lg</th>
+              <th className="py-1 px-1.5 text-right">Whiff%</th><th className="py-1 px-1.5 text-right text-gray-300">lg</th>
+              <th className="py-1 px-1.5 text-right">Correct%</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+            {rows.map(r => (
+              <tr key={r.count} className={r.count.endsWith('-2') ? 'bg-gray-50/60 dark:bg-gray-900/20' : ''}>
+                <td className="py-1 pr-2 font-semibold tabular-nums">{r.count}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums text-gray-500">{r.pitches}</td>
+                <td className={`py-1 px-1.5 text-right tabular-nums font-bold ${SD_PLUS_CLS(r.sd_plus)}`}>{r.sd_plus ?? '–'}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{r.swing_pct == null ? '–' : r.swing_pct.toFixed(1)}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums text-gray-400">{r.lg_swing_pct ?? '–'}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{r.chase_pct == null ? '–' : r.chase_pct.toFixed(1)}<SdDelta v={r.chase_pct} lg={r.lg_chase_pct} higher={false} /></td>
+                <td className="py-1 px-1.5 text-right tabular-nums text-gray-400">{r.lg_chase_pct ?? '–'}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{r.whiff_pct == null ? '–' : r.whiff_pct.toFixed(1)}<SdDelta v={r.whiff_pct} lg={r.lg_whiff_pct} higher={false} /></td>
+                <td className="py-1 px-1.5 text-right tabular-nums text-gray-400">{r.lg_whiff_pct ?? '–'}</td>
+                <td className="py-1 px-1.5 text-right tabular-nums">{r.correct_pct == null ? '–' : `${r.correct_pct.toFixed(0)}%`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!compact && (
+        <p className="text-[10px] text-gray-400 mt-2 leading-snug">
+          Every pitch is priced two ways: the run value of taking it (called-strike probability at that spot for his side, times the count's strike and ball values) and of swinging at it (whiff, foul and in-play odds at that spot for that pitch family, two-strike state and platoon matchup, with velocity shifting the whiff odds, times the contact run value there). His decision is credited against what the league's own swing rate on that pitch and count would have earned, so the average bat in your data is 100. Per-count SD+ is scaled to that count's own spread and shrunk hard at small samples; 3-0 and 3-2 move the most. Everything is judged for an average bat, not his own contact skill.
+        </p>
+      )}
+    </div>
+  )
+}
+
 function XStatsCard({ x }) {
   const Stat = ({ label, actual, expected }) => {
     const diff = expected != null && actual != null ? expected - actual : null
@@ -6402,6 +6480,7 @@ const CR_BLOCKS = {
     ['line', 'Box line', false, 'AVG / OBP / SLG / wRC+ (live sessions only)'],
     ['percentiles', 'Percentile bars', false, 'Ranked against the whole lineup'],
     ['xstats', 'Expected stats', false, 'xAVG, xSLG, xwOBA vs actual'],
+    ['swingdec', 'Swing decisions', false, 'SD+ tiles and the count-by-count table (swing, chase, whiff vs league)'],
     ['spray', 'Spray chart', true, 'Colored by exit velo'],
     ['contact', 'Point of contact', true, 'Depth and height (needs 5+ tracked)'],
     ['evla', 'EV x launch angle', true, ''],
@@ -6435,6 +6514,7 @@ const CR_KEYSTATS = {
     ['hh_pct', 'Hard-hit%', 1], ['barrel_pct', 'Barrel%', 1], ['sweet_pct', 'Sweet-spot%', 1], ['avg_la', 'Avg LA', 1], ['max_dist', 'Max dist', 0],
     ['swing_pct', 'Swing%', 1], ['contact_pct', 'Contact%', 1], ['zcontact_pct', 'Z-Contact%', 1], ['whiff_pct', 'Whiff%', 1], ['chase_pct', 'Chase%', 1],
     ['xavg', 'xAVG', 3], ['xslg', 'xSLG', 3], ['xwoba', 'xwOBA', 3],
+    ['sd_plus', 'SD+', 0], ['sd_zone', 'zSD+', 0], ['sd_chase', 'oSD+', 0], ['sd_correct_pct', 'Correct dec%', 1],
     ['pa', 'PA', 0], ['avg', 'AVG', 3], ['obp', 'OBP', 3], ['slg', 'SLG', 3], ['ops', 'OPS', 3], ['hr', 'HR', 0], ['bb', 'BB', 0], ['k', 'K', 0],
     ['woba', 'wOBA', 3], ['wrc_plus', 'wRC+', 0]],
   catcher: [['pitches', 'Pitches caught', 0], ['arms', 'Arms caught', 0], ['strike_pct', 'Strike%', 1], ['k', 'K', 0], ['bb', 'BB', 0],
@@ -6557,6 +6637,8 @@ function crHitterStats(data) {
     zcontact_pct: crPct(zsw.filter(p => !p.is_whiff).length, zsw.length), whiff_pct: crPct(sw.filter(p => p.is_whiff).length, sw.length),
     chase_pct: crPct(oz.filter(p => p.is_chase ?? p.is_swing).length, oz.length),
     xavg: x.xavg, xslg: x.xslg, xwoba: x.xwoba,
+    sd_plus: data.swing_decisions?.summary?.sd_plus ?? null, sd_zone: data.swing_decisions?.summary?.sd_zone ?? null,
+    sd_chase: data.swing_decisions?.summary?.sd_chase ?? null, sd_correct_pct: data.swing_decisions?.summary?.correct_pct ?? null,
     ...(data.line || {}),
   }
 }
@@ -7007,6 +7089,7 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
       case 'tunneling': return data.tunneling ? <TunnelingCard tunneling={data.tunneling} /> : null
       case 'sequencing': return <CrCard title="Two-pitch sequences (result on the 2nd pitch)"><SequencingTable pitches={pitches} /></CrCard>
       case 'xstats': return data.xstats ? <XStatsCard x={data.xstats} /> : null
+      case 'swingdec': return data.swing_decisions ? <SwingDecisionCard sd={data.swing_decisions} compact /> : null
       case 'spray': return <CrCard title="Spray (colored by EV)"><SprayChart pitches={bbe} /></CrCard>
       case 'contact': return <ContactPointCard pitches={pitches} />
       case 'evla': return <CrCard title="Exit velo x launch angle"><EvLaScatter points={bbe.filter(p => p.launch_angle != null).map(p => ({ ev: p.exit_speed, la: p.launch_angle }))} /></CrCard>

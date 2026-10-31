@@ -329,7 +329,7 @@ function StatesTab({ plan, counts }) {
 
 // ── TAB: TrackMan scouting (the coach's own game files on this opponent) ──
 const TM_H_COLS = [
-  ['P', 'pitches', 0], ['PA', 'pa', 0], ['Chase%', 'chase_pct', 1], ['Z-Ct%', 'zone_contact_pct', 1], ['K%', 'k_pct', 1], ['BB%', 'bb_pct', 1],
+  ['P', 'pitches', 0], ['PA', 'pa', 0], ['SD+', 'sd_plus', 0], ['Chase%', 'chase_pct', 1], ['Z-Ct%', 'zone_contact_pct', 1], ['K%', 'k_pct', 1], ['BB%', 'bb_pct', 1],
   ['EV', 'avg_ev', 1], ['HH%', 'hh_pct', 1], ['GB%', 'gb_pct', 1], ['xwOBA', 'xwoba', 3], ['RV', 'rv', 1],
 ]
 const TM_P_COLS = [

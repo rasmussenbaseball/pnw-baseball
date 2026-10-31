@@ -149,6 +149,21 @@ Hitting
 - Bug fixed 2026-10-08: hitting-board Chase% was 0 for every hitter
   (chases were counted under the in-zone branch).
 
+Swing decisions (2026-10-30)
+- trackman_swingdec.py: SD+ (100 = average bat in the corpus, 10 = one SD).
+  Per pitch, take value = called-strike odds (kernel map per batter side,
+  shrunk to the rulebook logistic; fixed zone on intrasquads) x the count
+  ladder; swing value = whiff / foul / in-play odds (kernel maps per pitch
+  family x two-strike flag x platoon, shrunk to pooled family maps, velo as
+  a logit shift) x the xwOBAcon-based contact run value. Decision value =
+  chosen minus the league swing-policy value at that spot and count group,
+  centered on the corpus, shrunk n/(n+150). Surfaces: hitting board (SD+,
+  zSD+, oSD+, correct / hittable-take / bad-swing rates), Hitter Lab card
+  with the count-by-count table (SD+, swing, chase, whiff vs league per
+  count), session review chips, leaderboards, league baselines, Custom
+  Reporting key stats + block, Series Planner opponent table and notes.
+  Model is cached per owner for ten minutes (`_swing_model`).
+
 Series Planner
 - TrackMan tab: resolves the opponent to the TrackMan team codes in the
   coach's uploads and shows their hitters (chase, zone contact, hot/cold
