@@ -170,6 +170,26 @@ Series Planner
   zones, xwOBA, RV) and arms (arsenal, whiff, zone, tempo) with rule-based
   attack notes. GET /trackman/opponent?team_id=.
 
+Pop time by target base (2026-10-30)
+- tm_pitches now stores BasePositionX/Y/Z (where the catcher's throw
+  arrived; X depth from the plate, Z side, + toward first). A re-upload
+  of a pitch we already hold fills these in (ON CONFLICT ... COALESCE),
+  and scripts/backfill_tm_base_pos.py did the one-time backfill from the
+  CSVs on Nate's Mac (every stored pop time has a base).
+- _THROW_BASE_SQL / throw_target() classify a throw: 2B (x > 100,
+  |z| < 30), 3B / 1B (x 30-100, z beyond +-35). Around-the-horn tosses
+  to third after a strikeout (HORN: K pitch, < 2 outs made) and dropped
+  third-strike throws to first (DROP3) are clocked by TrackMan with
+  2.4-3.0 "pops" and are kept OUT of every pop time. In the corpus 18 of
+  22 third-base-located throws were horn tosses.
+- Catching board columns: Pop 2B (n), Best 2B, Pop 3B (n), Best 3B. The
+  CS% line and arm runs read second-base pops only; a catcher with no
+  placed second-base throw gets no estimate. Catcher report: throw log
+  carries To (2B/3B/1B + horn/K3/pick tags); key stats avg_pop_2b,
+  best_pop_2b, avg_pop_3b, best_pop_3b, throws_2b, throws_3b.
+- Fixed in passing: the report's overall pop/best pop were being replaced
+  by the coach's hand-log pops whenever a log existed.
+
 Still open
 - League baselines by level for hitters (no source yet).
 - Catcher blocking / throwing stay thin (pop time on ~85 pitches, no

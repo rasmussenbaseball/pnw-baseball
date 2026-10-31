@@ -3925,11 +3925,13 @@ function CatchingTab({ teamCtx, season }) {
                 <th className="px-2 py-2 text-right" title="Actual stolen bases against - caught stealing (site season stats)">SB-CS</th>
                 <th className="px-2 py-2 text-right"><StatTip k="blended_cs_pct" group="catching" label="CS%" /></th>
                 <th className="px-2 py-2 text-right" title="Estimated CS% from average pop time alone">est CS%</th>
-                <th className="px-2 py-2 text-right"><StatTip k="avg_pop" group="catching" label="Pop" /></th>
-                <th className="px-2 py-2 text-right"><StatTip k="best_pop" group="catching" label="Best" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="avg_pop_2b" group="catching" label="Pop 2B" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="best_pop_2b" group="catching" label="Best 2B" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="avg_pop_3b" group="catching" label="Pop 3B" /></th>
+                <th className="px-2 py-2 text-right"><StatTip k="best_pop_3b" group="catching" label="Best 3B" /></th>
                 <th className="px-2 py-2 text-right"><StatTip k="avg_exchange" group="catching" label="Exch" /></th>
                 <th className="px-2 py-2 text-right"><StatTip k="avg_throw" group="catching" label="Arm velo" /></th>
-                <th className="px-2 py-2 text-right">Throws</th>
+                <th className="px-2 py-2 text-right" title="Every throw TrackMan clocked, any base. Around-the-horn throws after a strikeout and dropped-third-strike throws are counted here but never in a pop time.">Throws</th>
                 <th className="px-2 py-2"></th>
               </tr>
             </thead>
@@ -3958,11 +3960,20 @@ function CatchingTab({ teamCtx, season }) {
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{pct(c.blended_cs_pct ?? null)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-gray-400">{pct(c.est_cs_pct)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums font-bold">{c.avg_pop ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{c.best_pop ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-bold whitespace-nowrap">
+                    {c.avg_pop_2b != null ? <>{c.avg_pop_2b.toFixed(2)}<span className="ml-1 text-[9px] font-normal text-gray-400">({c.n_2b})</span></>
+                      : c.avg_pop != null ? <span title="No throw to second placed by TrackMan; this is every clocked throw" className="text-gray-400">{c.avg_pop.toFixed(2)}*</span> : '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{c.best_pop_2b?.toFixed(2) ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-bold whitespace-nowrap">
+                    {c.avg_pop_3b != null ? <>{c.avg_pop_3b.toFixed(2)}<span className="ml-1 text-[9px] font-normal text-gray-400">({c.n_3b})</span></> : '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{c.best_pop_3b?.toFixed(2) ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_exchange ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{c.avg_throw ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{c.throws ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500 whitespace-nowrap" title={`${c.n_1b || 0} back-picks to first · ${c.n_horn || 0} around the horn after a K · ${c.n_drop3 || 0} dropped third strikes (none count as pop times)`}>
+                    {c.throws ?? '—'}{(c.n_horn || c.n_drop3) ? <span className="ml-1 text-[9px] text-gray-400">({(c.n_horn || 0) + (c.n_drop3 || 0)} non-steal)</span> : null}
+                  </td>
                   <td className="px-2 py-1.5 text-right whitespace-nowrap">
                     <button onClick={() => setExcluded(c.catcher, true)} disabled={busyName === c.catcher}
                       title="Not a catcher (position tagged wrong): hide this player from the Catching tab and the Values ledger"
@@ -6520,7 +6531,9 @@ const CR_KEYSTATS = {
   catcher: [['pitches', 'Pitches caught', 0], ['arms', 'Arms caught', 0], ['strike_pct', 'Strike%', 1], ['k', 'K', 0], ['bb', 'BB', 0],
     ['takes', 'Umpired takes', 0], ['shadow_takes', 'Shadow takes', 0], ['shadow_strike_pct', 'Shadow strike%', 1], ['shadow_lg_strike_pct', 'Lg shadow strike%', 1],
     ['sae', 'Strikes above lg', 1], ['framing_runs', 'Framing runs', 2], ['framing_plus', 'Framing+', 0],
-    ['throws', 'Throws clocked', 0], ['avg_pop', 'Avg pop', 2], ['best_pop', 'Best pop', 2], ['avg_exchange', 'Exchange', 2],
+    ['throws', 'Throws clocked', 0], ['avg_pop_2b', 'Pop to 2B', 2], ['best_pop_2b', 'Best pop 2B', 2],
+    ['avg_pop_3b', 'Pop to 3B', 2], ['best_pop_3b', 'Best pop 3B', 2], ['throws_2b', 'Throws to 2B', 0], ['throws_3b', 'Throws to 3B', 0],
+    ['avg_pop', 'Avg pop (all bases)', 2], ['best_pop', 'Best pop (all bases)', 2], ['avg_exchange', 'Exchange', 2],
     ['avg_arm', 'Arm velo', 1], ['max_arm', 'Max arm', 1], ['est_cs_pct', 'Est CS%', 0], ['runners_out', 'Runners out', 0],
     ['dirt', 'Dirt balls', 0], ['dirt_per_100', 'Dirt / 100', 1],
     ['log_blocks', 'Block chances (log)', 0], ['log_block_success', 'Blocks (log)', 0], ['log_pb', 'Passed balls (log)', 0],
@@ -6538,7 +6551,7 @@ const CR_DEFAULT = {
             catcher: ['keystats', 'cthrows', 'cmap', 'cedges', 'cframing', 'cblock', 'cpitchers', 'notes'] },
   keyStats: { pitcher: ['pitches', 'fb_velo', 'fb_max', 'stuff', 'strike_pct', 'whiff_pct', 'csw_pct', 'ev_against'],
               hitter: ['pitches', 'bbe', 'avg_ev', 'max_ev', 'hh_pct', 'barrel_pct', 'chase_pct', 'contact_pct'],
-              catcher: ['pitches', 'arms', 'strike_pct', 'throws', 'avg_pop', 'best_pop', 'avg_arm', 'est_cs_pct', 'shadow_takes', 'shadow_strike_pct', 'framing_runs', 'framing_plus'] },
+              catcher: ['pitches', 'arms', 'strike_pct', 'throws', 'avg_pop_2b', 'best_pop_2b', 'avg_pop_3b', 'avg_arm', 'est_cs_pct', 'shadow_takes', 'shadow_strike_pct', 'framing_runs', 'framing_plus'] },
   arsenalCols: ['n', 'usage', 'stuff', 'velo', 'max', 'ivb', 'hb', 'spin', 'zone', 'whiff', 'csw', 'ev'],
   title: 'Player Report', notes: '', playerNotes: {}, showScope: true,
 }
@@ -6558,7 +6571,7 @@ const CR_STARTERS = [
   ['Post-game recap · catcher', { role: 'catcher', title: 'Catcher Post-Game Report', range: 'lastN', lastN: 1,
     types: { game: true, scrimmage: true, intrasquad: true, bp: false, bullpen: false },
     blocks: ['keystats', 'cthrows', 'cmap', 'cedges', 'cframing', 'cblock', 'cpitchers', 'notes'],
-    keyStats: ['pitches', 'arms', 'strike_pct', 'k', 'throws', 'avg_pop', 'best_pop', 'avg_exchange', 'avg_arm', 'est_cs_pct', 'shadow_takes', 'framing_plus'] }],
+    keyStats: ['pitches', 'arms', 'strike_pct', 'k', 'throws', 'avg_pop_2b', 'best_pop_2b', 'avg_pop_3b', 'avg_exchange', 'avg_arm', 'est_cs_pct', 'shadow_takes', 'framing_plus'] }],
   ['Pitcher · last outing quick sheet', { role: 'pitcher', range: 'lastN', lastN: 1, types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
     blocks: ['keystats', 'arsenal', 'movement', 'locations', 'notes'] }],
   ['Pitcher · full season profile', { role: 'pitcher', range: 'season', types: { game: true, scrimmage: true, intrasquad: true, bullpen: false, bp: false },
@@ -6851,14 +6864,14 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
       case 'cthrows': {
         const th = data.throws || []
         return (
-          <CrCard title="Throwdowns" sub={th.length ? `${th.length} clocked by TrackMan · pop = catch to the fielder's glove` : 'no throws clocked in this scope'}>
+          <CrCard title="Throwdowns" sub={th.length ? `${th.length} clocked by TrackMan · pop = catch to the fielder's glove · base from where the throw arrived` : 'no throws clocked in this scope'}>
             {th.length > 0 && (
               <table className="w-full text-[11px]">
                 <thead>
                   <tr className="text-left text-[9px] uppercase tracking-wide text-gray-400">
                     <th className="py-1 pr-2">Date</th><th className="py-1 pr-2">Inn</th><th className="py-1 pr-2">Pitcher</th><th className="py-1 pr-2">Batter</th>
-                    <th className="py-1 pr-2">Count</th><th className="py-1 pr-2">Pitch</th>
-                    <th className="py-1 px-1.5 text-right">Pop</th><th className="py-1 px-1.5 text-right">Exch</th><th className="py-1 px-1.5 text-right">Arm</th><th className="py-1 px-1.5 text-right">To base</th><th className="py-1 pl-2">Result</th>
+                    <th className="py-1 pr-2">Count</th><th className="py-1 pr-2">Pitch</th><th className="py-1 pr-2">To</th>
+                    <th className="py-1 px-1.5 text-right">Pop</th><th className="py-1 px-1.5 text-right">Exch</th><th className="py-1 px-1.5 text-right">Arm</th><th className="py-1 px-1.5 text-right">Time to base</th><th className="py-1 pl-2">Result</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -6867,6 +6880,11 @@ function CrPlayerPage({ player, role, ids, cfg, team, season, sessions, innerRef
                       <td className="py-1 pr-2 tabular-nums text-gray-500">{(t.date || '').slice(5)}</td><td className="py-1 pr-2 tabular-nums">{t.inning ?? '–'}</td>
                       <td className="py-1 pr-2 whitespace-nowrap">{t.pitcher}</td><td className="py-1 pr-2 whitespace-nowrap">{t.batter || '–'}</td>
                       <td className="py-1 pr-2 tabular-nums">{t.count || '–'}</td><td className="py-1 pr-2">{t.ptype || '–'}</td>
+                      <td className={`py-1 pr-2 font-semibold whitespace-nowrap ${t.kind === 'horn' || t.kind === 'drop3' ? 'text-gray-400' : t.to === '2B' ? 'text-indigo-600' : t.to === '3B' ? 'text-amber-600' : 'text-gray-500'}`}>
+                        {t.to || '–'}{t.kind === 'horn' ? <span className="ml-1 text-[9px] font-normal" title="Thrown around the horn after a strikeout; not a pop time">horn</span>
+                          : t.kind === 'drop3' ? <span className="ml-1 text-[9px] font-normal" title="Dropped third strike; not a pop time">K3</span>
+                          : t.kind === 'backpick' ? <span className="ml-1 text-[9px] font-normal" title="Back-pick to first">pick</span> : null}
+                      </td>
                       <td className="py-1 px-1.5 text-right tabular-nums font-bold">{t.pop != null ? t.pop.toFixed(2) : '–'}</td>
                       <td className="py-1 px-1.5 text-right tabular-nums">{t.exchange != null ? t.exchange.toFixed(2) : '–'}</td>
                       <td className="py-1 px-1.5 text-right tabular-nums">{t.velo != null ? t.velo.toFixed(1) : '–'}</td>

@@ -111,6 +111,13 @@ FLOAT_COLS = {
     "pop_time": "PopTime",
     "exchange_time": "ExchangeTime",
     "time_to_base": "TimeToBase",
+    # Where the catcher's throw arrived (same frame as contact position):
+    # X = depth from the plate, Z = side (+ toward first base). Second base
+    # sits at X ~127, Z ~0; third at Z ~-63; first at Z ~+63. This is what
+    # tells a pop time to second from a pop time to third.
+    "base_pos_x": "BasePositionX",
+    "base_pos_y": "BasePositionY",
+    "base_pos_z": "BasePositionZ",
     # Point of contact (TrackMan's frame: X = depth toward the pitcher,
     # Y = height above ground, Z = side). Present in game AND BP files.
     "contact_x": "ContactPositionX",

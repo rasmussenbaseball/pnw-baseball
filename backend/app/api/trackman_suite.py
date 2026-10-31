@@ -207,6 +207,8 @@ def _write_gate(request: _Request, owner: str = Depends(_gate)) -> str:
 # All pitch columns in insert order: parser fields + derived flags.
 _DERIVED = ["is_in_zone", "is_swing", "is_whiff", "is_contact", "is_chase"]
 _PITCH_FIELDS = list(TEXT_COLS) + list(INT_COLS) + list(FLOAT_COLS) + _DERIVED
+# columns a re-upload may fill in on an existing pitch (null -> value only)
+_BACKFILL_COLS = ("base_pos_x", "base_pos_y", "base_pos_z")
 
 
 # ── Swing decision model (SD+) ─────────────────────────────────────
@@ -307,6 +309,12 @@ def _ensure_tables(cur):
                    WHERE table_name = 'tm_pitches' AND column_name = 'contact_x'""")
     if cur.fetchone() is None:
         for c in ("contact_x", "contact_y", "contact_z"):
+            cur.execute(f"ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS {c} DOUBLE PRECISION")
+    # throw target columns (added 2026-10): pop time to 2B vs 3B
+    cur.execute("""SELECT column_name FROM information_schema.columns
+                   WHERE table_name = 'tm_pitches' AND column_name = 'base_pos_x'""")
+    if cur.fetchone() is None:
+        for c in ("base_pos_x", "base_pos_y", "base_pos_z"):
             cur.execute(f"ALTER TABLE tm_pitches ADD COLUMN IF NOT EXISTS {c} DOUBLE PRECISION")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_session ON tm_pitches(owner_user_id, session_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tmp_owner_pitcher ON tm_pitches(owner_user_id, pitcher)")
@@ -439,12 +447,17 @@ def _ingest(cur, owner, parsed, filename):
             for p in parsed["pitches"]]
     inserted = skipped = 0
     if rows:
+        # A re-upload of a pitch we already hold only fills columns added
+        # after it was first stored (throw target), never overwrites data.
+        # xmax = 0 is true for a fresh insert, false for the conflict update.
+        backfill = ", ".join(f"{c} = COALESCE(tm_pitches.{c}, EXCLUDED.{c})" for c in _BACKFILL_COLS)
         returned = execute_values(
             cur,
             f"""INSERT INTO tm_pitches (owner_user_id, session_id, {cols})
-                VALUES %s ON CONFLICT (owner_user_id, pitch_uid) DO NOTHING RETURNING 1""",
+                VALUES %s ON CONFLICT (owner_user_id, pitch_uid) DO UPDATE SET {backfill}
+                RETURNING (xmax = 0) AS inserted""",
             rows, page_size=500, fetch=True)
-        inserted = len(returned)
+        inserted = sum(1 for r in returned if r["inserted"])
         skipped = len(rows) - inserted
 
     # Refresh session counts from what's actually stored
@@ -3805,7 +3818,13 @@ def trackman_catching(team: str | None = Query(None),
     THROWING: pop time -> estimated CS% (college-calibrated line), and
     arm runs = tracked attempts x (est CS% - corpus average) x 0.85
     runs per marginal caught steal. TrackMan doesn't record the runner's
-    outcome, so this prices the ARM, not the results.
+    outcome, so this prices the ARM, not the results. Pop times are split
+    by target base from BasePosition (2B ~127 ft out, 3B/1B ~63 ft to a
+    side); the CS% line and the headline pop are second-base throws only,
+    because a throw to third is 40 feet shorter and would flatter the arm.
+    Around-the-horn throws after a strikeout and dropped-third-strike
+    throws to first are clocked by TrackMan too and are kept OUT of every
+    pop time (see _THROW_BASE_SQL).
 
     BLOCKING: TrackMan flags balls in the dirt but NOT whether the
     catcher kept them in front, so blocking is reported as WORKLOAD
@@ -3824,7 +3843,19 @@ def trackman_catching(team: str | None = Query(None),
             SELECT p.catcher, p.catcher_team, COUNT(*) AS throws,
                    AVG(p.pop_time) AS avg_pop, MIN(p.pop_time) AS best_pop,
                    AVG(p.exchange_time) AS avg_exchange,
-                   AVG(p.throw_speed) AS avg_throw, MAX(p.throw_speed) AS max_throw
+                   AVG(p.throw_speed) AS avg_throw, MAX(p.throw_speed) AS max_throw,
+                   COUNT(*) FILTER (WHERE {_THROW_BASE_SQL} = '2B') AS n_2b,
+                   AVG(p.pop_time) FILTER (WHERE {_THROW_BASE_SQL} = '2B') AS avg_pop_2b,
+                   MIN(p.pop_time) FILTER (WHERE {_THROW_BASE_SQL} = '2B') AS best_pop_2b,
+                   AVG(p.exchange_time) FILTER (WHERE {_THROW_BASE_SQL} = '2B') AS avg_exchange_2b,
+                   AVG(p.throw_speed) FILTER (WHERE {_THROW_BASE_SQL} = '2B') AS avg_throw_2b,
+                   COUNT(*) FILTER (WHERE {_THROW_BASE_SQL} = '3B') AS n_3b,
+                   AVG(p.pop_time) FILTER (WHERE {_THROW_BASE_SQL} = '3B') AS avg_pop_3b,
+                   MIN(p.pop_time) FILTER (WHERE {_THROW_BASE_SQL} = '3B') AS best_pop_3b,
+                   COUNT(*) FILTER (WHERE {_THROW_BASE_SQL} = '1B') AS n_1b,
+                   AVG(p.pop_time) FILTER (WHERE {_THROW_BASE_SQL} = '1B') AS avg_pop_1b,
+                   COUNT(*) FILTER (WHERE {_THROW_BASE_SQL} = 'HORN') AS n_horn,
+                   COUNT(*) FILTER (WHERE {_THROW_BASE_SQL} = 'DROP3') AS n_drop3
             FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
             WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL AND p.pop_time IS NOT NULL
               {team_sql}
@@ -3939,8 +3970,24 @@ def trackman_catching(team: str | None = Query(None),
     def est_cs(pop):
         return max(0.05, min(0.65, 0.30 + (2.10 - pop) * 0.6))
 
-    tot_att = sum(r["throws"] for r in throw_rows.values())
-    corpus_cs = (sum(est_cs(float(r["avg_pop"])) * r["throws"] for r in throw_rows.values()) / tot_att
+    def _cs_pop(r):
+        """Pop time the CS% line is read at: second-base throws when we have
+        any; every clocked throw only when TrackMan placed none of them
+        (older rows without a target); None when every throw was placed and
+        none went to second (all around-the-horn / drop-third tosses)."""
+        if r.get("avg_pop_2b") is not None:
+            return float(r["avg_pop_2b"])
+        placed = sum((r.get(k) or 0) for k in ("n_3b", "n_1b", "n_horn", "n_drop3"))
+        return None if placed >= (r.get("throws") or 0) else float(r["avg_pop"])
+
+    def _cs_att(r):
+        """Throws that were real steal/pick attempts (arm value accrues on these)."""
+        placed = sum((r.get(k) or 0) for k in ("n_2b", "n_3b", "n_1b", "n_horn", "n_drop3"))
+        return (r.get("n_2b") or 0) + (r.get("n_3b") or 0) if placed else (r.get("throws") or 0)
+
+    _cs_rows = [r for r in throw_rows.values() if _cs_pop(r) is not None]
+    tot_att = sum(_cs_att(r) for r in _cs_rows)
+    corpus_cs = (sum(est_cs(_cs_pop(r)) * _cs_att(r) for r in _cs_rows) / tot_att
                  if tot_att else 0.30)
     # baseline for the blended metric: the corpus's ACTUAL caught-stealing
     # rate when we have enough real attempts, else the pop-based average
@@ -3955,21 +4002,31 @@ def trackman_catching(team: str | None = Query(None),
         row = {"catcher": name, "catcher_team": cteam}
         t = throw_rows.get(key)
         if t:
-            pop = float(t["avg_pop"])
-            cs = est_cs(pop)
+            pop = _cs_pop(t)
+            cs = est_cs(pop) if pop is not None else None
+            _r2 = lambda v: round(float(v), 2) if v is not None else None
             row.update({
                 "throws": t["throws"],
-                "avg_pop": round(pop, 2), "best_pop": round(float(t["best_pop"]), 2),
-                "avg_exchange": round(float(t["avg_exchange"]), 2) if t["avg_exchange"] is not None else None,
+                "avg_pop": round(float(t["avg_pop"]), 2), "best_pop": round(float(t["best_pop"]), 2),
+                "avg_exchange": _r2(t["avg_exchange"]),
                 "avg_throw": round(float(t["avg_throw"]), 1) if t["avg_throw"] is not None else None,
                 "max_throw": round(float(t["max_throw"]), 1) if t["max_throw"] is not None else None,
-                "est_cs_pct": round(cs, 3),
+                # by target base (None when no throw to that base was clocked)
+                "n_2b": t["n_2b"], "avg_pop_2b": _r2(t["avg_pop_2b"]), "best_pop_2b": _r2(t["best_pop_2b"]),
+                "avg_exchange_2b": _r2(t["avg_exchange_2b"]),
+                "avg_throw_2b": round(float(t["avg_throw_2b"]), 1) if t["avg_throw_2b"] is not None else None,
+                "n_3b": t["n_3b"], "avg_pop_3b": _r2(t["avg_pop_3b"]), "best_pop_3b": _r2(t["best_pop_3b"]),
+                "n_1b": t["n_1b"], "avg_pop_1b": _r2(t["avg_pop_1b"]),
+                "n_horn": t["n_horn"], "n_drop3": t["n_drop3"],
+                "cs_pop_basis": "2B" if t["avg_pop_2b"] is not None else ("all" if pop is not None else None),
+                "est_cs_pct": round(cs, 3) if cs is not None else None,
             })
             a = actuals.get(key)
             if a and a["att"] > 0:
                 # empirical Bayes: the arm (pop time) is the prior, the real
                 # throw-out record updates it; value accrues on REAL attempts
-                blended = (a["cs"] + cs * ARM_PRIOR_ATT) / (a["att"] + ARM_PRIOR_ATT)
+                prior = cs if cs is not None else corpus_actual
+                blended = (a["cs"] + prior * ARM_PRIOR_ATT) / (a["att"] + ARM_PRIOR_ATT)
                 row.update({
                     "sba": a["sba"], "cs_actual": a["cs"], "attempts": a["att"],
                     "actual_cs_pct": round(a["cs"] / a["att"], 3),
@@ -3981,7 +4038,7 @@ def trackman_catching(team: str | None = Query(None),
             else:
                 row.update({
                     "arm_basis": "est",
-                    "arm_runs": round(t["throws"] * (cs - corpus_cs) * 0.85, 1),
+                    "arm_runs": round(_cs_att(t) * (cs - corpus_cs) * 0.85, 1) if cs is not None else None,
                 })
         fr = frames.get(key)
         if fr and fr["taken"] >= 5:
@@ -4012,6 +4069,49 @@ def trackman_catching(team: str | None = Query(None),
     out = sorted((r for r in catchers.values() if r["catcher"] not in excluded),
                  key=lambda r: -(r.get("total_runs") or 0))
     return {"catchers": out, "corpus_cs_pct": round(corpus_cs, 3), "excluded": sorted(excluded)}
+
+
+# ── Throw target ───────────────────────────────────────────────────
+# BasePosition is where the catcher's throw arrived, in TrackMan's field
+# frame (X depth from the plate toward the mound, Z side, + toward first).
+# Second base is 127.3 ft straight out; first and third are 63.6 ft out
+# and 63.6 ft to a side. The bands are wide because a throw is clocked
+# where the fielder caught it, not at the bag.
+#
+# Not every clocked throw is a throwdown. After a strikeout with the bases
+# empty the catcher throws the ball around the horn to third (soft, 2.4 to
+# 3.0 "pop" in the corpus); on a dropped third strike he throws to first.
+# Neither is a steal attempt, so neither counts toward a pop time:
+#   2B    throw placed at second (a strike-'em-out-throw-'em-out counts)
+#   3B    throw placed at third, not on a strikeout pitch (or K + runner out)
+#   1B    back-pick to first, not on a strikeout pitch
+#   HORN  third-base throw on a strikeout pitch with fewer than two outs made
+#   DROP3 first-base throw on a strikeout pitch
+_THROW_BASE_SQL = (
+    "CASE WHEN p.base_pos_x > 100 AND ABS(p.base_pos_z) < 30 THEN '2B' "
+    "WHEN p.base_pos_z < -35 AND p.base_pos_x BETWEEN 30 AND 100 THEN "
+    "  (CASE WHEN p.k_or_bb = 'Strikeout' AND COALESCE(p.outs_on_play, 0) < 2 THEN 'HORN' ELSE '3B' END) "
+    "WHEN p.base_pos_z > 35 AND p.base_pos_x BETWEEN 30 AND 100 THEN "
+    "  (CASE WHEN p.k_or_bb = 'Strikeout' THEN 'DROP3' ELSE '1B' END) END")
+
+
+def throw_target(x, z, k_or_bb=None, outs_on_play=None):
+    """Python twin of _THROW_BASE_SQL: '2B' / '3B' / '1B' / 'HORN' / 'DROP3',
+    None when untracked or nowhere near a bag (a throw back to the mound)."""
+    if x is None or z is None:
+        return None
+    x, z = float(x), float(z)
+    if x > 100 and abs(z) < 30:
+        return "2B"
+    if 30 <= x <= 100 and z < -35:
+        return "HORN" if (k_or_bb == "Strikeout" and int(outs_on_play or 0) < 2) else "3B"
+    if 30 <= x <= 100 and z > 35:
+        return "DROP3" if k_or_bb == "Strikeout" else "1B"
+    return None
+
+
+_THROW_LABEL = {"2B": ("2B", "steal"), "3B": ("3B", "steal"), "1B": ("1B", "backpick"),
+                "HORN": ("3B", "horn"), "DROP3": ("1B", "drop3")}
 
 
 # ── Catcher exclusions ─────────────────────────────────────────────
@@ -4161,7 +4261,7 @@ def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(
                        p.outs_on_play, p.runs_scored, {_EFF_TYPE_P} AS ptype, p.rel_speed,
                        p.is_in_zone, p.is_swing, p.is_whiff, p.is_chase,
                        p.plate_loc_side AS px, p.plate_loc_height AS pz,
-                       p.throw_speed, p.pop_time, p.exchange_time, p.time_to_base,
+                       p.throw_speed, p.pop_time, p.exchange_time, p.time_to_base, p.base_pos_x, p.base_pos_z,
                        s.id AS session_id, s.session_date, s.session_type, s.home_team, s.away_team
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.catcher = %s{team_sql}{extra}
@@ -4213,7 +4313,9 @@ def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(
         if r["pop_time"] is None and r["throw_speed"] is None:
             continue
         terminal = r["k_or_bb"] in ("Strikeout", "Walk") or r["play_result"] or r["pitch_call"] in ("InPlay", "HitByPitch")
-        out_on = int(r["outs_on_play"] or 0) > 0 and not terminal
+        tgt = throw_target(r["base_pos_x"], r["base_pos_z"], r["k_or_bb"], r["outs_on_play"])
+        # a K + caught stealing shows as a strikeout pitch with two outs made
+        out_on = int(r["outs_on_play"] or 0) > 0 and (not terminal or (r["k_or_bb"] == "Strikeout" and int(r["outs_on_play"] or 0) >= 2))
         throws.append({"date": r["session_date"], "inning": r["inning"], "half": r["top_bottom"], "pitcher": r["pitcher"],
                        "batter": r["batter"], "count": f"{r['balls']}-{r['strikes']}" if r["balls"] is not None else None,
                        "ptype": r["ptype"], "call": r["pitch_call"],
@@ -4221,10 +4323,19 @@ def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(
                        "exchange": round(float(r["exchange_time"]), 2) if r["exchange_time"] is not None else None,
                        "velo": round(float(r["throw_speed"]), 1) if r["throw_speed"] is not None else None,
                        "to_base": round(float(r["time_to_base"]), 2) if r["time_to_base"] is not None else None,
-                       "result": "Runner out" if out_on else ("Drop 3rd / play" if terminal else "Safe or no play")})
+                       "to": _THROW_LABEL.get(tgt, (None, None))[0], "kind": _THROW_LABEL.get(tgt, (None, None))[1],
+                       "result": ("Around the horn" if tgt == "HORN" else "Runner out" if out_on
+                                  else "Drop 3rd" if tgt == "DROP3" else "Drop 3rd / play" if terminal else "Safe or no play")})
     pops = [t["pop"] for t in throws if t["pop"] is not None]
     exch = [t["exchange"] for t in throws if t["exchange"] is not None]
     velos = [t["velo"] for t in throws if t["velo"] is not None]
+    _real = [t for t in throws if t["kind"] in ("steal", "backpick")]
+    pops_2b = [t["pop"] for t in _real if t["pop"] is not None and t["to"] == "2B"]
+    pops_3b = [t["pop"] for t in _real if t["pop"] is not None and t["to"] == "3B"]
+    pops_1b = [t["pop"] for t in _real if t["pop"] is not None and t["to"] == "1B"]
+    exch_2b = [t["exchange"] for t in _real if t["exchange"] is not None and t["to"] == "2B"]
+    velos_2b = [t["velo"] for t in _real if t["velo"] is not None and t["to"] == "2B"]
+    cs_pops = pops_2b or pops   # the CS% line is a second-base standard
 
     def est_cs(pop):
         return max(0.05, min(0.65, 0.30 + (2.10 - pop) * 0.6))
@@ -4263,7 +4374,7 @@ def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(
             if log_events:
                 blocks = [x for x in log_events if x["event"] == "Block" or x["outcome"] in ("Block Success", "Block Miss", "Passed Ball")]
                 kept = [x for x in blocks if x["outcome"] == "Block Success" or (x["event"] == "Block" and x["outcome"] in ("Stolen Base", "Caught Stealing", "Pickoff"))]
-                pops = [x["pop_time"] for x in log_events if x.get("pop_time") is not None]
+                lpops = [x["pop_time"] for x in log_events if x.get("pop_time") is not None]
                 grades = [x["grade"] for x in log_events if x.get("grade") is not None]
                 log = {
                     "events": len(log_events), "matched": sum(1 for x in log_events if x["tm"]),
@@ -4278,7 +4389,7 @@ def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(
                     "pickoffs": sum(1 for x in log_events if x["outcome"] == "Pickoff"),
                     "drop3": sum(1 for x in log_events if x["event"] == "Drop 3rd"),
                     "drop3_outs": sum(1 for x in log_events if x["event"] == "Drop 3rd" and x["outcome"] == "Out"),
-                    "log_pop_avg": round(sum(pops) / len(pops), 2) if pops else None,
+                    "log_pop_avg": round(sum(lpops) / len(lpops), 2) if lpops else None,
                     "grade_avg": round(sum(grades) / len(grades), 2) if grades else None,
                 }
     except Exception:
@@ -4298,7 +4409,15 @@ def trackman_catcher_detail(catcher: str = Query(...), team: str | None = Query(
         "best_pop": round(min(pops), 2) if pops else None,
         "avg_exchange": round(sum(exch) / len(exch), 2) if exch else None,
         "avg_arm": round(sum(velos) / len(velos), 1) if velos else None, "max_arm": round(max(velos), 1) if velos else None,
-        "est_cs_pct": round(100 * est_cs(sum(pops) / len(pops)), 0) if pops else None,
+        "throws_2b": len(pops_2b), "avg_pop_2b": round(sum(pops_2b) / len(pops_2b), 2) if pops_2b else None,
+        "best_pop_2b": round(min(pops_2b), 2) if pops_2b else None,
+        "avg_exchange_2b": round(sum(exch_2b) / len(exch_2b), 2) if exch_2b else None,
+        "avg_arm_2b": round(sum(velos_2b) / len(velos_2b), 1) if velos_2b else None,
+        "throws_3b": len(pops_3b), "avg_pop_3b": round(sum(pops_3b) / len(pops_3b), 2) if pops_3b else None,
+        "best_pop_3b": round(min(pops_3b), 2) if pops_3b else None,
+        "throws_1b": len(pops_1b), "avg_pop_1b": round(sum(pops_1b) / len(pops_1b), 2) if pops_1b else None,
+        "throws_horn": sum(1 for t in throws if t["kind"] == "horn"), "throws_drop3": sum(1 for t in throws if t["kind"] == "drop3"),
+        "est_cs_pct": round(100 * est_cs(sum(cs_pops) / len(cs_pops)), 0) if cs_pops else None,
         "runners_out": sum(1 for t in throws if t["result"] == "Runner out"),
     }
     if log:
