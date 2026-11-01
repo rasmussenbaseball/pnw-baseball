@@ -197,40 +197,59 @@ function LineupCard({ vk, title, blurb, lineup, byName, loading, onSwap, onReset
 }
 
 function EligibilityEditor({ hitters, model, onSaved }) {
-  const [edits, setEdits] = useState({})   // player -> {positions, available, note}
-  const [busy, setBusy] = useState(null)
+  // Every change saves immediately (positions, availability, note on blur);
+  // the row shows saving / saved / error so nothing is left in limbo.
+  const [local, setLocal] = useState({})     // player -> {positions, available, note} (optimistic)
+  const [status, setStatus] = useState({})   // player -> 'saving' | 'saved' | error text
   const minP = model?.elig_min_pitches ?? 25
 
   function cur(h) {
-    return edits[h.player] || { positions: h.eligible, available: h.available, note: h.note || '' }
+    return local[h.player] || { positions: h.eligible, available: h.available, note: h.note || '' }
+  }
+  async function persist(h, next) {
+    setLocal(l => ({ ...l, [h.player]: next }))
+    setStatus(st => ({ ...st, [h.player]: 'saving' }))
+    try {
+      const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) }
+      const r = await fetch('/api/v1/trackman/lineup/eligibility', { method: 'PUT', headers,
+        body: JSON.stringify({ player: h.player, positions: next.positions, available: next.available, note: next.note || null }) })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        throw new Error(d.detail || `${r.status} ${r.statusText}`)
+      }
+      setStatus(st => ({ ...st, [h.player]: 'saved' }))
+      setTimeout(() => setStatus(st => (st[h.player] === 'saved' ? { ...st, [h.player]: null } : st)), 2000)
+      onSaved()
+    } catch (e) {
+      setStatus(st => ({ ...st, [h.player]: `not saved: ${e.message}` }))
+    }
   }
   function toggle(h, pos) {
     const c = cur(h)
     const positions = c.positions.includes(pos) ? c.positions.filter(p => p !== pos) : [...c.positions, pos]
-    setEdits(e => ({ ...e, [h.player]: { ...c, positions } }))
+    persist(h, { ...c, positions })
   }
-  function setAvail(h, v) { setEdits(e => ({ ...e, [h.player]: { ...cur(h), available: v } })) }
-  function setNote(h, v) { setEdits(e => ({ ...e, [h.player]: { ...cur(h), note: v } })) }
-  async function save(h) {
+  function setAvail(h, v) { persist(h, { ...cur(h), available: v }) }
+  function setNoteLocal(h, v) { setLocal(l => ({ ...l, [h.player]: { ...cur(h), note: v } })) }
+  function commitNote(h) {
     const c = cur(h)
-    setBusy(h.player)
-    const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) }
-    await fetch('/api/v1/trackman/lineup/eligibility', { method: 'PUT', headers,
-      body: JSON.stringify({ player: h.player, positions: c.positions, available: c.available, note: c.note || null }) })
-    setEdits(e => { const n = { ...e }; delete n[h.player]; return n })
-    setBusy(null)
-    onSaved()
+    if ((c.note || '') !== (h.note || '')) persist(h, c)
   }
   async function reset(h) {
-    setBusy(h.player)
-    const headers = await authHeaders()
-    await fetch(`/api/v1/trackman/lineup/eligibility/${encodeURIComponent(h.player)}`, { method: 'DELETE', headers })
-    setEdits(e => { const n = { ...e }; delete n[h.player]; return n })
-    setBusy(null)
-    onSaved()
+    setStatus(st => ({ ...st, [h.player]: 'saving' }))
+    try {
+      const headers = await authHeaders()
+      const r = await fetch(`/api/v1/trackman/lineup/eligibility/${encodeURIComponent(h.player)}`, { method: 'DELETE', headers })
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+      setLocal(l => { const n = { ...l }; delete n[h.player]; return n })
+      setStatus(st => ({ ...st, [h.player]: null }))
+      onSaved()
+    } catch (e) {
+      setStatus(st => ({ ...st, [h.player]: `not reset: ${e.message}` }))
+    }
   }
   return (
-    <Card title="Positions and availability" sub={`Auto read: ${minP}+ pitches at a spot in the positioning files (any season) or behind the plate. Click positions to override; a hitter with none can only DH.`}>
+    <Card title="Positions and availability" sub={`Auto read: ${minP}+ pitches at a spot in the positioning files (any season) or behind the plate. Click a position to change it; every change saves on the spot and the lineups above re-run. A hitter with none can only DH.`}>
       <div className="overflow-x-auto">
         <table className="w-full text-[12px]">
           <thead>
@@ -243,17 +262,18 @@ function EligibilityEditor({ hitters, model, onSaved }) {
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
             {hitters.map(h => {
               const c = cur(h)
-              const dirty = !!edits[h.player]
+              const st = status[h.player]
+              const manual = h.eligible_source === 'manual' || !!local[h.player]
               return (
                 <tr key={h.player} className={!c.available ? 'opacity-60' : ''}>
                   <td className="py-1 pr-2 whitespace-nowrap font-semibold">{h.player}<span className="ml-1 text-[9px] text-gray-400">{sideTag(h.side)}</span>
-                    {h.eligible_source === 'manual' && !dirty && <span className="ml-1 text-[9px] uppercase text-portal-purple dark:text-indigo-300" title="Coach override">set</span>}</td>
+                    {manual && <span className="ml-1 text-[9px] uppercase text-portal-purple dark:text-indigo-300" title="Coach-set; the auto read is ignored for this hitter">set</span>}</td>
                   <td className="py-1 pr-2 text-right tabular-nums text-gray-500">{h.views.all.pa}{!h.rated && <span className="ml-0.5 text-rose-500" title="Under 10 PA: not picked automatically">*</span>}</td>
                   <td className="py-1 pr-2">
                     <div className="flex gap-0.5">
                       {POSITIONS.map(p => (
-                        <button key={p} onClick={() => toggle(h, p)}
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ring-1 ${c.positions.includes(p)
+                        <button key={p} onClick={() => toggle(h, p)} disabled={st === 'saving'}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ring-1 disabled:opacity-60 ${c.positions.includes(p)
                             ? 'bg-portal-purple text-white ring-portal-purple' : 'text-gray-400 ring-gray-200 dark:ring-gray-700 hover:ring-portal-purple/60'}`}>{p}</button>
                       ))}
                     </div>
@@ -263,16 +283,19 @@ function EligibilityEditor({ hitters, model, onSaved }) {
                   </td>
                   <td className="py-1 pr-2">
                     <label className="inline-flex items-center gap-1 text-[11px]">
-                      <input type="checkbox" checked={c.available} onChange={e => setAvail(h, e.target.checked)} /> available
+                      <input type="checkbox" checked={c.available} onChange={e => setAvail(h, e.target.checked)} disabled={st === 'saving'} /> available
                     </label>
                   </td>
                   <td className="py-1 pr-2">
-                    <input value={c.note} onChange={e => setNote(h, e.target.value)} placeholder="hurt, pitcher only…"
+                    <input value={c.note} onChange={e => setNoteLocal(h, e.target.value)} onBlur={() => commitNote(h)}
+                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} placeholder="hurt, pitcher only…"
                       className="w-32 rounded border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-1.5 py-0.5 text-[11px]" />
                   </td>
-                  <td className="py-1 whitespace-nowrap text-right">
-                    {dirty && <button disabled={busy === h.player} onClick={() => save(h)} className="text-[10px] font-semibold text-white bg-portal-purple rounded px-2 py-0.5 mr-1 disabled:opacity-50">save</button>}
-                    {h.eligible_source === 'manual' && <button disabled={busy === h.player} onClick={() => reset(h)} className="text-[10px] font-semibold text-gray-400 hover:text-rose-600 disabled:opacity-50">back to auto</button>}
+                  <td className="py-1 whitespace-nowrap text-right text-[10px]">
+                    {st === 'saving' && <span className="text-gray-400 mr-2">saving…</span>}
+                    {st === 'saved' && <span className="text-emerald-600 mr-2">saved</span>}
+                    {st && st !== 'saving' && st !== 'saved' && <span className="text-rose-600 mr-2" title={st}>{st}</span>}
+                    {manual && <button disabled={st === 'saving'} onClick={() => reset(h)} className="font-semibold text-gray-400 hover:text-rose-600 disabled:opacity-50">back to auto</button>}
                   </td>
                 </tr>
               )
