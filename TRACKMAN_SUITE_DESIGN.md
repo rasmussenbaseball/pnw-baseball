@@ -190,6 +190,30 @@ Pop time by target base (2026-10-30)
 - Fixed in passing: the report's overall pop/best pop were being replaced
   by the coach's hand-log pops whenever a log existed.
 
+Lineup tab (2026-11-01)
+- stats/trackman_lineup.py + GET /trackman/lineup?team=&season= (+
+  starters_r / starters_l / starters_all to force a card's nine). Three
+  cards: vs RHP, vs LHP, Overall. Same slot-weight matrix as the site's
+  Lineup Helper (lineup_engine.SLOT_WEIGHTS, The Book) but every input is
+  a TrackMan projection: xBA/xTB/xwOBAcon per ball in play (60-BBE
+  prior, 25% actual blend), K%/BB% shrunk toward a pitch-level regression
+  (whiff, chase, zone contact, swing; fit PA-weighted on every hitter with
+  20+ game/scrimmage PAs, own and opponents), platoon = published gap
+  (RHB 6.5%, LHB 10.5% of wOBA) updated by RV/100 vs each hand with a
+  600-pitch prior, SD+ and two-strike contact as extra slot terms. Recency
+  half-life 12 weeks (floor 0.15), intrasquad PAs weighted 0.6; league
+  prior from games + scrimmages only (intrasquads run 21% BB).
+- Starters by best-slot fitness under eligibility (backtracking, DH open),
+  order by exact bitmask-DP assignment, each card simulated 3,000 games
+  (24 base-out Monte Carlo, DP on ground balls) vs a straight wOBA sort.
+- Eligibility: auto = 25+ pitches at a spot in tm_positioning (any season)
+  or 25+ pitches caught; coach overrides in tm_lineup_eligibility (RLS;
+  positions[], available, note) via PUT/DELETE /trackman/lineup/eligibility.
+  Roster = hitters with a live PA in the selected TrackMan season; <10 PA
+  are shown but never auto-picked. Speed from tm_baserunning_manual.
+- Frontend: components/portal/TrackmanLineupTab.jsx (swap-in from bench
+  re-optimizes the card; eligibility editor; projection table; model card).
+
 Still open
 - League baselines by level for hitters (no source yet).
 - Catcher blocking / throwing stay thin (pop time on ~85 pitches, no

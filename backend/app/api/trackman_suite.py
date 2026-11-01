@@ -5085,3 +5085,202 @@ def trackman_stat_averages(
     section("catching", catching)
     section("defense", defense)
     return {"context": context, "season": season, "averages": out}
+
+
+# ── Lineup optimizer (TrackMan) ─────────────────────────────────────────
+# Projection, platoon handling, exact order and the run simulator live in
+# stats/trackman_lineup.py. This layer pulls the corpus, works out where
+# each hitter has played (positioning files + catcher tags) and applies the
+# coach's eligibility edits.
+from ..stats import trackman_lineup as lineup_m
+
+_LINEUP_ELIG_READY = False
+_ELIG_MIN_PITCHES = 25     # pitches at a spot before it counts as a position he plays
+
+
+def _ensure_lineup_elig(cur):
+    global _LINEUP_ELIG_READY
+    if _LINEUP_ELIG_READY:
+        return
+    cur.execute("""CREATE TABLE IF NOT EXISTS tm_lineup_eligibility (
+                       owner_user_id UUID NOT NULL,
+                       player        TEXT NOT NULL,
+                       positions     TEXT[] NOT NULL DEFAULT '{}',
+                       available     BOOLEAN NOT NULL DEFAULT TRUE,
+                       note          TEXT,
+                       updated_at    TIMESTAMPTZ DEFAULT now(),
+                       PRIMARY KEY (owner_user_id, player))""")
+    cur.execute("ALTER TABLE tm_lineup_eligibility ENABLE ROW LEVEL SECURITY")
+    _LINEUP_ELIG_READY = True
+
+
+def _manual_elig(cur, owner):
+    _ensure_lineup_elig(cur)
+    cur.execute("SELECT player, positions, available, note, updated_at FROM tm_lineup_eligibility WHERE owner_user_id = %s", (owner,))
+    return {r["player"]: {"positions": list(r["positions"] or []), "available": bool(r["available"]),
+                          "note": r["note"], "at": r["updated_at"].isoformat() if r["updated_at"] else None}
+            for r in cur.fetchall()}
+
+
+def _auto_positions(cur, owner, team):
+    """{player: {pos: pitches}} from the positioning files (any season: a
+    shortstop in March is still a shortstop in October) plus catcher tags."""
+    out = defaultdict(lambda: defaultdict(int))
+    cur.execute("""SELECT f.key AS pos, f.value->>'name' AS name, COUNT(*) AS n
+                   FROM tm_positioning tp, jsonb_each(tp.fielders) f
+                   WHERE tp.owner_user_id = %s AND COALESCE(f.value->>'name', '') <> ''
+                   GROUP BY 1, 2""", (owner,))
+    for r in cur.fetchall():
+        if r["pos"] in lineup_m.POSITIONS and not r["name"].endswith(", -"):
+            out[r["name"]][r["pos"]] += int(r["n"])
+    cur.execute("""SELECT p.catcher AS name, COUNT(*) AS n FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                   WHERE p.owner_user_id = %s AND p.catcher IS NOT NULL AND p.catcher_team = %s
+                     AND s.session_type IN ('game','scrimmage','intrasquad')
+                   GROUP BY 1""", (owner, team))
+    for r in cur.fetchall():
+        out[r["name"]]["C"] += int(r["n"])
+    return {k: dict(v) for k, v in out.items()}
+
+
+class EligBody(BaseModel):
+    player: str
+    positions: list[str] = []
+    available: bool = True
+    note: str | None = None
+
+
+@router.put("/trackman/lineup/eligibility")
+def lineup_elig_set(body: EligBody, owner: str = Depends(_write_gate)):
+    """Coach's word on where a hitter can play (replaces the auto read) and
+    whether he is available at all (hurt, pitcher-only, redshirt)."""
+    name = (body.player or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="player is required")
+    pos = [p for p in dict.fromkeys(body.positions) if p in lineup_m.POSITIONS]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_lineup_elig(cur)
+        cur.execute("""INSERT INTO tm_lineup_eligibility (owner_user_id, player, positions, available, note)
+                       VALUES (%s, %s, %s, %s, %s)
+                       ON CONFLICT (owner_user_id, player) DO UPDATE
+                         SET positions = EXCLUDED.positions, available = EXCLUDED.available,
+                             note = EXCLUDED.note, updated_at = now()""",
+                    (owner, name, pos, bool(body.available), (body.note or "").strip() or None))
+        conn.commit()
+    return {"status": "ok", "player": name, "positions": pos, "available": bool(body.available)}
+
+
+@router.delete("/trackman/lineup/eligibility/{player:path}")
+def lineup_elig_clear(player: str, owner: str = Depends(_write_gate)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        _ensure_lineup_elig(cur)
+        cur.execute("DELETE FROM tm_lineup_eligibility WHERE owner_user_id = %s AND player = %s", (owner, player))
+        conn.commit()
+    return {"status": "ok", "player": player}
+
+
+def _names(csv_):
+    return [x.strip() for x in (csv_ or "").split(",") if x.strip()] or None
+
+
+@router.get("/trackman/lineup")
+def trackman_lineup(team: str = Query(...), season: int | None = Query(None),
+                    starters_r: str | None = Query(None), starters_l: str | None = Query(None),
+                    starters_all: str | None = Query(None), games: int = Query(3000),
+                    owner: str = Depends(_gate)):
+    """Best lineup vs RHP, vs LHP and overall for one team from TrackMan
+    data. The roster is every hitter of the team with a live PA in the
+    selected season; the projection uses every tracked pitch he has seen
+    (recency-weighted) and the K/BB regression is fit on the whole corpus,
+    own hitters and opponents alike. starters_* force the nine for a card."""
+    from datetime import date as _date
+    ssql, sparams = _season_clause(season)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT p.batter, p.batter_team, p.batter_side, p.pitcher_throws, p.pitch_call, p.k_or_bb, p.play_result,
+                       p.is_in_zone, p.balls, p.strikes, p.plate_loc_side, p.plate_loc_height,
+                       p.exit_speed, p.launch_angle, p.direction, p.rel_speed, p.effective_velo,
+                       p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
+                       {_EFF_TYPE_P} AS ptype,
+                       s.id AS session_id, s.session_date
+                FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.batter IS NOT NULL
+                  AND s.session_type IN ('game','scrimmage','intrasquad'){_NO_MISTAG}""",
+            [owner])
+        rows = [dict(r) for r in cur.fetchall()]
+        rv_base = _rv_baseline(cur, owner, "live")
+        # roster: this team's hitters with a live PA in the selected season
+        cur.execute(
+            f"""SELECT DISTINCT p.batter FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+                WHERE p.owner_user_id = %s AND p.batter_team = %s AND p.batter IS NOT NULL
+                  AND s.session_type IN ('game','scrimmage','intrasquad'){ssql}""",
+            [owner, team] + sparams)
+        roster = {r["batter"] for r in cur.fetchall()}
+        auto_pos = _auto_positions(cur, owner, team)
+        manual = _manual_elig(cur, owner)
+        bsr = _manual_bsr(cur, owner, season or 0)
+        excluded_c = _catcher_exclusions(cur, owner)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No live TrackMan pitches uploaded yet.")
+    # pitchers on this roster who also hit are fine; pitcher-only names never
+    # appear as batters so they never reach the roster
+    today = _date.today()
+    aggs = lineup_m.build_aggs(rows, today, rv_base)
+    lg = lineup_m.league_context(aggs)
+    k_fit = lineup_m.fit_rate_model(aggs, "k", ["whiff", "chase", "zone_contact", "swing"])
+    bb_fit = lineup_m.fit_rate_model(aggs, "bb", ["chase", "zone_swing", "swing", "whiff"])
+    sd_model = _swing_model(owner)
+    sd_sigma = sd_model.sigma if sd_model is not None else None
+
+    hitters = []
+    for name in sorted(roster):
+        h = aggs.get((name, team))
+        if h is None:
+            continue
+        season_v = lineup_m.project(h["all"], lg, k_fit, bb_fit, sd_model, sd_sigma)
+        hand_v, plat = lineup_m.platoon_views(h, season_v, lg)
+        auto = auto_pos.get(name, {})
+        auto_elig = sorted(p for p, n in auto.items() if n >= _ELIG_MIN_PITCHES)
+        if name in excluded_c and "C" in auto_elig:
+            auto_elig.remove("C")
+        m = manual.get(name)
+        elig = m["positions"] if m else auto_elig
+        hitters.append({
+            "player": name, "side": h["side"], "agg": h,
+            "eligible": set(elig), "eligible_source": "manual" if m else "auto",
+            "auto_positions": dict(sorted(auto.items(), key=lambda kv: -kv[1])),
+            "available": m["available"] if m else True, "note": m["note"] if m else None,
+            "rated": h["all"].pa_n >= 10,
+            "views": {"all": season_v, "R": hand_v["R"], "L": hand_v["L"]},
+            "platoon": plat, "last": h["last"].isoformat() if h["last"] else None,
+        })
+    speeds = lineup_m.speed_z(hitters, bsr)
+    for hh in hitters:
+        hh["speed_z"] = speeds.get(hh["player"], 0.0)
+    custom = {"R": _names(starters_r), "L": _names(starters_l), "all": _names(starters_all)}
+    custom = {k: v for k, v in custom.items() if v}
+    lineups = lineup_m.build_lineups(hitters, custom=custom, games=max(300, min(8000, games)))
+
+    roster_out = []
+    for hh in hitters:
+        roster_out.append({
+            "player": hh["player"], "side": hh["side"], "eligible": sorted(hh["eligible"]),
+            "eligible_source": hh["eligible_source"], "auto_positions": hh["auto_positions"],
+            "available": hh["available"], "note": hh["note"], "rated": hh["rated"], "last": hh["last"],
+            "speed_z": round(hh["speed_z"], 2), "sb": bsr.get(hh["player"], (0, 0))[0], "cs": bsr.get(hh["player"], (0, 0))[1],
+            "platoon": {k: (round(v, 3) if isinstance(v, float) else v) for k, v in hh["platoon"].items()},
+            "views": {k: lineup_m._view_out(v) for k, v in hh["views"].items()},
+        })
+    roster_out.sort(key=lambda r: -(r["views"]["all"]["woba"] or 0))
+    return {
+        "team": team, "season": season, "hitters": roster_out, "lineups": lineups,
+        "model": {
+            "league": {k: (round(v, 3) if isinstance(v, float) else v) for k, v in lg.items()},
+            "k_fit": k_fit, "bb_fit": bb_fit,
+            "half_life_weeks": lineup_m.HALF_LIFE_WEEKS, "platoon_gap": lineup_m.PLATOON_GAP,
+            "rv_base": round(rv_base, 4), "corpus_pitches": len(rows), "corpus_hitters": len(aggs),
+            "elig_min_pitches": _ELIG_MIN_PITCHES, "sd_model": sd_model is not None,
+        },
+    }

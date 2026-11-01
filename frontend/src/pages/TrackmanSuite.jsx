@@ -21,6 +21,7 @@ import { saveNodeAsPdf, saveNodesAsPdf, saveNodeAsCsv, downloadCsvText } from '.
 import StaffManager from '../components/portal/StaffManager'
 import TrackmanGlossary from '../components/portal/TrackmanGlossary'
 import StatTip, { StatAvgContext } from '../components/portal/StatTip'
+import TrackmanLineupTab from '../components/portal/TrackmanLineupTab'
 import { toneAttr } from '../lib/reportExport'
 import { Link } from 'react-router-dom'
 
@@ -175,7 +176,7 @@ export default function TrackmanSuite() {
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {[['overview', 'Overview & Upload'], ['pitching', 'Pitching'], ['hitting', 'Hitting'],
           ['lab', 'Pitcher Lab'], ['hlab', 'Hitter Lab'], ['leaders', 'Leaderboards'],
-          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['values', 'Values'], ['board', 'Coach Board'], ['reports', 'Custom Reporting'], ['league', 'League Baselines']].map(([k, label]) => (
+          ['sessions', 'Session Review'], ['catching', 'Catching'], ['defense', 'Defense'], ['lineup', 'Lineup'], ['values', 'Values'], ['board', 'Coach Board'], ['reports', 'Custom Reporting'], ['league', 'League Baselines']].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === k
@@ -200,6 +201,7 @@ export default function TrackmanSuite() {
       {tab === 'reports' && (hasData ? <CustomReportTab key={`${teamCtx.primary}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'board' && (hasData ? <CoachBoardTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
       {tab === 'league' && (hasData ? <LeagueTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
+      {tab === 'lineup' && (hasData ? <TrackmanLineupTab key={`${teamCtx.primary}-${season}`} teamCtx={teamCtx} season={season} /> : <EmptyNudge onGo={() => setTab('overview')} />)}
     </div>
     </StatAvgContext.Provider>
   )
