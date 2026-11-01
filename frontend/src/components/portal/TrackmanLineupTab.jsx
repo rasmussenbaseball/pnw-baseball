@@ -47,17 +47,18 @@ function Card({ title, sub, right, children }) {
 export default function TrackmanLineupTab({ teamCtx, season }) {
   const exportRef = useRef(null)
   const [team, setTeam] = useState(teamCtx.primary)
+  const [level, setLevel] = useState(() => { try { return localStorage.getItem('tmLineupLevel') || 'NAIA' } catch { return 'NAIA' } })
   // custom nine per card (names), set by swapping a bench hitter in
   const [custom, setCustom] = useState({})
   const [showModel, setShowModel] = useState(false)
   const params = {
-    team: team || undefined, season,
+    team: team || undefined, season, level,
     starters_r: custom.R?.join(',') || undefined,
     starters_l: custom.L?.join(',') || undefined,
     starters_all: custom.all?.join(',') || undefined,
   }
   const { data, loading, error, refetch } = useApi(team ? '/trackman/lineup' : null, params,
-    [team, season, params.starters_r, params.starters_l, params.starters_all])
+    [team, season, level, params.starters_r, params.starters_l, params.starters_all])
 
   const hitters = data?.hitters || []
   const byName = useMemo(() => Object.fromEntries(hitters.map(h => [h.player, h])), [hitters])
@@ -79,6 +80,13 @@ export default function TrackmanLineupTab({ teamCtx, season }) {
           className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2.5 py-1.5 text-sm font-semibold">
           {teamCtx.teams.map(t => <option key={t} value={t}>{t}{t === teamCtx.primary ? ' (my team)' : ''}</option>)}
         </select>
+        <label className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1" title="Spring league line the projections regress toward (half the prior; the tracked fall corpus is the other half)">
+          spring prior
+          <select value={level} onChange={e => { setLevel(e.target.value); try { localStorage.setItem('tmLineupLevel', e.target.value) } catch {} }}
+            className="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 px-2 py-1 text-xs font-semibold">
+            {['NAIA', 'D1', 'D2', 'D3', 'JUCO'].map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </label>
         <p className="text-xs text-gray-500 dark:text-gray-400 max-w-3xl">
           Same slot logic as the site's Lineup Helper (The Book: best hitters at 2 and 4, OBP and low strikeouts up top, power at 4 and 5, a real on-base bat at 9), but every input comes from TrackMan: expected production off exit velocity and launch angle instead of results, strikeout and walk rates projected from whiff, chase and zone contact on every pitch, platoon splits read from every pitch against each hand, swing decisions (SD+) for the table setters. Each card is then simulated for runs per game.
         </p>
@@ -95,7 +103,7 @@ export default function TrackmanLineupTab({ teamCtx, season }) {
 
       {data && (
         <div ref={exportRef} className="space-y-3">
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-3">
             {CARDS.map(([vk, title, blurb]) => (
               <LineupCard key={vk} vk={vk} title={title} blurb={blurb} lineup={data.lineups?.[vk]}
                 byName={byName} loading={loading} onSwap={(o, i) => swap(vk, o, i)} onReset={() => resetCard(vk)} isCustom={!!custom[vk]} />
@@ -121,7 +129,8 @@ function LineupCard({ vk, title, blurb, lineup, byName, loading, onSwap, onReset
         {isCustom && <button onClick={onReset} className="text-[10px] font-semibold text-rose-600">reset to optimal</button>}
         {loading && <span className="text-[10px] text-gray-400">updating…</span>}
       </div>}>
-      <table className="w-full text-[12px]">
+      <div className="overflow-x-auto -mx-1 px-1">
+      <table className="w-full text-[12px] min-w-[520px]">
         <thead>
           <tr className="text-left text-[9px] uppercase tracking-wide text-gray-400">
             <th className="py-1 pr-1">#</th><th className="py-1 pr-1">Pos</th><th className="py-1 pr-2">Hitter</th>
@@ -130,7 +139,6 @@ function LineupCard({ vk, title, blurb, lineup, byName, loading, onSwap, onReset
             <th className="py-1 px-1 text-right">K%</th><th className="py-1 px-1 text-right">BB%</th>
             <th className="py-1 px-1 text-right" title="Swing decisions, 100 = league">SD+</th>
             {hand && <th className="py-1 px-1 text-right" title="Platoon adjustment to wOBA, % (prior split updated by pitch-level run value vs this hand)">Plat</th>}
-            <th className="py-1 px-1 text-right" title="Slot fitness (runs per season vs an average hitter in this slot)">Fit</th>
             <th className="py-1 pl-1"></th>
           </tr>
         </thead>
@@ -139,8 +147,8 @@ function LineupCard({ vk, title, blurb, lineup, byName, loading, onSwap, onReset
             <tr key={s.player} className={swapFor === s.player ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}>
               <td className="py-1 pr-1 tabular-nums font-bold text-gray-500">{s.slot}</td>
               <td className={`py-1 pr-1 font-semibold ${s.position === 'DH' ? 'text-gray-400' : ''}`}>{s.position}</td>
-              <td className="py-1 pr-2 whitespace-nowrap font-semibold">{s.player}<span className="ml-1 text-[9px] text-gray-400">{sideTag(s.side)}</span>
-                {s.best_slot !== s.slot && <span className="ml-1 text-[9px] text-gray-400" title={`His single best slot would be ${s.best_slot}; the order balances the whole nine`}>({s.best_slot})</span>}</td>
+              <td className="py-1 pr-2 whitespace-nowrap font-semibold" title={`Slot fitness ${s.score.toFixed(0)} runs/season vs an average hitter here${s.best_slot !== s.slot ? ` · his single best slot is ${s.best_slot}; the order balances the whole nine` : ''}`}>
+                {s.player}<span className="ml-1 text-[9px] text-gray-400">{sideTag(s.side)}</span></td>
               <td className="py-1 px-1 text-right tabular-nums font-bold">{f3(s.woba)}</td>
               <td className="py-1 px-1 text-right tabular-nums">{f3(s.obp)}</td>
               <td className="py-1 px-1 text-right tabular-nums">{f3(s.slg)}</td>
@@ -148,15 +156,15 @@ function LineupCard({ vk, title, blurb, lineup, byName, loading, onSwap, onReset
               <td className="py-1 px-1 text-right tabular-nums">{f1(s.bb_pct)}</td>
               <td className={`py-1 px-1 text-right tabular-nums ${s.sd_plus == null ? 'text-gray-300' : s.sd_plus >= 110 ? 'text-emerald-600' : s.sd_plus <= 90 ? 'text-rose-600' : ''}`}>{s.sd_plus ?? '—'}</td>
               {hand && <td className={`py-1 px-1 text-right tabular-nums text-[11px] ${s.platoon_adj > 0 ? 'text-emerald-600' : s.platoon_adj < 0 ? 'text-rose-600' : 'text-gray-400'}`}>{s.platoon_adj == null ? '—' : `${s.platoon_adj > 0 ? '+' : ''}${s.platoon_adj.toFixed(1)}`}</td>}
-              <td className="py-1 px-1 text-right tabular-nums text-gray-500">{s.score.toFixed(0)}</td>
               <td className="py-1 pl-1 text-right">
                 <button onClick={() => setSwapFor(swapFor === s.player ? null : s.player)}
-                  className="text-[10px] font-semibold text-gray-400 hover:text-portal-purple" title="Replace this starter with a bench hitter">swap</button>
+                  className="text-[10px] font-semibold text-gray-400 hover:text-portal-purple" title="Replace this starter with a bench hitter">⇄</button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
       {swapFor && (
         <div className="mt-2 text-[11px] bg-gray-50 dark:bg-gray-900 rounded-lg p-2">
           <span className="font-semibold">Replace {swapFor} with:</span>
@@ -375,7 +383,8 @@ function ModelCard({ model }) {
     <Card title="How the model works">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[12px] text-gray-600 dark:text-gray-300">
         <div className="space-y-1.5">
-          <p><b>Corpus.</b> {model.corpus_pitches?.toLocaleString()} live pitches, {model.corpus_hitters} hitters (own and every opponent). League prior from games and scrimmages: wOBA {f3(lg.woba)}, OBP {f3(lg.obp)}, SLG {f3(lg.slg)}, K {f1(100 * lg.k)}%, BB {f1(100 * lg.bb)}%, HBP {f1(100 * lg.hbp)}%.</p>
+          <p><b>Corpus.</b> {model.corpus_pitches?.toLocaleString()} live pitches, {model.corpus_hitters} hitters (own and every opponent). Blended prior: wOBA {f3(lg.woba)}, OBP {f3(lg.obp)}, SLG {f3(lg.slg)}, K {f1(100 * lg.k)}%, BB {f1(100 * lg.bb)}%, HBP {f1(100 * lg.hbp)}%.</p>
+          <p><b>Spring prior.</b> {model.spring ? <>Fall TrackMan ball runs hot on walks (corpus {f1(100 * lg.fall_bb)}% BB, {f1(100 * lg.fall_k)}% K), so the environment every hitter shrinks toward is {Math.round(100 * (model.spring_weight ?? 0.5))}% the {model.spring.level} {model.spring.season} spring box-score line ({f1(100 * model.spring.bb)}% BB, {f1(100 * model.spring.k)}% K, {f1(100 * model.spring.hbp)}% HBP, {model.spring.pa.toLocaleString()} PA) and the rest the tracked corpus. The pitch-level K and BB predictions slide with it; the pull is on the level, not the spread between hitters.</> : 'No spring box-score line found for this level; the prior is the tracked corpus alone.'}</p>
           <p><b>Recency.</b> Every pitch weighted by half-life {model.half_life_weeks} weeks with a 0.15 floor; intrasquad PAs count 0.6 (own arms, 21% walks in the corpus).</p>
           <p><b>Expected production.</b> Each ball in play is credited with its xBA, xTB and xwOBAcon from exit velocity, launch angle and direction, shrunk toward the league per-batted-ball means with a 60-BBE prior; actual results blended in at 25%. Hit shape (1B/2B/3B/HR) comes from the barrel geometry of each ball.</p>
           <p><b>K and BB.</b> Observed rates shrink toward a prior (60 and 120 PA) that is itself the pitch-level prediction. K fit: {kf ? `${coef(kf)} (r² ${kf.r2}, ${kf.n} hitters)` : coef(null)}. BB fit: {bf ? `${coef(bf)} (r² ${bf.r2}, ${bf.n} hitters)` : coef(null)}.</p>

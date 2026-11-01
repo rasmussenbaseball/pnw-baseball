@@ -202,7 +202,11 @@ Lineup tab (2026-11-01)
   (RHB 6.5%, LHB 10.5% of wOBA) updated by RV/100 vs each hand with a
   600-pitch prior, SD+ and two-strike contact as extra slot terms. Recency
   half-life 12 weeks (floor 0.15), intrasquad PAs weighted 0.6; league
-  prior from games + scrimmages only (intrasquads run 21% BB).
+  prior = 50% tracked games + scrimmages (intrasquads run 21% BB) and 50%
+  the level's spring box-score line from batting_stats (`level` param,
+  default NAIA; _spring_league_rates), because fall TrackMan ball walks
+  13% vs 10.6% in NAIA spring 2026. Pitch-level K/BB predictions are
+  shifted by the same amount.
 - Starters by best-slot fitness under eligibility (backtracking, DH open),
   order by exact bitmask-DP assignment, each card simulated 3,000 games
   (24 base-out Monte Carlo, DP on ground balls) vs a straight wOBA sort.

@@ -317,11 +317,20 @@ def _hitter_side(h):
 
 # ── league context and the pitch-level K / BB fit ─────────────────────────
 
-def league_context(aggs, min_pa=1):
+SPRING_WEIGHT = 0.5   # share of the prior environment taken from the spring box-score league line
+
+
+def league_context(aggs, min_pa=1, spring=None):
     """League means over every hitter in the corpus (own and opponents),
     weighted by their PAs: the regression targets. Built from the "lg"
     aggregate, which counts games and scrimmages only (no intrasquads)
-    with no recency decay, so the prior is a game environment."""
+    with no recency decay, so the prior is a game environment.
+
+    spring: {k, bb, hbp, bip_hit, bip_tb, season, level, pa} from the
+    site's box scores for the level. Fall TrackMan ball runs hot on walks
+    (13% vs 10.6% in NAIA spring 2026), so the prior every hitter shrinks
+    toward is a 50/50 blend of the tracked corpus and the spring line.
+    The raw corpus values are kept under fall_* for the pitch-level fit."""
     tot = HitterAgg()
     for h in aggs.values():
         a = h["lg"]
@@ -343,6 +352,18 @@ def league_context(aggs, min_pa=1):
         "k2_contact": tot.k2_ct / max(1.0, tot.k2_sw),
         "hitters": sum(1 for h in aggs.values() if h["lg"].pa_n >= 20),
     }
+    for k in ("k", "bb", "hbp", "bip_hit", "bip_tb", "bip_wc"):
+        lg["fall_" + k] = lg[k]
+    if spring and spring.get("pa"):
+        w = SPRING_WEIGHT
+        for k in ("k", "bb", "hbp", "bip_hit", "bip_tb"):
+            if spring.get(k) is not None:
+                lg[k] = (1 - w) * lg[k] + w * spring[k]
+        # no x-stats in box scores: move wOBAcon with total bases per ball in play
+        if lg["fall_bip_tb"]:
+            lg["bip_wc"] = lg["fall_bip_wc"] * (lg["bip_tb"] / lg["fall_bip_tb"])
+        lg["spring"] = spring
+        lg["spring_weight"] = w
     lg.update(_derive_line(lg["k"], lg["bb"], lg["hbp"], lg["bip_hit"], lg["bip_tb"], lg["bip_wc"]))
     return lg
 
@@ -410,6 +431,11 @@ def project(agg, lg, k_fit, bb_fit, sd_model=None, sd_sigma=None):
     # pitch-level priors, trusted in proportion to pitches seen
     xk = _predict(k_fit, f)
     xbb = _predict(bb_fit, f)
+    # the fit's intercept lives at the fall-corpus level; slide it to the blended prior
+    if xk is not None:
+        xk = max(0.02, xk + (lg["k"] - lg.get("fall_k", lg["k"])))
+    if xbb is not None:
+        xbb = max(0.02, xbb + (lg["bb"] - lg.get("fall_bb", lg["bb"])))
     rel = agg.pitches_w / (agg.pitches_w + PRIOR_PITCH_FIT) if agg.pitches_w else 0.0
     prior_k = (xk * rel + lg["k"] * (1 - rel)) if xk is not None else lg["k"]
     prior_bb = (xbb * rel + lg["bb"] * (1 - rel)) if xbb is not None else lg["bb"]
@@ -462,11 +488,14 @@ def project(agg, lg, k_fit, bb_fit, sd_model=None, sd_sigma=None):
 
 
 def _sd_row(r):
+    """Same field map as the suite's _sd_row: the model reads is_swing /
+    is_whiff, so leaving them out prices every pitch as a take."""
     return {"plate_loc_side": r.get("plate_loc_side", r.get("px")), "plate_loc_height": r.get("plate_loc_height", r.get("pz")),
             "balls": r.get("balls"), "strikes": r.get("strikes"), "pitch_call": r.get("pitch_call"),
             "play_result": r.get("play_result"), "batter_side": r.get("batter_side"), "pitcher_throws": r.get("pitcher_throws"),
+            "ptype": r.get("ptype"), "is_swing": r.get("is_swing"), "is_whiff": r.get("is_whiff"),
             "exit_speed": r.get("exit_speed"), "launch_angle": r.get("launch_angle"), "direction": r.get("direction"),
-            "ptype": r.get("ptype"), "rel_speed": r.get("rel_speed"), "effective_velo": r.get("effective_velo")}
+            "rel_speed": r.get("rel_speed"), "session_type": r.get("session_type")}
 
 
 def platoon_views(h, season, lg):

@@ -5184,8 +5184,32 @@ def _names(csv_):
     return [x.strip() for x in (csv_ or "").split(",") if x.strip()] or None
 
 
+def _spring_league_rates(cur, level, site_season):
+    """League batting line for a level from the site's box scores: the most
+    recent spring season at or before site_season with a real sample."""
+    cur.execute(
+        """SELECT bs.season, SUM(bs.plate_appearances) AS pa, SUM(bs.at_bats) AS ab, SUM(bs.hits) AS h,
+                  SUM(bs.doubles) AS d2, SUM(bs.triples) AS d3, SUM(bs.home_runs) AS hr,
+                  SUM(bs.walks) AS bb, SUM(bs.strikeouts) AS k, SUM(bs.hit_by_pitch) AS hbp
+           FROM batting_stats bs JOIN teams t ON t.id = bs.team_id
+           JOIN conferences c ON c.id = t.conference_id JOIN divisions d ON d.id = c.division_id
+           WHERE d.level = %s AND bs.season <= %s
+           GROUP BY bs.season HAVING SUM(bs.plate_appearances) >= 2000
+           ORDER BY bs.season DESC LIMIT 1""", (level, site_season))
+    r = cur.fetchone()
+    if not r:
+        return None
+    pa, ab, k = float(r["pa"]), float(r["ab"]), float(r["k"])
+    tb = float(r["h"] + r["d2"] + 2 * r["d3"] + 3 * r["hr"])
+    bip = max(1.0, ab - k)
+    return {"season": r["season"], "level": level, "pa": int(pa),
+            "k": k / pa, "bb": float(r["bb"]) / pa, "hbp": float(r["hbp"]) / pa,
+            "bip_hit": float(r["h"]) / bip, "bip_tb": tb / bip}
+
+
 @router.get("/trackman/lineup")
 def trackman_lineup(team: str = Query(...), season: int | None = Query(None),
+                    level: str = Query("NAIA"),
                     starters_r: str | None = Query(None), starters_l: str | None = Query(None),
                     starters_all: str | None = Query(None), games: int = Query(3000),
                     owner: str = Depends(_gate)):
@@ -5200,16 +5224,17 @@ def trackman_lineup(team: str = Query(...), season: int | None = Query(None),
         cur = conn.cursor()
         cur.execute(
             f"""SELECT p.batter, p.batter_team, p.batter_side, p.pitcher_throws, p.pitch_call, p.k_or_bb, p.play_result,
-                       p.is_in_zone, p.balls, p.strikes, p.plate_loc_side, p.plate_loc_height,
+                       p.is_in_zone, p.is_swing, p.is_whiff, p.balls, p.strikes, p.plate_loc_side, p.plate_loc_height,
                        p.exit_speed, p.launch_angle, p.direction, p.rel_speed, p.effective_velo,
                        p.inning, p.top_bottom, p.pa_of_inning, p.pitch_of_pa,
                        {_EFF_TYPE_P} AS ptype,
-                       s.id AS session_id, s.session_date
+                       s.id AS session_id, s.session_date, s.session_type
                 FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
                 WHERE p.owner_user_id = %s AND p.batter IS NOT NULL
                   AND s.session_type IN ('game','scrimmage','intrasquad'){_NO_MISTAG}""",
             [owner])
         rows = [dict(r) for r in cur.fetchall()]
+        spring = _spring_league_rates(cur, level, _site_season(season))
         rv_base = _rv_baseline(cur, owner, "live")
         # roster: this team's hitters with a live PA in the selected season
         cur.execute(
@@ -5228,7 +5253,7 @@ def trackman_lineup(team: str = Query(...), season: int | None = Query(None),
     # appear as batters so they never reach the roster
     today = _date.today()
     aggs = lineup_m.build_aggs(rows, today, rv_base)
-    lg = lineup_m.league_context(aggs)
+    lg = lineup_m.league_context(aggs, spring=spring)
     k_fit = lineup_m.fit_rate_model(aggs, "k", ["whiff", "chase", "zone_contact", "swing"])
     bb_fit = lineup_m.fit_rate_model(aggs, "bb", ["chase", "zone_swing", "swing", "whiff"])
     sd_model = _swing_model(owner)
@@ -5275,9 +5300,11 @@ def trackman_lineup(team: str = Query(...), season: int | None = Query(None),
         })
     roster_out.sort(key=lambda r: -(r["views"]["all"]["woba"] or 0))
     return {
-        "team": team, "season": season, "hitters": roster_out, "lineups": lineups,
+        "team": team, "season": season, "level": level, "hitters": roster_out, "lineups": lineups,
         "model": {
-            "league": {k: (round(v, 3) if isinstance(v, float) else v) for k, v in lg.items()},
+            "league": {k: (round(v, 3) if isinstance(v, float) else v) for k, v in lg.items() if k != "spring"},
+            "spring": ({k: (round(v, 3) if isinstance(v, float) else v) for k, v in spring.items()} if spring else None),
+            "spring_weight": lineup_m.SPRING_WEIGHT,
             "k_fit": k_fit, "bb_fit": bb_fit,
             "half_life_weeks": lineup_m.HALF_LIFE_WEEKS, "platoon_gap": lineup_m.PLATOON_GAP,
             "rv_base": round(rv_base, 4), "corpus_pitches": len(rows), "corpus_hitters": len(aggs),
