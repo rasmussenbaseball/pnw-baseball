@@ -106,38 +106,12 @@ def resolve_team_name(display_name):
 
 
 def scraperapi_fetch(api_key, target_url, min_size=3000, label="page"):
-    """GET target_url through ScraperAPI, escalating proxy tiers if the
-    NWAC AWS WAF returns its tiny challenge page.
-
-    The NWAC site blocks datacenter IPs intermittently — a standard
-    ScraperAPI request usually works but sometimes comes back as a ~2 KB
-    challenge page. When that happens we retry on the premium (residential)
-    and then ultra-premium proxy pools, which get past the WAF reliably.
-
-    Returns the page HTML, or None if every tier was blocked.
-    """
-    tiers = [
-        ("standard", {}),
-        ("premium", {"premium": "true"}),
-        ("ultra_premium", {"ultra_premium": "true"}),
-    ]
-    last_size = 0
-    for tier_name, extra in tiers:
-        params = {"api_key": api_key, "url": target_url}
-        params.update(extra)
-        try:
-            resp = requests.get("http://api.scraperapi.com", params=params, timeout=120)
-            resp.raise_for_status()
-        except Exception as e:
-            logger.warning(f"{label}: ScraperAPI {tier_name} request failed: {e}")
-            continue
-        last_size = len(resp.text)
-        if last_size >= min_size and "captcha" not in resp.text.lower():
-            logger.info(f"{label}: got {last_size:,} bytes via {tier_name} proxy")
-            return resp.text
-        logger.warning(f"{label}: blocked via {tier_name} proxy (size={last_size})")
-    logger.warning(f"{label}: all proxy tiers blocked (last size={last_size})")
-    return None
+    """GET target_url the cheapest way that works (scripts/scraperapi_client.py):
+    direct first (NWAC blocks datacenters, so on the server or a GitHub runner
+    that fails once per run and the host is remembered), then ScraperAPI
+    standard, one retry, then premium. Returns the page HTML or None."""
+    import scraperapi_client as _sapi
+    return _sapi.get(target_url, min_size=min_size, label=label)
 
 
 def fetch_schedule(api_key, season_year):

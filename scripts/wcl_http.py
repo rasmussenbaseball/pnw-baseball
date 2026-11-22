@@ -80,48 +80,13 @@ def fetch(session, url, timeout=45, min_bytes=5000, must_contain=None, **kwargs)
     keep working unchanged (.text / .content / .status_code /
     .raise_for_status()).
     """
-    key = os.environ.get("SCRAPER_API_KEY", "").strip()
-    if not key:
-        # No key → direct fetch. Fine locally (residential IP); in CI/server
-        # the caller's raise_for_status() will surface the 405 as before.
-        return session.get(url, timeout=timeout, **kwargs)
-
-    # Cheap STANDARD proxy first (+1 quick retry for a transient block), then
-    # premium (residential), then ultra-premium — same escalation the NWAC
-    # box-score scraper uses. ScraperAPI adds latency, so widen the timeout.
-    tiers = (
-        ("standard", {}),
-        ("standard", {}),
-        ("premium", {"premium": "true"}),
-        ("ultra_premium", {"ultra_premium": "true"}),
-    )
-    sa_timeout = max(timeout, 90)
-    last = None
-    for tier_name, extra in tiers:
-        params = {"api_key": key, "url": url}
-        params.update(extra)
-        try:
-            r = session.get(SCRAPER_API_BASE, params=params,
-                            timeout=sa_timeout, **kwargs)
-            last = r
-            ok = r.status_code == 200 and len(r.content) >= min_bytes
-            if ok and must_contain and must_contain not in r.text:
-                ok = False
-                _log.warning("ScraperAPI %s: 200 but missing %r for %s — escalating",
-                             tier_name, must_contain, url)
-            elif not ok:
-                _log.warning("ScraperAPI %s: status=%s size=%sB for %s — escalating",
-                             tier_name, r.status_code, len(r.content), url)
-            if ok:
-                return r
-        except Exception as e:  # noqa: BLE001 — escalate on any transport error
-            _log.warning("ScraperAPI %s error for %s: %s", tier_name, url, e)
-        time.sleep(2)
-
-    if last is not None:
-        # Every tier came back blocked/short; hand back the last response so the
-        # caller's raise_for_status()/length checks can fail loudly as usual.
-        return last
-    # Every tier raised at the transport layer — last-ditch direct attempt so
-    # the caller gets a real Response or a real exception (never None).
+    import scraperapi_client as _sapi
+    r = _sapi.get_response(url, min_size=min_bytes, must_contain=must_contain,
+                           timeout=timeout, session=session, reject_captcha=False,
+                           headers=kwargs.get("headers"))
+    if r is not None:
+        return r
+    # Blocked everywhere, missing, or the credit floor was reached: hand back a
+    # direct Response so the caller's raise_for_status()/length checks fail
+    # loudly as before (never None).
     return session.get(url, timeout=timeout, **kwargs)

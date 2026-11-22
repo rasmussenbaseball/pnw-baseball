@@ -71,6 +71,7 @@ jobs:
       - name: Scrape stats
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          SCRAPERAPI_RUN_BUDGET: '150'  # max credits per run (scripts/scraperapi_client.py)
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           cd $GITHUB_WORKSPACE

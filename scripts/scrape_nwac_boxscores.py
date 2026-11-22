@@ -76,49 +76,12 @@ PRESTO_SEASON = presto_season_str(SEASON)  # e.g. "2026-27"
 # ── ScraperAPI fetch ──
 
 def fetch_via_scraper_api(url, premium=True, retries=2):
-    """
-    Fetch a URL through ScraperAPI with premium residential proxies.
-    Returns HTML string or None on failure.
-    """
-    if not SCRAPER_API_KEY:
-        logger.warning("No SCRAPER_API_KEY set — attempting direct fetch")
-        try:
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
-            if r.status_code == 200 and len(r.text) > 5000:
-                return r.text
-            logger.warning(f"Direct fetch failed: {r.status_code}, {len(r.text)} bytes")
-            return None
-        except Exception as e:
-            logger.error(f"Direct fetch error: {e}")
-            return None
-
-    # Escalating proxy tiers. NWAC's AWS WAF intermittently returns a ~2 KB
-    # challenge page (status 200 but tiny body); bumping to a bigger proxy pool
-    # gets past it. Try the cheap STANDARD proxy first (+ one quick retry for a
-    # transient block), then premium (residential), then ultra-premium. A clean
-    # NWAC box score returns ~200 KB on standard, so this costs ~1 credit in the
-    # normal case instead of always paying the 10-credit premium rate, while
-    # still recovering from transient WAF challenges.
-    tiers = [
-        ("standard", {}),
-        ("standard", {}),
-        ("premium", {"premium": "true"}),
-        ("ultra_premium", {"ultra_premium": "true"}),
-    ]
-    for tier_name, extra in tiers:
-        params = {"api_key": SCRAPER_API_KEY, "url": url}
-        params.update(extra)
-        try:
-            r = requests.get(SCRAPER_API_BASE, params=params, timeout=90)
-            if r.status_code == 200 and len(r.text) > 5000:
-                return r.text
-            logger.warning(f"ScraperAPI {tier_name}: status={r.status_code}, "
-                           f"size={len(r.text)} — escalating")
-        except Exception as e:
-            logger.warning(f"ScraperAPI {tier_name} error: {e}")
-        time.sleep(2)
-
-    return None
+    """Fetch a URL the cheapest way that works (scripts/scraperapi_client.py):
+    direct, then ScraperAPI standard (a clean NWAC box score is ~200 KB on
+    standard, 1 credit), one retry, then premium (10 credits). `premium` and
+    `retries` are kept for the old call signature. Returns HTML or None."""
+    import scraperapi_client as _sapi
+    return _sapi.get(url, min_size=5000, label=url.rsplit("/", 1)[-1])
 
 
 # ── Database helpers ──

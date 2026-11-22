@@ -67,6 +67,7 @@ jobs:
       - name: Scrape NWAC box scores
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          SCRAPERAPI_RUN_BUDGET: '120'  # max credits per run (scripts/scraperapi_client.py)
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SEASON_YEAR: ${{ env.SEASON }}
           # Cron expression that triggered this run (empty for manual runs)

@@ -706,24 +706,13 @@ def get_scraper_api_key():
 
 
 def fetch_presto_page(url, api_key=None):
-    """Fetch a PrestoSports page via ScraperAPI first, direct as fallback."""
-    # Try ScraperAPI first (NWAC blocks direct datacenter requests)
-    if api_key:
-        try:
-            api_url = f"http://api.scraperapi.com?api_key={api_key}&url={url}"
-            resp = requests.get(api_url, timeout=120)
-            resp.raise_for_status()
-            if len(resp.text) > 2000:
-                return resp.text
-        except Exception as e:
-            logger.error(f"ScraperAPI failed for {url}: {e}")
-
-    # Fallback to direct fetch
-    html = fetch_page(url)
-    if html and len(html) > 2000:
-        return html
-
-    return None
+    """Fetch a PrestoSports page the cheapest way that works
+    (scripts/scraperapi_client.py): direct, then ScraperAPI standard, then
+    premium, with a credit floor. This used to pay ScraperAPI first for every
+    team page even where a direct fetch works. api_key is kept for the old
+    call signature."""
+    import scraperapi_client as _sapi
+    return _sapi.get(url, min_size=2000, label=url, reject_captcha=False)
 
 
 def extract_future_nwac_games(season_year, today, team_map):

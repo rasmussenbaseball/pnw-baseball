@@ -52,6 +52,7 @@ jobs:
       - name: Scrape NWAC schedule
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          SCRAPERAPI_RUN_BUDGET: '20'  # max credits per run (scripts/scraperapi_client.py)
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SEASON_YEAR: ${{ env.SEASON }}
         run: |

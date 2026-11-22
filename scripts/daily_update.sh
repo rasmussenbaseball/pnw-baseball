@@ -45,12 +45,20 @@ SEASON=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --season)   SEASON="$2"; shift 2 ;;
+        --force)    FORCE=1; shift ;;
         --season=*) SEASON="${1#--season=}"; shift ;;
         *)          SEASON="$1"; shift ;;
     esac
 done
 if [ -z "$SEASON" ]; then
     SEASON="$(python3 -c "import sys; sys.path.insert(0,'scripts'); from season_utils import scrape_season; print(scrape_season())")"
+fi
+
+# ── Offseason guard ───────────────────────────────────────
+# Outside the spring window (Jan 15 to Jun 30 of the scrape season) every step
+# here re-scrapes a finished season. Skip unless --force was passed.
+if [ "$FORCE" != "1" ] && ! python3 scripts/season_utils.py --in-window --season "$SEASON"; then
+    exit 0
 fi
 
 # Colors for output

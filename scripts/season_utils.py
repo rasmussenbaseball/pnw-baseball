@@ -116,11 +116,53 @@ def season_from_presto(s) -> int:
     return int(text)
 
 
+# Spring scraping window for a season: NWAC and NAIA open in early February,
+# D1 finishes with the College World Series in late June. Outside it there is
+# nothing new to scrape for scrape_season(), so the server's daily update,
+# live scores and morning box-score rescrape sleep instead of re-scraping a
+# finished season every few hours (28 minutes a run, 4 runs a day, in Nov 2026).
+SCRAPE_WINDOW = ((1, 15), (6, 30))
+
+
+def in_scrape_window(today: _dt.date | None = None, season: int | None = None) -> bool:
+    """True while scrape_season()'s spring games can still change."""
+    today = today or _dt.date.today()
+    season = season or scrape_season(today)
+    (m0, d0), (m1, d1) = SCRAPE_WINDOW
+    return _dt.date(season, m0, d0) <= today <= _dt.date(season, m1, d1)
+
+
+def window_message(today: _dt.date | None = None, season: int | None = None) -> str:
+    today = today or _dt.date.today()
+    season = season or scrape_season(today)
+    (m0, d0), (m1, d1) = SCRAPE_WINDOW
+    msg = (f"Offseason: scrape season {season} runs {season}-{m0:02d}-{d0:02d} to "
+           f"{season}-{m1:02d}-{d1:02d}; today is {today}. Skipping (pass --force to run anyway).")
+    if today > _dt.date(season, m1, d1) and today.month <= 6:
+        msg += (f" If {season + 1} games have started, bump CURRENT_SEASON to {season + 1} "
+                f"(docs/SEASON_ROLLOVER.md, section A).")
+    return msg
+
+
 if __name__ == "__main__":
+    import sys as _sys
+    # `python3 scripts/season_utils.py --in-window` exits 0 inside the scrape
+    # window and 1 outside it (prints why), for cron lines.
+    if "--in-window" in _sys.argv:
+        _season = None
+        if "--season" in _sys.argv:
+            _i = _sys.argv.index("--season")
+            if _i + 1 < len(_sys.argv) and _sys.argv[_i + 1].isdigit():
+                _season = int(_sys.argv[_i + 1])
+        if in_scrape_window(season=_season):
+            _sys.exit(0)
+        print(window_message(season=_season))
+        _sys.exit(1)
     # `python3 scripts/season_utils.py` prints the values for a quick check.
     print(f"current_season = {current_season()}")
     print(f"scrape_season  = {scrape_season()}  ({presto_season_str(scrape_season())})")
     print(f"summer_season  = {summer_season()}")
+    print(f"in_scrape_window = {in_scrape_window()}")
 
 
 def page_matches_season(html, season) -> bool:

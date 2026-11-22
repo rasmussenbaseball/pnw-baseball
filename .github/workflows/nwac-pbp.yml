@@ -64,6 +64,7 @@ jobs:
       - name: Scrape NWAC PBP via scrape_pbp.py
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          SCRAPERAPI_RUN_BUDGET: '80'  # max credits per run (scripts/scraperapi_client.py)
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SEASON_YEAR: ${{ env.SEASON }}
         run: |

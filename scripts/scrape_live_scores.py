@@ -783,7 +783,14 @@ def scrape_seattle_u_live(season, today):
 def main():
     parser = argparse.ArgumentParser(description="Scrape live scores for PNW baseball")
     parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: derived from today's date)")
+    parser.add_argument("--force", action="store_true", help="Run even outside the spring scrape window")
     args = parser.parse_args()
+
+    # Every 10 minutes from cron: in the offseason there are no games to find.
+    from season_utils import in_scrape_window, window_message
+    if not args.force and not in_scrape_window(season=args.season):
+        logger.info(window_message(season=args.season))
+        return
 
     # Use Pacific time for "today"
     import pytz

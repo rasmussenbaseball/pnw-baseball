@@ -56,6 +56,11 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
+try:  # cron on the server does not export .env; GitHub Actions passes secrets
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # Home states for which we have a ranking source (BBNW + the PBR PDF). A
@@ -64,6 +69,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 sys.path.insert(0, str(ROOT / "backend"))
 from app.recruiting_constants import RANKED_STATES  # noqa: E402
 SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY")
+import scraperapi_client as _sapi  # noqa: E402
 SCHOOL_MAP_PATH = ROOT / "backend" / "data" / "recruit_school_map.json"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -164,35 +170,14 @@ def ensure_schema(cur):
 
 # ────────────────────────── ScraperAPI ──────────────────────────
 def scraperapi_fetch(api_key, target_url, min_size=3000, label="page"):
-    """GET target_url through ScraperAPI, escalating proxy tiers if a WAF/CDN
-    returns its tiny challenge page. Standard → premium (residential) →
-    ultra_premium. Returns page HTML, or None if every tier was blocked.
-
-    Copied verbatim (behaviour) from scripts/scrape_nwac_schedule.py — never hit
-    ScraperAPI without this tier escalation.
-    """
-    tiers = [
-        ("standard", {}),
-        ("premium", {"premium": "true"}),
-        ("ultra_premium", {"ultra_premium": "true"}),
-    ]
-    last_size = 0
-    for tier_name, extra in tiers:
-        params = {"api_key": api_key, "url": target_url}
-        params.update(extra)
-        try:
-            resp = requests.get("http://api.scraperapi.com", params=params, timeout=120)
-            resp.raise_for_status()
-        except Exception as e:
-            logger.warning(f"{label}: ScraperAPI {tier_name} request failed: {e}")
-            continue
-        last_size = len(resp.text)
-        if last_size >= min_size and "captcha" not in resp.text.lower():
-            logger.info(f"{label}: got {last_size:,} bytes via {tier_name} proxy")
-            return resp.text
-        logger.warning(f"{label}: blocked via {tier_name} proxy (size={last_size})")
-    logger.warning(f"{label}: all proxy tiers blocked (last size={last_size})")
-    return None
+    """Fetch target_url the cheapest way that works (scripts/scraperapi_client.py):
+    a free direct request first (Baseball Northwest and PBR both serve the
+    server directly, verified 2026-11-22), ScraperAPI standard then premium
+    only for a host that blocks us, never a proxy retry on a 404, and a credit
+    floor. Before this, every page went through ScraperAPI and one weekly run
+    drained the whole 1,000-credit month. api_key is kept for the old call
+    signature; the client reads the key itself."""
+    return _sapi.get(target_url, min_size=min_size, label=label)
 
 
 # ─────────────────────────── parsing ────────────────────────────
@@ -515,14 +500,11 @@ def fetch_state_indexes(grad_year, states):
 
 
 def run(grad_year, state_filter, dry_run):
-    if not SCRAPER_API_KEY and not dry_run:
-        logger.error("SCRAPER_API_KEY not set — live scraping must run ON THE "
-                     "SERVER. Aborting. (Use --dry-run only where the key exists.)")
-        sys.exit(1)
+    # Both source sites answer direct requests, so the key is only a fallback.
     if not SCRAPER_API_KEY:
-        logger.error("SCRAPER_API_KEY not set; even --dry-run needs it to fetch. "
-                     "Run this on the server.")
-        sys.exit(1)
+        logger.warning("SCRAPER_API_KEY not set; fetching directly with no proxy fallback.")
+    else:
+        logger.info(_sapi.status_line())
 
     school_map = load_school_map()
     states = [state_filter.upper()] if state_filter else PNW_STATES

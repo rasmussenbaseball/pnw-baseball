@@ -258,20 +258,21 @@ def fetch_page(url, retries=3, season_str=None):
     for attempt in range(retries):
         try:
             if _use_scraper_api:
-                # Route through ScraperAPI — shorter delays since proxy handles rate limits
+                # Cheapest path that works (scripts/scraperapi_client.py): direct,
+                # then ScraperAPI standard, then premium, with a credit floor. The
+                # client already escalates, so no outer retries that would pay again.
+                import scraperapi_client as _sapi
                 elapsed = time.time() - last_request_time
                 delay = random.uniform(1.0, 2.0)
                 if elapsed < delay:
                     time.sleep(delay - elapsed)
-
-                api_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={url}"
-                resp = session.get(api_url, timeout=90)
+                text = _sapi.get(url, min_size=500, label=url, reject_captcha=False)
                 last_request_time = time.time()
-                resp.raise_for_status()
-
-                # Check for ScraperAPI failure
-                if resp.status_code == 200 and len(resp.text) < 500 and "Request failed" in resp.text:
-                    raise requests.RequestException(f"ScraperAPI error: {resp.text[:200]}")
+                if text is None:
+                    logger.error(f"Unavailable (blocked, missing, or out of ScraperAPI credits): {url}")
+                    return None
+                logger.info(f"Fetched {url} ({len(text)} bytes, has_table={'<table' in text})")
+                return text
             else:
                 # Direct request (from Mac or server with cloudscraper)
                 elapsed = time.time() - last_request_time

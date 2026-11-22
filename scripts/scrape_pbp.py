@@ -316,13 +316,14 @@ def fetch_html_smart(url, timeout=60):
     """
     if _is_presto_url(url):
         target = _presto_pbp_url(url)
-        if not SCRAPER_API_KEY:
-            log.warning("Presto URL fetched without SCRAPER_API_KEY — likely to fail")
-            return fetch_html(target, timeout=timeout)
-        params = {"api_key": SCRAPER_API_KEY, "url": target, "premium": "true"}
-        resp = requests.get(SCRAPER_API_BASE, params=params, timeout=timeout)
-        resp.raise_for_status()
-        return resp.text
+        # Cheapest path that works (scripts/scraperapi_client.py): direct, then
+        # standard (1 credit), then premium (10). This used to go straight to
+        # premium, paying 10 credits for every NWAC game.
+        import scraperapi_client as _sapi
+        html = _sapi.get(target, min_size=5000, label=target.rsplit("/", 1)[-1], timeout=timeout)
+        if html is None:
+            raise requests.RequestException(f"unavailable (blocked, missing, or credit floor): {target}")
+        return html
     # Sidearm: direct fetch
     return fetch_html(url, timeout=timeout)
 

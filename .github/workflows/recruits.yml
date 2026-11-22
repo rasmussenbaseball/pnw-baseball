@@ -5,8 +5,12 @@ on:
   # so once a week keeps the recruiting-classes board fresh without hammering
   # Baseball Northwest. The scraper is idempotent (upsert on name+grad_year),
   # so re-running never duplicates.
-  schedule:
-    - cron: '0 16 * * 1'
+  # Weekly schedule moved to the server crontab (Mon 9 AM PT) on 2026-11-22:
+  # Baseball Northwest and PBR answer the server directly, so it costs no
+  # ScraperAPI credits there. This weekly run used to drain the whole
+  # 1,000-credit month. Manual runs from the Actions tab still work.
+  # schedule:
+  #   - cron: '0 16 * * 1'
   workflow_dispatch:
     inputs:
       grad_year:
@@ -43,6 +47,7 @@ jobs:
       - name: Scrape recruit commits (Baseball Northwest)
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          SCRAPERAPI_RUN_BUDGET: '60'  # max credits per run (scripts/scraperapi_client.py)
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           # Grad year = dispatch input, else the class enrolling for the upcoming
