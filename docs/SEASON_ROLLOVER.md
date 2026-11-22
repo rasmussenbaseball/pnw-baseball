@@ -62,6 +62,25 @@ paying when the account nears zero, so a bad month degrades to stale NWAC
 data instead of a pile of failed requests. Usage per run is logged in
 `/var/log/nwbb-scraperapi.log` (server) or the Actions log (`[scraperapi]`).
 
+### 1d. Restore the server's scrape cron jobs [Server]
+
+All automated scraping was paused on 2026-11-22 (Nate: nothing needs to run
+until spring). The server crontab lines are commented out with the prefix
+`# PAUSED 2026-11-22 (no scraping until spring): `. To restore them:
+
+```bash
+# [Server]
+crontab -l > /root/crontab.backup-before-restore
+crontab -l | sed "s/^# PAUSED 2026-11-22 (no scraping until spring): //" | crontab -
+crontab -l | grep -vE "^#|^$"      # daily_update, live scores, dedup, pbp, boxscores are back
+```
+
+Also uncomment the `schedule:` block in `.github/workflows/wcl-daily.yml`
+before June. Still running on purpose: the weekly recruit scrape (Mon 8 AM PT,
+direct fetches only, `SCRAPERAPI_DISABLED=1` so it can never spend credits),
+the daily Rapsodo model refresh, and the GitHub projections workflow (neither
+of those scrapes anything).
+
 ### 2. Turn the paused scrapers back on [Mac]
 
 - `scripts/daily_update.sh`: uncomment the blocks marked
