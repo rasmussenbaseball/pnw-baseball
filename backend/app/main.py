@@ -214,8 +214,31 @@ def startup():
         except Exception:
             logging.getLogger("nwbb.comps").exception("player-comp pool warm failed")
 
+    # Warm the pitch-level league baselines for the current season, one
+    # division at a time. Each rebuild is ~34 division-wide queries (~10 s), so
+    # without this the first player card per division after every deploy waited
+    # ~10 s. Sequential on purpose so the warm-up never floods the database.
+    def _warm_pitch_level_baselines():
+        log = logging.getLogger("nwbb.pitch_level")
+        try:
+            from .api.pitch_level import (_get_pitch_level_baselines,
+                                          _get_pitcher_pitch_level_baselines)
+            from .stats.advanced import DEFAULT_WEIGHTS
+            from .config import CURRENT_SEASON
+            from .models.database import get_connection
+            for level in ("D1", "D2", "D3", "NAIA", "JUCO"):
+                w = DEFAULT_WEIGHTS.get(level, DEFAULT_WEIGHTS["D1"])
+                with get_connection() as conn:
+                    cur = conn.cursor()
+                    _get_pitch_level_baselines(cur, CURRENT_SEASON, level, w)
+                    _get_pitcher_pitch_level_baselines(cur, CURRENT_SEASON, level, w)
+            log.info("pitch-level baselines warmed for %s", CURRENT_SEASON)
+        except Exception:
+            log.exception("pitch-level baseline warm failed")
+
     import threading
     threading.Thread(target=_warm_player_comps, daemon=True, name="comp-warm").start()
+    threading.Thread(target=_warm_pitch_level_baselines, daemon=True, name="pl-baseline-warm").start()
 
 
 # ── Serve headshots from a persistent directory (survives deploys) ──
