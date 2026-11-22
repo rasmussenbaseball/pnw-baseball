@@ -7,9 +7,11 @@ on:
   #   - 10:30 PM PT (05:30 UTC next day) — that evening's scores / box scores
   # Each run does the full pipeline (schedule → box scores → aggregates →
   # PBP → fielding); every step is idempotent, so running twice is safe.
-  schedule:
-    - cron: '0 15 * * *'
-    - cron: '30 5 * * *'
+  # PAUSED 2026-11-22 (Nate: no automated scraping until spring). To resume,
+  # uncomment these three lines; the job still skips itself outside May-Aug.
+  # schedule:
+  #   - cron: '0 15 * * *'
+  #   - cron: '30 5 * * *'
   workflow_dispatch:
     inputs:
       season:

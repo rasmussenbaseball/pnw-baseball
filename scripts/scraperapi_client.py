@@ -129,6 +129,11 @@ def _run_spent() -> int:
 def _can_spend(cost: int) -> bool:
     if _state["exhausted"]:
         return False
+    # Hard off switch: SCRAPERAPI_DISABLED=1 means this run never pays for a
+    # proxy (direct fetches still work). Used on the recruit cron.
+    if os.environ.get("SCRAPERAPI_DISABLED", "").strip() in ("1", "true", "yes"):
+        _mark_exhausted("SCRAPERAPI_DISABLED is set for this run")
+        return False
     if RUN_BUDGET and _run_spent() + cost > RUN_BUDGET:
         _mark_exhausted(f"this run's budget of {RUN_BUDGET} credits is spent")
         return False
