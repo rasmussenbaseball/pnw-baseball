@@ -542,7 +542,7 @@ export default function RecruitingClasses() {
         <div className="mt-4 px-1 text-[10px] text-gray-400 dark:text-gray-500 space-y-1 max-w-3xl">
           {view === 'hs' && (
             <>
-              <p><strong>Class Rating</strong> is the average prospect rating (0 to 100) of each class's ranked commits, weighted by state. Depth and unrated commits do not inflate it. The bar shows each rating relative to the top class.</p>
+              <p><strong>Class Rating</strong> is the average prospect rating (0 to 100) of each class's commits, on one national scale that accounts for how deep each state's talent pool runs. Because it is an average, signing more players never inflates it. The bar shows each rating relative to the top class.</p>
               <p><strong>Commits</strong> shows rated (from states we rank) of total. Classes with fewer than 3 rated commits are not ranked and sort last.</p>
             </>
           )}
