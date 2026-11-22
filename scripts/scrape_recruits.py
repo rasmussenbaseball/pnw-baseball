@@ -68,6 +68,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 # from class scoring (not penalized). Shared with the API.
 sys.path.insert(0, str(ROOT / "backend"))
 from app.recruiting_constants import RANKED_STATES  # noqa: E402
+from app import recruit_scoring as _rs  # noqa: E402
 SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY")
 import scraperapi_client as _sapi  # noqa: E402
 SCHOOL_MAP_PATH = ROOT / "backend" / "data" / "recruit_school_map.json"
@@ -226,6 +227,34 @@ def derive_bbnw_slug(school_name):
     s = re.sub(r"[^a-z0-9]+", "-", s)
     s = re.sub(r"-{3,}", "--", s)
     return s.strip("-")
+
+
+# The same player is often "Jake" on one site and "Jacob" on the other, or
+# carries a "(CJ)" / "Jr" on one only. Merging by exact spelling stored him
+# twice and counted him twice in his class average (11 pairs found 2026-11-22).
+NICKNAMES = {
+    "jake": "jacob", "ben": "benjamin", "benny": "benjamin", "alex": "alexander", "joe": "joseph",
+    "josef": "joseph", "joey": "joseph", "mike": "michael", "matt": "matthew", "nick": "nicholas",
+    "will": "william", "sam": "samuel", "sammy": "samuel", "dan": "daniel", "danny": "daniel",
+    "tony": "anthony", "chris": "christopher", "zach": "zachary", "zack": "zachary", "josh": "joshua",
+    "andy": "andrew", "drew": "andrew", "tom": "thomas", "tommy": "thomas", "tim": "timothy",
+    "cam": "cameron", "max": "maxwell", "nate": "nathan", "rob": "robert", "robbie": "robert",
+    "bobby": "robert", "jim": "james", "jimmy": "james", "steve": "steven", "greg": "gregory",
+    "eddie": "edward", "ed": "edward", "pat": "patrick", "gabe": "gabriel", "ken": "kenneth",
+    "kenny": "kenneth", "charlie": "charles", "jack": "john", "johnny": "john", "manny": "manuel",
+    "ricky": "richard", "rick": "richard", "freddie": "frederick", "fred": "frederick",
+}
+
+
+def canon_name_key(full):
+    """Spelling-tolerant identity key: drops "(CJ)", Jr/Sr/II/III and maps a
+    leading nickname to its full first name."""
+    full = re.sub(r"\([^)]*\)", " ", full or "")
+    k = re.sub(r"\s+", " ", re.sub(r"\b(jr|sr|ii|iii|iv)\b", "", norm_name(full))).strip()
+    parts = k.split(" ")
+    if len(parts) >= 2:
+        parts[0] = NICKNAMES.get(parts[0], parts[0])
+    return " ".join(parts)
 
 
 def split_name(full):
@@ -541,8 +570,7 @@ def run(grad_year, state_filter, dry_run):
     dup_count = 0
 
     def upsert_key(c):
-        return (norm_name(c["first_name"]), norm_name(c["last_name"]),
-                c["grad_year"])
+        return (canon_name_key(f'{c["first_name"]} {c["last_name"]}'), c["grad_year"])
 
     # 2) BBNW pass — walk each mapped school, parse its commits + join ranks.
     for team_id, info in sorted(school_map.items()):
@@ -695,6 +723,7 @@ def run(grad_year, state_filter, dry_run):
                 if "pbr" not in rec["sources"]:
                     rec["sources"].append("pbr")
         rank_state = br["state"] if br else rec.get("state")
+        rec["bbnw_rank_state"] = br["state"] if br else None
         rec["recruit_score"] = compute_score(
             rec.get("bbnw_state_rank"), rec.get("pbr_state_rank"), rank_state)
 
@@ -784,19 +813,31 @@ def run(grad_year, state_filter, dry_run):
     with get_conn() as conn:
         cur = conn.cursor()
         ensure_schema(cur)
+        _rs.ensure_columns(cur)
+        # Reuse the spelling a player is already stored under, so "Jake Miller"
+        # from PBR lands on the existing "Jacob Miller" row instead of a new one.
+        cur.execute("SELECT first_name, last_name FROM recruits WHERE grad_year = %s", (grad_year,))
+        stored = {}
+        for row in cur.fetchall():
+            stored.setdefault(canon_name_key(f"{row['first_name']} {row['last_name']}"),
+                              (row["first_name"], row["last_name"]))
         for r in all_recruits:
+            r.setdefault("bbnw_rank_state", None)
+            hit = stored.get(canon_name_key(f"{r['first_name']} {r['last_name']}"))
+            if hit:
+                r["first_name"], r["last_name"] = hit
             cur.execute("""
                 INSERT INTO recruits (
                     first_name, last_name, position, grad_year, high_school,
                     state, height, weight, committed_team_id, committed_raw,
                     pbr_state_rank, pbr_url, bbnw_state_rank, bbnw_url,
-                    recruit_score, sources, last_seen
+                    recruit_score, sources, bbnw_rank_state, last_seen
                 ) VALUES (
                     %(first_name)s, %(last_name)s, %(position)s, %(grad_year)s,
                     %(high_school)s, %(state)s, %(height)s, %(weight)s,
                     %(committed_team_id)s, %(committed_raw)s,
                     %(pbr_state_rank)s, %(pbr_url)s, %(bbnw_state_rank)s,
-                    %(bbnw_url)s, %(recruit_score)s, %(sources)s, now()
+                    %(bbnw_url)s, %(recruit_score)s, %(sources)s, %(bbnw_rank_state)s, now()
                 )
                 ON CONFLICT (first_name, last_name, grad_year) DO UPDATE SET
                     position          = EXCLUDED.position,
@@ -812,9 +853,14 @@ def run(grad_year, state_filter, dry_run):
                     bbnw_url          = EXCLUDED.bbnw_url,
                     recruit_score     = EXCLUDED.recruit_score,
                     sources           = EXCLUDED.sources,
+                    bbnw_rank_state   = EXCLUDED.bbnw_rank_state,
                     last_seen         = now()
             """, r)
             written += 1
+        # One national scale for every state (backend/app/recruit_scoring.py),
+        # computed from the stored rank columns, including the PBR national /
+        # state ranks this scraper cannot see.
+        _rs.rescore_class(cur, grad_year)
         conn.commit()
     logger.info("Upserted %d recruits for grad year %s.", written, grad_year)
 

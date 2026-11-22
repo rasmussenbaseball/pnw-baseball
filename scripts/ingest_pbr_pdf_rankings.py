@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """
+SUPERSEDED 2026-11-22 by scripts/ingest_pbr_live_rankings.py (all states,
+national ranks, one national score model). Kept for history; do not run.
+
 One-time ingester for the PBR (Prep Baseball Report) state-rankings PDF.
 
 PBR's full state rankings are paywalled, but Nate exported them to a PDF

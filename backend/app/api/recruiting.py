@@ -1491,12 +1491,10 @@ def _recruit_row(r):
         "state": r["state"],
         "height": r["height"],
         "weight": r["weight"],
-        # Single public "State Rank" = the rounded average of the source
-        # ranks we hold. We deliberately do NOT expose which outlets these
-        # came from (per Nate).
-        "state_rank": _combined_rank(r["bbnw_state_rank"], r["pbr_state_rank"]),
+        # Only the derived 0-100 score is public. Raw PBR ranks are paid
+        # content and never leave the server (Nate, 2026-11-22).
         "recruit_score": float(r["recruit_score"]) if r["recruit_score"] is not None else None,
-        "is_ranked": r["bbnw_state_rank"] is not None or r["pbr_state_rank"] is not None,
+        "is_ranked": any(r.get(k) is not None for k in ("bbnw_state_rank", "pbr_state_rank", "pbr_national_rank")),
         "headshot_url": r["headshot_url"],
     }
 
@@ -1536,7 +1534,8 @@ def _class_summary_rows(cur, grad_year, limit=None, level=None):
                COUNT(*) AS commits,
                COUNT(r.recruit_score) AS scored_commits,
                COUNT(*) FILTER (WHERE r.bbnw_state_rank IS NOT NULL
-                                   OR r.pbr_state_rank IS NOT NULL) AS ranked,
+                                   OR r.pbr_state_rank IS NOT NULL
+                                   OR r.pbr_national_rank IS NOT NULL) AS ranked,
                ROUND(AVG(r.recruit_score), 1)::float8 AS class_score,
                MAX(r.recruit_score) AS top_score
         FROM recruits r
@@ -1559,8 +1558,7 @@ def _class_summary_rows(cur, grad_year, limit=None, level=None):
         cur.execute(
             f"""
             SELECT DISTINCT ON (committed_team_id)
-                   committed_team_id AS tid, first_name, last_name, position,
-                   bbnw_state_rank, pbr_state_rank
+                   committed_team_id AS tid, first_name, last_name, position, recruit_score
             FROM recruits
             WHERE grad_year = %s AND committed_team_id IN ({ph})
             ORDER BY committed_team_id, recruit_score DESC NULLS LAST
@@ -1573,7 +1571,7 @@ def _class_summary_rows(cur, grad_year, limit=None, level=None):
             row["top_commit"] = (
                 {"name": f'{t["first_name"]} {t["last_name"]}'.strip(),
                  "position": t["position"],
-                 "rank": t["bbnw_state_rank"] or t["pbr_state_rank"]}
+                 "score": float(t["recruit_score"]) if t["recruit_score"] is not None else None}
                 if t else None
             )
             row["class_score"] = round(row["class_score"], 1) if row["class_score"] is not None else None

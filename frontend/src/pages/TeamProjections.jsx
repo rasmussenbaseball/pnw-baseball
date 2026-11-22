@@ -57,9 +57,9 @@ function Incoming({ row }) {
   const p = row.proj || {}
   // Committed high-school recruit (no college history yet) — green "freshman" tag.
   if (p.is_freshman) {
-    const rank = p.state_rank
+    const rating = p.recruit_score != null ? Math.round(p.recruit_score) : null
     return <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
-      title={`Incoming freshman${p.recruit_state ? ` from ${p.recruit_state}` : ''}${rank ? ` · #${rank} in state` : ''}`}>🎓 Fr{rank ? ` · #${rank}` : ''}</span>
+      title={`Incoming freshman${p.recruit_state ? ` from ${p.recruit_state}` : ''}${rating != null ? ` · prospect rating ${rating}` : ''}`}>🎓 Fr{rating != null ? ` · ${rating}` : ''}</span>
   }
   if (!row.is_incoming) return null
   const from = row.from_team || p.from_school

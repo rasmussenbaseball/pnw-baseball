@@ -398,7 +398,7 @@ function IncomingClassSection({ teamId, gradYear: initialGradYear = RECRUITING_G
             </div>
             <div className="grid sm:grid-cols-2 gap-x-6">
               {commits.map((c) => {
-                const rank = c.state_rank
+                const rating = c.recruit_score != null ? Math.round(c.recruit_score) : null
                 return (
                   <div key={c.id} className="flex items-center gap-2 py-1.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
                     <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">{c.name}</span>
@@ -408,13 +408,14 @@ function IncomingClassSection({ teamId, gradYear: initialGradYear = RECRUITING_G
                     <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
                       {[c.high_school, c.state].filter(Boolean).join(', ')}
                     </span>
-                    {rank != null ? (
-                      <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap shrink-0">
-                        State #{rank}
+                    {rating != null && c.is_ranked ? (
+                      <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap shrink-0"
+                        title="Prospect rating, 0 to 100 on one national scale">
+                        Rating {rating}
                       </span>
-                    ) : c.recruit_score == null ? (
-                      <span className="text-[10px] italic text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">No ranking</span>
-                    ) : null}
+                    ) : (
+                      <span className="text-[10px] italic text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">Not ranked</span>
+                    )}
                   </div>
                 )
               })}

@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import scrape_recruits as sr  # noqa: E402
 from app.models.database import get_connection  # noqa: E402
+from app import recruit_scoring as _rs  # noqa: E402
 
 # BBNW only ranks WA/OR/ID, so the index only needs those state pages.
 BBNW_STATES = ["WA", "OR", "ID"]
@@ -44,14 +45,15 @@ def main():
             if br and not bbnw_rank:        # fill a missing BBNW rank (Matson)
                 bbnw_rank = br["rank"]
                 filled += 1
-            rank_state = br["state"] if br else r["state"]  # WA for Karis
-            score = sr.compute_score(bbnw_rank, r["pbr_state_rank"], rank_state)
+            rank_state = br["state"] if br else None  # WA for Karis
             cur.execute(
-                "UPDATE recruits SET bbnw_state_rank = %s, recruit_score = %s "
-                "WHERE id = %s",
-                (bbnw_rank, score, r["id"]),
+                "UPDATE recruits SET bbnw_state_rank = %s, "
+                "bbnw_rank_state = COALESCE(%s, bbnw_rank_state) WHERE id = %s",
+                (bbnw_rank, rank_state, r["id"]),
             )
             rescored += 1
+        # Scores come from the one national model (backend/app/recruit_scoring.py).
+        _rs.rescore_class(cur, 2026)
         conn.commit()
         print(f"rescored {rescored} recruits; filled {filled} missing BBNW rank(s)")
 

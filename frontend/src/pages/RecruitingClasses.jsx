@@ -14,21 +14,29 @@ const COMBINED_TRANSFER_WEIGHT = 3.0
 // The three pages, selected by the buttons at the top.
 const VIEWS = [
   { key: 'hs', label: 'High School',
-    blurb: 'High school commits to PNW college programs, graded by their State Rank. Each school\'s Class Rating is the average prospect rating of its ranked commits (0 to 100), weighted by state. Depth and unrated commits do not inflate it.' },
+    blurb: 'High school commits to PNW college programs, each rated 0 to 100 on one national scale, so a prospect from any state compares directly with one from any other. A school\'s Class Rating is the average rating of its commits, so stacking depth does not inflate it.' },
   { key: 'transfers', label: 'Transfers',
     blurb: 'Incoming transfers (JUCO and four-year portal) committed to each PNW program, rated by their season WAR. A program\'s Transfer WAR is the sum of its transfers\' WAR; a D1 player dropping to a lower level counts double.' },
   { key: 'combined', label: 'Combined',
     blurb: 'The full incoming class for each program: high school newcomers plus transfers. Combined Class Rating is the HS rating plus a weighted transfer-WAR bonus, so strong HS classes stay on top while transfers nudge the order.' },
 ]
 
-// Single chip showing a recruit's State Rank, or a muted "Unranked".
-function RankChips({ stateRank }) {
-  if (stateRank == null) {
-    return <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 italic">Unranked</span>
+// Prospect tier from the 0-100 rating (a derived grade; raw source ranks are
+// never shown). Recruits with no ranking anywhere read "Not ranked".
+const TIERS = [
+  [85, 'Elite', 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200'],
+  [70, 'High', 'bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300'],
+  [50, 'Solid', 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'],
+  [30, 'Depth', 'bg-gray-100 text-gray-600 dark:bg-gray-700/60 dark:text-gray-300'],
+]
+function TierChip({ score, ranked }) {
+  if (!ranked || score == null) {
+    return <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 italic">Not ranked</span>
   }
+  const t = TIERS.find(([min]) => score >= min) || [0, 'Depth', TIERS[3][2]]
   return (
-    <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap">
-      State Rank #{stateRank}
+    <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${t[2]}`}>
+      {t[1]}
     </span>
   )
 }
@@ -72,7 +80,7 @@ function ClassCommitsPanel({ teamId, gradYear }) {
               <th className="px-3 py-1.5 text-center font-semibold">Pos</th>
               <th className="px-3 py-1.5 text-left font-semibold">High School</th>
               <th className="px-3 py-1.5 text-center font-semibold">Ht / Wt</th>
-              <th className="px-3 py-1.5 text-left font-semibold">State Rank</th>
+              <th className="px-3 py-1.5 text-left font-semibold">Tier</th>
               <th className="px-3 py-1.5 text-center font-semibold">Rating</th>
             </tr>
           </thead>
@@ -97,7 +105,7 @@ function ClassCommitsPanel({ teamId, gradYear }) {
                 <td className="px-3 py-1.5 text-center text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">
                   {c.height || c.weight ? `${c.height || '-'}${c.weight ? ` / ${c.weight}` : ''}` : '-'}
                 </td>
-                <td className="px-3 py-1.5"><RankChips stateRank={c.state_rank} /></td>
+                <td className="px-3 py-1.5"><TierChip score={c.recruit_score} ranked={c.is_ranked} /></td>
                 <td className="px-3 py-1.5 text-center text-xs tabular-nums">
                   {c.recruit_score != null ? (
                     <span className="font-bold text-nw-teal dark:text-nw-teal-light">{Math.round(c.recruit_score)}</span>

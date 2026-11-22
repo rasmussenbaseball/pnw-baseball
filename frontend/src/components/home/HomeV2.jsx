@@ -597,7 +597,7 @@ export function RecruitingPanel() {
       {loading && !data ? <Skeleton rows={7} /> : (
         <>
           {classes[0] && <Lead>{classes[0].short_name} signed the region's top class.</Lead>}
-          <p className="text-[12px] text-gray-500 dark:text-gray-400 -mt-2 mb-3">Class rating averages each commit's state ranking. Higher is better.</p>
+          <p className="text-[12px] text-gray-500 dark:text-gray-400 -mt-2 mb-3">Class rating averages each commit's prospect rating (0 to 100). Higher is better.</p>
           {classes.map((c, i) => (
             <Link key={c.team_id} to={`/recruiting-classes`} className="grid items-center gap-2 py-1.5 border-t border-gray-100 dark:border-gray-700/60 text-[12px] hover:bg-gray-50 dark:hover:bg-gray-700/40" style={{ gridTemplateColumns: '14px 22px 1fr 40px' }}>
               <Mono className="text-[11px] text-gray-400">{i + 1}</Mono>
