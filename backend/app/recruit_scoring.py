@@ -15,10 +15,17 @@ One national scale (Nov 2026 rebuild). Every rank is turned into a
     and averaged with the PBR rank (geometric mean of the two national ranks).
   * Baseball Northwest rank where PBR has no current list (ID, MT, BC, AB, WY):
     the hand-calibrated June 2026 curve (state quality x depth), unchanged.
-  * Unranked: a player below a PBR state list of N players sits just under the
-    list: 0.8 x the score of rank N+1, kept between 10 and 20. A player from a
-    place with no current list at all gets the generic 12. Every recruit now
-    gets a score, so every commit counts in its class average.
+  * Unranked: no list ranks him, so his public PBR profile measurables do
+    (fastball max, secondary velo, spin, exit velo, bat and hand speed,
+    position velo, pop time, 60 time). A ridge regression fitted on the
+    RANKED recruits (separately for pitchers and hitters) learns how those
+    measurables map to the rank-based score. Each unranked player then sits
+    in his state's unranked band (below the last ranked player in that state,
+    down to 5), placed by where his predicted score falls among all unranked
+    players of the class. Where PBR has no current list (HI, MT, BC, AB ...)
+    the predicted score is used directly, clipped to 6-40. No measurables
+    either: the 30th percentile of his band, or the generic 12.
+    Every recruit gets a score, so every commit counts in its class average.
 
 Raw PBR ranks are paid content: they live only in the recruits table and are
 never returned by the API. Only this derived score is public.
@@ -139,6 +146,122 @@ def recruit_score(*, state=None, grad_year=None, pbr_national_rank=None,
     return unranked_score(state, grad_year)
 
 
+# ── measurables model (unranked players) ──────────────────────────────────
+_PITCH_FEATS = ("fb_max", "sec_velo", "fb_spin")
+_HIT_FEATS = ("exit_velo", "bat_speed", "hand_speed", "pos_velo", "sixty", "pop")
+_LOWER_BETTER = {"sixty", "pop"}
+_POS_VELO_ADJ = {"c_velo": 6.0, "inf_velo": 0.0, "of_velo": -3.0}   # put C / IF / OF arms on one scale
+UNRANKED_LO = 5.0
+
+
+def _features(m: dict | None, position: str | None):
+    """(role, {feature: value}) from stored measurables; role is 'P' or 'H'."""
+    m = m or {}
+    if isinstance(m, str):
+        try:
+            m = json.loads(m)
+        except ValueError:
+            m = {}
+    pos = (position or "").upper()
+    is_p = ("HP" in pos or pos in ("P", "RHP", "LHP")) or (m.get("fb_max") and not m.get("exit_velo"))
+    if is_p:
+        sec = max([m[k] for k in ("cb", "sl", "ch", "spl", "ct") if m.get(k)] or [None]) if any(m.get(k) for k in ("cb", "sl", "ch", "spl", "ct")) else None
+        f = {"fb_max": m.get("fb_max"), "sec_velo": sec, "fb_spin": m.get("fb_spin")}
+        return "P", f
+    pv = None
+    for k, adj in _POS_VELO_ADJ.items():
+        if m.get(k):
+            pv = max(pv or 0.0, m[k] + adj)
+    f = {"exit_velo": m.get("exit_velo"), "bat_speed": m.get("bat_speed"), "hand_speed": m.get("hand_speed"),
+         "pos_velo": pv, "sixty": m.get("sixty"), "pop": m.get("pop")}
+    return "H", f
+
+
+class MeasurablesModel:
+    """Ridge regression of logit(score) on standardized measurables (missing
+    values filled with the feature mean plus a missing flag), one model for
+    pitchers and one for hitters, fitted on ranked recruits."""
+
+    def __init__(self):
+        self.models = {}
+
+    @staticmethod
+    def _logit(score):
+        p = min(0.99, max(0.01, score / 100.0))
+        return math.log(p / (1 - p))
+
+    def fit(self, rows):
+        import numpy as np
+        for role, feats in (("P", _PITCH_FEATS), ("H", _HIT_FEATS)):
+            data = []
+            for r in rows:
+                rl, f = _features(r.get("measurables"), r.get("position"))
+                if rl == role and any(v is not None for v in f.values()):
+                    data.append((f, self._logit(float(r["score"]))))
+            if len(data) < 25:
+                continue
+            stats = {}
+            for k in feats:
+                vals = [f[k] for f, _ in data if f.get(k) is not None]
+                if len(vals) >= 8:
+                    mu = sum(vals) / len(vals)
+                    sd = (sum((v - mu) ** 2 for v in vals) / len(vals)) ** 0.5 or 1.0
+                    stats[k] = (mu, sd)
+            keys = list(stats)
+            X = np.array([self._row(f, keys, stats) for f, _ in data])
+            y = np.array([t for _, t in data])
+            lam = 3.0
+            reg = lam * np.eye(X.shape[1]); reg[0, 0] = 0.0
+            beta = np.linalg.solve(X.T @ X + reg, X.T @ y)
+            pred = X @ beta
+            ss = float(((y - pred) ** 2).sum()); st = float(((y - y.mean()) ** 2).sum()) or 1.0
+            self.models[role] = {"keys": keys, "stats": stats, "beta": beta.tolist(),
+                                 "n": len(data), "r2": round(1 - ss / st, 3)}
+        return self
+
+    @staticmethod
+    def _row(f, keys, stats):
+        row = [1.0]
+        for k in keys:
+            mu, sd = stats[k]
+            v = f.get(k)
+            if v is None:
+                row += [0.0, 1.0]
+            else:
+                z = (v - mu) / sd
+                row += [-z if k in _LOWER_BETTER else z, 0.0]
+        return row
+
+    def predict(self, measurables, position):
+        role, f = _features(measurables, position)
+        mdl = self.models.get(role)
+        if not mdl or not any(v is not None for v in f.values()):
+            return None
+        row = self._row(f, mdl["keys"], mdl["stats"])
+        # the fit used 2 columns per key; beta lines up with row
+        t = sum(b * x for b, x in zip(mdl["beta"], row))
+        return round(100.0 / (1.0 + math.exp(-t)), 1)
+
+
+def unranked_band(state, grad_year):
+    """(hi, has_list): the top of a state's unranked band = just below the
+    last ranked player of that state's PBR list."""
+    label = list_for_state(state)
+    c = _curve(label, grad_year)
+    if c is None:
+        return None, False
+    n = (c.get("n") or {}).get(str(grad_year)) if grad_year else None
+    if not n:
+        n = max((c.get("n") or {}).values() or [0])
+    if not n:
+        return None, False
+    return round(0.95 * score_from_national(c["b"] + c["a"] * (n + 1)), 1), True
+
+
+def _is_ranked(r):
+    return any(r.get(k) for k in ("pbr_national_rank", "pbr_state_rank", "bbnw_state_rank"))
+
+
 def score_row(r: dict) -> float:
     """recruit_score() from a recruits-table row (dict)."""
     return recruit_score(
@@ -149,6 +272,9 @@ def score_row(r: dict) -> float:
 
 
 SCHEMA_SQL = (
+    "ALTER TABLE recruits ADD COLUMN IF NOT EXISTS pbr_profile_url text",
+    "ALTER TABLE recruits ADD COLUMN IF NOT EXISTS measurables jsonb",
+    "ALTER TABLE recruits ADD COLUMN IF NOT EXISTS measurables_at timestamptz",
     "ALTER TABLE recruits ADD COLUMN IF NOT EXISTS pbr_national_rank int",
     "ALTER TABLE recruits ADD COLUMN IF NOT EXISTS pbr_rank_list text",
     "ALTER TABLE recruits ADD COLUMN IF NOT EXISTS bbnw_rank_state text",
@@ -162,12 +288,48 @@ def ensure_columns(cur):
 
 def rescore_class(cur, grad_year: int) -> int:
     """Recompute recruit_score for every recruit in a class from the stored
-    rank columns. Safe to run any time; returns rows updated."""
+    rank columns and measurables. Safe to run any time; returns rows updated."""
     ensure_columns(cur)
-    cur.execute("""SELECT id, state, grad_year, pbr_national_rank, pbr_state_rank, pbr_rank_list,
-                          bbnw_state_rank, bbnw_rank_state
-                   FROM recruits WHERE grad_year = %s""", (grad_year,))
-    rows = cur.fetchall()
+    cols = """id, state, grad_year, position, pbr_national_rank, pbr_state_rank, pbr_rank_list,
+              bbnw_state_rank, bbnw_rank_state, measurables"""
+    # Train on every ranked recruit with measurables (all classes on file).
+    cur.execute(f"SELECT {cols} FROM recruits WHERE measurables IS NOT NULL")
+    train = []
+    for r in cur.fetchall():
+        r = dict(r)
+        if _is_ranked(r):
+            r["score"] = score_row(r)
+            train.append(r)
+    model = MeasurablesModel().fit(train)
+
+    cur.execute(f"SELECT {cols} FROM recruits WHERE grad_year = %s", (grad_year,))
+    rows = [dict(r) for r in cur.fetchall()]
+    scores = {}
+    unranked = []
     for r in rows:
-        cur.execute("UPDATE recruits SET recruit_score = %s WHERE id = %s", (score_row(dict(r)), r["id"]))
+        if _is_ranked(r):
+            scores[r["id"]] = score_row(r)
+        else:
+            r["pred"] = model.predict(r.get("measurables"), r.get("position"))
+            unranked.append(r)
+    # Percentile of each unranked player's predicted score among the class's
+    # unranked players with measurables (ties share the middle rank).
+    preds = sorted(x["pred"] for x in unranked if x["pred"] is not None)
+    def pct(v):
+        if not preds:
+            return 0.3
+        below = sum(1 for p in preds if p < v); eq = sum(1 for p in preds if p == v)
+        return (below + 0.5 * eq) / len(preds)
+    for r in unranked:
+        hi, has_list = unranked_band(r.get("state"), grad_year)
+        if has_list:
+            q = pct(r["pred"]) if r["pred"] is not None else 0.3
+            scores[r["id"]] = round(UNRANKED_LO + (hi - UNRANKED_LO) * q, 1)
+        elif r["pred"] is not None:
+            scores[r["id"]] = round(min(40.0, max(6.0, r["pred"])), 1)
+        else:
+            scores[r["id"]] = UNRANKED_GENERIC
+    for rid, sc in scores.items():
+        cur.execute("UPDATE recruits SET recruit_score = %s WHERE id = %s", (sc, rid))
+    rescore_class.last_model = {k: {kk: v[kk] for kk in ("n", "r2", "keys")} for k, v in model.models.items()}
     return len(rows)
