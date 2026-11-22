@@ -235,6 +235,11 @@ Service name is `nwbb` (NOT `pnw-baseball` or `pnw-baseball-api`).
 | Daily update | 1 PM, 4 PM, 7 PM, 11 PM | `daily_update.sh` |
 | Live scores | Every 10 min, 8 AM to 8 PM | `scrape_live_scores.py` |
 | Dedup games | 2 AM | `dedup_games.py` |
+| Recruit commits | Mon 8 AM | `scrape_recruits.py` (moved from GitHub Actions 2026-11-22; direct fetch, no ScraperAPI) |
+
+Offseason gate (2026-11-22): the daily update, live scores and the morning box-score rescrape skip themselves outside Jan 15 to Jun 30 of the scrape season (`scripts/season_utils.py` `in_scrape_window()`). Bumping CURRENT_SEASON in January turns them back on; `--force` runs one anyway.
+
+**ScraperAPI rule:** never call api.scraperapi.com directly. Use `scripts/scraperapi_client.py` (`get()` / `get_response()`): it tries a free direct fetch first, pays standard before premium, never retries a 404, stops at a credit floor, honors `SCRAPERAPI_RUN_BUDGET`, and logs each run's credits to `/var/log/nwbb-scraperapi.log`. The account is on a 1,000-credit monthly plan; see docs/SEASON_ROLLOVER.md section 1c before re-enabling the NWAC workflows.
 
 `daily_update.sh` runs (in order): scrape_d1, d2, d3, naia, boxscores, update_positions, records, national_ratings, future_schedules, backfill_player_ids, dedup_games.
 

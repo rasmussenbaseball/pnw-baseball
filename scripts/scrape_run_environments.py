@@ -142,8 +142,11 @@ NCAA_DIV_LEVEL = {"1": "D1", "2": "D2", "3": "D3"}
 
 
 def _scraperapi(url, key):
-    return requests.get("https://api.scraperapi.com/",
-                        params={"api_key": key, "url": url}, timeout=150).text
+    """stats.ncaa.org is WAF-blocked; fetch through the shared budget-aware
+    client (scripts/scraperapi_client.py). Returns "" when unavailable so the
+    parsers see an empty page instead of crashing."""
+    import scraperapi_client as _sapi
+    return _sapi.get(url, min_size=2000, label=url, timeout=150) or ""
 
 
 def _ncaa_final_period(div, key):

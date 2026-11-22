@@ -57,23 +57,11 @@ SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY")
 
 def fetch_with_scraper_api(url, retries=3):
     """Fetch a URL through ScraperAPI to bypass WAF."""
-    if not SCRAPER_API_KEY:
-        logger.warning("  SCRAPER_API_KEY not set, cannot fetch NWAC pages")
-        return None
-    for attempt in range(retries):
-        try:
-            api_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={url}"
-            resp = requests.get(api_url, timeout=90)
-            resp.raise_for_status()
-            if len(resp.text) < 500 or "Request failed" in resp.text:
-                logger.warning(f"  ScraperAPI returned short/error response on attempt {attempt+1}")
-                time.sleep(2)
-                continue
-            return resp.text
-        except Exception as e:
-            logger.warning(f"  ScraperAPI attempt {attempt+1}/{retries} failed: {e}")
-            time.sleep(2)
-    return None
+    # Shared budget-aware client: direct first, then standard, then premium,
+    # with a credit floor (scripts/scraperapi_client.py). `retries` kept for
+    # the old signature.
+    import scraperapi_client as _sapi
+    return _sapi.get(url, min_size=500, label=url, reject_captcha=False)
 
 
 def parse_sidearm_json_ld(html):

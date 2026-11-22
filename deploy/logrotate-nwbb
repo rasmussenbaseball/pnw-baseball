@@ -15,6 +15,8 @@
 /var/log/nwbb-pbp.log
 /var/log/nwbb-pbp-backfill.log
 /var/log/boxscores_morning_rescrape.log
+/var/log/nwbb-recruits.log
+/var/log/nwbb-scraperapi.log
 {
     daily
     rotate 14

@@ -23,6 +23,45 @@ Do these in order. Steps 1 to 3 are file edits on the Mac, step 4 deploys.
 - `TRACKER_SEASONS` in the same file lists past years by hand
   (`[2026, 2025, 2024]`); add 2026 there if it is missing.
 
+### 1b. The offseason gate lifts on its own once step 1 is done
+
+`daily_update.sh`, live scores and the morning box-score rescrape skip
+themselves outside Jan 15 to Jun 30 of the scrape season
+(`season_utils.in_scrape_window()`, added 2026-11-22). Until CURRENT_SEASON is
+bumped to 2027 they keep saying "Offseason ... skipping" in
+`/var/log/nwbb-scrape.log`, so step 1 is what turns them back on. Any manual
+run can pass `--force`.
+
+### 1c. ScraperAPI budget for the NWAC season [decide before step 2]
+
+NWAC blocks the server and GitHub runners, so every NWAC page costs
+ScraperAPI credits. The account is on the 1,000-credit monthly plan, which
+cannot carry an NWAC season. Estimated in-season use with today's schedules
+and the new client (standard proxy first, premium only when blocked):
+
+| Job | Credits / month |
+|---|---|
+| `nwac-stats.yml` daily (about 27 teams x 3 pages) | ~2,500 |
+| Future schedules, NWAC team pages, 4 runs a day | ~3,200 |
+| `nwac-boxscores.yml` (new games + 2-day rescrape) | ~550 |
+| `nwac-schedule.yml` 8 runs a day | ~480 |
+| `nwac-pbp.yml` (was ~1,600 when every game paid premium) | ~160 |
+| Total | ~7,000 |
+
+Pick one before re-enabling the NWAC workflows:
+- Upgrade ScraperAPI for February through May only (the next plan up is far
+  above 7,000 credits), then drop back to the free plan in June.
+- Run the NWAC jobs from a home connection instead (NWAC loads fine from a
+  residential IP, verified 2026-11-22), which costs nothing but needs a
+  machine that is on at the scheduled times.
+- Cut frequency to fit 1,000 (stats weekly, schedule twice a day, future
+  schedules once a day). NWAC pages would update days late.
+
+Every workflow carries a `SCRAPERAPI_RUN_BUDGET` cap, and the client stops
+paying when the account nears zero, so a bad month degrades to stale NWAC
+data instead of a pile of failed requests. Usage per run is logged in
+`/var/log/nwbb-scraperapi.log` (server) or the Actions log (`[scraperapi]`).
+
 ### 2. Turn the paused scrapers back on [Mac]
 
 - `scripts/daily_update.sh`: uncomment the blocks marked
@@ -142,6 +181,11 @@ Pass `--season 2027` explicitly for early 2027 work (rosters, future
 schedules) before the bump.
 
 ## Server housekeeping found in the Sept 2026 audit (one-time, root on the server)
+
+DONE 2026-11-22: logrotate installed (also covers the new recruits and
+ScraperAPI logs), the three `--season 2026` crontab flags removed (backup at
+`/root/crontab.backup-2026-11-22`), and the weekly recruit scrape moved from
+GitHub Actions to the server crontab (Mon 8 AM PT). Kept below for reference.
 
 - Log rotation: the live-score log was 112 MB with no rotation. Install once:
   `cp /opt/pnw-baseball/deploy/logrotate-nwbb /etc/logrotate.d/nwbb` (then
