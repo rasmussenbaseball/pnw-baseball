@@ -130,14 +130,14 @@ function GmRoute({ children }) {
 }
 
 // ─── Existing pages ───
-import BattingLeaderboard from './pages/BattingLeaderboard'
-import PitchingLeaderboard from './pages/PitchingLeaderboard'
-import FieldingLeaderboard from './pages/FieldingLeaderboard'
-import RelieverLeaderboard from './pages/RelieverLeaderboard'
-import SummerHub from './pages/SummerHub'
-import SummerGameDetail from './pages/SummerGameDetail'
-import SummerTeamDetail from './pages/SummerTeamDetail'
-import SummerPlayerDetail from './pages/SummerPlayerDetail'
+const BattingLeaderboard = lazyWithRetry(() => import('./pages/BattingLeaderboard'))
+const PitchingLeaderboard = lazyWithRetry(() => import('./pages/PitchingLeaderboard'))
+const FieldingLeaderboard = lazyWithRetry(() => import('./pages/FieldingLeaderboard'))
+const RelieverLeaderboard = lazyWithRetry(() => import('./pages/RelieverLeaderboard'))
+const SummerHub = lazyWithRetry(() => import('./pages/SummerHub'))
+const SummerGameDetail = lazyWithRetry(() => import('./pages/SummerGameDetail'))
+const SummerTeamDetail = lazyWithRetry(() => import('./pages/SummerTeamDetail'))
+const SummerPlayerDetail = lazyWithRetry(() => import('./pages/SummerPlayerDetail'))
 const WclRecapGraphic = lazyWithRetry(() => import('./pages/WclRecapGraphic'))
 const WclGameRecapGraphic = lazyWithRetry(() => import('./pages/WclGameRecapGraphic'))
 const WclLeaderboardGraphic = lazyWithRetry(() => import('./pages/WclLeaderboardGraphic'))
@@ -148,28 +148,28 @@ const CommitmentEditor = lazyWithRetry(() => import('./pages/CommitmentEditor'))
 const WclStandingsGraphic = lazyWithRetry(() => import('./pages/WclStandingsGraphic'))
 // Hidden page — intentionally not linked from any nav/footer.
 const KangarooCourt = lazyWithRetry(() => import('./pages/KangarooCourt'))
-import SummerStatsPage from './pages/summer/SummerStatsPage'
-import SummerScoreboardPage from './pages/summer/SummerScoreboardPage'
-import SummerStandingsPage from './pages/summer/SummerStandingsPage'
-import SummerTeamsPage from './pages/summer/SummerTeamsPage'
-import SummerPnwAlumniPage from './pages/summer/SummerPnwAlumniPage'
-import SummerCollegeMixPage from './pages/summer/SummerCollegeMixPage'
+const SummerStatsPage = lazyWithRetry(() => import('./pages/summer/SummerStatsPage'))
+const SummerScoreboardPage = lazyWithRetry(() => import('./pages/summer/SummerScoreboardPage'))
+const SummerStandingsPage = lazyWithRetry(() => import('./pages/summer/SummerStandingsPage'))
+const SummerTeamsPage = lazyWithRetry(() => import('./pages/summer/SummerTeamsPage'))
+const SummerPnwAlumniPage = lazyWithRetry(() => import('./pages/summer/SummerPnwAlumniPage'))
+const SummerCollegeMixPage = lazyWithRetry(() => import('./pages/summer/SummerCollegeMixPage'))
 import RequireDev from './components/RequireDev'
-import WarLeaderboard from './pages/WarLeaderboard'
-import TeamStatsPage from './pages/TeamStatsPage'
-import TeamsPage from './pages/TeamsPage'
-import ProTracker from './pages/ProTracker'
-import PnwDraft from './pages/PnwDraft'
-import TeamDetail from './pages/TeamDetail'
-import TeamProjections from './pages/TeamProjections'
-import TrackManData from './pages/TrackManData'
-import TeamComparison from './pages/TeamComparison'
-import ScatterPlot from './pages/ScatterPlot'
-import PlayerSearch from './pages/PlayerSearch'
-import JucoTracker from './pages/JucoTracker'
-import TransferPortalTracker from './pages/TransferPortalTracker'
-import WclTransferTracker from './pages/WclTransferTracker'
-import PlayerDetail from './pages/PlayerDetail'
+const WarLeaderboard = lazyWithRetry(() => import('./pages/WarLeaderboard'))
+const TeamStatsPage = lazyWithRetry(() => import('./pages/TeamStatsPage'))
+const TeamsPage = lazyWithRetry(() => import('./pages/TeamsPage'))
+const ProTracker = lazyWithRetry(() => import('./pages/ProTracker'))
+const PnwDraft = lazyWithRetry(() => import('./pages/PnwDraft'))
+const TeamDetail = lazyWithRetry(() => import('./pages/TeamDetail'))
+const TeamProjections = lazyWithRetry(() => import('./pages/TeamProjections'))
+const TrackManData = lazyWithRetry(() => import('./pages/TrackManData'))
+const TeamComparison = lazyWithRetry(() => import('./pages/TeamComparison'))
+const ScatterPlot = lazyWithRetry(() => import('./pages/ScatterPlot'))
+const PlayerSearch = lazyWithRetry(() => import('./pages/PlayerSearch'))
+const JucoTracker = lazyWithRetry(() => import('./pages/JucoTracker'))
+const TransferPortalTracker = lazyWithRetry(() => import('./pages/TransferPortalTracker'))
+const WclTransferTracker = lazyWithRetry(() => import('./pages/WclTransferTracker'))
+const PlayerDetail = lazyWithRetry(() => import('./pages/PlayerDetail'))
 // Social-graphic generators: admin/author tools, never on a
 // visitor's path — lazy so their ~8k lines stay out of the main bundle.
 const SocialGraphics = lazyWithRetry(() => import('./pages/SocialGraphics'))
@@ -183,21 +183,21 @@ const DailyRecapGraphic = lazyWithRetry(() => import('./pages/DailyRecapGraphic'
 // June 2026: the five per-tier homepages were replaced by the unified
 // Homepage (their files remain on disk as a rollback path, unimported).
 import Homepage from './pages/Homepage'
-import StatLeaders from './pages/StatLeaders'
-import StandingsPage from './pages/StandingsPage'
-import ConferencePage from './pages/ConferencePage'
+const StatLeaders = lazyWithRetry(() => import('./pages/StatLeaders'))
+const StandingsPage = lazyWithRetry(() => import('./pages/StandingsPage'))
+const ConferencePage = lazyWithRetry(() => import('./pages/ConferencePage'))
 // ResultsPage removed - consolidated into Scoreboard with date picker
-import GameDetail from './pages/GameDetail'
-import TeamRatings from './pages/TeamRatings'
-import TeamHistory from './pages/TeamHistory'
+const GameDetail = lazyWithRetry(() => import('./pages/GameDetail'))
+const TeamRatings = lazyWithRetry(() => import('./pages/TeamRatings'))
+const TeamHistory = lazyWithRetry(() => import('./pages/TeamHistory'))
 import RecruitingHub from './pages/RecruitingHub'  // public landing page (all tiers)
-import RecruitingClasses from './pages/RecruitingClasses'
-import RecruitQuiz from './pages/RecruitQuiz'
-import RecruitingRankings from './pages/RecruitingRankings'
-import RecruitingMap from './pages/RecruitingMap'
-import AdminRecruitingPlaceholder from './pages/AdminRecruitingPlaceholder'
-import RecruitingHistory from './pages/RecruitingHistory'
-import RecruitingField from './pages/RecruitingField'
+const RecruitingClasses = lazyWithRetry(() => import('./pages/RecruitingClasses'))
+const RecruitQuiz = lazyWithRetry(() => import('./pages/RecruitQuiz'))
+const RecruitingRankings = lazyWithRetry(() => import('./pages/RecruitingRankings'))
+const RecruitingMap = lazyWithRetry(() => import('./pages/RecruitingMap'))
+const AdminRecruitingPlaceholder = lazyWithRetry(() => import('./pages/AdminRecruitingPlaceholder'))
+const RecruitingHistory = lazyWithRetry(() => import('./pages/RecruitingHistory'))
+const RecruitingField = lazyWithRetry(() => import('./pages/RecruitingField'))
 const RecruitingGuide = lazyWithRetry(() => import('./pages/RecruitingGuide'))  // recharts
 const RecruitingProgramGuide = lazyWithRetry(() => import('./pages/RecruitingProgramGuide'))  // react-pdf (heavy)
 const RecruitingTips = lazyWithRetry(() => import('./pages/RecruitingTips'))
@@ -221,52 +221,52 @@ const BulkPlayerCards = lazyWithRetry(() => import('./pages/BulkPlayerCards'))
 const PortalPDFs = lazyWithRetry(() => import('./pages/PortalPDFs'))
 const BullpenSheet = lazyWithRetry(() => import('./pages/BullpenSheet'))
 const CatcherCards = lazyWithRetry(() => import('./pages/CatcherCards'))
-import NewsList from './pages/NewsList'
+const NewsList = lazyWithRetry(() => import('./pages/NewsList'))
 const NewsArticle = lazyWithRetry(() => import('./pages/NewsArticle'))  // pulls react-markdown — lazy to split it off the main bundle
-import NewsCommitments from './pages/NewsCommitments'
+const NewsCommitments = lazyWithRetry(() => import('./pages/NewsCommitments'))
 const GraphicsHub = lazyWithRetry(() => import('./pages/GraphicsHub'))
-import ArticlesList from './pages/portal/ArticlesList'
+const ArticlesList = lazyWithRetry(() => import('./pages/portal/ArticlesList'))
 const ArticleEditor = lazyWithRetry(() => import('./pages/portal/ArticleEditor'))  // author-only, react-markdown
 const EmailComposer = lazyWithRetry(() => import('./pages/portal/EmailComposer'))  // author-only, react-markdown
-import Unsubscribe from './pages/Unsubscribe'
-import Account from './pages/Account'
-import Terms from './pages/Terms'
-import Privacy from './pages/Privacy'
+const Unsubscribe = lazyWithRetry(() => import('./pages/Unsubscribe'))
+const Account = lazyWithRetry(() => import('./pages/Account'))
+const Terms = lazyWithRetry(() => import('./pages/Terms'))
+const Privacy = lazyWithRetry(() => import('./pages/Privacy'))
 const OpponentTrends = lazyWithRetry(() => import('./pages/OpponentTrends'))  // big coach-portal page
 const HistoricMatchups = lazyWithRetry(() => import('./pages/HistoricMatchups'))
 const LineupHelper = lazyWithRetry(() => import('./pages/LineupHelper'))  // ~1,150 lines, coach-only
-import ParkFactors from './pages/ParkFactors'
+const ParkFactors = lazyWithRetry(() => import('./pages/ParkFactors'))
 // Coach & Scouting Portal
 import PortalLayout from './components/PortalLayout'
 const PortalHome = lazyWithRetry(() => import('./pages/PortalHome'))  // recharts, coach portal
 const RapsodoAnalyzer = lazyWithRetry(() => import('./pages/RapsodoAnalyzer'))  // coach Rapsodo lab
-import NationalRankings from './pages/NationalRankings'
-import Scoreboard from './pages/Scoreboard'
+const NationalRankings = lazyWithRetry(() => import('./pages/NationalRankings'))
+const Scoreboard = lazyWithRetry(() => import('./pages/Scoreboard'))
 const About = lazyWithRetry(() => import('./pages/About'))  // recharts run-environment chart
-import RecruitingBreakdown from './pages/RecruitingBreakdown'
+const RecruitingBreakdown = lazyWithRetry(() => import('./pages/RecruitingBreakdown'))
 const PnwGrid = lazyWithRetry(() => import('./pages/PnwGrid'))  // ~1,050 lines, niche game
-import TopMoments from './pages/TopMoments'
+const TopMoments = lazyWithRetry(() => import('./pages/TopMoments'))
 const AllConferenceGenerator = lazyWithRetry(() => import('./pages/AllConferenceGenerator'))
-import AuthPage from './pages/AuthPage'
-import ResetPassword from './pages/ResetPassword'
-import FavoritesPage from './pages/FavoritesPage'
-import FeatureRequest from './pages/FeatureRequest'
+const AuthPage = lazyWithRetry(() => import('./pages/AuthPage'))
+const ResetPassword = lazyWithRetry(() => import('./pages/ResetPassword'))
+const FavoritesPage = lazyWithRetry(() => import('./pages/FavoritesPage'))
+const FeatureRequest = lazyWithRetry(() => import('./pages/FeatureRequest'))
 const PlayerGraphic = lazyWithRetry(() => import('./pages/PlayerGraphic'))
 const ConferenceStandingsGraphic = lazyWithRetry(() => import('./pages/ConferenceStandingsGraphic'))
 const AllConferenceGraphic = lazyWithRetry(() => import('./pages/AllConferenceGraphic'))
 const TopPerformersGraphic = lazyWithRetry(() => import('./pages/TopPerformersGraphic'))
 const TeamInfoGraphic = lazyWithRetry(() => import('./pages/TeamInfoGraphic'))
 const TeamSeasonRecapGraphic = lazyWithRetry(() => import('./pages/TeamSeasonRecapGraphic'))
-import HometownSearch from './pages/HometownSearch'
-import RecordsPage from './pages/RecordsPage'
+const HometownSearch = lazyWithRetry(() => import('./pages/HometownSearch'))
+const RecordsPage = lazyWithRetry(() => import('./pages/RecordsPage'))
 const PlayoffProjections = lazyWithRetry(() => import('./pages/PlayoffProjections'))  // ~950 lines, recharts
-import Percentiles from './pages/Percentiles'
-import PlayerComps from './pages/PlayerComps'
-import PlayerComparison from './pages/PlayerComparison'
+const Percentiles = lazyWithRetry(() => import('./pages/Percentiles'))
+const PlayerComps = lazyWithRetry(() => import('./pages/PlayerComps'))
+const PlayerComparison = lazyWithRetry(() => import('./pages/PlayerComparison'))
 const CatcherDefense = lazyWithRetry(() => import('./pages/CatcherDefense'))
 const RecruitingBoard = lazyWithRetry(() => import('./pages/RecruitingBoard'))
 const SharedRecruitingBoard = lazyWithRetry(() => import('./pages/SharedRecruitingBoard'))  // public read-only board via share link
-import TeamQuiz from './pages/TeamQuiz'
+const TeamQuiz = lazyWithRetry(() => import('./pages/TeamQuiz'))
 const FieldGuessr = lazyWithRetry(() => import('./pages/FieldGuessr'))  // image-based ballpark guessing game
 const PnwPickle = lazyWithRetry(() => import('./pages/PnwPickle'))  // guess-the-player game
 

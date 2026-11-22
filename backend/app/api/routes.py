@@ -5039,6 +5039,7 @@ def _pct_vs_baseline(dist, val, higher_is_better=True):
 
 
 @router.get("/teams/{team_id}/info-graphic")
+@cached_endpoint(ttl_seconds=1800)
 def team_info_graphic(
     team_id: int,
     season: int = Query(CURRENT_SEASON, description="Season year"),
@@ -6312,6 +6313,53 @@ def _team_pbp_filter_clauses(division_id, conference_id, state, team_id):
     return sql, params
 
 
+# ── PBP leaderboard paging ────────────────────────────────────────
+# The hitter / pitcher plate-discipline boards aggregate every game_events row
+# of a season (~1 s each). Their endpoint cache was keyed on sort column,
+# direction, page and filters, so every new sort or page (crawlers generate
+# them endlessly) re-ran the full aggregation: ~17,000 runs and ~4.8 hours of
+# database time in pg_stat_statements as of 2026-11-22. Now the aggregation
+# runs once per (board, season) and is cached; filters, sort and paging happen
+# in Python on the cached rows, in milliseconds.
+@cached_endpoint(ttl_seconds=1800, max_entries=16)
+def _pbp_board_rows(query: str, season: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(query, [season])
+        return [dict(r) for r in cur.fetchall()]
+
+
+def _pbp_board_page(rows, filters, min_sample, sort_by, direction, limit, offset):
+    """Same semantics as the old SQL: PNW-state teams only (already in the
+    cached query), optional filters, tracked_pa >= min_sample, ORDER BY
+    sort_by direction NULLS LAST, tracked_pa DESC, then LIMIT / OFFSET."""
+    def keep(r):
+        if (r.get("tracked_pa") or 0) < min_sample:
+            return False
+        if filters.get("division_id") and r.get("division_id") != filters["division_id"]:
+            return False
+        if filters.get("conference_id") and r.get("conference_id") != filters["conference_id"]:
+            return False
+        if filters.get("state") and r.get("state") != filters["state"]:
+            return False
+        if filters.get("team_id") and r.get("team_id") != filters["team_id"]:
+            return False
+        if filters.get("year_in_school") and r.get("year_in_school") != filters["year_in_school"]:
+            return False
+        return True
+    kept = [r for r in rows if keep(r)]
+    desc = direction == "DESC"
+    with_val = [r for r in kept if r.get(sort_by) is not None]
+    without = [r for r in kept if r.get(sort_by) is None]
+    # stable two-pass sort: tracked_pa DESC as the tiebreak, then the sort key
+    with_val.sort(key=lambda r: -(r.get("tracked_pa") or 0))
+    with_val.sort(key=lambda r: r[sort_by], reverse=desc)
+    without.sort(key=lambda r: -(r.get("tracked_pa") or 0))
+    ordered = with_val + without
+    page = [{k: v for k, v in r.items() if k != "division_id"} for r in ordered[offset:offset + limit]]
+    return page, len(kept)
+
+
 @router.get("/leaderboards/batting-pbp")
 @cached_endpoint(ttl_seconds=1800)
 def batting_pbp_leaderboard(
@@ -6433,7 +6481,7 @@ def batting_pbp_leaderboard(
                 p.first_name, p.last_name, p.year_in_school, p.position,
                 t.id AS team_id, t.short_name AS team_short,
                 t.school_name AS team_name, t.logo_url, t.state,
-                d.level AS division_level,
+                d.level AS division_level, d.id AS division_id,
                 c.id AS conference_id, c.abbreviation AS conference_abbrev,
                 s.total_pa, s.tracked_pa, s.pitches, s.swings,
                 s.bb_total, s.bb_total_pull,
@@ -6445,38 +6493,15 @@ def batting_pbp_leaderboard(
             JOIN teams t ON t.id = p.team_id
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
-            WHERE s.tracked_pa >= %s
+            WHERE s.tracked_pa >= 0
               AND COALESCE(t.is_active, 1) = 1
-              {where_sql}
-            ORDER BY {sort_by} {direction} NULLS LAST, s.tracked_pa DESC
-            LIMIT %s OFFSET %s
+              AND t.state IN ('WA','OR','ID','MT','BC')
         """
-        params = [season, min_pa] + where_params + [limit, offset]
-        cur.execute(query, params)
-        rows = [dict(r) for r in cur.fetchall()]
-
-        # Count total — same WHERE, no LIMIT
-        count_query = f"""
-            WITH pbp AS (
-                SELECT ge.batter_player_id AS player_id,
-                       COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1) AS tracked_pa
-                FROM game_events ge
-                JOIN games g ON g.id = ge.game_id
-                WHERE g.season = %s AND ge.batter_player_id IS NOT NULL
-                GROUP BY ge.batter_player_id
-            )
-            SELECT COUNT(*) AS total
-            FROM pbp s
-            JOIN players p ON p.id = s.player_id
-            JOIN teams t ON t.id = p.team_id
-            JOIN conferences c ON c.id = t.conference_id
-            JOIN divisions d ON d.id = c.division_id
-            WHERE s.tracked_pa >= %s
-              AND COALESCE(t.is_active, 1) = 1
-              {where_sql}
-        """
-        cur.execute(count_query, [season, min_pa] + where_params)
-        total = (cur.fetchone() or {}).get("total", 0) or 0
+        rows, total = _pbp_board_page(
+            _pbp_board_rows(query, season),
+            {"division_id": division_id, "conference_id": conference_id, "state": state,
+             "team_id": team_id, "year_in_school": year_in_school},
+            min_pa, sort_by, direction, limit, offset)
 
         return {
             "data": rows,
@@ -6613,7 +6638,7 @@ def pitching_pbp_leaderboard(
                 p.first_name, p.last_name, p.year_in_school, p.position,
                 t.id AS team_id, t.short_name AS team_short,
                 t.school_name AS team_name, t.logo_url, t.state,
-                d.level AS division_level,
+                d.level AS division_level, d.id AS division_id,
                 c.id AS conference_id, c.abbreviation AS conference_abbrev,
                 s.total_pa, s.tracked_pa, s.pitches, s.swings, s.bb_total,
                 s.strike_pct, s.called_strike_pct, s.whiff_pct, s.contact_pct,
@@ -6624,37 +6649,15 @@ def pitching_pbp_leaderboard(
             JOIN teams t ON t.id = p.team_id
             JOIN conferences c ON c.id = t.conference_id
             JOIN divisions d ON d.id = c.division_id
-            WHERE s.tracked_pa >= %s
+            WHERE s.tracked_pa >= 0
               AND COALESCE(t.is_active, 1) = 1
-              {where_sql}
-            ORDER BY {sort_by} {direction} NULLS LAST, s.tracked_pa DESC
-            LIMIT %s OFFSET %s
+              AND t.state IN ('WA','OR','ID','MT','BC')
         """
-        params = [season, min_bf] + where_params + [limit, offset]
-        cur.execute(query, params)
-        rows = [dict(r) for r in cur.fetchall()]
-
-        count_query = f"""
-            WITH pbp AS (
-                SELECT ge.pitcher_player_id AS player_id,
-                       COUNT(*) FILTER (WHERE ge.pitches_thrown >= 1) AS tracked_pa
-                FROM game_events ge
-                JOIN games g ON g.id = ge.game_id
-                WHERE g.season = %s AND ge.pitcher_player_id IS NOT NULL
-                GROUP BY ge.pitcher_player_id
-            )
-            SELECT COUNT(*) AS total
-            FROM pbp s
-            JOIN players p ON p.id = s.player_id
-            JOIN teams t ON t.id = p.team_id
-            JOIN conferences c ON c.id = t.conference_id
-            JOIN divisions d ON d.id = c.division_id
-            WHERE s.tracked_pa >= %s
-              AND COALESCE(t.is_active, 1) = 1
-              {where_sql}
-        """
-        cur.execute(count_query, [season, min_bf] + where_params)
-        total = (cur.fetchone() or {}).get("total", 0) or 0
+        rows, total = _pbp_board_page(
+            _pbp_board_rows(query, season),
+            {"division_id": division_id, "conference_id": conference_id, "state": state,
+             "team_id": team_id, "year_in_school": year_in_school},
+            min_bf, sort_by, direction, limit, offset)
 
         return {
             "data": rows,
@@ -7050,6 +7053,7 @@ def reliever_leaderboard(
 
 
 @router.get("/players/{player_id}/goose-eggs")
+@cached_endpoint(ttl_seconds=1800)
 def player_goose_eggs(player_id: int, season: int = Query(CURRENT_SEASON)):
     """One reliever's Goose Egg line (GEG / BRK / OPP / Goose%) from PBP.
 
@@ -16505,6 +16509,7 @@ def team_games(
 # ── Player Streaks (current + season-best hit and on-base streaks) ──
 
 @router.get("/players/{player_id}/streaks")
+@cached_endpoint(ttl_seconds=1800)
 def get_player_streaks(
     player_id: int,
     season: int = Query(CURRENT_SEASON),
@@ -16683,6 +16688,7 @@ def _outing_grade(dist, row):
 
 
 @router.get("/players/{player_id}/gamelogs")
+@cached_endpoint(ttl_seconds=1800)
 def get_player_gamelogs(
     player_id: int,
     season: int = Query(CURRENT_SEASON),

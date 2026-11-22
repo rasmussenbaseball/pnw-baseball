@@ -19,6 +19,7 @@ from ..config import CURRENT_SEASON
 from ..config import NEXT_SEASON
 from ..models.database import get_connection
 from ._team_narrative import team_narrative, hitter_returner_note, pitcher_returner_note
+from ..cache import cached_endpoint
 
 team_profile_router = APIRouter(prefix="/teams")
 
@@ -763,6 +764,7 @@ def team_returning(team_id: int, request: Request, season: int = Query(CURRENT_S
 
 
 @team_profile_router.get("/{team_id}/impact-performers")
+@cached_endpoint(ttl_seconds=1800)
 def team_impact_performers(team_id: int, season: int = Query(CURRENT_SEASON)):
     """Top hitters + pitchers by blended impact score (all players, current
     season) for the Season tab. Flags whether each one returns next year."""
@@ -802,6 +804,7 @@ def team_impact_performers(team_id: int, season: int = Query(CURRENT_SEASON)):
 
 
 @team_profile_router.get("/{team_id}/identity")
+@cached_endpoint(ttl_seconds=1800)
 def team_identity(team_id: int, season: int = Query(CURRENT_SEASON)):
     with get_connection() as conn:
         cur = conn.cursor()

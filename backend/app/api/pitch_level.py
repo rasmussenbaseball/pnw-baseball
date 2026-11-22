@@ -76,6 +76,28 @@ router = APIRouter()
 import time as _pl_time
 _PITCH_LEVEL_BASELINES_CACHE: dict = {}
 _PITCH_LEVEL_BASELINES_TTL = 6 * 3600  # seconds
+# A finished spring season's events never change, so its baselines live a week.
+_PITCH_LEVEL_FROZEN_TTL = 7 * 86400
+import threading as _pl_threading
+_PITCH_LEVEL_BASELINE_LOCKS: dict = {}
+_PITCH_LEVEL_LOCKS_GUARD = _pl_threading.Lock()
+
+
+def _baseline_ttl(season: int) -> int:
+    """6 h while a season can still change, a week once it is over (after
+    June 30 of that year). A rebuild is ~34 full-division queries (~10 s)."""
+    import datetime as _dt
+    return _PITCH_LEVEL_FROZEN_TTL if _dt.date.today() > _dt.date(int(season), 6, 30) else _PITCH_LEVEL_BASELINES_TTL
+
+
+def _baseline_lock(key):
+    """One rebuild per key at a time. Without it, simultaneous visitors to a
+    cold division all ran the same ~10 s rebuild at once."""
+    with _PITCH_LEVEL_LOCKS_GUARD:
+        lk = _PITCH_LEVEL_BASELINE_LOCKS.get(key)
+        if lk is None:
+            lk = _PITCH_LEVEL_BASELINE_LOCKS[key] = _pl_threading.Lock()
+        return lk
 
 
 def _compute_pitch_level_deciles(cur, season: int, division_level: str, filter_sql: str, weights, league_woba=None):
@@ -370,9 +392,16 @@ def _get_pitch_level_baselines(cur, season: int, division_level: str, weights) -
     key = (season, division_level)
     now = _pl_time.time()
     cached = _PITCH_LEVEL_BASELINES_CACHE.get(key)
-    if cached and (now - cached["ts"]) < _PITCH_LEVEL_BASELINES_TTL:
+    if cached and (now - cached["ts"]) < _baseline_ttl(season):
         return cached["data"]
+    with _baseline_lock(("bat",) + key):
+        cached = _PITCH_LEVEL_BASELINES_CACHE.get(key)
+        if cached and (_pl_time.time() - cached["ts"]) < _baseline_ttl(season):
+            return cached["data"]
+        return _build_pitch_level_baselines(cur, season, division_level, weights, key, now)
 
+
+def _build_pitch_level_baselines(cur, season, division_level, weights, key, now):
     filters = {
         # Overall — every PA. Used as the wRC+ baseline AND for the
         # discipline-tile color coding ("how does this player's overall
@@ -434,6 +463,7 @@ def _get_pitch_level_baselines(cur, season: int, division_level: str, weights) -
 
 
 @router.get("/players/{player_id}/wpa-by-game")
+@cached_endpoint(ttl_seconds=1800)
 def get_player_wpa_by_game(
     player_id: int,
     season: int = Query(CURRENT_SEASON, description="Season year"),
@@ -574,6 +604,7 @@ def get_player_wpa_by_game(
 
 
 @router.get("/players/{player_id}/pitch-level-stats")
+@cached_endpoint(ttl_seconds=1800, max_entries=500)  # busiest endpoint (~22k calls/week), ~1 s uncached
 def get_player_pitch_level_stats(
     player_id: int,
     season: int = Query(CURRENT_SEASON, description="Season year"),
@@ -1348,8 +1379,16 @@ def _get_pitcher_pitch_level_baselines(cur, season, division_level, weights):
     key = (season, division_level)
     now = _pl_time.time()
     cached = _PITCH_LEVEL_PITCHER_BASELINES_CACHE.get(key)
-    if cached and (now - cached["ts"]) < _PITCH_LEVEL_BASELINES_TTL:
+    if cached and (now - cached["ts"]) < _baseline_ttl(season):
         return cached["data"]
+    with _baseline_lock(("pit",) + key):
+        cached = _PITCH_LEVEL_PITCHER_BASELINES_CACHE.get(key)
+        if cached and (_pl_time.time() - cached["ts"]) < _baseline_ttl(season):
+            return cached["data"]
+        return _build_pitcher_pitch_level_baselines(cur, season, division_level, weights, key, now)
+
+
+def _build_pitcher_pitch_level_baselines(cur, season, division_level, weights, key, now):
     filters = {
         "overall":     "TRUE",
         "hitters":     "(balls_before, strikes_before) IN ((1,0),(2,0),(3,0),(3,1))",
@@ -1388,6 +1427,7 @@ def _get_pitcher_pitch_level_baselines(cur, season, division_level, weights):
 
 
 @router.get("/players/{player_id}/pitch-level-stats-pitcher")
+@cached_endpoint(ttl_seconds=1800, max_entries=500)
 def get_player_pitch_level_stats_pitcher(
     player_id: int,
     season: int = Query(CURRENT_SEASON, description="Season year"),
