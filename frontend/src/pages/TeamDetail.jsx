@@ -11,6 +11,7 @@ import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
 import SeasonSelect from '../components/SeasonSelect'
 import { CURRENT_SEASON, RECRUITING_GRAD_YEAR, clampSeason } from '../lib/seasons'
+import { RatingPill } from '../lib/recruitRating'
 import { BATTING_COLUMNS, PITCHING_COLUMNS, BATTING_PBP_COLUMNS, PITCHING_PBP_COLUMNS,
          formatStat, divisionBadgeClass, ipSum } from '../utils/stats'
 
@@ -408,14 +409,7 @@ function IncomingClassSection({ teamId, gradYear: initialGradYear = RECRUITING_G
                     <span className="flex-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
                       {[c.high_school, c.state].filter(Boolean).join(', ')}
                     </span>
-                    {rating != null && c.is_ranked ? (
-                      <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap shrink-0"
-                        title="Prospect rating, 0 to 100 on one national scale">
-                        Rating {rating}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] italic text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">Not ranked</span>
-                    )}
+                    <RatingPill score={rating} className="shrink-0" />
                   </div>
                 )
               })}

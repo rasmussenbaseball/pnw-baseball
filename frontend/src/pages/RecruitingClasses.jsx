@@ -4,6 +4,7 @@ import { divisionBadgeClass } from '../utils/stats'
 // Grad years the selector offers + the default (class currently committing)
 // come from seasons.js so the page rolls over with one bump.
 import { GRAD_YEARS, RECRUITING_GRAD_YEAR } from '../lib/seasons'
+import { RatingPill } from '../lib/recruitRating'
 
 // Combined Class Rating = HS class rating + this much per point of a program's
 // transfer rating (its AVERAGE WAR per transfer, drop-down-adjusted, floored at
@@ -20,26 +21,6 @@ const VIEWS = [
   { key: 'combined', label: 'Combined',
     blurb: 'The full incoming class for each program: high school newcomers plus transfers. Combined Class Rating is the HS rating plus a weighted transfer-WAR bonus, so strong HS classes stay on top while transfers nudge the order.' },
 ]
-
-// Prospect tier from the 0-100 rating (a derived grade; raw source ranks are
-// never shown). Recruits with no ranking anywhere read "Not ranked".
-const TIERS = [
-  [85, 'Elite', 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200'],
-  [70, 'High', 'bg-teal-50 text-nw-teal dark:bg-teal-900/30 dark:text-teal-300'],
-  [50, 'Solid', 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'],
-  [30, 'Depth', 'bg-gray-100 text-gray-600 dark:bg-gray-700/60 dark:text-gray-300'],
-]
-function TierChip({ score, ranked }) {
-  if (!ranked || score == null) {
-    return <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 italic">Not ranked</span>
-  }
-  const t = TIERS.find(([min]) => score >= min) || [0, 'Depth', TIERS[3][2]]
-  return (
-    <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${t[2]}`}>
-      {t[1]}
-    </span>
-  )
-}
 
 // JUCO vs four-year-portal source tag on a transfer row.
 function SourceBadge({ source }) {
@@ -80,7 +61,6 @@ function ClassCommitsPanel({ teamId, gradYear }) {
               <th className="px-3 py-1.5 text-center font-semibold">Pos</th>
               <th className="px-3 py-1.5 text-left font-semibold">High School</th>
               <th className="px-3 py-1.5 text-center font-semibold">Ht / Wt</th>
-              <th className="px-3 py-1.5 text-left font-semibold">Tier</th>
               <th className="px-3 py-1.5 text-center font-semibold">Rating</th>
             </tr>
           </thead>
@@ -105,13 +85,8 @@ function ClassCommitsPanel({ teamId, gradYear }) {
                 <td className="px-3 py-1.5 text-center text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">
                   {c.height || c.weight ? `${c.height || '-'}${c.weight ? ` / ${c.weight}` : ''}` : '-'}
                 </td>
-                <td className="px-3 py-1.5"><TierChip score={c.recruit_score} ranked={c.is_ranked} /></td>
                 <td className="px-3 py-1.5 text-center text-xs tabular-nums">
-                  {c.recruit_score != null ? (
-                    <span className="font-bold text-nw-teal dark:text-nw-teal-light">{Math.round(c.recruit_score)}</span>
-                  ) : (
-                    <span className="text-[10px] italic text-gray-400 dark:text-gray-500">No ranking</span>
-                  )}
+                  <RatingPill score={c.recruit_score} />
                 </td>
               </tr>
             ))}

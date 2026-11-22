@@ -23,8 +23,8 @@ One national scale (Nov 2026 rebuild). Every rank is turned into a
     in his state's unranked band (below the last ranked player in that state,
     down to 5), placed by where his predicted score falls among all unranked
     players of the class. Where PBR has no current list (HI, MT, BC, AB ...)
-    the predicted score is used directly, clipped to 6-40. No measurables
-    either: the 30th percentile of his band, or the generic 12.
+    the band runs 5 to 30. No measurables either: placed in the band by the
+    level he committed to (D1 highest, JUCO lowest).
     Every recruit gets a score, so every commit counts in its class average.
 
 Raw PBR ranks are paid content: they live only in the recruits table and are
@@ -152,6 +152,8 @@ _HIT_FEATS = ("exit_velo", "bat_speed", "hand_speed", "pos_velo", "sixty", "pop"
 _LOWER_BETTER = {"sixty", "pop"}
 _POS_VELO_ADJ = {"c_velo": 6.0, "inf_velo": 0.0, "of_velo": -3.0}   # put C / IF / OF arms on one scale
 UNRANKED_LO = 5.0
+UNRANKED_NO_LIST_HI = 30.0      # band top where PBR has no current list (HI, MT, BC, AB ...)
+_LEVEL_PRIOR = {"D1": 0.55, "D2": 0.42, "NAIA": 0.38, "D3": 0.33, "JUCO": 0.27}
 
 
 def _features(m: dict | None, position: str | None):
@@ -302,7 +304,11 @@ def rescore_class(cur, grad_year: int) -> int:
             train.append(r)
     model = MeasurablesModel().fit(train)
 
-    cur.execute(f"SELECT {cols} FROM recruits WHERE grad_year = %s", (grad_year,))
+    cur.execute(f"""SELECT {', '.join('r.' + c.strip() for c in cols.split(','))}, d.level AS commit_level
+                    FROM recruits r LEFT JOIN teams t ON t.id = r.committed_team_id
+                    LEFT JOIN conferences cf ON cf.id = t.conference_id
+                    LEFT JOIN divisions d ON d.id = cf.division_id
+                    WHERE r.grad_year = %s""", (grad_year,))
     rows = [dict(r) for r in cur.fetchall()]
     scores = {}
     unranked = []
@@ -322,13 +328,15 @@ def rescore_class(cur, grad_year: int) -> int:
         return (below + 0.5 * eq) / len(preds)
     for r in unranked:
         hi, has_list = unranked_band(r.get("state"), grad_year)
-        if has_list:
-            q = pct(r["pred"]) if r["pred"] is not None else 0.3
-            scores[r["id"]] = round(UNRANKED_LO + (hi - UNRANKED_LO) * q, 1)
-        elif r["pred"] is not None:
-            scores[r["id"]] = round(min(40.0, max(6.0, r["pred"])), 1)
+        if not has_list:
+            hi = UNRANKED_NO_LIST_HI
+        if r["pred"] is not None:
+            q = pct(r["pred"])
         else:
-            scores[r["id"]] = UNRANKED_GENERIC
+            # No ranking and no measurables: the level he committed to is the
+            # only signal left (an unranked UW commit vs an unranked JUCO one).
+            q = _LEVEL_PRIOR.get(r.get("commit_level"), 0.3)
+        scores[r["id"]] = round(UNRANKED_LO + (hi - UNRANKED_LO) * q, 1)
     for rid, sc in scores.items():
         cur.execute("UPDATE recruits SET recruit_score = %s WHERE id = %s", (sc, rid))
     rescore_class.last_model = {k: {kk: v[kk] for kk in ("n", "r2", "keys")} for k, v in model.models.items()}
