@@ -30,7 +30,7 @@ from scrape_boxscores import (  # noqa: E402
 )
 
 from app.models.database import get_connection  # noqa: E402
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 
 
 def resolve_team(cur, arg):

@@ -1255,7 +1255,7 @@ def trackman_all_pitches(_dev: str = Depends(require_developer)):
               AND tp.pitch_type <> 'Undefined'
             ORDER BY sp.last_name, sp.first_name, tp.pitch_count DESC NULLS LAST
             """,
-            (CURRENT_SEASON, CURRENT_SEASON),
+            (SUMMER_SEASON, SUMMER_SEASON),   # the spring before the latest summer
         )
         rows = []
         for r in cur.fetchall():
@@ -3670,6 +3670,7 @@ def _wcl_pbp_pitching(cur, ids, season):
 
 
 @router.get("/wcl-portal")
+@cached_endpoint(ttl_seconds=600)   # busted by admin_tools._bust_profile_cache on edits
 def wcl_portal_players(
     season: int = Query(PORTAL_SEASON),   # the open transfer cycle (summer = cycle year)
     position: Optional[str] = None,
@@ -3683,7 +3684,10 @@ def wcl_portal_players(
     # WCL numbers until summer 2027 is played. Same for the spring-school check.
     cycle = season
     summer = min(season, SUMMER_SEASON)
-    spring = min(season, CURRENT_SEASON)
+    # The spring that came right before the summer being shown. A link to a
+    # spring school is trusted when that player has stats that spring; using
+    # CURRENT_SEASON broke it every January (no 2027 stats yet).
+    spring = summer
     with get_connection() as _mc:
         # Portal membership = manual members + auto-included uncommitted JUCO
         # sophomores. Shared with the recap-graphic 'Portal' label via the same

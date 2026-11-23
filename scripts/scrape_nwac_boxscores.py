@@ -587,7 +587,7 @@ def main():
     parser.add_argument("--limit", type=int, default=0,
                         help="Max number of box scores to process (0 = unlimited)")
     parser.add_argument("--season", default=SEASON,
-                        help="Season year (default: SEASON_YEAR env, else derived from today's date)")
+                        help="Season year (default: SEASON_YEAR env, else the site's CURRENT_SEASON (season_utils))")
     args = parser.parse_args()
 
     season_year = int(args.season)

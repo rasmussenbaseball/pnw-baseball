@@ -455,7 +455,9 @@ async function drawTeamRow(ctx, teamRef, x, y, w, h, teamLogoMap, score, isWinne
 // ────────────────────────────────────────────
 
 export default function TournamentBracketGraphic() {
-  const [selectedKey, setSelectedKey] = useState('ccc_2026')
+  // First tournament defined in lib/brackets.js, so renaming or adding a
+  // year's key there never leaves this pointing at a missing entry.
+  const [selectedKey, setSelectedKey] = useState(() => Object.keys(TOURNAMENTS)[0])
   const [teamLogoMap, setTeamLogoMap] = useState(new Map())
   const [outcomes, setOutcomes] = useState(new Map())
   const [rendered, setRendered] = useState(false)

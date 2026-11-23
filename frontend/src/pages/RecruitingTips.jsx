@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { LAST_COMPLETED_SEASON as SEASON } from '../lib/seasons'
 
 const LEVELS = {
   D1: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
@@ -35,7 +35,7 @@ function FreshmanByDivision() {
       try {
         const { data: sess } = await supabase.auth.getSession()
         const token = sess?.session?.access_token
-        const r = await fetch(`/api/v1/recruiting/freshman-by-division?season=${CURRENT_SEASON}`, {
+        const r = await fetch(`/api/v1/recruiting/freshman-by-division?season=${SEASON}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!r.ok) throw new Error()
@@ -54,7 +54,7 @@ function FreshmanByDivision() {
   return (
     <section className="rounded-2xl bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-5 sm:p-6 mb-4">
       <div className="text-[10px] font-bold uppercase tracking-widest text-nw-teal mb-1">By the numbers</div>
-      <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100">Freshman production by level ({data?.season || CURRENT_SEASON})</h2>
+      <h2 className="text-lg sm:text-xl font-black text-nw-teal dark:text-gray-100">Freshman production by level ({data?.season || SEASON})</h2>
       <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-1 mb-4">
         Where do PNW players land, and how much do they actually play as freshmen? This is the average first-year line at each level of PNW college baseball. Rostered is every freshman on the roster and DNP is how many never appeared in a game; playing time (PA, IP) counts every freshman who did appear, and rate stats (AVG, OPS, wRC+, ERA) use freshmen who got real reps.
       </p>

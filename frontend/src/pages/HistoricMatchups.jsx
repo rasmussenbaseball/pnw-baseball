@@ -6,9 +6,9 @@ import {
   useHistoricMatchupOpponents,
 } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 
 export default function HistoricMatchups() {
   // Pre-fill team A from the portal team when rendered inside the

@@ -41,7 +41,7 @@ from scrape_boxscores import (
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-SEASON = scrape_season()  # derived from today's date
+SEASON = scrape_season()  # the site's CURRENT_SEASON (season_utils)
 
 # Home cities for D1 teams whose schedule pages lack at/vs indicators.
 # Location text on the schedule page is compared to this to determine home/away.

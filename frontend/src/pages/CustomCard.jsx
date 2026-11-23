@@ -18,7 +18,7 @@ import {
   usePlayer, usePlayerPitchLevelStats, usePlayerPitchLevelStatsPitcher,
 } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 import {
   CardHeader, PercentilePanel, SprayPanel, DisciplinePanel, BattedBallPanel,
   SplitsPanel, CountStatesPanel, SeasonStatsTable, SummerBallTable,
@@ -29,7 +29,7 @@ import {
   VsElitePanel, BenchPanel, PitchMixPanel,
 } from './PlayerCardPDF'
 
-export const SEASON = CURRENT_SEASON
+export const SEASON = STATS_SEASON
 export const PAGE_W = 816   // letter width @96dpi
 export const PAGE_H = 1056  // letter height @96dpi
 export const USABLE_H = 1030

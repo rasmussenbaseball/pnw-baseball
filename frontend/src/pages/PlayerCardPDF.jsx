@@ -38,11 +38,11 @@ import {
 } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
 import SprayChart from '../components/SprayChart'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 import { toneAttr } from '../lib/reportExport'
 
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 
 
 // ───────────────────────────────────────────────────────────

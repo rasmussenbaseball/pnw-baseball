@@ -70,7 +70,7 @@ except ImportError:
 
 from app.models.database import get_connection
 from wmt_utils import seattle_u_wmt_id  # Seattle U WMT team id (known map + API lookup)
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py), page_matches_season
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py), page_matches_season
 
 logging.basicConfig(
     level=logging.INFO,

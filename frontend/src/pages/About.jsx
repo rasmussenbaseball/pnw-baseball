@@ -13,6 +13,7 @@
 
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { CURRENT_SEASON } from '../lib/seasons'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Legend, Cell,
@@ -551,7 +552,7 @@ function NationalVsConferenceCard() {
   })
   if (!rows.length) return null
   return (
-    <Card title="National Level vs Our Conference" subtitle="True 2026 run environment (total runs per game) — national level vs the conference our PNW teams play in">
+    <Card title="National Level vs Our Conference" subtitle={`True ${data?.season || ""} run environment (total runs per game): national level vs the conference our PNW teams play in`}>
       <div className="overflow-x-auto -mx-1">
         <table className="w-full text-sm">
           <thead>
@@ -598,7 +599,7 @@ function EnvironmentSection() {
           This is why we use adjusted stats like wRC+ and FIP+. They normalize raw numbers to a common scale (100 = league average) so you can compare a D3 hitter to a D1 hitter on equal footing, relative to their peers.
         </P>
         <P>
-          All run environment figures below are averaged across 2022 to 2026 PNW data to provide stable baselines. These are the same averages used to compute wRC+, FIP+, and other league-adjusted stats.
+          All run environment figures below are averaged across 2022 to {CURRENT_SEASON} PNW data to provide stable baselines. These are the same averages used to compute wRC+, FIP+, and other league-adjusted stats.
         </P>
       </Card>
 

@@ -46,10 +46,10 @@ from typing import Dict, Tuple
 import psycopg2.extras
 
 from app.models.database import get_connection
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 
 
-SEASON = scrape_season()  # derived from today's date
+SEASON = scrape_season()  # the site's CURRENT_SEASON (season_utils)
 
 # Same caps as build_wp_table.py — must agree for lookups to hit
 INNING_CAP = 10

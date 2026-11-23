@@ -43,7 +43,7 @@ jobs:
         run: |
           pip install requests beautifulsoup4 psycopg2-binary python-dotenv
 
-      # Season = dispatch input when given, otherwise derived from today's date
+      # Season = dispatch input when given, otherwise the site's CURRENT_SEASON (season_utils)
       # by scripts/season_utils.py (calendar year through August, next year
       # from September on). PRESTO_SEASON is the matching "2026-27" style
       # academic-year string that scrape_nwac.py expects.

@@ -15,7 +15,7 @@ API (default http://localhost:8000/api/v1, i.e. the nwbb service on the server);
 override with --base https://nwbaseballstats.com/api/v1 to run from anywhere.
 
 Usage:
-    PYTHONPATH=backend python3 scripts/generate_series_planner.py --season 2026
+    PYTHONPATH=backend python3 scripts/generate_series_planner.py [--season 2026]
     PYTHONPATH=backend python3 scripts/generate_series_planner.py --base https://nwbaseballstats.com/api/v1
 """
 
@@ -31,10 +31,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from app.api.series_planner import make_team_record, grade_strengths  # noqa: E402
-from app.config import CURRENT_SEASON  # noqa: E402
+from app.config import stats_season  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_PATH = REPO_ROOT / "backend" / "data" / "series_planner.json"
+MIN_TEAMS = 30   # fewer teams than this = not enough data to publish a plan file
 
 
 def get_json(base, path, params=None, retries=3, timeout=35):
@@ -67,12 +68,13 @@ def group(rows):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--season", type=int, default=CURRENT_SEASON)
+    # Default: the season coaches scout from (last season until March 15).
+    ap.add_argument("--season", type=int, default=None)
     ap.add_argument("--base", default=os.environ.get("NWBB_API_BASE", "http://localhost:8000/api/v1"))
     ap.add_argument("--out", default=str(OUT_PATH))
     ap.add_argument("--max-spray", type=int, default=4, help="spray-fetch thread pool size (keep low for single-worker APIs)")
     args = ap.parse_args()
-    season, base = args.season, args.base.rstrip("/")
+    season, base = (args.season or stats_season()), args.base.rstrip("/")
     print(f"Series Planner generator · season {season} · base {base}", flush=True)
 
     teams = [t for t in load(base, "teams", "/teams") if t.get("is_active")]
@@ -108,6 +110,11 @@ def main():
             relievers_by_team.get(tid, []),
         )
     print(f"built {len(records)} team records", flush=True)
+    # Never replace a good file with a near-empty one (a brand-new season with
+    # no team stats yet would otherwise wipe every coach's plan).
+    if len(records) < MIN_TEAMS:
+        print(f"only {len(records)} teams with data for {season}; keeping the existing file", flush=True)
+        return
 
     # Pre-compute strengths with full peer context so the live endpoint doesn't
     # need every team loaded just to grade one (it still passes peers, but this

@@ -14,11 +14,11 @@ import { useState, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 import ReportActions from '../components/ReportActions'
 import { toneAttr } from '../lib/reportExport'
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 
 const rate = v => v == null ? '–' : Number(v).toFixed(3).replace(/^0\./, '.').replace(/^-0\./, '-.')
 const pct = v => v == null ? '–' : `${(v * 100).toFixed(1)}%`

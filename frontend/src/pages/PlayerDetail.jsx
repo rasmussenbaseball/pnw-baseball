@@ -1838,7 +1838,7 @@ function PlayerDetailStandard() {
           )}
 
           {/* Commitment status - NWAC/JUCO players only */}
-          {player.division_level === 'JUCO' && (
+          {player.division_level === 'JUCO' && !(player.is_committed && player.committed_season && player.committed_season <= CURRENT_SEASON) && (
             <div className="mt-2">
               {player.is_committed && player.committed_to ? (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 border border-green-200 text-sm font-semibold text-green-700">

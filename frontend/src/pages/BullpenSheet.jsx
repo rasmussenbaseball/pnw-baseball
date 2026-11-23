@@ -26,10 +26,10 @@ import { toneAttr } from '../lib/reportExport'
 import { useParams } from 'react-router-dom'
 import { useApi, useTeams } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 
 
 // ─────────────────────────────────────────────────────────────

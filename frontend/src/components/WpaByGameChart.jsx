@@ -17,9 +17,9 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
 } from 'recharts'
 import { usePlayerWpaByGame } from '../hooks/useApi'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 
 
 export default function WpaByGameChart({ playerId, position }) {

@@ -619,7 +619,8 @@ def _assumed_roster_2027(cur, team_id, proj_season, unlocked):
 
 
 @team_profile_router.get("/{team_id}/returning")
-def team_returning(team_id: int, request: Request, season: int = Query(CURRENT_SEASON)):
+@cached_endpoint(ttl_seconds=600)   # busted by admin_tools._bust_profile_cache on edits
+def team_returning(team_id: int, season: int = Query(CURRENT_SEASON)):
     unlocked = True   # projections are open to everyone (no paid tiers)
     with get_connection() as conn:
         cur = conn.cursor()

@@ -246,7 +246,7 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
     nuxt_data = parse_nuxt_data(html)
     if not nuxt_data:
         logger.warning(f"  {team_name}: no __NUXT_DATA__ found, trying HTML fallback")
-        return extract_future_html_games(html, team_name, team_info, today, team_map)
+        return extract_future_html_games(html, team_name, team_info, today, team_map, season=season)
 
     games = extract_games_from_nuxt(nuxt_data)
     logger.info(f"  {team_name}: extracted {len(games)} total games from Nuxt data")
@@ -346,7 +346,7 @@ def extract_future_sidearm_games(team_name, team_info, season, today, team_map):
     return future_games
 
 
-def extract_future_html_games(html, team_name, team_info, today, team_map):
+def extract_future_html_games(html, team_name, team_info, today, team_map, season=None):
     """
     Fallback: extract future games from legacy Sidearm HTML.
 
@@ -402,10 +402,15 @@ def extract_future_html_games(html, team_name, team_info, today, team_map):
             for fmt in ("%b %d", "%B %d"):
                 try:
                     dt = datetime.strptime(f"{month_str} {day_str}", fmt)
-                    year = today.year
-                    # Handle Jan/Feb games when we're in Oct+ (next calendar year)
-                    if dt.month < 3 and today.month > 8:
-                        year += 1
+                    if season:
+                        # A spring season's games run Feb-Jun of the season
+                        # year; Aug-Dec dates belong to the fall before it.
+                        year = int(season) - 1 if dt.month >= 8 else int(season)
+                    else:
+                        year = today.year
+                        # Handle Jan/Feb games when we're in Oct+ (next calendar year)
+                        if dt.month < 3 and today.month > 8:
+                            year += 1
                     game_date = dt.replace(year=year).date()
                     break
                 except ValueError:
@@ -995,7 +1000,7 @@ def deduplicate_future_games(games):
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape future schedules for PNW baseball")
-    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: derived from today's date)")
+    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: the site's CURRENT_SEASON (season_utils))")
     args = parser.parse_args()
 
     import pytz

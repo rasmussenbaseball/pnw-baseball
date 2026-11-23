@@ -30,9 +30,9 @@ Usage:
 import argparse
 from collections import defaultdict
 from app.models.database import get_connection
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 
-CURRENT_SEASON = scrape_season()  # derived from today's date
+CURRENT_SEASON = scrape_season()  # the site's CURRENT_SEASON (season_utils)
 DIV_PRIORITY = {"D1": 5, "D2": 4, "NAIA": 3, "D3": 2, "JUCO": 1}
 
 
@@ -316,7 +316,7 @@ def main():
     parser.add_argument("--link", action="store_true", help="Actually create links")
     parser.add_argument("--show", action="store_true", help="Show existing links")
     parser.add_argument("--unlink", type=int, help="Remove a link by ID")
-    parser.add_argument("--season", type=int, default=scrape_season(), help="Current season (default: derived from today's date)")
+    parser.add_argument("--season", type=int, default=scrape_season(), help="Current season (default: the site's CURRENT_SEASON (season_utils))")
     parser.add_argument("--min-confidence", type=float, default=0.7,
                         help="Minimum confidence to auto-link (default: 0.7)")
     args = parser.parse_args()

@@ -190,16 +190,16 @@ function Table({ rows, side, expanded, toggle, norm }) {
             {isBat ? <>
               <th className={GROUP} colSpan={6}>Counting</th>
               <th className={GROUP + BL} colSpan={6}>Rate &amp; discipline</th>
-              <th className={GROUP + BL} colSpan={3}>Plate skills (Δ vs ’26)</th>
+              <th className={GROUP + BL} colSpan={3}>Plate skills (Δ vs ’{String(PREV).slice(2)})</th>
             </> : <>
               <th className={GROUP} colSpan={7}>Run prevention</th>
               <th className={GROUP + BL} colSpan={2}>Command</th>
-              <th className={GROUP + BL} colSpan={3}>Stuff (Δ vs ’26)</th>
+              <th className={GROUP + BL} colSpan={3}>Stuff (Δ vs ’{String(PREV).slice(2)})</th>
             </>}
             <th className={GROUP + BL} colSpan={2}>Value</th>
           </tr>
           <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-            <th className={THL}>Player</th><th className={TH}>’27</th><th className={TH}>Pos</th>
+            <th className={THL}>Player</th><th className={TH}>’{String(SEASON).slice(2)}</th><th className={TH}>Pos</th>
             {isBat ? <>
               <th className={TH}>PA</th><th className={TH}>H</th><th className={TH}>2B</th>
               <th className={TH}>HR</th><th className={TH}>R</th><th className={TH}>RBI</th>

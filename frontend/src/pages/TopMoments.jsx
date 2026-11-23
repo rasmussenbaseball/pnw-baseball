@@ -15,9 +15,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTopMoments } from '../hooks/useApi'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 
 export default function TopMoments() {
   const [tab, setTab] = useState('hitter_moments')

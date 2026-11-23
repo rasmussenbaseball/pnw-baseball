@@ -22,10 +22,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
-import { CURRENT_SEASON, SUMMER_SEASON, PROJECTION_SEASON, RECRUITING_GRAD_YEAR } from '../../lib/seasons'
+import { CURRENT_SEASON, STATS_SEASON, isSeasonFinal, SUMMER_SEASON, PROJECTION_SEASON, RECRUITING_GRAD_YEAR } from '../../lib/seasons'
 import { teamColor, darken } from '../../lib/teamColors'
 
-const SEASON = CURRENT_SEASON
+// Stat panels follow STATS_SEASON (last season until March 15, then the new
+// one); FINAL switches the award / champion copy once the spring is over.
+const SEASON = STATS_SEASON
+const FINAL = isSeasonFinal(SEASON)
 // Projections target the NEXT spring; comes from seasons.js so a January
 // CURRENT_SEASON bump does not ask for projections that do not exist yet.
 const PROJ_SEASON = PROJECTION_SEASON
@@ -178,10 +181,11 @@ export function AwardsRow({ ratings, natl }) {
         team={c.team} level={c.level} headline={c.stats?.headline} line={c.stats?.line} color={teamColor(c.team)} />
     )
   }
-  cards.push(pc('hitter', 'Hitter of the year'), pc('mvp', 'Most valuable'), pc('pitcher', 'Pitcher of the year'))
-  if (team) {
+  cards.push(pc('hitter', FINAL ? 'Hitter of the year' : 'Top hitter so far'), pc('mvp', 'Most valuable'),
+    pc('pitcher', FINAL ? 'Pitcher of the year' : 'Top pitcher so far'))
+  if (team && (team.wins || team.losses)) {
     cards.push(
-      <AwardCard key="team" label="Team of the year" name={team.name} to={`/team/${team.id}`} logo={team.logo}
+      <AwardCard key="team" label={FINAL ? 'Team of the year' : 'Top team so far'} name={team.name} to={`/team/${team.id}`} logo={team.logo}
         team={team.level ? `${team.level}${team.natl ? ` · No. ${team.natl} nationally` : ''}` : ''}
         headline={{ label: 'Record', value: team.wins != null ? `${team.wins}-${team.losses}` : '–' }}
         line={[{ label: 'CPI', value: team.cpi }, { label: 'conf', value: team.conf }]}
@@ -192,7 +196,7 @@ export function AwardsRow({ ratings, natl }) {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2 px-0.5">
-        <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{SEASON} season, final</div>
+        <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{SEASON} season{FINAL ? ', final' : ' so far'}</div>
         <Link to="/stat-leaders" className="text-[11px] font-semibold text-nw-teal dark:text-nw-teal-light hover:underline">How these are picked →</Link>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -206,7 +210,9 @@ export function AwardsRow({ ratings, natl }) {
 
 // ─── 2. Results strip ─────────────────────────────────────────────────
 export function ResultsStrip() {
-  const { data } = useApi('/games/recent', { season: SEASON, limit: 12 })
+  // Always the live season: this strip is for the newest games, and the
+  // homepage only mounts it while CURRENT_SEASON is in progress.
+  const { data } = useApi('/games/recent', { season: CURRENT_SEASON, limit: 12 })
   const games = useMemo(() => {
     const list = Array.isArray(data) ? data : (data?.games || [])
     const finals = list.filter(g => g.status === 'final' && g.home_score != null)
@@ -305,7 +311,8 @@ const LOWER_BETTER = new Set(['era', 'baa', 'bb_pct', 'kbb'])
 
 export function LeaderRail() {
   const [division, setDivision] = useState('all')
-  const { data, loading } = useApi('/home/leaders', { division }, [division])
+  // WCL picks its own (summer) season server-side; spring boards follow STATS_SEASON.
+  const { data, loading } = useApi('/home/leaders', { division, season: division === 'WCL' ? null : SEASON }, [division])
   const isWcl = division === 'WCL'
   const link = usePlayerLinks()
   const cats = RAIL_KEYS.map(([side, key]) => (data?.[side] || []).find(c => c.key === key)).filter(Boolean)
@@ -362,7 +369,7 @@ function pbpLeaders(data, side, key) {
 
 export function PbpPanel() {
   const { data, loading } = useApi('/home/pbp', { season: SEASON })
-  const { data: leaders } = useApi('/home/leaders', { division: 'all' })
+  const { data: leaders } = useApi('/home/leaders', { division: 'all', season: SEASON })
   const link = usePlayerLinks()
   const cov = data?.coverage
   const m = data?.moment
@@ -543,7 +550,7 @@ const PROJ_MIN = { bat: p => (p.PT || 0) >= 150, pit: p => (p.IP || 0) >= 40 }
 export function ProjectionsPanel() {
   const [side, setSide] = useState('bat')
   const [statKey, setStatKey] = useState('WAR')
-  const { data, loading } = useApi('/projections/player-leaders', { side, season: PROJ_SEASON }, [side])
+  const { data, loading } = useApi('/projections/player-leaders/top', { side, season: PROJ_SEASON, n: 8 }, [side])
   const players = (data?.players || []).filter(p => !p.insufficient && PROJ_MIN[side](p))
   const cols = PROJ_COLS[side]
   const c = cols.find(x => x.key === statKey) || cols[0]
@@ -704,7 +711,8 @@ export function ChampionsPanel({ standings }) {
     const out = []
     ;(standings?.conferences || []).forEach((c) => {
       if (!c.conference_abbrev || c.conference_abbrev === 'IND') return
-      const winners = (c.teams || []).filter(t => t.rank === 1 || /^T-?1$/i.test(String(t.rank_label || '')))
+      const winners = (c.teams || []).filter(t => (t.rank === 1 || /^T-?1$/i.test(String(t.rank_label || '')))
+        && ((t.conf_wins || 0) + (t.conf_losses || 0)) > 0)
       if (!winners.length) return
       out.push({ conf: c.conference_abbrev, name: c.conference_name, level: levelLabel(c.division_level), winners })
     })
@@ -719,7 +727,7 @@ export function ChampionsPanel({ standings }) {
     </Link>
   )
   return (
-    <Panel title={`${SEASON} champions`} to="/standings" linkLabel="Standings">
+    <Panel title={FINAL ? `${SEASON} champions` : `${SEASON} conference leaders`} to="/standings" linkLabel="Standings">
       {!standings && loading ? <Skeleton rows={8} /> : (
         <>
           <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 mb-1">Conference tournaments</div>
@@ -727,7 +735,7 @@ export function ChampionsPanel({ standings }) {
             <Row key={t.conference + t.team} logo={t.logo} name={t.team} to={t.team_id ? `/team/${t.team_id}` : '/standings'}
               sub={t.note || t.event} right={<><span>{t.conference}</span><span className="block text-gray-400 font-semibold">{t.level}</span></>} />
           )) : <div className="text-[12px] text-gray-400 py-1">Tournaments start in May.</div>}
-          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 mt-4 mb-1">Regular season</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 mt-4 mb-1">{FINAL ? 'Regular season' : 'Leading the standings'}</div>
           {regular.map((r) => r.winners.map((t) => (
             <Row key={r.conf + t.id} logo={t.logo_url} name={t.short_name} to={`/team/${t.id}`}
               sub={`${t.conf_wins}-${t.conf_losses} in ${r.name}${r.winners.length > 1 ? ' (shared)' : ''}`}

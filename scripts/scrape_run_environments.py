@@ -43,7 +43,7 @@ except Exception:
     pass
 
 OUT = Path(__file__).resolve().parent.parent / "backend" / "data" / "run_environments.json"
-SEASON = scrape_season()                    # derived from today's date
+SEASON = scrape_season()                    # the site's CURRENT_SEASON (season_utils)
 NAIA_SEASON = presto_season_str(SEASON)    # "2026-27" style, NAIA/Presto URLs
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"}

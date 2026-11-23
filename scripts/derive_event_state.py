@@ -37,7 +37,7 @@ Usage:
 """
 
 import argparse
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 import logging
 import os
 import re

@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 from app.models.database import get_connection
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 from app.stats.advanced import (
     BattingLine, PitchingLine, DEFAULT_WEIGHTS,
     compute_batting_advanced, compute_pitching_advanced,

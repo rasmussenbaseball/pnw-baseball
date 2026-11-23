@@ -867,11 +867,15 @@ def run(grad_year, state_filter, dry_run):
 
 def main():
     ap = argparse.ArgumentParser(description="Ingest HS commits to PNW schools.")
-    ap.add_argument("--grad-year", type=int, default=2026)
+    # Default: the HS class being recruited now (season_utils.upcoming_season).
+    ap.add_argument("--grad-year", type=int, default=None)
     ap.add_argument("--state", default=None, help="Filter to one state (WA/OR/ID/MT/BC)")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print per-school counts + rank-match rate; write nothing.")
     args = ap.parse_args()
+    if args.grad_year is None:
+        from season_utils import upcoming_season
+        args.grad_year = upcoming_season()
     if not DATABASE_URL:
         logger.error("DATABASE_URL not set (check .env)")
         sys.exit(1)

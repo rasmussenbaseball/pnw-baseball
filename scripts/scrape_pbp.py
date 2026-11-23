@@ -41,7 +41,7 @@ import psycopg2.extras
 
 # Project imports
 from app.models.database import get_connection
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 
 # Local script imports — same scripts/ dir
 sys.path.insert(0, "scripts")

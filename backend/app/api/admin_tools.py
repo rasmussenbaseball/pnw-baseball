@@ -474,11 +474,21 @@ def _bust_profile_cache():
         pass
     # The team-projections endpoint is cached; a returning-status edit (departing/
     # returning) changes who's projected, so bust it too.
-    try:
-        from .routes import team_projections
-        team_projections._cache_clear()
-    except Exception:
-        pass
+    # Trackers and the Returning tab are cached too (Nov 2026).
+    for _mod, _fn in ((".routes", "team_projections"), (".routes", "transfer_portal_players"),
+                      (".summer", "wcl_portal_players"), (".team_profile", "team_returning")):
+        try:
+            import importlib
+            getattr(importlib.import_module(_mod, __package__), _fn)._cache_clear()
+        except Exception:
+            pass
+
+
+def _bust_after_edit():
+    """Route dependency: once the edit handler finishes, clear the cached
+    trackers / recruiting graphics so the change shows up right away."""
+    yield
+    _bust_profile_cache()
 
 
 @router.post("/admin/returning/set")
@@ -587,7 +597,7 @@ def summer_search(q: str = Query(..., min_length=2), _email: str = Depends(requi
     return rows
 
 
-@router.post("/admin/summer/school/set")
+@router.post("/admin/summer/school/set", dependencies=[Depends(_bust_after_edit)])
 def summer_school_set(body: SummerSchool, email: str = Depends(require_commitment_editor)):
     """Assign a spring school to a WCL player. PNW destinations normalize to the
     team's canonical short_name (and store the team id for logo + level chip)."""
@@ -623,7 +633,7 @@ def summer_school_set(body: SummerSchool, email: str = Depends(require_commitmen
             "matched_pnw": bool(team_id)}
 
 
-@router.post("/admin/summer/school/clear")
+@router.post("/admin/summer/school/clear", dependencies=[Depends(_bust_after_edit)])
 def summer_school_clear(body: SummerIdBody, email: str = Depends(require_commitment_editor)):
     """Remove a WCL player's curated school."""
     with get_connection() as conn:
@@ -638,7 +648,7 @@ def summer_school_clear(body: SummerIdBody, email: str = Depends(require_commitm
     return {"ok": True, "summer_player_id": body.summer_player_id, "school": None}
 
 
-@router.post("/admin/wcl-portal/add")
+@router.post("/admin/wcl-portal/add", dependencies=[Depends(_bust_after_edit)])
 def wcl_portal_add(body: SummerIdBody, email: str = Depends(require_commitment_editor)):
     """Add a WCL player to the WCL Transfer Portal Tracker."""
     with get_connection() as conn:
@@ -663,7 +673,7 @@ def wcl_portal_add(body: SummerIdBody, email: str = Depends(require_commitment_e
     return {"ok": True, "summer_player_id": body.summer_player_id, "in_wcl_portal": True, "portal_season": season}
 
 
-@router.post("/admin/wcl-portal/remove")
+@router.post("/admin/wcl-portal/remove", dependencies=[Depends(_bust_after_edit)])
 def wcl_portal_remove(body: SummerIdBody, email: str = Depends(require_commitment_editor)):
     """Remove a WCL player from the WCL Transfer Portal Tracker."""
     with get_connection() as conn:
@@ -710,7 +720,7 @@ class FreshmanAdd(BaseModel):
     grad_year: int = RECRUITING_GRAD_YEAR  # the HS class currently committing (config.py)
 
 
-@router.post("/admin/freshman/add")
+@router.post("/admin/freshman/add", dependencies=[Depends(_bust_after_edit)])
 def freshman_add(body: FreshmanAdd, email: str = Depends(require_commitment_editor)):
     """Add an incoming freshman PBR/BBNW didn't catch. Listed in the recruiting
     class as an unrated commit (no PBR/BBNW data => no class-weight impact)."""
@@ -767,7 +777,7 @@ def freshman_list(_email: str = Depends(require_commitment_editor)):
     return rows
 
 
-@router.post("/admin/freshman/remove")
+@router.post("/admin/freshman/remove", dependencies=[Depends(_bust_after_edit)])
 def freshman_remove(body: dict, email: str = Depends(require_commitment_editor)):
     """Remove a manually-added freshman. Guarded to manual rows so a scraped
     recruit can never be deleted through this endpoint."""
@@ -904,7 +914,7 @@ class RemoveLink(BaseModel):
     link_id: int
 
 
-@router.post("/admin/link/create")
+@router.post("/admin/link/create", dependencies=[Depends(_bust_after_edit)])
 def link_create(body: CreateLink, email: str = Depends(require_commitment_editor)):
     a, b = body.a, body.b
     if a.kind == b.kind == "spring" and a.id == b.id:
@@ -958,7 +968,7 @@ def link_create(body: CreateLink, email: str = Depends(require_commitment_editor
     return {"ok": True, "table": table}
 
 
-@router.post("/admin/link/remove")
+@router.post("/admin/link/remove", dependencies=[Depends(_bust_after_edit)])
 def link_remove(body: RemoveLink, email: str = Depends(require_commitment_editor)):
     if body.table not in ("player_links", "summer_player_links"):
         raise HTTPException(status_code=400, detail="Bad table")
@@ -1002,7 +1012,7 @@ def incoming_list(_email: str = Depends(require_commitment_editor)):
         return [dict(r) for r in cur.fetchall()]
 
 
-@router.post("/admin/incoming/add")
+@router.post("/admin/incoming/add", dependencies=[Depends(_bust_after_edit)])
 def incoming_add(body: IncomingAdd, email: str = Depends(require_commitment_editor)):
     with get_connection() as conn:
         cur = conn.cursor()
@@ -1022,7 +1032,7 @@ def incoming_add(body: IncomingAdd, email: str = Depends(require_commitment_edit
     return {"ok": True, "id": new_id, "to_team": t["short_name"]}
 
 
-@router.post("/admin/incoming/remove")
+@router.post("/admin/incoming/remove", dependencies=[Depends(_bust_after_edit)])
 def incoming_remove(body: dict, email: str = Depends(require_commitment_editor)):
     iid = body.get("id")
     if not iid:

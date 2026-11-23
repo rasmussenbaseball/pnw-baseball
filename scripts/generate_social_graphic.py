@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 from app.models.database import get_connection
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 
 
 # ─── Config ───
@@ -45,7 +45,7 @@ TEMPLATE_PATH = TEMPLATE_DIR / 'top-performers.html'
 MIN_PA = 10
 MIN_IP = 4.0
 TOP_N = 5
-SEASON = scrape_season()  # derived from today's date
+SEASON = scrape_season()  # the site's CURRENT_SEASON (season_utils)
 
 
 def fetch_batting_leaders(season=SEASON, limit=TOP_N):

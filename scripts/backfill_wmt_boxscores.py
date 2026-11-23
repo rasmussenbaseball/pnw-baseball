@@ -32,7 +32,7 @@ import psycopg2
 import psycopg2.extras
 
 # Shared team-name matching (see scripts/team_matching.py)
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 from wmt_utils import resolve_wmt_team_id, SEATTLE_U_WMT_DOMAIN, SEATTLE_U_WMT_IDS  # shared WMT id lookup
 from team_matching import (
     get_team_id_by_short_name,

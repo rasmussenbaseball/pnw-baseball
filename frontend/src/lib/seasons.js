@@ -14,6 +14,26 @@
 export const CURRENT_SEASON = 2026
 export const DEFAULT_SEASON = CURRENT_SEASON
 
+// The season stat surfaces (homepage awards/ratings, coach scouting tools)
+// default to. CURRENT_SEASON is bumped around opening day so the scrapers
+// start, but the new season only has a handful of games for its first few
+// weeks. Until March 15 of CURRENT_SEASON these surfaces keep showing the
+// last completed season, then switch on their own. Pure date rule, no fetch.
+// Mirrors backend config.py stats_season().
+export const STATS_SEASON =
+  new Date() >= new Date(CURRENT_SEASON, 2, 15) ? CURRENT_SEASON : CURRENT_SEASON - 1
+
+// A spring season is over once June is (regionals, NWAC tournament and
+// conference tournaments are all done). Drives "final" / "of the year" copy.
+export function isSeasonFinal(season) {
+  return new Date() >= new Date(Number(season), 6, 1)
+}
+
+// The newest season that is over (CURRENT_SEASON once June is done, else the
+// one before). Used where a partial season makes no sense: returning
+// production, freshman-usage studies.
+export const LAST_COMPLETED_SEASON = isSeasonFinal(CURRENT_SEASON) ? CURRENT_SEASON : CURRENT_SEASON - 1
+
 // The season after the current one: where a normal commitment lands.
 export const NEXT_SEASON = CURRENT_SEASON + 1
 

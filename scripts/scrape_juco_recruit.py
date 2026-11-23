@@ -536,7 +536,7 @@ def scrape_team(cur, team, season_str, season_year, dry_run=False):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", default=presto_season_str(scrape_season()),
-                    help="Presto academic-year season, e.g. 2026-27 (default: derived from today's date)")
+                    help="Presto academic-year season, e.g. 2026-27 (default: the site's CURRENT_SEASON (season_utils))")
     ap.add_argument("--conference", help="Only this conference_name")
     ap.add_argument("--school", help="Only this school_name")
     ap.add_argument("--dry-run", action="store_true", help="Parse + count, write nothing")

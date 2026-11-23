@@ -14,9 +14,9 @@ import {
   usePlayerPitchLevelStats,
   usePlayerPitchLevelStatsPitcher,
 } from '../hooks/useApi'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 
 export default function PlayerScouting() {
   const [query, setQuery] = useState('')

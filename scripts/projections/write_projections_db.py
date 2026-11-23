@@ -43,6 +43,11 @@ from team_projection import (  # noqa: E402
     WHIFF_FROM_K, fit_run_estimator, pbp_projection, career_xbh_mix, load_fip_luck,
 )
 import park  # noqa: E402  — home-park HR / run factors (de-park inputs, re-park outputs)
+from app.config import PROJECTION_SEASON  # noqa: E402
+
+# The season being projected. main() / write_projections_v2 overwrite it;
+# "actuals" queries use TARGET - 1 (the last completed season).
+TARGET = PROJECTION_SEASON
 
 FOURYR = {"D1", "D2", "D3", "NAIA"}
 
@@ -137,20 +142,20 @@ def team_workload(cur):
     def tip(n):
         w = int(n); return w + round((n - w) * 10) / 3.0
     wl = {}
-    cur.execute("""SELECT d.level lvl, b.team_id tid, SUM(b.plate_appearances) tpa,
+    cur.execute(f"""SELECT d.level lvl, b.team_id tid, SUM(b.plate_appearances) tpa,
               array_agg(b.plate_appearances) pas
         FROM batting_stats b JOIN teams t ON t.id=b.team_id
         JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-        WHERE b.season=2026 AND t.state IN ('WA','OR','ID','MT','BC') GROUP BY 1,2""")
+        WHERE b.season={TARGET - 1} AND t.state IN ('WA','OR','ID','MT','BC') GROUP BY 1,2""")
     tpa, ipa = {}, {}
     for r in cur.fetchall():
         tpa.setdefault(r["lvl"], []).append(r["tpa"]); ipa.setdefault(r["lvl"], []).extend(r["pas"])
-    cur.execute("""SELECT d.level lvl, p.team_id tid, array_agg(p.innings_pitched) ips,
+    cur.execute(f"""SELECT d.level lvl, p.team_id tid, array_agg(p.innings_pitched) ips,
               SUM(FLOOR(p.innings_pitched)+(p.innings_pitched-FLOOR(p.innings_pitched))*10/3.0) tip,
               SUM(p.batters_faced) bf
         FROM pitching_stats p JOIN teams t ON t.id=p.team_id
         JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-        WHERE p.season=2026 AND t.state IN ('WA','OR','ID','MT','BC') GROUP BY 1,2""")
+        WHERE p.season={TARGET - 1} AND t.state IN ('WA','OR','ID','MT','BC') GROUP BY 1,2""")
     tipd, iip, ipnum, bfden = {}, {}, {}, {}
     for r in cur.fetchall():
         lvl = r["lvl"]
@@ -473,7 +478,7 @@ def _pt_distributions(cur):
                                ("pit", "pitching_stats", "batters_faced", 15)]:
         cur.execute(f"""SELECT d.level lvl, b.{col} v FROM {tbl} b
             JOIN teams t ON t.id=b.team_id JOIN conferences c ON c.id=t.conference_id
-            JOIN divisions d ON d.id=c.division_id WHERE b.season=2026 AND b.{col}>=%s""", (mn,))
+            JOIN divisions d ON d.id=c.division_id WHERE b.season={TARGET - 1} AND b.{col}>=%s""", (mn,))
         tmp = {}
         for r in cur.fetchall():
             tmp.setdefault(r["lvl"], []).append(float(r["v"]))
@@ -495,7 +500,7 @@ def _achievable_targets(cur):
             cur.execute(f"""SELECT d.level lvl, ({expr})::float x
                 FROM {tbl} b JOIN teams t ON t.id=b.team_id
                 JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-                WHERE b.season=2026 AND b.{idc}>=%s AND ({expr}) IS NOT NULL""", (mn,))
+                WHERE b.season={TARGET - 1} AND b.{idc}>=%s AND ({expr}) IS NOT NULL""", (mn,))
             tmp = {}
             for r in cur.fetchall():
                 tmp.setdefault(r["lvl"], []).append(float(r["x"]))
@@ -520,10 +525,10 @@ def _achievable_targets(cur):
     # below 2 for a high-IP ace, but no real workhorse posts that (2026's best 80-IP
     # arm had a 3.26 FIP). Floor projected STARTERS at the level's elite-starter FIP so
     # FIP stays realistic and tells the same story as the (calibrated) WAR.
-    cur.execute("""SELECT d.level lvl, ps.era::float e, ps.fip::float fp FROM pitching_stats ps
+    cur.execute(f"""SELECT d.level lvl, ps.era::float e, ps.fip::float fp FROM pitching_stats ps
         JOIN teams t ON t.id=ps.team_id JOIN conferences c ON c.id=t.conference_id
         JOIN divisions d ON d.id=c.division_id
-        WHERE ps.season=2026 AND ps.batters_faced>=200""")
+        WHERE ps.season={TARGET - 1} AND ps.batters_faced>=200""")
     sp_era, sp_fip = {}, {}
     for r in cur.fetchall():
         if r["e"] is not None and r["e"] > 0:
@@ -610,20 +615,20 @@ def _league_baselines(cur):
     """2026 league wOBA (PA-weighted) and FIP (IP-weighted) per division level.
     Projections are translated INTO a 2026-like run environment, so WAR is
     anchored to that season's league context."""
-    cur.execute("""SELECT d.level lvl,
+    cur.execute(f"""SELECT d.level lvl,
           SUM(b.woba*b.plate_appearances)/NULLIF(SUM(b.plate_appearances),0) v
         FROM batting_stats b JOIN teams t ON t.id=b.team_id
         JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-        WHERE b.season=2026 AND b.plate_appearances>=20 AND b.woba IS NOT NULL GROUP BY 1""")
+        WHERE b.season={TARGET - 1} AND b.plate_appearances>=20 AND b.woba IS NOT NULL GROUP BY 1""")
     lg_woba = {r["lvl"]: float(r["v"]) for r in cur.fetchall() if r["v"]}
-    cur.execute("""SELECT d.level lvl,
+    cur.execute(f"""SELECT d.level lvl,
           SUM(p.fip*p.innings_pitched)/NULLIF(SUM(p.innings_pitched),0) v,
           SUM(p.earned_runs) er, SUM(p.home_runs_allowed) hr, SUM(p.walks) bb,
           SUM(COALESCE(p.hit_batters,0)) hbp, SUM(p.strikeouts) k, SUM(p.batters_faced) bf,
           SUM(FLOOR(p.innings_pitched) + (p.innings_pitched-FLOOR(p.innings_pitched))*10/3) ip
         FROM pitching_stats p JOIN teams t ON t.id=p.team_id
         JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-        WHERE p.season=2026 AND p.innings_pitched>=10 AND p.fip IS NOT NULL GROUP BY 1""")
+        WHERE p.season={TARGET - 1} AND p.innings_pitched>=10 AND p.fip IS NOT NULL GROUP BY 1""")
     lg_fip, fip_env = {}, {}
     for r in cur.fetchall():
         if not r["v"]:
@@ -1083,14 +1088,14 @@ def expand_to_achievable(rows, workload, run_coef):
         # per-level HBP / SF / SH rates (per PA) — needed to DERIVE OBP and wOBA
         # consistently. College HBP is ~3% of PA (not the ~1% guessed before),
         # which is why reconstructed OBP/wOBA were ~20 pts low.
-        cur.execute("""SELECT d.level lvl,
+        cur.execute(f"""SELECT d.level lvl,
               AVG(b.hit_by_pitch::float/NULLIF(b.plate_appearances,0)) hbp,
               AVG(b.sacrifice_flies::float/NULLIF(b.plate_appearances,0)) sf,
               AVG(GREATEST(b.plate_appearances - b.at_bats - b.walks - b.hit_by_pitch - b.sacrifice_flies, 0)::float
                   / NULLIF(b.plate_appearances,0)) sh
             FROM batting_stats b JOIN teams t ON t.id=b.team_id
             JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-            WHERE b.season=2026 AND b.plate_appearances>=100 GROUP BY 1""")
+            WHERE b.season={TARGET - 1} AND b.plate_appearances>=100 GROUP BY 1""")
         bat_env = {r["lvl"]: {"hbp": float(r["hbp"] or 0.03), "sf": float(r["sf"] or 0.01),
                               "sh": float(r["sh"] or 0.012)} for r in cur.fetchall()}
     DEF_ENV = {"hbp": 0.030, "sf": 0.011, "sh": 0.012}
@@ -1324,7 +1329,7 @@ def expand_to_achievable(rows, workload, run_coef):
 def main():
     global TARGET
     ap = argparse.ArgumentParser()
-    ap.add_argument("--season", type=int, default=2027)
+    ap.add_argument("--season", type=int, default=PROJECTION_SEASON)
     TARGET = ap.parse_args().season
 
     with get_connection() as conn:
@@ -1398,8 +1403,8 @@ def main():
                        b.team_id, ps.year_in_school cls26
                 FROM {tbl} b JOIN players p ON p.id=b.player_id
                 LEFT JOIN player_links c ON c.linked_id=b.player_id
-                LEFT JOIN player_seasons ps ON ps.player_id=b.player_id AND ps.season=2026
-                WHERE b.season=2026 AND b.{idc}>=1
+                LEFT JOIN player_seasons ps ON ps.player_id=b.player_id AND ps.season={TARGET - 1}
+                WHERE b.season={TARGET - 1} AND b.{idc}>=1
             """)
             for r in cur.fetchall():
                 meta.setdefault(r["cid"], r)   # first side wins for name/pos; fine
@@ -1408,25 +1413,25 @@ def main():
         # skill; HR/FB is mostly luck + park/level, so projecting HR as
         # (projected FB% x level HR/FB) is far more predictive than a pitcher's
         # own noisy HR rate. NWAC's HR/FB (~.037) is a third of the 4-year levels.
-        cur.execute("""
+        cur.execute(f"""
             SELECT d.level lvl, COUNT(*) FILTER (WHERE ge.bb_type='FB') fb,
                    COUNT(*) FILTER (WHERE ge.result_type='home_run') hr
             FROM game_events ge JOIN games g ON g.id=ge.game_id
             JOIN players p ON p.id=ge.pitcher_player_id JOIN teams t ON t.id=p.team_id
             JOIN conferences c ON c.id=t.conference_id JOIN divisions d ON d.id=c.division_id
-            WHERE g.season=2026 GROUP BY 1
+            WHERE g.season={TARGET - 1} GROUP BY 1
         """)
         hr_per_fb = {r["lvl"]: (r["hr"] / r["fb"]) for r in cur.fetchall() if r["fb"]}
 
         # all positions each player actually played in 2026 (>=15% of his games),
         # most-used first — so the roster shows e.g. "1B/OF", revealing how a team
         # fits multiple same-primary guys via secondary spots.
-        cur.execute("""
+        cur.execute(f"""
             WITH canon AS (SELECT linked_id pid, canonical_id cid FROM player_links)
             SELECT COALESCE(c.cid, gb.player_id) cid, gb.position pos, COUNT(*) n
             FROM game_batting gb JOIN games g ON g.id=gb.game_id
             LEFT JOIN canon c ON c.pid=gb.player_id
-            WHERE g.season=2026 AND gb.position IS NOT NULL AND gb.position <> ''
+            WHERE g.season={TARGET - 1} AND gb.position IS NOT NULL AND gb.position <> ''
             GROUP BY 1, 2
         """)
         pos_counts = {}

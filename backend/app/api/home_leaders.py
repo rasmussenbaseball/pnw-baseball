@@ -13,18 +13,16 @@ leaderboards:
 """
 
 import math
-import time
 
 from fastapi import APIRouter, Query
 from typing import Optional
 
 from app.models.database import get_connection
+from app.cache import cached_endpoint
 from app.config import CURRENT_SEASON, SUMMER_SEASON
 
 home_leaders_router = APIRouter(prefix="/home")
 
-_CACHE = {}
-_TTL = 1800
 
 QUALIFIED_PA_PER_GAME = 2.0
 QUALIFIED_IP_PER_GAME = 0.75
@@ -208,6 +206,7 @@ def _wcl_leaders(season):
 
 
 @home_leaders_router.get("/leaders")
+@cached_endpoint(ttl_seconds=1800)
 def home_leaders(
     division: str = Query("all", description="all | D1 | D2 | D3 | NAIA | NWAC | WCL"),
     season: Optional[int] = Query(None),
@@ -219,14 +218,9 @@ def home_leaders(
     # make the WCL board ask for a summer that has not been played yet.
     if season is None:
         season = SUMMER_SEASON if division == "WCL" else CURRENT_SEASON
-    ck = (division, season)
-    hit = _CACHE.get(ck)
-    if hit and (time.time() - hit[0]) < _TTL:
-        return hit[1]
 
     if division == "WCL":
         result = _wcl_leaders(season)
-        _CACHE[ck] = (time.time(), result)
         return result
 
     db_level = LEVEL_TO_DB.get(division) if division != "ALL" else None
@@ -389,18 +383,14 @@ def home_leaders(
     ]
 
     result = {"division": division, "season": season, "hitting": hitting, "pitching": pitching}
-    _CACHE[ck] = (time.time(), result)
     return result
 
 
 @home_leaders_router.get("/faces")
+@cached_endpoint(ttl_seconds=1800)
 def home_faces(season: int = Query(CURRENT_SEASON), limit: int = Query(8, ge=1, le=16)):
     """A handful of recognizable PNW players (top WAR) that HAVE a headshot —
     used to decorate the homepage Coach Sim widget with pixelated faces."""
-    ck = ("faces", season, limit)
-    hit = _CACHE.get(ck)
-    if hit and (time.time() - hit[0]) < _TTL:
-        return hit[1]
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -427,7 +417,6 @@ def home_faces(season: int = Query(CURRENT_SEASON), limit: int = Query(8, ge=1, 
             for r in cur.fetchall()
         ]
     result = {"season": season, "faces": faces}
-    _CACHE[ck] = (time.time(), result)
     return result
 
 
@@ -451,6 +440,7 @@ def _card(r, kind, stats):
 
 
 @home_leaders_router.get("/awards")
+@cached_endpoint(ttl_seconds=1800)
 def home_awards(season: int = Query(CURRENT_SEASON)):
     """Rule-based season awards for the homepage hero:
       hitter   = qualified leader in wRC+
@@ -459,10 +449,6 @@ def home_awards(season: int = Query(CURRENT_SEASON)):
     Qualification matches /home/leaders (2 PA / 0.75 IP per team game).
     The team card is assembled on the frontend from /team-ratings +
     /national-rankings, which the page loads anyway."""
-    ck = ("awards", season)
-    hit = _CACHE.get(ck)
-    if hit and (time.time() - hit[0]) < _TTL:
-        return hit[1]
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -528,19 +514,15 @@ def home_awards(season: int = Query(CURRENT_SEASON)):
             "line": [{"label": "pWAR", "value": f"{p['pwar']:.1f}" if p["pwar"] is not None else None},
                      {"label": "ERA", "value": f"{p['era']:.2f}" if p["era"] is not None else None},
                      {"label": "K", "value": f"{p['k'] or 0}"}]})
-    _CACHE[ck] = (time.time(), out)
     return out
 
 
 @home_leaders_router.get("/pbp")
+@cached_endpoint(ttl_seconds=1800)
 def home_pbp(season: int = Query(CURRENT_SEASON)):
     """Play-by-play summary for the homepage: coverage, the biggest single
     swing of the season (batter WPA), and the top clutch hitters and pitchers
     by season WPA. Everything comes from game_events."""
-    ck = ("pbp", season)
-    hit = _CACHE.get(ck)
-    if hit and (time.time() - hit[0]) < _TTL:
-        return hit[1]
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -551,8 +533,10 @@ def home_pbp(season: int = Query(CURRENT_SEASON)):
         cov = dict(cur.fetchone())
         cur.execute("SELECT COUNT(*) AS n FROM games WHERE season = %(s)s AND status = 'final'", {"s": season})
         cov["final_games"] = cur.fetchone()["n"]
-        cur.execute("SELECT COUNT(*) AS n FROM game_events")
-        cov["events_all_time"] = cur.fetchone()["n"]
+        # Planner estimate instead of COUNT(*) over the whole 325 MB table
+        # (1.9 s cold); exact to well under 1% after autovacuum/analyze.
+        cur.execute("SELECT reltuples::bigint AS n FROM pg_class WHERE oid = 'game_events'::regclass")
+        cov["events_all_time"] = max(int(cur.fetchone()["n"] or 0), cov.get("events") or 0)
 
         cur.execute("""
             SELECT ge.wpa_batter AS wpa, ge.result_text, ge.inning, ge.half, ge.game_date_ AS gd
@@ -619,11 +603,11 @@ def home_pbp(season: int = Query(CURRENT_SEASON)):
         for x in lst:
             x.pop("db_level", None)
     result = {"season": season, "coverage": cov, "moment": moment, "clutch_hitters": hitters, "clutch_pitchers": pitchers}
-    _CACHE[ck] = (time.time(), result)
     return result
 
 
 @home_leaders_router.get("/champions")
+@cached_endpoint(ttl_seconds=1800)
 def home_champions(season: int = Query(CURRENT_SEASON)):
     """Conference tournament champions for a season, from
     backend/data/conference_champions.json (curated; the scrapers don't tag
@@ -631,10 +615,6 @@ def home_champions(season: int = Query(CURRENT_SEASON)):
     Regular-season winners come from /standings on the frontend."""
     import json
     from pathlib import Path
-    ck = ("champions", season)
-    hit = _CACHE.get(ck)
-    if hit and (time.time() - hit[0]) < _TTL:
-        return hit[1]
     path = Path(__file__).resolve().parents[2] / "data" / "conference_champions.json"
     try:
         raw = json.loads(path.read_text()).get(str(season), [])
@@ -651,5 +631,4 @@ def home_champions(season: int = Query(CURRENT_SEASON)):
             t = byname.get(r["team"], {})
             out.append({**r, "team_id": t.get("id"), "logo": t.get("logo_url")})
     result = {"season": season, "tournaments": out}
-    _CACHE[ck] = (time.time(), result)
     return result

@@ -23,6 +23,22 @@ Do these in order. Steps 1 to 3 are file edits on the Mac, step 4 deploys.
 - `TRACKER_SEASONS` in the same file lists past years by hand
   (`[2026, 2025, 2024]`); add 2026 there if it is missing.
 
+What follows on its own after the bump (added Nov 2026, nothing to edit):
+- The homepage "Last results" strip mounts itself while CURRENT_SEASON is in
+  progress and hides once June is over (`isSeasonFinal()` in seasons.js).
+- `STATS_SEASON` (frontend `seasons.js`) / `stats_season()` (backend
+  `config.py`) keep the homepage awards and ratings, every coach scouting
+  tool (Series Planner, scouting/bullpen sheets, pocket cards, alignments,
+  splits, lineup helper, ...) and the Series Planner data file on 2026 until
+  March 15, 2027, then switch to 2027 by themselves. Award copy says "so far"
+  until July 1 and "final" / "of the year" after.
+- `generate_series_planner.py` refuses to overwrite the plan file with fewer
+  than 30 teams of data, so the first 2027 daily run cannot blank it.
+- The JUCO / transfer-portal trackers keep last season's stats until the new
+  season has 60% as many batting rows as the old one.
+- The team page Returning tab defaults to the last COMPLETED season
+  (`LAST_COMPLETED_SEASON`), Identity to `STATS_SEASON`.
+
 ### 1b. The offseason gate lifts on its own once step 1 is done
 
 `daily_update.sh`, live scores and the morning box-score rescrape skip
@@ -88,7 +104,11 @@ of those scrapes anything).
   stats, the D2 / D3 / NAIA box-score lines, and the future-schedules step).
 - `.github/workflows/nwac-schedule.yml`, `nwac-boxscores.yml`,
   `nwac-pbp.yml`, `nwac-stats.yml`: uncomment each `schedule:` block. The
-  season year inside them is already date-derived; nothing else to edit.
+  season year inside them follows CURRENT_SEASON (via season_utils), so the
+  step 1 bump is all they need.
+- Decide: should the 2027 projections freeze at opening day?
+  `.github/workflows/projections.yml` re-runs Mon/Wed/Fri and rewrites the
+  2027 rows each time. Comment out its `schedule:` block to freeze them.
 - `.github/workflows/wcl-daily.yml` needs nothing: it skips itself outside
   May through August.
 
@@ -97,11 +117,14 @@ May) [Mac]
 
 These are real-event literals and are meant to be edited by hand:
 
-- `backend/app/api/routes.py` around lines 3392 and 3473: the tournament
-  date window (`'2026-05-21'` to `'2026-05-26'`).
-- `backend/app/stats/projections.py`: `NWAC_2026_CHAMP_SEEDS`,
-  `NWAC_2026_CHAMP_HOST_ID`, `NWAC_2026_CHAMP_GRAPH` (seeds, host, game graph).
+- `backend/app/stats/projections.py`: add the new year to
+  `NWAC_CHAMP_FIELDS` (`2027: {1: team_id, ... 8: team_id}`); the NWAC
+  tournament sheet (`/portal/nwac-tournament-sheet`) reads it and shows
+  "field not set" for any year without an entry. (The old championship-odds
+  and MVP-tracker endpoints were removed in Nov 2026; nothing on the site
+  called them.)
 - `frontend/src/lib/brackets.js`: the `TOURNAMENTS` entries (dates, seeds).
+  The bracket graphic opens on the FIRST entry, so put the new year first.
 
 ### 4. Deploy [Mac then Server]
 
@@ -149,10 +172,13 @@ looks "stuck" on an old year after a rollover, close the tab and reopen it
   so do not bump it on opening day):
   - `backend/app/config.py`: `SUMMER_SEASON = 2026` -> `2027`
   - `frontend/src/lib/seasons.js`: `SUMMER_SEASON = 2026` -> `2027`
-  - Two graphic pages still carry their own literal
-    (`CURRENT_SUMMER_SEASON` in `frontend/src/pages/WclStandingsGraphic.jsx`
-    and `WclLeaderboardGraphic.jsx`); bump those too, or point them at
-    `SUMMER_SEASON` from `lib/seasons.js`.
+  - Prepend 2027 to `SUMMER_SEASONS` in `frontend/src/lib/seasons.js` (the
+    WCL graphics' season picker). The WCL graphic pages read SUMMER_SEASON,
+    so they need nothing else.
+- Once the spring rosters are final, regenerate `FRESHMAN_ROSTERED` in
+  `backend/app/api/recruiting.py` (`scripts/archive/count_rostered_freshmen.py`) and
+  add the 2027 entry; the Recruiting Tips freshman study reads the last
+  completed season from July 1.
 
 ---
 

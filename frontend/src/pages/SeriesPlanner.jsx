@@ -15,9 +15,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { usePortalTeam } from '../context/PortalTeamContext'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 
 const TABS = [
   ['board', 'Series Board'],

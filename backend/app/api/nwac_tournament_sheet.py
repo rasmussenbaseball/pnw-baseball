@@ -35,21 +35,20 @@ from .scouting_sheet import (
 
 # ─────────────────────────────────────────────────────────────────
 # The 8 championship teams. Kept in sync with
-# projections.NWAC_2026_CHAMP_SEEDS — imported so there's one source
-# of truth and 2027 only updates the projections constant.
+# projections.NWAC_CHAMP_FIELDS (one entry per season) so there is one source
+# of truth; a new year only adds an entry there.
 # ─────────────────────────────────────────────────────────────────
 
 def _champ_team_ids(season=2026):
-    """The championship field for `season`. Only 2026 is known; any other
-    season returns [] so the sheet says "field not set" instead of ranking
-    this year's stats over last year's eight teams."""
-    if int(season) != 2026:
-        return []
+    """The championship field for `season` (projections.NWAC_CHAMP_FIELDS).
+    A season with no field entered returns [] so the sheet says "field not
+    set" instead of ranking this year's stats over last year's eight teams."""
     try:
-        from app.stats.projections import NWAC_2026_CHAMP_SEEDS
-        return list(NWAC_2026_CHAMP_SEEDS.values())
+        from app.stats.projections import NWAC_CHAMP_FIELDS
     except Exception:
-        return [28, 44, 35, 52, 30, 38, 43, 27]
+        return []
+    field = NWAC_CHAMP_FIELDS.get(int(season))
+    return list(field.values()) if field else []
 
 
 # ─────────────────────────────────────────────────────────────────

@@ -13,9 +13,9 @@ SFO that is a flat ~80-120ms tax on every request, and it showed up as ~280k
 
 We now keep a small client-side pool of warm connections and reuse them. To stay
 robust against the transaction pooler silently dropping idle connections, each
-checkout is validated with a cheap `SELECT 1` (test-on-borrow) — one ~30ms
-round-trip instead of a ~4-round-trip reconnect, and dead connections are
-transparently replaced. If the pool is ever exhausted under a burst, we fall back
+checkout that sat idle for 20s+ is validated with a cheap `SELECT 1`
+(test-on-borrow, one ~30ms round trip; recently used connections skip it), and
+dead connections are transparently replaced. If the pool is ever exhausted under a burst, we fall back
 to a one-off direct connection rather than erroring.
 
 Kill switch: set DB_POOL_MAX=0 in the environment to disable pooling entirely and
@@ -27,6 +27,7 @@ RealDictCursor rows) is unchanged.
 import atexit
 import os
 import threading
+import time
 from contextlib import contextmanager
 
 import psycopg2
@@ -89,15 +90,29 @@ def _get_pool():
     return _pool
 
 
+# Connections returned cleanly within this many seconds skip the ping: the
+# pooler does not drop a connection that was in use moments ago (TCP
+# keepalives are on), and the old unconditional check cost three round trips
+# (BEGIN, SELECT 1, ROLLBACK, ~90 ms from the droplet) on every checkout.
+_PING_IDLE_SECONDS = 20
+_last_returned = {}      # id(conn) -> time.monotonic() of its last clean return
+
+
 def _alive(conn):
-    """Cheap test-on-borrow. Returns True if the connection answers a SELECT 1."""
+    """Test-on-borrow for connections that sat idle. One round trip: the
+    SELECT 1 runs in autocommit mode so psycopg2 sends no BEGIN/ROLLBACK."""
     if conn.closed:
         return False
+    if time.monotonic() - _last_returned.get(id(conn), 0.0) < _PING_IDLE_SECONDS:
+        return True
     try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1")
-            cur.fetchone()
-        conn.rollback()  # leave the connection in a clean, idle state
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+        finally:
+            conn.autocommit = False
         return True
     except Exception:
         return False
@@ -159,7 +174,12 @@ def get_connection():
                 # Discard any connection that errored this turn so it can't
                 # return to the pool in a bad state.
                 try:
-                    pool.putconn(conn, close=(not ok or conn.closed))
+                    discard = (not ok or conn.closed)
+                    if discard:
+                        _last_returned.pop(id(conn), None)
+                    else:
+                        _last_returned[id(conn)] = time.monotonic()
+                    pool.putconn(conn, close=discard)
                 except Exception:
                     try:
                         conn.close()

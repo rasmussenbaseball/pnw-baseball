@@ -171,6 +171,18 @@ CACHE_CONTROL_RULES = [
     ("/api/v1/comps",                   (1800, 600)),  # player comparison tool
     ("/api/v1/players",                 (1800, 600)),  # also covers /players/{id}/*
     ("/api/v1/park-factors",            (3600, 600)),
+    # Added Nov 2026 (were missing, so every visitor hit the droplet)
+    ("/api/v1/home/",                   (900, 300)),   # homepage panels
+    ("/api/v1/projections/",            (1800, 600)),
+    ("/api/v1/top-moments",             (1800, 600)),
+    ("/api/v1/team-stats",              (1800, 600)),
+    ("/api/v1/summer/",                 (600, 300)),
+    # Hand-edited data (guides, articles, commitment trackers): short TTL so
+    # an edit shows up within a few minutes.
+    ("/api/v1/recruiting/",             (300, 120)),
+    ("/api/v1/articles",                (300, 120)),
+    ("/api/v1/transfer-portal",         (300, 120)),
+    ("/api/v1/wcl-portal",              (300, 120)),
 ]
 
 
@@ -183,6 +195,13 @@ async def add_cache_control_headers(request, call_next):
     if request.method != "GET" or response.status_code != 200:
         return response
     path = request.url.path
+    # Never let the CDN store a signed-in response. Vercel's edge does not
+    # vary on Authorization, so a developer-only 200 (e.g. /players/{id}/trackman
+    # under the public /players rule) would otherwise be replayed to anonymous
+    # visitors. Signed-in reads are a small share of traffic.
+    if request.headers.get("authorization"):
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
     for prefix, (max_age, swr) in CACHE_CONTROL_RULES:
         if path.startswith(prefix):
             response.headers["Cache-Control"] = (

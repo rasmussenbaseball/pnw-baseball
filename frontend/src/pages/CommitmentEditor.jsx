@@ -180,7 +180,7 @@ function CommitList({ setToast, refreshKey, onChanged }) {
         <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Commitments on file</h2>
         <select value={season || ''} onChange={e => setSeason(e.target.value ? parseInt(e.target.value) : null)}
           className="px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900">
-          {COMMIT_SEASONS.map(y => <option key={y} value={y}>For {academicYear(y)} ({y === NEXT_SEASON ? 'this cycle' : 'early commits'})</option>)}
+          {COMMIT_SEASONS.map(y => <option key={y} value={y}>For {academicYear(y)} ({y === NEXT_SEASON ? 'this cycle' : y > NEXT_SEASON ? 'early commits' : 'late adds'})</option>)}
           <option value="">All seasons</option>
         </select>
         {rows && <span className="text-xs text-gray-400">{rows.length} player{rows.length === 1 ? '' : 's'}</span>}

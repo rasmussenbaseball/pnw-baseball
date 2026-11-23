@@ -48,3 +48,17 @@ PROJECTION_SEASON = 2027
 # summer once the previous class has arrived on campus. Frontend mirror:
 # seasons.js RECRUITING_GRAD_YEAR.
 RECRUITING_GRAD_YEAR = 2027
+
+
+def stats_season(today=None) -> int:
+    """The season stat surfaces (Series Planner, coach tools, homepage
+    awards) default to. CURRENT_SEASON is bumped around opening day so the
+    scrapers start, but for its first few weeks the new season has only a
+    handful of games, so until March 15 of CURRENT_SEASON this returns the
+    last completed season. A function (not a constant) because the answer
+    changes while the server is running. Frontend mirror: seasons.js
+    STATS_SEASON.
+    """
+    import datetime as _dt
+    today = today or _dt.date.today()
+    return CURRENT_SEASON if today >= _dt.date(CURRENT_SEASON, 3, 15) else CURRENT_SEASON - 1

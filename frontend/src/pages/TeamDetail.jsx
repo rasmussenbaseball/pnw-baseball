@@ -10,7 +10,7 @@ import FavoriteButton from '../components/FavoriteButton'
 import StatsLastUpdated from '../components/StatsLastUpdated'
 import ExportCSVButton from '../components/ExportCSVButton'
 import SeasonSelect from '../components/SeasonSelect'
-import { CURRENT_SEASON, RECRUITING_GRAD_YEAR, clampSeason } from '../lib/seasons'
+import { CURRENT_SEASON, STATS_SEASON, LAST_COMPLETED_SEASON, RECRUITING_GRAD_YEAR, clampSeason } from '../lib/seasons'
 import { RatingPill } from '../lib/recruitRating'
 import { BATTING_COLUMNS, PITCHING_COLUMNS, BATTING_PBP_COLUMNS, PITCHING_PBP_COLUMNS,
          formatStat, divisionBadgeClass, ipSum } from '../utils/stats'
@@ -265,12 +265,12 @@ export default function TeamDetail() {
 
       {/* Team Identity Tab */}
       {activeTab === 'identity' && (
-        <TeamIdentity teamId={teamId} season={season} />
+        <TeamIdentity teamId={teamId} season={searchParams.get('season') ? season : STATS_SEASON} />
       )}
 
       {/* Returning Production Tab */}
       {activeTab === 'returning' && (
-        <TeamReturning teamId={teamId} season={season} />
+        <TeamReturning teamId={teamId} season={searchParams.get('season') ? season : LAST_COMPLETED_SEASON} />
       )}
 
       {/* History Tab */}

@@ -1070,6 +1070,13 @@ NWAC_2026_CHAMP_SEEDS = {
     8: 27,   # NSR Edmonds
 }
 NWAC_2026_CHAMP_HOST_ID = 52       # Lower Columbia hosts at LCC
+
+# Championship field by season (seed -> team_id). Add next year's eight
+# teams here once the super regionals finish (docs/SEASON_ROLLOVER.md);
+# the NWAC tournament sheet reads this.
+NWAC_CHAMP_FIELDS = {
+    2026: NWAC_2026_CHAMP_SEEDS,
+}
 NWAC_2026_CHAMP_HFA = 3.0          # rating-point home bump (~+5-6% win prob at scale=30)
 
 

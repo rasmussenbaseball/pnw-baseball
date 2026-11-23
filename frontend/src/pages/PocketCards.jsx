@@ -16,10 +16,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import { CURRENT_SEASON } from '../lib/seasons'
+import { STATS_SEASON } from '../lib/seasons'
 import { saveNodeAsPdf, saveNodeAsImage } from '../lib/reportExport'
 
-const SEASON = CURRENT_SEASON
+const SEASON = STATS_SEASON
 const POS_COLS = ['1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
 
 // Cell tint by move code (bold = heavy) so the grid reads at a glance.

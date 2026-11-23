@@ -24,7 +24,8 @@ import json as _json
 
 from fastapi import APIRouter, Query, Depends
 from app.models.database import get_connection
-from app.config import CURRENT_SEASON
+from typing import Optional
+from app.config import CURRENT_SEASON, stats_season
 
 router = APIRouter()
 
@@ -1403,7 +1404,7 @@ def _load_records():
 def series_planner(
     own_team_id: int = Query(..., description="The coach's team (our side)"),
     opp_team_id: int = Query(..., description="The opponent to plan for"),
-    season: int = Query(CURRENT_SEASON),
+    season: Optional[int] = Query(None, description="Ignored: the plan file carries its own season"),
 ):
     """
     Pre-series opponent game plan for (own team vs opponent). Runs the ported
@@ -1414,6 +1415,9 @@ def series_planner(
     if not data:
         return {"error": "not_generated", "message": "Series Planner data has not been generated yet."}
     records, peers, spray = data["records"], data["peers"], data["spray"]
+    # The batch file is built for one season (generate_series_planner.py picks
+    # it); keep the live count grid on that same season.
+    season = data.get("season") or season or stats_season()
 
     if own_team_id not in records:
         return {"error": "own_team_missing", "message": "No data for your team this season."}

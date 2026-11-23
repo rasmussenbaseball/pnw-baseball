@@ -62,7 +62,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 import psycopg2.extras
 from app.models.database import get_connection
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -601,7 +601,7 @@ def parse_args():
                     help="Final regular-season date, YYYY-MM-DD. Games AFTER this date "
                          "involving these teams will be flagged as postseason.")
     ap.add_argument("--season", type=int, default=scrape_season(),
-                    help="Season year (default: derived from today's date)")
+                    help="Season year (default: the site's CURRENT_SEASON (season_utils))")
     ap.add_argument("--force", action="store_true",
                     help="Overwrite an existing freeze for this conference.")
     ap.add_argument("--dry-run", action="store_true",

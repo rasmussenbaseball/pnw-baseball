@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTeams } from '../hooks/useApi'
+import { loadLeaflet } from '../lib/loadLeaflet'
 
 // ─── Team coordinates (lat, lng) by short_name ───
 // These map DB short_name to [lat, lng] for map placement.
@@ -97,10 +98,18 @@ export default function RecruitingMap() {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const markersRef = useRef([])
+  const [leafletReady, setLeafletReady] = useState(typeof window !== 'undefined' && !!window.L)
 
-  // Build the map once teams are loaded
   useEffect(() => {
-    if (!teams || !window.L || mapInstanceRef.current) return
+    if (leafletReady) return
+    let live = true
+    loadLeaflet().then(() => { if (live) setLeafletReady(true) }).catch(() => {})
+    return () => { live = false }
+  }, [leafletReady])
+
+  // Build the map once teams (and Leaflet) are loaded
+  useEffect(() => {
+    if (!teams || !leafletReady || !window.L || mapInstanceRef.current) return
 
     const L = window.L
     const view = VIEWS[activeView]
@@ -128,7 +137,7 @@ export default function RecruitingMap() {
       map.remove()
       mapInstanceRef.current = null
     }
-  }, [teams])
+  }, [teams, leafletReady])
 
   // Update view when tab changes
   useEffect(() => {

@@ -27,7 +27,7 @@ import time
 import random
 import argparse
 from wmt_utils import seattle_u_wmt_id  # Seattle U WMT team id (known map + API lookup)
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 import logging
 import re
 import json
@@ -782,7 +782,7 @@ def scrape_seattle_u_live(season, today):
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape live scores for PNW baseball")
-    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: derived from today's date)")
+    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: the site's CURRENT_SEASON (season_utils))")
     parser.add_argument("--force", action="store_true", help="Run even outside the spring scrape window")
     args = parser.parse_args()
 

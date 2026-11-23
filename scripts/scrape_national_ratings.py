@@ -35,7 +35,7 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 from app.models.database import get_connection
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("national_ratings")
@@ -851,7 +851,7 @@ def compute_composite_rankings(conn, season):
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape national ratings for PNW teams")
-    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: derived from today's date)")
+    parser.add_argument("--season", type=int, default=scrape_season(), help="Season year (default: the site's CURRENT_SEASON (season_utils))")
     parser.add_argument("--source", choices=["pear", "cbr", "all"], default="all",
                        help="Which source to scrape (default: all)")
     parser.add_argument("--composite-only", action="store_true",

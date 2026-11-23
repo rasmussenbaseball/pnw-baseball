@@ -1027,7 +1027,11 @@ def all_conference(
 # Constants change slowly relative to request rate, and recomputing them
 # requires two SUMs over batting_stats/pitching_stats — fine to compute
 # on-demand the first time for a given season+division and reuse after.
-_LEAGUE_CONSTANTS_CACHE: dict = {}
+# Entries expire after 6 hours so an in-season run environment keeps up with
+# the daily scrape (it used to be frozen at whatever the first request saw).
+import time as _time
+_LEAGUE_CONSTANTS_CACHE: dict = {}      # key -> (monotonic time, constants)
+_LEAGUE_CONSTANTS_TTL = 6 * 3600
 
 
 def _get_league_constants(cur, season: int, division_level: str) -> dict:
@@ -1038,8 +1042,9 @@ def _get_league_constants(cur, season: int, division_level: str) -> dict:
     early in the year.
     """
     key = (season, division_level)
-    if key in _LEAGUE_CONSTANTS_CACHE:
-        return _LEAGUE_CONSTANTS_CACHE[key]
+    hit = _LEAGUE_CONSTANTS_CACHE.get(key)
+    if hit and _time.monotonic() - hit[0] < _LEAGUE_CONSTANTS_TTL:
+        return hit[1]
 
     # Batting aggregates for the division.
     cur.execute("""
@@ -1093,8 +1098,7 @@ def _get_league_constants(cur, season: int, division_level: str) -> dict:
         "weights": weights, "division_level": division_level,
     }
     if not bat or not bat.get("total_pa") or not pit or not pit.get("total_ip"):
-        _LEAGUE_CONSTANTS_CACHE[key] = fallback
-        return fallback
+        return fallback   # never cache the placeholder; real rows may land later
 
     total_pa = bat["total_pa"] or 1
     total_ab = bat["total_ab"] or 1
@@ -1163,7 +1167,7 @@ def _get_league_constants(cur, season: int, division_level: str) -> dict:
         "weights": weights,
         "division_level": division_level,
     }
-    _LEAGUE_CONSTANTS_CACHE[key] = constants
+    _LEAGUE_CONSTANTS_CACHE[key] = (_time.monotonic(), constants)
     return constants
 
 

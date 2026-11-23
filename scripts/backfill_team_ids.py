@@ -19,7 +19,7 @@ import sys
 sys.path.insert(0, "backend")
 
 from app.models.database import get_connection  # noqa: E402
-from season_utils import scrape_season  # date-derived season (see scripts/season_utils.py)
+from season_utils import scrape_season  # season = config.CURRENT_SEASON (see scripts/season_utils.py)
 
 
 ABBREV_MAP = {
@@ -118,7 +118,7 @@ def main():
     ap.add_argument("--apply", action="store_true",
                     help="actually write the UPDATEs (default is dry run)")
     ap.add_argument("--season", type=int, default=scrape_season(),
-                    help="season to scan (default: derived from today's date)")
+                    help="season to scan (default: the site's CURRENT_SEASON (season_utils))")
     args = ap.parse_args()
 
     with get_connection() as conn:

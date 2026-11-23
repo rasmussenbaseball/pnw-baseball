@@ -87,12 +87,20 @@ def _tracker_stats_season(cur, season, level=None):
     """(stats_season, shift): the season whose stats a tracker should show for
     `season`. shift=1 means the requested season has no stats yet, so classes
     are promoted by one year relative to the stored year_in_school."""
+    # The new season only takes over once it has at least 60% as many batting
+    # rows as the season before. A single opening-day game used to flip the
+    # trackers to one-game samples and drop everyone who had not played yet.
     lvl = "AND d.level = %s" if level else ""
-    cur.execute(f"""SELECT 1 FROM batting_stats bs JOIN players p ON p.id = bs.player_id
+    cur.execute(f"""SELECT COUNT(*) FILTER (WHERE bs.season = %s) AS cur_n,
+                           COUNT(*) FILTER (WHERE bs.season = %s) AS prev_n
+                    FROM batting_stats bs JOIN players p ON p.id = bs.player_id
                     JOIN teams t ON t.id = p.team_id JOIN conferences c ON c.id = t.conference_id
                     JOIN divisions d ON d.id = c.division_id
-                    WHERE bs.season = %s {lvl} LIMIT 1""", (season, level) if level else (season,))
-    if cur.fetchone():
+                    WHERE bs.season IN (%s, %s) {lvl}""",
+                (season, season - 1, season, season - 1, level) if level else (season, season - 1, season, season - 1))
+    r = cur.fetchone()
+    cur_n, prev_n = (r["cur_n"] or 0), (r["prev_n"] or 0)
+    if cur_n and cur_n >= 0.6 * prev_n:
         return season, 0
     return season - 1, 1
 
@@ -1196,6 +1204,7 @@ def standings(
 
 
 @router.get("/conference-standings-graphic")
+@cached_endpoint(ttl_seconds=900)
 def conference_standings_graphic(
     season: int = Query(..., description="Season year"),
 ):
@@ -10122,6 +10131,7 @@ def uncommitted_juco_recruit_ext(
 # shadowed by the /players/{player_id} route, which would try to parse
 # "transfer-portal" as an int player id (422).
 @router.get("/transfer-portal")
+@cached_endpoint(ttl_seconds=600)   # busted by admin_tools._bust_profile_cache on edits
 def transfer_portal_players(
     season: int = Query(CURRENT_SEASON),
     position: Optional[str] = None,
@@ -10804,6 +10814,30 @@ def projection_player_leaders(side: str = Query("bat"), season: int = Query(PROJ
         for row in out:
             row["a"] = a26.get(row["canonical_id"])
         return {"side": side, "season": season, "players": out}
+
+
+# Homepage projections panel: it shows 8 rows for one of four stats, so send
+# only the union of each stat's top 8 qualified players (~25 rows) instead of
+# the full ~600-player list (550 KB raw).
+_HOME_PROJ_STATS = {"bat": (("WAR", False), ("wOBA", False), ("HR", False), ("OPS", False)),
+                    "pit": (("WAR", False), ("FIP", True), ("K_pct", False), ("ERA", True))}
+
+
+@router.get("/projections/player-leaders/top")
+@cached_endpoint(ttl_seconds=1800)
+def projection_player_leaders_top(side: str = Query("bat"), season: int = Query(PROJECTION_SEASON),
+                                  n: int = Query(8, ge=1, le=25)):
+    side = "pit" if side == "pit" else "bat"
+    full = projection_player_leaders(side=side, season=season)
+    qual = (lambda p: (p.get("PT") or 0) >= 150) if side == "bat" else (lambda p: (p.get("IP") or 0) >= 40)
+    pool = [p for p in full["players"] if not p.get("insufficient") and qual(p)]
+    keep = {}
+    for key, asc in _HOME_PROJ_STATS[side]:
+        ranked = sorted((p for p in pool if p.get(key) is not None),
+                        key=lambda p: p[key], reverse=not asc)
+        for p in ranked[:n]:
+            keep[p["player_id"]] = p
+    return {"side": side, "season": season, "players": list(keep.values())}
 
 
 # ── Per-player projection card (player pages) ─────────────────────────────
@@ -15540,6 +15574,7 @@ def _dedup_live_games(games):
 
 
 @router.get("/games/live")
+@cached_endpoint(ttl_seconds=30)
 def games_live():
     """
     Get live scores, today's games, recent results, and upcoming games.

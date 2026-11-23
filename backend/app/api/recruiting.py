@@ -82,6 +82,7 @@ from ..stats.projections import (
 router = APIRouter()
 
 @router.get("/recruiting/guide/{team_id}")
+@cached_endpoint(ttl_seconds=600)   # busted by the program editor PUT below
 def get_recruiting_guide(team_id: int):
     """
     Comprehensive recruiting guide for a team.
@@ -795,6 +796,7 @@ def upsert_recruiting_program(
         """, (team_id, trow["school_name"] or trow["name"],
               trow["division"], trow["conference"], Json(profile)))
         row = dict(cur.fetchone())
+    bust_recruiting_caches()   # the guide endpoint is cached
     return {"ok": True, "program": row}
 
 
@@ -812,7 +814,7 @@ PROGRAM_GUIDE_PATH = "/opt/program_guide.pdf"
 # counted from the archived roster pages. This is a curated constant on purpose:
 # rostered-but-didn't-play freshmen (redshirts, deep bench) never get a row in our
 # stats DB, so "how many were rostered" can't be derived from a live query — it has
-# to come from the roster text. Regenerate with scripts/count_rostered_freshmen.py
+# to come from the roster text. Regenerate with scripts/archive/count_rostered_freshmen.py
 # when a season's rosters finalize. NWAC is absent (its rosters don't publish class).
 FRESHMAN_ROSTERED = {
     2026: {"D1": 74, "D2": 59, "NAIA": 98, "D3": 50},
@@ -1043,6 +1045,7 @@ def _resolve_committed_levels(cur, names):
 
 
 @router.get("/recruiting/nwac-advancement")
+@cached_endpoint(ttl_seconds=3600)  # busted with the other recruiting caches on commitment edits
 def recruiting_nwac_advancement(season: int = CURRENT_SEASON):
     """Where NWAC (JUCO) players advance to, derived from cross-team player_links.
 
