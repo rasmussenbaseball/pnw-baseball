@@ -143,12 +143,10 @@ app.include_router(kangaroo_court_router, prefix="/api/v1")
 CACHE_CONTROL_RULES = [
     # Live / near-live: short cache, edge can revalidate quickly
     ("/api/v1/games/live",              (60, 30)),
-    ("/api/v1/games/ticker",            (60, 30)),
     ("/api/v1/games/by-date",           (300, 120)),
     ("/api/v1/games/recent",            (300, 120)),
     ("/api/v1/games/future",            (300, 120)),
     ("/api/v1/games/win-probabilities", (300, 120)),
-    ("/api/v1/games/upset-of-the-day",  (1800, 600)),
     ("/api/v1/games/daily-performers",  (1800, 600)),
     ("/api/v1/games/key-matchup",       (1800, 600)),
     ("/api/v1/games/series-recap",      (1800, 600)),
@@ -161,8 +159,6 @@ CACHE_CONTROL_RULES = [
     ("/api/v1/leaderboards",            (1800, 600)),
     ("/api/v1/standings",               (900, 300)),
     ("/api/v1/playoff-projections",     (1800, 600)),
-    ("/api/v1/nwac-championship-odds",  (1800, 600)),
-    ("/api/v1/nwac-mvp-tracker",        (1800, 600)),
     ("/api/v1/portal/nwac-tournament-sheet", (1800, 600)),
     ("/api/v1/records",                 (1800, 600)),
     ("/api/v1/all-conference",          (1800, 600)),

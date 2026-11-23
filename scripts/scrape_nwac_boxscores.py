@@ -152,9 +152,33 @@ def get_games_needing_boxscores(cur, season):
           AND NOT EXISTS (
               SELECT 1 FROM game_batting gb WHERE gb.game_id = g.id
           )
+          -- Give up after MAX_BOX_ATTEMPTS tries. A final game whose NWAC
+          -- page never gets a box score used to be re-fetched (and paid for
+          -- through ScraperAPI) on every nightly run for the whole season.
+          AND COALESCE(g.boxscore_attempt_count, 0) < %s
         ORDER BY g.game_date DESC
-    """, (season,))
+    """, (season, MAX_BOX_ATTEMPTS))
     return cur.fetchall()
+
+
+MAX_BOX_ATTEMPTS = 3
+
+
+def ensure_attempt_column(cur):
+    cur.execute("""SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'games' AND column_name = 'boxscore_attempt_count'""")
+    if not cur.fetchone():
+        cur.execute("ALTER TABLE games ADD COLUMN IF NOT EXISTS boxscore_attempt_count integer NOT NULL DEFAULT 0")
+
+
+def note_box_attempt(game_id):
+    """Count a daily-mode attempt that still left the game without batting rows."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""UPDATE games SET boxscore_attempt_count = COALESCE(boxscore_attempt_count, 0) + 1
+                       WHERE id = %s AND NOT EXISTS (SELECT 1 FROM game_batting gb WHERE gb.game_id = %s)""",
+                    (game_id, game_id))
+        conn.commit()
 
 
 def get_all_nwac_game_ids_with_batting(cur, season):
@@ -682,6 +706,8 @@ def main():
 
         with get_connection() as conn:
             cur = conn.cursor()
+            ensure_attempt_column(cur)
+            conn.commit()
             games = get_games_needing_boxscores(cur, season_year)
 
         if not games:
@@ -717,6 +743,10 @@ def main():
                 import traceback
                 traceback.print_exc()
                 failed += 1
+            try:
+                note_box_attempt(game["id"])
+            except Exception as e:
+                logger.warning(f"  could not record attempt: {e}")
 
             # Rate limit
             if i < total - 1:

@@ -75,9 +75,6 @@ from ..stats.projections import (
     build_projected_standings,
     determine_playoff_fields,
     elo_win_prob,
-    simulate_nwac_championship_odds,
-    resolve_known_nwac_results,
-    pct_to_american,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )
@@ -1688,14 +1685,12 @@ def team_recruits(
 # HS recruits live in the `recruits` table; transfers do NOT — they are existing
 # college players who committed to a PNW program. Two sources feed them:
 #   * JUCO tracker: players.is_committed = 1 + players.committed_to (free text)
-#   * Portal tracker: backend/data/transfer_portal.json (curated, committed_to)
+#   * Portal tracker: transfer_portal_members table (curated, committed_to)
 # We resolve each commitment string to one of the 57 PNW programs we feature (the
 # recruit_school_map universe) via the shared team_matching resolver, dropping
 # out-of-region / OOC destinations, and group by destination team. Ratings for
 # transfers come later — for now they are listed, not scored.
 
-_TRANSFER_PORTAL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data",
-                                     "transfer_portal.json")
 _RECRUIT_SCHOOL_MAP_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data",
                                         "recruit_school_map.json")
 
@@ -1709,14 +1704,6 @@ def _pnw_program_ids():
             return {int(k) for k in json.load(f).keys()}
     except (OSError, ValueError):
         return set()
-
-
-def _load_transfer_portal():
-    try:
-        with open(_TRANSFER_PORTAL_PATH) as f:
-            return json.load(f).get("players", [])
-    except (OSError, ValueError):
-        return []
 
 
 def _resolve_committed_team_id(cur, name, cache, pnw_ids):

@@ -57,9 +57,6 @@ from ..stats.projections import (
     build_projected_standings,
     determine_playoff_fields,
     elo_win_prob,
-    simulate_nwac_championship_odds,
-    resolve_known_nwac_results,
-    pct_to_american,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )

@@ -1423,10 +1423,10 @@ def series_planner(
     plan = build_plan(opp_team_id, own_team_id, records, peers, spray)
     own_summary = team_summary_record(records[own_team_id], peers)
 
-    # Carry over the count-tendencies grid from the old Advance Report (live DB).
+    # Count-tendencies grid (live DB).
     count_tendencies = {"offense": [], "pitching": []}
     try:
-        from app.api.advance_report import _count_tendencies_side
+        from app.api.count_tendencies import _count_tendencies_side
         with get_connection() as conn:
             cur = conn.cursor()
             count_tendencies = {

@@ -58,9 +58,6 @@ from ..stats.projections import (
     build_projected_standings,
     determine_playoff_fields,
     elo_win_prob,
-    simulate_nwac_championship_odds,
-    resolve_known_nwac_results,
-    pct_to_american,
     PLAYOFF_FORMATS,
     CONFERENCE_TO_FORMAT,
 )
@@ -1246,25 +1243,6 @@ def portal_team_scouting(
     with get_connection() as conn:
         cur = conn.cursor()
         result = compute_team_scouting(cur, team_id, season)
-        if 'error' in result and 'team' not in result:
-            raise HTTPException(status_code=404, detail=result['error'])
-        return result
-
-
-@router.get("/portal/advance-report")
-@cached_endpoint(ttl_seconds=900)   # conference-wide baselines: multi-second per call
-def portal_advance_report(
-    team_id: int = Query(..., description="Opponent team to scout"),
-    season: int = Query(CURRENT_SEASON, description="Season year"),
-):
-    """Opponent Advance Report: the full Team Scouting payload PLUS an
-    auto-generated, coach-ready game plan and per-key-player attack bullets
-    (how to get each hitter out, how to hit each pitcher). Built entirely from
-    our scraped + play-by-play data."""
-    from .advance_report import build_advance_report
-    with get_connection() as conn:
-        cur = conn.cursor()
-        result = build_advance_report(cur, team_id, season)
         if 'error' in result and 'team' not in result:
             raise HTTPException(status_code=404, detail=result['error'])
         return result

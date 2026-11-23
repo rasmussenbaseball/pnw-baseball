@@ -52,23 +52,6 @@ def _league_id_for(cur, league_abbr: str) -> int:
     return row["id"]
 
 
-# ── /summer/leagues ────────────────────────────────────────────────
-
-@router.get("/summer/leagues")
-@cached_endpoint(ttl_seconds=3600)
-def summer_leagues():
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id, name, abbreviation, website_url, logo_url, is_active
-            FROM summer_leagues
-            WHERE is_active = TRUE
-            ORDER BY abbreviation
-            """
-        )
-        rows = cur.fetchall()
-    return [dict(r) for r in rows]
 
 
 # ── /summer/scoreboard ─────────────────────────────────────────────
@@ -614,25 +597,6 @@ def compute_summer_cpi(league: str, season: int):
     return {"league": league, "season": season, "teams": rows}
 
 
-# ── /summer/teams ──────────────────────────────────────────────────
-
-@router.get("/summer/teams")
-@cached_endpoint(ttl_seconds=600)
-def summer_teams(league: str = Query(DEFAULT_LEAGUE)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        league_id = _league_id_for(cur, league)
-        cur.execute(
-            """
-            SELECT id, name, short_name, city, state, logo_url, division
-            FROM summer_teams
-            WHERE league_id = %s AND is_active = TRUE
-            ORDER BY name
-            """,
-            (league_id,),
-        )
-        rows = cur.fetchall()
-    return [dict(r) for r in rows]
 
 
 @router.get("/summer/teams/{team_id}")

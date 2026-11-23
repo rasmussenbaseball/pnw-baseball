@@ -92,7 +92,7 @@ def _f(v):
 
 
 def _ip_to_real(ip):
-    """Baseball IP notation (6.2 = 6 2/3) to a real number. Mirrors routes._ip_to_real."""
+    """Baseball IP notation (6.2 = 6 2/3) to a real number. Baseball notation helper."""
     if ip is None:
         return 0.0
     try:

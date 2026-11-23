@@ -431,14 +431,6 @@ function resolveRoute(pathname) {
       pageDesc:
         'Junior-college baseball players and their commitments to four-year Northwest programs.',
     },
-    '/wcl-pickem': {
-      kicker: 'The Game',
-      title: "WCL Pick 'Em",
-      subtitle: 'Weekly confidence pool for the West Coast League.',
-      pageTitle: "WCL Pick 'Em · NW Baseball Stats",
-      pageDesc:
-        'Make your weekly West Coast League picks and climb the confidence-pool leaderboard.',
-    },
     '/fieldguessr': {
       kicker: 'The Game',
       title: 'FieldGuessr',
@@ -562,13 +554,6 @@ function resolveRoute(pathname) {
       subtitle: 'Northwest college players in the West Coast League.',
       pageTitle: 'WCL PNW Alumni · NW Baseball Stats',
       pageDesc: 'Northwest college baseball players competing in the West Coast League.',
-    },
-    '/recruiting/rankings': {
-      kicker: 'Recruiting',
-      title: 'Recruiting Rankings',
-      subtitle: 'Ranked incoming recruits across the Northwest.',
-      pageTitle: 'Recruiting Rankings · NW Baseball Stats',
-      pageDesc: 'Ranked incoming recruits headed to Northwest college baseball programs.',
     },
     '/recruiting/map': {
       kicker: 'Recruiting',

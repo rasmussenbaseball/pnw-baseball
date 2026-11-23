@@ -193,11 +193,7 @@ const TeamHistory = lazyWithRetry(() => import('./pages/TeamHistory'))
 import RecruitingHub from './pages/RecruitingHub'  // public landing page (all tiers)
 const RecruitingClasses = lazyWithRetry(() => import('./pages/RecruitingClasses'))
 const RecruitQuiz = lazyWithRetry(() => import('./pages/RecruitQuiz'))
-const RecruitingRankings = lazyWithRetry(() => import('./pages/RecruitingRankings'))
 const RecruitingMap = lazyWithRetry(() => import('./pages/RecruitingMap'))
-const AdminRecruitingPlaceholder = lazyWithRetry(() => import('./pages/AdminRecruitingPlaceholder'))
-const RecruitingHistory = lazyWithRetry(() => import('./pages/RecruitingHistory'))
-const RecruitingField = lazyWithRetry(() => import('./pages/RecruitingField'))
 const RecruitingGuide = lazyWithRetry(() => import('./pages/RecruitingGuide'))  // recharts
 const RecruitingProgramGuide = lazyWithRetry(() => import('./pages/RecruitingProgramGuide'))  // react-pdf (heavy)
 const RecruitingTips = lazyWithRetry(() => import('./pages/RecruitingTips'))
@@ -409,11 +405,7 @@ export default function App() {
           <Route path="/recruiting/program-guide" element={<RecruitingProgramGuide />} />
           <Route path="/recruiting/tips" element={<RecruitingTips />} />
           <Route path="/recruiting/advancement" element={<NwacAdvancement />} />
-          <Route path="/recruiting/rankings" element={<RequireAdmin><RecruitingRankings /></RequireAdmin>} />
           <Route path="/recruiting/map" element={<RecruitingMap />} />
-          <Route path="/recruiting/breakdowns" element={<RequireAdmin><AdminRecruitingPlaceholder /></RequireAdmin>} />
-          <Route path="/recruiting/history" element={<RequireAdmin><RecruitingHistory /></RequireAdmin>} />
-          <Route path="/recruiting/field" element={<RequireAdmin><RecruitingField /></RequireAdmin>} />
 
           {/* Coaching tools. JUCO + Transfer Portal trackers live in the
               main-site Coaching tab; old standalone + portal URLs redirect here. */}

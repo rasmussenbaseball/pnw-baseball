@@ -70,10 +70,8 @@ pnw-baseball/
 │   │   │   └── database.py       # get_connection() via psycopg2
 │   │   ├── stats/
 │   │   │   ├── advanced.py       # BattingLine, PitchingLine, wOBA, FIP
-│   │   │   ├── ppi.py            # PNW Power Index formula
 │   │   │   ├── projections.py    # Playoff projections, Monte Carlo
 │   │   │   └── tiebreakers.py
-│   │   └── utils/                # Empty folder, no modules here
 │   ├── data/
 │   │   ├── live_scores.json      # Gitignored, written by live scraper
 │   │   ├── future_schedules.json # Gitignored, written by future schedule scraper
@@ -110,12 +108,13 @@ pnw-baseball/
 │   ├── recalculate_war.py
 │   ├── recalculate_league_adjusted.py
 │   ├── dedup_games.py
-│   └── archive/                  # Old/one-time scripts
+│   ├── migrations/               # Applied SQL migrations (schema history)
+│   └── archive/                  # Old/one-time scripts (finished backfills, repairs, v1 projections)
 └── data/
-    └── team_records_2026.csv
+    └── park_factors*.json
 ```
 
-**Important folder note:** `backend/app/utils/` exists but is empty. Don't try to import from it.
+**Important folder note:** there is no `backend/app/utils/` package (the empty folder was deleted Nov 2026). Don't try to import from it.
 
 ---
 
@@ -220,7 +219,7 @@ Service name is `nwbb` (NOT `pnw-baseball` or `pnw-baseball-api`).
 - **Region:** SFO3
 - **Specs:** 2 GB RAM, 1 vCPU, 50 GB SSD
 - **Nginx config:** `/etc/nginx/sites-enabled/nwbb`
-- **Headshots:** `/opt/headshots/` (served by nginx, NOT in git, persists across deploys)
+- **Headshots:** `/opt/headshots/` (served by nginx, persists across deploys). The site's `/headshots/*` URLs are also served by Vercel from `frontend/public/headshots/`, which IS in git.
 - **Logos:** `/opt/logos/` (same pattern)
 - **Live data files:** `/opt/pnw-baseball/backend/data/*.json` (gitignored)
 

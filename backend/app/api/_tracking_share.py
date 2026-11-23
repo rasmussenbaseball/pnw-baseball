@@ -278,69 +278,6 @@ class ShareAdd(BaseModel):
     email: str
 
 
-@router.get("/portal/tracking-share")
-def list_shares(request: Request, owner: str = Depends(_gate)):
-    email = (email_for_token(_extract_token(request)) or "").strip().lower()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        _ensure_table(cur)
-        cur.execute(
-            "SELECT id, member_email, created_at::date AS added FROM tracking_workspace_shares "
-            "WHERE owner_user_id = %s ORDER BY created_at",
-            (owner,),
-        )
-        members = [{"id": r["id"], "email": r["member_email"],
-                    "added": r["added"].isoformat() if r["added"] else None}
-                   for r in cur.fetchall()]
-        # Is the CALLER a member of someone else's workspace right now?
-        cur.execute(
-            "SELECT owner_user_id FROM tracking_workspace_shares WHERE member_email = %s "
-            "ORDER BY created_at DESC LIMIT 1",
-            (email,),
-        )
-        row = cur.fetchone()
-        conn.commit()
-    viewing_shared = bool(row) and resolve_workspace(request, owner) != owner
-    return {"members": members, "max": MAX_SHARE_EMAILS, "viewing_shared": viewing_shared}
-
-
-@router.post("/portal/tracking-share")
-def add_share(body: ShareAdd, request: Request, owner: str = Depends(_gate)):
-    email = (body.email or "").strip().lower()
-    self_email = (email_for_token(_extract_token(request)) or "").strip().lower()
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="A valid email is required.")
-    if email == self_email:
-        raise HTTPException(status_code=400, detail="That's your own email.")
-    with get_connection() as conn:
-        cur = conn.cursor()
-        _ensure_table(cur)
-        cur.execute("SELECT COUNT(*) AS n FROM tracking_workspace_shares WHERE owner_user_id = %s", (owner,))
-        if (cur.fetchone()["n"] or 0) >= MAX_SHARE_EMAILS:
-            raise HTTPException(status_code=400, detail=f"Share list is limited to {MAX_SHARE_EMAILS} emails.")
-        cur.execute(
-            """INSERT INTO tracking_workspace_shares (owner_user_id, member_email)
-               VALUES (%s, %s) ON CONFLICT (owner_user_id, member_email) DO NOTHING""",
-            (owner, email),
-        )
-        conn.commit()
-    invalidate_share_cache()
-    return {"status": "ok", "email": email}
-
-
-@router.delete("/portal/tracking-share/{share_id}")
-def remove_share(share_id: int, owner: str = Depends(_gate)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM tracking_workspace_shares WHERE id = %s AND owner_user_id = %s",
-                    (share_id, owner))
-        if not cur.rowcount:
-            raise HTTPException(status_code=404, detail="Share not found.")
-        conn.commit()
-    invalidate_share_cache()
-    return {"status": "ok"}
-
-
 # ── "My Staff" ───────────────────────────────────────────────────
 # GET/POST/DELETE /portal/my-staff — the StaffManager widget's API.
 # One list: every email on it shares the owner's TrackMan, Rapsodo and

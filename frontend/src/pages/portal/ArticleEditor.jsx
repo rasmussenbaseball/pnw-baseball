@@ -34,12 +34,6 @@ const DIRECT_API_BASE =
     ? 'https://api.nwbaseballstats.com/api/v1'
     : '/api/v1'  // local dev keeps using the Vite proxy
 
-// HTML comment used as the free-preview break marker. Mirrors
-// PAYWALL_MARKER in backend articles.py. Invisible in any markdown
-// renderer; we use a custom <ReactMarkdown> component to swap it for
-// a visible divider in our own preview pane.
-const PAYWALL_MARKER = '<!-- nwbb:paywall -->'
-
 export default function ArticleEditor() {
   const { id } = useParams()
   const editId = id ? parseInt(id, 10) : null
@@ -115,21 +109,7 @@ export default function ArticleEditor() {
     [title, authorName]
   )
 
-  // ── Toolbar / textarea helpers ───────────────────────────────
-  function wrapSelection(before, after = before, placeholder = 'text') {
-    const ta = textareaRef.current
-    if (!ta) return
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
-    const sel = bodyMd.slice(start, end) || placeholder
-    const next = bodyMd.slice(0, start) + before + sel + after + bodyMd.slice(end)
-    setBodyMd(next)
-    requestAnimationFrame(() => {
-      ta.focus()
-      const ns = start + before.length
-      ta.setSelectionRange(ns, ns + sel.length)
-    })
-  }
+  // ── Textarea helper ───────────────────────────────
   function insertAtCursor(text) {
     const ta = textareaRef.current
     if (!ta) return
@@ -143,44 +123,6 @@ export default function ArticleEditor() {
       ta.setSelectionRange(pos, pos)
     })
   }
-  function prefixLine(prefix) {
-    const ta = textareaRef.current
-    if (!ta) return
-    const start = ta.selectionStart
-    const lineStart = bodyMd.lastIndexOf('\n', start - 1) + 1
-    const next = bodyMd.slice(0, lineStart) + prefix + bodyMd.slice(lineStart)
-    setBodyMd(next)
-    requestAnimationFrame(() => {
-      ta.focus()
-      const pos = start + prefix.length
-      ta.setSelectionRange(pos, pos)
-    })
-  }
-  function insertLink() {
-    const ta = textareaRef.current
-    if (!ta) return
-    const sel = bodyMd.slice(ta.selectionStart, ta.selectionEnd)
-    const url = window.prompt('Link URL', 'https://')
-    if (!url) return
-    const text = sel || window.prompt('Link text', '') || 'link'
-    insertAtCursor(`[${text}](${url})`)
-  }
-
-  // Insert the paywall break at the current cursor position. Everything
-  // ABOVE this point in the body is shown to free / anonymous readers
-  // as a preview; everything BELOW is hidden behind the paywall card.
-  // Free-tier articles ignore the marker entirely — the backend strips
-  // it before serving.
-  function insertPaywallBreak() {
-    // Refuse to insert more than one — having two would confuse the
-    // split logic backend-side. Quietly bail.
-    if (bodyMd.includes(PAYWALL_MARKER)) {
-      window.alert('This article already has a free-preview break. Delete the existing one before inserting another.')
-      return
-    }
-    insertAtCursor(`\n\n${PAYWALL_MARKER}\n\n`)
-  }
-
   async function uploadImage(file) {
     if (!session?.access_token) throw new Error('Not authenticated; refresh and try again.')
     const fd = new FormData()
@@ -457,82 +399,5 @@ function CoverArea({ hero, uploading, onUploadClick, onClear, disabled }) {
 
 
 // ── Read-only preview view ─────────────────────────────────────
-function PreviewView({ title, subtitle, authorName, publishedAt, bodyMd }) {
-  const date = publishedAt
-    ? new Date(publishedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-    : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-
-  // Split the body on the paywall marker so we can render a visible
-  // divider between the free preview and the paywalled portion. The
-  // marker itself is an invisible HTML comment in markdown — we'd
-  // never see it without this split.
-  const hasMarker = (bodyMd || '').includes(PAYWALL_MARKER)
-  const [preview, paywalled] = hasMarker
-    ? bodyMd.split(PAYWALL_MARKER, 2)
-    : [bodyMd || '', '']
-
-  return (
-    <article>
-      <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 leading-tight">
-        {title || <span className="text-gray-300">Untitled article</span>}
-      </h1>
-      {subtitle && (
-        <p className="text-lg sm:text-xl text-gray-600 mt-2 leading-snug">{subtitle}</p>
-      )}
-      <p className="text-[11px] text-gray-500 mt-3 mb-6 uppercase tracking-wider pb-4 border-b border-gray-200">
-        By {authorName || 'Author'} · {date}
-      </p>
-      <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {preview || '_Nothing written yet._'}
-        </ReactMarkdown>
-      </div>
-
-      {hasMarker && (
-        <>
-          <PreviewBreakDivider />
-          <div className="markdown prose prose-sm sm:prose-base max-w-none text-gray-800">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{paywalled.trimStart()}</ReactMarkdown>
-          </div>
-        </>
-      )}
-    </article>
-  )
-}
-
-function PreviewBreakDivider() {
-  return (
-    <div className="my-6 flex items-center gap-3" aria-label="Paywall break">
-      <span className="h-px flex-1 bg-amber-300/60"></span>
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-                       bg-amber-100 text-amber-800 text-[10px] font-bold uppercase
-                       tracking-wider border border-amber-200">
-        🔒 Paywall break — preview ends here
-      </span>
-      <span className="h-px flex-1 bg-amber-300/60"></span>
-    </div>
-  )
-}
-
 
 // ── Toolbar primitives ────────────────────────────────────────
-function ToolBtn({ label, title, onClick, disabled, bold, italic, mono }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      disabled={disabled}
-      className={`px-2 py-1 rounded text-xs hover:bg-gray-200 transition-colors
-                  disabled:opacity-30 disabled:cursor-not-allowed
-                  ${bold ? 'font-extrabold' : ''}
-                  ${italic ? 'italic font-bold' : ''}
-                  ${mono ? 'font-mono' : ''}`}
-    >
-      {label}
-    </button>
-  )
-}
-function ToolDivider() {
-  return <span className="w-px h-5 bg-gray-300 mx-0.5" />
-}

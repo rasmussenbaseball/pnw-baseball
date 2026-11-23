@@ -215,49 +215,6 @@ export function useTeamStatsAgg(params) {
 }
 
 /**
- * Summer league batting leaderboard.
- */
-export function useSummerBattingLeaderboard(params) {
-  return useApi('/leaderboards/summer/batting', params, [JSON.stringify(params)])
-}
-
-/**
- * Summer league pitching leaderboard.
- */
-export function useSummerPitchingLeaderboard(params) {
-  return useApi('/leaderboards/summer/pitching', params, [JSON.stringify(params)])
-}
-
-/**
- * Summer leagues list.
- */
-export function useSummerLeagues() {
-  return useApi('/summer/leagues')
-}
-
-/**
- * Summer stat leaders (compact, for homepage widget).
- */
-export function useSummerStatLeaders(season, league = 'WCL') {
-  return useApi('/summer/stat-leaders', { season, league }, [season, league])
-}
-
-/**
- * Summer teams list.
- */
-export function useSummerTeams(league = null) {
-  const params = league ? { league } : {}
-  return useApi('/summer/teams', params, [league])
-}
-
-/**
- * Available summer seasons.
- */
-export function useSummerSeasons() {
-  return useApi('/summer/seasons')
-}
-
-/**
  * Fetch player profile.
  */
 export function usePlayer(playerId, percentileSeason = null) {
@@ -501,35 +458,10 @@ export function useTeamFutureGames(teamId, limit = 10) {
 // ─── Game Results & Box Scores ───
 
 /**
- * Fetch recent game results (for results page).
- */
-export function useRecentGames(season = CURRENT_SEASON, limit = 50, teamId = null, division = null) {
-  return useApi('/games/recent', {
-    season, limit,
-    team_id: teamId || undefined,
-    division: division || undefined,
-  }, [season, limit, teamId, division])
-}
-
-/**
  * Fetch full box score for a single game.
  */
 export function useGameDetail(gameId) {
   return useApi(`/games/${gameId}`, {}, [gameId])
-}
-
-/**
- * Fetch all games for a team in a season.
- */
-export function useTeamGames(teamId, season = CURRENT_SEASON) {
-  return useApi(`/teams/${teamId}/games`, { season }, [teamId, season])
-}
-
-/**
- * Fetch compact ticker data (most recent results).
- */
-export function useGamesTicker(season = CURRENT_SEASON, limit = 12) {
-  return useApi('/games/ticker', { season, limit }, [season, limit])
 }
 
 /**
@@ -573,43 +505,8 @@ export function useGamesByDate(date) {
   return { data, loading, error }
 }
 
-/**
- * Win probabilities for all PNW-vs-PNW games on a date.
- */
-export function useKeyMatchup(date, season = CURRENT_SEASON) {
-  return useApi('/games/key-matchup', { date, season }, [date, season])
-}
-
 export function useWinProbabilities(date, season = CURRENT_SEASON) {
   return useApi(date ? '/games/win-probabilities' : null, { date, season }, [date, season])
-}
-
-/**
- * Biggest upset from the most recent day with PNW-vs-PNW games.
- */
-export function useUpsetOfTheDay(season = CURRENT_SEASON) {
-  return useApi('/games/upset-of-the-day', { season }, [season])
-}
-
-/**
- * Top performers for a given date (hitters + pitchers).
- */
-export function useDailyPerformers(date, season = CURRENT_SEASON) {
-  return useApi('/games/daily-performers', { date, season }, [date, season])
-}
-
-/**
- * Quality starts leaderboard.
- */
-export function useQualityStarts(season = CURRENT_SEASON, limit = 25) {
-  return useApi('/games/quality-starts', { season, limit }, [season, limit])
-}
-
-/**
- * Top game scores leaderboard.
- */
-export function useGameScores(season = CURRENT_SEASON, limit = 25) {
-  return useApi('/games/game-scores', { season, limit }, [season, limit])
 }
 
 /**
@@ -793,29 +690,4 @@ export function useHistoricMatchupOpponents(teamId, season = CURRENT_SEASON) {
     { team_a: teamId, season },
     [teamId, season]
   )
-}
-
-/**
- * NWAC Championship odds - Monte Carlo probability for each of the 8
- * championship teams to win the title (and to reach the grand final).
- */
-export function useNwacChampionshipOdds(season = CURRENT_SEASON) {
-  // Live tournament widget. The API is proxied through Vercel, whose edge
-  // cache was serving a stale copy (e.g. a team shown eliminated minutes
-  // after the result was corrected). A per-minute token makes the URL
-  // unique each minute, bypassing the CDN copy and auto-refetching every
-  // minute. The origin's own 180s cache keeps recompute cost bounded.
-  const t = Math.floor(Date.now() / 60000)
-  return useApi('/nwac-championship-odds', { season, _t: t }, [season, t])
-}
-
-/**
- * NWAC Tournament MVP tracker - top value players across the 8
- * championship teams (WAR rate, wRC+/FIP+), >=3 pitchers guaranteed.
- */
-export function useNwacMvpTracker(season = CURRENT_SEASON) {
-  // Same per-minute cache-bust as the odds widget so the tracker reflects
-  // tournament games promptly instead of a stale edge-cached response.
-  const t = Math.floor(Date.now() / 60000)
-  return useApi('/nwac-mvp-tracker', { season, _t: t }, [season, t])
 }
