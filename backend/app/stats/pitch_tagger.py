@@ -1,15 +1,19 @@
-"""MLB-trained, pitcher-first pitch tagger (v4). numpy only.
+"""MLB-trained, pitcher-first pitch tagger (v5). numpy only.
 
 SOURCE OF TRUTH is the lab repo ~/code/pitch-tagging-lab (pitchtag/prod3.py +
-cluster.py + prod4.py, verified against the training pipeline). This file is
+cluster.py + prod5.py, verified against the training pipeline). This file is
 those three concatenated, plus get_tagger(). Model file:
-backend/data/pitch_tagger.npz (lab export_v4.py).
+backend/data/pitch_tagger.npz (lab export_v5.py).
 
-Per pitcher: session velocity normalization -> his natural pitch clusters in a
-velo / movement / spin-rate space -> learned split/merge ("one pitch or two?",
-trained on MLB samples made college-sized and college-noisy) -> each final
-pitch named from its shape, usage and the rest of his arsenal (MLBAM's pitch
-types). No human input.
+Per pitcher (rows put in a canonical order first, so the answer never depends
+on database row order):
+ 1. session velocity normalization;
+ 2. cut his pitches into small pure pieces (k-means, velo / movement / spin);
+ 3. glue pieces while the learned "same pitch?" model says so (trained on MLB
+    pitchers made college-sized, college-noisy and drifting, rare pitches
+    included);
+ 4. name each final pitch with 5 bagged arsenal namers (shape + usage + the
+    rest of his arsenal; MLBAM's pitch types). No human input.
 """
 
 import json
@@ -675,7 +679,7 @@ def _ll_one(Z, mu, C):
     return float((-0.5 * np.einsum("ij,jk,ik->i", D, Ci, D) - 0.5 * logdet - 0.5 * d * np.log(2 * np.pi)).sum())
 
 
-# ── pitcher-first clustering (cluster.py) ──
+# ── clustering helpers (cluster.py) ──
 
 ID_DIMS = ["velo", "ivb", "hb", "spin"]
 ID_SCALE = np.array([1.2, 2.6, 2.6, 120.0])
@@ -746,64 +750,116 @@ def over_cluster(Z, k_max=9, min_per=6, seed=0):
     return remap[inv]
 
 
-# ── v4 partition (prod4.py) ──
-
-TAU_SPLIT = 0.2
-TAU_MERGE = 0.8
-MERGE_MAX_DIST = 7.0      # identity units; farther clusters are never merged
-MIN_SPLIT_N = 16
-TINY = 4                  # clusters smaller than this join their nearest cluster
+def canonical_order(Z):
+    """A fixed order for a pitcher's pitches that does not depend on how the
+    rows arrived (database order is arbitrary): sort by the identity coords."""
+    return np.lexsort(Z.T[::-1])
 
 
-class ArsenalTagger4(ArsenalTagger):
-    tau_split = TAU_SPLIT
+def segment(Z, target=20, k_min=2, k_max=14, min_per=6, restarts=4, iters=60):
+    """Deterministic over-segmentation into small, pure pieces (~`target`
+    pitches each) with k-means++ / Lloyd in the identity space. Call on rows
+    in canonical_order. Pieces are relabeled 0..K-1 by size."""
+    n = len(Z)
+    k = int(np.clip(round(n / target), k_min, max(k_min, min(k_max, n // min_per))))
+    if n < 2 * min_per:
+        return np.zeros(n, int)
+    best = None
+    for r in range(restarts):
+        rng = np.random.default_rng(1000 + r)
+        mu = _kpp(Z, k, rng)
+        for _ in range(iters):
+            d = ((Z[:, None, :] - mu[None]) ** 2).sum(-1)
+            lab = d.argmin(1)
+            new = np.array([Z[lab == j].mean(0) if (lab == j).any() else mu[j] for j in range(k)])
+            if np.allclose(new, mu):
+                break
+            mu = new
+        inertia = ((Z - mu[lab]) ** 2).sum()
+        if best is None or inertia < best[0] - 1e-9:
+            best = (inertia, lab)
+    lab = best[1]
+    u, inv, cnt = np.unique(lab, return_inverse=True, return_counts=True)
+    order = np.argsort(-cnt, kind="stable")
+    remap = np.empty(len(u), int)
+    remap[order] = np.arange(len(u))
+    return remap[inv]
+
+
+# ── v5 partition + bagged naming (prod5.py) ──
+
+TAU_MERGE = 0.5
+NEIGHBORS = 4             # each piece is only compared with its nearest pieces
+MERGE_MAX_DIST = 7.0      # identity units
+TINY = 5                  # pieces smaller than this join the nearest piece if close
+TINY_JOIN_DIST = 3.0
+
+
+class ArsenalTagger5(ArsenalTagger):
     tau_merge = TAU_MERGE
 
     @classmethod
     def bare(cls):
-        """Instance without a model file (for building training data)."""
         return cls.__new__(cls)
 
-    def tag(self, *a, **kw):
-        kw["per_pitch_only"] = False
-        return super().tag(*a, **kw)
+    def _name_groups(self, X, gid):
+        """Average of the bagged namers (5 namers trained on different 80%
+        slices of the MLB training pitchers): removes single-model flips on
+        borderline groups. Falls back to the single namer."""
+        bag = self.meta.get("namer_bag") if hasattr(self, "meta") else None
+        if not bag:
+            return super()._name_groups(X, gid)
+        keys, T = self._group_table(X, gid)
+        Ps = []
+        for b, nb in enumerate(bag):
+            o1 = [nb["c1"].index(c) for c in CLASSES]
+            o2 = [nb["c2"].index(c) for c in CLASSES]
+            P1 = self._multi(f"nb{b}a_", np.column_stack([T[c] for c in nb["F1"]]), o1)
+            C = self._arsenal_context(T, P1)
+            Ps.append(self._multi(f"nb{b}b_", np.column_stack([T[c] if c in T else C[c] for c in nb["F2"]]), o2))
+        P2 = np.mean(Ps, 0)
+        name = dict(zip(keys, np.array(CLASSES)[P2.argmax(1)]))
+        return np.array([name[g] for g in gid.tolist()])
 
     def _partition(self, X, P=None, sess=None, p_one=None):
         p_one = p_one or self._p_one
+        Z0 = identity_space(X)
+        order = canonical_order(Z0)
+        Xo = {k: np.asarray(v)[order] for k, v in X.items()}
+        so = np.asarray(sess)[order]
+        gid = self._agglomerate(Xo, so, p_one)
+        out = np.empty_like(gid)
+        out[order] = gid
+        return out
+
+    def _agglomerate(self, X, sess, p_one, pieces=None):
         Z = identity_space(X)
-        gid = over_cluster(Z)
+        gid = segment(Z) if pieces is None else pieces.copy()
         gid = _absorb_tiny(gid, Z)
-        # split pass (a cluster can hide two real pitches: four-seam + two-seam)
-        queue, nxt, depth = list(np.unique(gid)), gid.max() + 1, {}
-        while queue:
-            g = queue.pop(0)
-            m = gid == g
-            if m.sum() < MIN_SPLIT_N or depth.get(g, 0) >= 3:
-                continue
-            f, hard = self._set_features(X, sess, m, gid)
-            if p_one(f) < self.tau_split and min((hard == 0).sum(), (hard == 1).sum()) >= max(6, 0.1 * m.sum()):
-                idx = np.where(m)[0]
-                gid[idx[hard == 1]] = nxt
-                depth[g] = depth[nxt] = depth.get(g, 0) + 1
-                queue += [g, nxt]
-                nxt += 1
-        # merge pass (pieces of one pitch: drift, a wide cloud, a tail)
         cache = {}
         while True:
-            groups = [g for g in np.unique(gid) if (gid == g).sum() >= 6]
-            cen = {g: Z[gid == g].mean(0) for g in groups}
-            best = None
+            groups = list(np.unique(gid))
+            if len(groups) < 2:
+                break
+            cen = np.array([Z[gid == g].mean(0) for g in groups])
+            D = np.sqrt(((cen[:, None] - cen[None]) ** 2).sum(-1))
+            cand = set()
             for i in range(len(groups)):
-                for j in range(i + 1, len(groups)):
-                    a, b = groups[i], groups[j]
-                    if np.linalg.norm(cen[a] - cen[b]) > MERGE_MAX_DIST:
-                        continue
-                    key = (a, b, int((gid == a).sum()), int((gid == b).sum()))
-                    if key not in cache:
-                        cache[key] = p_one(self._set_features(X, sess, np.isin(gid, [a, b]), gid)[0])
-                    p = cache[key]
-                    if p > self.tau_merge and (best is None or p > best[0]):
-                        best = (p, a, b)
+                for j in np.argsort(D[i])[1:NEIGHBORS + 1]:
+                    if D[i, j] <= MERGE_MAX_DIST:
+                        cand.add((min(i, j), max(i, j)))
+            best = None
+            for i, j in sorted(cand):
+                a, b = groups[i], groups[j]
+                m = (gid == a) | (gid == b)
+                key = m.tobytes()
+                if key not in cache:
+                    f = self._set_features(X, sess, m, gid)[0]
+                    f.update(pair_features(X, sess, gid == a, gid == b))
+                    cache[key] = p_one(f)
+                p = cache[key]
+                if p > self.tau_merge and (best is None or p > best[0]):
+                    best = (p, a, b)
             if best is None:
                 break
             _, a, b = best
@@ -812,19 +868,48 @@ class ArsenalTagger4(ArsenalTagger):
         return gid
 
 
+def pair_features(X, sess, ma, mb):
+    """The candidate split itself (the two pieces as they are), not just the
+    union: gaps per dimension, gap in identity units vs the pieces' own
+    spread, balance, and whether both pieces show up in the same sessions."""
+    f = {}
+    for k in ("velo", "ivb", "hb", "spin", "axis", "rel_z", "rel_x"):
+        a, b = X[k][ma], X[k][mb]
+        if k == "axis":
+            dd = (np.median(a) - np.median(b) + 180) % 360 - 180
+        else:
+            dd = np.median(a) - np.median(b)
+        f[f"pc_d_{k}"] = abs(dd)
+    Za, Zb = identity_space({k: X[k][ma] for k in ("velo", "ivb", "hb", "spin")}), identity_space({k: X[k][mb] for k in ("velo", "ivb", "hb", "spin")})
+    gap = Za.mean(0) - Zb.mean(0)
+    f["pc_gap"] = float(np.linalg.norm(gap))
+    u = gap / (np.linalg.norm(gap) + 1e-9)
+    sa, sb = (Za @ u).std(), (Zb @ u).std()
+    f["pc_gap_sd"] = f["pc_gap"] / (np.sqrt(0.5 * (sa ** 2 + sb ** 2)) + 1e-6)
+    f["pc_minor"] = min(ma.sum(), mb.sum()) / (ma.sum() + mb.sum())
+    f["pc_nmin"] = float(min(ma.sum(), mb.sum()))
+    sa_, sb_ = set(np.asarray(sess)[ma]), set(np.asarray(sess)[mb])
+    f["pc_sess_overlap"] = len(sa_ & sb_) / max(1, len(sa_ | sb_))
+    return f
+
+
 def _absorb_tiny(gid, Z):
     gid = gid.copy()
     for _ in range(3):
         u, cnt = np.unique(gid, return_counts=True)
-        big = u[cnt >= TINY]
-        small = u[cnt < TINY]
+        small, big = u[cnt < TINY], u[cnt >= TINY]
         if not len(small) or not len(big):
             break
+        changed = False
         cen = np.array([Z[gid == g].mean(0) for g in big])
         for g in small:
             ix = np.where(gid == g)[0]
-            d = ((Z[ix, None, :] - cen[None]) ** 2).sum(-1)
-            gid[ix] = big[d.argmin(1)]
+            d = np.sqrt(((Z[ix].mean(0) - cen) ** 2).sum(-1))
+            if d.min() <= TINY_JOIN_DIST:
+                gid[ix] = big[d.argmin()]
+                changed = True
+        if not changed:
+            break
     return gid
 
 
@@ -832,9 +917,9 @@ _TAGGER = None
 
 
 def get_tagger():
-    """Lazy singleton (the npz is ~27 MB; load once per process)."""
+    """Lazy singleton (the npz is ~41 MB; load once per process)."""
     global _TAGGER
     if _TAGGER is None:
         import os
-        _TAGGER = ArsenalTagger4(os.path.join(os.path.dirname(__file__), "..", "..", "data", "pitch_tagger.npz"))
+        _TAGGER = ArsenalTagger5(os.path.join(os.path.dirname(__file__), "..", "..", "data", "pitch_tagger.npz"))
     return _TAGGER
