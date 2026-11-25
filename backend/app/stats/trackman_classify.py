@@ -125,9 +125,76 @@ def _bridge(row):
     }
 
 
+# ── MLB-trained tagger (Nov 2026) ─────────────────────────────────
+# When backend/data/pitch_tagger.npz is present, every tracked pitch is
+# labeled by the MLB-trained model (app/stats/pitch_tagger.py) instead of
+# the operator-tag-prior + shape rules below. Coach overrides still win
+# everywhere (effective = override > class > tagged > auto). BP sessions and
+# pitches without full tracking keep the operator's tag.
+USE_MLB_TAGGER = True
+_TAG_COLS = ("rel_speed", "spin_rate", "spin_axis", "ivb", "horz_break", "rel_height", "rel_side", "extension")
+
+
+def _mlb_tagger_ready():
+    import os
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "pitch_tagger.npz")
+    return USE_MLB_TAGGER and os.path.exists(path)
+
+
+def model_tag_owner(cur, owner, pitchers=None, dry_run=False):
+    """Label an owner's pitches with the MLB-trained tagger.
+    Returns (classified, updated_rows, changes) where changes = [(id, old, new)]."""
+    import numpy as np
+    from .pitch_tagger import get_tagger
+    extra = " AND p.pitcher = ANY(%s)" if pitchers else ""
+    params = [owner] + ([list(pitchers)] if pitchers else [])
+    cur.execute(
+        f"""SELECT p.id, p.pitcher, p.pitcher_team, p.pitcher_throws, p.session_id, s.session_type,
+                   p.rel_speed, p.spin_rate, p.spin_axis, p.ivb, p.horz_break, p.rel_height,
+                   p.rel_side, p.extension, p.class_pitch_type, p.tagged_pitch_type,
+                   p.batter_side, p.plate_loc_height, p.plate_loc_side, p.balls, p.strikes
+            FROM tm_pitches p JOIN tm_sessions s ON s.id = p.session_id
+            WHERE p.owner_user_id = %s AND p.pitcher IS NOT NULL{extra}""",
+        params,
+    )
+    rows = cur.fetchall()
+    usable = [r for r in rows
+              if r["session_type"] != "bp" and r["pitcher_throws"] in ("Right", "Left")
+              and all(r[c] is not None for c in _TAG_COLS)]
+    new_by_id = {}
+    if usable:
+        f = lambda c: np.array([float(r[c]) for r in usable])
+        key = np.array([f"{r['pitcher']}|{r['pitcher_team']}|{r['pitcher_throws']}" for r in usable])
+        sess = np.array([str(r["session_id"]) for r in usable])
+        g = lambda c: [None if r[c] is None else (r[c] if c == "batter_side" else float(r[c])) for r in usable]
+        labels, _ = get_tagger().tag(f("rel_speed"), f("spin_rate"), f("spin_axis"), f("ivb"), f("horz_break"),
+                                     f("rel_height"), f("rel_side"), f("extension"),
+                                     np.array([r["pitcher_throws"] == "Left" for r in usable]), key, sess,
+                                     batter_side=g("batter_side"), loc_height=g("plate_loc_height"),
+                                     loc_side=g("plate_loc_side"), balls=g("balls"), strikes=g("strikes"))
+        new_by_id = {r["id"]: str(lab) for r, lab in zip(usable, labels)}
+    changes = []
+    for r in rows:
+        new = new_by_id.get(r["id"]) or _norm_tag(r.get("tagged_pitch_type"))
+        if new != r["class_pitch_type"]:
+            changes.append((r["id"], r["class_pitch_type"], new))
+    if changes and not dry_run:
+        from psycopg2.extras import execute_values
+        execute_values(cur, """
+            UPDATE tm_pitches AS t SET class_pitch_type = v.new
+            FROM (VALUES %s) AS v(new, id)
+            WHERE t.id = v.id
+        """, [(n, i) for i, _, n in changes], page_size=500)
+    return len(new_by_id), len(changes), changes
+
+
 def reclassify_owner(cur, owner, pitchers=None):
     """(Re)compute class_pitch_type for an owner's pitches, per pitcher.
     Only writes rows whose classification changed. Returns (classified, updated)."""
+    if _mlb_tagger_ready():
+        classified, updated, _ = model_tag_owner(cur, owner, pitchers)
+        flag_mistags(cur, owner, pitchers)
+        return classified, updated
     extra = " AND pitcher = ANY(%s)" if pitchers else ""
     params = [owner] + ([list(pitchers)] if pitchers else [])
     cur.execute(

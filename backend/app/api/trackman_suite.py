@@ -411,10 +411,12 @@ async def upload_trackman(
             except Exception as e:  # noqa: BLE001 — per-file, don't abort the batch
                 conn.rollback()
                 errors.append({"file": f.filename, "error": str(e)})
-        # Auto-classify with the site's shape classifier (per pitcher, vs their
-        # own fastball) so mis-tagged pitches never corrupt the Stuff grades.
+        # Auto-classify with the MLB-trained arsenal tagger. Only the pitchers in
+        # this upload are re-tagged (each over ALL his stored pitches, since the
+        # tagger works pitcher by pitcher); everyone else is untouched.
+        touched = sorted({p for r in results for p in r.get("pitchers", [])})
         try:
-            _, reclassified = reclassify_owner(cur, owner)
+            _, reclassified = reclassify_owner(cur, owner, touched or None) if touched else (0, 0)
         except Exception:
             reclassified = 0
         conn.commit()
@@ -470,7 +472,8 @@ def _ingest(cur, owner, parsed, filename):
             (sid, sid, sid),
         )
     return {"file": filename, "sessions": list(parsed["sessions"]),
-            "pitches_added": inserted, "duplicates_skipped": skipped}
+            "pitches_added": inserted, "duplicates_skipped": skipped,
+            "pitchers": sorted({p.get("pitcher") for p in parsed["pitches"] if p.get("pitcher")})}
 
 
 SESSION_TYPES = ("game", "scrimmage", "intrasquad", "bp", "bullpen")
