@@ -1,26 +1,17 @@
-"""MLB-trained, arsenal-first pitch tagger (v3). numpy only.
+"""MLB-trained, pitcher-first pitch tagger (v4). numpy only.
 
-Fully automatic: TrackMan rows in, a pitch type for every pitch out, no
-pitch lists or human input. SOURCE OF TRUTH is the lab repo
-(~/code/pitch-tagging-lab/pitchtag/prod3.py, verified bit-for-bit against the
-training pipeline by verify_prod3.py); this is a copy plus get_tagger().
-Model file: backend/data/pitch_tagger.npz (lab export_v3.py).
+SOURCE OF TRUTH is the lab repo ~/code/pitch-tagging-lab (pitchtag/prod3.py +
+cluster.py + prod4.py, verified against the training pipeline). This file is
+those three concatenated, plus get_tagger(). Model file:
+backend/data/pitch_tagger.npz (lab export_v4.py).
 
-How it works, per pitcher (all of his sessions together):
- 1. session velocity normalization (a fall bullpen at 82 is still his fastball);
- 2. per-pitch model (stage 1 shape vs his own fastball, stage 2 soft arsenal
-    context, light within-pitcher smoothing) -> class probabilities;
- 3. his distinct pitches: start from the per-pitch groups, MERGE neighbouring
-    groups the set model calls one pitch, SPLIT groups it calls two (the set
-    model decides "one pitch or two" from within-session spread vs his own
-    noise, the gap between the parts, release, aim and usage; trained on MLB
-    resampled to college sample sizes, noise and game-to-game drift);
- 4. name every pitch group from its shape, usage (batter side, count, aim)
-    and the rest of his arsenal (namer pass 1 + 2), and give every pitch its
-    group's name.
-Labels = MLBAM's pitch types mapped to Fastball / Sinker / Cutter / Slider /
-Sweeper / Curveball / ChangeUp / Splitter.
+Per pitcher: session velocity normalization -> his natural pitch clusters in a
+velo / movement / spin-rate space -> learned split/merge ("one pitch or two?",
+trained on MLB samples made college-sized and college-noisy) -> each final
+pitch named from its shape, usage and the rest of his arsenal (MLBAM's pitch
+types). No human input.
 """
+
 import json
 import warnings
 
@@ -684,6 +675,159 @@ def _ll_one(Z, mu, C):
     return float((-0.5 * np.einsum("ij,jk,ik->i", D, Ci, D) - 0.5 * logdet - 0.5 * d * np.log(2 * np.pi)).sum())
 
 
+# ── pitcher-first clustering (cluster.py) ──
+
+ID_DIMS = ["velo", "ivb", "hb", "spin"]
+ID_SCALE = np.array([1.2, 2.6, 2.6, 120.0])
+
+
+def identity_space(F):
+    return np.column_stack([F[k] for k in ID_DIMS]) / ID_SCALE
+
+
+def _kpp(Z, k, rng):
+    c = [Z[rng.integers(len(Z))]]
+    for _ in range(1, k):
+        d = np.min(((Z[:, None, :] - np.array(c)[None]) ** 2).sum(-1), 1)
+        p = d / d.sum() if d.sum() > 0 else np.full(len(Z), 1 / len(Z))
+        c.append(Z[rng.choice(len(Z), p=p)])
+    return np.array(c)
+
+
+def gmm(Z, k, seed=0, iters=80, ridge=0.08, restarts=3):
+    """Full-covariance GMM (ridge in identity units). Returns (labels, loglik, resp)."""
+    n, d = Z.shape
+    best = None
+    for r in range(restarts):
+        rng = np.random.default_rng(seed * 101 + r)
+        mu = _kpp(Z, k, rng)
+        lab = np.argmin(((Z[:, None, :] - mu[None]) ** 2).sum(-1), 1)
+        R = np.eye(k)[lab]
+        ll = -np.inf
+        for _ in range(iters):
+            nk = R.sum(0) + 1e-9
+            mu = (R.T @ Z) / nk[:, None]
+            L = np.empty((n, k))
+            for j in range(k):
+                D = Z - mu[j]
+                C = (R[:, j, None] * D).T @ D / nk[j] + np.eye(d) * ridge
+                Ci = np.linalg.inv(C)
+                _, ld = np.linalg.slogdet(C)
+                L[:, j] = np.log(nk[j] / n) - 0.5 * ld - 0.5 * np.einsum("ij,jk,ik->i", D, Ci, D)
+            m = L.max(1, keepdims=True)
+            new_ll = float((m[:, 0] + np.log(np.exp(L - m).sum(1))).sum()) - 0.5 * d * np.log(2 * np.pi) * n
+            R = np.exp(L - m)
+            R /= R.sum(1, keepdims=True)
+            if abs(new_ll - ll) < 1e-4 * n:
+                ll = new_ll
+                break
+            ll = new_ll
+        if best is None or ll > best[1]:
+            best = (R.argmax(1), ll, R)
+    return best
+
+
+def over_cluster(Z, k_max=9, min_per=6, seed=0):
+    """BIC-chosen GMM over-clustering. Clusters are relabeled 0..K-1 by size."""
+    n, d = Z.shape
+    k_max = int(max(1, min(k_max, n // min_per)))
+    npar = lambda k: k * (d + d * (d + 1) / 2) + (k - 1)
+    best = None
+    for k in range(1, k_max + 1):
+        lab, ll, _ = gmm(Z, k, seed=seed)
+        bic = -2 * ll + npar(k) * np.log(n)
+        if best is None or bic < best[0]:
+            best = (bic, lab)
+    lab = best[1]
+    u, inv, cnt = np.unique(lab, return_inverse=True, return_counts=True)
+    order = np.argsort(-cnt, kind="stable")
+    remap = np.empty(len(u), int)
+    remap[order] = np.arange(len(u))
+    return remap[inv]
+
+
+# ── v4 partition (prod4.py) ──
+
+TAU_SPLIT = 0.2
+TAU_MERGE = 0.8
+MERGE_MAX_DIST = 7.0      # identity units; farther clusters are never merged
+MIN_SPLIT_N = 16
+TINY = 4                  # clusters smaller than this join their nearest cluster
+
+
+class ArsenalTagger4(ArsenalTagger):
+    tau_split = TAU_SPLIT
+    tau_merge = TAU_MERGE
+
+    @classmethod
+    def bare(cls):
+        """Instance without a model file (for building training data)."""
+        return cls.__new__(cls)
+
+    def tag(self, *a, **kw):
+        kw["per_pitch_only"] = False
+        return super().tag(*a, **kw)
+
+    def _partition(self, X, P=None, sess=None, p_one=None):
+        p_one = p_one or self._p_one
+        Z = identity_space(X)
+        gid = over_cluster(Z)
+        gid = _absorb_tiny(gid, Z)
+        # split pass (a cluster can hide two real pitches: four-seam + two-seam)
+        queue, nxt, depth = list(np.unique(gid)), gid.max() + 1, {}
+        while queue:
+            g = queue.pop(0)
+            m = gid == g
+            if m.sum() < MIN_SPLIT_N or depth.get(g, 0) >= 3:
+                continue
+            f, hard = self._set_features(X, sess, m, gid)
+            if p_one(f) < self.tau_split and min((hard == 0).sum(), (hard == 1).sum()) >= max(6, 0.1 * m.sum()):
+                idx = np.where(m)[0]
+                gid[idx[hard == 1]] = nxt
+                depth[g] = depth[nxt] = depth.get(g, 0) + 1
+                queue += [g, nxt]
+                nxt += 1
+        # merge pass (pieces of one pitch: drift, a wide cloud, a tail)
+        cache = {}
+        while True:
+            groups = [g for g in np.unique(gid) if (gid == g).sum() >= 6]
+            cen = {g: Z[gid == g].mean(0) for g in groups}
+            best = None
+            for i in range(len(groups)):
+                for j in range(i + 1, len(groups)):
+                    a, b = groups[i], groups[j]
+                    if np.linalg.norm(cen[a] - cen[b]) > MERGE_MAX_DIST:
+                        continue
+                    key = (a, b, int((gid == a).sum()), int((gid == b).sum()))
+                    if key not in cache:
+                        cache[key] = p_one(self._set_features(X, sess, np.isin(gid, [a, b]), gid)[0])
+                    p = cache[key]
+                    if p > self.tau_merge and (best is None or p > best[0]):
+                        best = (p, a, b)
+            if best is None:
+                break
+            _, a, b = best
+            keep, drop = (a, b) if (gid == a).sum() >= (gid == b).sum() else (b, a)
+            gid[gid == drop] = keep
+        return gid
+
+
+def _absorb_tiny(gid, Z):
+    gid = gid.copy()
+    for _ in range(3):
+        u, cnt = np.unique(gid, return_counts=True)
+        big = u[cnt >= TINY]
+        small = u[cnt < TINY]
+        if not len(small) or not len(big):
+            break
+        cen = np.array([Z[gid == g].mean(0) for g in big])
+        for g in small:
+            ix = np.where(gid == g)[0]
+            d = ((Z[ix, None, :] - cen[None]) ** 2).sum(-1)
+            gid[ix] = big[d.argmin(1)]
+    return gid
+
+
 _TAGGER = None
 
 
@@ -692,5 +836,5 @@ def get_tagger():
     global _TAGGER
     if _TAGGER is None:
         import os
-        _TAGGER = ArsenalTagger(os.path.join(os.path.dirname(__file__), "..", "..", "data", "pitch_tagger.npz"))
+        _TAGGER = ArsenalTagger4(os.path.join(os.path.dirname(__file__), "..", "..", "data", "pitch_tagger.npz"))
     return _TAGGER
