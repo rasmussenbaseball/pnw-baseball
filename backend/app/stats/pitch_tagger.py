@@ -8,8 +8,8 @@ backend/data/pitch_tagger.npz (lab export_v5.py).
 Per pitcher (rows put in a canonical order first, so the answer never depends
 on database row order):
  1. session velocity normalization;
- 2. cut his pitches into small pure pieces (k-means, velo / movement / spin);
- 3. glue pieces while the learned "same pitch?" model says so (trained on MLB
+ 2. cut his pitches into small pure pieces (~8 pitches; k-means, velo / movement / spin);
+ 3. glue pieces while the learned "same pitch?" model says so (P > 0.15) (trained on MLB
     pitchers made college-sized, college-noisy and drifting, rare pitches
     included);
  4. name each final pitch with 5 bagged arsenal namers (shape + usage + the
@@ -194,7 +194,7 @@ class ArsenalTagger:
             sf = {k: v[ix] for k, v in SF.items()}
             gf = {k: v[ix] for k, v in GF.items()}
             gid = self._partition(sf, P2[ix], sess[ix])
-            labels[ix] = self._name_groups(gf, gid)
+            labels[ix] = self._name_groups(gf, gid, P2[ix])
             groups[ix] = [f"{pkeys[ix[0]]}#{k}" for k in gid]
         return labels, {"group": groups, "p_pitch": P2}
 
@@ -638,7 +638,7 @@ class ArsenalTagger:
                 F[f"nb{j}_{nm}"] = near[:, j, m]
         return F
 
-    def _name_groups(self, X, gid):
+    def _name_groups(self, X, gid, P=None):
         keys, T = self._group_table(X, gid)
         X1 = np.column_stack([T[c] for c in self.F1])
         P1 = self._multi("n1_", X1, self.on1)
@@ -756,7 +756,7 @@ def canonical_order(Z):
     return np.lexsort(Z.T[::-1])
 
 
-def segment(Z, target=20, k_min=2, k_max=14, min_per=6, restarts=4, iters=60):
+def segment(Z, target=8, k_min=6, k_max=40, min_per=3, restarts=4, iters=60):
     """Deterministic over-segmentation into small, pure pieces (~`target`
     pitches each) with k-means++ / Lloyd in the identity space. Call on rows
     in canonical_order. Pieces are relabeled 0..K-1 by size."""
@@ -764,6 +764,7 @@ def segment(Z, target=20, k_min=2, k_max=14, min_per=6, restarts=4, iters=60):
     k = int(np.clip(round(n / target), k_min, max(k_min, min(k_max, n // min_per))))
     if n < 2 * min_per:
         return np.zeros(n, int)
+    k = min(k, n // min_per)
     best = None
     for r in range(restarts):
         rng = np.random.default_rng(1000 + r)
@@ -788,11 +789,12 @@ def segment(Z, target=20, k_min=2, k_max=14, min_per=6, restarts=4, iters=60):
 
 # ── v5 partition + bagged naming (prod5.py) ──
 
-TAU_MERGE = 0.5
+TAU_MERGE = 0.15
 NEIGHBORS = 4             # each piece is only compared with its nearest pieces
 MERGE_MAX_DIST = 7.0      # identity units
 TINY = 5                  # pieces smaller than this join the nearest piece if close
 TINY_JOIN_DIST = 3.0
+MIN_GROUP = 3             # final groups smaller than this use the per-pitch model
 
 
 class ArsenalTagger5(ArsenalTagger):
@@ -802,7 +804,17 @@ class ArsenalTagger5(ArsenalTagger):
     def bare(cls):
         return cls.__new__(cls)
 
-    def _name_groups(self, X, gid):
+    def _name_groups(self, X, gid, P=None):
+        names = self._name_bag(X, gid)
+        if P is not None:
+            # a group of 1-2 pitches is not evidence of a pitch type of its own:
+            # those pitches keep the per-pitch MLB model's call
+            u, inv, cnt = np.unique(gid, return_inverse=True, return_counts=True)
+            few = cnt[inv] < MIN_GROUP
+            names[few] = np.array(CLASSES)[P[few].argmax(1)]
+        return names
+
+    def _name_bag(self, X, gid):
         """Average of the bagged namers (5 namers trained on different 80%
         slices of the MLB training pitchers): removes single-model flips on
         borderline groups. Falls back to the single namer."""
