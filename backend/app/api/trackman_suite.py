@@ -414,14 +414,27 @@ async def upload_trackman(
         # Auto-classify with the MLB-trained arsenal tagger. Only the pitchers in
         # this upload are re-tagged (each over ALL his stored pitches, since the
         # tagger works pitcher by pitcher); everyone else is untouched.
+        # Runs in a background thread on its own connection: a whole staff can
+        # take a couple of minutes on the 1-vCPU server, longer than the proxy
+        # waits. Pitches show their operator tag until it finishes.
         touched = sorted({p for r in results for p in r.get("pitchers", [])})
-        try:
-            _, reclassified = reclassify_owner(cur, owner, touched or None) if touched else (0, 0)
-        except Exception:
-            reclassified = 0
         conn.commit()
+    if touched:
+        import threading
+        threading.Thread(target=_retag_in_background, args=(owner, touched), daemon=True).start()
     return {"uploaded": len(results), "results": results, "errors": errors,
-            "reclassified": reclassified}
+            "reclassified": "queued" if touched else 0}
+
+
+def _retag_in_background(owner, pitchers):
+    import logging
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            reclassify_owner(cur, owner, pitchers)
+            conn.commit()
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).exception("TrackMan re-tag failed for %s", owner)
 
 
 def _ingest(cur, owner, parsed, filename):
